@@ -441,9 +441,9 @@ export class DevPanel {
                 <div class="slider-group">
                   <div class="slider-label">
                     <span>Character Strength</span>
-                    <span id="val-strength">${this.character.strength.toFixed(1)}</span>
+                    <span id="val-strength">${(this.character.strength ?? 1.0).toFixed(1)}</span>
                   </div>
-                  <input type="range" id="slide-strength" min="0.3" max="4.0" step="0.1" value="${this.character.strength}">
+                  <input type="range" id="slide-strength" min="0.3" max="4.0" step="0.1" value="${this.character.strength ?? 1.0}">
                 </div>
               </div>
             </div>

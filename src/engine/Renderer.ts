@@ -14,7 +14,7 @@ export class Renderer {
     arena: Arena,
     character: Character,
     objects: GameObject[],
-    selectedEntity?: GameObject,
+    selectedEntity?: GameObject | null,
     isEditMode = false,
     hoverEntity?: GameObject | null
   ): void {
@@ -177,6 +177,7 @@ export class Renderer {
   private drawFreebodyObject(obj: GameObject, allEntities: GameObject[], character: Character, ppu: number): void {
     const ctx = this.ctx;
     const x = obj.position.x * ppu;
+    const y = obj.position.y * ppu;
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const renderRadius = visualRadius * ppu;
 

@@ -17,6 +17,7 @@ export class Character extends GameObject {
 
   /**
    * Effective mass: base character mass plus the mass of any currently carried object.
+   */
   public override get mass(): number {
     const base = this.hasMass ? this.baseMass : 0;
     const carried = (this.heldObject && this.heldObject.hasMass) ? this.heldObject.mass : 0;

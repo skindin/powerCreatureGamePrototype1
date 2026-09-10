@@ -268,7 +268,7 @@ export class GameLoop {
 
             if (velAlongNormal < 0) {
               // When actively walking against an object, contact is an inelastic continuous push (restitution = 0)
-              const isActivelyPushing = a.isActivelyWalking || b.isActivelyWalking;
+              const isActivelyPushing = (a instanceof Character && a.isActivelyWalking) || (b instanceof Character && b.isActivelyWalking);
               const canBounce = a.hasBounce && b.hasBounce;
               const eA = (a.isCharacter || !a.hasBounce) ? 0.0 : (a.bounceMod ?? 0.0);
               const eB = (b.isCharacter || !b.hasBounce) ? 0.0 : (b.bounceMod ?? 0.0);
