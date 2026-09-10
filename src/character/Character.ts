@@ -12,6 +12,25 @@ export class Character extends GameObject {
   public override isCharacter = true;
   public isActivelyWalking = false;
 
+  // Base mass when not carrying anything
+  public baseMass = 1.2;
+
+  /**
+   * Effective mass: base character mass plus the mass of any currently carried object.
+   * Carrying heavy objects makes the character heavier, naturally slowing down acceleration and walking speed.
+   */
+  public override get mass(): number {
+    return this.baseMass + (this.heldObject ? this.heldObject.mass : 0);
+  }
+
+  public override set mass(val: number) {
+    this.baseMass = Math.max(0.1, val);
+  }
+
+  public get carriedMass(): number {
+    return this.heldObject ? this.heldObject.mass : 0;
+  }
+
   // Removable Modules
   public walkingModule: WalkingModule | null;
   public pickupModule: PickupModule | null;
@@ -39,6 +58,7 @@ export class Character extends GameObject {
       bounceMod: 0.1,
     });
 
+    this.baseMass = options.mass ?? 1.2;
     this.strength = options.strength ?? 1.0;
     this.facingAngle = 0;
     this.heldObject = null;

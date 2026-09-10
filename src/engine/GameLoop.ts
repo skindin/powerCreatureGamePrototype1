@@ -148,9 +148,9 @@ export class GameLoop {
             const normZ = dz / dist;
 
             // Mass-weighted separation:
-            // Actively walking character has high pushing drive, so lighter objects yield.
-            const invMassA = a.isCharacter ? (a.isActivelyWalking ? 0.05 : 1 / a.mass) : 1 / a.mass;
-            const invMassB = b.isCharacter ? (b.isActivelyWalking ? 0.05 : 1 / b.mass) : 1 / b.mass;
+            // True mass weighting: pushing heavy things resists movement and naturally slows the character down
+            const invMassA = 1 / a.mass;
+            const invMassB = 1 / b.mass;
             const invMassSum = invMassA + invMassB;
             if (invMassSum <= 0.0001) continue;
 
@@ -176,10 +176,11 @@ export class GameLoop {
             const velAlongNormal = relVx * normX + relVy * normY + relVz * normZ;
 
             if (velAlongNormal < 0) {
-              // Physically accurate coefficient of restitution combined from both entities' bounceMod
-              const eA = a.isCharacter ? (a.isActivelyWalking ? 0.0 : 0.15) : (a.bounceMod ?? 0.0);
-              const eB = b.isCharacter ? (b.isActivelyWalking ? 0.0 : 0.15) : (b.bounceMod ?? 0.0);
-              const restitution = Math.max(0.0, Math.min(0.98, Math.max(eA, eB)));
+              // When actively walking against an object, contact is an inelastic continuous push (restitution = 0)
+              const isActivelyPushing = a.isActivelyWalking || b.isActivelyWalking;
+              const eA = a.isCharacter ? 0.15 : (a.bounceMod ?? 0.0);
+              const eB = b.isCharacter ? 0.15 : (b.bounceMod ?? 0.0);
+              const restitution = isActivelyPushing ? 0.0 : Math.max(0.0, Math.min(0.98, Math.max(eA, eB)));
 
               // Normal impulse magnitude J_n (strictly conserving linear momentum)
               const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;

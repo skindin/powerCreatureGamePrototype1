@@ -51,7 +51,7 @@ export class DevPanel {
     if (!this.entitySelectorEl) return;
     const currentId = this.selectedEntity.id;
 
-    let html = `<option value="${this.character.id}" ${currentId === this.character.id ? "selected" : ""}>⭐ Player Character</option>`;
+    let html = `<option value="${this.character.id}" ${currentId === this.character.id ? "selected" : ""}>⭐ Player Character (${this.character.mass.toFixed(1)}kg)</option>`;
     for (const obj of this.objects) {
       const isSel = obj.id === currentId ? "selected" : "";
       const icon = obj.visualShape === "box" ? "📦" : "⚪";
@@ -159,18 +159,10 @@ export class DevPanel {
 
           <div class="slider-group">
             <div class="slider-label">
-              <span>Max Walk Speed (u/s)</span>
-              <span id="val-walk-speed">${(this.character.walkingModule?.maxWalkSpeed ?? 5.2).toFixed(1)}</span>
+              <span>Max Walk Force (N)</span>
+              <span id="val-walk-force">${(this.character.walkingModule?.maxWalkForce ?? 50.0).toFixed(0)}</span>
             </div>
-            <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${this.character.walkingModule?.maxWalkSpeed ?? 5.2}">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Walk Acceleration (u/s²)</span>
-              <span id="val-walk-accel">${(this.character.walkingModule?.walkAcceleration ?? 80.0).toFixed(0)}</span>
-            </div>
-            <input type="range" id="slide-walk-accel" min="10" max="250" step="5" value="${this.character.walkingModule?.walkAcceleration ?? 80.0}">
+            <input type="range" id="slide-walk-force" min="10" max="200" step="5" value="${this.character.walkingModule?.maxWalkForce ?? 50.0}">
           </div>
 
           <div class="slider-group">
@@ -315,8 +307,7 @@ export class DevPanel {
     if (e === this.character) {
       this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
       if (this.character.walkingModule) {
-        this.setSliderVal("slide-walk-speed", "val-walk-speed", this.character.walkingModule.maxWalkSpeed, 1);
-        this.setSliderVal("slide-walk-accel", "val-walk-accel", this.character.walkingModule.walkAcceleration, 0);
+        this.setSliderVal("slide-walk-force", "val-walk-force", this.character.walkingModule.maxWalkForce, 0);
       }
       if (this.character.pickupModule) {
         this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
@@ -382,15 +373,9 @@ export class DevPanel {
       this.character.strength = val;
     }, 1);
 
-    this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
+    this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
       if (this.character.walkingModule) {
-        this.character.walkingModule.maxWalkSpeed = val;
-      }
-    }, 1);
-
-    this.setupSlider("slide-walk-accel", "val-walk-accel", (val) => {
-      if (this.character.walkingModule) {
-        this.character.walkingModule.walkAcceleration = val;
+        this.character.walkingModule.maxWalkForce = val;
       }
     }, 0);
 
@@ -644,6 +629,14 @@ export class DevPanel {
       </div>
       ` : ''}
       ${isChar ? `
+      <div class="inspect-item">
+        <span class="inspect-k">Base / Total Mass</span>
+        <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.baseMass.toFixed(1)}kg ${this.character.heldObject ? `(+${this.character.heldObject.mass.toFixed(1)}kg = ${this.character.mass.toFixed(1)}kg)` : ''}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Max Walk Force</span>
+        <span class="inspect-v">${(this.character.walkingModule?.maxWalkForce ?? 50).toFixed(0)} N</span>
+      </div>
       <div class="inspect-item">
         <span class="inspect-k">Facing Angle</span>
         <span class="inspect-v">${Math.round((this.character.facingAngle * 180) / Math.PI)}°</span>
