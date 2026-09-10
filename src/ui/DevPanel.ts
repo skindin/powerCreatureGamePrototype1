@@ -121,10 +121,13 @@ export class DevPanel {
     this.renderPanel();
   }
 
+  public onSelectionChange?: (entity: GameObject | null) => void;
+
   public setSelectedEntity(entity: GameObject): void {
     this.selectedEntity = entity;
     this.updateSelectorOptions();
     this.syncEntitySliders();
+    this.onSelectionChange?.(entity);
   }
 
   public setMode(editMode: boolean): void {

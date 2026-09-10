@@ -69,7 +69,7 @@ export class GameLoop {
       this.arena,
       this.character,
       this.objects,
-      this.devPanel.selectedEntity,
+      this.inputManager.selectedCanvasEntity,
       this.devPanel.isEditMode,
       this.inputManager.hoverEntity
     );
@@ -84,16 +84,24 @@ export class GameLoop {
     const input = this.inputManager;
 
     // 1. Update character with movement and aim inputs
-    this.character.updateCharacter(
-      dt,
-      input.movementVector,
-      input.isMouseDown && !this.devPanel.isEditMode,
-      input.mousePos,
-      this.arena
-    );
+    if (input.draggedEntity !== this.character) {
+      this.character.updateCharacter(
+        dt,
+        input.movementVector,
+        input.isMouseDown && !this.devPanel.isEditMode,
+        input.mousePos,
+        this.arena
+      );
+    } else {
+      this.character.velocity.x = 0;
+      this.character.velocity.y = 0;
+    }
 
-    // 2. Update all freebody objects
+    // 2. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {
+      if (input.draggedEntity === obj) {
+        continue;
+      }
       obj.updatePosition(dt, this.arena);
     }
 
@@ -118,6 +126,7 @@ export class GameLoop {
 
   private resolveFreebodyCollisions(): void {
     const all = [this.character, ...this.objects];
+    const input = this.inputManager;
 
     // Iterative separation solver: pushes entities away until not overlapping
     const iterations = 3;
@@ -127,8 +136,8 @@ export class GameLoop {
           const a = all[i];
           const b = all[j];
 
-          // Skip if either is currently held in hands
-          if (a.isHeld || b.isHeld) continue;
+          // Skip if either is currently held in hands or actively dragged in Edit Mode
+          if (a.isHeld || b.isHeld || a === input.draggedEntity || b === input.draggedEntity) continue;
 
           // High altitude collision rule:
           // If both are above wall height, they collide with each other.

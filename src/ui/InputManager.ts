@@ -13,10 +13,17 @@ export class InputManager {
   public isMouseDown = false;
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
+
+  // Selection & dragging state
   public hoverEntity: GameObject | null = null;
+  public selectedCanvasEntity: GameObject | null = null;
+  public draggedEntity: GameObject | null = null;
+  public dragOffset: Vector2D = { x: 0, y: 0 };
 
   // Action callback hooks
   public handleClick?: (clickX: number, clickY: number) => void;
+  public onMouseDown?: (clickX: number, clickY: number) => void;
+  public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
@@ -61,6 +68,10 @@ export class InputManager {
       this.isMouseDown = true;
       this.updateMousePos(e);
 
+      if (this.onMouseDown) {
+        this.onMouseDown(this.mousePos.x, this.mousePos.y);
+      }
+
       if (this.handleClick) {
         this.handleClick(this.mousePos.x, this.mousePos.y);
       }
@@ -78,6 +89,9 @@ export class InputManager {
       if (e.button !== 0) return;
       this.isMouseDown = false;
       this.justPickedUp = false;
+      if (this.onMouseUp) {
+        this.onMouseUp(this.mousePos.x, this.mousePos.y);
+      }
     });
 
     // Touch support for mobile / touchscreens
@@ -85,6 +99,9 @@ export class InputManager {
       if (e.touches.length > 0) {
         this.isMouseDown = true;
         this.updateTouchPos(e.touches[0]);
+        if (this.onMouseDown) {
+          this.onMouseDown(this.mousePos.x, this.mousePos.y);
+        }
         if (this.handleClick) {
           this.handleClick(this.mousePos.x, this.mousePos.y);
         }
@@ -103,6 +120,9 @@ export class InputManager {
     window.addEventListener("touchend", () => {
       this.isMouseDown = false;
       this.justPickedUp = false;
+      if (this.onMouseUp) {
+        this.onMouseUp(this.mousePos.x, this.mousePos.y);
+      }
     });
   }
 
@@ -147,6 +167,10 @@ export class InputManager {
     objects: GameObject[],
     devPanel?: DevPanel
   ): void {
+    if (devPanel) {
+      this.selectedCanvasEntity = devPanel.selectedEntity;
+    }
+
     const findEntityAt = (x: number, y: number, tolerance = 0.35): GameObject | null => {
       // Check objects first (so objects on top or near player can be picked)
       for (let i = objects.length - 1; i >= 0; i--) {
@@ -164,27 +188,71 @@ export class InputManager {
       return null;
     };
 
-    // Hover tracking (especially useful in Edit Mode)
+    this.onMouseDown = (x: number, y: number) => {
+      if (devPanel?.isEditMode) {
+        const found = findEntityAt(x, y, 0.35);
+        if (found) {
+          this.selectedCanvasEntity = found;
+          devPanel.setSelectedEntity(found);
+          this.draggedEntity = found;
+          this.dragOffset.x = found.position.x - x;
+          this.dragOffset.y = found.position.y - y;
+          this.canvas.style.cursor = "grabbing";
+        } else {
+          // Clicked empty ground: deselect in arena (corners go away), but preserve devPanel focus!
+          this.selectedCanvasEntity = null;
+          this.draggedEntity = null;
+        }
+      }
+    };
+
+    // Hover & drag tracking in Edit Mode
     this.onMouseMove = (x: number, y: number) => {
       if (devPanel?.isEditMode) {
-        const found = findEntityAt(x, y, 0.3);
-        this.hoverEntity = found;
-        this.canvas.style.cursor = found ? "pointer" : "crosshair";
+        if (this.isMouseDown && this.draggedEntity) {
+          // Drag object wherever the user moves the mouse
+          const targetX = x + this.dragOffset.x;
+          const targetY = y + this.dragOffset.y;
+          const r = this.draggedEntity.colliderRadius;
+          this.draggedEntity.position.x = Math.max(r, Math.min(arena.width - r, targetX));
+          this.draggedEntity.position.y = Math.max(r, Math.min(arena.height - r, targetY));
+          
+          // Zero out velocities so object stays put where dragged
+          this.draggedEntity.velocity.x = 0;
+          this.draggedEntity.velocity.y = 0;
+          this.draggedEntity.verticalVelocity = 0;
+          if (this.draggedEntity.rollModule) {
+            this.draggedEntity.rollModule.angularVelocity.x = 0;
+            this.draggedEntity.rollModule.angularVelocity.y = 0;
+            this.draggedEntity.rollModule.angularVelocity.z = 0;
+          }
+          this.canvas.style.cursor = "grabbing";
+        } else {
+          const found = findEntityAt(x, y, 0.3);
+          this.hoverEntity = found;
+          this.canvas.style.cursor = found ? "grab" : "crosshair";
+        }
       } else {
         this.hoverEntity = null;
+        this.draggedEntity = null;
         this.canvas.style.cursor = "default";
       }
     };
 
-    this.handleClick = (clickX: number, clickY: number) => {
-      // If Edit Mode is active: left-click selects entities without throwing/grabbing!
+    this.onMouseUp = (_x: number, _y: number) => {
+      if (this.draggedEntity) {
+        this.draggedEntity = null;
+      }
       if (devPanel?.isEditMode) {
-        const found = findEntityAt(clickX, clickY, 0.35);
-        if (found) {
-          devPanel.setSelectedEntity(found);
-        } else {
-          devPanel.setSelectedEntity(character);
-        }
+        const found = findEntityAt(this.mousePos.x, this.mousePos.y, 0.3);
+        this.hoverEntity = found;
+        this.canvas.style.cursor = found ? "grab" : "crosshair";
+      }
+    };
+
+    this.handleClick = (clickX: number, clickY: number) => {
+      if (devPanel?.isEditMode) {
+        // Handled in onMouseDown/onMouseMove
         return;
       }
 
@@ -209,7 +277,11 @@ export class InputManager {
     this.onRightClick = (clickX: number, clickY: number) => {
       if (!devPanel) return;
       const found = findEntityAt(clickX, clickY, 0.4);
-      devPanel.setSelectedEntity(found ?? character);
+      if (found) {
+        this.selectedCanvasEntity = found;
+        devPanel.setSelectedEntity(found);
+      }
+      // If clicked empty space, keep the last focused entity in devPanel!
     };
 
     this.onDropAttempt = () => {

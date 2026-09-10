@@ -117,6 +117,9 @@ function bootstrap(): void {
   // 5. Initialize Input Manager with Dev Panel interaction
   const inputManager = new InputManager(canvas, arena);
   inputManager.handleInteractions(character, arena, objects, devPanel);
+  devPanel.onSelectionChange = (entity) => {
+    inputManager.selectedCanvasEntity = entity;
+  };
 
   // 6. Start Fixed-Timestep Game Loop
   const gameLoop = new GameLoop({
