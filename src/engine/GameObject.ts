@@ -5,7 +5,7 @@ import { MassModule } from "./MassModule.js";
 import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
-import { VerticalVelocityModule } from "./VerticalVelocityModule.js";
+import { VerticalPositionModule } from "./VerticalPositionModule.js";
 
 export interface Vector2D {
   x: number;
@@ -34,7 +34,7 @@ export class GameObject {
   public massModule: MassModule | null = null;
   public frictionModule: FrictionModule | null = null;
   public bounceModule: BounceModule | null = null;
-  public verticalVelocityModule: VerticalVelocityModule | null = null;
+  public verticalPositionModule: VerticalPositionModule | null = null;
   public gravityModule: GravityModule | null = null;
   public rollModule: RollModule | null = null;
 
@@ -50,7 +50,7 @@ export class GameObject {
     massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
     bounceModule?: BounceModule | null;
-    verticalVelocityModule?: VerticalVelocityModule | null;
+    verticalPositionModule?: VerticalPositionModule | null;
     gravityModule?: GravityModule | null;
     rollModule?: RollModule | null;
     // Convenience option shorthands
@@ -60,11 +60,11 @@ export class GameObject {
     dynamicGroundFrictionMod?: number;
     bounceMod?: number | null;
     hasGravity?: boolean;
+    hasVerticalPosition?: boolean;
     hasVerticalVelocity?: boolean;
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
-    this.name = options.name ?? "Object";
-    this.visualShape = options.visualShape ?? "circle";
+    this.name = options.name ?? "Entity";
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,
@@ -74,20 +74,23 @@ export class GameObject {
       x: options.velocity?.x ?? 0,
       y: options.velocity?.y ?? 0,
     };
-    this.color = options.color ?? "#38bdf8";
+    this.color = options.color ?? "#94a3b8";
     this.isHeld = false;
     this.heldBy = null;
+    this.visualShape = options.visualShape ?? "circle";
 
-    // Initialize modules from direct references or option shorthands
+    // Initialize modules
     this.colliderModule = options.colliderModule !== undefined
       ? options.colliderModule
-      : new ColliderModule({ radius: options.colliderRadius ?? 0.32 });
+      : (options.colliderRadius !== undefined
+          ? new ColliderModule({ radius: options.colliderRadius })
+          : new ColliderModule({ radius: 0.35 }));
 
     this.massModule = options.massModule !== undefined
       ? options.massModule
-      : (options.mass !== undefined && options.mass <= 0
-          ? null
-          : new MassModule({ mass: options.mass ?? 1.0 }));
+      : (options.mass !== undefined
+          ? new MassModule({ mass: options.mass })
+          : new MassModule({ mass: 1.0 }));
 
     this.frictionModule = options.frictionModule !== undefined
       ? options.frictionModule
@@ -102,11 +105,19 @@ export class GameObject {
           ? new BounceModule({ bounceMod: options.bounceMod })
           : new BounceModule({ bounceMod: 0.4 }));
 
-    this.verticalVelocityModule = options.verticalVelocityModule !== undefined
-      ? options.verticalVelocityModule
-      : (options.hasVerticalVelocity === false
+    this.verticalPositionModule = options.verticalPositionModule !== undefined
+      ? options.verticalPositionModule
+      : (options.hasVerticalPosition === false
           ? null
-          : new VerticalVelocityModule({ verticalVelocity: options.verticalVelocity ?? 0 }));
+          : new VerticalPositionModule({
+              z: this.position.z,
+              hasVerticalVelocity: options.hasVerticalVelocity !== false,
+              verticalVelocity: options.verticalVelocity ?? 0,
+            }));
+
+    if (!this.hasVerticalPosition) {
+      this.position.z = 0;
+    }
 
     this.gravityModule = options.gravityModule !== undefined
       ? options.gravityModule
@@ -201,22 +212,26 @@ export class GameObject {
     }
   }
 
+  public get hasVerticalPosition(): boolean {
+    return Boolean(this.verticalPositionModule && this.verticalPositionModule.enabled);
+  }
+
   public get hasVerticalVelocity(): boolean {
-    return Boolean(this.verticalVelocityModule && this.verticalVelocityModule.enabled);
+    return Boolean(this.hasVerticalPosition && this.verticalPositionModule?.hasVerticalVelocity);
   }
 
   public get verticalVelocity(): number {
-    return this.hasVerticalVelocity && this.verticalVelocityModule ? this.verticalVelocityModule.velocity : 0;
+    return this.hasVerticalVelocity && this.verticalPositionModule ? this.verticalPositionModule.verticalVelocity : 0;
   }
 
   public set verticalVelocity(val: number) {
-    if (this.verticalVelocityModule && this.verticalVelocityModule.enabled) {
-      this.verticalVelocityModule.velocity = val;
+    if (this.hasVerticalVelocity && this.verticalPositionModule) {
+      this.verticalPositionModule.verticalVelocity = val;
     }
   }
 
   /**
-   * Vertical bounce requires MassModule, BounceModule (with verticalBounce=true), and VerticalVelocityModule.
+   * Vertical bounce requires MassModule, BounceModule (with verticalBounce=true), and Vertical Velocity.
    */
   public get hasVerticalBounce(): boolean {
     return Boolean(
@@ -240,12 +255,12 @@ export class GameObject {
 
   /** Readonly getter: true if elevated above ground level (z > 0) */
   public get isAboveGround(): boolean {
-    return this.position.z > 0.001;
+    return this.hasVerticalPosition && this.position.z > 0.001;
   }
 
   /** Readonly getter: true if elevated above standard arena wall height (1.0 unit) */
   public get isAboveWalls(): boolean {
-    return this.position.z > 1.0;
+    return this.hasVerticalPosition && this.position.z > 1.0;
   }
 
   /** Update physics, gravity, friction, and ground/wall collision */
@@ -255,12 +270,18 @@ export class GameObject {
       return;
     }
 
+    if (!this.hasVerticalPosition) {
+      this.position.z = 0;
+      this.verticalVelocity = 0;
+      this.supportingSurfaceHeight = 0;
+    }
+
     // 0. Supporting surface:
     // Only check wall support if entity has a collider; otherwise surface is 0 (ground level)
     let surfaceHeight = 0;
     let supportingWall: Wall | null = null;
 
-    if (this.hasCollider) {
+    if (this.hasCollider && this.hasVerticalPosition) {
       const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
         (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
       supportingWall = canBeOnWall
@@ -488,9 +509,6 @@ export class GameObject {
       this.velocity.x *= scale;
       this.velocity.y *= scale;
     }
-    if (Math.abs(this.verticalVelocity) > maxLinearSpeed) {
-      this.verticalVelocity = Math.sign(this.verticalVelocity) * maxLinearSpeed;
-    }
     if (this.rollModule && this.rollModule.enabled) {
       const maxAngSpeed = 35.0;
       const currentAngSpeed = this.rollModule.angularSpeed;
@@ -500,6 +518,10 @@ export class GameObject {
         this.rollModule.angularVelocity.y *= scale;
         this.rollModule.angularVelocity.z *= scale;
       }
+    }
+
+    if (this.verticalPositionModule) {
+      this.verticalPositionModule.z = this.position.z;
     }
   }
 

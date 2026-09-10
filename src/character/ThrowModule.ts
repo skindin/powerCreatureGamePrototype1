@@ -276,7 +276,7 @@ export class ThrowModule {
     held.velocity.x = launch.vx;
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;
-    held.position.z = Math.max(0.3, held.position.z);
+    held.position.z = held.hasVerticalPosition ? Math.max(0.3, held.position.z) : 0;
 
     // If held object is rollable and has friction, impart rolling motion along throw direction
     if (held.hasFriction && held.rollModule && held.rollModule.enabled) {

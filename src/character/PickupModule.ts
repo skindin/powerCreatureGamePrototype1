@@ -60,7 +60,7 @@ export class PickupModule {
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
-    target.position.z = 0.45; // Lifted off the ground (0.45 units)
+    target.position.z = target.hasVerticalPosition ? 0.45 : 0; // Lifted off ground only if vertical position enabled
     return true;
   }
 

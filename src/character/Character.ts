@@ -132,7 +132,7 @@ export class Character extends GameObject {
       const handDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
       this.heldObject.position.x = this.position.x + Math.cos(this.facingAngle) * handDist;
       this.heldObject.position.y = this.position.y + Math.sin(this.facingAngle) * handDist;
-      this.heldObject.position.z = 0.45; // Elevated height in hands
+      this.heldObject.position.z = this.heldObject.hasVerticalPosition ? 0.45 : 0; // Elevated height in hands if vertical position enabled
       this.heldObject.velocity.x = this.velocity.x;
       this.heldObject.velocity.y = this.velocity.y;
       this.heldObject.verticalVelocity = 0;
