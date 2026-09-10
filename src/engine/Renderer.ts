@@ -62,12 +62,14 @@ export class Renderer {
       this.drawTrajectory(character.activeTrajectory, ppu);
     }
 
-    // 6. Selection & Hover Gizmos (Rendered on top for crystal clear feedback)
-    if (hoverEntity && isEditMode && hoverEntity !== selectedEntity) {
-      this.drawHoverGizmo(hoverEntity, ppu);
-    }
-    if (selectedEntity) {
-      this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
+    // 6. Selection & Hover Gizmos (Only active and visible during Edit Mode)
+    if (isEditMode) {
+      if (hoverEntity && hoverEntity !== selectedEntity) {
+        this.drawHoverGizmo(hoverEntity, ppu);
+      }
+      if (selectedEntity) {
+        this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
+      }
     }
   }
 
