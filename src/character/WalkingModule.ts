@@ -7,23 +7,23 @@ export class WalkingModule {
   public name = "Walking Module";
   public enabled = true;
 
-  // Maximum propulsion force exerted by the character's legs (in Newtons / Force units)
+  // Maximum propulsion / braking force exerted by the character's legs (in Newtons / Force units)
   public maxWalkForce = 50.0;
 
-  // Maximum leg stride / cadence speed clamp (u/s): character cannot walk faster than this regardless of mass
+  // Maximum physical leg stride / cadence speed cap (u/s)
   public maxWalkSpeed = 5.2;
 
-  // Ground drag damping rate (s^-1) which, combined with total mass and walk force, determines natural terminal speed:
-  // v_terminal = min(maxWalkSpeed, (maxWalkForce * strength) / (totalMass * dragDamping))
-  public dragDamping = 8.0;
+  // Drag damping factor which converts walk force and mass into natural load speed:
+  // naturalSpeed = (maxWalkForce * strength) / (totalMass * dragDamping)
+  public dragDamping = 8.01;
 
   /**
-   * Pure force-based locomotion:
-   * - Character applies walking force F_walk up to maxWalkForce in the movement direction.
-   * - Total effective mass includes any carried object (totalMass = character.mass).
-   * - Acceleration is a = F_net / totalMass. Carrying heavy objects naturally reduces acceleration.
-   * - Terminal walking speed emerges naturally as v_terminal = (maxWalkForce * strength) / (totalMass * dragDamping).
-   * - Pushing heavy objects in the arena exerts reactive contact forces, naturally slowing movement.
+   * Symmetrical Force-Based Locomotion:
+   * - Both accelerating and stopping step toward target velocity at the EXACT same rate:
+   *   maxAccel = (maxWalkForce * strength / totalMass) * grip.
+   * - Acceleration and deceleration rates are 100% symmetrical.
+   * - Carrying heavy objects increases totalMass, reducing both acceleration and top speed.
+   * - Pushing heavy objects in the arena resists movement through contact forces, naturally slowing movement.
    */
   public update(character: Character, inputVector: Vector2D, dt: number, arena: Arena): void {
     if (!this.enabled || character.isAboveGround) {
@@ -39,7 +39,7 @@ export class WalkingModule {
     const totalMass = character.mass;
     if (totalMass <= 0.01) return;
 
-    // Active ground friction: if 0 (frictionless ice), feet slip and no propulsion is possible
+    // Active ground friction: if 0 (frictionless ice), feet slip and cannot push or stop
     const activeFrictionMod = character.dynamicGroundFrictionMod;
     if (activeFrictionMod <= 0.001) {
       return;
@@ -48,43 +48,48 @@ export class WalkingModule {
     const surfaceFactor = arena.frictionCoeff / 10.0;
     const grip = activeFrictionMod * surfaceFactor;
 
-    // 1. Driving force from character's legs
-    let forceX = 0;
-    let forceY = 0;
+    // Target velocity:
+    // Natural top speed emerges from walk force divided by mass, capped at physical leg maxWalkSpeed
+    const naturalSpeed = (this.maxWalkForce * character.strength) / (totalMass * this.dragDamping);
+    const effectiveSpeed = Math.min(this.maxWalkSpeed, naturalSpeed);
+
+    let targetVx = 0;
+    let targetVy = 0;
     if (isMoving) {
       const dirX = inputVector.x / inputMag;
       const dirY = inputVector.y / inputMag;
-      const totalForce = this.maxWalkForce * character.strength * grip;
-      forceX = dirX * totalForce;
-      forceY = dirY * totalForce;
+      targetVx = dirX * effectiveSpeed;
+      targetVy = dirY * effectiveSpeed;
     }
 
-    // 2. Ground drag opposing motion
-    const gamma = this.dragDamping * grip;
-    const dragForceX = -totalMass * gamma * character.velocity.x;
-    const dragForceY = -totalMass * gamma * character.velocity.y;
+    // Velocity difference to reach target (whether accelerating to speed or braking to stop)
+    const diffX = targetVx - character.velocity.x;
+    const diffY = targetVy - character.velocity.y;
+    const diffSpeed = Math.hypot(diffX, diffY);
 
-    // 3. Newton's second law: a = F_net / totalMass
-    const accelX = (forceX + dragForceX) / totalMass;
-    const accelY = (forceY + dragForceY) / totalMass;
+    if (diffSpeed < 0.001) {
+      character.velocity.x = targetVx;
+      character.velocity.y = targetVy;
+      return;
+    }
 
-    character.velocity.x += accelX * dt;
-    character.velocity.y += accelY * dt;
-
-    // 4. Physical stride speed ceiling:
-    // Even if character is very light or has high force, legs cannot physically propel faster than maxWalkSpeed
     const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
-    if (isMoving && currentSpeed > this.maxWalkSpeed) {
-      const scale = this.maxWalkSpeed / currentSpeed;
-      character.velocity.x *= scale;
-      character.velocity.y *= scale;
-    }
+    const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
 
-    // 5. Static friction snap to complete stop when keys are released and speed is low
-    const staticThreshold = Math.max(0.04, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
-    if (!isMoving && currentSpeed < staticThreshold) {
-      character.velocity.x = 0;
-      character.velocity.y = 0;
+    // Symmetrical acceleration and deceleration:
+    // Leg force drives both acceleration and braking symmetrically (a = F_walk / totalMass * grip)
+    const maxAccel = ((this.maxWalkForce * character.strength) / totalMass) * grip;
+    const maxStep = maxAccel * dt;
+
+    if (diffSpeed <= maxStep || (!isMoving && currentSpeed < staticThreshold)) {
+      // Reached terminal target velocity (full speed or crisp complete stop)
+      character.velocity.x = targetVx;
+      character.velocity.y = targetVy;
+    } else {
+      // Step toward target velocity at the exact same symmetrical rate maxAccel
+      const stepRatio = maxStep / diffSpeed;
+      character.velocity.x += diffX * stepRatio;
+      character.velocity.y += diffY * stepRatio;
     }
   }
 }
