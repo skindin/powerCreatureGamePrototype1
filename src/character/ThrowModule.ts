@@ -52,7 +52,7 @@ export class ThrowModule {
     targetX: number,
     targetY: number,
     arena: Arena,
-    strengthRatio: number
+    throwPower: number
   ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
     const dx = targetX - startX;
     const dy = targetY - startY;
@@ -66,34 +66,60 @@ export class ThrowModule {
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
 
-    // Find highest obstacle along trajectory path to ensure clearance over any intermediate walls
-    let maxWallHeight = 0;
-    for (const wall of arena.walls) {
-      for (let s = 0.2; s <= 0.8; s += 0.2) {
-        const sampleX = startX + (finalTargetX - startX) * s;
-        const sampleY = startY + (finalTargetY - startY) * s;
-        if (this.testWallIntersection(sampleX, sampleY, 0.4, wall)) {
-          maxWallHeight = Math.max(maxWallHeight, wall.wallHeight);
-          break;
+    // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
+    const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+
+    // Fastest trajectory calculation:
+    // Uses character throw power to reach the target as quickly as possible with a flat, minimal arc.
+    // The trajectory arc is identical for all objects regardless of mass.
+    const maxThrowSpeed = Math.max(3.0, throwPower);
+    // Minimum flight time based on maximum horizontal launch speed
+    const minFlightTime = Math.max(0.14, actualDist / maxThrowSpeed);
+    let totalTime = minFlightTime;
+
+    // Scan dense samples along trajectory to ensure clearance over any intermediate walls
+    const sampleCount = 35;
+    const colliderRadiusCheck = 0.35;
+    for (let i = 1; i < sampleCount; i++) {
+      const s = i / sampleCount;
+      const sampleX = startX + (finalTargetX - startX) * s;
+      const sampleY = startY + (finalTargetY - startY) * s;
+
+      // Check if sample intersects any wall
+      for (const wall of arena.walls) {
+        if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
+          // If the target itself is on top of this wall and we are near the end of the trajectory, skip (it's landing)
+          const isTargetOnThisWall = targetSurfaceHeight > 0 &&
+            finalTargetX >= wall.x && finalTargetX <= wall.x + wall.width &&
+            finalTargetY >= wall.y && finalTargetY <= wall.y + wall.height;
+          if (isTargetOnThisWall && s > 0.65) {
+            continue;
+          }
+
+          // Intermediate wall that must be cleared!
+          // We require z(s) >= wall.wallHeight + clearance with minimal tight arc
+          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const clearance = 0.30; // Tight, clean clearance over wall
+          const requiredDeltaZ = (wall.wallHeight + clearance) - baselineZ;
+          if (requiredDeltaZ > 0) {
+            const minTimeSq = (2 * requiredDeltaZ) / (arena.gravity * s * (1 - s));
+            if (minTimeSq > 0) {
+              const minTime = Math.sqrt(minTimeSq);
+              if (minTime > totalTime) {
+                totalTime = minTime;
+              }
+            }
+          }
         }
       }
     }
 
-    // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
-    const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
-
-    // Apex height: provides natural parabolic arc with clearance over standard wall height and landing surface
-    const minApexZ = Math.max(startZ, targetSurfaceHeight, maxWallHeight) + 0.6;
-    const apexHeight = Math.max(minApexZ, Math.max(startZ, targetSurfaceHeight) + 0.35 + (actualDist / 13.0) * 1.5 * strengthRatio);
-
-    // Vertical launch velocity to reach apex
-    const vz = Math.sqrt(2 * arena.gravity * Math.max(0.1, apexHeight - startZ));
-    const timeToApex = vz / arena.gravity;
-    // Time to fall from apex down to the target elevation (wall top or ground)
-    const timeFromApexToSurface = Math.sqrt(Math.max(0.001, 2 * (apexHeight - targetSurfaceHeight)) / arena.gravity);
-    const totalTime = timeToApex + timeFromApexToSurface;
-
     if (totalTime <= 0.05) return null;
+
+    // From totalTime and targetSurfaceHeight, compute the exact vz to hit targetSurfaceHeight at totalTime:
+    // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
+    // vz = (targetSurfaceHeight - startZ + 0.5 * g * totalTime^2) / totalTime
+    const vz = (targetSurfaceHeight - startZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
 
     // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
     const horizontalSpeed = actualDist / totalTime;
@@ -119,8 +145,8 @@ export class ThrowModule {
     const startY = held.position.y;
     const startZ = held.position.z;
 
-    const strengthRatio = Math.max(0.3, Math.min(2.5, character.strength / held.mass));
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, strengthRatio);
+    const throwPower = this.baseThrowForce * character.strength;
+    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower);
     if (!launch) return null;
 
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight } = launch;
@@ -165,6 +191,7 @@ export class ThrowModule {
                 // Intermediate wall hit from above
                 isLandingOnWallTop = true;
                 collidesWall = true;
+                isBlocked = true;
                 blockedWallId = wall.id;
                 break;
               }
@@ -202,7 +229,7 @@ export class ThrowModule {
         y: isBlocked ? lastPoint.y : finalTargetY,
       },
       isBlockedByWall: isBlocked,
-      isLandingOnWallTop,
+      isLandingOnWallTop: isBlocked ? isLandingOnWallTop : (targetSurfaceHeight > 0),
       blockedAtWallId: blockedWallId,
     };
   }
@@ -223,8 +250,8 @@ export class ThrowModule {
     const startY = held.position.y;
     const startZ = held.position.z;
 
-    const strengthRatio = Math.max(0.3, Math.min(2.5, character.strength / held.mass));
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, strengthRatio);
+    const throwPower = this.baseThrowForce * character.strength;
+    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower);
     if (!launch) return null;
 
     held.isHeld = false;
@@ -233,6 +260,13 @@ export class ThrowModule {
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;
     held.position.z = Math.max(0.3, held.position.z);
+
+    // If held object is rollable, impart rolling motion along throw direction
+    if (held.rollModule && held.rollModule.enabled) {
+      const R = held.colliderRadius;
+      held.rollModule.angularVelocity.y = launch.vx / R;
+      held.rollModule.angularVelocity.x = -launch.vy / R;
+    }
 
     // Apply opposite recoil force to the character based on momentum conservation
     const recoilRatio = held.mass / Math.max(0.2, character.mass);

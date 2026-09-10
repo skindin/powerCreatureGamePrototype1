@@ -23,9 +23,9 @@ export class PickupModule {
       const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
       if (distFromChar > this.pickupReach + obj.colliderRadius) continue;
 
-      // Check distance to click contact location
+      // Check distance to click contact location (within cursor vicinity)
       const distToClick = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
-      if (distToClick < shortestDist && distToClick <= obj.colliderRadius + 0.5) {
+      if (distToClick < shortestDist && distToClick <= obj.colliderRadius + 0.65) {
         shortestDist = distToClick;
         bestCandidate = obj;
       }
@@ -35,11 +35,24 @@ export class PickupModule {
   }
 
   /**
-   * Picks up the specified object
+   * Picks up the specified object and transfers its incoming momentum/force to the character
    */
   public pickup(character: Character, target: GameObject): boolean {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
+
+    // Apply incoming object force/momentum to the character (symmetric with throw recoil)
+    const objVx = target.velocity.x;
+    const objVy = target.velocity.y;
+    const momentumRatio = target.mass / Math.max(0.2, character.mass);
+
+    character.velocity.x += objVx * momentumRatio;
+    character.velocity.y += objVy * momentumRatio;
+
+    // If character is airborne, also transfer vertical momentum
+    if (character.isAboveGround && Math.abs(target.verticalVelocity) > 0.1) {
+      character.verticalVelocity += target.verticalVelocity * momentumRatio;
+    }
 
     character.heldObject = target;
     target.isHeld = true;

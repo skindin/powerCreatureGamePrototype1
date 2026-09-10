@@ -4,6 +4,7 @@ import { GameObject } from "../engine/GameObject.js";
 import { WalkingModule } from "../character/WalkingModule.js";
 import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
+import { RollModule } from "../engine/RollModule.js";
 
 export class DevPanel {
   private container: HTMLElement;
@@ -128,6 +129,14 @@ export class DevPanel {
             </div>
             <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${this.selectedEntity.dynamicGroundFrictionMod}">
           </div>
+
+          <div class="slider-group" id="group-roll-resistance" style="display: ${this.selectedEntity.rollModule ? 'block' : 'none'};">
+            <div class="slider-label">
+              <span>Roll Resistance (u/s²)</span>
+              <span id="val-entity-roll-resist">${(this.selectedEntity.rollModule?.rollResistance ?? 0.4).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-roll-resist" min="0.0" max="4.0" step="0.05" value="${this.selectedEntity.rollModule?.rollResistance ?? 0.4}">
+          </div>
         </div>
 
         <!-- Character Specific Properties -->
@@ -231,6 +240,11 @@ export class DevPanel {
             <label>Throw Ability</label>
             <button id="toggle-throw" class="btn-toggle active">Attached</button>
           </div>
+
+          <div class="toggle-row">
+            <label>Roll Behavior</label>
+            <button id="toggle-roll" class="btn-toggle ${this.selectedEntity.rollModule?.enabled ? 'active' : ''}">${this.selectedEntity.rollModule?.enabled ? 'Attached' : 'Detached'}</button>
+          </div>
         </div>
 
         <!-- Spawner -->
@@ -240,6 +254,7 @@ export class DevPanel {
             <button id="btn-spawn-light" class="btn-action">Spawn Light Stone (0.7kg, 0.26u)</button>
             <button id="btn-spawn-heavy" class="btn-action">Spawn Heavy Crate (2.6kg, 0.40u)</button>
             <button id="btn-spawn-bouncy" class="btn-action">Spawn Bouncy Ball (0.5kg, Bounce 0.88)</button>
+            <button id="btn-spawn-rolling" class="btn-action">Spawn Rolling Ball (0 Resistance)</button>
             <button id="btn-clear-entities" class="btn-danger">Clear All Objects</button>
           </div>
         </div>
@@ -262,6 +277,23 @@ export class DevPanel {
     this.setSliderVal("slide-entity-bounce", "val-entity-bounce", e.bounceMod ?? 0, 2);
     this.setSliderVal("slide-entity-static-fric", "val-entity-static-fric", e.staticGroundFrictionMod, 2);
     this.setSliderVal("slide-entity-dynamic-fric", "val-entity-dynamic-fric", e.dynamicGroundFrictionMod, 2);
+
+    const btnRoll = this.container.querySelector("#toggle-roll") as HTMLButtonElement;
+    const grpRoll = this.container.querySelector("#group-roll-resistance") as HTMLElement;
+    if (btnRoll) {
+      if (e.rollModule && e.rollModule.enabled) {
+        btnRoll.textContent = "Attached";
+        btnRoll.classList.add("active");
+        if (grpRoll) grpRoll.style.display = "block";
+      } else {
+        btnRoll.textContent = "Detached";
+        btnRoll.classList.remove("active");
+        if (grpRoll) grpRoll.style.display = "none";
+      }
+    }
+    if (e.rollModule) {
+      this.setSliderVal("slide-entity-roll-resist", "val-entity-roll-resist", e.rollModule.rollResistance, 2);
+    }
 
     if (e === this.character) {
       this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
@@ -320,6 +352,12 @@ export class DevPanel {
 
     this.setupSlider("slide-entity-dynamic-fric", "val-entity-dynamic-fric", (val) => {
       this.selectedEntity.dynamicGroundFrictionMod = val;
+    }, 2);
+
+    this.setupSlider("slide-entity-roll-resist", "val-entity-roll-resist", (val) => {
+      if (this.selectedEntity.rollModule) {
+        this.selectedEntity.rollModule.rollResistance = val;
+      }
     }, 2);
 
     // 3. Character Specific Sliders
@@ -408,6 +446,23 @@ export class DevPanel {
       }
     });
 
+    const btnRollToggle = this.container.querySelector("#toggle-roll") as HTMLButtonElement;
+    btnRollToggle?.addEventListener("click", () => {
+      const grpRoll = this.container.querySelector("#group-roll-resistance") as HTMLElement;
+      if (this.selectedEntity.rollModule) {
+        this.selectedEntity.rollModule = null;
+        btnRollToggle.textContent = "Detached";
+        btnRollToggle.classList.remove("active");
+        if (grpRoll) grpRoll.style.display = "none";
+      } else {
+        this.selectedEntity.rollModule = new RollModule({ rollResistance: 0.4 });
+        btnRollToggle.textContent = "Attached";
+        btnRollToggle.classList.add("active");
+        if (grpRoll) grpRoll.style.display = "block";
+        this.setSliderVal("slide-entity-roll-resist", "val-entity-roll-resist", 0.4, 2);
+      }
+    });
+
     // 6. Spawners in Units
     this.container.querySelector("#btn-spawn-light")?.addEventListener("click", () => {
       const stone = new GameObject({
@@ -459,6 +514,31 @@ export class DevPanel {
       });
       this.onSpawnObject(ball);
       this.setSelectedEntity(ball);
+    });
+
+    this.container.querySelector("#btn-spawn-rolling")?.addEventListener("click", () => {
+      const rollBall = new GameObject({
+        name: "Rolling Ball (0 Resistance)",
+        position: {
+          x: this.character.position.x + 1.2,
+          y: this.character.position.y,
+          z: 0.0,
+        },
+        velocity: {
+          x: 4.5,
+          y: 1.5,
+        },
+        mass: 0.6,
+        colliderRadius: 0.28,
+        color: "#a855f7",
+        bounceMod: 0.95,
+        rollModule: new RollModule({
+          rollResistance: 0.0,
+          angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
+        }),
+      });
+      this.onSpawnObject(rollBall);
+      this.setSelectedEntity(rollBall);
     });
 
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
@@ -516,6 +596,20 @@ export class DevPanel {
         <span class="inspect-k">Static / Dyn Fric</span>
         <span class="inspect-v">${e.staticGroundFrictionMod.toFixed(2)} / ${e.dynamicGroundFrictionMod.toFixed(2)}</span>
       </div>
+      ${e.rollModule && e.rollModule.enabled ? `
+      <div class="inspect-item">
+        <span class="inspect-k">3D Angular Vel</span>
+        <span class="inspect-v highlight-z">(${e.rollModule.angularVelocity.x.toFixed(1)}, ${e.rollModule.angularVelocity.y.toFixed(1)}, ${e.rollModule.angularVelocity.z.toFixed(1)}) rad/s</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Vertical Spin (ωz)</span>
+        <span class="inspect-v ${Math.abs(e.rollModule.angularVelocity.z) > 0.05 ? 'highlight-z' : ''}">${e.rollModule.angularVelocity.z.toFixed(2)} rad/s ${e.rollModule.angularVelocity.z > 0.05 ? '↑ Upward' : e.rollModule.angularVelocity.z < -0.05 ? '↓ Downward' : '(Flat)'}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Roll Resistance</span>
+        <span class="inspect-v ${e.rollModule.rollResistance === 0 ? 'highlight-held' : ''}">${e.rollModule.rollResistance.toFixed(2)} u/s² ${e.rollModule.rollResistance === 0 ? '(0 = Infinite Roll)' : ''}</span>
+      </div>
+      ` : ''}
       ${isChar ? `
       <div class="inspect-item">
         <span class="inspect-k">Facing Angle</span>

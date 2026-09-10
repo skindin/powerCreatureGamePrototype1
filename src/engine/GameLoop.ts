@@ -90,92 +90,130 @@ export class GameLoop {
       obj.updatePosition(dt, this.arena);
     }
 
-    // 3. Resolve freebody-to-freebody circle collisions (on ground plane)
+    // 3. Continuous hold-to-grab:
+    // If holding down grab and not holding an object, automatically pick up any object that enters range around mouse
+    if (input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
+      const target = this.character.pickupModule.findTargetObject(
+        this.character,
+        input.mousePos.x,
+        input.mousePos.y,
+        this.objects
+      );
+      if (target) {
+        this.character.pickupModule.pickup(this.character, target);
+        input.justPickedUp = true;
+      }
+    }
+
+    // 4. Resolve freebody-to-freebody circle collisions
     this.resolveFreebodyCollisions();
   }
 
   private resolveFreebodyCollisions(): void {
     const all = [this.character, ...this.objects];
 
-    for (let i = 0; i < all.length; i++) {
-      for (let j = i + 1; j < all.length; j++) {
-        const a = all[i];
-        const b = all[j];
+    // Iterative separation solver: pushes entities away until not overlapping
+    const iterations = 2;
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          const a = all[i];
+          const b = all[j];
 
-        // Skip if either is currently held in hands
-        if (a.isHeld || b.isHeld) continue;
+          // Skip if either is currently held in hands
+          if (a.isHeld || b.isHeld) continue;
 
-        // Check horizontal overlap
-        const dx = b.position.x - a.position.x;
-        const dy = b.position.y - a.position.y;
-        const distSq = dx * dx + dy * dy;
-        const minDist = a.colliderRadius + b.colliderRadius;
+          // High altitude collision rule:
+          // If both are above wall height, they collide with each other.
+          // If one is not above wall height, they do not collide.
+          const wallThreshold = this.arena.wallHeight - 0.05;
+          const aAboveWall = a.position.z >= wallThreshold;
+          const bAboveWall = b.position.z >= wallThreshold;
 
-        if (distSq < minDist * minDist && distSq > 0.00001) {
-          // Check vertical height overlap: entities only collide if their z-ranges intersect
-          const zDiff = Math.abs(a.position.z - b.position.z);
-          const maxZOverlap = Math.min(a.colliderRadius, b.colliderRadius);
+          // If one is above wall height and the other is not, they never collide (clean pass-over)
+          if (aAboveWall !== bAboveWall) continue;
 
-          if (zDiff < maxZOverlap) {
-            const dist = Math.sqrt(distSq);
+          // Both are either above wall height (high altitude) or both are below wall height (ground level)
+          const dx = b.position.x - a.position.x;
+          const dy = b.position.y - a.position.y;
+          const dist2DSq = dx * dx + dy * dy;
+          const minDist = a.colliderRadius + b.colliderRadius;
+
+          if (dist2DSq < minDist * minDist && dist2DSq > 0.00001) {
+            // If both are below wall height, only collide if their height difference is within collider reach
+            if (!aAboveWall) {
+              const zDiff = Math.abs(b.position.z - a.position.z);
+              if (zDiff > minDist) continue;
+            }
+
+            const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
             const normX = dx / dist;
             const normY = dy / dist;
 
-            // Check if either entity was at rest on the ground (surfaces going the same speed = 0)
-            const speedA = Math.hypot(a.velocity.x, a.velocity.y);
-            const speedB = Math.hypot(b.velocity.x, b.velocity.y);
-            const staticThreshA = this.arena.staticFrictionThreshold * a.staticGroundFrictionMod;
-            const staticThreshB = this.arena.staticFrictionThreshold * b.staticGroundFrictionMod;
+            // Push both entities away from each other with equal force (50/50 split) until not overlapping
+            a.position.x -= normX * overlap * 0.5;
+            a.position.y -= normY * overlap * 0.5;
+            b.position.x += normX * overlap * 0.5;
+            b.position.y += normY * overlap * 0.5;
 
-            const isAAtRest = a.isRestingOnSurface && speedA < staticThreshA;
-            const isBAtRest = b.isRestingOnSurface && speedB < staticThreshB;
-
-            // Resistance weight: an entity anchored by static friction resists displacement
-            // more than an entity already in motion with dynamic friction
-            const resistanceA = a.mass * (isAAtRest ? (1 + a.staticGroundFrictionMod * 1.5) : (1 + a.dynamicGroundFrictionMod * 0.4));
-            const resistanceB = b.mass * (isBAtRest ? (1 + b.staticGroundFrictionMod * 1.5) : (1 + b.dynamicGroundFrictionMod * 0.4));
-            const totalResistance = resistanceA + resistanceB;
-
-            const aRatio = resistanceB / totalResistance;
-            const bRatio = resistanceA / totalResistance;
-
-            a.position.x -= normX * overlap * aRatio;
-            a.position.y -= normY * overlap * aRatio;
-            b.position.x += normX * overlap * bRatio;
-            b.position.y += normY * overlap * bRatio;
-
-            // Impulse calculation
+            // Equal impulse push away from each other
             const relVx = b.velocity.x - a.velocity.x;
             const relVy = b.velocity.y - a.velocity.y;
             const velAlongNormal = relVx * normX + relVy * normY;
 
             if (velAlongNormal < 0) {
-              // Sliding ground contact has low restitution (inelastic push)
-              const restitution = 0.15;
-              let impulseMag = -(1 + restitution) * velAlongNormal / (1 / a.mass + 1 / b.mass);
+              const bothAirborne = !a.isRestingOnSurface && !b.isRestingOnSurface;
+              const restitution = bothAirborne ? 0.6 : 0.3;
+              const impulseMag = -(1 + restitution) * velAlongNormal * 0.5;
 
-              // If B was at rest, static friction requires overcoming static breakaway threshold
-              if (isBAtRest && b.staticGroundFrictionMod > 0) {
-                const breakawayThreshold = b.mass * this.arena.staticFrictionThreshold * b.staticGroundFrictionMod * 1.5;
-                if (impulseMag < breakawayThreshold) {
-                  // Static friction holds: dampen impulse transfer to B
-                  impulseMag *= Math.max(0.2, impulseMag / breakawayThreshold);
-                }
+              a.velocity.x -= impulseMag * normX;
+              a.velocity.y -= impulseMag * normY;
+              b.velocity.x += impulseMag * normX;
+              b.velocity.y += impulseMag * normY;
+
+              // Tangential collision friction imparting upward/downward angular velocity (ωz)
+              const tangX = -normY;
+              const tangY = normX;
+              const velAlongTang = relVx * tangX + relVy * tangY;
+
+              // Surface contact velocity from existing vertical spin:
+              // v_contact = (v_b - v_a) - (ω_z,b * R_b + ω_z,a * R_a)
+              const spinA = a.rollModule?.enabled ? a.rollModule.angularVelocity.z : 0;
+              const spinB = b.rollModule?.enabled ? b.rollModule.angularVelocity.z : 0;
+              const vContactTang = velAlongTang - (spinB * b.colliderRadius + spinA * a.colliderRadius);
+
+              const muObj = 0.35; // Contact friction
+              const stickTangImpulse = (vContactTang * 0.5) / 3.5;
+              const maxTangImpulse = muObj * Math.abs(impulseMag);
+              const tangImpulseMag = Math.min(Math.abs(stickTangImpulse), maxTangImpulse);
+              const tangImpulse = -Math.sign(vContactTang) * tangImpulseMag;
+
+              a.velocity.x -= tangImpulse * tangX;
+              a.velocity.y -= tangImpulse * tangY;
+              b.velocity.x += tangImpulse * tangX;
+              b.velocity.y += tangImpulse * tangY;
+
+              const beta = 0.4;
+              if (a.rollModule && a.rollModule.enabled) {
+                // Tangential friction imparts UPWARD / DOWNWARD angular velocity (ωz)
+                const dWzA = -tangImpulse / (beta * a.mass * a.colliderRadius);
+                a.rollModule.angularVelocity.z += dWzA;
+                a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+                // Couple horizontal roll
+                a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
+                a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
               }
 
-              // If A was at rest, same static friction check for A
-              if (isAAtRest && a.staticGroundFrictionMod > 0) {
-                const breakawayThreshold = a.mass * this.arena.staticFrictionThreshold * a.staticGroundFrictionMod * 1.5;
-                if (impulseMag < breakawayThreshold) {
-                  impulseMag *= Math.max(0.2, impulseMag / breakawayThreshold);
-                }
+              if (b.rollModule && b.rollModule.enabled) {
+                // Opposing torque on B (like two gears meshing)
+                const dWzB = -tangImpulse / (beta * b.mass * b.colliderRadius);
+                b.rollModule.angularVelocity.z += dWzB;
+                b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+                // Couple horizontal roll
+                b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
+                b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
               }
-
-              a.velocity.x -= (impulseMag / a.mass) * normX;
-              a.velocity.y -= (impulseMag / a.mass) * normY;
-              b.velocity.x += (impulseMag / b.mass) * normX;
-              b.velocity.y += (impulseMag / b.mass) * normY;
             }
           }
         }

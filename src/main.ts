@@ -1,6 +1,7 @@
 import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
+import { RollModule } from "./engine/RollModule.js";
 import { Renderer } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -66,15 +67,19 @@ function bootstrap(): void {
       bounceMod: 0.85,
       verticalVelocity: 1.0,
     }),
-    // Object on the right side across the wall
     new GameObject({
-      id: "stone-2",
-      name: "Target Stone (Across Wall)",
+      id: "rolling-1",
+      name: "Rolling Ball",
       position: { x: 13.6, y: 7.0, z: 0 },
-      mass: 0.8,
+      velocity: { x: 4.5, y: 1.5 },
+      mass: 0.6,
       colliderRadius: 0.28,
-      color: "#a78bfa",
-      bounceMod: 0.3,
+      color: "#a855f7",
+      bounceMod: 0.95,
+      rollModule: new RollModule({
+        rollResistance: 0.0,
+        angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
+      }),
     }),
   ];
 

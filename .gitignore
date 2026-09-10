@@ -1,0 +1,18 @@
+# WebView2 User Data Cache & Process Lock files (Prevents permission denied git errors)
+*.WebView2/
+EBWebView/
+
+# Build & Compiler Artifacts
+desktop_app/bin/
+desktop_app/obj/
+*.pdb
+*.suo
+*.user
+
+# Logs & Temporary Files
+*.log
+*.tmp
+
+# Visual Studio / IDE cache
+.vs/
+.vscode/

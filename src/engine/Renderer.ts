@@ -22,13 +22,7 @@ export class Renderer {
     // 2. Pure 2D Top-Down Walls
     this.drawWalls(arena, ppu);
 
-    // 3. Ground Shadows
-    this.drawObjectShadow(character, arena, ppu);
-    for (const obj of objects) {
-      this.drawObjectShadow(obj, arena, ppu);
-    }
-
-    // 4. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position
+    // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position
     const allRenderables = [character, ...objects];
     allRenderables.sort((a, b) => {
       // Primary: Objects at higher virtual position (height z) ALWAYS render on top
@@ -49,6 +43,11 @@ export class Renderer {
       } else {
         this.drawFreebodyObject(entity, allRenderables, character, ppu);
       }
+    }
+
+    // 4. Height Indicator Rings (Rendered OVER the objects so expanding circles are visible from the center)
+    for (const entity of allRenderables) {
+      this.drawObjectShadow(entity, arena, ppu);
     }
 
     // 5. Trajectory Line (Rendered OVER walls and entities!)
@@ -102,7 +101,9 @@ export class Renderer {
   }
 
   /**
-   * Ground Shadow: A circle outline that expands as height z increases to display how high it is.
+   * Height Indicator Ring (Ground Shadow): A circle outline that expands as height z increases.
+   * At height 0, the circle matches the size of the object collider like it was before.
+   * As height z increases, the circle outline expands outward from the object.
    * Changes color (to vibrant blue/cyan) when high enough to go over walls (z > arena.wallHeight).
    */
   private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
@@ -111,9 +112,10 @@ export class Renderer {
     const groundY = obj.position.y * ppu;
     const z = obj.position.z;
 
-    // Shadow circle expands as height increases to display height
+    // Matches the object size at height 0 and expands as height increases
     const heightExpansion = 1.0 + (z / arena.wallHeight) * 1.5;
     const shadowRadius = obj.colliderRadius * ppu * heightExpansion;
+
     const alpha = Math.max(0.3, 0.85 - (z / (arena.wallHeight * 7)) * 0.25);
 
     // High enough to go over walls: change outline color
@@ -203,6 +205,9 @@ export class Renderer {
     ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
     ctx.stroke();
 
+    // 3D Roll Illustration: Dotted oval / circle rotating in direction of roll
+    this.drawRollIndicator(obj, x, y, renderRadius);
+
     ctx.restore();
   }
 
@@ -243,6 +248,9 @@ export class Renderer {
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
+    // 3D Roll Illustration if roll module is attached to character
+    this.drawRollIndicator(char, x, y, r);
+
     // Two black colored circles on the side it's facing
     const eyeSpreadAngle = 0.52; // ~30 degrees spread
     const eyeDist = r * 0.72;
@@ -272,6 +280,100 @@ export class Renderer {
       ctx.lineTo(char.heldObject.position.x * ppu, char.heldObject.position.y * ppu);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Illustrates the 3D rolling behavior:
+   * - Draws a dotted oval shape animated to rotate in the direction the object is rotating.
+   * - Warps depending on angular velocity (elongated ellipse when rolling horizontally, opening into a circle when vertical).
+   * - The half of the oval that is virtually higher up is opaque, while the other half is transparent.
+   * - If the angular velocity is perfectly vertical, renders as a circle with a circular dotted outline rotating around it.
+   */
+  private drawRollIndicator(obj: GameObject, x: number, y: number, renderRadius: number): void {
+    if (!obj.rollModule || !obj.rollModule.enabled) return;
+    const roll = obj.rollModule;
+    const wx = roll.angularVelocity.x;
+    const wy = roll.angularVelocity.y;
+    const wz = roll.angularVelocity.z;
+    const wTotal = Math.hypot(wx, wy, wz);
+    if (wTotal < 0.02) return; // Stationary
+
+    const ctx = this.ctx;
+    const wh = Math.hypot(wx, wy); // Horizontal angular speed
+    const isPerfectVertical = wh < 0.05 * wTotal;
+
+    ctx.save();
+
+    if (isPerfectVertical) {
+      // Perfectly vertical spin (ωz): circle with a circular outline rotating around it
+      const innerRadius = renderRadius * 0.45;
+      const outerRadius = renderRadius * 0.78;
+
+      // Central reference circle
+      ctx.beginPath();
+      ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      // Circular dotted outline rotating around it
+      ctx.beginPath();
+      ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([4, 4]);
+      ctx.lineDashOffset = -roll.visualPhase * outerRadius * Math.sign(wz || 1);
+      ctx.stroke();
+    } else {
+      // General 3D rolling / tilted rotation:
+      // The roll motion direction across the screen (linear direction coupled to roll)
+      // v_roll = (wy, -wx) -> heading angle = atan2(-wx, wy)
+      const rollDirAngle = Math.atan2(-wx, wy);
+
+      // Semi-major axis a (across roll axis) and semi-minor axis b (along roll axis)
+      const a = renderRadius * 0.82;
+      const fz = Math.abs(wz) / wTotal; // Fraction vertical
+      // Warps from flat (b = 0) when purely horizontal up to a full circle (b = a) when vertical
+      const b = a * Math.pow(fz, 0.85);
+
+      ctx.translate(x, y);
+      ctx.rotate(rollDirAngle);
+
+      const spinSign = wz !== 0 ? Math.sign(wz) : 1;
+
+      if (b < 0.5) {
+        // Perfectly flat stripe across the top of the ball when angular velocity is perpendicular to up
+        ctx.beginPath();
+        ctx.moveTo(-a, 0);
+        ctx.lineTo(a, 0);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([4, 4]);
+        ctx.lineDashOffset = -roll.visualPhase * a;
+        ctx.stroke();
+      } else {
+        // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
+        ctx.beginPath();
+        ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([4, 4]);
+        ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+        ctx.stroke();
+
+        // The other LONG side (the underside of the ball) is TRANSPARENT
+        ctx.beginPath();
+        ctx.ellipse(0, 0, a, b, 0, Math.PI, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+        ctx.stroke();
+      }
     }
 
     ctx.restore();

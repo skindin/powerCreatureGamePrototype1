@@ -19,3 +19,10 @@ character
 - modular pickup and throw item abilities(click at first contact location) with calculated trajectory
 
 no hp, energy, power yet. just walking around and throwing things
+
+height rings-all objects at same height have the same ring size
+
+roll resistance
+-how much momentum is lost when not above ground
+-3d angular velocity vector
+-animated outline
