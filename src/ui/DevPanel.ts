@@ -167,13 +167,13 @@ export class DevPanel {
   private renderPanel(): void {
     this.container.innerHTML = `
       <div class="dev-panel-header">
-        <div>
+        <div class="header-top-row">
           <h2>🛠️ Sandbox & Engine</h2>
           <span class="badge">1 Wall = 1 Unit</span>
         </div>
         <div class="mode-switcher">
-          <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play</button>
-          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit</button>
+          <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
+          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
         </div>
       </div>
 
