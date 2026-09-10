@@ -79,14 +79,14 @@ To use an energy-costing ability, a creature must meet all three conditions:
    - Any physics-enabled freebody entity in the arena—including items (rocks, crates, pots, food) and **other creatures**—can potentially be grabbed and thrown.
 3. **Weight vs. Strength to Grab**:
    - Every freebody (item or creature) has a defined weight.
-   - A creature can only grab and lift a target if its **Strength** meets or exceeds the target's weight. Heavy objects or heavier creatures cannot be picked up by a weaker creature.
+   - A creature can only grab and lift a target if its **Strength** meets or exceeds the target's weight. Heavy objects or heavier creatures cannot be picked up by a weaker creature, but creatures can still grab heavier creatures, put if they are too heavy, they will be forced to just drag the held creature, and if the other creature pulls away hard enough or manages to stun the holding creature, the connection is canceled.
 4. **Throw Distance & Force Scaling**:
-   - How far and how fast an object travels when thrown is directly determined by the creature's strength relative to the object's weight.
+   - How far and how fast an object can travel when thrown is directly determined by the creature's strength relative to the object's weight.
+   - When preparing to throw something, characters will see the trajectory arc of the object they are about to throw, with the trajectory having a different pattern during parts where it would make it over a wall, and the trajectory is cut short if it would it a wall.
    - High strength launching a light object produces high speed and long distance; heavier objects fly shorter distances.
 5. **Pseudo-3D Ballistic Height**:
    - Thrown objects travel across the ground while also having vertical height.
-   - A ground shadow is drawn on the floor where the item would land.
-   - The airborne item sprite is drawn higher on the screen based on how high it is in the air.
+   - when an object is above ground, it's shadow is made much bigger, and if there are objects underneath it, the above ground object will be made transparent
 6. **Flying Over Walls**:
    - Walls have a physical height.
    - When a thrown object is higher than the wall, it flies cleanly over the wall.
