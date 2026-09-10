@@ -41,21 +41,23 @@ function bootstrap(): void {
   const objects: GameObject[] = [
     new GameObject({
       id: "stone-1",
-      name: "Light Stone",
+      name: "Light Blue Box",
       position: { x: 6.8, y: 4.4, z: 0 },
       mass: 0.7,
       colliderRadius: 0.26,
       color: "#38bdf8",
       bounceMod: 0.25,
+      visualShape: "box",
     }),
     new GameObject({
       id: "boulder-1",
-      name: "Heavy Crate",
+      name: "Heavy Red Box",
       position: { x: 7.0, y: 9.2, z: 0 },
       mass: 2.6,
       colliderRadius: 0.40,
       color: "#f87171",
       bounceMod: 0.05,
+      visualShape: "box",
     }),
     new GameObject({
       id: "bouncy-1",

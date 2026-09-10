@@ -28,6 +28,7 @@ export class GameObject {
   public heldBy: GameObject | null;
   public isCharacter = false;
   public rollModule: RollModule | null = null;
+  public visualShape: "circle" | "box" = "circle";
 
   constructor(options: {
     id?: string;
@@ -42,10 +43,12 @@ export class GameObject {
     bounceMod?: number | null;
     color?: string;
     rollModule?: RollModule | null;
+    visualShape?: "circle" | "box";
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Object";
     this.rollModule = options.rollModule ?? null;
+    this.visualShape = options.visualShape ?? "circle";
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,

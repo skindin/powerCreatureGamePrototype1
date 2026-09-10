@@ -54,7 +54,8 @@ export class DevPanel {
     let html = `<option value="${this.character.id}" ${currentId === this.character.id ? "selected" : ""}>⭐ Player Character</option>`;
     for (const obj of this.objects) {
       const isSel = obj.id === currentId ? "selected" : "";
-      html += `<option value="${obj.id}" ${isSel}>📦 ${obj.name} (${obj.mass}kg)</option>`;
+      const icon = obj.visualShape === "box" ? "📦" : "⚪";
+      html += `<option value="${obj.id}" ${isSel}>${icon} ${obj.name} (${obj.mass}kg)</option>`;
     }
     this.entitySelectorEl.innerHTML = html;
 
@@ -89,6 +90,11 @@ export class DevPanel {
         <!-- Selected Entity Physical Properties -->
         <div class="dev-section">
           <h3>⚖️ Entity Physical Properties</h3>
+
+          <div class="toggle-row">
+            <label>Visual Shape</label>
+            <button id="toggle-entity-shape" class="btn-toggle ${this.selectedEntity.visualShape === 'box' ? 'active' : ''}">${this.selectedEntity.visualShape === 'box' ? 'Box 📦' : 'Circle ⚪'}</button>
+          </div>
 
           <div class="slider-group">
             <div class="slider-label">
@@ -251,8 +257,8 @@ export class DevPanel {
         <div class="dev-section">
           <h3>📦 Spawn Objects</h3>
           <div class="spawner-buttons">
-            <button id="btn-spawn-light" class="btn-action">Spawn Light Stone (0.7kg, 0.26u)</button>
-            <button id="btn-spawn-heavy" class="btn-action">Spawn Heavy Crate (2.6kg, 0.40u)</button>
+            <button id="btn-spawn-light" class="btn-action">Spawn Light Box (0.7kg, Blue Box)</button>
+            <button id="btn-spawn-heavy" class="btn-action">Spawn Heavy Box (2.6kg, Red Box)</button>
             <button id="btn-spawn-bouncy" class="btn-action">Spawn Bouncy Ball (0.5kg, Bounce 0.88)</button>
             <button id="btn-spawn-rolling" class="btn-action">Spawn Rolling Ball (0 Resistance)</button>
             <button id="btn-clear-entities" class="btn-danger">Clear All Objects</button>
@@ -277,6 +283,17 @@ export class DevPanel {
     this.setSliderVal("slide-entity-bounce", "val-entity-bounce", e.bounceMod ?? 0, 2);
     this.setSliderVal("slide-entity-static-fric", "val-entity-static-fric", e.staticGroundFrictionMod, 2);
     this.setSliderVal("slide-entity-dynamic-fric", "val-entity-dynamic-fric", e.dynamicGroundFrictionMod, 2);
+
+    const btnShape = this.container.querySelector("#toggle-entity-shape") as HTMLButtonElement;
+    if (btnShape) {
+      if (e.visualShape === "box") {
+        btnShape.textContent = "Box 📦";
+        btnShape.classList.add("active");
+      } else {
+        btnShape.textContent = "Circle ⚪";
+        btnShape.classList.remove("active");
+      }
+    }
 
     const btnRoll = this.container.querySelector("#toggle-roll") as HTMLButtonElement;
     const grpRoll = this.container.querySelector("#group-roll-resistance") as HTMLElement;
@@ -446,6 +463,20 @@ export class DevPanel {
       }
     });
 
+    const btnShapeToggle = this.container.querySelector("#toggle-entity-shape") as HTMLButtonElement;
+    btnShapeToggle?.addEventListener("click", () => {
+      if (this.selectedEntity.visualShape === "box") {
+        this.selectedEntity.visualShape = "circle";
+        btnShapeToggle.textContent = "Circle ⚪";
+        btnShapeToggle.classList.remove("active");
+      } else {
+        this.selectedEntity.visualShape = "box";
+        btnShapeToggle.textContent = "Box 📦";
+        btnShapeToggle.classList.add("active");
+      }
+      this.updateSelectorOptions();
+    });
+
     const btnRollToggle = this.container.querySelector("#toggle-roll") as HTMLButtonElement;
     btnRollToggle?.addEventListener("click", () => {
       const grpRoll = this.container.querySelector("#group-roll-resistance") as HTMLElement;
@@ -466,7 +497,7 @@ export class DevPanel {
     // 6. Spawners in Units
     this.container.querySelector("#btn-spawn-light")?.addEventListener("click", () => {
       const stone = new GameObject({
-        name: "Light Stone",
+        name: "Light Blue Box",
         position: {
           x: this.character.position.x + (Math.random() * 2.0 - 1.0),
           y: this.character.position.y + (Math.random() * 2.0 - 1.0),
@@ -476,6 +507,7 @@ export class DevPanel {
         colliderRadius: 0.26,
         color: "#38bdf8",
         bounceMod: 0.25,
+        visualShape: "box",
       });
       this.onSpawnObject(stone);
       this.setSelectedEntity(stone);
@@ -483,7 +515,7 @@ export class DevPanel {
 
     this.container.querySelector("#btn-spawn-heavy")?.addEventListener("click", () => {
       const boulder = new GameObject({
-        name: "Heavy Crate",
+        name: "Heavy Red Box",
         position: {
           x: this.character.position.x + (Math.random() * 2.0 - 1.0),
           y: this.character.position.y + (Math.random() * 2.0 - 1.0),
@@ -493,6 +525,7 @@ export class DevPanel {
         colliderRadius: 0.40,
         color: "#f87171",
         bounceMod: 0.05,
+        visualShape: "box",
       });
       this.onSpawnObject(boulder);
       this.setSelectedEntity(boulder);
@@ -620,6 +653,10 @@ export class DevPanel {
         <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.heldObject ? `${this.character.heldObject.name} (${this.character.heldObject.mass}kg)` : 'None'}</span>
       </div>
       ` : `
+      <div class="inspect-item">
+        <span class="inspect-k">Visual Shape</span>
+        <span class="inspect-v ${e.visualShape === 'box' ? 'highlight-held' : ''}">${e.visualShape === 'box' ? 'Box 📦 (Circle Collider)' : 'Circle ⚪'}</span>
+      </div>
       <div class="inspect-item">
         <span class="inspect-k">Mass</span>
         <span class="inspect-v">${e.mass.toFixed(1)} kg</span>

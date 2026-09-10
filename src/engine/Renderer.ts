@@ -123,7 +123,17 @@ export class Renderer {
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
+    if (obj.visualShape === "box") {
+      const sz = shadowRadius * 2;
+      const cr = Math.max(3, 4 * heightExpansion);
+      if (ctx.roundRect) {
+        ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
+      } else {
+        ctx.rect(groundX - shadowRadius, groundY - shadowRadius, sz, sz);
+      }
+    } else {
+      ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
+    }
 
     if (canClearWalls) {
       // Blue/cyan outline indicating it will fly cleanly over walls
@@ -144,6 +154,7 @@ export class Renderer {
 
   /**
    * Freebody Object: Pure top-down at (x, y) with fixed physical radius (no scale expansion).
+   * Supports both box and circle visual shapes (both using circle colliders).
    * Highlights objects within character pickup reach.
    */
   private drawFreebodyObject(obj: GameObject, allEntities: GameObject[], character: Character, ppu: number): void {
@@ -151,7 +162,7 @@ export class Renderer {
     const x = obj.position.x * ppu;
     const y = obj.position.y * ppu;
 
-    // Fixed physical radius: objects do NOT expand with height
+    // Fixed physical radius: collider is always circular with radius = colliderRadius * ppu
     const renderRadius = obj.colliderRadius * ppu;
 
     // Check if close enough for character to pick up
@@ -163,7 +174,16 @@ export class Renderer {
     if (isWithinPickupRange) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(x, y, renderRadius + 5, 0, Math.PI * 2);
+      if (obj.visualShape === "box") {
+        const sz = (renderRadius + 5) * 2;
+        if (ctx.roundRect) {
+          ctx.roundRect(x - renderRadius - 5, y - renderRadius - 5, sz, sz, 6);
+        } else {
+          ctx.rect(x - renderRadius - 5, y - renderRadius - 5, sz, sz);
+        }
+      } else {
+        ctx.arc(x, y, renderRadius + 5, 0, Math.PI * 2);
+      }
       ctx.strokeStyle = "#38bdf8"; // Glowing cyan highlight
       ctx.lineWidth = 2.5;
       ctx.setLineDash([4, 4]);
@@ -196,16 +216,61 @@ export class Renderer {
     ctx.save();
     ctx.globalAlpha = isPassingOverAnother ? 0.55 : 1.0;
 
-    // Colored circle body
-    ctx.beginPath();
-    ctx.arc(x, y, renderRadius, 0, Math.PI * 2);
-    ctx.fillStyle = obj.color;
-    ctx.fill();
-    ctx.strokeStyle = isWithinPickupRange ? "#ffffff" : "rgba(255, 255, 255, 0.45)";
-    ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
-    ctx.stroke();
+    if (obj.visualShape === "box") {
+      // 2D Box / Crate visualization (with circular collider of radius renderRadius)
+      const size = renderRadius * 2;
+      const cornerR = Math.max(3, renderRadius * 0.16);
+      const left = x - renderRadius;
+      const top = y - renderRadius;
 
-    // 3D Roll Illustration: Dotted oval / circle rotating in direction of roll
+      // Base colored box
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(left, top, size, size, cornerR);
+      } else {
+        ctx.rect(left, top, size, size);
+      }
+      ctx.fillStyle = obj.color;
+      ctx.fill();
+
+      // Outer border
+      ctx.strokeStyle = isWithinPickupRange ? "#ffffff" : "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+      ctx.stroke();
+
+      // Inner crate inset details (slats / beveled border)
+      const inset = Math.max(3, renderRadius * 0.22);
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(left + inset, top + inset, size - inset * 2, size - inset * 2, cornerR * 0.7);
+      } else {
+        ctx.rect(left + inset, top + inset, size - inset * 2, size - inset * 2);
+      }
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      // Subtle crate cross
+      ctx.beginPath();
+      ctx.moveTo(left + inset, top + inset);
+      ctx.lineTo(left + size - inset, top + size - inset);
+      ctx.moveTo(left + size - inset, top + inset);
+      ctx.lineTo(left + inset, top + size - inset);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.16)";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    } else {
+      // Colored circle body
+      ctx.beginPath();
+      ctx.arc(x, y, renderRadius, 0, Math.PI * 2);
+      ctx.fillStyle = obj.color;
+      ctx.fill();
+      ctx.strokeStyle = isWithinPickupRange ? "#ffffff" : "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+      ctx.stroke();
+    }
+
+    // 3D Roll Illustration: Dotted oval / circle rotating in direction of roll if roll module attached
     this.drawRollIndicator(obj, x, y, renderRadius);
 
     ctx.restore();
