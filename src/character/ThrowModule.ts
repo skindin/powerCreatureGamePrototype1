@@ -52,7 +52,8 @@ export class ThrowModule {
     targetX: number,
     targetY: number,
     arena: Arena,
-    throwPower: number
+    throwPower: number,
+    hasGravity = true
   ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
     const dx = targetX - startX;
     const dy = targetY - startY;
@@ -65,6 +66,16 @@ export class ThrowModule {
     const dirY = dy / dist;
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
+
+    // Zero-gravity flight: moves in a completely straight horizontal line at startZ
+    if (!hasGravity) {
+      const maxThrowSpeed = Math.max(3.0, throwPower);
+      const totalTime = Math.max(0.14, actualDist / maxThrowSpeed);
+      const vx = dirX * maxThrowSpeed;
+      const vy = dirY * maxThrowSpeed;
+      const vz = 0;
+      return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ };
+    }
 
     // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
     const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
@@ -146,7 +157,7 @@ export class ThrowModule {
     const startZ = held.position.z;
 
     const throwPower = this.baseThrowForce * character.strength;
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower);
+    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity);
     if (!launch) return null;
 
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight } = launch;
@@ -165,9 +176,9 @@ export class ThrowModule {
       // At the final step, enforce exact final target coordinates
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
-      const calculatedZ = startZ + vz * t - 0.5 * arena.gravity * t * t;
-      const currentZ = step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ);
-      const currentVz = vz - arena.gravity * t;
+      const calculatedZ = held.hasGravity ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
+      const currentZ = held.hasGravity ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
+      const currentVz = held.hasGravity ? (vz - arena.gravity * t) : 0;
 
       // Blue section: height > standard wall height
       const couldClearWall = currentZ > arena.wallHeight;
@@ -251,7 +262,7 @@ export class ThrowModule {
     const startZ = held.position.z;
 
     const throwPower = this.baseThrowForce * character.strength;
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower);
+    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity);
     if (!launch) return null;
 
     held.isHeld = false;
@@ -261,15 +272,16 @@ export class ThrowModule {
     held.verticalVelocity = launch.vz;
     held.position.z = Math.max(0.3, held.position.z);
 
-    // If held object is rollable, impart rolling motion along throw direction
-    if (held.rollModule && held.rollModule.enabled) {
-      const R = held.colliderRadius;
+    // If held object is rollable and has friction, impart rolling motion along throw direction
+    if (held.hasFriction && held.rollModule && held.rollModule.enabled) {
+      const R = held.colliderRadius > 0 ? held.colliderRadius : 0.3;
       held.rollModule.angularVelocity.y = launch.vx / R;
       held.rollModule.angularVelocity.x = -launch.vy / R;
     }
 
     // Apply opposite recoil force to the character based on momentum conservation
-    const recoilRatio = held.mass / Math.max(0.2, character.mass);
+    // Massless objects impart ZERO recoil!
+    const recoilRatio = (held.hasMass && character.hasMass) ? (held.mass / Math.max(0.2, character.mass)) : 0;
     character.velocity.x -= launch.vx * recoilRatio;
     character.velocity.y -= launch.vy * recoilRatio;
 

@@ -1,5 +1,10 @@
 import { Arena, Wall } from "./Arena.js";
 import { RollModule } from "./RollModule.js";
+import { ColliderModule } from "./ColliderModule.js";
+import { MassModule } from "./MassModule.js";
+import { FrictionModule } from "./FrictionModule.js";
+import { BounceModule } from "./BounceModule.js";
+import { GravityModule } from "./GravityModule.js";
 
 export interface Vector2D {
   x: number;
@@ -16,57 +21,180 @@ export class GameObject {
   public id: string;
   public name: string;
   public position: Vector3D;
-  public mass: number;
   public velocity: Vector2D;
   public verticalVelocity: number;
-  public colliderRadius: number;
-  public staticGroundFrictionMod: number;
-  public dynamicGroundFrictionMod: number;
-  public bounceMod: number | null; // Removable / optional
   public color: string;
   public isHeld: boolean;
   public heldBy: GameObject | null;
   public isCharacter = false;
-  public rollModule: RollModule | null = null;
   public visualShape: "circle" | "box" = "circle";
+
+  // Modular behavior components
+  public colliderModule: ColliderModule | null = null;
+  public massModule: MassModule | null = null;
+  public frictionModule: FrictionModule | null = null;
+  public bounceModule: BounceModule | null = null;
+  public gravityModule: GravityModule | null = null;
+  public rollModule: RollModule | null = null;
 
   constructor(options: {
     id?: string;
     name?: string;
     position?: Partial<Vector3D>;
-    mass?: number;
     velocity?: Partial<Vector2D>;
     verticalVelocity?: number;
+    color?: string;
+    visualShape?: "circle" | "box";
+    colliderModule?: ColliderModule | null;
+    massModule?: MassModule | null;
+    frictionModule?: FrictionModule | null;
+    bounceModule?: BounceModule | null;
+    gravityModule?: GravityModule | null;
+    rollModule?: RollModule | null;
+    // Convenience option shorthands
+    mass?: number;
     colliderRadius?: number;
     staticGroundFrictionMod?: number;
     dynamicGroundFrictionMod?: number;
     bounceMod?: number | null;
-    color?: string;
-    rollModule?: RollModule | null;
-    visualShape?: "circle" | "box";
+    hasGravity?: boolean;
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Object";
-    this.rollModule = options.rollModule ?? null;
     this.visualShape = options.visualShape ?? "circle";
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,
       z: options.position?.z ?? 0,
     };
-    this.mass = options.mass ?? 1.0;
     this.velocity = {
       x: options.velocity?.x ?? 0,
       y: options.velocity?.y ?? 0,
     };
     this.verticalVelocity = options.verticalVelocity ?? 0;
-    this.colliderRadius = options.colliderRadius ?? 0.32;
-    this.staticGroundFrictionMod = options.staticGroundFrictionMod ?? 1.0;
-    this.dynamicGroundFrictionMod = options.dynamicGroundFrictionMod ?? 1.0;
-    this.bounceMod = options.bounceMod !== undefined ? options.bounceMod : 0.4;
     this.color = options.color ?? "#38bdf8";
     this.isHeld = false;
     this.heldBy = null;
+
+    // Initialize modules from direct references or option shorthands
+    this.colliderModule = options.colliderModule !== undefined
+      ? options.colliderModule
+      : new ColliderModule({ radius: options.colliderRadius ?? 0.32 });
+
+    this.massModule = options.massModule !== undefined
+      ? options.massModule
+      : (options.mass !== undefined && options.mass <= 0
+          ? null
+          : new MassModule({ mass: options.mass ?? 1.0 }));
+
+    this.frictionModule = options.frictionModule !== undefined
+      ? options.frictionModule
+      : new FrictionModule({
+          staticFrictionMod: options.staticGroundFrictionMod ?? 1.0,
+          dynamicFrictionMod: options.dynamicGroundFrictionMod ?? 1.0,
+        });
+
+    this.bounceModule = options.bounceModule !== undefined
+      ? options.bounceModule
+      : (options.bounceMod !== undefined && options.bounceMod !== null
+          ? new BounceModule({ bounceMod: options.bounceMod })
+          : new BounceModule({ bounceMod: 0.4 }));
+
+    this.gravityModule = options.gravityModule !== undefined
+      ? options.gravityModule
+      : (options.hasGravity === false ? null : new GravityModule());
+
+    this.rollModule = options.rollModule ?? null;
+  }
+
+  // --- Convenience Getters & Setters ---
+
+  public get hasCollider(): boolean {
+    return Boolean(this.colliderModule && this.colliderModule.enabled);
+  }
+
+  public get colliderRadius(): number {
+    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radius : 0;
+  }
+
+  public set colliderRadius(val: number) {
+    if (this.colliderModule) {
+      this.colliderModule.radius = val;
+    } else {
+      this.colliderModule = new ColliderModule({ radius: val });
+    }
+  }
+
+  public get hasMass(): boolean {
+    return Boolean(this.massModule && this.massModule.enabled && this.massModule.mass > 0);
+  }
+
+  public get mass(): number {
+    return this.massModule && this.massModule.enabled ? this.massModule.mass : 0;
+  }
+
+  public set mass(val: number) {
+    if (this.massModule) {
+      this.massModule.mass = val;
+    } else {
+      this.massModule = new MassModule({ mass: val });
+    }
+  }
+
+  /**
+   * Friction requires both MassModule and FrictionModule. Without mass, normal force is 0.
+   */
+  public get hasFriction(): boolean {
+    return Boolean(this.hasMass && this.frictionModule && this.frictionModule.enabled);
+  }
+
+  public get staticGroundFrictionMod(): number {
+    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionMod : 0;
+  }
+
+  public set staticGroundFrictionMod(val: number) {
+    if (this.frictionModule) {
+      this.frictionModule.staticFrictionMod = val;
+    } else {
+      this.frictionModule = new FrictionModule({ staticFrictionMod: val });
+    }
+  }
+
+  public get dynamicGroundFrictionMod(): number {
+    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionMod : 0;
+  }
+
+  public set dynamicGroundFrictionMod(val: number) {
+    if (this.frictionModule) {
+      this.frictionModule.dynamicFrictionMod = val;
+    } else {
+      this.frictionModule = new FrictionModule({ dynamicFrictionMod: val });
+    }
+  }
+
+  /**
+   * Bounciness requires both MassModule and BounceModule. Without mass, restitution is ignored.
+   */
+  public get hasBounce(): boolean {
+    return Boolean(this.hasMass && this.bounceModule && this.bounceModule.enabled);
+  }
+
+  public get bounceMod(): number | null {
+    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceMod : null;
+  }
+
+  public set bounceMod(val: number | null) {
+    if (val === null || val <= 0.01) {
+      this.bounceModule = null;
+    } else if (this.bounceModule) {
+      this.bounceModule.bounceMod = val;
+    } else {
+      this.bounceModule = new BounceModule({ bounceMod: val });
+    }
+  }
+
+  public get hasGravity(): boolean {
+    return Boolean(this.gravityModule && this.gravityModule.enabled);
   }
 
   /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
@@ -95,96 +223,103 @@ export class GameObject {
     }
 
     // 0. Supporting surface:
-    // A wall top supports an entity if the entity is at or above wall height (or was already resting on the wall).
-    // Entities below wall height are on the ground and collide with wall sides.
-    const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
-      (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
-    const supportingWall = canBeOnWall
-      ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius)
-      : null;
+    // Only check wall support if entity has a collider; otherwise surface is 0 (ground level)
+    let surfaceHeight = 0;
+    let supportingWall: Wall | null = null;
 
-    const surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
+    if (this.hasCollider) {
+      const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
+        (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
+      supportingWall = canBeOnWall
+        ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius)
+        : null;
+      surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
+    }
     this.supportingSurfaceHeight = surfaceHeight;
 
-    // 1. Vertical & Surface Physics (unified for floor z=0 and wall tops z=wallHeight)
-    if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
-      this.verticalVelocity -= arena.gravity * dt;
-      this.position.z += this.verticalVelocity * dt;
+    // 1. Vertical & Surface Physics
+    if (this.hasGravity) {
+      // Gravity acceleration active
+      if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
+        this.verticalVelocity -= arena.gravity * dt;
+        this.position.z += this.verticalVelocity * dt;
 
-      // Surface impact (hitting floor or top of wall from above)
-      if (this.position.z <= surfaceHeight) {
-        this.position.z = surfaceHeight;
-        // Bounce vertically if moving downward with sufficient speed
-        if (this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
-          const impactVz = Math.abs(this.verticalVelocity);
-          this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
+        // Surface impact (hitting floor or top of wall from above)
+        if (this.position.z <= surfaceHeight) {
+          this.position.z = surfaceHeight;
+          // Bounce vertically only if bounce module and mass module are present
+          if (this.hasBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+            const impactVz = Math.abs(this.verticalVelocity);
+            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
 
-          // Vertical bounce impacts and couples into rolling dynamics
-          if (this.rollModule && this.rollModule.enabled) {
-            const roll = this.rollModule;
-            const R = this.colliderRadius;
-            const beta = 0.4;
-            const e = this.bounceMod;
-            const normalImpulse = (1 + e) * this.mass * impactVz;
+            // Vertical bounce couples into rolling dynamics only if surface friction is present
+            if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
+              const roll = this.rollModule;
+              const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
+              const beta = 0.4;
+              const e = this.bounceMod;
+              const normalImpulse = (1 + e) * this.mass * impactVz;
 
-            // Surface friction during bounce grips the ball
-            const muBounce = arena.frictionCoeff * this.dynamicGroundFrictionMod * 0.05;
-            const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-            const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-            const slipSpeed = Math.hypot(vSlipX, vSlipY);
+              const muBounce = arena.frictionCoeff * this.dynamicGroundFrictionMod * 0.05;
+              const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
+              const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
+              const slipSpeed = Math.hypot(vSlipX, vSlipY);
 
-            if (slipSpeed > 0.001 && muBounce > 0) {
-              const maxFricImpulse = muBounce * normalImpulse;
-              const stickImpulse = (slipSpeed * this.mass) / (1 + 1 / beta);
-              const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
+              if (slipSpeed > 0.001 && muBounce > 0) {
+                const maxFricImpulse = muBounce * normalImpulse;
+                const stickImpulse = (slipSpeed * this.mass) / (1 + 1 / beta);
+                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
 
-              const impX = (vSlipX / slipSpeed) * actualImpulse;
-              const impY = (vSlipY / slipSpeed) * actualImpulse;
+                const impX = (vSlipX / slipSpeed) * actualImpulse;
+                const impY = (vSlipY / slipSpeed) * actualImpulse;
 
-              // Friction opposes slip: reduces linear velocity
-              this.velocity.x -= impX / this.mass;
-              this.velocity.y -= impY / this.mass;
+                this.velocity.x -= impX / this.mass;
+                this.velocity.y -= impY / this.mass;
 
-              // Friction torque accelerates spin to match linear roll
-              roll.angularVelocity.y += impX / (beta * this.mass * R);
-              roll.angularVelocity.x -= impY / (beta * this.mass * R);
+                roll.angularVelocity.y += impX / (beta * this.mass * R);
+                roll.angularVelocity.x -= impY / (beta * this.mass * R);
+              }
+
+              const spinDamp = Math.max(0.65, 1.0 - (1 - e) * 0.35);
+              roll.angularVelocity.x *= spinDamp;
+              roll.angularVelocity.y *= spinDamp;
+              roll.angularVelocity.z *= spinDamp;
             }
-
-            // Bounce energy dissipation on angular velocity
-            const spinDamp = Math.max(0.65, 1.0 - (1 - e) * 0.35);
-            roll.angularVelocity.x *= spinDamp;
-            roll.angularVelocity.y *= spinDamp;
-            roll.angularVelocity.z *= spinDamp;
+          } else {
+            // No bounce: dead stick impact
+            this.verticalVelocity = 0;
           }
-        } else {
+        }
+      }
+    } else {
+      // Zero Gravity: vertical position does NOT fall; maintains constant elevation
+      if (this.verticalVelocity !== 0) {
+        this.position.z += this.verticalVelocity * dt;
+        if (this.position.z <= surfaceHeight) {
+          this.position.z = surfaceHeight;
           this.verticalVelocity = 0;
         }
       }
     }
 
-    // 2. Surface Friction & Rolling Behavior (applies to passive freebodies when resting on a surface: floor or wall top)
+    // 2. Surface Friction & Rolling Behavior (applies only if resting on surface and has friction)
     const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.01 && Math.abs(this.verticalVelocity) <= 0.05;
-    if (isResting) {
-      // If entity is a character with an active walking module, locomotion & stopping is handled by WalkingModule
+    if (isResting && this.hasFriction) {
       const hasActiveWalkingModule = this.isCharacter && (this as any).walkingModule?.enabled;
       if (!hasActiveWalkingModule) {
         if (this.rollModule && this.rollModule.enabled) {
           const roll = this.rollModule;
-          const R = this.colliderRadius;
+          const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
           const muG = arena.frictionCoeff * this.dynamicGroundFrictionMod;
-          const beta = 0.4; // Moment of inertia factor (2/5 for sphere)
+          const beta = 0.4;
 
-          // 1. Slip velocity at surface contact:
-          // v_contact = v + ω × r_bottom = (vx - ωy * R, vy + ωx * R)
           const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
           const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
           const slipSpeed = Math.hypot(vSlipX, vSlipY);
 
           if (muG > 0 && slipSpeed > 0.001) {
-            // Surface friction imparts torque to couple translation into rolling
             const maxSlipDelta = muG * (1 + 1 / beta) * dt;
             if (slipSpeed <= maxSlipDelta) {
-              // Pure rolling condition achieved
               const totalMomX = this.velocity.x + beta * roll.angularVelocity.y * R;
               const totalMomY = this.velocity.y - beta * roll.angularVelocity.x * R;
               const rollVx = totalMomX / (1 + beta);
@@ -194,7 +329,6 @@ export class GameObject {
               roll.angularVelocity.y = rollVx / R;
               roll.angularVelocity.x = -rollVy / R;
             } else {
-              // Kinetic friction reducing slip
               const fx = (vSlipX / slipSpeed) * muG * dt;
               const fy = (vSlipY / slipSpeed) * muG * dt;
               this.velocity.x -= fx;
@@ -203,9 +337,8 @@ export class GameObject {
               roll.angularVelocity.x -= fy / (beta * R);
             }
           }
-          // Note: If muG == 0 (no surface friction), the object cannot roll; it slides without rolling torque!
 
-          // 2. Roll Resistance: opposes pure rolling motion
+          // Roll Resistance
           const speed = Math.hypot(this.velocity.x, this.velocity.y);
           if (speed > 0) {
             if (roll.rollResistance > 0) {
@@ -224,10 +357,7 @@ export class GameObject {
                 roll.angularVelocity.y *= ratio;
               }
             }
-            // If rollResistance === 0: no rolling deceleration! Rolls indefinitely until hitting a wall!
           } else {
-            // If linear movement stopped (e.g. against a wall) but object is still spinning,
-            // surface friction stops the residual spin
             const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
             if (spinSpeed > 0 && muG > 0) {
               const spinDecel = (muG / (beta * R)) * dt;
@@ -238,8 +368,6 @@ export class GameObject {
             }
           }
 
-          // Surface friction dampening on vertical spin (ωz)
-          // Governed by rollResistance (if rollResistance === 0, vertical spin does NOT decay from resistance!)
           if (Math.abs(roll.angularVelocity.z) > 0.001) {
             if (roll.rollResistance > 0) {
               const zDecel = (roll.rollResistance / (beta * R)) * dt;
@@ -251,7 +379,7 @@ export class GameObject {
 
           roll.updateVisualPhase(dt);
         } else {
-          // Standard non-rolling sliding ground friction
+          // Standard sliding ground friction
           const speed = Math.hypot(this.velocity.x, this.velocity.y);
           if (speed > 0) {
             const staticThreshold = arena.staticFrictionThreshold * this.staticGroundFrictionMod;
@@ -269,7 +397,7 @@ export class GameObject {
         }
       }
     } else {
-      // Airborne free flight: angular velocity persists, visual phase advances
+      // Frictionless or airborne or no mass: spin is NOT affected by ground!
       if (this.rollModule && this.rollModule.enabled) {
         this.rollModule.updateVisualPhase(dt);
       }
@@ -279,42 +407,43 @@ export class GameObject {
     this.position.x += this.velocity.x * dt;
     this.position.y += this.velocity.y * dt;
 
-    // 4. Boundary Collision (Arena Outer Walls)
-    const minX = this.colliderRadius;
-    const maxX = arena.width - this.colliderRadius;
-    const minY = this.colliderRadius;
-    const maxY = arena.height - this.colliderRadius;
+    // 4 & 5. Boundary & Wall Collisions (Only if ColliderModule is active!)
+    if (this.hasCollider) {
+      const r = this.colliderRadius;
+      const minX = r;
+      const maxX = arena.width - r;
+      const minY = r;
+      const maxY = arena.height - r;
 
-    const bRestitution = this.isCharacter ? 0 : (this.bounceMod ?? 0.3);
+      const bRestitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
 
-    if (this.position.x < minX) {
-      this.position.x = minX;
-      this.resolveWallImpact(1, 0, bRestitution);
-    } else if (this.position.x > maxX) {
-      this.position.x = maxX;
-      this.resolveWallImpact(-1, 0, bRestitution);
-    }
+      if (this.position.x < minX) {
+        this.position.x = minX;
+        this.resolveWallImpact(1, 0, bRestitution);
+      } else if (this.position.x > maxX) {
+        this.position.x = maxX;
+        this.resolveWallImpact(-1, 0, bRestitution);
+      }
 
-    if (this.position.y < minY) {
-      this.position.y = minY;
-      this.resolveWallImpact(0, 1, bRestitution);
-    } else if (this.position.y > maxY) {
-      this.position.y = maxY;
-      this.resolveWallImpact(0, -1, bRestitution);
-    }
+      if (this.position.y < minY) {
+        this.position.y = minY;
+        this.resolveWallImpact(0, 1, bRestitution);
+      } else if (this.position.y > maxY) {
+        this.position.y = maxY;
+        this.resolveWallImpact(0, -1, bRestitution);
+      }
 
-    // 5. Arena Internal Walls Collision
-    // If the entity is on a wall (supportingWall), it is ON the wall, NOT inside of it!
-    // Side wall collision ONLY applies to entities that are completely on the ground and outside all walls.
-    if (!supportingWall) {
-      for (const wall of arena.walls) {
-        if (this.position.z < wall.wallHeight - 0.05) {
-          this.resolveWallCollision(wall);
+      // Internal arena walls collision
+      if (!supportingWall) {
+        for (const wall of arena.walls) {
+          if (this.position.z < wall.wallHeight - 0.05) {
+            this.resolveWallCollision(wall);
+          }
         }
       }
     }
 
-    // 6. Absolute physical speed and spin bounds to guarantee stability
+    // 6. Absolute physical speed bounds
     const maxLinearSpeed = 16.0;
     const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
     if (currentSpeed > maxLinearSpeed) {
@@ -338,46 +467,44 @@ export class GameObject {
   }
 
   /**
-   * Applies realistic wall/boundary impact dynamics:
-   * - Normal elastic rebound.
-   * - Tangential surface friction coupling.
-   * - Imparts vertical angular velocity (ωz) (upward/downward spin) based on tangential impact angle.
-   * - Couples horizontal roll angular velocity (ωx, ωy) to post-bounce motion.
+   * Applies realistic wall/boundary impact dynamics
    */
   protected resolveWallImpact(normalX: number, normalY: number, restitution: number): void {
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return; // Moving away from wall
 
     const normalVel = dot;
-    // Unit tangent vector along the wall face such that (n × t) = +z
-    const tangentX = -normalY;
-    const tangentY = normalX;
-    const tangentVel = this.velocity.x * tangentX + this.velocity.y * tangentY;
 
-    // Normal bounce impulse
-    const normalImpulse = -(1 + restitution) * this.mass * normalVel;
-    this.velocity.x += (normalImpulse / this.mass) * normalX;
-    this.velocity.y += (normalImpulse / this.mass) * normalY;
+    if (restitution > 0 && this.hasMass) {
+      // Elastic / partially elastic bounce
+      this.velocity.x -= (1 + restitution) * normalVel * normalX;
+      this.velocity.y -= (1 + restitution) * normalVel * normalY;
+    } else {
+      // Inelastic wall impact (restitution = 0 or no bounce module / no mass)
+      this.velocity.x -= normalVel * normalX;
+      this.velocity.y -= normalVel * normalY;
+    }
 
-    // Tangential friction and 3D angular velocity coupling
-    if (this.rollModule && this.rollModule.enabled) {
+    // Tangential friction and 3D angular velocity coupling on wall
+    if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
       const roll = this.rollModule;
-      const R = this.colliderRadius;
+      const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
       const beta = 0.4;
-      const muWall = 0.35; // Wall friction coefficient
+      const muWall = 0.35;
 
-      // Tangential velocity of the contact point on the wall face (includes vertical spin ωz):
-      // r = -R n => ωz z_hat × (-R n) = -R ωz t_hat, so vContactT = v_t - ωz * R
+      const tangentX = -normalY;
+      const tangentY = normalX;
+      const tangentVel = this.velocity.x * tangentX + this.velocity.y * tangentY;
+      const normalImpulse = -(1 + restitution) * this.mass * normalVel;
+
       const vContactT = tangentVel - roll.angularVelocity.z * R;
       const stickImpulse = (Math.abs(vContactT) * this.mass) / (1 + 1 / beta);
       const maxFricImpulse = muWall * normalImpulse;
       const fricImpulseMag = Math.min(stickImpulse, maxFricImpulse);
       const fricImpulse = -Math.sign(vContactT) * fricImpulseMag;
 
-      // Wall friction alters tangential linear velocity (cannot increase tangential speed)
       const oldTangentVel = tangentVel;
       const proposedTangentVel = oldTangentVel + (fricImpulse / this.mass);
-      // Friction can only damp tangential velocity towards zero slip, never accelerate it
       const actualDeltaVt = (Math.abs(proposedTangentVel) <= Math.abs(oldTangentVel) + 0.01)
         ? (proposedTangentVel - oldTangentVel)
         : -oldTangentVel * 0.1;
@@ -385,15 +512,11 @@ export class GameObject {
       this.velocity.x += actualDeltaVt * tangentX;
       this.velocity.y += actualDeltaVt * tangentY;
 
-      // Friction torque on the wall face imparts UPWARD / DOWNWARD angular velocity (ωz)!
       const actualFricImpulse = actualDeltaVt * this.mass;
       const deltaWz = -actualFricImpulse / (beta * this.mass * R);
       roll.angularVelocity.z += deltaWz;
-
-      // Bound vertical spin to prevent runaway accumulation
       roll.angularVelocity.z = Math.max(-30, Math.min(30, roll.angularVelocity.z));
 
-      // Rebound / couple horizontal roll angular velocity to the new velocity
       roll.angularVelocity.y = this.velocity.x / R;
       roll.angularVelocity.x = -this.velocity.y / R;
     }
@@ -401,6 +524,9 @@ export class GameObject {
 
   /** Resolves 2D circle-AABB wall collision on the ground plane */
   protected resolveWallCollision(wall: Wall): void {
+    if (!this.hasCollider) return;
+
+    const r = this.colliderRadius;
     const closestX = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
     const closestY = Math.max(wall.y, Math.min(this.position.y, wall.y + wall.height));
 
@@ -408,26 +534,25 @@ export class GameObject {
     const dy = this.position.y - closestY;
     const distSq = dx * dx + dy * dy;
 
-    if (distSq < this.colliderRadius * this.colliderRadius) {
+    if (distSq < r * r) {
       const dist = Math.sqrt(distSq);
       let normalX = 0;
       let normalY = 0;
       let overlap = 0;
 
       if (dist === 0) {
-        // Find shallowest exit normal from wall box
         const leftDist = Math.abs(this.position.x - wall.x);
         const rightDist = Math.abs((wall.x + wall.width) - this.position.x);
         const topDist = Math.abs(this.position.y - wall.y);
         const bottomDist = Math.abs((wall.y + wall.height) - this.position.y);
         const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
 
-        if (minDist === leftDist) { normalX = -1; overlap = leftDist + this.colliderRadius; }
-        else if (minDist === rightDist) { normalX = 1; overlap = rightDist + this.colliderRadius; }
-        else if (minDist === topDist) { normalY = -1; overlap = topDist + this.colliderRadius; }
-        else { normalY = 1; overlap = bottomDist + this.colliderRadius; }
+        if (minDist === leftDist) { normalX = -1; overlap = leftDist + r; }
+        else if (minDist === rightDist) { normalX = 1; overlap = rightDist + r; }
+        else if (minDist === topDist) { normalY = -1; overlap = topDist + r; }
+        else { normalY = 1; overlap = bottomDist + r; }
       } else {
-        overlap = this.colliderRadius - dist;
+        overlap = r - dist;
         normalX = dx / dist;
         normalY = dy / dist;
       }
@@ -435,7 +560,7 @@ export class GameObject {
       this.position.x += normalX * overlap;
       this.position.y += normalY * overlap;
 
-      const restitution = this.isCharacter ? 0 : (this.bounceMod ?? 0.3);
+      const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
       this.resolveWallImpact(normalX, normalY, restitution);
     }
   }

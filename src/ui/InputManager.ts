@@ -175,14 +175,16 @@ export class InputManager {
       // Check objects first (so objects on top or near player can be picked)
       for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
+        const r = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
         const dist = Math.hypot(obj.position.x - x, obj.position.y - y);
-        if (dist <= obj.colliderRadius + tolerance) {
+        if (dist <= r + tolerance) {
           return obj;
         }
       }
       // Check character
+      const charR = character.hasCollider ? character.colliderRadius : 0.44;
       const distChar = Math.hypot(character.position.x - x, character.position.y - y);
-      if (distChar <= character.colliderRadius + tolerance) {
+      if (distChar <= charR + tolerance) {
         return character;
       }
       return null;
@@ -213,7 +215,7 @@ export class InputManager {
           // Drag object wherever the user moves the mouse
           const targetX = x + this.dragOffset.x;
           const targetY = y + this.dragOffset.y;
-          const r = this.draggedEntity.colliderRadius;
+          const r = this.draggedEntity.hasCollider ? this.draggedEntity.colliderRadius : (this.draggedEntity.colliderModule?.radius ?? 0.32);
           this.draggedEntity.position.x = Math.max(r, Math.min(arena.width - r, targetX));
           this.draggedEntity.position.y = Math.max(r, Math.min(arena.height - r, targetY));
           

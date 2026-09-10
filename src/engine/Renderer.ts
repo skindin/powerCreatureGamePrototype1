@@ -177,15 +177,13 @@ export class Renderer {
   private drawFreebodyObject(obj: GameObject, allEntities: GameObject[], character: Character, ppu: number): void {
     const ctx = this.ctx;
     const x = obj.position.x * ppu;
-    const y = obj.position.y * ppu;
-
-    // Fixed physical radius: collider is always circular with radius = colliderRadius * ppu
-    const renderRadius = obj.colliderRadius * ppu;
+    const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
+    const renderRadius = visualRadius * ppu;
 
     // Check if close enough for character to pick up
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
     const distToChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-    const isWithinPickupRange = canPickup && !obj.isHeld && distToChar <= ((character.pickupModule?.pickupReach ?? 1.3) + obj.colliderRadius);
+    const isWithinPickupRange = canPickup && !obj.isHeld && distToChar <= ((character.pickupModule?.pickupReach ?? 1.3) + visualRadius);
 
     // Highlight ring around objects in pickup reach
     if (isWithinPickupRange) {
@@ -548,7 +546,8 @@ export class Renderer {
     const ctx = this.ctx;
     const px = entity.position.x * ppu;
     const py = entity.position.y * ppu;
-    const pad = (entity.colliderRadius + 0.08) * ppu;
+    const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
+    const pad = (visualRadius + 0.08) * ppu;
 
     ctx.save();
     ctx.strokeStyle = "rgba(251, 191, 36, 0.6)"; // Soft amber
@@ -566,7 +565,8 @@ export class Renderer {
     const ctx = this.ctx;
     const px = entity.position.x * ppu;
     const py = entity.position.y * ppu;
-    const r = entity.colliderRadius * ppu;
+    const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
+    const r = visualRadius * ppu;
     const pad = r + 6;
     const bracketLen = Math.max(6, pad * 0.4);
 

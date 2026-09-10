@@ -17,18 +17,21 @@ export class Character extends GameObject {
 
   /**
    * Effective mass: base character mass plus the mass of any currently carried object.
-   * Carrying heavy objects makes the character heavier, naturally slowing down acceleration and walking speed.
-   */
   public override get mass(): number {
-    return this.baseMass + (this.heldObject ? this.heldObject.mass : 0);
+    const base = this.hasMass ? this.baseMass : 0;
+    const carried = (this.heldObject && this.heldObject.hasMass) ? this.heldObject.mass : 0;
+    return base + carried;
   }
 
   public override set mass(val: number) {
     this.baseMass = Math.max(0.1, val);
+    if (this.massModule) {
+      this.massModule.mass = this.baseMass;
+    }
   }
 
   public get carriedMass(): number {
-    return this.heldObject ? this.heldObject.mass : 0;
+    return (this.heldObject && this.heldObject.hasMass) ? this.heldObject.mass : 0;
   }
 
   // Removable Modules

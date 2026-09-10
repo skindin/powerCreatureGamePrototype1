@@ -31,6 +31,12 @@ export class WalkingModule {
       return;
     }
 
+    // Walking strictly requires friction (and mass) to push against the ground
+    if (!character.hasFriction || !character.frictionModule?.enabled || !character.hasMass) {
+      character.isActivelyWalking = false;
+      return;
+    }
+
     const inputMag = Math.hypot(inputVector.x, inputVector.y);
     const isMoving = inputMag > 0.05;
     character.isActivelyWalking = isMoving;
