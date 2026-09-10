@@ -322,6 +322,9 @@ export class GameObject {
       this.velocity.x *= scale;
       this.velocity.y *= scale;
     }
+    if (Math.abs(this.verticalVelocity) > maxLinearSpeed) {
+      this.verticalVelocity = Math.sign(this.verticalVelocity) * maxLinearSpeed;
+    }
     if (this.rollModule && this.rollModule.enabled) {
       const maxAngSpeed = 35.0;
       const currentAngSpeed = this.rollModule.angularSpeed;

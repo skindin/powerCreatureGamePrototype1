@@ -113,7 +113,7 @@ export class GameLoop {
     const all = [this.character, ...this.objects];
 
     // Iterative separation solver: pushes entities away until not overlapping
-    const iterations = 2;
+    const iterations = 3;
     for (let iter = 0; iter < iterations; iter++) {
       for (let i = 0; i < all.length; i++) {
         for (let j = i + 1; j < all.length; j++) {
@@ -133,86 +133,124 @@ export class GameLoop {
           // If one is above wall height and the other is not, they never collide (clean pass-over)
           if (aAboveWall !== bAboveWall) continue;
 
-          // Both are either above wall height (high altitude) or both are below wall height (ground level)
+          // 3D distance between the centers of two sphere colliders
           const dx = b.position.x - a.position.x;
           const dy = b.position.y - a.position.y;
-          const dist2DSq = dx * dx + dy * dy;
+          const dz = b.position.z - a.position.z;
+          const dist3DSq = dx * dx + dy * dy + dz * dz;
           const minDist = a.colliderRadius + b.colliderRadius;
 
-          if (dist2DSq < minDist * minDist && dist2DSq > 0.00001) {
-            // If both are below wall height, only collide if their height difference is within collider reach
-            if (!aAboveWall) {
-              const zDiff = Math.abs(b.position.z - a.position.z);
-              if (zDiff > minDist) continue;
-            }
-
-            const dist = Math.sqrt(dist2DSq);
+          if (dist3DSq < minDist * minDist && dist3DSq > 0.000001) {
+            const dist = Math.sqrt(dist3DSq);
             const overlap = minDist - dist;
             const normX = dx / dist;
             const normY = dy / dist;
+            const normZ = dz / dist;
 
-            // Push both entities away from each other with equal force (50/50 split) until not overlapping
-            a.position.x -= normX * overlap * 0.5;
-            a.position.y -= normY * overlap * 0.5;
-            b.position.x += normX * overlap * 0.5;
-            b.position.y += normY * overlap * 0.5;
+            // Mass-weighted separation:
+            // Actively walking character has high pushing drive, so lighter objects yield.
+            const invMassA = a.isCharacter ? (a.isActivelyWalking ? 0.05 : 1 / a.mass) : 1 / a.mass;
+            const invMassB = b.isCharacter ? (b.isActivelyWalking ? 0.05 : 1 / b.mass) : 1 / b.mass;
+            const invMassSum = invMassA + invMassB;
+            if (invMassSum <= 0.0001) continue;
 
-            // Equal impulse push away from each other
+            const ratioA = invMassA / invMassSum;
+            const ratioB = invMassB / invMassSum;
+
+            // Positional separation in 3D
+            a.position.x -= normX * overlap * ratioA;
+            a.position.y -= normY * overlap * ratioA;
+            a.position.z -= normZ * overlap * ratioA;
+            b.position.x += normX * overlap * ratioB;
+            b.position.y += normY * overlap * ratioB;
+            b.position.z += normZ * overlap * ratioB;
+
+            // Clamp z so neither drops below their supporting surface
+            a.position.z = Math.max(a.supportingSurfaceHeight, a.position.z);
+            b.position.z = Math.max(b.supportingSurfaceHeight, b.position.z);
+
+            // Relative 3D velocity (B relative to A)
             const relVx = b.velocity.x - a.velocity.x;
             const relVy = b.velocity.y - a.velocity.y;
-            const velAlongNormal = relVx * normX + relVy * normY;
+            const relVz = b.verticalVelocity - a.verticalVelocity;
+            const velAlongNormal = relVx * normX + relVy * normY + relVz * normZ;
 
             if (velAlongNormal < 0) {
-              const bothAirborne = !a.isRestingOnSurface && !b.isRestingOnSurface;
-              const restitution = bothAirborne ? 0.6 : 0.3;
-              const impulseMag = -(1 + restitution) * velAlongNormal * 0.5;
+              // Physically accurate coefficient of restitution combined from both entities' bounceMod
+              const eA = a.isCharacter ? (a.isActivelyWalking ? 0.0 : 0.15) : (a.bounceMod ?? 0.0);
+              const eB = b.isCharacter ? (b.isActivelyWalking ? 0.0 : 0.15) : (b.bounceMod ?? 0.0);
+              const restitution = Math.max(0.0, Math.min(0.98, Math.max(eA, eB)));
 
-              a.velocity.x -= impulseMag * normX;
-              a.velocity.y -= impulseMag * normY;
-              b.velocity.x += impulseMag * normX;
-              b.velocity.y += impulseMag * normY;
+              // Normal impulse magnitude J_n (strictly conserving linear momentum)
+              const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
 
-              // Tangential collision friction imparting upward/downward angular velocity (ωz)
-              const tangX = -normY;
-              const tangY = normX;
-              const velAlongTang = relVx * tangX + relVy * tangY;
+              a.velocity.x -= normalImpulse * invMassA * normX;
+              a.velocity.y -= normalImpulse * invMassA * normY;
+              a.verticalVelocity -= normalImpulse * invMassA * normZ;
 
-              // Surface contact velocity from existing vertical spin:
-              // v_contact = (v_b - v_a) - (ω_z,b * R_b + ω_z,a * R_a)
-              const spinA = a.rollModule?.enabled ? a.rollModule.angularVelocity.z : 0;
-              const spinB = b.rollModule?.enabled ? b.rollModule.angularVelocity.z : 0;
-              const vContactTang = velAlongTang - (spinB * b.colliderRadius + spinA * a.colliderRadius);
+              b.velocity.x += normalImpulse * invMassB * normX;
+              b.velocity.y += normalImpulse * invMassB * normY;
+              b.verticalVelocity += normalImpulse * invMassB * normZ;
 
-              const muObj = 0.35; // Contact friction
-              const stickTangImpulse = (vContactTang * 0.5) / 3.5;
-              const maxTangImpulse = muObj * Math.abs(impulseMag);
-              const tangImpulseMag = Math.min(Math.abs(stickTangImpulse), maxTangImpulse);
-              const tangImpulse = -Math.sign(vContactTang) * tangImpulseMag;
+              // Tangential relative velocity (perpendicular to normal)
+              const tangVx = relVx - velAlongNormal * normX;
+              const tangVy = relVy - velAlongNormal * normY;
+              const tangVz = relVz - velAlongNormal * normZ;
+              const tangSpeed = Math.hypot(tangVx, tangVy, tangVz);
 
-              a.velocity.x -= tangImpulse * tangX;
-              a.velocity.y -= tangImpulse * tangY;
-              b.velocity.x += tangImpulse * tangX;
-              b.velocity.y += tangImpulse * tangY;
+              if (tangSpeed > 0.001) {
+                const tangX = tangVx / tangSpeed;
+                const tangY = tangVy / tangSpeed;
+                const tangZ = tangVz / tangSpeed;
 
-              const beta = 0.4;
-              if (a.rollModule && a.rollModule.enabled) {
-                // Tangential friction imparts UPWARD / DOWNWARD angular velocity (ωz)
-                const dWzA = -tangImpulse / (beta * a.mass * a.colliderRadius);
-                a.rollModule.angularVelocity.z += dWzA;
-                a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
-                // Couple horizontal roll
-                a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
-                a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
-              }
+                // Contact friction
+                const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+                const beta = 0.4; // Sphere rotational inertia factor (2/5 for solid sphere)
+                const stickImpulse = tangSpeed / (invMassSum * (1 + 1 / beta));
+                const maxFricImpulse = muObj * normalImpulse;
+                const fricImpulse = Math.min(stickImpulse, maxFricImpulse);
 
-              if (b.rollModule && b.rollModule.enabled) {
-                // Opposing torque on B (like two gears meshing)
-                const dWzB = -tangImpulse / (beta * b.mass * b.colliderRadius);
-                b.rollModule.angularVelocity.z += dWzB;
-                b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
-                // Couple horizontal roll
-                b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
-                b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
+                // Tangential impulse opposes relative sliding velocity
+                a.velocity.x += fricImpulse * invMassA * tangX;
+                a.velocity.y += fricImpulse * invMassA * tangY;
+                a.verticalVelocity += fricImpulse * invMassA * tangZ;
+
+                b.velocity.x -= fricImpulse * invMassB * tangX;
+                b.velocity.y -= fricImpulse * invMassB * tangY;
+                b.verticalVelocity -= fricImpulse * invMassB * tangZ;
+
+                // Torque vector tau = r x F_tang
+                // For A: r_A = +n * R_A, force = +F_tang * t => tau_A = (n x t) * R_A * fricImpulse
+                // For B: r_B = -n * R_B, force = -F_tang * t => tau_B = (-n x -t) * R_B * fricImpulse = (n x t) * R_B * fricImpulse
+                const torqueX = normY * tangZ - normZ * tangY;
+                const torqueY = normZ * tangX - normX * tangZ;
+                const torqueZ = normX * tangY - normY * tangX;
+
+                if (a.rollModule && a.rollModule.enabled) {
+                  const scaleA = fricImpulse / (beta * a.mass * a.colliderRadius);
+                  a.rollModule.angularVelocity.x += torqueX * scaleA;
+                  a.rollModule.angularVelocity.y += torqueY * scaleA;
+                  a.rollModule.angularVelocity.z += torqueZ * scaleA;
+                  a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+
+                  if (a.isRestingOnSurface) {
+                    a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
+                    a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
+                  }
+                }
+
+                if (b.rollModule && b.rollModule.enabled) {
+                  const scaleB = fricImpulse / (beta * b.mass * b.colliderRadius);
+                  b.rollModule.angularVelocity.x += torqueX * scaleB;
+                  b.rollModule.angularVelocity.y += torqueY * scaleB;
+                  b.rollModule.angularVelocity.z += torqueZ * scaleB;
+                  b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+
+                  if (b.isRestingOnSurface) {
+                    b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
+                    b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
+                  }
+                }
               }
             }
           }
