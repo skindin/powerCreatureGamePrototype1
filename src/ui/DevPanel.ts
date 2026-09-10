@@ -167,6 +167,14 @@ export class DevPanel {
 
           <div class="slider-group">
             <div class="slider-label">
+              <span>Max Walk Speed Cap (u/s)</span>
+              <span id="val-walk-speed">${(this.character.walkingModule?.maxWalkSpeed ?? 5.2).toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${this.character.walkingModule?.maxWalkSpeed ?? 5.2}">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
               <span>Pickup Reach (u)</span>
               <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)}</span>
             </div>
@@ -308,6 +316,7 @@ export class DevPanel {
       this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
       if (this.character.walkingModule) {
         this.setSliderVal("slide-walk-force", "val-walk-force", this.character.walkingModule.maxWalkForce, 0);
+        this.setSliderVal("slide-walk-speed", "val-walk-speed", this.character.walkingModule.maxWalkSpeed, 1);
       }
       if (this.character.pickupModule) {
         this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
@@ -378,6 +387,12 @@ export class DevPanel {
         this.character.walkingModule.maxWalkForce = val;
       }
     }, 0);
+
+    this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
+      if (this.character.walkingModule) {
+        this.character.walkingModule.maxWalkSpeed = val;
+      }
+    }, 1);
 
     this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
       if (this.character.pickupModule) {
@@ -634,8 +649,8 @@ export class DevPanel {
         <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.baseMass.toFixed(1)}kg ${this.character.heldObject ? `(+${this.character.heldObject.mass.toFixed(1)}kg = ${this.character.mass.toFixed(1)}kg)` : ''}</span>
       </div>
       <div class="inspect-item">
-        <span class="inspect-k">Max Walk Force</span>
-        <span class="inspect-v">${(this.character.walkingModule?.maxWalkForce ?? 50).toFixed(0)} N</span>
+        <span class="inspect-k">Walk Force / Speed Cap</span>
+        <span class="inspect-v">${(this.character.walkingModule?.maxWalkForce ?? 50).toFixed(0)} N / ${(this.character.walkingModule?.maxWalkSpeed ?? 5.2).toFixed(1)} u/s</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Facing Angle</span>

@@ -10,8 +10,11 @@ export class WalkingModule {
   // Maximum propulsion force exerted by the character's legs (in Newtons / Force units)
   public maxWalkForce = 50.0;
 
+  // Maximum leg stride / cadence speed clamp (u/s): character cannot walk faster than this regardless of mass
+  public maxWalkSpeed = 5.2;
+
   // Ground drag damping rate (s^-1) which, combined with total mass and walk force, determines natural terminal speed:
-  // v_terminal = (maxWalkForce * strength) / (totalMass * dragDamping)
+  // v_terminal = min(maxWalkSpeed, (maxWalkForce * strength) / (totalMass * dragDamping))
   public dragDamping = 8.0;
 
   /**
@@ -68,8 +71,16 @@ export class WalkingModule {
     character.velocity.x += accelX * dt;
     character.velocity.y += accelY * dt;
 
-    // 4. Static friction snap to complete stop when keys are released and speed is low
+    // 4. Physical stride speed ceiling:
+    // Even if character is very light or has high force, legs cannot physically propel faster than maxWalkSpeed
     const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+    if (isMoving && currentSpeed > this.maxWalkSpeed) {
+      const scale = this.maxWalkSpeed / currentSpeed;
+      character.velocity.x *= scale;
+      character.velocity.y *= scale;
+    }
+
+    // 5. Static friction snap to complete stop when keys are released and speed is low
     const staticThreshold = Math.max(0.04, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
     if (!isMoving && currentSpeed < staticThreshold) {
       character.velocity.x = 0;
