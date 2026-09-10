@@ -384,12 +384,12 @@ export class DevPanel {
               </div>
               <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
                 <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                  <input type="checkbox" id="check-mod-vert-bounce" ${this.selectedEntity.bounceModule?.verticalBounce ? 'checked' : ''} ${!this.selectedEntity.hasVerticalVelocity ? 'disabled' : ''}>
+                  <input type="checkbox" id="check-mod-vert-bounce" ${this.selectedEntity.bounceModule?.verticalBounce ? 'checked' : ''}>
                   <span>Vertical Bounce</span>
                 </label>
               </div>
-              <div id="warn-bounce-vert-vel" class="module-dep-warning" style="display: ${this.selectedEntity.bounceModule?.enabled && !this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
-                ⚠️ Requires Vertical Velocity
+              <div id="warn-bounce-vert-vel" class="module-dep-warning" style="display: ${this.selectedEntity.bounceModule?.enabled && this.selectedEntity.bounceModule?.verticalBounce && !this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
+                ⚠️ Inactive without Vertical Velocity
               </div>
             </div>
             <div id="note-mod-bounce" class="module-detached-note" style="display: ${!this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
@@ -628,9 +628,12 @@ export class DevPanel {
               <input type="range" id="slide-creator-bounce" min="0.05" max="1.0" step="0.05" value="${this.creatorState.bounceMod}">
               <div style="margin-top: 6px;">
                 <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                  <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''} ${!this.creatorState.hasVerticalVelocity ? 'disabled' : ''}>
+                  <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''}>
                   <span>Vertical Bounce</span>
                 </label>
+              </div>
+              <div id="creator-warn-bounce-vert" class="module-dep-warning" style="display: ${this.creatorState.hasBounce && this.creatorState.verticalBounce && !this.creatorState.hasVerticalVelocity ? 'block' : 'none'};">
+                ⚠️ Inactive without Vertical Velocity
               </div>
             </div>
 
@@ -799,10 +802,10 @@ export class DevPanel {
     const warnBounceVert = this.container.querySelector("#warn-bounce-vert-vel") as HTMLElement;
     if (checkVertBounce) {
       checkVertBounce.checked = Boolean(e.bounceModule?.verticalBounce);
-      checkVertBounce.disabled = !e.hasVerticalVelocity;
     }
     if (warnBounceVert) {
-      warnBounceVert.style.display = (hasBounceMod && !e.hasVerticalVelocity) ? "block" : "none";
+      const showWarn = Boolean(hasBounceMod && e.bounceModule?.verticalBounce && !e.hasVerticalVelocity);
+      warnBounceVert.style.display = showWarn ? "block" : "none";
     }
 
     // 5. Vertical Velocity
@@ -940,11 +943,14 @@ export class DevPanel {
     const bounceBtn = this.container.querySelector("#creator-toggle-bounce") as HTMLButtonElement;
     const bounceGrp = this.container.querySelector("#grp-creator-bounce") as HTMLElement;
     const creatorVertBounceCheck = this.container.querySelector("#creator-check-vert-bounce") as HTMLInputElement;
+    const creatorWarnBounceVert = this.container.querySelector("#creator-warn-bounce-vert") as HTMLElement;
     if (bounceBtn) { bounceBtn.textContent = s.hasBounce ? "Attached" : "Detached"; bounceBtn.classList.toggle("active", s.hasBounce); }
     if (bounceGrp) bounceGrp.style.display = s.hasBounce ? "block" : "none";
     if (creatorVertBounceCheck) {
       creatorVertBounceCheck.checked = s.verticalBounce;
-      creatorVertBounceCheck.disabled = !s.hasVerticalVelocity;
+    }
+    if (creatorWarnBounceVert) {
+      creatorWarnBounceVert.style.display = (s.hasBounce && s.verticalBounce && !s.hasVerticalVelocity) ? "block" : "none";
     }
     this.setSliderVal("slide-creator-bounce", "val-creator-bounce", s.bounceMod, 2);
 
@@ -1084,10 +1090,6 @@ export class DevPanel {
 
     const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
     checkVertBounce?.addEventListener("change", () => {
-      if (!this.selectedEntity.hasVerticalVelocity) {
-        checkVertBounce.checked = false;
-        return;
-      }
       if (this.selectedEntity.bounceModule) {
         this.selectedEntity.bounceModule.verticalBounce = checkVertBounce.checked;
       }
@@ -1102,9 +1104,6 @@ export class DevPanel {
         this.selectedEntity.verticalVelocityModule.enabled = !this.selectedEntity.verticalVelocityModule.enabled;
       } else {
         this.selectedEntity.verticalVelocityModule = new VerticalVelocityModule({ verticalVelocity: 0, enabled: true });
-      }
-      if (!this.selectedEntity.hasVerticalVelocity && this.selectedEntity.bounceModule) {
-        this.selectedEntity.bounceModule.verticalBounce = false;
       }
       this.syncEntitySliders();
       this.updateInspector();
@@ -1282,29 +1281,14 @@ export class DevPanel {
 
     const creatorVertBounceCheck = this.container.querySelector("#creator-check-vert-bounce") as HTMLInputElement;
     creatorVertBounceCheck?.addEventListener("change", () => {
-      if (!this.creatorState.hasVerticalVelocity) {
-        creatorVertBounceCheck.checked = false;
-        return;
-      }
       this.creatorState.verticalBounce = creatorVertBounceCheck.checked;
+      this.syncCreatorInputs();
     });
 
     const creatorVertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
     creatorVertVelBtn?.addEventListener("click", () => {
       this.creatorState.hasVerticalVelocity = !this.creatorState.hasVerticalVelocity;
-      creatorVertVelBtn.textContent = this.creatorState.hasVerticalVelocity ? "Attached" : "Detached";
-      creatorVertVelBtn.classList.toggle("active", this.creatorState.hasVerticalVelocity);
-      if (!this.creatorState.hasVerticalVelocity) {
-        this.creatorState.verticalBounce = false;
-        if (creatorVertBounceCheck) {
-          creatorVertBounceCheck.checked = false;
-          creatorVertBounceCheck.disabled = true;
-        }
-      } else {
-        if (creatorVertBounceCheck) {
-          creatorVertBounceCheck.disabled = false;
-        }
-      }
+      this.syncCreatorInputs();
     });
 
     const creatorGravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
@@ -1349,7 +1333,7 @@ export class DevPanel {
       colliderModule: s.hasCollider ? new ColliderModule({ radius: s.colliderRadius }) : null,
       massModule: s.hasMass ? new MassModule({ mass: s.mass }) : null,
       frictionModule: s.hasFriction ? new FrictionModule({ staticFrictionMod: s.staticFrictionMod, dynamicFrictionMod: s.dynamicFrictionMod }) : null,
-      bounceModule: s.hasBounce ? new BounceModule({ bounceMod: s.bounceMod, verticalBounce: s.hasVerticalVelocity && s.verticalBounce }) : null,
+      bounceModule: s.hasBounce ? new BounceModule({ bounceMod: s.bounceMod, verticalBounce: s.verticalBounce }) : null,
       verticalVelocityModule: s.hasVerticalVelocity ? new VerticalVelocityModule({ verticalVelocity: 0 }) : null,
       gravityModule: s.hasGravity ? new GravityModule() : null,
       rollModule: s.hasRollModule ? new RollModule({ rollResistance: s.rollResistance }) : null,
