@@ -142,35 +142,32 @@ export class GameLoop {
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;
 
-          // High altitude collision rule:
-          // If both are above wall height, they collide with each other.
-          // If one is not above wall height, they do not collide.
-          const wallThreshold = this.arena.wallHeight - 0.05;
-          const aAboveWall = a.position.z >= wallThreshold;
-          const bAboveWall = b.position.z >= wallThreshold;
+          // Two-Tier Altitude Collision Rule:
+          // 1. All colliders below wall height collide with each other, and NOT with colliders above wall height.
+          // 2. All colliders above wall height (including objects resting on walls) collide with each other, and NOT with colliders below wall height.
+          const wallThreshold = this.arena.wallHeight - 0.15;
+          const aAboveWall = a.position.z >= wallThreshold || a.supportingSurfaceHeight >= wallThreshold;
+          const bAboveWall = b.position.z >= wallThreshold || b.supportingSurfaceHeight >= wallThreshold;
 
           // If one is above wall height and the other is not, they never collide (clean pass-over)
           if (aAboveWall !== bAboveWall) continue;
 
-          // 3D distance between the centers of two sphere colliders
+          // 2D planar distance between the centers of the two colliders
           const dx = b.position.x - a.position.x;
           const dy = b.position.y - a.position.y;
-          const dz = b.position.z - a.position.z;
-          const dist3DSq = dx * dx + dy * dy + dz * dz;
+          const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
 
-          if (dist3DSq < minDist * minDist && dist3DSq > 0.000001) {
-            const dist = Math.sqrt(dist3DSq);
+          if (dist2DSq < minDist * minDist && dist2DSq > 0.000001) {
+            const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
             const normX = dx / dist;
             const normY = dy / dist;
-            const normZ = dz / dist;
 
-            // Relative 3D velocity (B relative to A)
+            // Relative 2D velocity (B relative to A)
             const relVx = b.velocity.x - a.velocity.x;
             const relVy = b.velocity.y - a.velocity.y;
-            const relVz = b.verticalVelocity - a.verticalVelocity;
-            const velAlongNormal = relVx * normX + relVy * normY + relVz * normZ;
+            const velAlongNormal = relVx * normX + relVy * normY;
 
             const isMasslessA = !a.hasMass;
             const isMasslessB = !b.hasMass;
@@ -179,19 +176,15 @@ export class GameLoop {
             if (isMasslessA && isMasslessB) {
               a.position.x -= normX * overlap * 0.5;
               a.position.y -= normY * overlap * 0.5;
-              a.position.z -= normZ * overlap * 0.5;
               b.position.x += normX * overlap * 0.5;
               b.position.y += normY * overlap * 0.5;
-              b.position.z += normZ * overlap * 0.5;
 
               if (velAlongNormal < 0) {
                 const impulse = -velAlongNormal * 0.5;
                 a.velocity.x -= impulse * normX;
                 a.velocity.y -= impulse * normY;
-                a.verticalVelocity -= impulse * normZ;
                 b.velocity.x += impulse * normX;
                 b.velocity.y += impulse * normY;
-                b.verticalVelocity += impulse * normZ;
               }
               continue;
             }
@@ -211,13 +204,11 @@ export class GameLoop {
                 // A is completely unaffected! B absorbs entire separation and inherits velocity from A
                 b.position.x += normX * overlap;
                 b.position.y += normY * overlap;
-                b.position.z += normZ * overlap;
 
                 if (velAlongNormal < 0) {
                   // B inherits closing velocity along normal from A without dampening A
                   b.velocity.x += (a.velocity.x - b.velocity.x) * Math.abs(normX);
                   b.velocity.y += (a.velocity.y - b.velocity.y) * Math.abs(normY);
-                  b.verticalVelocity += (a.verticalVelocity - b.verticalVelocity) * Math.abs(normZ);
                 }
               }
               continue;
@@ -234,12 +225,10 @@ export class GameLoop {
               } else {
                 a.position.x -= normX * overlap;
                 a.position.y -= normY * overlap;
-                a.position.z -= normZ * overlap;
 
                 if (velAlongNormal < 0) {
                   a.velocity.x += (b.velocity.x - a.velocity.x) * Math.abs(normX);
                   a.velocity.y += (b.velocity.y - a.velocity.y) * Math.abs(normY);
-                  a.verticalVelocity += (b.verticalVelocity - a.verticalVelocity) * Math.abs(normZ);
                 }
               }
               continue;
@@ -254,17 +243,11 @@ export class GameLoop {
             const ratioA = invMassA / invMassSum;
             const ratioB = invMassB / invMassSum;
 
-            // Positional separation in 3D
+            // Positional separation in 2D
             a.position.x -= normX * overlap * ratioA;
             a.position.y -= normY * overlap * ratioA;
-            a.position.z -= normZ * overlap * ratioA;
             b.position.x += normX * overlap * ratioB;
             b.position.y += normY * overlap * ratioB;
-            b.position.z += normZ * overlap * ratioB;
-
-            // Clamp z so neither drops below their supporting surface
-            a.position.z = Math.max(a.supportingSurfaceHeight, a.position.z);
-            b.position.z = Math.max(b.supportingSurfaceHeight, b.position.z);
 
             if (velAlongNormal < 0) {
               // When actively walking against an object, contact is an inelastic continuous push (restitution = 0)
@@ -279,51 +262,34 @@ export class GameLoop {
 
               a.velocity.x -= normalImpulse * invMassA * normX;
               a.velocity.y -= normalImpulse * invMassA * normY;
-              a.verticalVelocity -= normalImpulse * invMassA * normZ;
 
               b.velocity.x += normalImpulse * invMassB * normX;
               b.velocity.y += normalImpulse * invMassB * normY;
-              b.verticalVelocity += normalImpulse * invMassB * normZ;
 
               // Tangential relative velocity (perpendicular to normal)
-              const tangVx = relVx - velAlongNormal * normX;
-              const tangVy = relVy - velAlongNormal * normY;
-              const tangVz = relVz - velAlongNormal * normZ;
-              const tangSpeed = Math.hypot(tangVx, tangVy, tangVz);
+              const tangX = -normY;
+              const tangY = normX;
+              const relVt = relVx * tangX + relVy * tangY;
 
-              if (tangSpeed > 0.001) {
-                const tangX = tangVx / tangSpeed;
-                const tangY = tangVy / tangSpeed;
-                const tangZ = tangVz / tangSpeed;
-
+              if (Math.abs(relVt) > 0.001) {
                 // Contact friction
                 const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-                const beta = 0.4; // Sphere rotational inertia factor (2/5 for solid sphere)
-                const stickImpulse = tangSpeed / (invMassSum * (1 + 1 / beta));
-                const maxFricImpulse = muObj * normalImpulse;
-                const fricImpulse = Math.min(stickImpulse, maxFricImpulse);
+                const beta = 0.4; // Sphere rotational inertia factor
+                const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+                const maxFricImpulse = muObj * Math.abs(normalImpulse);
+                const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
 
                 // Tangential impulse opposes relative sliding velocity
                 a.velocity.x += fricImpulse * invMassA * tangX;
                 a.velocity.y += fricImpulse * invMassA * tangY;
-                a.verticalVelocity += fricImpulse * invMassA * tangZ;
 
                 b.velocity.x -= fricImpulse * invMassB * tangX;
                 b.velocity.y -= fricImpulse * invMassB * tangY;
-                b.verticalVelocity -= fricImpulse * invMassB * tangZ;
 
-                // Torque vector tau = r x F_tang
-                // For A: r_A = +n * R_A, force = +F_tang * t => tau_A = (n x t) * R_A * fricImpulse
-                // For B: r_B = -n * R_B, force = -F_tang * t => tau_B = (-n x -t) * R_B * fricImpulse = (n x t) * R_B * fricImpulse
-                const torqueX = normY * tangZ - normZ * tangY;
-                const torqueY = normZ * tangX - normX * tangZ;
-                const torqueZ = normX * tangY - normY * tangX;
-
+                // Rotational coupling if roll module is present
                 if (a.rollModule && a.rollModule.enabled) {
-                  const scaleA = fricImpulse / (beta * a.mass * a.colliderRadius);
-                  a.rollModule.angularVelocity.x += torqueX * scaleA;
-                  a.rollModule.angularVelocity.y += torqueY * scaleA;
-                  a.rollModule.angularVelocity.z += torqueZ * scaleA;
+                  const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+                  a.rollModule.angularVelocity.z += spinImpulse;
                   a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
 
                   if (a.isRestingOnSurface) {
@@ -333,10 +299,8 @@ export class GameLoop {
                 }
 
                 if (b.rollModule && b.rollModule.enabled) {
-                  const scaleB = fricImpulse / (beta * b.mass * b.colliderRadius);
-                  b.rollModule.angularVelocity.x += torqueX * scaleB;
-                  b.rollModule.angularVelocity.y += torqueY * scaleB;
-                  b.rollModule.angularVelocity.z += torqueZ * scaleB;
+                  const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+                  b.rollModule.angularVelocity.z -= spinImpulseB;
                   b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
 
                   if (b.isRestingOnSurface) {

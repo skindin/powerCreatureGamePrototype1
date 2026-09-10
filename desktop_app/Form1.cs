@@ -255,7 +255,10 @@ public partial class Form1 : Form
             {
                 loadingPanel.Visible = false;
                 webView.Visible = true;
-                webView.Focus();
+                if (Form.ActiveForm == this)
+                {
+                    webView.Focus();
+                }
             };
 
             webView.CoreWebView2.Navigate(activeUrl);

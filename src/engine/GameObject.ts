@@ -258,9 +258,9 @@ export class GameObject {
     return this.hasVerticalPosition && this.position.z > 0.001;
   }
 
-  /** Readonly getter: true if elevated above standard arena wall height (1.0 unit) */
+  /** Readonly getter: true if elevated at or above standard arena wall height (1.0 unit) or resting on a wall */
   public get isAboveWalls(): boolean {
-    return this.hasVerticalPosition && this.position.z > 1.0;
+    return this.hasVerticalPosition && (this.position.z >= 0.95 || this.supportingSurfaceHeight >= 0.95);
   }
 
   /** Update physics, gravity, friction, and ground/wall collision */
