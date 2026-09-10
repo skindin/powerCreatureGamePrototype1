@@ -191,9 +191,9 @@ export class Renderer {
 
       // Subtle indicator badge
       ctx.fillStyle = "#38bdf8";
-      ctx.font = "bold 9px sans-serif";
+      ctx.font = "bold 10px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("READY", x, y - renderRadius - 6);
+      ctx.fillText("grab", x, y - renderRadius - 6);
       ctx.restore();
     }
 
