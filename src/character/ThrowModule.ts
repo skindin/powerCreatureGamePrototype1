@@ -53,7 +53,8 @@ export class ThrowModule {
     targetY: number,
     arena: Arena,
     throwPower: number,
-    hasGravity = true
+    hasGravity = true,
+    hasVerticalVelocity = true
   ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
     const dx = targetX - startX;
     const dy = targetY - startY;
@@ -67,8 +68,8 @@ export class ThrowModule {
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
 
-    // Zero-gravity flight: moves in a completely straight horizontal line at startZ
-    if (!hasGravity) {
+    // Straight-line horizontal flight if zero-G or no vertical velocity module
+    if (!hasGravity || !hasVerticalVelocity) {
       const maxThrowSpeed = Math.max(3.0, throwPower);
       const totalTime = Math.max(0.14, actualDist / maxThrowSpeed);
       const vx = dirX * maxThrowSpeed;
@@ -157,7 +158,10 @@ export class ThrowModule {
     const startZ = held.position.z;
 
     const throwPower = this.baseThrowForce * character.strength;
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+    const launch = this.computeLaunchVelocity(
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+    );
     if (!launch) return null;
 
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight } = launch;
@@ -176,9 +180,9 @@ export class ThrowModule {
       // At the final step, enforce exact final target coordinates
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
-      const calculatedZ = held.hasGravity ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
-      const currentZ = held.hasGravity ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
-      const currentVz = held.hasGravity ? (vz - arena.gravity * t) : 0;
+      const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
+      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
+      const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
 
       // Blue section: height > standard wall height
       const couldClearWall = currentZ > arena.wallHeight;
@@ -262,7 +266,9 @@ export class ThrowModule {
     const startZ = held.position.z;
 
     const throwPower = this.baseThrowForce * character.strength;
-    const launch = this.computeLaunchVelocity(startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity);
+    const launch = this.computeLaunchVelocity(
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+    );
     if (!launch) return null;
 
     held.isHeld = false;

@@ -10,6 +10,7 @@ import { MassModule } from "../engine/MassModule.js";
 import { FrictionModule } from "../engine/FrictionModule.js";
 import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
+import { VerticalVelocityModule } from "../engine/VerticalVelocityModule.js";
 
 export interface CreatorPreset {
   name: string;
@@ -24,6 +25,8 @@ export interface CreatorPreset {
   dynamicFrictionMod: number;
   hasBounce: boolean;
   bounceMod: number;
+  verticalBounce: boolean;
+  hasVerticalVelocity: boolean;
   hasGravity: boolean;
   hasRollModule: boolean;
   rollResistance: number;
@@ -56,6 +59,8 @@ export class DevPanel {
     dynamicFrictionMod: 1.0,
     hasBounce: true,
     bounceMod: 0.20,
+    verticalBounce: true,
+    hasVerticalVelocity: true,
     hasGravity: true,
     hasRollModule: false,
     rollResistance: 0.40,
@@ -76,6 +81,8 @@ export class DevPanel {
       dynamicFrictionMod: 1.0,
       hasBounce: true,
       bounceMod: 0.25,
+      verticalBounce: true,
+      hasVerticalVelocity: true,
       hasGravity: true,
       hasRollModule: false,
       rollResistance: 0.4,
@@ -93,6 +100,8 @@ export class DevPanel {
       dynamicFrictionMod: 1.2,
       hasBounce: false,
       bounceMod: 0.05,
+      verticalBounce: false,
+      hasVerticalVelocity: true,
       hasGravity: true,
       hasRollModule: false,
       rollResistance: 0.4,
@@ -110,6 +119,8 @@ export class DevPanel {
       dynamicFrictionMod: 0.8,
       hasBounce: true,
       bounceMod: 0.88,
+      verticalBounce: true,
+      hasVerticalVelocity: true,
       hasGravity: true,
       hasRollModule: false,
       rollResistance: 0.4,
@@ -127,6 +138,8 @@ export class DevPanel {
       dynamicFrictionMod: 0.5,
       hasBounce: true,
       bounceMod: 0.95,
+      verticalBounce: true,
+      hasVerticalVelocity: true,
       hasGravity: true,
       hasRollModule: true,
       rollResistance: 0.0,
@@ -144,6 +157,8 @@ export class DevPanel {
       dynamicFrictionMod: 0.0,
       hasBounce: false,
       bounceMod: 0.0,
+      verticalBounce: false,
+      hasVerticalVelocity: false,
       hasGravity: false,
       hasRollModule: false,
       rollResistance: 0.0,
@@ -261,8 +276,8 @@ export class DevPanel {
 
         <!-- 🧩 Modular Capabilities & Physical Behaviors -->
         <div class="dev-section">
-          <h3>🧩 Modular Capabilities</h3>
-          <p class="section-desc">Attach or detach isolated physics modules for the selected entity.</p>
+          <h3>🧩 Physical Behaviors</h3>
+          <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
 
           <!-- Visual Shape -->
           <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity === this.character ? 'display:none;' : ''}">
@@ -272,10 +287,10 @@ export class DevPanel {
             </button>
           </div>
 
-          <!-- 1. Collider Module -->
+          <!-- 1. Collider -->
           <div class="module-card">
             <div class="toggle-row">
-              <label>🛡️ Collider Module</label>
+              <label>🛡️ Collider</label>
               <button id="toggle-mod-collider" class="btn-toggle ${this.selectedEntity.hasCollider ? 'active' : ''}">
                 ${this.selectedEntity.hasCollider ? 'Attached' : 'Detached'}
               </button>
@@ -294,10 +309,10 @@ export class DevPanel {
             </div>
           </div>
 
-          <!-- 2. Mass Module -->
+          <!-- 2. Mass -->
           <div class="module-card">
             <div class="toggle-row">
-              <label>⚖️ Mass Module</label>
+              <label>⚖️ Mass</label>
               <button id="toggle-mod-mass" class="btn-toggle ${this.selectedEntity.hasMass ? 'active' : ''}">
                 ${this.selectedEntity.hasMass ? 'Attached' : 'Detached'}
               </button>
@@ -316,16 +331,16 @@ export class DevPanel {
             </div>
           </div>
 
-          <!-- 3. Friction Module (Requires Mass) -->
+          <!-- 3. Friction (Requires Mass) -->
           <div class="module-card" id="card-mod-friction">
             <div class="toggle-row">
-              <label>🛝 Friction Module</label>
+              <label>🛝 Friction</label>
               <button id="toggle-mod-friction" class="btn-toggle ${this.selectedEntity.frictionModule?.enabled ? 'active' : ''}">
                 ${this.selectedEntity.frictionModule?.enabled ? 'Attached' : 'Detached'}
               </button>
             </div>
             <div id="warn-friction-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass && this.selectedEntity.frictionModule?.enabled ? 'block' : 'none'};">
-              ⚠️ Inactive without Mass Module (no normal force)
+              ⚠️ Inactive without Mass (no normal force)
             </div>
             <div id="group-mod-friction" style="display: ${this.selectedEntity.frictionModule?.enabled ? 'flex' : 'none'}; flex-direction: column; gap: 8px;">
               <div class="slider-group">
@@ -348,16 +363,16 @@ export class DevPanel {
             </div>
           </div>
 
-          <!-- 4. Bounciness Module (Requires Mass) -->
+          <!-- 4. Bounciness (Requires Mass) -->
           <div class="module-card" id="card-mod-bounce">
             <div class="toggle-row">
-              <label>🏀 Bounciness Module</label>
+              <label>🏀 Bounciness</label>
               <button id="toggle-mod-bounce" class="btn-toggle ${this.selectedEntity.bounceModule?.enabled ? 'active' : ''}">
                 ${this.selectedEntity.bounceModule?.enabled ? 'Attached' : 'Detached'}
               </button>
             </div>
             <div id="warn-bounce-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass && this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
-              ⚠️ Inactive without Mass Module (no restitution calculation)
+              ⚠️ Inactive without Mass (no restitution calculation)
             </div>
             <div id="group-mod-bounce" style="display: ${this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
               <div class="slider-group">
@@ -367,16 +382,47 @@ export class DevPanel {
                 </div>
                 <input type="range" id="slide-entity-bounce" min="0.05" max="1.0" step="0.05" value="${this.selectedEntity.bounceModule?.bounceMod ?? 0.4}">
               </div>
+              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="check-mod-vert-bounce" ${this.selectedEntity.bounceModule?.verticalBounce ? 'checked' : ''} ${!this.selectedEntity.hasVerticalVelocity ? 'disabled' : ''}>
+                  <span>Vertical Bounce</span>
+                </label>
+              </div>
+              <div id="warn-bounce-vert-vel" class="module-dep-warning" style="display: ${this.selectedEntity.bounceModule?.enabled && !this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
+                ⚠️ Requires Vertical Velocity
+              </div>
             </div>
             <div id="note-mod-bounce" class="module-detached-note" style="display: ${!this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
               Zero bounce: impact velocity immediately absorbed
             </div>
           </div>
 
-          <!-- 5. Gravity Module -->
+          <!-- 5. Vertical Velocity -->
+          <div class="module-card" id="card-mod-vert-vel">
+            <div class="toggle-row">
+              <label>↕️ Vertical Velocity</label>
+              <button id="toggle-mod-vert-vel" class="btn-toggle ${this.selectedEntity.hasVerticalVelocity ? 'active' : ''}">
+                ${this.selectedEntity.hasVerticalVelocity ? 'Attached' : 'Detached'}
+              </button>
+            </div>
+            <div id="group-mod-vert-vel" style="display: ${this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Vertical Velocity (u/s)</span>
+                  <span id="val-entity-vert-vel">${this.selectedEntity.verticalVelocity.toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${this.selectedEntity.verticalVelocity}">
+              </div>
+            </div>
+            <div id="note-mod-vert-vel" class="module-detached-note" style="display: ${!this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
+              Zero vertical velocity: elevation changes along z are disabled
+            </div>
+          </div>
+
+          <!-- 6. Gravity -->
           <div class="module-card">
             <div class="toggle-row">
-              <label>🪐 Gravity Module</label>
+              <label>🪐 Gravity</label>
               <button id="toggle-mod-gravity" class="btn-toggle ${this.selectedEntity.hasGravity ? 'active' : ''}">
                 ${this.selectedEntity.hasGravity ? 'Attached' : 'Detached'}
               </button>
@@ -386,16 +432,16 @@ export class DevPanel {
             </div>
           </div>
 
-          <!-- 6. Roll Module -->
+          <!-- 7. Roll -->
           <div class="module-card">
             <div class="toggle-row">
-              <label>🔄 Roll Module</label>
+              <label>🔄 Roll</label>
               <button id="toggle-mod-roll" class="btn-toggle ${this.selectedEntity.rollModule?.enabled ? 'active' : ''}">
                 ${this.selectedEntity.rollModule?.enabled ? 'Attached' : 'Detached'}
               </button>
             </div>
             <div id="note-roll-friction" class="module-detached-note" style="display: ${this.selectedEntity.rollModule?.enabled && !this.selectedEntity.hasFriction ? 'block' : 'none'}; color: #cbd5e1;">
-              ℹ️ Spin not resisted without Friction Module
+              ℹ️ Spin not resisted without Friction
             </div>
             <div id="group-mod-roll" style="display: ${this.selectedEntity.rollModule?.enabled ? 'block' : 'none'};">
               <div class="slider-group">
@@ -421,7 +467,7 @@ export class DevPanel {
                 </button>
               </div>
               <div id="warn-walk-friction" class="module-dep-warning" style="display: ${!this.character.hasFriction && this.character.walkingModule?.enabled ? 'block' : 'none'};">
-                ⚠️ Feet slip without Friction Module (cannot push ground)
+                ⚠️ Feet slip without Friction (cannot push ground)
               </div>
               <div id="group-mod-walking" style="display: ${this.character.walkingModule?.enabled ? 'flex' : 'none'}; flex-direction: column; gap: 8px;">
                 <div class="slider-group">
@@ -523,7 +569,7 @@ export class DevPanel {
             </div>
 
             <div class="toggle-row">
-              <label>Collider Module</label>
+              <label>Collider</label>
               <button id="creator-toggle-collider" class="btn-toggle ${this.creatorState.hasCollider ? 'active' : ''}">
                 ${this.creatorState.hasCollider ? 'Attached' : 'Detached'}
               </button>
@@ -538,7 +584,7 @@ export class DevPanel {
             </div>
 
             <div class="toggle-row">
-              <label>Mass Module</label>
+              <label>Mass</label>
               <button id="creator-toggle-mass" class="btn-toggle ${this.creatorState.hasMass ? 'active' : ''}">
                 ${this.creatorState.hasMass ? 'Attached' : 'Detached'}
               </button>
@@ -553,7 +599,7 @@ export class DevPanel {
             </div>
 
             <div class="toggle-row">
-              <label>Friction Module</label>
+              <label>Friction</label>
               <button id="creator-toggle-friction" class="btn-toggle ${this.creatorState.hasFriction ? 'active' : ''}">
                 ${this.creatorState.hasFriction ? 'Attached' : 'Detached'}
               </button>
@@ -568,7 +614,7 @@ export class DevPanel {
             </div>
 
             <div class="toggle-row">
-              <label>Bounciness Module</label>
+              <label>Bounciness</label>
               <button id="creator-toggle-bounce" class="btn-toggle ${this.creatorState.hasBounce ? 'active' : ''}">
                 ${this.creatorState.hasBounce ? 'Attached' : 'Detached'}
               </button>
@@ -580,17 +626,30 @@ export class DevPanel {
                 <span id="val-creator-bounce">${this.creatorState.bounceMod.toFixed(2)}</span>
               </div>
               <input type="range" id="slide-creator-bounce" min="0.05" max="1.0" step="0.05" value="${this.creatorState.bounceMod}">
+              <div style="margin-top: 6px;">
+                <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''} ${!this.creatorState.hasVerticalVelocity ? 'disabled' : ''}>
+                  <span>Vertical Bounce</span>
+                </label>
+              </div>
             </div>
 
             <div class="toggle-row">
-              <label>Gravity Module</label>
+              <label>Vertical Velocity</label>
+              <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity ? 'active' : ''}">
+                ${this.creatorState.hasVerticalVelocity ? 'Attached' : 'Detached'}
+              </button>
+            </div>
+
+            <div class="toggle-row">
+              <label>Gravity</label>
               <button id="creator-toggle-gravity" class="btn-toggle ${this.creatorState.hasGravity ? 'active' : ''}">
                 ${this.creatorState.hasGravity ? 'Attached' : 'Detached'}
               </button>
             </div>
 
             <div class="toggle-row">
-              <label>Roll Module</label>
+              <label>Roll</label>
               <button id="creator-toggle-roll" class="btn-toggle ${this.creatorState.hasRollModule ? 'active' : ''}">
                 ${this.creatorState.hasRollModule ? 'Enabled' : 'Disabled'}
               </button>
@@ -721,7 +780,7 @@ export class DevPanel {
     this.setSliderVal("slide-entity-static-fric", "val-entity-static-fric", e.frictionModule?.staticFrictionMod ?? 1.0, 2);
     this.setSliderVal("slide-entity-dynamic-fric", "val-entity-dynamic-fric", e.frictionModule?.dynamicFrictionMod ?? 1.0, 2);
 
-    // 4. Bounce Module
+    // 4. Bounciness
     const btnBounce = this.container.querySelector("#toggle-mod-bounce") as HTMLButtonElement;
     const grpBounce = this.container.querySelector("#group-mod-bounce") as HTMLElement;
     const noteBounce = this.container.querySelector("#note-mod-bounce") as HTMLElement;
@@ -736,7 +795,30 @@ export class DevPanel {
     if (warnBounceMass) warnBounceMass.style.display = (!e.hasMass && hasBounceMod) ? "block" : "none";
     this.setSliderVal("slide-entity-bounce", "val-entity-bounce", e.bounceModule?.bounceMod ?? 0.4, 2);
 
-    // 5. Gravity Module
+    const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
+    const warnBounceVert = this.container.querySelector("#warn-bounce-vert-vel") as HTMLElement;
+    if (checkVertBounce) {
+      checkVertBounce.checked = Boolean(e.bounceModule?.verticalBounce);
+      checkVertBounce.disabled = !e.hasVerticalVelocity;
+    }
+    if (warnBounceVert) {
+      warnBounceVert.style.display = (hasBounceMod && !e.hasVerticalVelocity) ? "block" : "none";
+    }
+
+    // 5. Vertical Velocity
+    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
+    const grpVertVel = this.container.querySelector("#group-mod-vert-vel") as HTMLElement;
+    const noteVertVel = this.container.querySelector("#note-mod-vert-vel") as HTMLElement;
+    const hasVertVel = e.hasVerticalVelocity;
+    if (btnVertVel) {
+      btnVertVel.textContent = hasVertVel ? "Attached" : "Detached";
+      btnVertVel.classList.toggle("active", hasVertVel);
+    }
+    if (grpVertVel) grpVertVel.style.display = hasVertVel ? "block" : "none";
+    if (noteVertVel) noteVertVel.style.display = !hasVertVel ? "block" : "none";
+    this.setSliderVal("slide-entity-vert-vel", "val-entity-vert-vel", e.verticalVelocity, 2);
+
+    // 6. Gravity
     const btnGravity = this.container.querySelector("#toggle-mod-gravity") as HTMLButtonElement;
     const noteGravity = this.container.querySelector("#note-mod-gravity") as HTMLElement;
     if (btnGravity) {
@@ -749,7 +831,7 @@ export class DevPanel {
         : "Zero-G: never falls, flies horizontally in a straight line";
     }
 
-    // 6. Roll Module
+    // 7. Roll
     const btnRoll = this.container.querySelector("#toggle-mod-roll") as HTMLButtonElement;
     const grpRoll = this.container.querySelector("#group-mod-roll") as HTMLElement;
     const noteRollFric = this.container.querySelector("#note-roll-friction") as HTMLElement;
@@ -857,9 +939,21 @@ export class DevPanel {
     // Bounce
     const bounceBtn = this.container.querySelector("#creator-toggle-bounce") as HTMLButtonElement;
     const bounceGrp = this.container.querySelector("#grp-creator-bounce") as HTMLElement;
+    const creatorVertBounceCheck = this.container.querySelector("#creator-check-vert-bounce") as HTMLInputElement;
     if (bounceBtn) { bounceBtn.textContent = s.hasBounce ? "Attached" : "Detached"; bounceBtn.classList.toggle("active", s.hasBounce); }
     if (bounceGrp) bounceGrp.style.display = s.hasBounce ? "block" : "none";
+    if (creatorVertBounceCheck) {
+      creatorVertBounceCheck.checked = s.verticalBounce;
+      creatorVertBounceCheck.disabled = !s.hasVerticalVelocity;
+    }
     this.setSliderVal("slide-creator-bounce", "val-creator-bounce", s.bounceMod, 2);
+
+    // Vertical Velocity
+    const vertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
+    if (vertVelBtn) {
+      vertVelBtn.textContent = s.hasVerticalVelocity ? "Attached" : "Detached";
+      vertVelBtn.classList.toggle("active", s.hasVerticalVelocity);
+    }
 
     // Gravity
     const gravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
@@ -986,6 +1080,38 @@ export class DevPanel {
 
     this.setupSlider("slide-entity-bounce", "val-entity-bounce", (val) => {
       this.selectedEntity.bounceMod = val;
+    }, 2);
+
+    const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
+    checkVertBounce?.addEventListener("change", () => {
+      if (!this.selectedEntity.hasVerticalVelocity) {
+        checkVertBounce.checked = false;
+        return;
+      }
+      if (this.selectedEntity.bounceModule) {
+        this.selectedEntity.bounceModule.verticalBounce = checkVertBounce.checked;
+      }
+      this.syncEntitySliders();
+      this.updateInspector();
+    });
+
+    // Vertical Velocity
+    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
+    btnVertVel?.addEventListener("click", () => {
+      if (this.selectedEntity.verticalVelocityModule) {
+        this.selectedEntity.verticalVelocityModule.enabled = !this.selectedEntity.verticalVelocityModule.enabled;
+      } else {
+        this.selectedEntity.verticalVelocityModule = new VerticalVelocityModule({ verticalVelocity: 0, enabled: true });
+      }
+      if (!this.selectedEntity.hasVerticalVelocity && this.selectedEntity.bounceModule) {
+        this.selectedEntity.bounceModule.verticalBounce = false;
+      }
+      this.syncEntitySliders();
+      this.updateInspector();
+    });
+
+    this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
+      this.selectedEntity.verticalVelocity = val;
     }, 2);
 
     // Gravity
@@ -1154,6 +1280,33 @@ export class DevPanel {
     });
     this.setupSlider("slide-creator-bounce", "val-creator-bounce", (v) => { this.creatorState.bounceMod = v; }, 2);
 
+    const creatorVertBounceCheck = this.container.querySelector("#creator-check-vert-bounce") as HTMLInputElement;
+    creatorVertBounceCheck?.addEventListener("change", () => {
+      if (!this.creatorState.hasVerticalVelocity) {
+        creatorVertBounceCheck.checked = false;
+        return;
+      }
+      this.creatorState.verticalBounce = creatorVertBounceCheck.checked;
+    });
+
+    const creatorVertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
+    creatorVertVelBtn?.addEventListener("click", () => {
+      this.creatorState.hasVerticalVelocity = !this.creatorState.hasVerticalVelocity;
+      creatorVertVelBtn.textContent = this.creatorState.hasVerticalVelocity ? "Attached" : "Detached";
+      creatorVertVelBtn.classList.toggle("active", this.creatorState.hasVerticalVelocity);
+      if (!this.creatorState.hasVerticalVelocity) {
+        this.creatorState.verticalBounce = false;
+        if (creatorVertBounceCheck) {
+          creatorVertBounceCheck.checked = false;
+          creatorVertBounceCheck.disabled = true;
+        }
+      } else {
+        if (creatorVertBounceCheck) {
+          creatorVertBounceCheck.disabled = false;
+        }
+      }
+    });
+
     const creatorGravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
     creatorGravBtn?.addEventListener("click", () => {
       this.creatorState.hasGravity = !this.creatorState.hasGravity;
@@ -1196,7 +1349,8 @@ export class DevPanel {
       colliderModule: s.hasCollider ? new ColliderModule({ radius: s.colliderRadius }) : null,
       massModule: s.hasMass ? new MassModule({ mass: s.mass }) : null,
       frictionModule: s.hasFriction ? new FrictionModule({ staticFrictionMod: s.staticFrictionMod, dynamicFrictionMod: s.dynamicFrictionMod }) : null,
-      bounceModule: s.hasBounce ? new BounceModule({ bounceMod: s.bounceMod }) : null,
+      bounceModule: s.hasBounce ? new BounceModule({ bounceMod: s.bounceMod, verticalBounce: s.hasVerticalVelocity && s.verticalBounce }) : null,
+      verticalVelocityModule: s.hasVerticalVelocity ? new VerticalVelocityModule({ verticalVelocity: 0 }) : null,
       gravityModule: s.hasGravity ? new GravityModule() : null,
       rollModule: s.hasRollModule ? new RollModule({ rollResistance: s.rollResistance }) : null,
     });
@@ -1220,7 +1374,8 @@ export class DevPanel {
       colliderModule: orig.colliderModule ? new ColliderModule({ radius: orig.colliderModule.radius, enabled: orig.colliderModule.enabled }) : null,
       massModule: orig.massModule ? new MassModule({ mass: orig.massModule.mass, enabled: orig.massModule.enabled }) : null,
       frictionModule: orig.frictionModule ? new FrictionModule({ staticFrictionMod: orig.frictionModule.staticFrictionMod, dynamicFrictionMod: orig.frictionModule.dynamicFrictionMod, enabled: orig.frictionModule.enabled }) : null,
-      bounceModule: orig.bounceModule ? new BounceModule({ bounceMod: orig.bounceModule.bounceMod, enabled: orig.bounceModule.enabled }) : null,
+      bounceModule: orig.bounceModule ? new BounceModule({ bounceMod: orig.bounceModule.bounceMod, verticalBounce: orig.bounceModule.verticalBounce, enabled: orig.bounceModule.enabled }) : null,
+      verticalVelocityModule: orig.verticalVelocityModule ? new VerticalVelocityModule({ verticalVelocity: orig.verticalVelocityModule.velocity, enabled: orig.verticalVelocityModule.enabled }) : null,
       gravityModule: orig.gravityModule ? new GravityModule({ enabled: orig.gravityModule.enabled }) : null,
       rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance, enabled: orig.rollModule.enabled }) : null,
     });
@@ -1298,7 +1453,11 @@ export class DevPanel {
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Bounciness</span>
-        <span class="inspect-v ${e.hasBounce ? '' : 'highlight-held'}">${e.hasBounce && e.bounceMod !== null ? e.bounceMod.toFixed(2) : 'Zero Bounce'}</span>
+        <span class="inspect-v ${e.hasBounce ? '' : 'highlight-held'}">${e.hasBounce && e.bounceMod !== null ? `${e.bounceMod.toFixed(2)} (Vert: ${e.hasVerticalBounce ? 'On' : 'Off'})` : 'Zero Bounce'}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Vertical Velocity</span>
+        <span class="inspect-v ${e.hasVerticalVelocity ? '' : 'highlight-held'}">${e.hasVerticalVelocity ? `${e.verticalVelocity.toFixed(2)} u/s` : 'Detached (Locked)'}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Gravity</span>

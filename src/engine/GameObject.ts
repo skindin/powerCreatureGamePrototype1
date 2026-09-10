@@ -5,6 +5,7 @@ import { MassModule } from "./MassModule.js";
 import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
+import { VerticalVelocityModule } from "./VerticalVelocityModule.js";
 
 export interface Vector2D {
   x: number;
@@ -22,7 +23,6 @@ export class GameObject {
   public name: string;
   public position: Vector3D;
   public velocity: Vector2D;
-  public verticalVelocity: number;
   public color: string;
   public isHeld: boolean;
   public heldBy: GameObject | null;
@@ -34,6 +34,7 @@ export class GameObject {
   public massModule: MassModule | null = null;
   public frictionModule: FrictionModule | null = null;
   public bounceModule: BounceModule | null = null;
+  public verticalVelocityModule: VerticalVelocityModule | null = null;
   public gravityModule: GravityModule | null = null;
   public rollModule: RollModule | null = null;
 
@@ -49,6 +50,7 @@ export class GameObject {
     massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
     bounceModule?: BounceModule | null;
+    verticalVelocityModule?: VerticalVelocityModule | null;
     gravityModule?: GravityModule | null;
     rollModule?: RollModule | null;
     // Convenience option shorthands
@@ -58,6 +60,7 @@ export class GameObject {
     dynamicGroundFrictionMod?: number;
     bounceMod?: number | null;
     hasGravity?: boolean;
+    hasVerticalVelocity?: boolean;
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Object";
@@ -71,7 +74,6 @@ export class GameObject {
       x: options.velocity?.x ?? 0,
       y: options.velocity?.y ?? 0,
     };
-    this.verticalVelocity = options.verticalVelocity ?? 0;
     this.color = options.color ?? "#38bdf8";
     this.isHeld = false;
     this.heldBy = null;
@@ -99,6 +101,12 @@ export class GameObject {
       : (options.bounceMod !== undefined && options.bounceMod !== null
           ? new BounceModule({ bounceMod: options.bounceMod })
           : new BounceModule({ bounceMod: 0.4 }));
+
+    this.verticalVelocityModule = options.verticalVelocityModule !== undefined
+      ? options.verticalVelocityModule
+      : (options.hasVerticalVelocity === false
+          ? null
+          : new VerticalVelocityModule({ verticalVelocity: options.verticalVelocity ?? 0 }));
 
     this.gravityModule = options.gravityModule !== undefined
       ? options.gravityModule
@@ -193,6 +201,31 @@ export class GameObject {
     }
   }
 
+  public get hasVerticalVelocity(): boolean {
+    return Boolean(this.verticalVelocityModule && this.verticalVelocityModule.enabled);
+  }
+
+  public get verticalVelocity(): number {
+    return this.hasVerticalVelocity && this.verticalVelocityModule ? this.verticalVelocityModule.velocity : 0;
+  }
+
+  public set verticalVelocity(val: number) {
+    if (this.verticalVelocityModule && this.verticalVelocityModule.enabled) {
+      this.verticalVelocityModule.velocity = val;
+    }
+  }
+
+  /**
+   * Vertical bounce requires MassModule, BounceModule (with verticalBounce=true), and VerticalVelocityModule.
+   */
+  public get hasVerticalBounce(): boolean {
+    return Boolean(
+      this.hasBounce &&
+      this.bounceModule?.verticalBounce &&
+      this.hasVerticalVelocity
+    );
+  }
+
   public get hasGravity(): boolean {
     return Boolean(this.gravityModule && this.gravityModule.enabled);
   }
@@ -238,7 +271,7 @@ export class GameObject {
     this.supportingSurfaceHeight = surfaceHeight;
 
     // 1. Vertical & Surface Physics
-    if (this.hasGravity) {
+    if (this.hasGravity && this.hasVerticalVelocity) {
       // Gravity acceleration active
       if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
         this.verticalVelocity -= arena.gravity * dt;
@@ -247,8 +280,8 @@ export class GameObject {
         // Surface impact (hitting floor or top of wall from above)
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          // Bounce vertically only if bounce module and mass module are present
-          if (this.hasBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          // Bounce vertically only if vertical bounce is enabled (requires Mass, Bounce with verticalBounce=true, and Vertical Velocity)
+          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
             const impactVz = Math.abs(this.verticalVelocity);
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
 
@@ -292,12 +325,16 @@ export class GameObject {
         }
       }
     } else {
-      // Zero Gravity: vertical position does NOT fall; maintains constant elevation
-      if (this.verticalVelocity !== 0) {
+      // Zero Gravity: maintains elevation unless vertical velocity is present
+      if (this.hasVerticalVelocity && this.verticalVelocity !== 0) {
         this.position.z += this.verticalVelocity * dt;
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          this.verticalVelocity = 0;
+          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
+          } else {
+            this.verticalVelocity = 0;
+          }
         }
       }
     }
