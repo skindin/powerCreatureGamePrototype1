@@ -6,20 +6,98 @@ import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
 import { RollModule } from "../engine/RollModule.js";
 
+export interface CreatorPreset {
+  name: string;
+  visualShape: "box" | "circle";
+  color: string;
+  mass: number;
+  colliderRadius: number;
+  bounceMod: number;
+  frictionMod: number;
+  hasRollModule: boolean;
+  rollResistance: number;
+}
+
 export class DevPanel {
   private container: HTMLElement;
   private character: Character;
   private arena: Arena;
   private objects: GameObject[];
   private onSpawnObject: (obj: GameObject) => void;
+  private onDeleteObject?: (obj: GameObject) => void;
   private onClearObjects: () => void;
 
   public selectedEntity: GameObject;
+  public isEditMode: boolean = false;
+
+  // Preserved Creator State
+  public creatorState: CreatorPreset = {
+    name: "Custom Box",
+    visualShape: "box",
+    color: "#38bdf8",
+    mass: 1.0,
+    colliderRadius: 0.30,
+    bounceMod: 0.20,
+    frictionMod: 1.0,
+    hasRollModule: false,
+    rollResistance: 0.40,
+  };
+
+  // Preset definitions
+  private readonly presets: Record<string, CreatorPreset> = {
+    "Light Blue Box": {
+      name: "Light Blue Box",
+      visualShape: "box",
+      color: "#38bdf8",
+      mass: 0.7,
+      colliderRadius: 0.26,
+      bounceMod: 0.25,
+      frictionMod: 1.0,
+      hasRollModule: false,
+      rollResistance: 0.4,
+    },
+    "Heavy Red Box": {
+      name: "Heavy Red Box",
+      visualShape: "box",
+      color: "#f87171",
+      mass: 2.6,
+      colliderRadius: 0.40,
+      bounceMod: 0.05,
+      frictionMod: 1.2,
+      hasRollModule: false,
+      rollResistance: 0.4,
+    },
+    "Bouncy Ball": {
+      name: "Super Bouncy Ball",
+      visualShape: "circle",
+      color: "#4ade80",
+      mass: 0.5,
+      colliderRadius: 0.24,
+      bounceMod: 0.88,
+      frictionMod: 0.8,
+      hasRollModule: false,
+      rollResistance: 0.4,
+    },
+    "Rolling Ball": {
+      name: "Rolling Ball",
+      visualShape: "circle",
+      color: "#a855f7",
+      mass: 0.6,
+      colliderRadius: 0.28,
+      bounceMod: 0.95,
+      frictionMod: 0.5,
+      hasRollModule: true,
+      rollResistance: 0.0,
+    },
+  };
 
   // Cached DOM elements
   private inspectorEl!: HTMLElement;
   private entitySelectorEl!: HTMLSelectElement;
   private characterSpecificControlsEl!: HTMLElement;
+  private objectSpecificControlsEl!: HTMLElement;
+  private modePlayBtn!: HTMLButtonElement;
+  private modeEditBtn!: HTMLButtonElement;
 
   constructor(options: {
     container: HTMLElement;
@@ -27,6 +105,7 @@ export class DevPanel {
     arena: Arena;
     objects: GameObject[];
     onSpawnObject: (obj: GameObject) => void;
+    onDeleteObject?: (obj: GameObject) => void;
     onClearObjects: () => void;
   }) {
     this.container = options.container;
@@ -34,6 +113,7 @@ export class DevPanel {
     this.arena = options.arena;
     this.objects = options.objects;
     this.onSpawnObject = options.onSpawnObject;
+    this.onDeleteObject = options.onDeleteObject;
     this.onClearObjects = options.onClearObjects;
 
     this.selectedEntity = this.character;
@@ -47,6 +127,19 @@ export class DevPanel {
     this.syncEntitySliders();
   }
 
+  public setMode(editMode: boolean): void {
+    this.isEditMode = editMode;
+    if (this.modePlayBtn && this.modeEditBtn) {
+      if (this.isEditMode) {
+        this.modePlayBtn.classList.remove("active-play");
+        this.modeEditBtn.classList.add("active-edit");
+      } else {
+        this.modePlayBtn.classList.add("active-play");
+        this.modeEditBtn.classList.remove("active-edit");
+      }
+    }
+  }
+
   public updateSelectorOptions(): void {
     if (!this.entitySelectorEl) return;
     const currentId = this.selectedEntity.id;
@@ -55,30 +148,48 @@ export class DevPanel {
     for (const obj of this.objects) {
       const isSel = obj.id === currentId ? "selected" : "";
       const icon = obj.visualShape === "box" ? "📦" : "⚪";
-      html += `<option value="${obj.id}" ${isSel}>${icon} ${obj.name} (${obj.mass}kg)</option>`;
+      html += `<option value="${obj.id}" ${isSel}>${icon} ${obj.name} (${obj.mass.toFixed(1)}kg)</option>`;
     }
     this.entitySelectorEl.innerHTML = html;
 
-    // Show/hide character-specific sliders if player is selected
+    const isChar = this.selectedEntity === this.character;
     if (this.characterSpecificControlsEl) {
-      this.characterSpecificControlsEl.style.display =
-        this.selectedEntity === this.character ? "flex" : "none";
+      this.characterSpecificControlsEl.style.display = isChar ? "flex" : "none";
+    }
+    if (this.objectSpecificControlsEl) {
+      this.objectSpecificControlsEl.style.display = isChar ? "none" : "flex";
     }
   }
 
   private renderPanel(): void {
     this.container.innerHTML = `
       <div class="dev-panel-header">
-        <h2>🛠️ Property & Physics Engine</h2>
-        <span class="badge">1 Wall = 1 Unit</span>
+        <div>
+          <h2>🛠️ Sandbox & Engine</h2>
+          <span class="badge">1 Wall = 1 Unit</span>
+        </div>
+        <div class="mode-switcher">
+          <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play</button>
+          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit</button>
+        </div>
       </div>
 
       <div class="dev-scrollable">
         <!-- Target Selection -->
         <div class="dev-section">
-          <h3>🎯 Target Entity</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3>🎯 Target Entity</h3>
+            <span style="font-size: 0.72rem; color: var(--accent-amber);" id="edit-hint-label">
+              ${this.isEditMode ? "Click object to inspect" : "Right-click in arena to select"}
+            </span>
+          </div>
           <select id="entity-selector" class="dev-select"></select>
-          <p class="section-desc">Select an entity or right-click it in the arena to modify its live properties.</p>
+          
+          <!-- Entity Actions (Duplicate / Delete) - Only for Objects -->
+          <div id="object-actions-row" class="entity-actions-row" style="display: none; margin-top: 8px;">
+            <button id="btn-duplicate-entity" class="btn-secondary-action">📋 Duplicate</button>
+            <button id="btn-delete-entity" class="btn-secondary-action" style="color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Delete</button>
+          </div>
         </div>
 
         <!-- Live Diagnostics Inspector -->
@@ -89,7 +200,7 @@ export class DevPanel {
 
         <!-- Selected Entity Physical Properties -->
         <div class="dev-section">
-          <h3>⚖️ Entity Physical Properties</h3>
+          <h3>⚖️ Selected Physical Properties</h3>
 
           <div class="toggle-row">
             <label>Visual Shape</label>
@@ -134,6 +245,12 @@ export class DevPanel {
               <span id="val-entity-dynamic-fric">${this.selectedEntity.dynamicGroundFrictionMod.toFixed(2)}</span>
             </div>
             <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${this.selectedEntity.dynamicGroundFrictionMod}">
+          </div>
+
+          <!-- Roll Module for selected object -->
+          <div class="toggle-row" style="margin-top: 6px;">
+            <label>Roll Behavior</label>
+            <button id="toggle-roll" class="btn-toggle ${this.selectedEntity.rollModule?.enabled ? 'active' : ''}">${this.selectedEntity.rollModule?.enabled ? 'Attached' : 'Detached'}</button>
           </div>
 
           <div class="slider-group" id="group-roll-resistance" style="display: ${this.selectedEntity.rollModule ? 'block' : 'none'};">
@@ -188,11 +305,118 @@ export class DevPanel {
             </div>
             <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${this.character.throwModule?.baseThrowForce ?? 7.6}">
           </div>
+
+          <!-- Modular Capabilities Toggles -->
+          <h4 style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase;">Modular Capabilities</h4>
+          <div class="toggle-row">
+            <label>Walking Function</label>
+            <button id="toggle-walk" class="btn-toggle active">Attached</button>
+          </div>
+
+          <div class="toggle-row">
+            <label>Pickup Ability</label>
+            <button id="toggle-pickup" class="btn-toggle active">Attached</button>
+          </div>
+
+          <div class="toggle-row">
+            <label>Throw Ability</label>
+            <button id="toggle-throw" class="btn-toggle active">Attached</button>
+          </div>
         </div>
 
-        <!-- World & Arena Physics -->
+        <!-- ✨ Add New Object (Creator & Presets) -->
         <div class="dev-section">
-          <h3>🌍 World & Arena Properties (Units)</h3>
+          <h3>✨ Add New Object</h3>
+          <p class="section-desc">Pick a preset or configure custom properties. Values remain preserved across spawns.</p>
+          
+          <!-- Presets bar -->
+          <div class="presets-container" style="margin-bottom: 10px;">
+            <button class="preset-chip" data-preset="Light Blue Box">📦 Light Box</button>
+            <button class="preset-chip" data-preset="Heavy Red Box">📦 Heavy Box</button>
+            <button class="preset-chip" data-preset="Bouncy Ball">⚪ Bouncy Ball</button>
+            <button class="preset-chip" data-preset="Rolling Ball">🟣 Rolling Ball</button>
+          </div>
+
+          <!-- Creator Form -->
+          <div class="creator-form">
+            <div>
+              <label style="font-size: 0.76rem; color: #94a3b8; display: block; margin-bottom: 4px;">Object Name</label>
+              <input type="text" id="creator-name" class="dev-input" value="${this.creatorState.name}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Visual Shape</label>
+              <button id="creator-toggle-shape" class="btn-toggle ${this.creatorState.visualShape === 'box' ? 'active' : ''}">
+                ${this.creatorState.visualShape === 'box' ? 'Box 📦' : 'Circle ⚪'}
+              </button>
+            </div>
+
+            <div class="color-row">
+              <label>Color</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="creator-color" value="${this.creatorState.color}">
+                <span id="val-creator-color" style="font-size: 0.76rem; font-family: monospace; color: #cbd5e1;">${this.creatorState.color}</span>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Mass (kg)</span>
+                <span id="val-creator-mass">${this.creatorState.mass.toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-creator-mass" min="0.1" max="8.0" step="0.1" value="${this.creatorState.mass}">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Collider Radius (u)</span>
+                <span id="val-creator-radius">${this.creatorState.colliderRadius.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-radius" min="0.1" max="1.5" step="0.02" value="${this.creatorState.colliderRadius}">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Bounciness (Bounce Mod)</span>
+                <span id="val-creator-bounce">${this.creatorState.bounceMod.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-bounce" min="0" max="1.0" step="0.05" value="${this.creatorState.bounceMod}">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Dynamic Friction Mod</span>
+                <span id="val-creator-fric">${this.creatorState.frictionMod.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-fric" min="0" max="3.0" step="0.05" value="${this.creatorState.frictionMod}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Roll Behavior</label>
+              <button id="creator-toggle-roll" class="btn-toggle ${this.creatorState.hasRollModule ? 'active' : ''}">
+                ${this.creatorState.hasRollModule ? 'Enabled' : 'Disabled'}
+              </button>
+            </div>
+
+            <div class="slider-group" id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule ? 'block' : 'none'};">
+              <div class="slider-label">
+                <span>Roll Resistance (u/s²)</span>
+                <span id="val-creator-roll-resist">${this.creatorState.rollResistance.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-roll-resist" min="0.0" max="4.0" step="0.05" value="${this.creatorState.rollResistance}">
+            </div>
+
+            <button id="btn-spawn-configured" class="btn-spawn-primary">✨ Spawn Object</button>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <button id="btn-clear-entities" class="btn-danger" style="width: 100%;">Clear All Objects</button>
+          </div>
+        </div>
+
+        <!-- 🌍 World & Arena Physics -->
+        <div class="dev-section">
+          <h3>🌍 World Physics & Environment</h3>
 
           <div class="slider-group">
             <div class="slider-label">
@@ -226,50 +450,15 @@ export class DevPanel {
             <input type="range" id="slide-static-thresh" min="0.02" max="1.0" step="0.02" value="${this.arena.staticFrictionThreshold}">
           </div>
         </div>
-
-        <!-- Modular Capabilities Toggles -->
-        <div class="dev-section">
-          <h3>🧩 Modular Capabilities</h3>
-          <p class="section-desc">Attach or detach modules to verify isolated mechanics.</p>
-          
-          <div class="toggle-row">
-            <label>Walking Function</label>
-            <button id="toggle-walk" class="btn-toggle active">Attached</button>
-          </div>
-
-          <div class="toggle-row">
-            <label>Pickup Ability</label>
-            <button id="toggle-pickup" class="btn-toggle active">Attached</button>
-          </div>
-
-          <div class="toggle-row">
-            <label>Throw Ability</label>
-            <button id="toggle-throw" class="btn-toggle active">Attached</button>
-          </div>
-
-          <div class="toggle-row">
-            <label>Roll Behavior</label>
-            <button id="toggle-roll" class="btn-toggle ${this.selectedEntity.rollModule?.enabled ? 'active' : ''}">${this.selectedEntity.rollModule?.enabled ? 'Attached' : 'Detached'}</button>
-          </div>
-        </div>
-
-        <!-- Spawner -->
-        <div class="dev-section">
-          <h3>📦 Spawn Objects</h3>
-          <div class="spawner-buttons">
-            <button id="btn-spawn-light" class="btn-action">Spawn Light Box (0.7kg, Blue Box)</button>
-            <button id="btn-spawn-heavy" class="btn-action">Spawn Heavy Box (2.6kg, Red Box)</button>
-            <button id="btn-spawn-bouncy" class="btn-action">Spawn Bouncy Ball (0.5kg, Bounce 0.88)</button>
-            <button id="btn-spawn-rolling" class="btn-action">Spawn Rolling Ball (0 Resistance)</button>
-            <button id="btn-clear-entities" class="btn-danger">Clear All Objects</button>
-          </div>
-        </div>
       </div>
     `;
 
     this.inspectorEl = this.container.querySelector("#dev-inspector")!;
     this.entitySelectorEl = this.container.querySelector("#entity-selector")!;
     this.characterSpecificControlsEl = this.container.querySelector("#character-specific-controls")!;
+    this.objectSpecificControlsEl = this.container.querySelector("#object-actions-row")!;
+    this.modePlayBtn = this.container.querySelector("#mode-play")!;
+    this.modeEditBtn = this.container.querySelector("#mode-edit")!;
 
     this.updateSelectorOptions();
     this.bindEvents();
@@ -334,8 +523,57 @@ export class DevPanel {
     if (label) label.textContent = decimals > 0 ? val.toFixed(decimals) : Math.round(val).toString();
   }
 
+  private syncCreatorInputs(): void {
+    const nameInput = this.container.querySelector("#creator-name") as HTMLInputElement;
+    if (nameInput) nameInput.value = this.creatorState.name;
+
+    const shapeBtn = this.container.querySelector("#creator-toggle-shape") as HTMLButtonElement;
+    if (shapeBtn) {
+      shapeBtn.textContent = this.creatorState.visualShape === "box" ? "Box 📦" : "Circle ⚪";
+      if (this.creatorState.visualShape === "box") shapeBtn.classList.add("active");
+      else shapeBtn.classList.remove("active");
+    }
+
+    const colorInput = this.container.querySelector("#creator-color") as HTMLInputElement;
+    const colorLabel = this.container.querySelector("#val-creator-color") as HTMLElement;
+    if (colorInput) colorInput.value = this.creatorState.color;
+    if (colorLabel) colorLabel.textContent = this.creatorState.color;
+
+    this.setSliderVal("slide-creator-mass", "val-creator-mass", this.creatorState.mass, 1);
+    this.setSliderVal("slide-creator-radius", "val-creator-radius", this.creatorState.colliderRadius, 2);
+    this.setSliderVal("slide-creator-bounce", "val-creator-bounce", this.creatorState.bounceMod, 2);
+    this.setSliderVal("slide-creator-fric", "val-creator-fric", this.creatorState.frictionMod, 2);
+
+    const rollBtn = this.container.querySelector("#creator-toggle-roll") as HTMLButtonElement;
+    const rollGrp = this.container.querySelector("#group-creator-roll-resist") as HTMLElement;
+    if (rollBtn) {
+      rollBtn.textContent = this.creatorState.hasRollModule ? "Enabled" : "Disabled";
+      if (this.creatorState.hasRollModule) {
+        rollBtn.classList.add("active");
+        if (rollGrp) rollGrp.style.display = "block";
+      } else {
+        rollBtn.classList.remove("active");
+        if (rollGrp) rollGrp.style.display = "none";
+      }
+    }
+    this.setSliderVal("slide-creator-roll-resist", "val-creator-roll-resist", this.creatorState.rollResistance, 2);
+  }
+
   private bindEvents(): void {
-    // 1. Selector Change
+    // 1. Mode Switcher
+    this.modePlayBtn.addEventListener("click", () => {
+      this.setMode(false);
+      const hint = this.container.querySelector("#edit-hint-label");
+      if (hint) hint.textContent = "Right-click in arena to select";
+    });
+
+    this.modeEditBtn.addEventListener("click", () => {
+      this.setMode(true);
+      const hint = this.container.querySelector("#edit-hint-label");
+      if (hint) hint.textContent = "Click object to inspect";
+    });
+
+    // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
       const selectedId = this.entitySelectorEl.value;
       if (selectedId === this.character.id) {
@@ -350,7 +588,16 @@ export class DevPanel {
       this.syncEntitySliders();
     });
 
-    // 2. Selected Entity Sliders
+    // 3. Duplicate & Delete Actions
+    this.container.querySelector("#btn-duplicate-entity")?.addEventListener("click", () => {
+      this.duplicateSelectedEntity();
+    });
+
+    this.container.querySelector("#btn-delete-entity")?.addEventListener("click", () => {
+      this.deleteSelectedEntity();
+    });
+
+    // 4. Selected Entity Sliders
     this.setupSlider("slide-entity-mass", "val-entity-mass", (val) => {
       this.selectedEntity.mass = val;
     }, 1);
@@ -377,7 +624,7 @@ export class DevPanel {
       }
     }, 2);
 
-    // 3. Character Specific Sliders
+    // 5. Character Specific Sliders
     this.setupSlider("slide-strength", "val-strength", (val) => {
       this.character.strength = val;
     }, 1);
@@ -406,7 +653,7 @@ export class DevPanel {
       }
     }, 1);
 
-    // 4. World Physics Sliders
+    // 6. World Physics Sliders
     this.setupSlider("slide-gravity", "val-gravity", (val) => {
       this.arena.gravity = val;
     }, 1);
@@ -423,9 +670,9 @@ export class DevPanel {
       this.arena.staticFrictionThreshold = val;
     }, 2);
 
-    // 5. Module Toggles
+    // 7. Character Module Toggles
     const btnWalk = this.container.querySelector("#toggle-walk") as HTMLButtonElement;
-    btnWalk.addEventListener("click", () => {
+    btnWalk?.addEventListener("click", () => {
       if (this.character.walkingModule) {
         this.character.walkingModule = null;
         btnWalk.textContent = "Detached";
@@ -438,7 +685,7 @@ export class DevPanel {
     });
 
     const btnPickup = this.container.querySelector("#toggle-pickup") as HTMLButtonElement;
-    btnPickup.addEventListener("click", () => {
+    btnPickup?.addEventListener("click", () => {
       if (this.character.pickupModule) {
         this.character.pickupModule = null;
         btnPickup.textContent = "Detached";
@@ -451,7 +698,7 @@ export class DevPanel {
     });
 
     const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
-    btnThrow.addEventListener("click", () => {
+    btnThrow?.addEventListener("click", () => {
       if (this.character.throwModule) {
         this.character.throwModule = null;
         btnThrow.textContent = "Detached";
@@ -463,6 +710,7 @@ export class DevPanel {
       }
     });
 
+    // 8. Selected Entity Shape & Roll Toggles
     const btnShapeToggle = this.container.querySelector("#toggle-entity-shape") as HTMLButtonElement;
     btnShapeToggle?.addEventListener("click", () => {
       if (this.selectedEntity.visualShape === "box") {
@@ -494,90 +742,154 @@ export class DevPanel {
       }
     });
 
-    // 6. Spawners in Units
-    this.container.querySelector("#btn-spawn-light")?.addEventListener("click", () => {
-      const stone = new GameObject({
-        name: "Light Blue Box",
-        position: {
-          x: this.character.position.x + (Math.random() * 2.0 - 1.0),
-          y: this.character.position.y + (Math.random() * 2.0 - 1.0),
-          z: 0.4,
-        },
-        mass: 0.7,
-        colliderRadius: 0.26,
-        color: "#38bdf8",
-        bounceMod: 0.25,
-        visualShape: "box",
+    // 9. Presets Buttons
+    const presetButtons = this.container.querySelectorAll(".preset-chip");
+    presetButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pKey = btn.getAttribute("data-preset");
+        if (pKey && this.presets[pKey]) {
+          this.creatorState = { ...this.presets[pKey] };
+          this.syncCreatorInputs();
+        }
       });
-      this.onSpawnObject(stone);
-      this.setSelectedEntity(stone);
     });
 
-    this.container.querySelector("#btn-spawn-heavy")?.addEventListener("click", () => {
-      const boulder = new GameObject({
-        name: "Heavy Red Box",
-        position: {
-          x: this.character.position.x + (Math.random() * 2.0 - 1.0),
-          y: this.character.position.y + (Math.random() * 2.0 - 1.0),
-          z: 0,
-        },
-        mass: 2.6,
-        colliderRadius: 0.40,
-        color: "#f87171",
-        bounceMod: 0.05,
-        visualShape: "box",
-      });
-      this.onSpawnObject(boulder);
-      this.setSelectedEntity(boulder);
+    // 10. Creator Form Controls (preserve state continuously)
+    const nameInput = this.container.querySelector("#creator-name") as HTMLInputElement;
+    nameInput?.addEventListener("input", () => {
+      this.creatorState.name = nameInput.value;
     });
 
-    this.container.querySelector("#btn-spawn-bouncy")?.addEventListener("click", () => {
-      const ball = new GameObject({
-        name: "Super Bouncy Ball",
-        position: {
-          x: this.character.position.x + (Math.random() * 2.0 - 1.0),
-          y: this.character.position.y + (Math.random() * 2.0 - 1.0),
-          z: 0.7,
-        },
-        mass: 0.5,
-        colliderRadius: 0.24,
-        color: "#4ade80",
-        bounceMod: 0.88,
-        verticalVelocity: 1.6,
-      });
-      this.onSpawnObject(ball);
-      this.setSelectedEntity(ball);
+    const creatorShapeBtn = this.container.querySelector("#creator-toggle-shape") as HTMLButtonElement;
+    creatorShapeBtn?.addEventListener("click", () => {
+      if (this.creatorState.visualShape === "box") {
+        this.creatorState.visualShape = "circle";
+        creatorShapeBtn.textContent = "Circle ⚪";
+        creatorShapeBtn.classList.remove("active");
+      } else {
+        this.creatorState.visualShape = "box";
+        creatorShapeBtn.textContent = "Box 📦";
+        creatorShapeBtn.classList.add("active");
+      }
     });
 
-    this.container.querySelector("#btn-spawn-rolling")?.addEventListener("click", () => {
-      const rollBall = new GameObject({
-        name: "Rolling Ball (0 Resistance)",
-        position: {
-          x: this.character.position.x + 1.2,
-          y: this.character.position.y,
-          z: 0.0,
-        },
-        velocity: {
-          x: 4.5,
-          y: 1.5,
-        },
-        mass: 0.6,
-        colliderRadius: 0.28,
-        color: "#a855f7",
-        bounceMod: 0.95,
-        rollModule: new RollModule({
-          rollResistance: 0.0,
-          angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
-        }),
-      });
-      this.onSpawnObject(rollBall);
-      this.setSelectedEntity(rollBall);
+    const colorInput = this.container.querySelector("#creator-color") as HTMLInputElement;
+    const colorLabel = this.container.querySelector("#val-creator-color") as HTMLElement;
+    colorInput?.addEventListener("input", () => {
+      this.creatorState.color = colorInput.value;
+      if (colorLabel) colorLabel.textContent = colorInput.value;
     });
 
+    this.setupSlider("slide-creator-mass", "val-creator-mass", (val) => {
+      this.creatorState.mass = val;
+    }, 1);
+
+    this.setupSlider("slide-creator-radius", "val-creator-radius", (val) => {
+      this.creatorState.colliderRadius = val;
+    }, 2);
+
+    this.setupSlider("slide-creator-bounce", "val-creator-bounce", (val) => {
+      this.creatorState.bounceMod = val;
+    }, 2);
+
+    this.setupSlider("slide-creator-fric", "val-creator-fric", (val) => {
+      this.creatorState.frictionMod = val;
+    }, 2);
+
+    const creatorRollBtn = this.container.querySelector("#creator-toggle-roll") as HTMLButtonElement;
+    const creatorRollGrp = this.container.querySelector("#group-creator-roll-resist") as HTMLElement;
+    creatorRollBtn?.addEventListener("click", () => {
+      this.creatorState.hasRollModule = !this.creatorState.hasRollModule;
+      if (this.creatorState.hasRollModule) {
+        creatorRollBtn.textContent = "Enabled";
+        creatorRollBtn.classList.add("active");
+        if (creatorRollGrp) creatorRollGrp.style.display = "block";
+      } else {
+        creatorRollBtn.textContent = "Disabled";
+        creatorRollBtn.classList.remove("active");
+        if (creatorRollGrp) creatorRollGrp.style.display = "none";
+      }
+    });
+
+    this.setupSlider("slide-creator-roll-resist", "val-creator-roll-resist", (val) => {
+      this.creatorState.rollResistance = val;
+    }, 2);
+
+    // 11. Spawn Configured Object Button (Preserves creatorState!)
+    this.container.querySelector("#btn-spawn-configured")?.addEventListener("click", () => {
+      this.spawnFromCreator();
+    });
+
+    // 12. Clear All Objects
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
       this.onClearObjects();
       this.setSelectedEntity(this.character);
     });
+  }
+
+  private spawnFromCreator(): void {
+    const s = this.creatorState;
+    // Spawn within 1.5 units around character
+    const spawnX = Math.min(Math.max(this.character.position.x + (Math.random() * 2.0 - 1.0), 1.0), this.arena.width - 1.0);
+    const spawnY = Math.min(Math.max(this.character.position.y + (Math.random() * 2.0 - 1.0), 1.0), this.arena.height - 1.0);
+
+    const newObj = new GameObject({
+      name: s.name || "Custom Object",
+      position: { x: spawnX, y: spawnY, z: 0.1 },
+      mass: s.mass,
+      colliderRadius: s.colliderRadius,
+      color: s.color,
+      bounceMod: s.bounceMod <= 0.01 ? null : s.bounceMod,
+      dynamicGroundFrictionMod: s.frictionMod,
+      staticGroundFrictionMod: s.frictionMod,
+      visualShape: s.visualShape,
+      rollModule: s.hasRollModule ? new RollModule({ rollResistance: s.rollResistance }) : undefined,
+    });
+
+    this.onSpawnObject(newObj);
+    this.setSelectedEntity(newObj);
+    // Note: this.creatorState is intentionally preserved!
+  }
+
+  public duplicateSelectedEntity(): void {
+    if (this.selectedEntity === this.character) return;
+    const orig = this.selectedEntity;
+
+    const spawnX = Math.min(Math.max(orig.position.x + 0.6, 1.0), this.arena.width - 1.0);
+    const spawnY = Math.min(Math.max(orig.position.y + 0.6, 1.0), this.arena.height - 1.0);
+
+    const clone = new GameObject({
+      name: `${orig.name} (Copy)`,
+      position: { x: spawnX, y: spawnY, z: orig.position.z },
+      mass: orig.mass,
+      colliderRadius: orig.colliderRadius,
+      color: orig.color,
+      bounceMod: orig.bounceMod,
+      staticGroundFrictionMod: orig.staticGroundFrictionMod,
+      dynamicGroundFrictionMod: orig.dynamicGroundFrictionMod,
+      visualShape: orig.visualShape,
+      rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance }) : undefined,
+    });
+
+    this.onSpawnObject(clone);
+    this.setSelectedEntity(clone);
+  }
+
+  public deleteSelectedEntity(): void {
+    if (this.selectedEntity === this.character) return;
+    const target = this.selectedEntity;
+
+    if (this.character.heldObject === target) {
+      target.isHeld = false;
+      target.heldBy = null;
+      this.character.heldObject = null;
+    }
+
+    if (this.onDeleteObject) {
+      this.onDeleteObject(target);
+    }
+
+    this.setSelectedEntity(this.character);
   }
 
   private setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {

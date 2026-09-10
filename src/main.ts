@@ -96,6 +96,13 @@ function bootstrap(): void {
       objects.push(newObj);
       devPanel.updateSelectorOptions();
     },
+    onDeleteObject: (targetObj) => {
+      const idx = objects.indexOf(targetObj);
+      if (idx !== -1) {
+        objects.splice(idx, 1);
+      }
+      devPanel.updateSelectorOptions();
+    },
     onClearObjects: () => {
       if (character.heldObject) {
         character.heldObject.isHeld = false;

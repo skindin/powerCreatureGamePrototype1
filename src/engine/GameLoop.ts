@@ -65,7 +65,14 @@ export class GameLoop {
     }
 
     // Render current frame with active selection highlight
-    this.renderer.render(this.arena, this.character, this.objects, this.devPanel.selectedEntity);
+    this.renderer.render(
+      this.arena,
+      this.character,
+      this.objects,
+      this.devPanel.selectedEntity,
+      this.devPanel.isEditMode,
+      this.inputManager.hoverEntity
+    );
 
     // Update live inspector
     this.devPanel.updateInspector();
@@ -80,7 +87,7 @@ export class GameLoop {
     this.character.updateCharacter(
       dt,
       input.movementVector,
-      input.isMouseDown,
+      input.isMouseDown && !this.devPanel.isEditMode,
       input.mousePos,
       this.arena
     );
@@ -90,9 +97,9 @@ export class GameLoop {
       obj.updatePosition(dt, this.arena);
     }
 
-    // 3. Continuous hold-to-grab:
+    // 3. Continuous hold-to-grab (only active in Play Mode):
     // If holding down grab and not holding an object, automatically pick up any object that enters range around mouse
-    if (input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
+    if (!this.devPanel.isEditMode && input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
       const target = this.character.pickupModule.findTargetObject(
         this.character,
         input.mousePos.x,

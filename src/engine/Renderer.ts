@@ -10,7 +10,14 @@ export class Renderer {
     this.ctx = ctx;
   }
 
-  public render(arena: Arena, character: Character, objects: GameObject[], _selectedEntity?: GameObject): void {
+  public render(
+    arena: Arena,
+    character: Character,
+    objects: GameObject[],
+    selectedEntity?: GameObject,
+    isEditMode = false,
+    hoverEntity?: GameObject | null
+  ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
 
@@ -53,6 +60,14 @@ export class Renderer {
     // 5. Trajectory Line (Rendered OVER walls and entities!)
     if (character.activeTrajectory) {
       this.drawTrajectory(character.activeTrajectory, ppu);
+    }
+
+    // 6. Selection & Hover Gizmos (Rendered on top for crystal clear feedback)
+    if (hoverEntity && isEditMode && hoverEntity !== selectedEntity) {
+      this.drawHoverGizmo(hoverEntity, ppu);
+    }
+    if (selectedEntity) {
+      this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
     }
   }
 
@@ -522,6 +537,95 @@ export class Renderer {
       ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 4, 0, Math.PI * 2);
       ctx.fillStyle = "#22c55e";
       ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  private drawHoverGizmo(entity: GameObject, ppu: number): void {
+    const ctx = this.ctx;
+    const px = entity.position.x * ppu;
+    const py = entity.position.y * ppu;
+    const pad = (entity.colliderRadius + 0.08) * ppu;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(251, 191, 36, 0.6)"; // Soft amber
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+
+    ctx.beginPath();
+    ctx.arc(px, py, pad, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private drawSelectionGizmo(entity: GameObject, isEditMode: boolean, ppu: number): void {
+    const ctx = this.ctx;
+    const px = entity.position.x * ppu;
+    const py = entity.position.y * ppu;
+    const r = entity.colliderRadius * ppu;
+    const pad = r + 6;
+    const bracketLen = Math.max(6, pad * 0.4);
+
+    const color = isEditMode ? "#fbbf24" : "#38bdf8";
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+
+    // Corner brackets around entity
+    // Top-Left
+    ctx.beginPath();
+    ctx.moveTo(px - pad, py - pad + bracketLen);
+    ctx.lineTo(px - pad, py - pad);
+    ctx.lineTo(px - pad + bracketLen, py - pad);
+    ctx.stroke();
+
+    // Top-Right
+    ctx.beginPath();
+    ctx.moveTo(px + pad - bracketLen, py - pad);
+    ctx.lineTo(px + pad, py - pad);
+    ctx.lineTo(px + pad, py - pad + bracketLen);
+    ctx.stroke();
+
+    // Bottom-Right
+    ctx.beginPath();
+    ctx.moveTo(px + pad, py + pad - bracketLen);
+    ctx.lineTo(px + pad, py + pad);
+    ctx.lineTo(px + pad - bracketLen, py + pad);
+    ctx.stroke();
+
+    // Bottom-Left
+    ctx.beginPath();
+    ctx.moveTo(px - pad + bracketLen, py + pad);
+    ctx.lineTo(px - pad, py + pad);
+    ctx.lineTo(px - pad, py + pad - bracketLen);
+    ctx.stroke();
+
+    // Subtle tag above entity when in Edit Mode
+    if (isEditMode) {
+      const text = `${entity.name} (${entity.mass.toFixed(1)}kg)`;
+      ctx.font = "bold 10px 'Segoe UI', system-ui, sans-serif";
+      const tm = ctx.measureText(text);
+      const bgW = tm.width + 12;
+      const bgH = 16;
+      const bgX = px - bgW / 2;
+      const bgY = py - pad - bgH - 4;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bgX, bgY, bgW, bgH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, px, bgY + bgH / 2);
     }
 
     ctx.restore();

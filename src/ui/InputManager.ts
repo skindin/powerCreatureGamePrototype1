@@ -13,11 +13,13 @@ export class InputManager {
   public isMouseDown = false;
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
+  public hoverEntity: GameObject | null = null;
 
   // Action callback hooks
   public handleClick?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
+  public onMouseMove?: (x: number, y: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -45,6 +47,9 @@ export class InputManager {
 
     this.canvas.addEventListener("mousemove", (e) => {
       this.updateMousePos(e);
+      if (this.onMouseMove) {
+        this.onMouseMove(this.mousePos.x, this.mousePos.y);
+      }
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
@@ -89,6 +94,9 @@ export class InputManager {
     this.canvas.addEventListener("touchmove", (e) => {
       if (e.touches.length > 0) {
         this.updateTouchPos(e.touches[0]);
+        if (this.onMouseMove) {
+          this.onMouseMove(this.mousePos.x, this.mousePos.y);
+        }
       }
     }, { passive: false });
 
@@ -139,7 +147,48 @@ export class InputManager {
     objects: GameObject[],
     devPanel?: DevPanel
   ): void {
+    const findEntityAt = (x: number, y: number, tolerance = 0.35): GameObject | null => {
+      // Check objects first (so objects on top or near player can be picked)
+      for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        const dist = Math.hypot(obj.position.x - x, obj.position.y - y);
+        if (dist <= obj.colliderRadius + tolerance) {
+          return obj;
+        }
+      }
+      // Check character
+      const distChar = Math.hypot(character.position.x - x, character.position.y - y);
+      if (distChar <= character.colliderRadius + tolerance) {
+        return character;
+      }
+      return null;
+    };
+
+    // Hover tracking (especially useful in Edit Mode)
+    this.onMouseMove = (x: number, y: number) => {
+      if (devPanel?.isEditMode) {
+        const found = findEntityAt(x, y, 0.3);
+        this.hoverEntity = found;
+        this.canvas.style.cursor = found ? "pointer" : "crosshair";
+      } else {
+        this.hoverEntity = null;
+        this.canvas.style.cursor = "default";
+      }
+    };
+
     this.handleClick = (clickX: number, clickY: number) => {
+      // If Edit Mode is active: left-click selects entities without throwing/grabbing!
+      if (devPanel?.isEditMode) {
+        const found = findEntityAt(clickX, clickY, 0.35);
+        if (found) {
+          devPanel.setSelectedEntity(found);
+        } else {
+          devPanel.setSelectedEntity(character);
+        }
+        return;
+      }
+
+      // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (character.heldObject && character.throwModule && !this.justPickedUp) {
         character.throwModule.throwHeldObject(character, clickX, clickY, arena);
@@ -156,28 +205,11 @@ export class InputManager {
       }
     };
 
-    // Right click selects any entity in the Dev Panel
+    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes)
     this.onRightClick = (clickX: number, clickY: number) => {
       if (!devPanel) return;
-
-      // Check character (radius + 0.3 units)
-      const distChar = Math.hypot(character.position.x - clickX, character.position.y - clickY);
-      if (distChar <= character.colliderRadius + 0.3) {
-        devPanel.setSelectedEntity(character);
-        return;
-      }
-
-      // Check freebodies (radius + 0.3 units)
-      for (const obj of objects) {
-        const dist = Math.hypot(obj.position.x - clickX, obj.position.y - clickY);
-        if (dist <= obj.colliderRadius + 0.3) {
-          devPanel.setSelectedEntity(obj);
-          return;
-        }
-      }
-
-      // Default back to character if clicked on open ground
-      devPanel.setSelectedEntity(character);
+      const found = findEntityAt(clickX, clickY, 0.4);
+      devPanel.setSelectedEntity(found ?? character);
     };
 
     this.onDropAttempt = () => {
