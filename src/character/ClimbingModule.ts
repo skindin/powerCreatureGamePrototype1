@@ -19,8 +19,18 @@ export class ClimbingModule {
   // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
   public horizontalClimb = false;
 
+  // When climbing up onto a wall top, dismount is suppressed until climb control is released
+  public dismountSuppressedUntilRelease = false;
+
   // When stepping/jumping off a wall with climb key held, suppress re-grabbing until released or grounded
-  public climbSuppressedUntilRePress = false;
+  public climbSuppressedUntilRelease = false;
+
+  public get climbSuppressedUntilRePress(): boolean {
+    return this.climbSuppressedUntilRelease;
+  }
+  public set climbSuppressedUntilRePress(val: boolean) {
+    this.climbSuppressedUntilRelease = val;
+  }
 
   // Previous frame climb key state to detect fresh presses
   private wasClimbHeldLastTick = false;
@@ -55,11 +65,15 @@ export class ClimbingModule {
     this.wasClimbHeldLastTick = isClimbHeld;
 
     // Reset suppression when climb key is released or when grounded
-    if (!isClimbHeld || character.position.z <= 0.01) {
-      this.climbSuppressedUntilRePress = false;
+    if (!isClimbHeld) {
+      this.dismountSuppressedUntilRelease = false;
+      this.climbSuppressedUntilRelease = false;
+    }
+    if (character.position.z <= 0.01) {
+      this.climbSuppressedUntilRelease = false;
     }
 
-    if (this.climbSuppressedUntilRePress) {
+    if (this.climbSuppressedUntilRelease) {
       character.isClimbing = false;
       return false;
     }
@@ -76,13 +90,14 @@ export class ClimbingModule {
     const moveDirY = hasMoveInput ? movementInput.y / inputMag : 0;
 
     // If standing on top of a wall and player hits Space bar, perform a dismount jump off the wall
-    if (character.position.z >= arena.wallHeight - 0.05) {
+    // Only allowed if dismount is not suppressed (must have released climb control after climbing)
+    if (character.position.z >= arena.wallHeight - 0.05 && !this.dismountSuppressedUntilRelease) {
       if (isFreshClimbPress) {
         const jumpDirX = hasMoveInput ? moveDirX : Math.cos(character.facingAngle);
         const jumpDirY = hasMoveInput ? moveDirY : Math.sin(character.facingAngle);
         character.velocity.x = jumpDirX * 3.5;
         character.velocity.y = jumpDirY * 3.5;
-        this.climbSuppressedUntilRePress = true;
+        this.climbSuppressedUntilRelease = true;
         character.isClimbing = false;
         return false;
       }
@@ -185,6 +200,8 @@ export class ClimbingModule {
           character.supportingSurfaceHeight = targetWall.wallHeight;
           character.verticalVelocity = 0;
           character.isClimbing = false;
+          // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
+          this.dismountSuppressedUntilRelease = true;
 
           // Transition smoothly onto the top of the wall
           if (hasMoveInput) {

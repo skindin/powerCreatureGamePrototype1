@@ -498,13 +498,14 @@ export class GameObject {
     // Check climb ability ledge guard / walk-off prevention:
     // When on top of a wall, prevent walking off unless actively holding the climb control (Space bar).
     const char = this.isCharacter ? (this as any) : null;
-    const wasOnWallTop = (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05);
+    const wasStandingOnWallTop = !this.isClimbing && this.supportingSurfaceHeight >= arena.wallHeight - 0.05;
+    const dismountAllowed = Boolean(wasStandingOnWallTop && char?.isClimbInputHeld && !char?.climbingModule?.dismountSuppressedUntilRelease);
     const isPreventWalkOffActive = Boolean(
       char &&
-      wasOnWallTop &&
+      wasStandingOnWallTop &&
       char.climbingModule?.enabled &&
       char.climbingModule?.preventWalkOff &&
-      !char.isClimbInputHeld
+      !dismountAllowed
     );
 
     if (isPreventWalkOffActive) {
@@ -557,10 +558,10 @@ export class GameObject {
       this.position.y += this.velocity.y * dt;
 
       // Detect stepping/jumping off wall with climb button held
-      if (char && wasOnWallTop && char.isClimbInputHeld) {
+      if (char && wasStandingOnWallTop && dismountAllowed) {
         const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
         if (!newSupport && char.climbingModule) {
-          char.climbingModule.climbSuppressedUntilRePress = true;
+          char.climbingModule.climbSuppressedUntilRelease = true;
         }
       }
     }
