@@ -96,6 +96,8 @@ export class ClimbingModule {
       // Clinging to the wall: stay supported at current elevation, neutralize gravity
       character.isClimbing = true;
       character.verticalVelocity = 0;
+      character.velocity.x = 0;
+      character.velocity.y = 0;
 
       // Ascend towards wall top if holding climb key (Space) and not walking away from the wall
       // Does not require continuous directional input once climb is established
@@ -135,6 +137,8 @@ export class ClimbingModule {
     if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
       character.isClimbing = true;
       character.verticalVelocity = 0;
+      character.velocity.x = 0;
+      character.velocity.y = 0;
 
       const baseMass = character.baseMass;
       const effectiveClimbSpeed = Math.max(

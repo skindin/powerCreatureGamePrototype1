@@ -289,33 +289,23 @@ export class GameObject {
     }
 
     // 0. Supporting surface:
-    // Only check wall support if entity has a collider; otherwise surface is 0 (ground level)
+    // Only check wall support if entity has a collider and vertical position
     let surfaceHeight = 0;
     let supportingWall: Wall | null = null;
 
-    if (this.hasCollider && this.hasVerticalPosition) {
-      const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
-        (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
-      if (canBeOnWall) {
-        supportingWall = arena.getWallAt(this.position.x, this.position.y);
-        if (!supportingWall && this.isCharacter) {
-          // If character is right at wall edge, support as long as not moving away from the wall
-          const adjacentWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-          if (adjacentWall) {
-            const closestX = Math.max(adjacentWall.x, Math.min(this.position.x, adjacentWall.x + adjacentWall.width));
-            const closestY = Math.max(adjacentWall.y, Math.min(this.position.y, adjacentWall.y + adjacentWall.height));
-            const toWallX = closestX - this.position.x;
-            const toWallY = closestY - this.position.y;
-            const dot = this.velocity.x * toWallX + this.velocity.y * toWallY;
-            if (dot >= -0.05) {
-              supportingWall = adjacentWall;
-            }
-          }
-        } else if (!supportingWall && !this.isCharacter) {
-          supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius * 0.5);
+    if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
+      // Layer 2 threshold: entity is elevated to or resting on layer 2 (wall height)
+      const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 ||
+        (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2);
+
+      if (isAtWallLayer) {
+        // An entity on layer 2 is supported as long as its collider overlaps ANY wall tile!
+        // It cannot fall below layer 2 while overlapping any wall tile.
+        supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+        if (supportingWall) {
+          surfaceHeight = supportingWall.wallHeight;
         }
       }
-      surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
     }
     if (this.isClimbing) {
       surfaceHeight = Math.max(surfaceHeight, this.position.z);
@@ -523,12 +513,10 @@ export class GameObject {
         this.resolveWallImpact(0, -1, bRestitution);
       }
 
-      // Internal arena walls collision
-      if (!supportingWall) {
-        for (const wall of arena.walls) {
-          if (this.position.z < wall.wallHeight - 0.05) {
-            this.resolveWallCollision(wall);
-          }
+      // Internal arena walls collision: strictly enforced for any entity below wall height
+      for (const wall of arena.walls) {
+        if (this.position.z < wall.wallHeight - 0.05) {
+          this.resolveWallCollision(wall);
         }
       }
     }
