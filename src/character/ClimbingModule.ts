@@ -16,10 +16,25 @@ export class ClimbingModule {
   // Whether to prevent walking off elevated walls unless holding climb key (Space bar)
   public preventWalkOff = true;
 
-  constructor(options?: { maxAdhesion?: number; maxClimbSpeed?: number; preventWalkOff?: boolean }) {
+  // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
+  public horizontalClimb = false;
+
+  // When stepping/jumping off a wall with climb key held, suppress re-grabbing until released or grounded
+  public climbSuppressedUntilRePress = false;
+
+  // Previous frame climb key state to detect fresh presses
+  private wasClimbHeldLastTick = false;
+
+  constructor(options?: {
+    maxAdhesion?: number;
+    maxClimbSpeed?: number;
+    preventWalkOff?: boolean;
+    horizontalClimb?: boolean;
+  }) {
     if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
     if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
     if (options?.preventWalkOff !== undefined) this.preventWalkOff = options.preventWalkOff;
+    if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
   }
 
   /**
@@ -36,6 +51,19 @@ export class ClimbingModule {
     dt: number,
     arena: Arena
   ): boolean {
+    const isFreshClimbPress = isClimbHeld && !this.wasClimbHeldLastTick;
+    this.wasClimbHeldLastTick = isClimbHeld;
+
+    // Reset suppression when climb key is released or when grounded
+    if (!isClimbHeld || character.position.z <= 0.01) {
+      this.climbSuppressedUntilRePress = false;
+    }
+
+    if (this.climbSuppressedUntilRePress) {
+      character.isClimbing = false;
+      return false;
+    }
+
     if (!this.enabled || !character.hasVerticalPosition || !character.hasStrength || character.strength <= 0) {
       character.isClimbing = false;
       return false;
@@ -46,6 +74,19 @@ export class ClimbingModule {
     const hasMoveInput = inputMag >= 0.05;
     const moveDirX = hasMoveInput ? movementInput.x / inputMag : 0;
     const moveDirY = hasMoveInput ? movementInput.y / inputMag : 0;
+
+    // If standing on top of a wall and player hits Space bar, perform a dismount jump off the wall
+    if (character.position.z >= arena.wallHeight - 0.05) {
+      if (isFreshClimbPress) {
+        const jumpDirX = hasMoveInput ? moveDirX : Math.cos(character.facingAngle);
+        const jumpDirY = hasMoveInput ? moveDirY : Math.sin(character.facingAngle);
+        character.velocity.x = jumpDirX * 3.5;
+        character.velocity.y = jumpDirY * 3.5;
+        this.climbSuppressedUntilRePress = true;
+        character.isClimbing = false;
+        return false;
+      }
+    }
 
     // Find closest adjacent wall
     let targetWall: Wall | null = null;
@@ -94,7 +135,15 @@ export class ClimbingModule {
     // - Continuing to hold Space continues climbing UP the wall, even without holding directional movement keys.
     // - Falling ONLY occurs when actively walking in the opposite direction (away from wall: targetDot < -0.1).
     if (isEstablishedClimb && character.position.z < targetWall.wallHeight) {
-      if (hasMoveInput && targetDot < -0.1) {
+      const wallNormalX = shortestDist > 0.001 ? targetDx / shortestDist : 0;
+      const wallNormalY = shortestDist > 0.001 ? targetDy / shortestDist : 0;
+      const tangentX = -wallNormalY;
+      const tangentY = wallNormalX;
+
+      const inputDotNormal = hasMoveInput ? (moveDirX * wallNormalX + moveDirY * wallNormalY) : 0;
+      const inputDotTangent = hasMoveInput ? (moveDirX * tangentX + moveDirY * tangentY) : 0;
+
+      if (hasMoveInput && (inputDotNormal < -0.3 || (!this.horizontalClimb && targetDot < -0.1))) {
         // Player is intending to walk away from the wall: release grip and fall down
         character.isClimbing = false;
         character.velocity.x = moveDirX * 3.0;
@@ -105,8 +154,20 @@ export class ClimbingModule {
       // Clinging to the wall: stay supported at current elevation, neutralize gravity
       character.isClimbing = true;
       character.verticalVelocity = 0;
-      character.velocity.x = 0;
-      character.velocity.y = 0;
+
+      // Handle horizontal traverse along the wall face if horizontalClimb is enabled
+      if (this.horizontalClimb && hasMoveInput && Math.abs(inputDotTangent) >= 0.1) {
+        const baseMass = character.baseMass;
+        const traverseSpeed = Math.max(
+          0.5,
+          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+        );
+        character.velocity.x = tangentX * inputDotTangent * traverseSpeed;
+        character.velocity.y = tangentY * inputDotTangent * traverseSpeed;
+      } else {
+        character.velocity.x = 0;
+        character.velocity.y = 0;
+      }
 
       // Ascend towards wall top if holding climb key (Space) and not walking away from the wall
       // Does not require continuous directional input once climb is established

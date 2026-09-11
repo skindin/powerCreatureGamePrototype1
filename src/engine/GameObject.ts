@@ -299,11 +299,22 @@ export class GameObject {
         (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2);
 
       if (isAtWallLayer) {
-        // An entity on layer 2 is supported as long as its collider overlaps ANY wall tile!
-        // It cannot fall below layer 2 while overlapping any wall tile.
-        supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-        if (supportingWall) {
-          surfaceHeight = supportingWall.wallHeight;
+        // If the character has jumped / dismounted off a wall (climbSuppressedUntilRePress),
+        // and is jumping down into a gap or 1x1 hole between walls, do NOT treat adjacent walls as supporting surface!
+        const char = this.isCharacter ? (this as any) : null;
+        const isDismountFalling = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
+
+        if (isDismountFalling) {
+          supportingWall = arena.getWallAt(this.position.x, this.position.y);
+          if (supportingWall) {
+            surfaceHeight = supportingWall.wallHeight;
+          }
+        } else {
+          // Standard layer 2 support: entity is supported as long as collider circle overlaps ANY wall tile
+          supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+          if (supportingWall) {
+            surfaceHeight = supportingWall.wallHeight;
+          }
         }
       }
     }
@@ -487,9 +498,10 @@ export class GameObject {
     // Check climb ability ledge guard / walk-off prevention:
     // When on top of a wall, prevent walking off unless actively holding the climb control (Space bar).
     const char = this.isCharacter ? (this as any) : null;
+    const wasOnWallTop = (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05);
     const isPreventWalkOffActive = Boolean(
       char &&
-      (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05) &&
+      wasOnWallTop &&
       char.climbingModule?.enabled &&
       char.climbingModule?.preventWalkOff &&
       !char.isClimbInputHeld
@@ -506,26 +518,32 @@ export class GameObject {
           this.position.x = candidateX;
           this.position.y = candidateY;
         } else {
-          // Ledge guard: test sliding along each axis independently to prevent stepping into the abyss
-          const supportX = arena.getSupportingWall(candidateX, this.position.y, this.colliderRadius);
-          const supportY = arena.getSupportingWall(this.position.x, candidateY, this.colliderRadius);
+          // Ledge guard with corner sliding deflection:
+          // Find the closest point on any wall footprint to the candidate position
+          const closest = GameObject.getClosestWallPoint(candidateX, candidateY, arena);
+          if (closest && closest.dist > 0) {
+            const r = this.colliderRadius;
+            const normalX = closest.dx / closest.dist;
+            const normalY = closest.dy / closest.dist;
 
-          if (supportX && supportY) {
-            if (Math.abs(this.velocity.x) >= Math.abs(this.velocity.y)) {
-              this.position.x = candidateX;
-              this.velocity.y = 0;
-            } else {
-              this.position.y = candidateY;
-              this.velocity.x = 0;
+            // Outward velocity attempting to step into the void
+            const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
+            if (outwardVel > 0) {
+              // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
+              this.velocity.x -= outwardVel * normalX;
+              this.velocity.y -= outwardVel * normalY;
             }
-          } else if (supportX) {
-            this.position.x = candidateX;
-            this.velocity.y = 0;
-          } else if (supportY) {
-            this.position.y = candidateY;
-            this.velocity.x = 0;
+
+            // Clamp position along the normal to valid contact distance (r - 0.002) so collider circle remains overlapping wall
+            const maxAllowedDist = r - 0.002;
+            if (closest.dist > maxAllowedDist) {
+              this.position.x = closest.closestX + normalX * maxAllowedDist;
+              this.position.y = closest.closestY + normalY * maxAllowedDist;
+            } else {
+              this.position.x = candidateX;
+              this.position.y = candidateY;
+            }
           } else {
-            // Reaching outer ledge corner or moving perpendicularly off edge: stop horizontal movement
             this.velocity.x = 0;
             this.velocity.y = 0;
           }
@@ -537,6 +555,14 @@ export class GameObject {
     } else {
       this.position.x += this.velocity.x * dt;
       this.position.y += this.velocity.y * dt;
+
+      // Detect stepping/jumping off wall with climb button held
+      if (char && wasOnWallTop && char.isClimbInputHeld) {
+        const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+        if (!newSupport && char.climbingModule) {
+          char.climbingModule.climbSuppressedUntilRePress = true;
+        }
+      }
     }
 
     // 4 & 5. Boundary & Wall Collisions (Only if ColliderModule is active!)
@@ -595,6 +621,53 @@ export class GameObject {
     if (this.verticalPositionModule) {
       this.verticalPositionModule.z = this.position.z;
     }
+  }
+
+  /**
+   * Finds the closest point on any wall footprint in the arena to (x, y),
+   * along with distance and normal vector components.
+   */
+  public static getClosestWallPoint(x: number, y: number, arena: Arena): {
+    wall: Wall;
+    closestX: number;
+    closestY: number;
+    dist: number;
+    dx: number;
+    dy: number;
+  } | null {
+    if (!arena.walls || arena.walls.length === 0) return null;
+
+    let bestDistSq = Infinity;
+    let bestResult: {
+      wall: Wall;
+      closestX: number;
+      closestY: number;
+      dist: number;
+      dx: number;
+      dy: number;
+    } | null = null;
+
+    for (const wall of arena.walls) {
+      const cx = Math.max(wall.x, Math.min(x, wall.x + wall.width));
+      const cy = Math.max(wall.y, Math.min(y, wall.y + wall.height));
+      const dx = x - cx;
+      const dy = y - cy;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestResult = {
+          wall,
+          closestX: cx,
+          closestY: cy,
+          dist: Math.sqrt(distSq),
+          dx,
+          dy,
+        };
+      }
+    }
+
+    return bestResult;
   }
 
   /**

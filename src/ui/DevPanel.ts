@@ -693,6 +693,12 @@ export class DevPanel {
                     ${this.character.climbingModule?.preventWalkOff ? 'Active' : 'Inactive'}
                   </button>
                 </div>
+                <div class="toggle-row" style="margin-bottom: 8px;">
+                  <label style="font-size: 0.8rem;">Sideways Climb (Traverse Wall)</label>
+                  <button id="toggle-climb-sideways" class="btn-toggle ${this.character.climbingModule?.horizontalClimb ? 'active' : ''}">
+                    ${this.character.climbingModule?.horizontalClimb ? 'Active' : 'Inactive'}
+                  </button>
+                </div>
                 <div class="slider-group">
                   <div class="slider-label">
                     <span>Max Adhesion (N)</span>
@@ -1136,6 +1142,12 @@ export class DevPanel {
           btnClimbWalkOff.textContent = isWalkOffPrevented ? "Active" : "Inactive";
           btnClimbWalkOff.classList.toggle("active", isWalkOffPrevented);
         }
+        const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
+        if (btnClimbSideways) {
+          const isSidewaysActive = Boolean(this.character.climbingModule.horizontalClimb);
+          btnClimbSideways.textContent = isSidewaysActive ? "Active" : "Inactive";
+          btnClimbSideways.classList.toggle("active", isSidewaysActive);
+        }
         this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", this.character.climbingModule.maxAdhesion, 0);
         this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.maxClimbSpeed, 1);
       }
@@ -1513,6 +1525,14 @@ export class DevPanel {
     btnClimbWalkOff?.addEventListener("click", () => {
       if (this.character.climbingModule) {
         this.character.climbingModule.preventWalkOff = !this.character.climbingModule.preventWalkOff;
+      }
+      this.syncEntitySliders();
+    });
+
+    const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
+    btnClimbSideways?.addEventListener("click", () => {
+      if (this.character.climbingModule) {
+        this.character.climbingModule.horizontalClimb = !this.character.climbingModule.horizontalClimb;
       }
       this.syncEntitySliders();
     });
