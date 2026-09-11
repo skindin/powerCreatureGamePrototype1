@@ -1,3 +1,6 @@
+import type { GameObject } from "./GameObject.js";
+import { VerticalPositionModule } from "./VerticalPositionModule.js";
+
 export interface Wall {
   id: string;
   x: number;
@@ -7,7 +10,148 @@ export interface Wall {
   wallHeight: number;
 }
 
+export interface WallMapPreset {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  generate: (cols: number, rows: number) => number[][];
+}
+
 export class Arena {
+  public static readonly WALL_PRESETS: WallMapPreset[] = [
+    {
+      id: "standard",
+      name: "🏛️ Standard Arena",
+      badge: "Balanced",
+      description: "Center dividing wall with an open gateway and two 2×2 cover obstacles.",
+      generate: (cols, rows) => {
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+        const midCol = 10;
+        for (let r = 1; r <= 4; r++) grid[r][midCol] = 1;
+        for (let r = 8; r <= 12; r++) grid[r][midCol] = 1;
+        grid[4][4] = 1; grid[5][4] = 1; grid[4][5] = 1; grid[5][5] = 1;
+        grid[7][15] = 1; grid[8][15] = 1; grid[7][16] = 1; grid[8][16] = 1;
+        return grid;
+      },
+    },
+    {
+      id: "trenches",
+      name: "⛏️ Trench Tunnels",
+      badge: "Dense Walls",
+      description: "Mostly elevated walls with a winding network of 1-tile-wide ground-level trench tunnels.",
+      generate: (cols, rows) => {
+        // Start with solid walls across the entire 20x14 arena (280 wall tiles)
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 1));
+
+        // Carve primary 1-tile-wide horizontal trench tunnels:
+        for (let c = 2; c <= 17; c++) {
+          grid[3][c] = 0;
+          grid[7][c] = 0;
+          grid[10][c] = 0;
+        }
+
+        // Carve primary 1-tile-wide vertical trench tunnels:
+        for (let r = 2; r <= 11; r++) {
+          grid[r][5] = 0;  // Intersects player spawn at (col 5, row 7)
+          grid[r][10] = 0; // Central trench tunnel artery
+          grid[r][14] = 0; // East trench tunnel artery
+        }
+
+        // Winding connector trenches & escape passages:
+        grid[1][10] = 0; // North trench exit
+        grid[12][10] = 0; // South trench exit
+        grid[7][1] = 0;  // West perimeter entry
+        grid[7][18] = 0; // East perimeter entry
+        for (let r = 5; r <= 9; r++) grid[r][2] = 0;  // West auxiliary trench
+        for (let r = 5; r <= 9; r++) grid[r][17] = 0; // East auxiliary trench
+
+        // Short connecting cross-tunnels:
+        for (let c = 2; c <= 5; c++) grid[5][c] = 0;
+        for (let c = 10; c <= 14; c++) grid[5][c] = 0;
+        for (let c = 5; c <= 10; c++) grid[9][c] = 0;
+        for (let c = 14; c <= 17; c++) grid[9][c] = 0;
+
+        // Player spawn point (col 5, row 7) is guaranteed an open trench
+        grid[7][5] = 0;
+
+        return grid;
+      },
+    },
+    {
+      id: "courtyards",
+      name: "🏰 Courtyards & Platforms",
+      badge: "4 Quadrants",
+      description: "Four large raised platforms in each corner with a central dais and open courtyards.",
+      generate: (cols, rows) => {
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+        // 4 corner raised platforms
+        for (let r = 2; r <= 4; r++) {
+          for (let c = 3; c <= 6; c++) grid[r][c] = 1;
+          for (let c = 13; c <= 16; c++) grid[r][c] = 1;
+        }
+        for (let r = 9; r <= 11; r++) {
+          for (let c = 3; c <= 6; c++) grid[r][c] = 1;
+          for (let c = 13; c <= 16; c++) grid[r][c] = 1;
+        }
+        // Center raised dais
+        for (let r = 6; r <= 7; r++) {
+          for (let c = 9; c <= 10; c++) grid[r][c] = 1;
+        }
+        return grid;
+      },
+    },
+    {
+      id: "pillars",
+      name: "🗿 Pillars & Monoliths",
+      badge: "Tactical Cover",
+      description: "Raised monoliths and stepping-stone pillars scattered across the arena.",
+      generate: (cols, rows) => {
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+        const pillarCoords = [
+          [3, 2], [8, 2], [15, 2],
+          [3, 10], [8, 10], [15, 10],
+          [5, 6], [13, 6], [9, 6]
+        ];
+        for (const [pc, pr] of pillarCoords) {
+          grid[pr][pc] = 1;
+          grid[pr + 1][pc] = 1;
+          grid[pr][pc + 1] = 1;
+          grid[pr + 1][pc + 1] = 1;
+        }
+        return grid;
+      },
+    },
+    {
+      id: "maze",
+      name: "🌀 Labyrinth Maze",
+      badge: "Winding Paths",
+      description: "Interlocking corridors and winding paths with high walls to climb over or navigate.",
+      generate: (cols, rows) => {
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+        for (let r = 1; r <= 9; r++) grid[r][4] = 1;
+        for (let r = 4; r <= 12; r++) grid[r][7] = 1;
+        for (let r = 1; r <= 9; r++) grid[r][10] = 1;
+        for (let r = 4; r <= 12; r++) grid[r][13] = 1;
+        for (let r = 1; r <= 9; r++) grid[r][16] = 1;
+        for (let c = 7; c <= 10; c++) grid[4][c] = 1;
+        for (let c = 13; c <= 16; c++) grid[4][c] = 1;
+        for (let c = 4; c <= 7; c++) grid[9][c] = 1;
+        for (let c = 10; c <= 13; c++) grid[9][c] = 1;
+        return grid;
+      },
+    },
+    {
+      id: "empty",
+      name: "⬜ Empty (Open Arena)",
+      badge: "Clean Slate",
+      description: "Completely open arena with zero walls for custom level design.",
+      generate: (cols, rows) => {
+        return Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+      },
+    },
+  ];
+
   public width: number;
   public height: number;
   public tileSize: number;
@@ -21,6 +165,7 @@ export class Arena {
 
   public tileGrid: number[][];
   public walls: Wall[] = [];
+  public currentPresetId = "standard";
 
   constructor(width = 20, height = 14, tileSize = 1.0) {
     this.width = width;
@@ -39,32 +184,7 @@ export class Arena {
       Array.from({ length: this.cols }, () => 0)
     );
 
-    this.setupDefaultTileMap();
-    this.rebuildWalls();
-  }
-
-  private setupDefaultTileMap(): void {
-    // 1. Center dividing wall column (column 10, with an opening in the middle)
-    const midCol = 10;
-    for (let r = 1; r <= 4; r++) {
-      this.tileGrid[r][midCol] = 1;
-    }
-    // Rows 5, 6, 7 are open gateway
-    for (let r = 8; r <= 12; r++) {
-      this.tileGrid[r][midCol] = 1;
-    }
-
-    // 2. Left side obstacle (2x2 grid block)
-    this.tileGrid[4][4] = 1;
-    this.tileGrid[5][4] = 1;
-    this.tileGrid[4][5] = 1;
-    this.tileGrid[5][5] = 1;
-
-    // 3. Right side obstacle (2x2 grid block)
-    this.tileGrid[7][15] = 1;
-    this.tileGrid[8][15] = 1;
-    this.tileGrid[7][16] = 1;
-    this.tileGrid[8][16] = 1;
+    this.loadWallPreset("standard");
   }
 
   /**
@@ -117,28 +237,59 @@ export class Arena {
   }
 
   /**
-   * Clears all internal walls from the arena
+   * Loads a predefined wall layout by preset ID and optionally syncs entity elevations
    */
-  public clearAllWalls(): void {
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        this.tileGrid[r][c] = 0;
-      }
-    }
+  public loadWallPreset(presetId: string, entities?: GameObject[]): boolean {
+    const preset = Arena.WALL_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return false;
+    this.currentPresetId = presetId;
+    this.tileGrid = preset.generate(this.cols, this.rows);
     this.rebuildWalls();
+    this.syncEntitiesWithWalls(entities);
+    return true;
   }
 
   /**
-   * Resets the arena to its default layout
+   * Synchronizes entity elevations: any entity on the ground overlapping a newly placed wall
+   * is smoothly elevated to the wall height.
    */
-  public resetDefaultWalls(): void {
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        this.tileGrid[r][c] = 0;
+  public syncEntitiesWithWalls(entities?: GameObject[]): void {
+    if (!entities) return;
+    for (const ent of entities) {
+      const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.32);
+      const supportingWall = this.getSupportingWall(ent.position.x, ent.position.y, r);
+      if (supportingWall) {
+        if (ent.position.z < supportingWall.wallHeight) {
+          if (!ent.hasVerticalPosition) {
+            if (!ent.verticalPositionModule) {
+              ent.verticalPositionModule = new VerticalPositionModule({
+                z: supportingWall.wallHeight,
+                hasVerticalVelocity: true,
+              });
+            } else {
+              ent.verticalPositionModule.enabled = true;
+            }
+          }
+          ent.position.z = supportingWall.wallHeight;
+          ent.supportingSurfaceHeight = supportingWall.wallHeight;
+          ent.verticalVelocity = 0;
+        }
       }
     }
-    this.setupDefaultTileMap();
-    this.rebuildWalls();
+  }
+
+  /**
+   * Clears all internal walls from the arena
+   */
+  public clearAllWalls(entities?: GameObject[]): void {
+    this.loadWallPreset("empty", entities);
+  }
+
+  /**
+   * Resets the arena to its default standard layout
+   */
+  public resetDefaultWalls(entities?: GameObject[]): void {
+    this.loadWallPreset("standard", entities);
   }
 
   /**

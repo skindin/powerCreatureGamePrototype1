@@ -244,12 +244,18 @@ export class InputManager {
             }
           }
         }
+        arena.currentPresetId = "custom";
+        devPanel?.updateWallPresetUI();
       }
     };
 
     const applyWallErase = (col: number, row: number) => {
       if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
-      arena.setWallTile(col, row, false);
+      if (arena.tileGrid[row][col] === 1) {
+        arena.setWallTile(col, row, false);
+        arena.currentPresetId = "custom";
+        devPanel?.updateWallPresetUI();
+      }
       // Erased walls remove supporting surfaces; GameObject.updatePosition will naturally drop unsupported entities
     };
 

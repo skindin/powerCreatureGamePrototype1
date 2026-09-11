@@ -321,6 +321,26 @@ export class DevPanel {
             </div>
           </div>
 
+          <!-- Wall Map Presets Switcher -->
+          <div class="wall-presets-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.78rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 4px;">🗺️ Default Wall Maps</span>
+              <span id="label-wall-map-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem;">
+                ${this.getCurrentWallPresetBadge()}
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-prev-wall-map" class="btn-secondary-action btn-wall-nav" title="Previous Wall Map">◀</button>
+              <select id="select-wall-preset" class="dev-select wall-preset-select">
+                ${this.renderWallPresetOptions()}
+              </select>
+              <button id="btn-next-wall-map" class="btn-secondary-action btn-wall-nav" title="Next Wall Map">▶</button>
+            </div>
+            <p id="desc-wall-map" class="wall-preset-desc">
+              ${this.getCurrentWallPresetDesc()}
+            </p>
+          </div>
+
           <div class="slider-group" style="margin-top: 12px;">
             <div class="slider-label">
               <span>Standard Wall Height (u)</span>
@@ -1500,12 +1520,36 @@ export class DevPanel {
       this.setSliderVal("slide-wall-height", "val-wall-height", val, 1);
     }, 1);
 
+    const selectWallPreset = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
+    selectWallPreset?.addEventListener("change", () => {
+      this.arena.loadWallPreset(selectWallPreset.value, [this.character, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-prev-wall-map")?.addEventListener("click", () => {
+      const presets = Arena.WALL_PRESETS;
+      const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
+      const prevIdx = (idx - 1 + presets.length) % presets.length;
+      this.arena.loadWallPreset(presets[prevIdx].id, [this.character, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-next-wall-map")?.addEventListener("click", () => {
+      const presets = Arena.WALL_PRESETS;
+      const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
+      const nextIdx = (idx + 1) % presets.length;
+      this.arena.loadWallPreset(presets[nextIdx].id, [this.character, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
     this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
-      this.arena.resetDefaultWalls();
+      this.arena.resetDefaultWalls([this.character, ...this.objects]);
+      this.updateWallPresetUI();
     });
 
     this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
-      this.arena.clearAllWalls();
+      this.arena.clearAllWalls([this.character, ...this.objects]);
+      this.updateWallPresetUI();
     });
 
     this.setupSlider("slide-friction", "val-friction", (val) => {
@@ -1799,5 +1843,30 @@ export class DevPanel {
       </div>
       ` : ''}
     `;
+  }
+
+  private renderWallPresetOptions(): string {
+    return Arena.WALL_PRESETS.map((p) =>
+      `<option value="${p.id}" ${this.arena.currentPresetId === p.id ? "selected" : ""}>${p.name}</option>`
+    ).join("");
+  }
+
+  private getCurrentWallPresetBadge(): string {
+    const preset = Arena.WALL_PRESETS.find((p) => p.id === this.arena.currentPresetId);
+    return preset ? preset.badge : "Custom";
+  }
+
+  private getCurrentWallPresetDesc(): string {
+    const preset = Arena.WALL_PRESETS.find((p) => p.id === this.arena.currentPresetId);
+    return preset ? preset.description : "Custom wall layout painted in the arena.";
+  }
+
+  public updateWallPresetUI(): void {
+    const select = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
+    if (select) select.value = this.arena.currentPresetId;
+    const badge = this.container.querySelector("#label-wall-map-badge");
+    if (badge) badge.textContent = this.getCurrentWallPresetBadge();
+    const desc = this.container.querySelector("#desc-wall-map");
+    if (desc) desc.textContent = this.getCurrentWallPresetDesc();
   }
 }
