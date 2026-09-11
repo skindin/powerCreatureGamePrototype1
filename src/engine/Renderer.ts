@@ -16,7 +16,8 @@ export class Renderer {
     objects: GameObject[],
     selectedEntity?: GameObject | null,
     isEditMode = false,
-    hoverEntity?: GameObject | null
+    hoverEntity?: GameObject | null,
+    remoteCharacters: Character[] = []
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -30,7 +31,7 @@ export class Renderer {
     this.drawWalls(arena, ppu);
 
     // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position
-    const allRenderables = [character, ...objects];
+    const allRenderables = [character, ...remoteCharacters, ...objects];
     allRenderables.sort((a, b) => {
       // Primary: Objects at higher virtual position (height z) ALWAYS render on top
       if (Math.abs(a.position.z - b.position.z) > 0.001) {
@@ -362,6 +363,34 @@ export class Renderer {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+
+    // Overhead player tag badge
+    ctx.save();
+    ctx.font = "bold 11px Inter, system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    const tagText = char.isLocalPlayer ? "You" : char.name;
+    const tagY = y - r - 10;
+    const textWidth = ctx.measureText(tagText).width;
+
+    // Badge pill background
+    ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x - textWidth / 2 - 6, tagY - 11, textWidth + 12, 16, 8);
+    } else {
+      ctx.rect(x - textWidth / 2 - 6, tagY - 11, textWidth + 12, 16);
+    }
+    ctx.fill();
+
+    // Badge border matching character aesthetic color
+    ctx.strokeStyle = char.color;
+    ctx.lineWidth = char.isLocalPlayer ? 1.8 : 1.2;
+    ctx.stroke();
+
+    // Text label
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillText(tagText, x, tagY + 1);
+    ctx.restore();
 
     ctx.restore();
   }

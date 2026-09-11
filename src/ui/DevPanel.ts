@@ -45,6 +45,8 @@ export class DevPanel {
 
   public selectedEntity: GameObject;
   public isEditMode: boolean = false;
+  public isHost: boolean = true;
+  public hostName: string = "Host";
   public onSelectionChange?: (entity: GameObject | null) => void;
 
   // Preserved Creator State
@@ -217,6 +219,10 @@ export class DevPanel {
   }
 
   public setMode(editMode: boolean): void {
+    if (!this.isHost && editMode) {
+      // Non-hosts are strictly restricted to Play Mode
+      return;
+    }
     this.isEditMode = editMode;
     if (this.modePlayBtn && this.modeEditBtn) {
       if (this.isEditMode) {
@@ -226,6 +232,46 @@ export class DevPanel {
         this.modePlayBtn.classList.add("active-play");
         this.modeEditBtn.classList.remove("active-edit");
       }
+    }
+  }
+
+  public setHost(isHost: boolean, hostName = "Host"): void {
+    this.isHost = isHost;
+    this.hostName = hostName;
+    if (!isHost && this.isEditMode) {
+      this.setMode(false);
+    }
+    const roleBadge = this.container.querySelector("#role-badge");
+    if (roleBadge) {
+      roleBadge.textContent = isHost ? "👑 Room Host (Dev Tools)" : "🎮 Guest (Play Mode)";
+      roleBadge.className = `badge ${isHost ? 'badge-host' : 'badge-guest'}`;
+    }
+    const hostLockBanner = this.container.querySelector("#host-lock-banner") as HTMLElement;
+    if (hostLockBanner) {
+      hostLockBanner.style.display = isHost ? "none" : "block";
+      const span = hostLockBanner.querySelector("span");
+      if (span) span.textContent = `🔒 Dev tools restricted to Room Host (${this.hostName}). You are in Play Mode.`;
+    }
+    if (this.modeEditBtn) {
+      if (!isHost) {
+        this.modeEditBtn.setAttribute("disabled", "true");
+        this.modeEditBtn.style.opacity = "0.4";
+        this.modeEditBtn.style.cursor = "not-allowed";
+        this.modeEditBtn.title = "Edit Mode is restricted to Room Host";
+      } else {
+        this.modeEditBtn.removeAttribute("disabled");
+        this.modeEditBtn.style.opacity = "1";
+        this.modeEditBtn.style.cursor = "pointer";
+        this.modeEditBtn.title = "";
+      }
+    }
+    const creatorSection = this.container.querySelector("#section-world-spawner") as HTMLElement;
+    if (creatorSection) {
+      creatorSection.style.display = isHost ? "block" : "none";
+    }
+    const arenaSection = this.container.querySelector("#section-arena-physics") as HTMLElement;
+    if (arenaSection) {
+      arenaSection.style.display = isHost ? "block" : "none";
     }
   }
 
@@ -256,11 +302,16 @@ export class DevPanel {
       <div class="dev-panel-header">
         <div class="header-top-row">
           <h2>🛠️ Sandbox & Engine</h2>
-          <span class="badge">1 Wall = 1 Unit</span>
+          <span id="role-badge" class="badge ${this.isHost ? 'badge-host' : 'badge-guest'}">
+            ${this.isHost ? '👑 Room Host (Dev Tools)' : '🎮 Guest (Play Mode)'}
+          </span>
+        </div>
+        <div id="host-lock-banner" class="host-lock-banner" style="display: ${this.isHost ? 'none' : 'block'};">
+          <span>🔒 Dev tools restricted to Room Host (${this.hostName}). You are in Play Mode.</span>
         </div>
         <div class="mode-switcher">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
-          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
+          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}" ${!this.isHost ? 'disabled style="opacity: 0.4; cursor: not-allowed;" title="Edit Mode restricted to Room Host"' : ''}>✏️ Edit Mode</button>
         </div>
       </div>
 
@@ -566,7 +617,7 @@ export class DevPanel {
         </div>
 
         <!-- ✨ Add New Object (Creator & Presets) -->
-        <div class="dev-section">
+        <div id="section-world-spawner" class="dev-section" style="display: ${this.isHost ? 'block' : 'none'};">
           <h3>✨ Add New Object</h3>
           <p class="section-desc">Pick a preset or configure custom properties. Values remain preserved across spawns.</p>
           
@@ -721,7 +772,7 @@ export class DevPanel {
         </div>
 
         <!-- 🌍 World & Arena Physics -->
-        <div class="dev-section">
+        <div id="section-arena-physics" class="dev-section" style="display: ${this.isHost ? 'block' : 'none'};">
           <h3>🌍 World Physics & Environment</h3>
 
           <div class="slider-group">

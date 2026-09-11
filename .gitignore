@@ -2,6 +2,9 @@
 *.WebView2/
 EBWebView/
 
+# Node dependencies
+node_modules/
+
 # Build & Compiler Artifacts
 desktop_app/bin/
 desktop_app/obj/

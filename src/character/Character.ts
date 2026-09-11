@@ -45,7 +45,13 @@ export class Character extends GameObject {
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
 
+  public playerId = "";
+  public isLocalPlayer = true;
+
   constructor(options: {
+    name?: string;
+    playerId?: string;
+    isLocalPlayer?: boolean;
     x?: number;
     y?: number;
     color?: string;
@@ -54,14 +60,16 @@ export class Character extends GameObject {
     strength?: number;
   } = {}) {
     super({
-      name: "Player Character",
+      name: options.name ?? "Player Character",
       position: { x: options.x ?? 5.0, y: options.y ?? 7.0, z: 0 },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
-      color: options.color ?? "#f59e0b", // Amber body
+      color: options.color ?? "#f59e0b", // Body color
       bounceMod: 0.1,
     });
 
+    this.playerId = options.playerId ?? "";
+    this.isLocalPlayer = options.isLocalPlayer ?? true;
     this.baseMass = options.mass ?? 1.2;
     this.strength = options.strength ?? 1.0;
     this.facingAngle = 0;

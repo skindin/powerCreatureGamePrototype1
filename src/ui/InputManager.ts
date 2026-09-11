@@ -27,6 +27,7 @@ export class InputManager {
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
+  public onActionAttempt?: (action: "pickup" | "throw" | "drop", targetObjectId?: string, aimX?: number, aimY?: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -262,6 +263,7 @@ export class InputManager {
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (character.heldObject && character.throwModule && !this.justPickedUp) {
         character.throwModule.throwHeldObject(character, clickX, clickY, arena);
+        this.onActionAttempt?.("throw", undefined, clickX, clickY);
         return;
       }
 
@@ -271,6 +273,7 @@ export class InputManager {
         if (target) {
           character.pickupModule.pickup(character, target);
           this.justPickedUp = true;
+          this.onActionAttempt?.("pickup", target.id);
         }
       }
     };
@@ -289,6 +292,7 @@ export class InputManager {
     this.onDropAttempt = () => {
       if (character.heldObject && character.pickupModule) {
         character.pickupModule.drop(character);
+        this.onActionAttempt?.("drop");
       }
     };
   }

@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setupWebSocketServer } from './serverHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -119,6 +120,9 @@ const server = http.createServer((req, res) => {
     });
   });
 });
+
+// Attach WebSocket server for real-time multiplayer
+setupWebSocketServer(server);
 
 server.listen(PORT, HOST, () => {
   console.log(`⚡ Power Creature Game server running at http://${HOST}:${PORT}`);

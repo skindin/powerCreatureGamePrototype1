@@ -4,6 +4,8 @@ import { GameObject } from "./GameObject.js";
 import { Renderer } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
+import type { NetworkManager } from "../network/NetworkManager.js";
+import type { ObjectNetworkData } from "../network/types.js";
 
 export class GameLoop {
   private arena: Arena;
@@ -12,6 +14,8 @@ export class GameLoop {
   private renderer: Renderer;
   private inputManager: InputManager;
   private devPanel: DevPanel;
+  public networkManager?: NetworkManager;
+  public remoteCharacters: Map<string, Character> = new Map();
 
   private isRunning = false;
   private lastTime = 0;
@@ -25,6 +29,7 @@ export class GameLoop {
     renderer: Renderer;
     inputManager: InputManager;
     devPanel: DevPanel;
+    networkManager?: NetworkManager;
   }) {
     this.arena = options.arena;
     this.character = options.character;
@@ -32,6 +37,155 @@ export class GameLoop {
     this.renderer = options.renderer;
     this.inputManager = options.inputManager;
     this.devPanel = options.devPanel;
+    this.networkManager = options.networkManager;
+
+    if (this.networkManager) {
+      this.setupNetworkHandlers(this.networkManager);
+    }
+  }
+
+  private setupNetworkHandlers(net: NetworkManager): void {
+    net.onInit = (packet) => {
+      this.character.playerId = packet.playerId;
+      this.character.color = packet.playerColor;
+      this.character.name = packet.playerName;
+      this.devPanel.setHost(packet.isHost, packet.hostId);
+
+      // Spawn characters for players already connected in room
+      for (const p of packet.players) {
+        if (p.id !== packet.playerId && !this.remoteCharacters.has(p.id)) {
+          const remote = new Character({
+            name: p.name,
+            playerId: p.id,
+            color: p.color,
+            isLocalPlayer: false,
+            x: p.x,
+            y: p.y,
+          });
+          this.remoteCharacters.set(p.id, remote);
+        }
+      }
+    };
+
+    net.onPlayerJoined = (packet) => {
+      if (packet.player.id !== this.character.playerId && !this.remoteCharacters.has(packet.player.id)) {
+        const remote = new Character({
+          name: packet.player.name,
+          playerId: packet.player.id,
+          color: packet.player.color,
+          isLocalPlayer: false,
+          x: packet.player.x,
+          y: packet.player.y,
+        });
+        this.remoteCharacters.set(packet.player.id, remote);
+        console.log(`[GameLoop] Remote player joined: ${packet.player.name} (${packet.player.id})`);
+      }
+    };
+
+    net.onPlayerLeft = (packet) => {
+      const remote = this.remoteCharacters.get(packet.playerId);
+      if (remote) {
+        if (remote.heldObject) {
+          remote.heldObject.isHeld = false;
+          remote.heldObject.heldBy = null;
+          remote.heldObject = null;
+        }
+        this.remoteCharacters.delete(packet.playerId);
+        console.log(`[GameLoop] Remote player removed: ${packet.playerId}`);
+      }
+      if (packet.newHostId) {
+        this.devPanel.setHost(packet.newHostId === this.character.playerId, packet.newHostId);
+      }
+    };
+
+    net.onRoleChange = (packet) => {
+      this.devPanel.setHost(packet.isHost, packet.hostId);
+    };
+
+    net.onPlayerState = (packet) => {
+      const remote = this.remoteCharacters.get(packet.playerId);
+      if (remote) {
+        remote.position.x = packet.x;
+        remote.position.y = packet.y;
+        remote.position.z = packet.z;
+        remote.velocity.x = packet.vx;
+        remote.velocity.y = packet.vy;
+        remote.verticalVelocity = packet.vz;
+        remote.facingAngle = packet.facingAngle;
+        remote.isAiming = packet.isAiming;
+        remote.aimTarget = packet.aimTarget;
+        remote.isActivelyWalking = packet.isActivelyWalking;
+
+        if (packet.heldObjectId) {
+          const held = this.objects.find((o) => o.id === packet.heldObjectId);
+          if (held) {
+            remote.heldObject = held;
+            held.isHeld = true;
+            held.heldBy = remote;
+          }
+        } else if (remote.heldObject) {
+          remote.heldObject.isHeld = false;
+          remote.heldObject.heldBy = null;
+          remote.heldObject = null;
+        }
+      }
+    };
+
+    net.onWorldSnapshot = (packet) => {
+      // Non-host updates objects from host authoritative snapshot
+      if (net.isHost) return;
+
+      if (packet.arena) {
+        this.arena.gravity = packet.arena.gravity;
+        this.arena.frictionCoeff = packet.arena.frictionCoeff;
+        this.arena.staticFrictionThreshold = packet.arena.staticFrictionThreshold;
+      }
+
+      for (const objData of packet.objects) {
+        const localObj = this.objects.find((o) => o.id === objData.id);
+        if (localObj) {
+          if (!localObj.isHeld) {
+            localObj.position.x = objData.x;
+            localObj.position.y = objData.y;
+            localObj.position.z = objData.z;
+            localObj.velocity.x = objData.vx;
+            localObj.velocity.y = objData.vy;
+            localObj.verticalVelocity = objData.vz;
+            localObj.supportingSurfaceHeight = objData.supportingSurfaceHeight;
+            if (localObj.rollModule) {
+              localObj.rollModule.angularVelocity.x = objData.rotX;
+              localObj.rollModule.angularVelocity.y = objData.rotY;
+              localObj.rollModule.angularVelocity.z = objData.rotZ;
+            }
+          }
+        }
+      }
+    };
+
+    net.onClientAction = (packet) => {
+      // Host executes action requested by guest
+      if (!net.isHost) return;
+      const remote = this.remoteCharacters.get(packet.playerId);
+      if (!remote) return;
+
+      if (packet.action === "pickup" && packet.targetObjectId) {
+        const target = this.objects.find((o) => o.id === packet.targetObjectId);
+        if (target && !target.isHeld && remote.pickupModule) {
+          remote.pickupModule.pickup(remote, target);
+        }
+      } else if (packet.action === "throw" && remote.heldObject && remote.throwModule) {
+        remote.throwModule.throwHeldObject(
+          remote,
+          packet.aimX ?? remote.position.x + Math.cos(remote.facingAngle) * 5,
+          packet.aimY ?? remote.position.y + Math.sin(remote.facingAngle) * 5,
+          this.arena
+        );
+      } else if (packet.action === "drop" && remote.heldObject) {
+        remote.heldObject.isHeld = false;
+        remote.heldObject.heldBy = null;
+        remote.heldObject = null;
+      }
+    };
   }
 
   public start(): void {
@@ -64,14 +218,15 @@ export class GameLoop {
       this.accumulator -= this.fixedDt;
     }
 
-    // Render current frame with active selection highlight
+    // Render current frame with active selection highlight & remote characters
     this.renderer.render(
       this.arena,
       this.character,
       this.objects,
       this.inputManager.selectedCanvasEntity,
       this.devPanel.isEditMode,
-      this.inputManager.hoverEntity
+      this.inputManager.hoverEntity,
+      Array.from(this.remoteCharacters.values())
     );
 
     // Update live inspector
@@ -82,6 +237,7 @@ export class GameLoop {
 
   private updatePhysics(dt: number): void {
     const input = this.inputManager;
+    const isHost = !this.networkManager || this.networkManager.isHost;
 
     // 1. Update character with movement and aim inputs
     if (input.draggedEntity !== this.character) {
@@ -97,16 +253,29 @@ export class GameLoop {
       this.character.velocity.y = 0;
     }
 
-    // 2. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
-    for (const obj of this.objects) {
-      if (input.draggedEntity === obj) {
-        continue;
+    // 2. Position held objects for remote characters
+    for (const remote of this.remoteCharacters.values()) {
+      if (remote.heldObject) {
+        const handDist = remote.colliderRadius + remote.heldObject.colliderRadius * 0.5 + 0.08;
+        remote.heldObject.position.x = remote.position.x + Math.cos(remote.facingAngle) * handDist;
+        remote.heldObject.position.y = remote.position.y + Math.sin(remote.facingAngle) * handDist;
+        remote.heldObject.position.z = remote.heldObject.hasVerticalPosition ? 0.45 : 0;
+        remote.heldObject.velocity.x = remote.velocity.x;
+        remote.heldObject.velocity.y = remote.velocity.y;
       }
-      obj.updatePosition(dt, this.arena);
     }
 
-    // 3. Continuous hold-to-grab (only active in Play Mode):
-    // If holding down grab and not holding an object, automatically pick up any object that enters range around mouse
+    // 3. Update all freebody objects (only Host runs authoritative freebody physics; guests follow snapshots)
+    if (isHost) {
+      for (const obj of this.objects) {
+        if (input.draggedEntity === obj) {
+          continue;
+        }
+        obj.updatePosition(dt, this.arena);
+      }
+    }
+
+    // 4. Continuous hold-to-grab (only active in Play Mode):
     if (!this.devPanel.isEditMode && input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
       const target = this.character.pickupModule.findTargetObject(
         this.character,
@@ -117,15 +286,59 @@ export class GameLoop {
       if (target) {
         this.character.pickupModule.pickup(this.character, target);
         input.justPickedUp = true;
+        if (this.networkManager && !isHost) {
+          this.networkManager.sendAction("pickup", target.id);
+        }
       }
     }
 
-    // 4. Resolve freebody-to-freebody circle collisions
+    // 5. Resolve freebody-to-freebody circle collisions (including remote players!)
     this.resolveFreebodyCollisions();
+
+    // 6. Network streaming
+    if (this.networkManager) {
+      this.networkManager.sendPlayerState(
+        this.character.position.x,
+        this.character.position.y,
+        this.character.position.z,
+        this.character.velocity.x,
+        this.character.velocity.y,
+        this.character.verticalVelocity,
+        this.character.facingAngle,
+        this.character.isAiming,
+        this.character.aimTarget,
+        this.character.heldObject?.id || null,
+        this.character.isActivelyWalking
+      );
+
+      if (this.networkManager.isHost) {
+        const snapshotObjects: ObjectNetworkData[] = this.objects.map((o) => ({
+          id: o.id,
+          x: o.position.x,
+          y: o.position.y,
+          z: o.position.z,
+          vx: o.velocity.x,
+          vy: o.velocity.y,
+          vz: o.verticalVelocity,
+          rotX: o.rollModule?.angularVelocity.x || 0,
+          rotY: o.rollModule?.angularVelocity.y || 0,
+          rotZ: o.rollModule?.angularVelocity.z || 0,
+          isHeld: o.isHeld,
+          heldByPlayerId: o.heldBy instanceof Character ? (o.heldBy as Character).playerId : null,
+          supportingSurfaceHeight: o.supportingSurfaceHeight,
+        }));
+
+        this.networkManager.sendWorldSnapshot(snapshotObjects, {
+          gravity: this.arena.gravity,
+          frictionCoeff: this.arena.frictionCoeff,
+          staticFrictionThreshold: this.arena.staticFrictionThreshold,
+        });
+      }
+    }
   }
 
   private resolveFreebodyCollisions(): void {
-    const all = [this.character, ...this.objects];
+    const all = [this.character, ...Array.from(this.remoteCharacters.values()), ...this.objects];
     const input = this.inputManager;
 
     // Iterative separation solver: pushes entities away until not overlapping

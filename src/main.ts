@@ -6,6 +6,7 @@ import { Renderer } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
+import { NetworkManager } from "./network/NetworkManager.js";
 
 function bootstrap(): void {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -22,22 +23,25 @@ function bootstrap(): void {
     return;
   }
 
-  // 1. Initialize Arena (20 units wide x 14 units tall, 1 wall = 1 unit)
+  // 1. Initialize Multiplayer Network Controller
+  const networkManager = new NetworkManager();
+
+  // 2. Initialize Arena (20 units wide x 14 units tall, 1 wall = 1 unit)
   const arena = new Arena(20, 14, 1.0);
   canvas.width = 1000;
   canvas.height = 700;
 
-  // 2. Initialize Base Character in unit coordinates
+  // 3. Initialize Base Character in unit coordinates (color & name will be assigned by server)
   const character = new Character({
     x: 4.8,
     y: 7.0,
-    color: "#f59e0b", // Amber body
+    color: networkManager.playerColor,
     colliderRadius: 0.44,
     mass: 1.2,
     strength: 1.0,
   });
 
-  // 3. Initialize Initial Freebody Objects in unit coordinates
+  // 4. Initialize Initial Freebody Objects in unit coordinates
   const objects: GameObject[] = [
     new GameObject({
       id: "stone-1",
@@ -85,7 +89,7 @@ function bootstrap(): void {
     }),
   ];
 
-  // 4. Initialize Renderer & Dev Panel
+  // 5. Initialize Renderer & Dev Panel
   const renderer = new Renderer(ctx);
   const devPanel = new DevPanel({
     container: devContainer,
@@ -114,14 +118,25 @@ function bootstrap(): void {
     },
   });
 
-  // 5. Initialize Input Manager with Dev Panel interaction
+  // 6. Initialize Input Manager with Dev Panel & Multiplayer interaction
   const inputManager = new InputManager(canvas, arena);
   inputManager.handleInteractions(character, arena, objects, devPanel);
   devPanel.onSelectionChange = (entity) => {
     inputManager.selectedCanvasEntity = entity;
   };
+  inputManager.onActionAttempt = (action, targetId, aimX, aimY) => {
+    if (networkManager && !networkManager.isHost) {
+      networkManager.sendAction(action, targetId, aimX, aimY);
+    }
+  };
 
-  // 6. Start Fixed-Timestep Game Loop
+  // Update room header badge
+  const brandBadge = document.querySelector(".brand-badge");
+  if (brandBadge) {
+    brandBadge.textContent = "Room 1 • Connecting...";
+  }
+
+  // 7. Start Fixed-Timestep Game Loop with NetworkManager
   const gameLoop = new GameLoop({
     arena,
     character,
@@ -129,10 +144,20 @@ function bootstrap(): void {
     renderer,
     inputManager,
     devPanel,
+    networkManager,
   });
 
+  // Update brand badge when room init arrives
+  const origOnInit = networkManager.onInit;
+  networkManager.onInit = (packet) => {
+    origOnInit?.(packet);
+    if (brandBadge) {
+      brandBadge.textContent = `Room 1 • ${packet.playerName}${packet.isHost ? " (Host 👑)" : ""}`;
+    }
+  };
+
   gameLoop.start();
-  console.log("🚀 Power Creature Game Prototype 1 (Phase 1.1) running!");
+  console.log("🚀 Power Creature Game Multiplayer running!");
 }
 
 window.addEventListener("DOMContentLoaded", bootstrap);
