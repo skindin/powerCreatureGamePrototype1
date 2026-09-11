@@ -188,8 +188,8 @@ export class Renderer {
 
     const alpha = Math.max(0.3, 0.85 - (z / (arena.wallHeight * 7)) * 0.25);
 
-    // High enough to go over walls: change outline color
-    const canClearWalls = z > arena.wallHeight;
+    // High enough to go over walls (or resting on a wall): change outline color to blue
+    const canClearWalls = z >= arena.wallHeight - 0.001;
 
     ctx.save();
     ctx.beginPath();

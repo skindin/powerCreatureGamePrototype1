@@ -2,6 +2,7 @@ import { GameObject, Vector2D } from "../engine/GameObject.js";
 import { WalkingModule } from "./WalkingModule.js";
 import { PickupModule } from "./PickupModule.js";
 import { ThrowModule, TrajectoryCalculation } from "./ThrowModule.js";
+import { ClimbingModule } from "./ClimbingModule.js";
 import type { Arena } from "../engine/Arena.js";
 
 export class Character extends GameObject {
@@ -39,6 +40,7 @@ export class Character extends GameObject {
   public walkingModule: WalkingModule | null;
   public pickupModule: PickupModule | null;
   public throwModule: ThrowModule | null;
+  public climbingModule: ClimbingModule | null;
 
   // Aiming state
   public isAiming: boolean;
@@ -74,6 +76,7 @@ export class Character extends GameObject {
     this.walkingModule = new WalkingModule();
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();
+    this.climbingModule = new ClimbingModule();
   }
 
   /**
@@ -113,8 +116,14 @@ export class Character extends GameObject {
     movementInput: Vector2D,
     isAimingInput: boolean,
     aimTargetPos: Vector2D | null,
-    arena: Arena
+    arena: Arena,
+    isClimbInput = false
   ): void {
+    // 0. Process modular climbing if pressing into wall and holding climb input
+    if (this.climbingModule) {
+      this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
+    }
+
     // 1. Process modular walking
     if (this.walkingModule) {
       this.walkingModule.update(this, movementInput, dt, arena);
@@ -132,7 +141,8 @@ export class Character extends GameObject {
       const handDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
       this.heldObject.position.x = this.position.x + Math.cos(this.facingAngle) * handDist;
       this.heldObject.position.y = this.position.y + Math.sin(this.facingAngle) * handDist;
-      this.heldObject.position.z = this.heldObject.hasVerticalPosition ? 0.45 : 0; // Elevated height in hands if vertical position enabled
+      // Object elevation dynamically matches character elevation + 0.45 in hands
+      this.heldObject.position.z = this.heldObject.hasVerticalPosition ? (this.position.z + 0.45) : 0;
       this.heldObject.velocity.x = this.velocity.x;
       this.heldObject.velocity.y = this.velocity.y;
       this.heldObject.verticalVelocity = 0;

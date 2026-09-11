@@ -105,7 +105,8 @@ export class GameLoop {
         input.movementVector,
         input.isMouseDown && !this.devPanel.isEditMode,
         input.mousePos,
-        this.arena
+        this.arena,
+        input.isClimbHeld
       );
     } else {
       this.character.velocity.x = 0;

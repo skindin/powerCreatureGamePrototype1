@@ -23,6 +23,10 @@ export class InputManager {
     return !this.isThrowingPress && this.isMouseDown;
   }
 
+  public get isClimbHeld(): boolean {
+    return this.keysPressed.has("Space");
+  }
+
   // Selection & dragging state
   public hoverEntity: GameObject | null = null;
   public selectedCanvasEntity: GameObject | null = null;

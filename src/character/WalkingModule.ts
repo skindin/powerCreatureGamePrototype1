@@ -25,7 +25,7 @@ export class WalkingModule {
    * - Pushing heavy objects in the arena resists movement through contact forces, naturally slowing movement.
    */
   public update(character: Character, inputVector: Vector2D, dt: number, arena: Arena): void {
-    if (!this.enabled || character.isAboveGround) {
+    if (!this.enabled || !character.isRestingOnSurface) {
       character.isActivelyWalking = false;
       return;
     }

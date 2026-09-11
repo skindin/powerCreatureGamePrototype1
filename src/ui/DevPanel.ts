@@ -4,6 +4,7 @@ import { GameObject } from "../engine/GameObject.js";
 import { WalkingModule } from "../character/WalkingModule.js";
 import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
+import { ClimbingModule } from "../character/ClimbingModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ColliderModule } from "../engine/ColliderModule.js";
 import { MassModule } from "../engine/MassModule.js";
@@ -630,6 +631,25 @@ export class DevPanel {
                 </div>
               </div>
             </div>
+
+            <!-- Climbing Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>🧗 Climbing Ability</label>
+                <button id="toggle-climb" class="btn-toggle ${this.character.climbingModule?.enabled ? 'active' : ''}">
+                  ${this.character.climbingModule?.enabled ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="group-mod-climb" style="display: ${this.character.climbingModule?.enabled ? 'block' : 'none'};">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Climb Speed (u/s)</span>
+                    <span id="val-climb-speed">${(this.character.climbingModule?.climbSpeed ?? 2.0).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${this.character.climbingModule?.climbSpeed ?? 2.0}">
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1018,6 +1038,18 @@ export class DevPanel {
       if (this.character.throwModule) {
         this.setSliderVal("slide-throw-force", "val-throw-force", this.character.throwModule.baseThrowForce, 1);
       }
+
+      const btnClimb = this.container.querySelector("#toggle-climb") as HTMLButtonElement;
+      const grpClimb = this.container.querySelector("#group-mod-climb") as HTMLElement;
+      const hasClimbMod = Boolean(this.character.climbingModule && this.character.climbingModule.enabled);
+      if (btnClimb) {
+        btnClimb.textContent = hasClimbMod ? "Attached" : "Detached";
+        btnClimb.classList.toggle("active", hasClimbMod);
+      }
+      if (grpClimb) grpClimb.style.display = hasClimbMod ? "block" : "none";
+      if (this.character.climbingModule) {
+        this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.climbSpeed, 1);
+      }
     }
   }
 
@@ -1362,6 +1394,20 @@ export class DevPanel {
 
     this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
       if (this.character.throwModule) this.character.throwModule.baseThrowForce = val;
+    }, 1);
+
+    const btnClimb = this.container.querySelector("#toggle-climb") as HTMLButtonElement;
+    btnClimb?.addEventListener("click", () => {
+      if (this.character.climbingModule) {
+        this.character.climbingModule.enabled = !this.character.climbingModule.enabled;
+      } else {
+        this.character.climbingModule = new ClimbingModule();
+      }
+      this.syncEntitySliders();
+    });
+
+    this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
+      if (this.character.climbingModule) this.character.climbingModule.climbSpeed = val;
     }, 1);
 
     // 7. World Physics Sliders

@@ -28,6 +28,7 @@ export class GameObject {
   public heldBy: GameObject | null;
   public lastThrower: GameObject | null = null;
   public isCharacter = false;
+  public isClimbing = false;
   public visualShape: "circle" | "box" = "circle";
 
   // Modular behavior components
@@ -299,6 +300,10 @@ export class GameObject {
         ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius)
         : null;
       surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
+    }
+    if (this.isClimbing) {
+      surfaceHeight = Math.max(surfaceHeight, this.position.z);
+      this.verticalVelocity = 0;
     }
     this.supportingSurfaceHeight = surfaceHeight;
 
