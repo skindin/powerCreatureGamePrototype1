@@ -17,14 +17,10 @@ export class InputManager {
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
 
-  public get isGrabKeyHeld(): boolean {
-    return this.keysPressed.has("KeyE");
-  }
-
   public isThrowingPress = false;
 
   public get isGrabHeld(): boolean {
-    return (!this.isThrowingPress && this.isMouseDown) || this.isGrabKeyHeld;
+    return !this.isThrowingPress && this.isMouseDown;
   }
 
   // Selection & dragging state
@@ -394,12 +390,14 @@ export class InputManager {
 
     this.onDropAttempt = () => {
       if (character.heldObject && character.pickupModule) {
-        character.pickupModule.drop(character);
+        const dropped = character.pickupModule.drop(character);
+        if (dropped) {
+          this.isThrowingPress = true; // Prevents mouse hold from immediately re-grabbing dropped object
+        }
       } else if (!character.heldObject && character.pickupModule) {
         const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects);
         if (target) {
           character.pickupModule.pickup(character, target);
-          this.justPickedUp = true;
         }
       }
     };
