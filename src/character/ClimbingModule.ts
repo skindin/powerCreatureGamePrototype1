@@ -64,12 +64,9 @@ export class ClimbingModule {
     const isFreshClimbPress = isClimbHeld && !this.wasClimbHeldLastTick;
     this.wasClimbHeldLastTick = isClimbHeld;
 
-    // Reset suppression when climb key is released or when grounded
+    // Reset suppression strictly when climb key is released
     if (!isClimbHeld) {
       this.dismountSuppressedUntilRelease = false;
-      this.climbSuppressedUntilRelease = false;
-    }
-    if (character.position.z <= 0.01) {
       this.climbSuppressedUntilRelease = false;
     }
 
@@ -163,6 +160,9 @@ export class ClimbingModule {
         character.isClimbing = false;
         character.velocity.x = moveDirX * 3.0;
         character.velocity.y = moveDirY * 3.0;
+        if (isClimbHeld) {
+          this.climbSuppressedUntilRelease = true;
+        }
         return false;
       }
 

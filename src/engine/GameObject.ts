@@ -558,9 +558,9 @@ export class GameObject {
       this.position.y += this.velocity.y * dt;
 
       // Detect stepping/jumping off wall with climb button held
-      if (char && wasStandingOnWallTop && dismountAllowed) {
+      if (char && wasStandingOnWallTop) {
         const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-        if (!newSupport && char.climbingModule) {
+        if (!newSupport && char.climbingModule && char.isClimbInputHeld) {
           char.climbingModule.climbSuppressedUntilRelease = true;
         }
       }
