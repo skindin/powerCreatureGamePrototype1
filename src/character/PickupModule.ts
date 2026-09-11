@@ -9,6 +9,37 @@ export class PickupModule {
   public crossLayerReachRatio = 0.55; // Multiplier on reach when target is on a different height layer
 
   /**
+   * Returns true if the object is within the character's physical grab reach,
+   * accounting for cross-layer reach reductions if character and object are on different layers.
+   */
+  public isObjectInReach(
+    character: Character,
+    obj: GameObject,
+    wallHeight: number = 1.0
+  ): boolean {
+    if (!this.enabled || obj === character || obj.isHeld || obj.isCharacter) return false;
+    // Cannot grab an object you just threw while it is departing your reach
+    if (obj.lastThrower === character) return false;
+
+    // Determine character height layer (0: Ground layer < wallHeight - 0.05, 1: Wall layer >= wallHeight - 0.05)
+    const charLayer = character.position.z >= wallHeight - 0.05 ? 1 : 0;
+
+    // Determine object's height layer
+    const objLayer = obj.position.z >= wallHeight - 0.05 ? 1 : 0;
+    const isCrossLayer = charLayer !== objLayer;
+
+    // Effective physical reach is reduced when attempting to grab across different height layers
+    const effectiveReach = isCrossLayer
+      ? this.pickupReach * this.crossLayerReachRatio
+      : this.pickupReach;
+
+    // Distance from character to object (must be within physical reach)
+    const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
+    const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
+    return distFromChar <= effectiveReach + objRadius;
+  }
+
+  /**
    * Finds the nearest grabbable object to the mouse/aim location within character reach
    */
   public findTargetObject(
@@ -23,27 +54,8 @@ export class PickupModule {
     let bestCandidate: GameObject | null = null;
     let shortestDist = Infinity;
 
-    // Determine character height layer (0: Ground layer < wallHeight - 0.05, 1: Wall layer >= wallHeight - 0.05)
-    const charLayer = character.position.z >= wallHeight - 0.05 ? 1 : 0;
-
     for (const obj of objects) {
-      if (obj === character || obj.isHeld || obj.isCharacter) continue;
-      // Cannot grab an object you just threw while it is departing your reach
-      if (obj.lastThrower === character) continue;
-
-      // Determine object's height layer
-      const objLayer = obj.position.z >= wallHeight - 0.05 ? 1 : 0;
-      const isCrossLayer = charLayer !== objLayer;
-
-      // Effective physical reach is reduced when attempting to grab across different height layers
-      const effectiveReach = isCrossLayer
-        ? this.pickupReach * this.crossLayerReachRatio
-        : this.pickupReach;
-
-      // Distance from character to object (must be within physical reach)
-      const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-      const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-      if (distFromChar > effectiveReach + objRadius) continue;
+      if (!this.isObjectInReach(character, obj, wallHeight)) continue;
 
       // Distance from object to mouse aim position: pick the one closest to the mouse cursor
       const distToMouse = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);

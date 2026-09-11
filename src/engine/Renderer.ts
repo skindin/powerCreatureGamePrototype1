@@ -56,7 +56,7 @@ export class Renderer {
       if (entity instanceof Character) {
         this.drawCharacter(entity, objects, ppu);
       } else {
-        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity);
+        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity, arena.wallHeight);
       }
     }
 
@@ -232,7 +232,8 @@ export class Renderer {
     allEntities: GameObject[],
     character: Character,
     ppu: number,
-    isTargetGrab = false
+    isTargetGrab = false,
+    wallHeight = 1.0
   ): void {
     const ctx = this.ctx;
     const x = obj.position.x * ppu;
@@ -240,10 +241,9 @@ export class Renderer {
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const renderRadius = visualRadius * ppu;
 
-    // Check if close enough for character to pick up
+    // Check if close enough for character to pick up, strictly respecting layer-dependent reach
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
-    const distToChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-    const isWithinPickupRange = canPickup && !obj.isHeld && distToChar <= ((character.pickupModule?.pickupReach ?? 1.3) + visualRadius);
+    const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, wallHeight) ?? false);
 
     // Highlight ring around objects in pickup reach
     if (isWithinPickupRange) {
