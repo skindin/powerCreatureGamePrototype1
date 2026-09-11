@@ -83,17 +83,20 @@ export class ThrowModule {
     const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
     const deltaZ = targetSurfaceHeight - startZ;
 
-    // Default to 1:1 throw vector (45 degrees, tan(45°) = 1.0)
-    let minTanTheta = 1.0;
+    // Minimum angle trajectory calculation:
+    // Throws with maximum available throw speed for the flattest, minimum possible launch angle to hit the target.
+    const maxThrowSpeed = Math.max(3.0, throwPower);
+    const minFlightTime = Math.max(0.14, actualDist / maxThrowSpeed);
+    let totalTime = minFlightTime;
 
-    // If target landing surface is elevated, ensure angle is steep enough to physically reach elevation
+    // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
     if (deltaZ > 0) {
-      minTanTheta = Math.max(minTanTheta, (deltaZ + 0.15) / actualDist);
+      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / arena.gravity));
     }
 
     // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
-    // If the projectile cannot physically clear at 45 degrees, find the exact minimum launch angle.
-    // Trajectory equation: z(s) = startZ + s * deltaZ + s * (1 - s) * actualDist * tan(theta)
+    // If the flat trajectory would collide with an intermediate wall, increase totalTime to the minimum
+    // required to clear the wall top with a tight, minimal clearance arc.
     const sampleCount = 40;
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
     const clearance = 0.25; // Clean clearance over intermediate walls
@@ -115,15 +118,21 @@ export class ThrowModule {
           }
 
           // Intermediate wall that must be cleared!
+          // Direct chord height: baselineZ = (1 - s) * startZ + s * targetSurfaceHeight
+          // Trajectory arc height: z(s) = baselineZ + 0.5 * g * totalTime^2 * s * (1 - s)
+          // We require z(s) >= wall.wallHeight + clearance
           const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
           const requiredHeight = wall.wallHeight + clearance;
           const requiredDeltaZ = requiredHeight - baselineZ;
           if (requiredDeltaZ > 0) {
-            const denom = s * (1 - s) * actualDist;
+            const denom = arena.gravity * s * (1 - s);
             if (denom > 0.001) {
-              const reqTanTheta = requiredDeltaZ / denom;
-              if (reqTanTheta > minTanTheta) {
-                minTanTheta = reqTanTheta;
+              const reqTimeSq = (2 * requiredDeltaZ) / denom;
+              if (reqTimeSq > 0) {
+                const reqTime = Math.sqrt(reqTimeSq);
+                if (reqTime > totalTime) {
+                  totalTime = reqTime;
+                }
               }
             }
           }
@@ -131,23 +140,15 @@ export class ThrowModule {
       }
     }
 
-    // Cap angle at 85 degrees (tan ~ 11.43) to prevent numerical singularity
-    const maxTanTheta = Math.tan((85 * Math.PI) / 180);
-    const tanTheta = Math.min(maxTanTheta, minTanTheta);
-
-    // Compute flight time t from: 0.5 * g * t^2 = actualDist * tanTheta - deltaZ
-    const numerator = 2 * (actualDist * tanTheta - deltaZ);
-    if (numerator <= 0) return null;
-
-    const totalTime = Math.sqrt(numerator / arena.gravity);
     if (totalTime <= 0.05) return null;
+
+    // From totalTime and deltaZ, compute the exact vz to hit targetSurfaceHeight at totalTime:
+    // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
+    // vz = (deltaZ + 0.5 * g * totalTime^2) / totalTime
+    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
 
     // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
     const horizontalSpeed = actualDist / totalTime;
-
-    // Vertical speed according to the 1:1 ratio (or minimum angle tanTheta)
-    const vz = horizontalSpeed * tanTheta;
-
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
 
