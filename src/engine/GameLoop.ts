@@ -64,6 +64,17 @@ export class GameLoop {
       this.accumulator -= this.fixedDt;
     }
 
+    // Determine which object is targeted for grab by the mouse (in Play Mode)
+    let targetGrabEntity: GameObject | null = null;
+    if (!this.devPanel.isEditMode && !this.character.heldObject && this.character.pickupModule) {
+      targetGrabEntity = this.character.pickupModule.findTargetObject(
+        this.character,
+        this.inputManager.mousePos.x,
+        this.inputManager.mousePos.y,
+        this.objects
+      );
+    }
+
     // Render current frame with active selection highlight
     this.renderer.render(
       this.arena,
@@ -71,7 +82,8 @@ export class GameLoop {
       this.objects,
       this.inputManager.selectedCanvasEntity,
       this.devPanel.isEditMode,
-      this.inputManager.hoverEntity
+      this.inputManager.hoverEntity,
+      targetGrabEntity
     );
 
     // Update live inspector
@@ -106,8 +118,9 @@ export class GameLoop {
     }
 
     // 3. Continuous hold-to-grab (only active in Play Mode):
-    // If holding down grab and not holding an object, automatically pick up any object that enters range around mouse
-    if (!this.devPanel.isEditMode && input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
+    // If holding down grab (mouse or key) and not holding an object, automatically pick up closest object to mouse within reach
+    const isGrabHeld = input.isGrabHeld;
+    if (!this.devPanel.isEditMode && isGrabHeld && !this.character.heldObject && this.character.pickupModule) {
       const target = this.character.pickupModule.findTargetObject(
         this.character,
         input.mousePos.x,

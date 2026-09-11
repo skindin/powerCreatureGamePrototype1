@@ -14,6 +14,16 @@ export class InputManager {
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
 
+  public get isGrabKeyHeld(): boolean {
+    return this.keysPressed.has("KeyE");
+  }
+
+  public isThrowingPress = false;
+
+  public get isGrabHeld(): boolean {
+    return (!this.isThrowingPress && this.isMouseDown) || this.isGrabKeyHeld;
+  }
+
   // Selection & dragging state
   public hoverEntity: GameObject | null = null;
   public selectedCanvasEntity: GameObject | null = null;
@@ -89,6 +99,7 @@ export class InputManager {
       if (e.button !== 0) return;
       this.isMouseDown = false;
       this.justPickedUp = false;
+      this.isThrowingPress = false;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
@@ -120,6 +131,7 @@ export class InputManager {
     window.addEventListener("touchend", () => {
       this.isMouseDown = false;
       this.justPickedUp = false;
+      this.isThrowingPress = false;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
@@ -262,6 +274,7 @@ export class InputManager {
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (character.heldObject && character.throwModule && !this.justPickedUp) {
         character.throwModule.throwHeldObject(character, clickX, clickY, arena);
+        this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
       }
 
@@ -289,6 +302,12 @@ export class InputManager {
     this.onDropAttempt = () => {
       if (character.heldObject && character.pickupModule) {
         character.pickupModule.drop(character);
+      } else if (!character.heldObject && character.pickupModule) {
+        const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects);
+        if (target) {
+          character.pickupModule.pickup(character, target);
+          this.justPickedUp = true;
+        }
       }
     };
   }

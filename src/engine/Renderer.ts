@@ -16,7 +16,8 @@ export class Renderer {
     objects: GameObject[],
     selectedEntity?: GameObject | null,
     isEditMode = false,
-    hoverEntity?: GameObject | null
+    hoverEntity?: GameObject | null,
+    targetGrabEntity?: GameObject | null
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -48,7 +49,7 @@ export class Renderer {
       if (entity instanceof Character) {
         this.drawCharacter(entity, objects, ppu);
       } else {
-        this.drawFreebodyObject(entity, allRenderables, character, ppu);
+        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity);
       }
     }
 
@@ -174,7 +175,13 @@ export class Renderer {
    * Supports both box and circle visual shapes (both using circle colliders).
    * Highlights objects within character pickup reach.
    */
-  private drawFreebodyObject(obj: GameObject, allEntities: GameObject[], character: Character, ppu: number): void {
+  private drawFreebodyObject(
+    obj: GameObject,
+    allEntities: GameObject[],
+    character: Character,
+    ppu: number,
+    isTargetGrab = false
+  ): void {
     const ctx = this.ctx;
     const x = obj.position.x * ppu;
     const y = obj.position.y * ppu;
@@ -200,16 +207,24 @@ export class Renderer {
       } else {
         ctx.arc(x, y, renderRadius + 5, 0, Math.PI * 2);
       }
-      ctx.strokeStyle = "#38bdf8"; // Glowing cyan highlight
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([4, 4]);
-      ctx.stroke();
+      if (isTargetGrab) {
+        // Active mouse target: solid vibrant glowing cyan ring & prominent badge
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 3.0;
+        ctx.setLineDash([]);
+        ctx.stroke();
 
-      // Subtle indicator badge
-      ctx.fillStyle = "#38bdf8";
-      ctx.font = "bold 10px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("grab", x, y - renderRadius - 6);
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GRAB", x, y - renderRadius - 8);
+      } else {
+        // In physical reach, but another object is closer to mouse: subtle dashed ring
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 

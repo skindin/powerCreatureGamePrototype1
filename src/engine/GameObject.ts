@@ -26,6 +26,7 @@ export class GameObject {
   public color: string;
   public isHeld: boolean;
   public heldBy: GameObject | null;
+  public lastThrower: GameObject | null = null;
   public isCharacter = false;
   public visualShape: "circle" | "box" = "circle";
 
@@ -268,6 +269,16 @@ export class GameObject {
     if (this.isHeld) {
       // Position is governed by holder
       return;
+    }
+
+    // If thrown, track when it has exited thrower's reach or settled on a surface
+    if (this.lastThrower) {
+      const throwerRadius = this.lastThrower.hasCollider ? this.lastThrower.colliderRadius : 0.44;
+      const reach = ((this.lastThrower as any).pickupModule?.pickupReach ?? 1.3) + this.colliderRadius + throwerRadius;
+      const dist = Math.hypot(this.position.x - this.lastThrower.position.x, this.position.y - this.lastThrower.position.y);
+      if (dist > reach || this.isRestingOnSurface) {
+        this.lastThrower = null;
+      }
     }
 
     if (!this.hasVerticalPosition) {
@@ -529,6 +540,7 @@ export class GameObject {
    * Applies realistic wall/boundary impact dynamics
    */
   protected resolveWallImpact(normalX: number, normalY: number, restitution: number): void {
+    this.lastThrower = null;
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return; // Moving away from wall
 
@@ -594,6 +606,7 @@ export class GameObject {
     const distSq = dx * dx + dy * dy;
 
     if (distSq < r * r) {
+      this.lastThrower = null;
       const dist = Math.sqrt(distSq);
       let normalX = 0;
       let normalY = 0;

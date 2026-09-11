@@ -273,6 +273,7 @@ export class ThrowModule {
 
     held.isHeld = false;
     held.heldBy = null;
+    held.lastThrower = character;
     held.velocity.x = launch.vx;
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;

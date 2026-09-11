@@ -8,7 +8,7 @@ export class PickupModule {
   public pickupReach = 1.3; // Radius in units to reach and pick up freebodies (~1.3 wall tiles)
 
   /**
-   * Finds the nearest pickable freebody object to the contact/aim location within reach
+   * Finds the nearest grabbable object to the mouse/aim location within character reach
    */
   public findTargetObject(character: Character, targetX: number, targetY: number, objects: GameObject[]): GameObject | null {
     if (!this.enabled) return null;
@@ -17,16 +17,19 @@ export class PickupModule {
     let shortestDist = Infinity;
 
     for (const obj of objects) {
-      if (obj === character || obj.isHeld) continue;
+      if (obj === character || obj.isHeld || obj.isCharacter) continue;
+      // Cannot grab an object you just threw while it is departing your reach
+      if (obj.lastThrower === character) continue;
 
       // Distance from character to object (must be within physical reach)
+      const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
       const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-      if (distFromChar > this.pickupReach + obj.colliderRadius) continue;
+      if (distFromChar > this.pickupReach + objRadius) continue;
 
-      // Check distance to click contact location (within cursor vicinity)
-      const distToClick = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
-      if (distToClick < shortestDist && distToClick <= obj.colliderRadius + 0.65) {
-        shortestDist = distToClick;
+      // Distance from object to mouse aim position: pick the one closest to the mouse cursor
+      const distToMouse = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
+      if (distToMouse < shortestDist) {
+        shortestDist = distToMouse;
         bestCandidate = obj;
       }
     }
