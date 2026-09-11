@@ -297,7 +297,7 @@ export class GameObject {
       const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
         (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
       supportingWall = canBeOnWall
-        ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius)
+        ? (this.isCharacter ? arena.getWallAt(this.position.x, this.position.y) : arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius * 0.5))
         : null;
       surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
     }
@@ -318,7 +318,7 @@ export class GameObject {
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
           // Bounce vertically only if vertical bounce is enabled (requires Mass, Bounce with verticalBounce=true, and Vertical Velocity)
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
             const impactVz = Math.abs(this.verticalVelocity);
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
 

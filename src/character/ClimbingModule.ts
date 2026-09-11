@@ -56,11 +56,17 @@ export class ClimbingModule {
 
       // Character must be touching or directly adjacent to the wall (within radius + 0.15 units)
       if (dist <= r + 0.15) {
-        // Player's movement input must be directed TOWARDS the wall
+        // Player's movement input relative to the wall direction
         const dot = moveDirX * dx + moveDirY * dy;
         if (dot > 0.01 && dist < shortestDist) {
           shortestDist = dist;
           targetWall = wall;
+        } else if (dot < -0.1 && character.position.z > 0.05) {
+          // Player is intending to walk away from an adjacent wall while elevated
+          character.isClimbing = false;
+          character.velocity.x = moveDirX * 3.0;
+          character.velocity.y = moveDirY * 3.0;
+          return false;
         }
       }
     }
@@ -73,16 +79,17 @@ export class ClimbingModule {
       // Ascend towards the top of the wall
       character.position.z += this.climbSpeed * dt;
 
-      // When reaching or exceeding wall top, mount the wall
+      // When reaching or exceeding wall top, mount firmly onto the wall surface
       if (character.position.z >= targetWall.wallHeight) {
         character.position.z = targetWall.wallHeight;
         character.supportingSurfaceHeight = targetWall.wallHeight;
         character.verticalVelocity = 0;
         character.isClimbing = false;
 
-        // Step slightly onto the wall footprint along movement direction
-        character.position.x += moveDirX * 0.06;
-        character.position.y += moveDirY * 0.06;
+        // Step firmly onto the top surface of the wall along movement direction
+        const stepDist = r + 0.15;
+        character.position.x += moveDirX * stepDist;
+        character.position.y += moveDirY * stepDist;
       }
       return true;
     }
