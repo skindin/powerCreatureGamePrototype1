@@ -30,6 +30,7 @@ export class GameObject {
   public isCharacter = false;
   public visualShape: "circle" | "box" = "circle";
   public trajectory: Trajectory | null = null;
+  public trajectoryStartTime = 0;
   public throwImmunityPlayerId: string | null = null;
   public throwImmunityUntil = 0;
 

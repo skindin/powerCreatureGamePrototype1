@@ -131,6 +131,7 @@ export type NetworkPacket =
       type: "trajectory_launch";
       objectId: string;
       playerId: string;
+      throwerPlayerId?: string;
       t0: number;
       x0: number;
       y0: number;

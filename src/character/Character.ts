@@ -48,6 +48,11 @@ export class Character extends GameObject {
   public playerId = "";
   public isLocalPlayer = true;
 
+  // Network interpolation targets for remote characters
+  public targetX = 0;
+  public targetY = 0;
+  public targetZ = 0;
+
   constructor(options: {
     name?: string;
     playerId?: string;
@@ -70,6 +75,9 @@ export class Character extends GameObject {
 
     this.playerId = options.playerId ?? "";
     this.isLocalPlayer = options.isLocalPlayer ?? true;
+    this.targetX = this.position.x;
+    this.targetY = this.position.y;
+    this.targetZ = this.position.z;
     this.baseMass = options.mass ?? 1.2;
     this.strength = options.strength ?? 1.0;
     this.facingAngle = 0;

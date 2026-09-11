@@ -40,7 +40,6 @@ export class Trajectory {
     vx0: number,
     vy0: number,
     vz0: number,
-    t0: number,
     arena: Arena,
     maxDurationSeconds = 6.0
   ): Trajectory {
@@ -94,9 +93,9 @@ export class Trajectory {
     const maxSteps = Math.round(maxDurationSeconds / dt);
     const points: TrajectorySample[] = [];
 
-    // Record initial point
+    // Record initial point at t=0
     points.push({
-      t: t0,
+      t: 0,
       x: dummy.position.x,
       y: dummy.position.y,
       z: dummy.position.z,
@@ -113,7 +112,7 @@ export class Trajectory {
     for (let step = 1; step <= maxSteps; step++) {
       dummy.updatePosition(dt, arena);
 
-      const t = t0 + step * dtMs;
+      const t = step * dtMs;
       const vx = dummy.velocity.x;
       const vy = dummy.velocity.y;
       const vz = dummy.verticalVelocity;
@@ -154,19 +153,19 @@ export class Trajectory {
   }
 
   /**
-   * Sample the trajectory at any universal world time `t` (in ms).
+   * Sample the trajectory at elapsed time `elapsedMs` from launch.
    * Interpolates smoothly between the two surrounding samples.
    */
-  public sample(worldTimeMs: number): TrajectorySample {
+  public sample(elapsedMs: number): TrajectorySample {
     if (this.points.length === 0) {
-      return { t: worldTimeMs, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0 };
+      return { t: elapsedMs, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0 };
     }
 
-    if (worldTimeMs <= this.startTime) {
+    if (elapsedMs <= 0) {
       return this.points[0];
     }
 
-    if (worldTimeMs >= this.endTime) {
+    if (elapsedMs >= this.endTime) {
       const last = this.points[this.points.length - 1];
       return {
         ...last,
@@ -181,16 +180,16 @@ export class Trajectory {
 
     // Direct index lookup based on fixed 16.666ms step size
     const dtMs = (this.points[1].t - this.points[0].t) || (1000 / 60);
-    const approxIdx = Math.floor((worldTimeMs - this.startTime) / dtMs);
+    const approxIdx = Math.floor(elapsedMs / dtMs);
     const i = Math.max(0, Math.min(this.points.length - 2, approxIdx));
 
     const p0 = this.points[i];
     const p1 = this.points[i + 1];
     const duration = p1.t - p0.t;
-    const alpha = duration > 0 ? Math.max(0, Math.min(1, (worldTimeMs - p0.t) / duration)) : 0;
+    const alpha = duration > 0 ? Math.max(0, Math.min(1, (elapsedMs - p0.t) / duration)) : 0;
 
     return {
-      t: worldTimeMs,
+      t: elapsedMs,
       x: p0.x + (p1.x - p0.x) * alpha,
       y: p0.y + (p1.y - p0.y) * alpha,
       z: p0.z + (p1.z - p0.z) * alpha,
@@ -206,7 +205,7 @@ export class Trajectory {
   /**
    * Returns true if the trajectory animation has completed and the object has settled to rest.
    */
-  public isComplete(worldTimeMs: number): boolean {
-    return worldTimeMs >= this.endTime;
+  public isComplete(elapsedMs: number): boolean {
+    return elapsedMs >= this.endTime;
   }
 }

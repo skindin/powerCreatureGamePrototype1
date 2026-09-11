@@ -363,6 +363,8 @@ export class NetworkManager {
    */
   public sendTrajectoryLaunch(data: {
     objectId: string;
+    playerId?: string;
+    throwerPlayerId?: string;
     t0: number;
     x0: number;
     y0: number;
@@ -374,7 +376,8 @@ export class NetworkManager {
     const r2 = (v: number) => Math.round(v * 100) / 100;
     this.send({
       type: "trajectory_launch",
-      playerId: this.playerId,
+      playerId: data.playerId || this.playerId,
+      throwerPlayerId: data.throwerPlayerId || this.playerId,
       objectId: data.objectId,
       t0: data.t0,
       x0: r2(data.x0),

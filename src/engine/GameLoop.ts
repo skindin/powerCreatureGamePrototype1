@@ -109,32 +109,26 @@ export class GameLoop {
       const remote = this.remoteCharacters.get(packet.playerId);
       if (remote) {
         const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-        const transitSec = packet.timestamp ? Math.max(0, Math.min(0.25, (now - packet.timestamp) / 1000)) : 0;
+        const transitSec = packet.timestamp ? Math.max(0, Math.min(0.2, (now - packet.timestamp) / 1000)) : 0;
 
         // Predictive dead-reckoning extrapolation: where the player is RIGHT NOW
-        const targetX = packet.x + packet.vx * transitSec;
-        const targetY = packet.y + packet.vy * transitSec;
-        const targetZ = packet.z + packet.vz * transitSec;
+        const extrapolatedX = packet.x + packet.vx * transitSec;
+        const extrapolatedY = packet.y + packet.vy * transitSec;
+        const extrapolatedZ = packet.z + packet.vz * transitSec;
 
-        const dx = targetX - remote.position.x;
-        const dy = targetY - remote.position.y;
-        const errDist = Math.hypot(dx, dy);
-
-        if (errDist >= 1.5) {
+        const errDist = Math.hypot(extrapolatedX - remote.position.x, extrapolatedY - remote.position.y);
+        if (errDist > 2.0) {
           // Hard snap on major divergence (teleport / spawn)
-          remote.position.x = targetX;
-          remote.position.y = targetY;
-        } else if (errDist > 0.02) {
-          // Smooth convergence towards extrapolated real-time position
-          remote.position.x += dx * 0.45;
-          remote.position.y += dy * 0.45;
-        }
-
-        const dz = targetZ - remote.position.z;
-        if (Math.abs(dz) >= 0.8) {
-          remote.position.z = targetZ;
-        } else if (Math.abs(dz) > 0.02) {
-          remote.position.z += dz * 0.45;
+          remote.position.x = extrapolatedX;
+          remote.position.y = extrapolatedY;
+          remote.position.z = extrapolatedZ;
+          remote.targetX = extrapolatedX;
+          remote.targetY = extrapolatedY;
+          remote.targetZ = extrapolatedZ;
+        } else {
+          remote.targetX = extrapolatedX;
+          remote.targetY = extrapolatedY;
+          remote.targetZ = extrapolatedZ;
         }
 
         remote.velocity.x = packet.vx;
@@ -244,6 +238,15 @@ export class GameLoop {
         this.character.heldObject = null;
       }
 
+      // Synchronize throw immunity so the thrower does not collide with the flying object
+      target.throwImmunityPlayerId = packet.throwerPlayerId || packet.playerId;
+      target.throwImmunityUntil = performance.now() + 800;
+
+      // Calculate flight time elapsed during network transit
+      const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
+      const transitMs = Math.max(0, Math.min(200, now - packet.t0));
+      target.trajectoryStartTime = performance.now() - transitMs;
+
       // Pre-calculate identical deterministic trajectory from launch point
       target.trajectory = Trajectory.build(
         target,
@@ -253,7 +256,6 @@ export class GameLoop {
         packet.vx0,
         packet.vy0,
         packet.vz0,
-        packet.t0,
         this.arena
       );
     };
@@ -387,10 +389,10 @@ export class GameLoop {
    * Pre-calculates an analytical trajectory for the object and broadcasts
    * its initial launch state to all other clients.
    */
-  public broadcastTrajectoryLaunch(obj: GameObject, t0?: number): void {
-    const launchTime = t0 ?? (this.networkManager ? this.networkManager.getSyncedTime() : Date.now());
+  public broadcastTrajectoryLaunch(obj: GameObject): void {
+    obj.trajectoryStartTime = performance.now();
 
-    // Precalculate trajectory locally
+    // Precalculate trajectory locally starting at t=0
     obj.trajectory = Trajectory.build(
       obj,
       obj.position.x,
@@ -399,13 +401,15 @@ export class GameLoop {
       obj.velocity.x,
       obj.velocity.y,
       obj.verticalVelocity,
-      launchTime,
       this.arena
     );
 
     if (this.networkManager) {
+      const launchTime = this.networkManager.getSyncedTime();
       this.networkManager.sendTrajectoryLaunch({
         objectId: obj.id,
+        playerId: this.character.playerId,
+        throwerPlayerId: obj.throwImmunityPlayerId || this.character.playerId,
         t0: launchTime,
         x0: obj.position.x,
         y0: obj.position.y,
@@ -519,12 +523,19 @@ export class GameLoop {
       this.character.velocity.y = 0;
     }
 
-    // 2. Extrapolate remote characters with dead-reckoning velocity integration
+    // 2. Extrapolate and smoothly interpolate remote characters with exponential smoothing
     for (const remote of this.remoteCharacters.values()) {
-      remote.position.x += remote.velocity.x * dt;
-      remote.position.y += remote.velocity.y * dt;
+      // Advance dead-reckoning target along velocity
+      remote.targetX += remote.velocity.x * dt;
+      remote.targetY += remote.velocity.y * dt;
+      remote.targetZ += remote.verticalVelocity * dt;
+
+      // Exponential smoothing towards target for liquid-smooth 60+ FPS motion
+      const blend = 1 - Math.exp(-22 * dt);
+      remote.position.x += (remote.targetX - remote.position.x) * blend;
+      remote.position.y += (remote.targetY - remote.position.y) * blend;
       if (remote.verticalPositionModule) {
-        remote.position.z += remote.verticalVelocity * dt;
+        remote.position.z += (remote.targetZ - remote.position.z) * blend;
       }
 
       if (remote.heldObject) {
@@ -538,7 +549,7 @@ export class GameLoop {
     }
 
     // 3. Update all freebody objects locally on BOTH Host and Guest at 60 FPS
-    const nowSynced = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
+    const localNow = performance.now();
     for (const obj of this.objects) {
       if (input.draggedEntity === obj || obj.isHeld) {
         if (obj.trajectory) obj.trajectory = null;
@@ -546,7 +557,8 @@ export class GameLoop {
       }
 
       if (obj.trajectory) {
-        const sample = obj.trajectory.sample(nowSynced);
+        const elapsedMs = localNow - obj.trajectoryStartTime;
+        const sample = obj.trajectory.sample(elapsedMs);
         obj.position.x = sample.x;
         obj.position.y = sample.y;
         obj.position.z = sample.z;
@@ -560,7 +572,7 @@ export class GameLoop {
           obj.rollModule.angularVelocity.z = sample.rotZ;
           obj.rollModule.updateVisualPhase(dt);
         }
-        if (obj.trajectory.isComplete(nowSynced)) {
+        if (obj.trajectory.isComplete(elapsedMs)) {
           obj.trajectory = null;
           obj.velocity.x = 0;
           obj.velocity.y = 0;
@@ -675,6 +687,14 @@ export class GameLoop {
 
           // If one is above wall height and the other is not, they never collide (clean pass-over)
           if (aAboveWall !== bAboveWall) continue;
+
+          // 3D vertical span check: objects flying in the air do not collide with ground entities below them
+          const aMinZ = a.isCharacter ? a.position.z : (a.hasVerticalPosition ? a.position.z - a.colliderRadius * 0.5 : 0);
+          const aMaxZ = a.isCharacter ? a.position.z + 0.7 : (a.hasVerticalPosition ? a.position.z + a.colliderRadius * 0.5 : 0.2);
+          const bMinZ = b.isCharacter ? b.position.z : (b.hasVerticalPosition ? b.position.z - b.colliderRadius * 0.5 : 0);
+          const bMaxZ = b.isCharacter ? b.position.z + 0.7 : (b.hasVerticalPosition ? b.position.z + b.colliderRadius * 0.5 : 0.2);
+
+          if (aMinZ > bMaxZ || bMinZ > aMaxZ) continue;
 
           // 2D planar distance between the centers of the two colliders
           const dx = b.position.x - a.position.x;

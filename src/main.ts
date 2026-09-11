@@ -146,7 +146,7 @@ function bootstrap(): void {
         }
       }
     }
-    if (networkManager && !networkManager.isHost) {
+    if (networkManager && !networkManager.isHost && action === "pickup") {
       networkManager.sendAction(action, targetId, aimX, aimY);
     }
   };
