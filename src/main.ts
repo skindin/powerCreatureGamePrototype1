@@ -124,18 +124,6 @@ function bootstrap(): void {
   devPanel.onSelectionChange = (entity) => {
     inputManager.selectedCanvasEntity = entity;
   };
-  inputManager.onActionAttempt = (action, targetId, aimX, aimY) => {
-    if (networkManager && !networkManager.isHost) {
-      networkManager.sendAction(action, targetId, aimX, aimY);
-    }
-  };
-
-  // Update room header badge
-  const brandBadge = document.querySelector(".brand-badge");
-  if (brandBadge) {
-    brandBadge.textContent = "Room 1 • Connecting...";
-  }
-
   // 7. Start Fixed-Timestep Game Loop with NetworkManager
   const gameLoop = new GameLoop({
     arena,
@@ -146,6 +134,24 @@ function bootstrap(): void {
     devPanel,
     networkManager,
   });
+
+  inputManager.onActionAttempt = (action, targetId, aimX, aimY) => {
+    if (targetId) {
+      const target = objects.find((o) => o.id === targetId);
+      if (target) {
+        gameLoop.broadcastObjectAction(action, target);
+      }
+    }
+    if (networkManager && !networkManager.isHost) {
+      networkManager.sendAction(action, targetId, aimX, aimY);
+    }
+  };
+
+  // Update room header badge
+  const brandBadge = document.querySelector(".brand-badge");
+  if (brandBadge) {
+    brandBadge.textContent = "Room 1 • Connecting...";
+  }
 
   // Update brand badge when room init arrives
   const origOnInit = networkManager.onInit;

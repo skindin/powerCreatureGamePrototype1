@@ -100,4 +100,29 @@ export type NetworkPacket =
       event: "object_spawned" | "object_deleted";
       objectData?: any;
       objectId?: string;
+    }
+  | {
+      type: "ping";
+      clientTime: number;
+    }
+  | {
+      type: "pong";
+      clientTime: number;
+      serverTime: number;
+    }
+  | {
+      type: "object_action";
+      action: "throw" | "pickup" | "drop" | "impulse";
+      playerId: string;
+      objectId: string;
+      x?: number;
+      y?: number;
+      z?: number;
+      vx?: number;
+      vy?: number;
+      vz?: number;
+      rotX?: number;
+      rotY?: number;
+      rotZ?: number;
+      timestamp: number;
     };

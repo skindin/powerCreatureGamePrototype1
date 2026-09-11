@@ -158,6 +158,20 @@ export function setupWebSocketServer(httpServer) {
             }
             break;
           }
+          case 'ping': {
+            // NTP clock synchronization ping
+            ws.send(JSON.stringify({
+              type: 'pong',
+              clientTime: msg.clientTime,
+              serverTime: Date.now(),
+            }));
+            break;
+          }
+          case 'object_action': {
+            // Distributed physics ownership: relay throw, pickup, drop, impulse to all other clients immediately
+            broadcast(msg, ws);
+            break;
+          }
           case 'host_event': {
             // Host spawned or removed an object -> relay to all guests
             broadcast(msg, ws);

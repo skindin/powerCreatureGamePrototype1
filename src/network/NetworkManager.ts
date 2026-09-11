@@ -28,6 +28,11 @@ export class NetworkManager {
   public onWorldSnapshot: ((packet: Extract<NetworkPacket, { type: "world_snapshot" }>) => void) | null = null;
   public onClientAction: ((packet: Extract<NetworkPacket, { type: "client_action" }>) => void) | null = null;
   public onHostEvent: ((packet: Extract<NetworkPacket, { type: "host_event" }>) => void) | null = null;
+  public onObjectAction: ((packet: Extract<NetworkPacket, { type: "object_action" }>) => void) | null = null;
+
+  // NTP Clock Synchronization
+  private serverTimeOffset = 0;
+  private pingInterval: any = null;
 
   // Rate-limiting timers
   private lastPlayerStateSend = 0;
@@ -53,6 +58,7 @@ export class NetworkManager {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = null;
         }
+        this.startPingSync();
       };
 
       this.ws.onmessage = (event) => {
@@ -143,6 +149,18 @@ export class NetworkManager {
         this.onHostEvent?.(packet);
         break;
       }
+      case "pong": {
+        const rtt = performance.now() - packet.clientTime;
+        const oneWay = rtt / 2;
+        this.serverTimeOffset = packet.serverTime + oneWay - Date.now();
+        break;
+      }
+      case "object_action": {
+        if (packet.playerId !== this.playerId) {
+          this.onObjectAction?.(packet);
+        }
+        break;
+      }
     }
   }
 
@@ -225,7 +243,7 @@ export class NetworkManager {
     this.send({
       type: "world_snapshot",
       hostId: this.playerId,
-      timestamp: Date.now(),
+      timestamp: this.getSyncedTime(),
       objects: compactObjects,
       arena,
     });
@@ -267,8 +285,74 @@ export class NetworkManager {
     });
   }
 
+  private startPingSync(): void {
+    this.stopPingSync();
+    const sendPing = () => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({
+          type: "ping",
+          clientTime: performance.now(),
+        });
+      }
+    };
+    sendPing();
+    this.pingInterval = setInterval(sendPing, 2500);
+  }
+
+  private stopPingSync(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  /**
+   * Universal server-synchronized timestamp (in milliseconds)
+   */
+  public getSyncedTime(): number {
+    return Date.now() + this.serverTimeOffset;
+  }
+
+  /**
+   * Broadcast an interaction with an object (throw, pickup, drop, impulse)
+   * with authoritative synchronized velocity and position
+   */
+  public sendObjectAction(data: {
+    action: "throw" | "pickup" | "drop" | "impulse";
+    objectId: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    vx?: number;
+    vy?: number;
+    vz?: number;
+    rotX?: number;
+    rotY?: number;
+    rotZ?: number;
+    timestamp?: number;
+  }): void {
+    const r2 = (v?: number) => (v !== undefined ? Math.round(v * 100) / 100 : undefined);
+    this.send({
+      type: "object_action",
+      action: data.action,
+      playerId: this.playerId,
+      objectId: data.objectId,
+      x: r2(data.x),
+      y: r2(data.y),
+      z: r2(data.z),
+      vx: r2(data.vx),
+      vy: r2(data.vy),
+      vz: r2(data.vz),
+      rotX: r2(data.rotX),
+      rotY: r2(data.rotY),
+      rotZ: r2(data.rotZ),
+      timestamp: data.timestamp ?? this.getSyncedTime(),
+    });
+  }
+
   public destroy(): void {
     this.isDestroyed = true;
+    this.stopPingSync();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

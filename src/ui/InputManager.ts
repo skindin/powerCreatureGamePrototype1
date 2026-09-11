@@ -262,8 +262,9 @@ export class InputManager {
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (character.heldObject && character.throwModule && !this.justPickedUp) {
+        const thrownObj = character.heldObject;
         character.throwModule.throwHeldObject(character, clickX, clickY, arena);
-        this.onActionAttempt?.("throw", undefined, clickX, clickY);
+        this.onActionAttempt?.("throw", thrownObj.id, clickX, clickY);
         return;
       }
 
@@ -291,8 +292,9 @@ export class InputManager {
 
     this.onDropAttempt = () => {
       if (character.heldObject && character.pickupModule) {
+        const droppedObj = character.heldObject;
         character.pickupModule.drop(character);
-        this.onActionAttempt?.("drop");
+        this.onActionAttempt?.("drop", droppedObj.id);
       }
     };
   }

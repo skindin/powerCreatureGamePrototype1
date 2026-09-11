@@ -21,6 +21,8 @@ export class GameLoop {
   private lastTime = 0;
   private accumulator = 0;
   private readonly fixedDt = 1 / 60; // 60Hz fixed simulation timestep
+  private objectOwnershipLocks = new Map<string, number>();
+  private lastImpulseBroadcast = new Map<string, number>();
 
   constructor(options: {
     arena: Arena;
@@ -150,6 +152,76 @@ export class GameLoop {
       }
     };
 
+    net.onObjectAction = (packet) => {
+      const target = this.objects.find((o) => o.id === packet.objectId);
+      if (!target) return;
+
+      const actor =
+        this.remoteCharacters.get(packet.playerId) ||
+        (this.character.playerId === packet.playerId ? this.character : null);
+
+      if (packet.action === "pickup") {
+        if (actor) {
+          actor.heldObject = target;
+          target.isHeld = true;
+          target.heldBy = actor;
+          this.objectOwnershipLocks.set(target.id, performance.now() + 5000);
+        }
+      } else if (packet.action === "drop") {
+        target.isHeld = false;
+        target.heldBy = null;
+        if (actor && actor.heldObject === target) {
+          actor.heldObject = null;
+        }
+        if (packet.x !== undefined && packet.y !== undefined) {
+          target.position.x = packet.x;
+          target.position.y = packet.y;
+          target.position.z = packet.z ?? 0;
+        }
+        target.velocity.x = packet.vx ?? 0;
+        target.velocity.y = packet.vy ?? 0;
+        target.verticalVelocity = packet.vz ?? 0;
+        this.objectOwnershipLocks.set(target.id, performance.now() + 1500);
+      } else if (packet.action === "throw" || packet.action === "impulse") {
+        target.isHeld = false;
+        target.heldBy = null;
+        if (actor && actor.heldObject === target) {
+          actor.heldObject = null;
+        }
+
+        const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
+        // Time elapsed over network transit (in seconds)
+        const elapsedSec = Math.max(0, Math.min(0.3, (now - packet.timestamp) / 1000));
+
+        // Synchronize velocities
+        target.velocity.x = packet.vx ?? 0;
+        target.velocity.y = packet.vy ?? 0;
+        target.verticalVelocity = packet.vz ?? 0;
+
+        if (target.rollModule) {
+          target.rollModule.angularVelocity.x = packet.rotX ?? 0;
+          target.rollModule.angularVelocity.y = packet.rotY ?? 0;
+          target.rollModule.angularVelocity.z = packet.rotZ ?? 0;
+        }
+
+        // Extrapolate position forward by elapsedSec so it aligns with sender's current time
+        const startX = packet.x ?? target.position.x;
+        const startY = packet.y ?? target.position.y;
+        const startZ = packet.z ?? target.position.z;
+        const g = this.arena.gravity;
+
+        target.position.x = startX + target.velocity.x * elapsedSec;
+        target.position.y = startY + target.velocity.y * elapsedSec;
+        target.position.z = Math.max(
+          target.supportingSurfaceHeight,
+          startZ + target.verticalVelocity * elapsedSec - 0.5 * g * elapsedSec * elapsedSec
+        );
+
+        // Lock against background snapshot overrides while in motion
+        this.objectOwnershipLocks.set(target.id, performance.now() + 2000);
+      }
+    };
+
     net.onWorldSnapshot = (packet) => {
       // Non-host reconciles objects with host authoritative snapshot
       if (net.isHost) return;
@@ -160,11 +232,20 @@ export class GameLoop {
         this.arena.staticFrictionThreshold = packet.arena.staticFrictionThreshold;
       }
 
+      const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
+      const transitSec = Math.max(0, Math.min(0.25, (now - packet.timestamp) / 1000));
+
       for (const objData of packet.objects) {
         const localObj = this.objects.find((o) => o.id === objData.id);
         if (localObj) {
-          // If the local player is holding this object, local prediction takes priority
+          // 1. If currently held by local player, local prediction is authoritative
           if (this.character.heldObject === localObj) {
+            continue;
+          }
+
+          // 2. If locked by a recent interaction action, skip snapshot override!
+          const lockUntil = this.objectOwnershipLocks.get(localObj.id);
+          if (lockUntil && performance.now() < lockUntil) {
             continue;
           }
 
@@ -181,33 +262,50 @@ export class GameLoop {
             localObj.isHeld = false;
           }
 
-          // Object is free in the world: apply gentle error correction lerp
-          const dx = objData.x - localObj.position.x;
-          const dy = objData.y - localObj.position.y;
+          // Compute latency-compensated target position (fast-forward by network transit time)
+          const targetX = objData.x + objData.vx * transitSec;
+          const targetY = objData.y + objData.vy * transitSec;
+          const targetZ = objData.z + objData.vz * transitSec;
+
+          const dx = targetX - localObj.position.x;
+          const dy = targetY - localObj.position.y;
           const errDist = Math.hypot(dx, dy);
 
-          if (errDist >= 1.2) {
-            // Hard snap on large divergence (teleport, respawn, edit mode drag)
-            localObj.position.x = objData.x;
-            localObj.position.y = objData.y;
-            localObj.velocity.x = objData.vx;
-            localObj.velocity.y = objData.vy;
-          } else if (errDist > 0.02) {
-            // Soft blend (25% per snapshot) to eliminate jitter completely
-            localObj.position.x += dx * 0.25;
-            localObj.position.y += dy * 0.25;
-            localObj.velocity.x += (objData.vx - localObj.velocity.x) * 0.35;
-            localObj.velocity.y += (objData.vy - localObj.velocity.y) * 0.35;
+          const isAtRest =
+            Math.hypot(objData.vx, objData.vy) < 0.05 &&
+            Math.hypot(localObj.velocity.x, localObj.velocity.y) < 0.05;
+
+          if (isAtRest) {
+            // Resting object: align position firmly so resting objects match exactly
+            if (errDist > 0.02) {
+              localObj.position.x += dx * 0.5;
+              localObj.position.y += dy * 0.5;
+            }
+            localObj.velocity.x = 0;
+            localObj.velocity.y = 0;
+          } else {
+            // Moving object:
+            if (errDist >= 1.5) {
+              localObj.position.x = targetX;
+              localObj.position.y = targetY;
+              localObj.velocity.x = objData.vx;
+              localObj.velocity.y = objData.vy;
+            } else if (errDist > 0.25) {
+              // Smooth velocity & position nudge
+              localObj.position.x += dx * 0.2;
+              localObj.position.y += dy * 0.2;
+              localObj.velocity.x += (objData.vx - localObj.velocity.x) * 0.3;
+              localObj.velocity.y += (objData.vy - localObj.velocity.y) * 0.3;
+            }
           }
 
-          // Vertical position & velocity
-          const dz = objData.z - localObj.position.z;
-          if (Math.abs(dz) >= 0.8) {
-            localObj.position.z = objData.z;
+          const dz = targetZ - localObj.position.z;
+          if (Math.abs(dz) >= 1.0) {
+            localObj.position.z = targetZ;
             localObj.verticalVelocity = objData.vz;
-          } else if (Math.abs(dz) > 0.02) {
-            localObj.position.z += dz * 0.25;
-            localObj.verticalVelocity += (objData.vz - localObj.verticalVelocity) * 0.35;
+          } else if (Math.abs(dz) > 0.05) {
+            localObj.position.z += dz * 0.3;
+            localObj.verticalVelocity += (objData.vz - localObj.verticalVelocity) * 0.3;
           }
 
           localObj.supportingSurfaceHeight = objData.supportingSurfaceHeight;
@@ -261,6 +359,45 @@ export class GameLoop {
     };
   }
 
+  /**
+   * Broadcast an object interaction (throw, pickup, drop, impulse) with current
+   * state and lock it locally so background snapshots do not fight it.
+   */
+  public broadcastObjectAction(
+    action: "throw" | "pickup" | "drop" | "impulse",
+    obj: GameObject
+  ): void {
+    if (!this.networkManager) return;
+    this.objectOwnershipLocks.set(obj.id, performance.now() + 2000);
+
+    this.networkManager.sendObjectAction({
+      action,
+      objectId: obj.id,
+      x: obj.position.x,
+      y: obj.position.y,
+      z: obj.position.z,
+      vx: obj.velocity.x,
+      vy: obj.velocity.y,
+      vz: obj.verticalVelocity,
+      rotX: obj.rollModule?.angularVelocity.x || 0,
+      rotY: obj.rollModule?.angularVelocity.y || 0,
+      rotZ: obj.rollModule?.angularVelocity.z || 0,
+      timestamp: this.networkManager.getSyncedTime(),
+    });
+  }
+
+  private checkAndBroadcastImpulse(obj: GameObject): void {
+    const speed = Math.hypot(obj.velocity.x, obj.velocity.y);
+    if (speed > 0.35) {
+      const now = performance.now();
+      const last = this.lastImpulseBroadcast.get(obj.id) || 0;
+      if (now - last > 80) {
+        this.lastImpulseBroadcast.set(obj.id, now);
+        this.broadcastObjectAction("impulse", obj);
+      }
+    }
+  }
+
   public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
@@ -310,7 +447,6 @@ export class GameLoop {
 
   private updatePhysics(dt: number): void {
     const input = this.inputManager;
-    const isHost = !this.networkManager || this.networkManager.isHost;
 
     // 1. Update character with movement and aim inputs
     if (input.draggedEntity !== this.character) {
@@ -363,9 +499,7 @@ export class GameLoop {
       if (target) {
         this.character.pickupModule.pickup(this.character, target);
         input.justPickedUp = true;
-        if (this.networkManager && !isHost) {
-          this.networkManager.sendAction("pickup", target.id);
-        }
+        this.broadcastObjectAction("pickup", target);
       }
     }
 
@@ -599,6 +733,13 @@ export class GameLoop {
                   }
                 }
               }
+            }
+
+            // Check if local character bumped an unheld object and imparted velocity
+            if (a === this.character && !b.isHeld && this.objects.includes(b as GameObject)) {
+              this.checkAndBroadcastImpulse(b as GameObject);
+            } else if (b === this.character && !a.isHeld && this.objects.includes(a as GameObject)) {
+              this.checkAndBroadcastImpulse(a as GameObject);
             }
           }
         }
