@@ -8,13 +8,12 @@ export class WalkingModule {
   public enabled = true;
 
   // Maximum propulsion / braking force exerted by the character's legs (in Newtons / Force units)
-  public maxWalkForce = 50.0;
+  public maxWalkForce = 35.0;
 
   // Maximum physical leg stride / cadence speed cap (u/s)
   public maxWalkSpeed = 5.2;
 
-  // Drag damping factor which converts walk force and mass into natural load speed:
-  // naturalSpeed = (maxWalkForce * strength) / (totalMass * dragDamping)
+  // Drag damping factor for backwards compatibility / reference
   public dragDamping = 8.01;
 
   /**
@@ -22,7 +21,7 @@ export class WalkingModule {
    * - Both accelerating and stopping step toward target velocity at the EXACT same rate:
    *   maxAccel = (maxWalkForce * strength / totalMass) * grip.
    * - Acceleration and deceleration rates are 100% symmetrical.
-   * - Carrying heavy objects increases totalMass, reducing both acceleration and top speed.
+   * - Carrying heavy objects increases totalMass, reducing acceleration and smoothly lowering top speed.
    * - Pushing heavy objects in the arena resists movement through contact forces, naturally slowing movement.
    */
   public update(character: Character, inputVector: Vector2D, dt: number, arena: Arena): void {
@@ -55,9 +54,11 @@ export class WalkingModule {
     const grip = activeFrictionMod * surfaceFactor;
 
     // Target velocity:
-    // Natural top speed emerges from walk force divided by mass, capped at physical leg maxWalkSpeed
-    const naturalSpeed = (this.maxWalkForce * character.strength) / (totalMass * this.dragDamping);
-    const effectiveSpeed = Math.min(this.maxWalkSpeed, naturalSpeed);
+    // Carrying a load reduces top walking speed smoothly based on carried mass and strength.
+    // Heavy Red Box (2.6kg) slows speed down to ~75% ("a little bit slower"), not a crawl.
+    const carriedMass = character.carriedMass;
+    const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
+    const effectiveSpeed = this.maxWalkSpeed / (1.0 + loadFactor);
 
     let targetVx = 0;
     let targetVy = 0;

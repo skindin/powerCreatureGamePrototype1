@@ -285,13 +285,19 @@ export class ThrowModule {
       held.rollModule.angularVelocity.x = -launch.vy / R;
     }
 
-    // Apply opposite recoil force to the character based on momentum conservation
+    // Apply opposite recoil velocity to character based on linear momentum conservation
+    // Released object momentum: p_held = m_held * v_launch
+    // Recoil momentum on character: p_char = -p_held -> v_recoil = -(m_held / m_char) * v_launch
     // Massless objects impart ZERO recoil!
-    const recoilRatio = (held.hasMass && character.hasMass) ? (held.mass / Math.max(0.2, character.mass)) : 0;
+    const carriedMass = (held.hasMass) ? held.mass : 0;
+    const charBaseMass = (character.hasMass) ? Math.max(0.2, character.baseMass) : 0;
+    const recoilRatio = (carriedMass > 0 && charBaseMass > 0) ? (carriedMass / charBaseMass) : 0;
+
+    // Detach from hands
+    character.heldObject = null;
+
     character.velocity.x -= launch.vx * recoilRatio;
     character.velocity.y -= launch.vy * recoilRatio;
-
-    character.heldObject = null;
     return held;
   }
 }

@@ -504,9 +504,9 @@ export class DevPanel {
                 <div class="slider-group">
                   <div class="slider-label">
                     <span>Max Walk Force (N)</span>
-                    <span id="val-walk-force">${(this.character.walkingModule?.maxWalkForce ?? 50.0).toFixed(0)}</span>
+                    <span id="val-walk-force">${(this.character.walkingModule?.maxWalkForce ?? 35.0).toFixed(0)}</span>
                   </div>
-                  <input type="range" id="slide-walk-force" min="10" max="200" step="5" value="${this.character.walkingModule?.maxWalkForce ?? 50.0}">
+                  <input type="range" id="slide-walk-force" min="10" max="200" step="5" value="${this.character.walkingModule?.maxWalkForce ?? 35.0}">
                 </div>
                 <div class="slider-group">
                   <div class="slider-label">
