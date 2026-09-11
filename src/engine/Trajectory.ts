@@ -46,15 +46,30 @@ export class Trajectory {
   ): Trajectory {
     // Clone simulation dummy with matching physical properties
     const dummy = new GameObject({
-      colliderRadius: templateObj.colliderRadius,
+      colliderRadius: templateObj.hasCollider ? templateObj.colliderRadius : 0,
       mass: templateObj.mass,
       hasGravity: templateObj.hasGravity,
       hasVerticalPosition: templateObj.hasVerticalPosition,
       hasVerticalVelocity: templateObj.hasVerticalVelocity,
       staticGroundFrictionMod: templateObj.staticGroundFrictionMod,
       dynamicGroundFrictionMod: templateObj.dynamicGroundFrictionMod,
-      bounceMod: templateObj.bounceMod,
+      bounceMod: templateObj.hasBounce ? templateObj.bounceMod : null,
     });
+
+    if (!templateObj.hasCollider) {
+      dummy.colliderModule = null;
+    }
+    if (!templateObj.hasFriction) {
+      dummy.frictionModule = null;
+    }
+    if (!templateObj.hasBounce) {
+      dummy.bounceModule = null;
+    } else if (templateObj.bounceModule) {
+      dummy.bounceModule = new BounceModule({
+        bounceMod: templateObj.bounceModule.bounceMod,
+        verticalBounce: templateObj.bounceModule.verticalBounce,
+      });
+    }
 
     dummy.position.x = x0;
     dummy.position.y = y0;
@@ -62,14 +77,7 @@ export class Trajectory {
     dummy.velocity.x = vx0;
     dummy.velocity.y = vy0;
     dummy.verticalVelocity = vz0;
-    dummy.supportingSurfaceHeight = arena.getSupportingSurfaceHeight(x0, y0);
-
-    if (templateObj.bounceModule) {
-      dummy.bounceModule = new BounceModule({
-        bounceMod: templateObj.bounceModule.bounceMod,
-        verticalBounce: templateObj.bounceModule.verticalBounce,
-      });
-    }
+    dummy.supportingSurfaceHeight = arena.getSupportingSurfaceHeight(x0, y0, dummy.colliderRadius);
 
     if (templateObj.rollModule && templateObj.rollModule.enabled) {
       dummy.rollModule = new RollModule({

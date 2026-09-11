@@ -277,6 +277,8 @@ export class ThrowModule {
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;
     held.position.z = held.hasVerticalPosition ? Math.max(0.3, held.position.z) : 0;
+    held.throwImmunityPlayerId = character.playerId ?? "local";
+    held.throwImmunityUntil = performance.now() + 450;
 
     // If held object is rollable and has friction, impart rolling motion along throw direction
     if (held.hasFriction && held.rollModule && held.rollModule.enabled) {

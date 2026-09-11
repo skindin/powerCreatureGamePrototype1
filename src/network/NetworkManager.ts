@@ -178,7 +178,7 @@ export class NetworkManager {
   }
 
   /**
-   * Stream local player movement/aim state at ~22Hz with compacted floats
+   * Stream local player movement/aim state at ~30Hz with compacted floats
    */
   public sendPlayerState(
     x: number,
@@ -194,7 +194,7 @@ export class NetworkManager {
     isActivelyWalking: boolean
   ): void {
     const now = performance.now();
-    if (now - this.lastPlayerStateSend < 45) return; // ~22Hz cap (prevents TCP buffer bloat)
+    if (now - this.lastPlayerStateSend < 32) return; // ~30Hz cap
     this.lastPlayerStateSend = now;
 
     const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -202,6 +202,7 @@ export class NetworkManager {
     this.send({
       type: "player_state",
       playerId: this.playerId,
+      timestamp: this.getSyncedTime(),
       x: r2(x),
       y: r2(y),
       z: r2(z),

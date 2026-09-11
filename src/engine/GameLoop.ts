@@ -108,26 +108,33 @@ export class GameLoop {
     net.onPlayerState = (packet) => {
       const remote = this.remoteCharacters.get(packet.playerId);
       if (remote) {
-        // Soft error correction for remote character position
-        const dx = packet.x - remote.position.x;
-        const dy = packet.y - remote.position.y;
+        const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
+        const transitSec = packet.timestamp ? Math.max(0, Math.min(0.25, (now - packet.timestamp) / 1000)) : 0;
+
+        // Predictive dead-reckoning extrapolation: where the player is RIGHT NOW
+        const targetX = packet.x + packet.vx * transitSec;
+        const targetY = packet.y + packet.vy * transitSec;
+        const targetZ = packet.z + packet.vz * transitSec;
+
+        const dx = targetX - remote.position.x;
+        const dy = targetY - remote.position.y;
         const errDist = Math.hypot(dx, dy);
 
-        if (errDist >= 1.2) {
-          // Hard snap if major divergence (teleport / spawn)
-          remote.position.x = packet.x;
-          remote.position.y = packet.y;
+        if (errDist >= 1.5) {
+          // Hard snap on major divergence (teleport / spawn)
+          remote.position.x = targetX;
+          remote.position.y = targetY;
         } else if (errDist > 0.02) {
-          // Soft blend to eliminate stutter
-          remote.position.x += dx * 0.35;
-          remote.position.y += dy * 0.35;
+          // Smooth convergence towards extrapolated real-time position
+          remote.position.x += dx * 0.45;
+          remote.position.y += dy * 0.45;
         }
 
-        const dz = packet.z - remote.position.z;
+        const dz = targetZ - remote.position.z;
         if (Math.abs(dz) >= 0.8) {
-          remote.position.z = packet.z;
+          remote.position.z = targetZ;
         } else if (Math.abs(dz) > 0.02) {
-          remote.position.z += dz * 0.35;
+          remote.position.z += dz * 0.45;
         }
 
         remote.velocity.x = packet.vx;
@@ -296,7 +303,9 @@ export class GameLoop {
           // Resting alignment: verify resting positions agree down to the millimeter
           const isAtRest =
             Math.hypot(objData.vx, objData.vy) < 0.05 &&
-            Math.hypot(localObj.velocity.x, localObj.velocity.y) < 0.05;
+            Math.abs(objData.vz) < 0.05 &&
+            Math.hypot(localObj.velocity.x, localObj.velocity.y) < 0.05 &&
+            Math.abs(localObj.verticalVelocity) < 0.05;
 
           if (isAtRest) {
             const dx = objData.x - localObj.position.x;
@@ -308,6 +317,22 @@ export class GameLoop {
             }
             localObj.velocity.x = 0;
             localObj.velocity.y = 0;
+            localObj.verticalVelocity = 0;
+          } else if (!localObj.trajectory) {
+            // Freebody in continuous motion without active trajectory (e.g. pushed slowly)
+            const dx = objData.x - localObj.position.x;
+            const dy = objData.y - localObj.position.y;
+            const dz = objData.z - localObj.position.z;
+            if (Math.hypot(dx, dy) > 0.05) {
+              localObj.position.x += dx * 0.3;
+              localObj.position.y += dy * 0.3;
+            }
+            if (Math.abs(dz) > 0.05) {
+              localObj.position.z += dz * 0.3;
+            }
+            localObj.velocity.x = objData.vx;
+            localObj.velocity.y = objData.vy;
+            localObj.verticalVelocity = objData.vz;
           }
         }
       }
@@ -627,6 +652,19 @@ export class GameLoop {
 
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;
+
+          // Skip collision between thrower and thrown object while separating
+          const nowPerf = performance.now();
+          if (a.isCharacter && b.throwImmunityPlayerId && b.throwImmunityUntil > nowPerf) {
+            if (b.throwImmunityPlayerId === (a as Character).playerId || (b.throwImmunityPlayerId === "local" && a === this.character)) {
+              continue;
+            }
+          }
+          if (b.isCharacter && a.throwImmunityPlayerId && a.throwImmunityUntil > nowPerf) {
+            if (a.throwImmunityPlayerId === (b as Character).playerId || (a.throwImmunityPlayerId === "local" && b === this.character)) {
+              continue;
+            }
+          }
 
           // Two-Tier Altitude Collision Rule:
           // 1. All colliders below wall height collide with each other, and NOT with colliders above wall height.

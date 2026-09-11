@@ -68,6 +68,7 @@ export type NetworkPacket =
   | {
       type: "player_state";
       playerId: string;
+      timestamp: number;
       x: number;
       y: number;
       z: number;
