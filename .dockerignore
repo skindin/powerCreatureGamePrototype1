@@ -1,0 +1,10 @@
+node_modules
+.git
+.vscode
+.vs
+*.log
+desktop_app/bin
+desktop_app/obj
+LaunchGame.exe
+Launcher.cs
+Power Creature Game.lnk
