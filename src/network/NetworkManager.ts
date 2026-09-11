@@ -33,6 +33,8 @@ export class NetworkManager {
 
   // NTP Clock Synchronization
   private serverTimeOffset = 0;
+  private oneWayLatency = 40; // Default estimate until calibrated
+  private minRtt = Infinity;
   private pingInterval: any = null;
 
   // Rate-limiting timers
@@ -152,8 +154,17 @@ export class NetworkManager {
       }
       case "pong": {
         const rtt = performance.now() - packet.clientTime;
-        const oneWay = rtt / 2;
-        this.serverTimeOffset = packet.serverTime + oneWay - Date.now();
+        const oneWay = Math.max(5, rtt / 2);
+        if (rtt < this.minRtt) {
+          this.minRtt = rtt;
+          this.oneWayLatency = oneWay;
+          this.serverTimeOffset = packet.serverTime + oneWay - Date.now();
+        } else {
+          // Soft-blend towards new offset to account for long-term drift
+          const sampleOffset = packet.serverTime + oneWay - Date.now();
+          this.serverTimeOffset = this.serverTimeOffset * 0.8 + sampleOffset * 0.2;
+          this.oneWayLatency = this.oneWayLatency * 0.8 + oneWay * 0.2;
+        }
         break;
       }
       case "object_action": {
@@ -303,8 +314,15 @@ export class NetworkManager {
         });
       }
     };
+
+    // Immediate fast burst of 4 pings to lock down the clock offset within ~300ms
     sendPing();
-    this.pingInterval = setInterval(sendPing, 2500);
+    for (let i = 1; i <= 3; i++) {
+      setTimeout(sendPing, i * 80);
+    }
+
+    // Steady state heartbeat every 2000ms
+    this.pingInterval = setInterval(sendPing, 2000);
   }
 
   private stopPingSync(): void {
@@ -319,6 +337,13 @@ export class NetworkManager {
    */
   public getSyncedTime(): number {
     return Date.now() + this.serverTimeOffset;
+  }
+
+  /**
+   * Estimated one-way network latency to server (in milliseconds)
+   */
+  public getOneWayPing(): number {
+    return Math.max(5, this.oneWayLatency);
   }
 
   /**

@@ -242,10 +242,24 @@ export class GameLoop {
       target.throwImmunityPlayerId = packet.throwerPlayerId || packet.playerId;
       target.throwImmunityUntil = performance.now() + 800;
 
-      // Calculate flight time elapsed during network transit
+      // Lock against snapshot overrides while in flight
+      this.objectOwnershipLocks.set(target.id, performance.now() + 6000);
+
+      // Calculate the exact amount of time it took to be told about this trajectory launch
       const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-      const transitMs = Math.max(0, Math.min(200, now - packet.t0));
-      target.trajectoryStartTime = performance.now() - transitMs;
+      const oneWayPing = this.networkManager ? this.networkManager.getOneWayPing() : 40;
+
+      let elapsedLateMs = 0;
+      if (packet.serverRelayTime) {
+        const transitFromServer = Math.max(oneWayPing, now - packet.serverRelayTime);
+        const transitToServer = Math.max(oneWayPing, packet.serverRelayTime - packet.t0);
+        elapsedLateMs = transitToServer + transitFromServer;
+      } else {
+        elapsedLateMs = Math.max(oneWayPing * 2, now - packet.t0);
+      }
+
+      // Skip the exact amount of time it took to be told about it!
+      target.trajectoryStartTime = performance.now() - elapsedLateMs;
 
       // Potential colliders in the arena to predict collisions against
       const potentialColliders = this.objects.filter(
@@ -265,6 +279,50 @@ export class GameLoop {
         potentialColliders,
         1
       );
+
+      // Immediately advance the object to the exact elapsed state right now!
+      const initialSample = target.trajectory.sample(elapsedLateMs);
+      target.position.x = initialSample.x;
+      target.position.y = initialSample.y;
+      target.position.z = initialSample.z;
+      target.velocity.x = initialSample.vx;
+      target.velocity.y = initialSample.vy;
+      target.verticalVelocity = initialSample.vz;
+      target.supportingSurfaceHeight = this.arena.getSupportingSurfaceHeight(initialSample.x, initialSample.y);
+      if (target.rollModule && target.rollModule.enabled) {
+        target.rollModule.angularVelocity.x = initialSample.rotX;
+        target.rollModule.angularVelocity.y = initialSample.rotY;
+        target.rollModule.angularVelocity.z = initialSample.rotZ;
+      }
+
+      // If any predicted collision already occurred during transit, trigger it immediately
+      if (target.trajectory.predictedCollisions) {
+        for (const col of target.trajectory.predictedCollisions) {
+          if (!col.triggered && elapsedLateMs >= col.timeMs) {
+            col.triggered = true;
+            const hitObj = this.objects.find((o) => o.id === col.targetId);
+            if (hitObj && !hitObj.isHeld) {
+              hitObj.velocity.x = col.impulseVx;
+              hitObj.velocity.y = col.impulseVy;
+              hitObj.verticalVelocity = col.impulseVz;
+              const remainingTime = elapsedLateMs - col.timeMs;
+              hitObj.trajectoryStartTime = performance.now() - remainingTime;
+              hitObj.trajectory = Trajectory.build(
+                hitObj,
+                hitObj.position.x,
+                hitObj.position.y,
+                hitObj.position.z,
+                hitObj.velocity.x,
+                hitObj.velocity.y,
+                hitObj.verticalVelocity,
+                this.arena,
+                [],
+                1
+              );
+            }
+          }
+        }
+      }
     };
 
     net.onWorldSnapshot = (packet) => {
@@ -398,6 +456,7 @@ export class GameLoop {
    */
   public broadcastTrajectoryLaunch(obj: GameObject): void {
     obj.trajectoryStartTime = performance.now();
+    this.objectOwnershipLocks.set(obj.id, performance.now() + 6000);
 
     // Potential colliders in the arena to predict collisions against
     const potentialColliders = this.objects.filter(

@@ -132,6 +132,7 @@ export type NetworkPacket =
       objectId: string;
       playerId: string;
       throwerPlayerId?: string;
+      serverRelayTime?: number;
       t0: number;
       x0: number;
       y0: number;

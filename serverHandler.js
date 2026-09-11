@@ -173,7 +173,8 @@ export function setupWebSocketServer(httpServer) {
             break;
           }
           case 'trajectory_launch': {
-            // Relay trajectory launch to all other clients immediately
+            // Relay trajectory launch to all other clients immediately with server relay timestamp
+            msg.serverRelayTime = Date.now();
             broadcast(msg, ws);
             break;
           }
