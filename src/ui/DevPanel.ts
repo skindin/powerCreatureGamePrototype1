@@ -45,6 +45,7 @@ export class DevPanel {
 
   public selectedEntity: GameObject;
   public isEditMode: boolean = false;
+  public editTool: "entities" | "walls" = "entities";
   public onSelectionChange?: (entity: GameObject | null) => void;
 
   // Preserved Creator State
@@ -227,6 +228,39 @@ export class DevPanel {
         this.modeEditBtn.classList.remove("active-edit");
       }
     }
+    const submodeContainer = this.container.querySelector("#edit-submode-container") as HTMLElement;
+    if (submodeContainer) {
+      submodeContainer.style.display = this.isEditMode ? "flex" : "none";
+    }
+    this.updateToolVisibility();
+  }
+
+  public setEditTool(tool: "entities" | "walls"): void {
+    this.editTool = tool;
+    const btnEntities = this.container.querySelector("#submode-entities") as HTMLButtonElement;
+    const btnWalls = this.container.querySelector("#submode-walls") as HTMLButtonElement;
+    if (btnEntities && btnWalls) {
+      btnEntities.classList.toggle("active", tool === "entities");
+      btnWalls.classList.toggle("active", tool === "walls");
+    }
+    this.updateToolVisibility();
+  }
+
+  private updateToolVisibility(): void {
+    const wallEditorSection = this.container.querySelector("#wall-editor-section") as HTMLElement;
+    if (wallEditorSection) {
+      wallEditorSection.style.display = (this.isEditMode && this.editTool === "walls") ? "block" : "none";
+    }
+    const hint = this.container.querySelector("#edit-hint-label");
+    if (hint) {
+      if (!this.isEditMode) {
+        hint.textContent = "Right-click in arena to select";
+      } else if (this.editTool === "walls") {
+        hint.textContent = "Left-drag: Draw | Right-drag: Erase";
+      } else {
+        hint.textContent = "Click & drag object in arena";
+      }
+    }
   }
 
   public updateSelectorOptions(): void {
@@ -262,9 +296,43 @@ export class DevPanel {
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
           <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
         </div>
+        <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode ? 'flex' : 'none'};">
+          <button id="submode-entities" class="submode-btn ${this.editTool === 'entities' ? 'active' : ''}">📦 Move Entities</button>
+          <button id="submode-walls" class="submode-btn ${this.editTool === 'walls' ? 'active' : ''}">🧱 Edit Walls</button>
+        </div>
       </div>
 
       <div class="dev-scrollable">
+        <!-- Wall Tile Editor Section (Active when Edit Mode & Edit Walls selected) -->
+        <div id="wall-editor-section" class="dev-section wall-tool-panel" style="display: ${this.isEditMode && this.editTool === 'walls' ? 'block' : 'none'};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3 style="margin: 0;">🧱 Wall Tile Editor</h3>
+            <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);">Grid: 20 × 14</span>
+          </div>
+          <p class="section-desc">Click and drag directly in the arena to paint or erase 1.0 × 1.0 unit wall blocks in real-time.</p>
+
+          <div class="wall-hint-box">
+            <div>🖱️ <strong>Left-Click & Drag:</strong> Draw / place wall tiles</div>
+            <div style="margin-top: 4px;">🖱️ <strong class="danger">Right-Click & Drag:</strong> Erase / remove wall tiles</div>
+            <div style="margin-top: 6px; font-size: 0.72rem; color: #94a3b8;">
+              💡 Drawing a wall under an object on the ground elevates it to wall height. Erasing a wall under an object causes it to fall naturally with gravity.
+            </div>
+          </div>
+
+          <div class="slider-group" style="margin-top: 12px;">
+            <div class="slider-label">
+              <span>Standard Wall Height (u)</span>
+              <span id="val-editor-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-editor-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button id="btn-reset-walls" class="btn-secondary-action" style="flex: 1;">↺ Reset Layout</button>
+            <button id="btn-clear-walls" class="btn-secondary-action" style="flex: 1; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Clear Walls</button>
+          </div>
+        </div>
+
         <!-- Target Selection -->
         <div class="dev-section">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -567,8 +635,11 @@ export class DevPanel {
 
         <!-- ✨ Add New Object (Creator & Presets) -->
         <div class="dev-section">
-          <h3>✨ Add New Object</h3>
-          <p class="section-desc">Pick a preset or configure custom properties. Values remain preserved across spawns.</p>
+          <div class="creator-sticky-header">
+            <h3 style="margin: 0;">✨ Add New Object</h3>
+            <span class="not-live-badge">⚠️ NOT LIVE OBJECT</span>
+          </div>
+          <p class="section-desc">Configure template properties or choose a preset to spawn into the arena.</p>
           
           <div class="presets-container" style="margin-bottom: 10px;">
             <button class="preset-chip" data-preset="Light Blue Box">📦 Light Box</button>
@@ -1043,14 +1114,18 @@ export class DevPanel {
     // 1. Mode Switcher
     this.modePlayBtn.addEventListener("click", () => {
       this.setMode(false);
-      const hint = this.container.querySelector("#edit-hint-label");
-      if (hint) hint.textContent = "Right-click in arena to select";
     });
 
     this.modeEditBtn.addEventListener("click", () => {
       this.setMode(true);
-      const hint = this.container.querySelector("#edit-hint-label");
-      if (hint) hint.textContent = "Click & drag object in arena";
+    });
+
+    this.container.querySelector("#submode-entities")?.addEventListener("click", () => {
+      this.setEditTool("entities");
+    });
+
+    this.container.querySelector("#submode-walls")?.addEventListener("click", () => {
+      this.setEditTool("walls");
     });
 
     // 2. Selector Change
@@ -1296,7 +1371,21 @@ export class DevPanel {
 
     this.setupSlider("slide-wall-height", "val-wall-height", (val) => {
       this.arena.setStandardWallHeight(val);
+      this.setSliderVal("slide-editor-wall-height", "val-editor-wall-height", val, 1);
     }, 1);
+
+    this.setupSlider("slide-editor-wall-height", "val-editor-wall-height", (val) => {
+      this.arena.setStandardWallHeight(val);
+      this.setSliderVal("slide-wall-height", "val-wall-height", val, 1);
+    }, 1);
+
+    this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
+      this.arena.resetDefaultWalls();
+    });
+
+    this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
+      this.arena.clearAllWalls();
+    });
 
     this.setupSlider("slide-friction", "val-friction", (val) => {
       this.arena.frictionCoeff = val;

@@ -97,6 +97,51 @@ export class Arena {
   }
 
   /**
+   * Sets a specific grid cell to wall (1) or empty (0) and rebuilds physical walls
+   */
+  public setWallTile(col: number, row: number, isWall: boolean): boolean {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return false;
+    const val = isWall ? 1 : 0;
+    if (this.tileGrid[row][col] === val) return false;
+    this.tileGrid[row][col] = val;
+    this.rebuildWalls();
+    return true;
+  }
+
+  /**
+   * Checks if a grid cell has a wall
+   */
+  public hasWall(col: number, row: number): boolean {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return false;
+    return this.tileGrid[row][col] === 1;
+  }
+
+  /**
+   * Clears all internal walls from the arena
+   */
+  public clearAllWalls(): void {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        this.tileGrid[r][c] = 0;
+      }
+    }
+    this.rebuildWalls();
+  }
+
+  /**
+   * Resets the arena to its default layout
+   */
+  public resetDefaultWalls(): void {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        this.tileGrid[r][c] = 0;
+      }
+    }
+    this.setupDefaultTileMap();
+    this.rebuildWalls();
+  }
+
+  /**
    * Checks if a point (x, y) is located within the footprint of a wall
    */
   public getWallAt(x: number, y: number): Wall | null {

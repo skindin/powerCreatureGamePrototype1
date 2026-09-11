@@ -2,6 +2,7 @@ import { Vector2D } from "../engine/GameObject.js";
 import { Character } from "../character/Character.js";
 import { Arena } from "../engine/Arena.js";
 import { GameObject } from "../engine/GameObject.js";
+import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import type { DevPanel } from "./DevPanel.js";
 
 export class InputManager {
@@ -11,6 +12,8 @@ export class InputManager {
   
   public mousePos: Vector2D = { x: 0, y: 0 };
   public isMouseDown = false;
+  public isRightMouseDown = false;
+  public hoverWallTile: { col: number; row: number } | null = null;
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
 
@@ -33,6 +36,7 @@ export class InputManager {
   // Action callback hooks
   public handleClick?: (clickX: number, clickY: number) => void;
   public onMouseDown?: (clickX: number, clickY: number) => void;
+  public onRightMouseDown?: (clickX: number, clickY: number) => void;
   public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
@@ -70,13 +74,16 @@ export class InputManager {
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
+      this.updateMousePos(e);
       if (e.button === 2) {
-        // Right click handles selection
+        this.isRightMouseDown = true;
+        if (this.onRightMouseDown) {
+          this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
+        }
         return;
       }
       if (e.button !== 0) return; // Only primary left click
       this.isMouseDown = true;
-      this.updateMousePos(e);
 
       if (this.onMouseDown) {
         this.onMouseDown(this.mousePos.x, this.mousePos.y);
@@ -96,6 +103,10 @@ export class InputManager {
     });
 
     window.addEventListener("mouseup", (e) => {
+      if (e.button === 2) {
+        this.isRightMouseDown = false;
+        return;
+      }
       if (e.button !== 0) return;
       this.isMouseDown = false;
       this.justPickedUp = false;
@@ -202,8 +213,55 @@ export class InputManager {
       return null;
     };
 
+    const applyWallDraw = (col: number, row: number) => {
+      if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
+      const changed = arena.setWallTile(col, row, true);
+      if (changed) {
+        // Elevate any entity overlapping this tile on the ground
+        const tileWall = {
+          id: `wall-${col}-${row}`,
+          x: col * arena.tileSize,
+          y: row * arena.tileSize,
+          width: arena.tileSize,
+          height: arena.tileSize,
+          wallHeight: arena.wallHeight,
+        };
+        const allEntities = [character, ...objects];
+        for (const ent of allEntities) {
+          const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.32);
+          if (arena.testWallOverlap(ent.position.x, ent.position.y, r, tileWall)) {
+            if (ent.position.z < arena.wallHeight) {
+              if (!ent.hasVerticalPosition) {
+                if (!ent.verticalPositionModule) {
+                  ent.verticalPositionModule = new VerticalPositionModule({ z: arena.wallHeight, hasVerticalVelocity: true });
+                } else {
+                  ent.verticalPositionModule.enabled = true;
+                }
+              }
+              ent.position.z = arena.wallHeight;
+              ent.supportingSurfaceHeight = arena.wallHeight;
+              ent.verticalVelocity = 0;
+            }
+          }
+        }
+      }
+    };
+
+    const applyWallErase = (col: number, row: number) => {
+      if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
+      arena.setWallTile(col, row, false);
+      // Erased walls remove supporting surfaces; GameObject.updatePosition will naturally drop unsupported entities
+    };
+
     this.onMouseDown = (x: number, y: number) => {
       if (devPanel?.isEditMode) {
+        if (devPanel.editTool === "walls") {
+          const col = Math.floor(x / arena.tileSize);
+          const row = Math.floor(y / arena.tileSize);
+          applyWallDraw(col, row);
+          return;
+        }
+
         const found = findEntityAt(x, y, 0.35);
         if (found) {
           this.selectedCanvasEntity = found;
@@ -220,9 +278,37 @@ export class InputManager {
       }
     };
 
+    this.onRightMouseDown = (x: number, y: number) => {
+      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
+        const col = Math.floor(x / arena.tileSize);
+        const row = Math.floor(y / arena.tileSize);
+        applyWallErase(col, row);
+      }
+    };
+
     // Hover & drag tracking in Edit Mode
     this.onMouseMove = (x: number, y: number) => {
+      const col = Math.floor(x / arena.tileSize);
+      const row = Math.floor(y / arena.tileSize);
+      if (col >= 0 && col < arena.cols && row >= 0 && row < arena.rows) {
+        this.hoverWallTile = { col, row };
+      } else {
+        this.hoverWallTile = null;
+      }
+
       if (devPanel?.isEditMode) {
+        if (devPanel.editTool === "walls") {
+          this.hoverEntity = null;
+          this.draggedEntity = null;
+          this.canvas.style.cursor = "cell";
+          if (this.isMouseDown && this.hoverWallTile) {
+            applyWallDraw(this.hoverWallTile.col, this.hoverWallTile.row);
+          } else if (this.isRightMouseDown && this.hoverWallTile) {
+            applyWallErase(this.hoverWallTile.col, this.hoverWallTile.row);
+          }
+          return;
+        }
+
         if (this.isMouseDown && this.draggedEntity) {
           // Drag object wherever the user moves the mouse
           const targetX = x + this.dragOffset.x;
@@ -258,9 +344,13 @@ export class InputManager {
         this.draggedEntity = null;
       }
       if (devPanel?.isEditMode) {
-        const found = findEntityAt(this.mousePos.x, this.mousePos.y, 0.3);
-        this.hoverEntity = found;
-        this.canvas.style.cursor = found ? "grab" : "crosshair";
+        if (devPanel.editTool === "walls") {
+          this.canvas.style.cursor = "cell";
+        } else {
+          const found = findEntityAt(this.mousePos.x, this.mousePos.y, 0.3);
+          this.hoverEntity = found;
+          this.canvas.style.cursor = found ? "grab" : "crosshair";
+        }
       }
     };
 
@@ -288,8 +378,11 @@ export class InputManager {
       }
     };
 
-    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes)
+    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes, except Wall Tool)
     this.onRightClick = (clickX: number, clickY: number) => {
+      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
+        return; // Wall erasing is handled via onRightMouseDown & drag
+      }
       if (!devPanel) return;
       const found = findEntityAt(clickX, clickY, 0.4);
       if (found) {

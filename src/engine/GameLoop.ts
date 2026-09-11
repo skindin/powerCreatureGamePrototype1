@@ -75,7 +75,8 @@ export class GameLoop {
       );
     }
 
-    // Render current frame with active selection highlight
+    // Render current frame with active selection highlight & wall tool indicators
+    const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
     this.renderer.render(
       this.arena,
       this.character,
@@ -83,7 +84,9 @@ export class GameLoop {
       this.inputManager.selectedCanvasEntity,
       this.devPanel.isEditMode,
       this.inputManager.hoverEntity,
-      targetGrabEntity
+      targetGrabEntity,
+      isWallEditor,
+      this.inputManager.hoverWallTile
     );
 
     // Update live inspector

@@ -54,7 +54,8 @@ export class ThrowModule {
     arena: Arena,
     throwPower: number,
     hasGravity = true,
-    hasVerticalVelocity = true
+    hasVerticalVelocity = true,
+    colliderRadius = 0.35
   ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
     const dx = targetX - startX;
     const dy = targetY - startY;
@@ -80,18 +81,23 @@ export class ThrowModule {
 
     // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
     const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    const deltaZ = targetSurfaceHeight - startZ;
 
-    // Fastest trajectory calculation:
-    // Uses character throw power to reach the target as quickly as possible with a flat, minimal arc.
-    // The trajectory arc is identical for all objects regardless of mass.
-    const maxThrowSpeed = Math.max(3.0, throwPower);
-    // Minimum flight time based on maximum horizontal launch speed
-    const minFlightTime = Math.max(0.14, actualDist / maxThrowSpeed);
-    let totalTime = minFlightTime;
+    // Default to 1:1 throw vector (45 degrees, tan(45°) = 1.0)
+    let minTanTheta = 1.0;
 
-    // Scan dense samples along trajectory to ensure clearance over any intermediate walls
-    const sampleCount = 35;
-    const colliderRadiusCheck = 0.35;
+    // If target landing surface is elevated, ensure angle is steep enough to physically reach elevation
+    if (deltaZ > 0) {
+      minTanTheta = Math.max(minTanTheta, (deltaZ + 0.15) / actualDist);
+    }
+
+    // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
+    // If the projectile cannot physically clear at 45 degrees, find the exact minimum launch angle.
+    // Trajectory equation: z(s) = startZ + s * deltaZ + s * (1 - s) * actualDist * tan(theta)
+    const sampleCount = 40;
+    const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
+    const clearance = 0.25; // Clean clearance over intermediate walls
+
     for (let i = 1; i < sampleCount; i++) {
       const s = i / sampleCount;
       const sampleX = startX + (finalTargetX - startX) * s;
@@ -109,16 +115,15 @@ export class ThrowModule {
           }
 
           // Intermediate wall that must be cleared!
-          // We require z(s) >= wall.wallHeight + clearance with minimal tight arc
           const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const clearance = 0.30; // Tight, clean clearance over wall
-          const requiredDeltaZ = (wall.wallHeight + clearance) - baselineZ;
+          const requiredHeight = wall.wallHeight + clearance;
+          const requiredDeltaZ = requiredHeight - baselineZ;
           if (requiredDeltaZ > 0) {
-            const minTimeSq = (2 * requiredDeltaZ) / (arena.gravity * s * (1 - s));
-            if (minTimeSq > 0) {
-              const minTime = Math.sqrt(minTimeSq);
-              if (minTime > totalTime) {
-                totalTime = minTime;
+            const denom = s * (1 - s) * actualDist;
+            if (denom > 0.001) {
+              const reqTanTheta = requiredDeltaZ / denom;
+              if (reqTanTheta > minTanTheta) {
+                minTanTheta = reqTanTheta;
               }
             }
           }
@@ -126,15 +131,23 @@ export class ThrowModule {
       }
     }
 
-    if (totalTime <= 0.05) return null;
+    // Cap angle at 85 degrees (tan ~ 11.43) to prevent numerical singularity
+    const maxTanTheta = Math.tan((85 * Math.PI) / 180);
+    const tanTheta = Math.min(maxTanTheta, minTanTheta);
 
-    // From totalTime and targetSurfaceHeight, compute the exact vz to hit targetSurfaceHeight at totalTime:
-    // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
-    // vz = (targetSurfaceHeight - startZ + 0.5 * g * totalTime^2) / totalTime
-    const vz = (targetSurfaceHeight - startZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    // Compute flight time t from: 0.5 * g * t^2 = actualDist * tanTheta - deltaZ
+    const numerator = 2 * (actualDist * tanTheta - deltaZ);
+    if (numerator <= 0) return null;
+
+    const totalTime = Math.sqrt(numerator / arena.gravity);
+    if (totalTime <= 0.05) return null;
 
     // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
     const horizontalSpeed = actualDist / totalTime;
+
+    // Vertical speed according to the 1:1 ratio (or minimum angle tanTheta)
+    const vz = horizontalSpeed * tanTheta;
+
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
 
@@ -160,7 +173,7 @@ export class ThrowModule {
     const throwPower = this.baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius
     );
     if (!launch) return null;
 
@@ -267,7 +280,7 @@ export class ThrowModule {
 
     const throwPower = this.baseThrowForce * character.strength;
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius
     );
     if (!launch) return null;
 
@@ -287,9 +300,11 @@ export class ThrowModule {
     }
 
     // Apply opposite recoil velocity to character based on linear momentum conservation
-    // Released object momentum: p_held = m_held * v_launch
-    // Recoil momentum on character: p_char = -p_held -> v_recoil = -(m_held / m_char) * v_launch
-    // Massless objects impart ZERO recoil!
+    // Released object velocity change: deltaV = v_launch - v_initial (where v_initial = character.velocity)
+    // Impulse on object: J_obj = m_held * deltaV
+    // Recoil on character: J_char = -J_obj -> v_recoil = -(m_held / m_char) * (v_launch - character.velocity)
+    // When throwing perpendicular to movement, countering the object's current velocity in hand
+    // applies an additional forward reaction boost in the movement direction!
     const carriedMass = (held.hasMass) ? held.mass : 0;
     const charBaseMass = (character.hasMass) ? Math.max(0.2, character.baseMass) : 0;
     const recoilRatio = (carriedMass > 0 && charBaseMass > 0) ? (carriedMass / charBaseMass) : 0;
@@ -297,8 +312,17 @@ export class ThrowModule {
     // Detach from hands
     character.heldObject = null;
 
-    character.velocity.x -= launch.vx * recoilRatio;
-    character.velocity.y -= launch.vy * recoilRatio;
+    const deltaVx = launch.vx - character.velocity.x;
+    const deltaVy = launch.vy - character.velocity.y;
+
+    character.velocity.x -= deltaVx * recoilRatio;
+    character.velocity.y -= deltaVy * recoilRatio;
+
+    if (character.isAboveGround && held.hasVerticalVelocity) {
+      const deltaVz = launch.vz - character.verticalVelocity;
+      character.verticalVelocity -= deltaVz * recoilRatio;
+    }
+
     return held;
   }
 }

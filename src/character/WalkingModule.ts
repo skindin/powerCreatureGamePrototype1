@@ -84,8 +84,10 @@ export class WalkingModule {
     const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
 
     // Symmetrical acceleration and deceleration:
-    // Leg force drives both acceleration and braking symmetrically (a = F_walk / totalMass * grip)
-    const maxAccel = ((this.maxWalkForce * character.strength) / totalMass) * grip;
+    // Base character mass drives leg acceleration/braking (a = F_walk / accelMass * grip)
+    // while carriedMass smoothly reduces top speed via loadFactor, avoiding double mass penalty
+    const accelMass = character.hasMass ? Math.max(0.2, character.baseMass) : 1.0;
+    const maxAccel = ((this.maxWalkForce * character.strength) / accelMass) * grip;
     const maxStep = maxAccel * dt;
 
     if (diffSpeed <= maxStep || (!isMoving && currentSpeed < staticThreshold)) {

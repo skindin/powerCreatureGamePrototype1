@@ -17,7 +17,9 @@ export class Renderer {
     selectedEntity?: GameObject | null,
     isEditMode = false,
     hoverEntity?: GameObject | null,
-    targetGrabEntity?: GameObject | null
+    targetGrabEntity?: GameObject | null,
+    isWallEditor = false,
+    hoverWallTile?: { col: number; row: number } | null
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -29,6 +31,11 @@ export class Renderer {
 
     // 2. Pure 2D Top-Down Walls
     this.drawWalls(arena, ppu);
+
+    // 2b. Wall Tile Preview (When in Wall Editor sub-mode)
+    if (isWallEditor && hoverWallTile) {
+      this.drawWallEditorHover(arena, hoverWallTile, ppu);
+    }
 
     // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position
     const allRenderables = [character, ...objects];
@@ -116,6 +123,51 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.strokeRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
     }
+  }
+
+  /**
+   * Wall Editor Grid Cell Hover Indicator:
+   * Displays a cyan "+ Draw" preview on empty floor tiles or a red "✕ Erase" preview on existing wall tiles.
+   */
+  private drawWallEditorHover(arena: Arena, tile: { col: number; row: number }, ppu: number): void {
+    if (tile.col < 0 || tile.col >= arena.cols || tile.row < 0 || tile.row >= arena.rows) return;
+    const ctx = this.ctx;
+    const x = tile.col * arena.tileSize * ppu;
+    const y = tile.row * arena.tileSize * ppu;
+    const size = arena.tileSize * ppu;
+    const hasWall = arena.hasWall(tile.col, tile.row);
+
+    ctx.save();
+    if (hasWall) {
+      // Erase Preview (Red)
+      ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 2.5;
+      ctx.fillRect(x, y, size, size);
+      ctx.strokeRect(x, y, size, size);
+
+      // Icon / Label
+      ctx.font = "bold 12px system-ui, sans-serif";
+      ctx.fillStyle = "#fca5a5";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("✕ Erase", x + size / 2, y + size / 2);
+    } else {
+      // Draw Preview (Cyan)
+      ctx.fillStyle = "rgba(56, 189, 248, 0.3)";
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2.5;
+      ctx.fillRect(x, y, size, size);
+      ctx.strokeRect(x, y, size, size);
+
+      // Icon / Label
+      ctx.font = "bold 12px system-ui, sans-serif";
+      ctx.fillStyle = "#7dd3fc";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("+ Draw", x + size / 2, y + size / 2);
+    }
+    ctx.restore();
   }
 
   /**
