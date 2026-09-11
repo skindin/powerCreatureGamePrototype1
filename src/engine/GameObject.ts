@@ -299,7 +299,7 @@ export class GameObject {
       if (canBeOnWall) {
         supportingWall = arena.getWallAt(this.position.x, this.position.y);
         if (!supportingWall && this.isCharacter) {
-          // If character is right at wall edge, support if moving towards the adjacent wall to mount it
+          // If character is right at wall edge, support as long as not moving away from the wall
           const adjacentWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
           if (adjacentWall) {
             const closestX = Math.max(adjacentWall.x, Math.min(this.position.x, adjacentWall.x + adjacentWall.width));
@@ -307,7 +307,7 @@ export class GameObject {
             const toWallX = closestX - this.position.x;
             const toWallY = closestY - this.position.y;
             const dot = this.velocity.x * toWallX + this.velocity.y * toWallY;
-            if (dot > 0.01) {
+            if (dot >= -0.05) {
               supportingWall = adjacentWall;
             }
           }

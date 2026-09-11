@@ -42,6 +42,8 @@ export class ClimbingModule {
     let targetWall: Wall | null = null;
     let shortestDist = Infinity;
     let targetDot = 0;
+    let targetDx = 0;
+    let targetDy = 0;
 
     for (const wall of arena.walls) {
       // Find closest point on wall AABB
@@ -56,6 +58,8 @@ export class ClimbingModule {
         shortestDist = dist;
         targetWall = wall;
         targetDot = hasMoveInput ? (moveDirX * dx + moveDirY * dy) : 0;
+        targetDx = dx;
+        targetDy = dy;
       }
     }
 
@@ -73,10 +77,14 @@ export class ClimbingModule {
       return false;
     }
 
-    // When character is elevated on the wall (z > 0.05):
-    // Releasing the Space bar does NOT cause falling.
-    // Falling ONLY occurs when actively walking in the opposite direction (away from the wall: targetDot < -0.1).
-    if (character.position.z > 0.05) {
+    // Check if climbing has already been established
+    const isEstablishedClimb = character.isClimbing || character.position.z > 0.05;
+
+    // Once climbing is established on a wall:
+    // - Releasing Space bar maintains wall cling grip at current height.
+    // - Continuing to hold Space continues climbing UP the wall, even without holding directional movement keys.
+    // - Falling ONLY occurs when actively walking in the opposite direction (away from wall: targetDot < -0.1).
+    if (isEstablishedClimb && character.position.z < targetWall.wallHeight) {
       if (hasMoveInput && targetDot < -0.1) {
         // Player is intending to walk away from the wall: release grip and fall down
         character.isClimbing = false;
@@ -89,8 +97,9 @@ export class ClimbingModule {
       character.isClimbing = true;
       character.verticalVelocity = 0;
 
-      // Ascend towards wall top only if holding climb key (Space) and pressing towards the wall
-      if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
+      // Ascend towards wall top if holding climb key (Space) and not walking away from the wall
+      // Does not require continuous directional input once climb is established
+      if (isClimbHeld) {
         const baseMass = character.baseMass;
         const effectiveClimbSpeed = Math.max(
           0.2,
@@ -103,17 +112,26 @@ export class ClimbingModule {
           character.position.z = targetWall.wallHeight;
           character.supportingSurfaceHeight = targetWall.wallHeight;
           character.verticalVelocity = 0;
+          character.isClimbing = false;
 
-          // Impart natural walking velocity into the wall top to smoothly transition onto it
-          character.velocity.x = moveDirX * 3.5;
-          character.velocity.y = moveDirY * 3.5;
+          // Transition smoothly onto the top of the wall
+          if (hasMoveInput) {
+            character.velocity.x = moveDirX * 3.5;
+            character.velocity.y = moveDirY * 3.5;
+          } else {
+            // Impart gentle velocity towards wall interior so character safely mounts onto the wall top
+            const toWallDirX = shortestDist > 0.001 ? targetDx / shortestDist : 0;
+            const toWallDirY = shortestDist > 0.001 ? targetDy / shortestDist : 0;
+            character.velocity.x = toWallDirX * 1.5;
+            character.velocity.y = toWallDirY * 1.5;
+          }
         }
       }
 
       return true;
     }
 
-    // On ground (z <= 0.05): Initiate climb only if pressing towards wall and holding Space
+    // On ground (z <= 0.05, not established): Initiate climb only if pressing towards wall and holding Space
     if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
       character.isClimbing = true;
       character.verticalVelocity = 0;
