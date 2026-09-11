@@ -105,9 +105,28 @@ export class GameLoop {
     net.onPlayerState = (packet) => {
       const remote = this.remoteCharacters.get(packet.playerId);
       if (remote) {
-        remote.position.x = packet.x;
-        remote.position.y = packet.y;
-        remote.position.z = packet.z;
+        // Soft error correction for remote character position
+        const dx = packet.x - remote.position.x;
+        const dy = packet.y - remote.position.y;
+        const errDist = Math.hypot(dx, dy);
+
+        if (errDist >= 1.2) {
+          // Hard snap if major divergence (teleport / spawn)
+          remote.position.x = packet.x;
+          remote.position.y = packet.y;
+        } else if (errDist > 0.02) {
+          // Soft blend to eliminate stutter
+          remote.position.x += dx * 0.35;
+          remote.position.y += dy * 0.35;
+        }
+
+        const dz = packet.z - remote.position.z;
+        if (Math.abs(dz) >= 0.8) {
+          remote.position.z = packet.z;
+        } else if (Math.abs(dz) > 0.02) {
+          remote.position.z += dz * 0.35;
+        }
+
         remote.velocity.x = packet.vx;
         remote.velocity.y = packet.vy;
         remote.verticalVelocity = packet.vz;
@@ -132,7 +151,7 @@ export class GameLoop {
     };
 
     net.onWorldSnapshot = (packet) => {
-      // Non-host updates objects from host authoritative snapshot
+      // Non-host reconciles objects with host authoritative snapshot
       if (net.isHost) return;
 
       if (packet.arena) {
@@ -144,20 +163,74 @@ export class GameLoop {
       for (const objData of packet.objects) {
         const localObj = this.objects.find((o) => o.id === objData.id);
         if (localObj) {
-          if (!localObj.isHeld) {
+          // If the local player is holding this object, local prediction takes priority
+          if (this.character.heldObject === localObj) {
+            continue;
+          }
+
+          if (objData.isHeld) {
+            localObj.isHeld = true;
             localObj.position.x = objData.x;
             localObj.position.y = objData.y;
             localObj.position.z = objData.z;
             localObj.velocity.x = objData.vx;
             localObj.velocity.y = objData.vy;
             localObj.verticalVelocity = objData.vz;
-            localObj.supportingSurfaceHeight = objData.supportingSurfaceHeight;
-            if (localObj.rollModule) {
-              localObj.rollModule.angularVelocity.x = objData.rotX;
-              localObj.rollModule.angularVelocity.y = objData.rotY;
-              localObj.rollModule.angularVelocity.z = objData.rotZ;
-            }
+            continue;
+          } else {
+            localObj.isHeld = false;
           }
+
+          // Object is free in the world: apply gentle error correction lerp
+          const dx = objData.x - localObj.position.x;
+          const dy = objData.y - localObj.position.y;
+          const errDist = Math.hypot(dx, dy);
+
+          if (errDist >= 1.2) {
+            // Hard snap on large divergence (teleport, respawn, edit mode drag)
+            localObj.position.x = objData.x;
+            localObj.position.y = objData.y;
+            localObj.velocity.x = objData.vx;
+            localObj.velocity.y = objData.vy;
+          } else if (errDist > 0.02) {
+            // Soft blend (25% per snapshot) to eliminate jitter completely
+            localObj.position.x += dx * 0.25;
+            localObj.position.y += dy * 0.25;
+            localObj.velocity.x += (objData.vx - localObj.velocity.x) * 0.35;
+            localObj.velocity.y += (objData.vy - localObj.velocity.y) * 0.35;
+          }
+
+          // Vertical position & velocity
+          const dz = objData.z - localObj.position.z;
+          if (Math.abs(dz) >= 0.8) {
+            localObj.position.z = objData.z;
+            localObj.verticalVelocity = objData.vz;
+          } else if (Math.abs(dz) > 0.02) {
+            localObj.position.z += dz * 0.25;
+            localObj.verticalVelocity += (objData.vz - localObj.verticalVelocity) * 0.35;
+          }
+
+          localObj.supportingSurfaceHeight = objData.supportingSurfaceHeight;
+
+          if (localObj.rollModule) {
+            localObj.rollModule.angularVelocity.x = objData.rotX;
+            localObj.rollModule.angularVelocity.y = objData.rotY;
+            localObj.rollModule.angularVelocity.z = objData.rotZ;
+          }
+        }
+      }
+    };
+
+    net.onHostEvent = (packet) => {
+      if (net.isHost) return;
+      if (packet.event === "object_deleted" && packet.objectId) {
+        const idx = this.objects.findIndex((o) => o.id === packet.objectId);
+        if (idx !== -1) {
+          const removed = this.objects.splice(idx, 1)[0];
+          if (this.character.heldObject === removed) {
+            this.character.heldObject = null;
+          }
+          this.devPanel.updateSelectorOptions();
         }
       }
     };
@@ -253,8 +326,14 @@ export class GameLoop {
       this.character.velocity.y = 0;
     }
 
-    // 2. Position held objects for remote characters
+    // 2. Extrapolate remote characters with dead-reckoning velocity integration
     for (const remote of this.remoteCharacters.values()) {
+      remote.position.x += remote.velocity.x * dt;
+      remote.position.y += remote.velocity.y * dt;
+      if (remote.verticalPositionModule) {
+        remote.position.z += remote.verticalVelocity * dt;
+      }
+
       if (remote.heldObject) {
         const handDist = remote.colliderRadius + remote.heldObject.colliderRadius * 0.5 + 0.08;
         remote.heldObject.position.x = remote.position.x + Math.cos(remote.facingAngle) * handDist;
@@ -265,14 +344,12 @@ export class GameLoop {
       }
     }
 
-    // 3. Update all freebody objects (only Host runs authoritative freebody physics; guests follow snapshots)
-    if (isHost) {
-      for (const obj of this.objects) {
-        if (input.draggedEntity === obj) {
-          continue;
-        }
-        obj.updatePosition(dt, this.arena);
+    // 3. Update all freebody objects locally on BOTH Host and Guest at 60 FPS
+    for (const obj of this.objects) {
+      if (input.draggedEntity === obj || obj.isHeld) {
+        continue;
       }
+      obj.updatePosition(dt, this.arena);
     }
 
     // 4. Continuous hold-to-grab (only active in Play Mode):

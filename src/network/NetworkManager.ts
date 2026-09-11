@@ -153,7 +153,7 @@ export class NetworkManager {
   }
 
   /**
-   * Stream local player movement/aim state at ~45Hz
+   * Stream local player movement/aim state at ~22Hz with compacted floats
    */
   public sendPlayerState(
     x: number,
@@ -169,28 +169,30 @@ export class NetworkManager {
     isActivelyWalking: boolean
   ): void {
     const now = performance.now();
-    if (now - this.lastPlayerStateSend < 22) return; // ~45Hz cap
+    if (now - this.lastPlayerStateSend < 45) return; // ~22Hz cap (prevents TCP buffer bloat)
     this.lastPlayerStateSend = now;
+
+    const r2 = (v: number) => Math.round(v * 100) / 100;
 
     this.send({
       type: "player_state",
       playerId: this.playerId,
-      x,
-      y,
-      z,
-      vx,
-      vy,
-      vz,
-      facingAngle,
+      x: r2(x),
+      y: r2(y),
+      z: r2(z),
+      vx: r2(vx),
+      vy: r2(vy),
+      vz: r2(vz),
+      facingAngle: r2(facingAngle),
       isAiming,
-      aimTarget,
+      aimTarget: aimTarget ? { x: r2(aimTarget.x), y: r2(aimTarget.y) } : null,
       heldObjectId,
       isActivelyWalking,
     });
   }
 
   /**
-   * Host sends authoritative world snapshot to all clients at ~30Hz
+   * Host sends authoritative world snapshot to all clients at ~16.6Hz (60ms) with compacted floats
    */
   public sendWorldSnapshot(
     objects: ObjectNetworkData[],
@@ -199,14 +201,32 @@ export class NetworkManager {
     if (!this.isHost) return;
 
     const now = performance.now();
-    if (now - this.lastSnapshotSend < 30) return; // ~33Hz cap
+    if (now - this.lastSnapshotSend < 60) return; // ~16.6Hz cap
     this.lastSnapshotSend = now;
+
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+
+    const compactObjects = objects.map((o) => ({
+      id: o.id,
+      x: r2(o.x),
+      y: r2(o.y),
+      z: r2(o.z),
+      vx: r2(o.vx),
+      vy: r2(o.vy),
+      vz: r2(o.vz),
+      rotX: r2(o.rotX),
+      rotY: r2(o.rotY),
+      rotZ: r2(o.rotZ),
+      isHeld: o.isHeld,
+      heldByPlayerId: o.heldByPlayerId,
+      supportingSurfaceHeight: r2(o.supportingSurfaceHeight),
+    }));
 
     this.send({
       type: "world_snapshot",
       hostId: this.playerId,
       timestamp: Date.now(),
-      objects,
+      objects: compactObjects,
       arena,
     });
   }
