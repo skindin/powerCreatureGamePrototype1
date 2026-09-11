@@ -125,4 +125,16 @@ export type NetworkPacket =
       rotY?: number;
       rotZ?: number;
       timestamp: number;
+    }
+  | {
+      type: "trajectory_launch";
+      objectId: string;
+      playerId: string;
+      t0: number;
+      x0: number;
+      y0: number;
+      z0: number;
+      vx0: number;
+      vy0: number;
+      vz0: number;
     };

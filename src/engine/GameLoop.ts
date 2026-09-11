@@ -4,6 +4,7 @@ import { GameObject } from "./GameObject.js";
 import { Renderer } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
+import { Trajectory } from "./Trajectory.js";
 import type { NetworkManager } from "../network/NetworkManager.js";
 import type { ObjectNetworkData } from "../network/types.js";
 
@@ -222,6 +223,34 @@ export class GameLoop {
       }
     };
 
+    net.onTrajectoryLaunch = (packet) => {
+      const target = this.objects.find((o) => o.id === packet.objectId);
+      if (!target) return;
+
+      // Detach from any character holding it
+      target.isHeld = false;
+      target.heldBy = null;
+      for (const remote of this.remoteCharacters.values()) {
+        if (remote.heldObject === target) remote.heldObject = null;
+      }
+      if (this.character.heldObject === target) {
+        this.character.heldObject = null;
+      }
+
+      // Pre-calculate identical deterministic trajectory from launch point
+      target.trajectory = Trajectory.build(
+        target,
+        packet.x0,
+        packet.y0,
+        packet.z0,
+        packet.vx0,
+        packet.vy0,
+        packet.vz0,
+        packet.t0,
+        this.arena
+      );
+    };
+
     net.onWorldSnapshot = (packet) => {
       // Non-host reconciles objects with host authoritative snapshot
       if (net.isHost) return;
@@ -232,9 +261,6 @@ export class GameLoop {
         this.arena.staticFrictionThreshold = packet.arena.staticFrictionThreshold;
       }
 
-      const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-      const transitSec = Math.max(0, Math.min(0.25, (now - packet.timestamp) / 1000));
-
       for (const objData of packet.objects) {
         const localObj = this.objects.find((o) => o.id === objData.id);
         if (localObj) {
@@ -243,7 +269,12 @@ export class GameLoop {
             continue;
           }
 
-          // 2. If locked by a recent interaction action, skip snapshot override!
+          // 2. If object is animating along an analytical trajectory, DO NOT overwrite with snapshot!
+          if (localObj.trajectory) {
+            continue;
+          }
+
+          // 3. If locked by recent interaction action, skip snapshot override!
           const lockUntil = this.objectOwnershipLocks.get(localObj.id);
           if (lockUntil && performance.now() < lockUntil) {
             continue;
@@ -262,58 +293,21 @@ export class GameLoop {
             localObj.isHeld = false;
           }
 
-          // Compute latency-compensated target position (fast-forward by network transit time)
-          const targetX = objData.x + objData.vx * transitSec;
-          const targetY = objData.y + objData.vy * transitSec;
-          const targetZ = objData.z + objData.vz * transitSec;
-
-          const dx = targetX - localObj.position.x;
-          const dy = targetY - localObj.position.y;
-          const errDist = Math.hypot(dx, dy);
-
+          // Resting alignment: verify resting positions agree down to the millimeter
           const isAtRest =
             Math.hypot(objData.vx, objData.vy) < 0.05 &&
             Math.hypot(localObj.velocity.x, localObj.velocity.y) < 0.05;
 
           if (isAtRest) {
-            // Resting object: align position firmly so resting objects match exactly
+            const dx = objData.x - localObj.position.x;
+            const dy = objData.y - localObj.position.y;
+            const errDist = Math.hypot(dx, dy);
             if (errDist > 0.02) {
               localObj.position.x += dx * 0.5;
               localObj.position.y += dy * 0.5;
             }
             localObj.velocity.x = 0;
             localObj.velocity.y = 0;
-          } else {
-            // Moving object:
-            if (errDist >= 1.5) {
-              localObj.position.x = targetX;
-              localObj.position.y = targetY;
-              localObj.velocity.x = objData.vx;
-              localObj.velocity.y = objData.vy;
-            } else if (errDist > 0.25) {
-              // Smooth velocity & position nudge
-              localObj.position.x += dx * 0.2;
-              localObj.position.y += dy * 0.2;
-              localObj.velocity.x += (objData.vx - localObj.velocity.x) * 0.3;
-              localObj.velocity.y += (objData.vy - localObj.velocity.y) * 0.3;
-            }
-          }
-
-          const dz = targetZ - localObj.position.z;
-          if (Math.abs(dz) >= 1.0) {
-            localObj.position.z = targetZ;
-            localObj.verticalVelocity = objData.vz;
-          } else if (Math.abs(dz) > 0.05) {
-            localObj.position.z += dz * 0.3;
-            localObj.verticalVelocity += (objData.vz - localObj.verticalVelocity) * 0.3;
-          }
-
-          localObj.supportingSurfaceHeight = objData.supportingSurfaceHeight;
-
-          if (localObj.rollModule) {
-            localObj.rollModule.angularVelocity.x = objData.rotX;
-            localObj.rollModule.angularVelocity.y = objData.rotY;
-            localObj.rollModule.angularVelocity.z = objData.rotZ;
           }
         }
       }
@@ -342,26 +336,64 @@ export class GameLoop {
       if (packet.action === "pickup" && packet.targetObjectId) {
         const target = this.objects.find((o) => o.id === packet.targetObjectId);
         if (target && !target.isHeld && remote.pickupModule) {
+          target.trajectory = null;
           remote.pickupModule.pickup(remote, target);
         }
       } else if (packet.action === "throw" && remote.heldObject && remote.throwModule) {
+        const thrown = remote.heldObject;
         remote.throwModule.throwHeldObject(
           remote,
           packet.aimX ?? remote.position.x + Math.cos(remote.facingAngle) * 5,
           packet.aimY ?? remote.position.y + Math.sin(remote.facingAngle) * 5,
           this.arena
         );
+        this.broadcastTrajectoryLaunch(thrown);
       } else if (packet.action === "drop" && remote.heldObject) {
+        const dropped = remote.heldObject;
         remote.heldObject.isHeld = false;
         remote.heldObject.heldBy = null;
         remote.heldObject = null;
+        this.broadcastTrajectoryLaunch(dropped);
       }
     };
   }
 
   /**
-   * Broadcast an object interaction (throw, pickup, drop, impulse) with current
-   * state and lock it locally so background snapshots do not fight it.
+   * Pre-calculates an analytical trajectory for the object and broadcasts
+   * its initial launch state to all other clients.
+   */
+  public broadcastTrajectoryLaunch(obj: GameObject, t0?: number): void {
+    const launchTime = t0 ?? (this.networkManager ? this.networkManager.getSyncedTime() : Date.now());
+
+    // Precalculate trajectory locally
+    obj.trajectory = Trajectory.build(
+      obj,
+      obj.position.x,
+      obj.position.y,
+      obj.position.z,
+      obj.velocity.x,
+      obj.velocity.y,
+      obj.verticalVelocity,
+      launchTime,
+      this.arena
+    );
+
+    if (this.networkManager) {
+      this.networkManager.sendTrajectoryLaunch({
+        objectId: obj.id,
+        t0: launchTime,
+        x0: obj.position.x,
+        y0: obj.position.y,
+        z0: obj.position.z,
+        vx0: obj.velocity.x,
+        vy0: obj.velocity.y,
+        vz0: obj.verticalVelocity,
+      });
+    }
+  }
+
+  /**
+   * Broadcast an object interaction (pickup, drop)
    */
   public broadcastObjectAction(
     action: "throw" | "pickup" | "drop" | "impulse",
@@ -387,13 +419,13 @@ export class GameLoop {
   }
 
   private checkAndBroadcastImpulse(obj: GameObject): void {
-    const speed = Math.hypot(obj.velocity.x, obj.velocity.y);
-    if (speed > 0.35) {
+    const speed = Math.hypot(obj.velocity.x, obj.velocity.y, obj.verticalVelocity);
+    if (speed > 0.12) {
       const now = performance.now();
       const last = this.lastImpulseBroadcast.get(obj.id) || 0;
-      if (now - last > 80) {
+      if (now - last > 50) {
         this.lastImpulseBroadcast.set(obj.id, now);
-        this.broadcastObjectAction("impulse", obj);
+        this.broadcastTrajectoryLaunch(obj);
       }
     }
   }
@@ -481,11 +513,37 @@ export class GameLoop {
     }
 
     // 3. Update all freebody objects locally on BOTH Host and Guest at 60 FPS
+    const nowSynced = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
     for (const obj of this.objects) {
       if (input.draggedEntity === obj || obj.isHeld) {
+        if (obj.trajectory) obj.trajectory = null;
         continue;
       }
-      obj.updatePosition(dt, this.arena);
+
+      if (obj.trajectory) {
+        const sample = obj.trajectory.sample(nowSynced);
+        obj.position.x = sample.x;
+        obj.position.y = sample.y;
+        obj.position.z = sample.z;
+        obj.velocity.x = sample.vx;
+        obj.velocity.y = sample.vy;
+        obj.verticalVelocity = sample.vz;
+        obj.supportingSurfaceHeight = this.arena.getSupportingSurfaceHeight(obj.position.x, obj.position.y);
+        if (obj.rollModule && obj.rollModule.enabled) {
+          obj.rollModule.angularVelocity.x = sample.rotX;
+          obj.rollModule.angularVelocity.y = sample.rotY;
+          obj.rollModule.angularVelocity.z = sample.rotZ;
+          obj.rollModule.updateVisualPhase(dt);
+        }
+        if (obj.trajectory.isComplete(nowSynced)) {
+          obj.trajectory = null;
+          obj.velocity.x = 0;
+          obj.velocity.y = 0;
+          obj.verticalVelocity = 0;
+        }
+      } else {
+        obj.updatePosition(dt, this.arena);
+      }
     }
 
     // 4. Continuous hold-to-grab (only active in Play Mode):
@@ -497,6 +555,7 @@ export class GameLoop {
         this.objects
       );
       if (target) {
+        target.trajectory = null;
         this.character.pickupModule.pickup(this.character, target);
         input.justPickedUp = true;
         this.broadcastObjectAction("pickup", target);
@@ -551,6 +610,9 @@ export class GameLoop {
   private resolveFreebodyCollisions(): void {
     const all = [this.character, ...Array.from(this.remoteCharacters.values()), ...this.objects];
     const input = this.inputManager;
+    const localBumpedObjects = new Set<GameObject>();
+    const objectCollisions = new Set<GameObject>();
+    const remoteBumpedObjects = new Set<GameObject>();
 
     // Iterative separation solver: pushes entities away until not overlapping
     const iterations = 3;
@@ -681,68 +743,95 @@ export class GameLoop {
               const eB = (b.isCharacter || !b.hasBounce) ? 0.0 : (b.bounceMod ?? 0.0);
               const restitution = (isActivelyPushing || !canBounce) ? 0.0 : Math.max(0.0, Math.min(0.98, Math.max(eA, eB)));
 
-              // Normal impulse magnitude J_n (strictly conserving linear momentum)
               const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
 
-              a.velocity.x -= normalImpulse * invMassA * normX;
-              a.velocity.y -= normalImpulse * invMassA * normY;
+                a.velocity.x -= normalImpulse * invMassA * normX;
+                a.velocity.y -= normalImpulse * invMassA * normY;
+                b.velocity.x += normalImpulse * invMassB * normX;
+                b.velocity.y += normalImpulse * invMassB * normY;
 
-              b.velocity.x += normalImpulse * invMassB * normX;
-              b.velocity.y += normalImpulse * invMassB * normY;
+                // Tangential relative velocity (perpendicular to normal)
+                const tangX = -normY;
+                const tangY = normX;
+                const relVt = relVx * tangX + relVy * tangY;
 
-              // Tangential relative velocity (perpendicular to normal)
-              const tangX = -normY;
-              const tangY = normX;
-              const relVt = relVx * tangX + relVy * tangY;
+                if (Math.abs(relVt) > 0.001) {
+                  // Contact friction
+                  const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+                  const beta = 0.4; // Sphere rotational inertia factor
+                  const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+                  const maxFricImpulse = muObj * Math.abs(normalImpulse);
+                  const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
 
-              if (Math.abs(relVt) > 0.001) {
-                // Contact friction
-                const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-                const beta = 0.4; // Sphere rotational inertia factor
-                const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
-                const maxFricImpulse = muObj * Math.abs(normalImpulse);
-                const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
+                  // Tangential impulse opposes relative sliding velocity
+                  a.velocity.x += fricImpulse * invMassA * tangX;
+                  a.velocity.y += fricImpulse * invMassA * tangY;
 
-                // Tangential impulse opposes relative sliding velocity
-                a.velocity.x += fricImpulse * invMassA * tangX;
-                a.velocity.y += fricImpulse * invMassA * tangY;
+                  b.velocity.x -= fricImpulse * invMassB * tangX;
+                  b.velocity.y -= fricImpulse * invMassB * tangY;
 
-                b.velocity.x -= fricImpulse * invMassB * tangX;
-                b.velocity.y -= fricImpulse * invMassB * tangY;
+                  // Rotational coupling if roll module is present
+                  if (a.rollModule && a.rollModule.enabled) {
+                    const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+                    a.rollModule.angularVelocity.z += spinImpulse;
+                    a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
 
-                // Rotational coupling if roll module is present
-                if (a.rollModule && a.rollModule.enabled) {
-                  const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
-                  a.rollModule.angularVelocity.z += spinImpulse;
-                  a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
-
-                  if (a.isRestingOnSurface) {
-                    a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
-                    a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
+                    if (a.isRestingOnSurface) {
+                      a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
+                      a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
+                    }
                   }
-                }
 
-                if (b.rollModule && b.rollModule.enabled) {
-                  const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
-                  b.rollModule.angularVelocity.z -= spinImpulseB;
-                  b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+                  if (b.rollModule && b.rollModule.enabled) {
+                    const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+                    b.rollModule.angularVelocity.z -= spinImpulseB;
+                    b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
 
-                  if (b.isRestingOnSurface) {
-                    b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
-                    b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
+                    if (b.isRestingOnSurface) {
+                      b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
+                      b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
+                    }
                   }
                 }
               }
-            }
 
-            // Check if local character bumped an unheld object and imparted velocity
-            if (a === this.character && !b.isHeld && this.objects.includes(b as GameObject)) {
-              this.checkAndBroadcastImpulse(b as GameObject);
-            } else if (b === this.character && !a.isHeld && this.objects.includes(a as GameObject)) {
-              this.checkAndBroadcastImpulse(a as GameObject);
+              // Check collisions and clear old trajectories for recalculated paths
+              if (a === this.character && !b.isHeld && this.objects.includes(b as GameObject)) {
+                (b as GameObject).trajectory = null;
+                localBumpedObjects.add(b as GameObject);
+              } else if (b === this.character && !a.isHeld && this.objects.includes(a as GameObject)) {
+                (a as GameObject).trajectory = null;
+                localBumpedObjects.add(a as GameObject);
+              } else if (this.objects.includes(a as GameObject) && this.objects.includes(b as GameObject)) {
+                (a as GameObject).trajectory = null;
+                (b as GameObject).trajectory = null;
+                objectCollisions.add(a as GameObject);
+                objectCollisions.add(b as GameObject);
+              } else if (this.networkManager?.isHost) {
+                if (this.objects.includes(b as GameObject) && !b.isHeld) {
+                  (b as GameObject).trajectory = null;
+                  remoteBumpedObjects.add(b as GameObject);
+                } else if (this.objects.includes(a as GameObject) && !a.isHeld) {
+                  (a as GameObject).trajectory = null;
+                  remoteBumpedObjects.add(a as GameObject);
+                }
+              }
             }
           }
         }
+      }
+
+    // Recalculate & broadcast trajectories for any bumped objects after solver iterations
+    for (const obj of localBumpedObjects) {
+      this.checkAndBroadcastImpulse(obj);
+    }
+
+    if (!this.networkManager || this.networkManager.isHost) {
+      for (const obj of objectCollisions) {
+        this.checkAndBroadcastImpulse(obj);
+      }
+      for (const obj of remoteBumpedObjects) {
+        this.checkAndBroadcastImpulse(obj);
       }
     }
   }

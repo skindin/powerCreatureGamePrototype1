@@ -29,6 +29,7 @@ export class NetworkManager {
   public onClientAction: ((packet: Extract<NetworkPacket, { type: "client_action" }>) => void) | null = null;
   public onHostEvent: ((packet: Extract<NetworkPacket, { type: "host_event" }>) => void) | null = null;
   public onObjectAction: ((packet: Extract<NetworkPacket, { type: "object_action" }>) => void) | null = null;
+  public onTrajectoryLaunch: ((packet: Extract<NetworkPacket, { type: "trajectory_launch" }>) => void) | null = null;
 
   // NTP Clock Synchronization
   private serverTimeOffset = 0;
@@ -158,6 +159,12 @@ export class NetworkManager {
       case "object_action": {
         if (packet.playerId !== this.playerId) {
           this.onObjectAction?.(packet);
+        }
+        break;
+      }
+      case "trajectory_launch": {
+        if (packet.playerId !== this.playerId) {
+          this.onTrajectoryLaunch?.(packet);
         }
         break;
       }
@@ -347,6 +354,34 @@ export class NetworkManager {
       rotY: r2(data.rotY),
       rotZ: r2(data.rotZ),
       timestamp: data.timestamp ?? this.getSyncedTime(),
+    });
+  }
+
+  /**
+   * Broadcast an analytical trajectory launch
+   */
+  public sendTrajectoryLaunch(data: {
+    objectId: string;
+    t0: number;
+    x0: number;
+    y0: number;
+    z0: number;
+    vx0: number;
+    vy0: number;
+    vz0: number;
+  }): void {
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    this.send({
+      type: "trajectory_launch",
+      playerId: this.playerId,
+      objectId: data.objectId,
+      t0: data.t0,
+      x0: r2(data.x0),
+      y0: r2(data.y0),
+      z0: r2(data.z0),
+      vx0: r2(data.vx0),
+      vy0: r2(data.vy0),
+      vz0: r2(data.vz0),
     });
   }
 

@@ -139,7 +139,11 @@ function bootstrap(): void {
     if (targetId) {
       const target = objects.find((o) => o.id === targetId);
       if (target) {
-        gameLoop.broadcastObjectAction(action, target);
+        if (action === "throw" || action === "drop") {
+          gameLoop.broadcastTrajectoryLaunch(target);
+        } else {
+          gameLoop.broadcastObjectAction(action, target);
+        }
       }
     }
     if (networkManager && !networkManager.isHost) {

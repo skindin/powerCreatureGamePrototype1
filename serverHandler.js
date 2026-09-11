@@ -172,6 +172,11 @@ export function setupWebSocketServer(httpServer) {
             broadcast(msg, ws);
             break;
           }
+          case 'trajectory_launch': {
+            // Relay trajectory launch to all other clients immediately
+            broadcast(msg, ws);
+            break;
+          }
           case 'host_event': {
             // Host spawned or removed an object -> relay to all guests
             broadcast(msg, ws);

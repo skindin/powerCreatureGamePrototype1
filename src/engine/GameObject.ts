@@ -6,6 +6,7 @@ import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
 import { VerticalPositionModule } from "./VerticalPositionModule.js";
+import type { Trajectory } from "./Trajectory.js";
 
 export interface Vector2D {
   x: number;
@@ -28,6 +29,7 @@ export class GameObject {
   public heldBy: GameObject | null;
   public isCharacter = false;
   public visualShape: "circle" | "box" = "circle";
+  public trajectory: Trajectory | null = null;
 
   // Modular behavior components
   public colliderModule: ColliderModule | null = null;
