@@ -7,8 +7,11 @@ export class ClimbingModule {
   public name = "Climbing Module";
   public enabled = true;
 
-  // Rate of vertical ascent when climbing walls (in units per second)
-  public climbSpeed = 2.5;
+  // Maximum adhesive grip force before character slips and cannot climb (in Newtons)
+  public maxAdhesion = 35.0;
+
+  // Maximum vertical speed cap when climbing walls (in units per second)
+  public maxClimbSpeed = 3.0;
 
   /**
    * Checks if the character is intending to move towards an adjacent wall that is higher than current elevation.
@@ -22,7 +25,7 @@ export class ClimbingModule {
     dt: number,
     arena: Arena
   ): boolean {
-    if (!this.enabled || !character.hasVerticalPosition) {
+    if (!this.enabled || !character.hasVerticalPosition || !character.hasStrength || character.strength <= 0) {
       character.isClimbing = false;
       return false;
     }
@@ -71,25 +74,40 @@ export class ClimbingModule {
       }
     }
 
+    // Physical adhesion limit check:
+    // If the downward gravitational force of total mass exceeds maxAdhesion, grip fails
+    const totalMass = character.mass;
+    const requiredForce = totalMass * arena.gravity;
+    if (requiredForce > this.maxAdhesion) {
+      character.isClimbing = false;
+      return false;
+    }
+
     // If pressing into a wall and holding climb key (Space)
     if (targetWall && isClimbHeld) {
       character.isClimbing = true;
       character.verticalVelocity = 0; // Neutralize gravity while clinging/climbing
 
-      // Ascend towards the top of the wall
-      character.position.z += this.climbSpeed * dt;
+      // Climb speed scaling: determined by strength considering base character mass and any carried load
+      const baseMass = character.baseMass;
+      const effectiveClimbSpeed = Math.max(
+        0.2,
+        Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+      );
 
-      // When reaching or exceeding wall top, mount firmly onto the wall surface
+      // Ascend towards the top of the wall
+      character.position.z += effectiveClimbSpeed * dt;
+
+      // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
       if (character.position.z >= targetWall.wallHeight) {
         character.position.z = targetWall.wallHeight;
         character.supportingSurfaceHeight = targetWall.wallHeight;
         character.verticalVelocity = 0;
         character.isClimbing = false;
 
-        // Step firmly onto the top surface of the wall along movement direction
-        const stepDist = r + 0.15;
-        character.position.x += moveDirX * stepDist;
-        character.position.y += moveDirY * stepDist;
+        // Impart natural walking velocity into the wall top to smoothly transition onto it
+        character.velocity.x = moveDirX * 3.5;
+        character.velocity.y = moveDirY * 3.5;
       }
       return true;
     }

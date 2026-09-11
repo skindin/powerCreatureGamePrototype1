@@ -370,7 +370,7 @@ export class InputManager {
 
       // 2. If NOT holding an object: attempt pickup
       if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, clickX, clickY, objects);
+        const target = character.pickupModule.findTargetObject(character, clickX, clickY, objects, arena.wallHeight);
         if (target) {
           character.pickupModule.pickup(character, target);
           this.justPickedUp = true;
@@ -399,7 +399,7 @@ export class InputManager {
           this.isThrowingPress = true; // Prevents mouse hold from immediately re-grabbing dropped object
         }
       } else if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects);
+        const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects, arena.wallHeight);
         if (target) {
           character.pickupModule.pickup(character, target);
         }

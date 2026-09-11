@@ -30,8 +30,8 @@ export class WalkingModule {
       return;
     }
 
-    // Walking strictly requires friction (and mass) to push against the ground
-    if (!character.hasFriction || !character.frictionModule?.enabled || !character.hasMass) {
+    // Walking strictly requires friction, mass, and muscle strength to propel the body
+    if (!character.hasFriction || !character.frictionModule?.enabled || !character.hasMass || !character.hasStrength || character.strength <= 0) {
       character.isActivelyWalking = false;
       return;
     }

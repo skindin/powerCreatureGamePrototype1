@@ -5,6 +5,7 @@ import { WalkingModule } from "../character/WalkingModule.js";
 import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
 import { ClimbingModule } from "../character/ClimbingModule.js";
+import { StrengthModule } from "../character/StrengthModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ColliderModule } from "../engine/ColliderModule.js";
 import { MassModule } from "../engine/MassModule.js";
@@ -569,6 +570,9 @@ export class DevPanel {
               <div id="warn-walk-friction" class="module-dep-warning" style="display: ${!this.character.hasFriction && this.character.walkingModule?.enabled ? 'block' : 'none'};">
                 ⚠️ Feet slip without Friction (cannot push ground)
               </div>
+              <div id="warn-walk-strength" class="module-dep-warning" style="display: ${!this.character.hasStrength && this.character.walkingModule?.enabled ? 'block' : 'none'};">
+                ⚠️ Requires Strength Ability (cannot propel body without muscle strength)
+              </div>
               <div id="group-mod-walking" style="display: ${this.character.walkingModule?.enabled ? 'flex' : 'none'}; flex-direction: column; gap: 8px;">
                 <div class="slider-group">
                   <div class="slider-label">
@@ -584,12 +588,24 @@ export class DevPanel {
                   </div>
                   <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${this.character.walkingModule?.maxWalkSpeed ?? 5.2}">
                 </div>
+              </div>
+            </div>
+
+            <!-- Strength Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>💪 Strength Ability</label>
+                <button id="toggle-strength" class="btn-toggle ${this.character.strengthModule?.enabled ? 'active' : ''}">
+                  ${this.character.strengthModule?.enabled ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="group-mod-strength" style="display: ${this.character.strengthModule?.enabled ? 'block' : 'none'};">
                 <div class="slider-group">
                   <div class="slider-label">
-                    <span>Character Strength</span>
+                    <span>Muscle Strength</span>
                     <span id="val-strength">${(this.character.strength ?? 1.0).toFixed(1)}</span>
                   </div>
-                  <input type="range" id="slide-strength" min="0.3" max="4.0" step="0.1" value="${this.character.strength ?? 1.0}">
+                  <input type="range" id="slide-strength" min="0.1" max="5.0" step="0.1" value="${this.character.strength ?? 1.0}">
                 </div>
               </div>
             </div>
@@ -609,6 +625,13 @@ export class DevPanel {
                     <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)}</span>
                   </div>
                   <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${this.character.pickupModule?.pickupReach ?? 1.3}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Cross-Layer Reach Ratio</span>
+                    <span id="val-pickup-cross-layer">${(this.character.pickupModule?.crossLayerReachRatio ?? 0.55).toFixed(2)}</span>
+                  </div>
+                  <input type="range" id="slide-pickup-cross-layer" min="0.10" max="1.00" step="0.05" value="${this.character.pickupModule?.crossLayerReachRatio ?? 0.55}">
                 </div>
               </div>
             </div>
@@ -640,13 +663,23 @@ export class DevPanel {
                   ${this.character.climbingModule?.enabled ? 'Attached' : 'Detached'}
                 </button>
               </div>
+              <div id="warn-climb-deps" class="module-dep-warning" style="display: ${(!this.character.hasVerticalPosition || !this.character.hasStrength) && this.character.climbingModule?.enabled ? 'block' : 'none'};">
+                ${!this.character.hasVerticalPosition ? '⚠️ Requires Vertical Position (3D Z-axis)' : (!this.character.hasStrength ? '⚠️ Requires Strength Ability to climb' : '')}
+              </div>
               <div id="group-mod-climb" style="display: ${this.character.climbingModule?.enabled ? 'block' : 'none'};">
                 <div class="slider-group">
                   <div class="slider-label">
-                    <span>Climb Speed (u/s)</span>
-                    <span id="val-climb-speed">${(this.character.climbingModule?.climbSpeed ?? 2.0).toFixed(1)}</span>
+                    <span>Max Adhesion (N)</span>
+                    <span id="val-climb-adhesion">${(this.character.climbingModule?.maxAdhesion ?? 35.0).toFixed(0)}</span>
                   </div>
-                  <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${this.character.climbingModule?.climbSpeed ?? 2.0}">
+                  <input type="range" id="slide-climb-adhesion" min="5.0" max="80.0" step="1.0" value="${this.character.climbingModule?.maxAdhesion ?? 35.0}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Max Climb Speed (u/s)</span>
+                    <span id="val-climb-speed">${(this.character.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${this.character.climbingModule?.maxClimbSpeed ?? 3.0}">
                 </div>
               </div>
             </div>
@@ -1001,6 +1034,7 @@ export class DevPanel {
       const btnWalk = this.container.querySelector("#toggle-walk") as HTMLButtonElement;
       const grpWalk = this.container.querySelector("#group-mod-walking") as HTMLElement;
       const warnWalkFric = this.container.querySelector("#warn-walk-friction") as HTMLElement;
+      const warnWalkStrength = this.container.querySelector("#warn-walk-strength") as HTMLElement;
       const hasWalkMod = Boolean(this.character.walkingModule && this.character.walkingModule.enabled);
       if (btnWalk) {
         btnWalk.textContent = hasWalkMod ? "Attached" : "Detached";
@@ -1008,12 +1042,24 @@ export class DevPanel {
       }
       if (grpWalk) grpWalk.style.display = hasWalkMod ? "flex" : "none";
       if (warnWalkFric) warnWalkFric.style.display = (hasWalkMod && !this.character.hasFriction) ? "block" : "none";
+      if (warnWalkStrength) warnWalkStrength.style.display = (hasWalkMod && !this.character.hasStrength) ? "block" : "none";
 
       if (this.character.walkingModule) {
         this.setSliderVal("slide-walk-force", "val-walk-force", this.character.walkingModule.maxWalkForce, 0);
         this.setSliderVal("slide-walk-speed", "val-walk-speed", this.character.walkingModule.maxWalkSpeed, 1);
       }
-      this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
+
+      const btnStrength = this.container.querySelector("#toggle-strength") as HTMLButtonElement;
+      const grpStrength = this.container.querySelector("#group-mod-strength") as HTMLElement;
+      const hasStrengthMod = Boolean(this.character.strengthModule && this.character.strengthModule.enabled);
+      if (btnStrength) {
+        btnStrength.textContent = hasStrengthMod ? "Attached" : "Detached";
+        btnStrength.classList.toggle("active", hasStrengthMod);
+      }
+      if (grpStrength) grpStrength.style.display = hasStrengthMod ? "block" : "none";
+      if (this.character.strengthModule) {
+        this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
+      }
 
       const btnPickup = this.container.querySelector("#toggle-pickup") as HTMLButtonElement;
       const grpPickup = this.container.querySelector("#group-mod-pickup") as HTMLElement;
@@ -1025,6 +1071,7 @@ export class DevPanel {
       if (grpPickup) grpPickup.style.display = hasPickupMod ? "block" : "none";
       if (this.character.pickupModule) {
         this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
+        this.setSliderVal("slide-pickup-cross-layer", "val-pickup-cross-layer", this.character.pickupModule.crossLayerReachRatio, 2);
       }
 
       const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
@@ -1041,14 +1088,24 @@ export class DevPanel {
 
       const btnClimb = this.container.querySelector("#toggle-climb") as HTMLButtonElement;
       const grpClimb = this.container.querySelector("#group-mod-climb") as HTMLElement;
+      const warnClimb = this.container.querySelector("#warn-climb-deps") as HTMLElement;
       const hasClimbMod = Boolean(this.character.climbingModule && this.character.climbingModule.enabled);
       if (btnClimb) {
         btnClimb.textContent = hasClimbMod ? "Attached" : "Detached";
         btnClimb.classList.toggle("active", hasClimbMod);
       }
       if (grpClimb) grpClimb.style.display = hasClimbMod ? "block" : "none";
+      if (warnClimb) {
+        const missingVert = !this.character.hasVerticalPosition;
+        const missingStr = !this.character.hasStrength;
+        warnClimb.style.display = (hasClimbMod && (missingVert || missingStr)) ? "block" : "none";
+        warnClimb.textContent = missingVert
+          ? "⚠️ Requires Vertical Position (3D Z-axis)"
+          : (missingStr ? "⚠️ Requires Strength Ability to climb" : "");
+      }
       if (this.character.climbingModule) {
-        this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.climbSpeed, 1);
+        this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", this.character.climbingModule.maxAdhesion, 0);
+        this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.maxClimbSpeed, 1);
       }
     }
   }
@@ -1364,6 +1421,16 @@ export class DevPanel {
       if (this.character.walkingModule) this.character.walkingModule.maxWalkSpeed = val;
     }, 1);
 
+    const btnStrength = this.container.querySelector("#toggle-strength") as HTMLButtonElement;
+    btnStrength?.addEventListener("click", () => {
+      if (this.character.strengthModule) {
+        this.character.strengthModule.enabled = !this.character.strengthModule.enabled;
+      } else {
+        this.character.strengthModule = new StrengthModule({ strength: 1.0 });
+      }
+      this.syncEntitySliders();
+    });
+
     this.setupSlider("slide-strength", "val-strength", (val) => {
       this.character.strength = val;
     }, 1);
@@ -1381,6 +1448,10 @@ export class DevPanel {
     this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
       if (this.character.pickupModule) this.character.pickupModule.pickupReach = val;
     }, 1);
+
+    this.setupSlider("slide-pickup-cross-layer", "val-pickup-cross-layer", (val) => {
+      if (this.character.pickupModule) this.character.pickupModule.crossLayerReachRatio = val;
+    }, 2);
 
     const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
     btnThrow?.addEventListener("click", () => {
@@ -1406,8 +1477,12 @@ export class DevPanel {
       this.syncEntitySliders();
     });
 
+    this.setupSlider("slide-climb-adhesion", "val-climb-adhesion", (val) => {
+      if (this.character.climbingModule) this.character.climbingModule.maxAdhesion = val;
+    }, 0);
+
     this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
-      if (this.character.climbingModule) this.character.climbingModule.climbSpeed = val;
+      if (this.character.climbingModule) this.character.climbingModule.maxClimbSpeed = val;
     }, 1);
 
     // 7. World Physics Sliders

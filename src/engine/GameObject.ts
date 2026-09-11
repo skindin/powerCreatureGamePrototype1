@@ -296,9 +296,25 @@ export class GameObject {
     if (this.hasCollider && this.hasVerticalPosition) {
       const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
         (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
-      supportingWall = canBeOnWall
-        ? (this.isCharacter ? arena.getWallAt(this.position.x, this.position.y) : arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius * 0.5))
-        : null;
+      if (canBeOnWall) {
+        supportingWall = arena.getWallAt(this.position.x, this.position.y);
+        if (!supportingWall && this.isCharacter) {
+          // If character is right at wall edge, support if moving towards the adjacent wall to mount it
+          const adjacentWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+          if (adjacentWall) {
+            const closestX = Math.max(adjacentWall.x, Math.min(this.position.x, adjacentWall.x + adjacentWall.width));
+            const closestY = Math.max(adjacentWall.y, Math.min(this.position.y, adjacentWall.y + adjacentWall.height));
+            const toWallX = closestX - this.position.x;
+            const toWallY = closestY - this.position.y;
+            const dot = this.velocity.x * toWallX + this.velocity.y * toWallY;
+            if (dot > 0.01) {
+              supportingWall = adjacentWall;
+            }
+          }
+        } else if (!supportingWall && !this.isCharacter) {
+          supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius * 0.5);
+        }
+      }
       surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
     }
     if (this.isClimbing) {

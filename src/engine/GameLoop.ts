@@ -71,7 +71,8 @@ export class GameLoop {
         this.character,
         this.inputManager.mousePos.x,
         this.inputManager.mousePos.y,
-        this.objects
+        this.objects,
+        this.arena.wallHeight
       );
     }
 
@@ -129,7 +130,8 @@ export class GameLoop {
         this.character,
         input.mousePos.x,
         input.mousePos.y,
-        this.objects
+        this.objects,
+        this.arena.wallHeight
       );
       if (target) {
         this.character.pickupModule.pickup(this.character, target);

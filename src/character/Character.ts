@@ -3,10 +3,28 @@ import { WalkingModule } from "./WalkingModule.js";
 import { PickupModule } from "./PickupModule.js";
 import { ThrowModule, TrajectoryCalculation } from "./ThrowModule.js";
 import { ClimbingModule } from "./ClimbingModule.js";
+import { StrengthModule } from "./StrengthModule.js";
 import type { Arena } from "../engine/Arena.js";
 
 export class Character extends GameObject {
-  public strength: number;
+  public strengthModule: StrengthModule | null;
+
+  public get hasStrength(): boolean {
+    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strengthModule.strength > 0);
+  }
+
+  public get strength(): number {
+    return this.hasStrength ? this.strengthModule!.strength : 0;
+  }
+
+  public set strength(val: number) {
+    if (this.strengthModule) {
+      this.strengthModule.strength = Math.max(0.1, val);
+    } else {
+      this.strengthModule = new StrengthModule({ strength: val });
+    }
+  }
+
   public facingAngle: number; // Angle in radians
   public heldObject: GameObject | null;
 
@@ -73,6 +91,7 @@ export class Character extends GameObject {
     this.activeTrajectory = null;
 
     // Initialize default modular capabilities
+    this.strengthModule = new StrengthModule({ strength: options.strength ?? 1.0 });
     this.walkingModule = new WalkingModule();
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();

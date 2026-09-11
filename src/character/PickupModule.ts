@@ -6,25 +6,44 @@ export class PickupModule {
   public name = "Pickup Ability";
   public enabled = true;
   public pickupReach = 1.3; // Radius in units to reach and pick up freebodies (~1.3 wall tiles)
+  public crossLayerReachRatio = 0.55; // Multiplier on reach when target is on a different height layer
 
   /**
    * Finds the nearest grabbable object to the mouse/aim location within character reach
    */
-  public findTargetObject(character: Character, targetX: number, targetY: number, objects: GameObject[]): GameObject | null {
+  public findTargetObject(
+    character: Character,
+    targetX: number,
+    targetY: number,
+    objects: GameObject[],
+    wallHeight: number = 1.0
+  ): GameObject | null {
     if (!this.enabled) return null;
 
     let bestCandidate: GameObject | null = null;
     let shortestDist = Infinity;
+
+    // Determine character height layer (0: Ground layer < wallHeight - 0.05, 1: Wall layer >= wallHeight - 0.05)
+    const charLayer = character.position.z >= wallHeight - 0.05 ? 1 : 0;
 
     for (const obj of objects) {
       if (obj === character || obj.isHeld || obj.isCharacter) continue;
       // Cannot grab an object you just threw while it is departing your reach
       if (obj.lastThrower === character) continue;
 
+      // Determine object's height layer
+      const objLayer = obj.position.z >= wallHeight - 0.05 ? 1 : 0;
+      const isCrossLayer = charLayer !== objLayer;
+
+      // Effective physical reach is reduced when attempting to grab across different height layers
+      const effectiveReach = isCrossLayer
+        ? this.pickupReach * this.crossLayerReachRatio
+        : this.pickupReach;
+
       // Distance from character to object (must be within physical reach)
       const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
       const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-      if (distFromChar > this.pickupReach + objRadius) continue;
+      if (distFromChar > effectiveReach + objRadius) continue;
 
       // Distance from object to mouse aim position: pick the one closest to the mouse cursor
       const distToMouse = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
