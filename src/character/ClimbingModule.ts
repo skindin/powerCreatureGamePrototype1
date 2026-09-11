@@ -13,6 +13,15 @@ export class ClimbingModule {
   // Maximum vertical speed cap when climbing walls (in units per second)
   public maxClimbSpeed = 3.0;
 
+  // Whether to prevent walking off elevated walls unless holding climb key (Space bar)
+  public preventWalkOff = true;
+
+  constructor(options?: { maxAdhesion?: number; maxClimbSpeed?: number; preventWalkOff?: boolean }) {
+    if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
+    if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
+    if (options?.preventWalkOff !== undefined) this.preventWalkOff = options.preventWalkOff;
+  }
+
   /**
    * Checks if the character is intending to move towards an adjacent wall that is higher than current elevation.
    * If so, and if isClimbHeld is true, increases character's elevation until they reach the top of the wall.

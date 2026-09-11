@@ -30,6 +30,7 @@ export class Character extends GameObject {
 
   public override isCharacter = true;
   public isActivelyWalking = false;
+  public isClimbInputHeld = false;
 
   // Base mass when not carrying anything
   public baseMass = 1.2;
@@ -138,6 +139,8 @@ export class Character extends GameObject {
     arena: Arena,
     isClimbInput = false
   ): void {
+    this.isClimbInputHeld = isClimbInput;
+
     // 0. Process modular climbing if pressing into wall and holding climb input
     if (this.climbingModule) {
       this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);

@@ -687,6 +687,12 @@ export class DevPanel {
                 ${!this.character.hasVerticalPosition ? '⚠️ Requires Vertical Position (3D Z-axis)' : (!this.character.hasStrength ? '⚠️ Requires Strength Ability to climb' : '')}
               </div>
               <div id="group-mod-climb" style="display: ${this.character.climbingModule?.enabled ? 'block' : 'none'};">
+                <div class="toggle-row" style="margin-bottom: 8px;">
+                  <label style="font-size: 0.8rem;">Prevent Walk-Off (Require Space)</label>
+                  <button id="toggle-climb-walkoff" class="btn-toggle ${this.character.climbingModule?.preventWalkOff ? 'active' : ''}">
+                    ${this.character.climbingModule?.preventWalkOff ? 'Active' : 'Inactive'}
+                  </button>
+                </div>
                 <div class="slider-group">
                   <div class="slider-label">
                     <span>Max Adhesion (N)</span>
@@ -1124,6 +1130,12 @@ export class DevPanel {
           : (missingStr ? "⚠️ Requires Strength Ability to climb" : "");
       }
       if (this.character.climbingModule) {
+        const btnClimbWalkOff = this.container.querySelector("#toggle-climb-walkoff") as HTMLButtonElement;
+        if (btnClimbWalkOff) {
+          const isWalkOffPrevented = Boolean(this.character.climbingModule.preventWalkOff);
+          btnClimbWalkOff.textContent = isWalkOffPrevented ? "Active" : "Inactive";
+          btnClimbWalkOff.classList.toggle("active", isWalkOffPrevented);
+        }
         this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", this.character.climbingModule.maxAdhesion, 0);
         this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.maxClimbSpeed, 1);
       }
@@ -1493,6 +1505,14 @@ export class DevPanel {
         this.character.climbingModule.enabled = !this.character.climbingModule.enabled;
       } else {
         this.character.climbingModule = new ClimbingModule();
+      }
+      this.syncEntitySliders();
+    });
+
+    const btnClimbWalkOff = this.container.querySelector("#toggle-climb-walkoff") as HTMLButtonElement;
+    btnClimbWalkOff?.addEventListener("click", () => {
+      if (this.character.climbingModule) {
+        this.character.climbingModule.preventWalkOff = !this.character.climbingModule.preventWalkOff;
       }
       this.syncEntitySliders();
     });

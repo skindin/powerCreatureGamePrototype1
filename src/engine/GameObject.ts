@@ -484,8 +484,60 @@ export class GameObject {
     }
 
     // 3. Horizontal Position Integration
-    this.position.x += this.velocity.x * dt;
-    this.position.y += this.velocity.y * dt;
+    // Check climb ability ledge guard / walk-off prevention:
+    // When on top of a wall, prevent walking off unless actively holding the climb control (Space bar).
+    const char = this.isCharacter ? (this as any) : null;
+    const isPreventWalkOffActive = Boolean(
+      char &&
+      (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05) &&
+      char.climbingModule?.enabled &&
+      char.climbingModule?.preventWalkOff &&
+      !char.isClimbInputHeld
+    );
+
+    if (isPreventWalkOffActive) {
+      const currentSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+      if (currentSupport) {
+        const candidateX = this.position.x + this.velocity.x * dt;
+        const candidateY = this.position.y + this.velocity.y * dt;
+        const fullSupport = arena.getSupportingWall(candidateX, candidateY, this.colliderRadius);
+
+        if (fullSupport) {
+          this.position.x = candidateX;
+          this.position.y = candidateY;
+        } else {
+          // Ledge guard: test sliding along each axis independently to prevent stepping into the abyss
+          const supportX = arena.getSupportingWall(candidateX, this.position.y, this.colliderRadius);
+          const supportY = arena.getSupportingWall(this.position.x, candidateY, this.colliderRadius);
+
+          if (supportX && supportY) {
+            if (Math.abs(this.velocity.x) >= Math.abs(this.velocity.y)) {
+              this.position.x = candidateX;
+              this.velocity.y = 0;
+            } else {
+              this.position.y = candidateY;
+              this.velocity.x = 0;
+            }
+          } else if (supportX) {
+            this.position.x = candidateX;
+            this.velocity.y = 0;
+          } else if (supportY) {
+            this.position.y = candidateY;
+            this.velocity.x = 0;
+          } else {
+            // Reaching outer ledge corner or moving perpendicularly off edge: stop horizontal movement
+            this.velocity.x = 0;
+            this.velocity.y = 0;
+          }
+        }
+      } else {
+        this.position.x += this.velocity.x * dt;
+        this.position.y += this.velocity.y * dt;
+      }
+    } else {
+      this.position.x += this.velocity.x * dt;
+      this.position.y += this.velocity.y * dt;
+    }
 
     // 4 & 5. Boundary & Wall Collisions (Only if ColliderModule is active!)
     if (this.hasCollider) {
