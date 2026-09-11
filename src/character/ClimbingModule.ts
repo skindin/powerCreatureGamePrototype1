@@ -143,7 +143,7 @@ export class ClimbingModule {
     }
 
     // Check if climbing has already been established
-    const isEstablishedClimb = character.isClimbing || character.position.z > 0.05;
+    const isEstablishedClimb = character.isClimbing;
 
     // Once climbing is established on a wall:
     // - Releasing Space bar maintains wall cling grip at current height.
@@ -218,6 +218,21 @@ export class ClimbingModule {
       }
 
       return true;
+    }
+
+    // Mid-air re-grab (e.g. falling after dismounting a wall):
+    // Requires releasing and repressing the climb control (isFreshClimbPress)
+    if (!isEstablishedClimb && character.position.z > 0.05 && character.position.z < targetWall.wallHeight) {
+      if (isFreshClimbPress) {
+        character.isClimbing = true;
+        character.verticalVelocity = 0;
+        character.velocity.x = 0;
+        character.velocity.y = 0;
+        return true;
+      }
+      // Otherwise, the character is in freefall and must NOT stick mid-layer 1!
+      character.isClimbing = false;
+      return false;
     }
 
     // On ground (z <= 0.05, not established): Initiate climb only if pressing towards wall and holding Space
