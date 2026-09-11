@@ -7,7 +7,7 @@ export class ClimbingModule {
   public name = "Climbing Module";
   public enabled = true;
 
-  // Maximum adhesive grip force before character slips and cannot climb (in Newtons)
+  // Maximum adhesive grip force before character slips and cannot climb/cling (in Newtons)
   public maxAdhesion = 35.0;
 
   // Maximum vertical speed cap when climbing walls (in units per second)
@@ -16,7 +16,9 @@ export class ClimbingModule {
   /**
    * Checks if the character is intending to move towards an adjacent wall that is higher than current elevation.
    * If so, and if isClimbHeld is true, increases character's elevation until they reach the top of the wall.
-   * Returns true if character is actively climbing.
+   * While elevated on a wall, releasing Space bar does NOT cause falling — character maintains cling grip.
+   * Falling only occurs when the player actively moves in the opposite direction (away from the wall).
+   * Returns true if character is actively climbing or clinging to the wall.
    */
   public update(
     character: Character,
@@ -30,25 +32,18 @@ export class ClimbingModule {
       return false;
     }
 
-    const inputMag = Math.hypot(movementInput.x, movementInput.y);
-    // Must have movement intention to climb towards a wall
-    if (inputMag < 0.05) {
-      character.isClimbing = false;
-      return false;
-    }
-
-    const moveDirX = movementInput.x / inputMag;
-    const moveDirY = movementInput.y / inputMag;
-
-    // Check adjacent walls that the character is pressing towards
     const r = character.hasCollider ? character.colliderRadius : 0.44;
+    const inputMag = Math.hypot(movementInput.x, movementInput.y);
+    const hasMoveInput = inputMag >= 0.05;
+    const moveDirX = hasMoveInput ? movementInput.x / inputMag : 0;
+    const moveDirY = hasMoveInput ? movementInput.y / inputMag : 0;
+
+    // Find closest adjacent wall
     let targetWall: Wall | null = null;
     let shortestDist = Infinity;
+    let targetDot = 0;
 
     for (const wall of arena.walls) {
-      // Wall must be higher than current elevation to climb up
-      if (character.position.z >= wall.wallHeight - 0.001) continue;
-
       // Find closest point on wall AABB
       const closestX = Math.max(wall.x, Math.min(character.position.x, wall.x + wall.width));
       const closestY = Math.max(wall.y, Math.min(character.position.y, wall.y + wall.height));
@@ -57,25 +52,20 @@ export class ClimbingModule {
       const dy = closestY - character.position.y;
       const dist = Math.hypot(dx, dy);
 
-      // Character must be touching or directly adjacent to the wall (within radius + 0.15 units)
-      if (dist <= r + 0.15) {
-        // Player's movement input relative to the wall direction
-        const dot = moveDirX * dx + moveDirY * dy;
-        if (dot > 0.01 && dist < shortestDist) {
-          shortestDist = dist;
-          targetWall = wall;
-        } else if (dot < -0.1 && character.position.z > 0.05) {
-          // Player is intending to walk away from an adjacent wall while elevated
-          character.isClimbing = false;
-          character.velocity.x = moveDirX * 3.0;
-          character.velocity.y = moveDirY * 3.0;
-          return false;
-        }
+      if (dist <= r + 0.15 && dist < shortestDist) {
+        shortestDist = dist;
+        targetWall = wall;
+        targetDot = hasMoveInput ? (moveDirX * dx + moveDirY * dy) : 0;
       }
     }
 
+    if (!targetWall) {
+      character.isClimbing = false;
+      return false;
+    }
+
     // Physical adhesion limit check:
-    // If the downward gravitational force of total mass exceeds maxAdhesion, grip fails
+    // If the downward gravitational force of total mass exceeds maxAdhesion, grip fails and character slips
     const totalMass = character.mass;
     const requiredForce = totalMass * arena.gravity;
     if (requiredForce > this.maxAdhesion) {
@@ -83,32 +73,57 @@ export class ClimbingModule {
       return false;
     }
 
-    // If pressing into a wall and holding climb key (Space)
-    if (targetWall && isClimbHeld) {
-      character.isClimbing = true;
-      character.verticalVelocity = 0; // Neutralize gravity while clinging/climbing
+    // When character is elevated on the wall (z > 0.05):
+    // Releasing the Space bar does NOT cause falling.
+    // Falling ONLY occurs when actively walking in the opposite direction (away from the wall: targetDot < -0.1).
+    if (character.position.z > 0.05) {
+      if (hasMoveInput && targetDot < -0.1) {
+        // Player is intending to walk away from the wall: release grip and fall down
+        character.isClimbing = false;
+        character.velocity.x = moveDirX * 3.0;
+        character.velocity.y = moveDirY * 3.0;
+        return false;
+      }
 
-      // Climb speed scaling: determined by strength considering base character mass and any carried load
+      // Clinging to the wall: stay supported at current elevation, neutralize gravity
+      character.isClimbing = true;
+      character.verticalVelocity = 0;
+
+      // Ascend towards wall top only if holding climb key (Space) and pressing towards the wall
+      if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
+        const baseMass = character.baseMass;
+        const effectiveClimbSpeed = Math.max(
+          0.2,
+          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+        );
+        character.position.z += effectiveClimbSpeed * dt;
+
+        // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
+        if (character.position.z >= targetWall.wallHeight) {
+          character.position.z = targetWall.wallHeight;
+          character.supportingSurfaceHeight = targetWall.wallHeight;
+          character.verticalVelocity = 0;
+
+          // Impart natural walking velocity into the wall top to smoothly transition onto it
+          character.velocity.x = moveDirX * 3.5;
+          character.velocity.y = moveDirY * 3.5;
+        }
+      }
+
+      return true;
+    }
+
+    // On ground (z <= 0.05): Initiate climb only if pressing towards wall and holding Space
+    if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
+      character.isClimbing = true;
+      character.verticalVelocity = 0;
+
       const baseMass = character.baseMass;
       const effectiveClimbSpeed = Math.max(
         0.2,
         Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
       );
-
-      // Ascend towards the top of the wall
       character.position.z += effectiveClimbSpeed * dt;
-
-      // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
-      if (character.position.z >= targetWall.wallHeight) {
-        character.position.z = targetWall.wallHeight;
-        character.supportingSurfaceHeight = targetWall.wallHeight;
-        character.verticalVelocity = 0;
-        character.isClimbing = false;
-
-        // Impart natural walking velocity into the wall top to smoothly transition onto it
-        character.velocity.x = moveDirX * 3.5;
-        character.velocity.y = moveDirY * 3.5;
-      }
       return true;
     }
 
