@@ -16,20 +16,38 @@ export interface TrajectorySample {
   rotZ: number;
 }
 
+export interface PredictedCollision {
+  targetId: string;
+  timeMs: number;
+  contactX: number;
+  contactY: number;
+  contactZ: number;
+  impulseVx: number;
+  impulseVy: number;
+  impulseVz: number;
+  triggered?: boolean;
+}
+
 export class Trajectory {
   public readonly points: TrajectorySample[];
+  public readonly predictedCollisions: PredictedCollision[];
   public readonly startTime: number;
   public readonly endTime: number;
 
-  constructor(points: TrajectorySample[]) {
+  constructor(points: TrajectorySample[], predictedCollisions: PredictedCollision[] = []) {
     this.points = points;
+    this.predictedCollisions = predictedCollisions;
     this.startTime = points.length > 0 ? points[0].t : 0;
     this.endTime = points.length > 0 ? points[points.length - 1].t : 0;
   }
 
+  public hasPredictedCollisionWith(targetId: string): boolean {
+    return this.predictedCollisions.some((c) => c.targetId === targetId);
+  }
+
   /**
    * Pre-calculates an object's deterministic path through the arena
-   * (including gravity arc, wall impacts/bounces, floor rolling, and friction to a complete stop)
+   * (including gravity arc, wall impacts/bounces, floor rolling, friction, and object-object collisions)
    * in a fraction of a millisecond.
    */
   public static build(
@@ -41,6 +59,8 @@ export class Trajectory {
     vy0: number,
     vz0: number,
     arena: Arena,
+    potentialColliders: GameObject[] = [],
+    maxObjectCollisions = 1,
     maxDurationSeconds = 6.0
   ): Trajectory {
     // Clone simulation dummy with matching physical properties
@@ -92,6 +112,8 @@ export class Trajectory {
     const dtMs = dt * 1000;
     const maxSteps = Math.round(maxDurationSeconds / dt);
     const points: TrajectorySample[] = [];
+    const predictedCollisions: PredictedCollision[] = [];
+    let collisionCount = 0;
 
     // Record initial point at t=0
     points.push({
@@ -111,6 +133,108 @@ export class Trajectory {
 
     for (let step = 1; step <= maxSteps; step++) {
       dummy.updatePosition(dt, arena);
+
+      // Check object-object collisions against other colliders in the arena
+      if (collisionCount < maxObjectCollisions) {
+        for (const other of potentialColliders) {
+          if (other.id === templateObj.id || other.isHeld || !other.hasCollider) continue;
+
+          const dummyRadius = dummy.hasCollider ? dummy.colliderRadius : 0.25;
+          const otherRadius = other.hasCollider ? other.colliderRadius : 0.25;
+
+          // 3D vertical span overlap check
+          const dummyMinZ = dummy.hasVerticalPosition ? dummy.position.z - dummyRadius * 0.5 : 0;
+          const dummyMaxZ = dummy.hasVerticalPosition ? dummy.position.z + dummyRadius * 0.5 : 0.2;
+          const otherMinZ = other.hasVerticalPosition ? other.position.z - otherRadius * 0.5 : 0;
+          const otherMaxZ = other.hasVerticalPosition ? other.position.z + otherRadius * 0.5 : 0.2;
+
+          if (dummyMinZ > otherMaxZ || otherMinZ > dummyMaxZ) continue;
+
+          // 2D planar distance considering the specific radii of both colliders
+          const dx = other.position.x - dummy.position.x;
+          const dy = other.position.y - dummy.position.y;
+          const dist2DSq = dx * dx + dy * dy;
+          const minDist = dummyRadius + otherRadius;
+
+          if (dist2DSq < minDist * minDist && dist2DSq > 0.000001) {
+            const dist = Math.sqrt(dist2DSq);
+            const overlap = minDist - dist;
+            const normX = dx / dist; // Vector pointing from dummy to other
+            const normY = dy / dist;
+
+            // Relative velocity of other relative to dummy along collision normal
+            const relVx = (other.velocity?.x ?? 0) - dummy.velocity.x;
+            const relVy = (other.velocity?.y ?? 0) - dummy.velocity.y;
+            const velAlongNormal = relVx * normX + relVy * normY;
+
+            // Only collide if closing in
+            if (velAlongNormal < 0) {
+              collisionCount++;
+
+              const isMasslessDummy = !dummy.hasMass;
+              const isMasslessOther = !other.hasMass;
+
+              let otherImpulseX = 0;
+              let otherImpulseY = 0;
+
+              if (isMasslessDummy && isMasslessOther) {
+                dummy.position.x -= normX * overlap * 0.5;
+                dummy.position.y -= normY * overlap * 0.5;
+                const impulse = -velAlongNormal * 0.5;
+                dummy.velocity.x -= impulse * normX;
+                dummy.velocity.y -= impulse * normY;
+                otherImpulseX = impulse * normX;
+                otherImpulseY = impulse * normY;
+              } else if (!isMasslessDummy && isMasslessOther) {
+                // Massive dummy pushes massless other
+                otherImpulseX = (dummy.velocity.x - (other.velocity?.x ?? 0)) * Math.abs(normX);
+                otherImpulseY = (dummy.velocity.y - (other.velocity?.y ?? 0)) * Math.abs(normY);
+              } else if (isMasslessDummy && !isMasslessOther) {
+                // Massless dummy deflected by massive other
+                dummy.position.x -= normX * overlap;
+                dummy.position.y -= normY * overlap;
+                dummy.velocity.x += ((other.velocity?.x ?? 0) - dummy.velocity.x) * Math.abs(normX);
+                dummy.velocity.y += ((other.velocity?.y ?? 0) - dummy.velocity.y) * Math.abs(normY);
+              } else {
+                // Both massive
+                const invMassDummy = 1 / dummy.mass;
+                const invMassOther = 1 / other.mass;
+                const invMassSum = invMassDummy + invMassOther;
+                const ratioDummy = invMassDummy / invMassSum;
+
+                dummy.position.x -= normX * overlap * ratioDummy;
+                dummy.position.y -= normY * overlap * ratioDummy;
+
+                const canBounce = dummy.hasBounce && other.hasBounce;
+                const eDummy = dummy.hasBounce ? (dummy.bounceMod ?? 0) : 0;
+                const eOther = other.hasBounce ? (other.bounceMod ?? 0) : 0;
+                const restitution = canBounce ? Math.max(0, Math.min(0.98, Math.max(eDummy, eOther))) : 0;
+
+                const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
+
+                dummy.velocity.x -= normalImpulse * invMassDummy * normX;
+                dummy.velocity.y -= normalImpulse * invMassDummy * normY;
+
+                otherImpulseX = normalImpulse * invMassOther * normX;
+                otherImpulseY = normalImpulse * invMassOther * normY;
+              }
+
+              predictedCollisions.push({
+                targetId: other.id,
+                timeMs: step * dtMs,
+                contactX: dummy.position.x,
+                contactY: dummy.position.y,
+                contactZ: dummy.position.z,
+                impulseVx: otherImpulseX,
+                impulseVy: otherImpulseY,
+                impulseVz: 0,
+              });
+
+              break; // One collision per step
+            }
+          }
+        }
+      }
 
       const t = step * dtMs;
       const vx = dummy.velocity.x;
@@ -149,7 +273,7 @@ export class Trajectory {
       }
     }
 
-    return new Trajectory(points);
+    return new Trajectory(points, predictedCollisions);
   }
 
   /**

@@ -247,7 +247,12 @@ export class GameLoop {
       const transitMs = Math.max(0, Math.min(200, now - packet.t0));
       target.trajectoryStartTime = performance.now() - transitMs;
 
-      // Pre-calculate identical deterministic trajectory from launch point
+      // Potential colliders in the arena to predict collisions against
+      const potentialColliders = this.objects.filter(
+        (o) => o.id !== target.id && !o.isHeld && o.hasCollider
+      );
+
+      // Pre-calculate identical deterministic trajectory from launch point with object collision prediction
       target.trajectory = Trajectory.build(
         target,
         packet.x0,
@@ -256,7 +261,9 @@ export class GameLoop {
         packet.vx0,
         packet.vy0,
         packet.vz0,
-        this.arena
+        this.arena,
+        potentialColliders,
+        1
       );
     };
 
@@ -392,7 +399,12 @@ export class GameLoop {
   public broadcastTrajectoryLaunch(obj: GameObject): void {
     obj.trajectoryStartTime = performance.now();
 
-    // Precalculate trajectory locally starting at t=0
+    // Potential colliders in the arena to predict collisions against
+    const potentialColliders = this.objects.filter(
+      (o) => o.id !== obj.id && !o.isHeld && o.hasCollider
+    );
+
+    // Precalculate trajectory locally starting at t=0 with object collision prediction
     obj.trajectory = Trajectory.build(
       obj,
       obj.position.x,
@@ -401,7 +413,9 @@ export class GameLoop {
       obj.velocity.x,
       obj.velocity.y,
       obj.verticalVelocity,
-      this.arena
+      this.arena,
+      potentialColliders,
+      1
     );
 
     if (this.networkManager) {
@@ -572,6 +586,43 @@ export class GameLoop {
           obj.rollModule.angularVelocity.z = sample.rotZ;
           obj.rollModule.updateVisualPhase(dt);
         }
+
+        // Trigger precalculated collisions with other objects at the exact impact moment
+        if (obj.trajectory.predictedCollisions) {
+          for (const collision of obj.trajectory.predictedCollisions) {
+            if (!collision.triggered && elapsedMs >= collision.timeMs) {
+              collision.triggered = true;
+              const hitObj = this.objects.find((o) => o.id === collision.targetId);
+              if (hitObj && !hitObj.isHeld) {
+                hitObj.velocity.x = collision.impulseVx;
+                hitObj.velocity.y = collision.impulseVy;
+                hitObj.verticalVelocity = collision.impulseVz;
+
+                // Launch trajectory for the hit object if host or the thrower
+                if (!this.networkManager || this.networkManager.isHost || obj.throwImmunityPlayerId === this.character.playerId) {
+                  this.broadcastTrajectoryLaunch(hitObj);
+                } else {
+                  // Non-thrower guest predicts trajectory locally immediately for 0-latency response
+                  hitObj.trajectoryStartTime = performance.now();
+                  const hitColliders = this.objects.filter((o) => o.id !== hitObj.id && !o.isHeld && o.hasCollider);
+                  hitObj.trajectory = Trajectory.build(
+                    hitObj,
+                    hitObj.position.x,
+                    hitObj.position.y,
+                    hitObj.position.z,
+                    hitObj.velocity.x,
+                    hitObj.velocity.y,
+                    hitObj.verticalVelocity,
+                    this.arena,
+                    hitColliders,
+                    1
+                  );
+                }
+              }
+            }
+          }
+        }
+
         if (obj.trajectory.isComplete(elapsedMs)) {
           obj.trajectory = null;
           obj.velocity.x = 0;
@@ -676,6 +727,16 @@ export class GameLoop {
             if (a.throwImmunityPlayerId === (b as Character).playerId || (a.throwImmunityPlayerId === "local" && b === this.character)) {
               continue;
             }
+          }
+
+          // Skip frame-by-frame collision solver if this object pair collision was already predicted in either trajectory
+          if (
+            this.objects.includes(a as GameObject) &&
+            this.objects.includes(b as GameObject) &&
+            (((a as GameObject).trajectory?.hasPredictedCollisionWith((b as GameObject).id)) ||
+             ((b as GameObject).trajectory?.hasPredictedCollisionWith((a as GameObject).id)))
+          ) {
+            continue;
           }
 
           // Two-Tier Altitude Collision Rule:
