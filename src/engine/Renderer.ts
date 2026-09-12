@@ -54,14 +54,11 @@ export class Renderer {
 
     for (const entity of allRenderables) {
       if (entity instanceof Character) {
-        this.drawCharacter(entity, objects, ppu);
+        this.drawCharacter(entity, objects, ppu, arena);
       } else {
-        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity, arena.wallHeight);
+        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity, arena);
       }
-    }
-
-    // 4. Height Indicator Rings (Rendered OVER the objects so expanding circles are visible from the center)
-    for (const entity of allRenderables) {
+      // Outline stays the same size as the collider and renders OVER the sprite
       this.drawObjectShadow(entity, arena, ppu);
     }
 
@@ -171,10 +168,19 @@ export class Renderer {
   }
 
   /**
-   * Height Indicator Ring (Ground Shadow): A circle outline that expands as height z increases.
-   * At height 0, the circle matches the size of the object collider like it was before.
-   * As height z increases, the circle outline expands outward from the object.
-   * Changes color (to vibrant blue/cyan) when high enough to go over walls (z > arena.wallHeight).
+   * Altitude visual scaling:
+   * As height z increases, the object sprite scales up (getting bigger with altitude),
+   * while the physical outline stays fixed at the collider size (showing exact collider footprint).
+   */
+  public static getAltitudeScale(z: number, wallHeight: number): number {
+    return Math.min(2.5, 1.0 + (Math.max(0, z) / Math.max(0.1, wallHeight)) * 0.5);
+  }
+
+  /**
+   * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
+   * The outline stays the exact same size as the collider (fixed at colliderRadius).
+   * Renders OVER the enlarged object sprite so the true collider footprint is visible.
+   * Changes color (to vibrant blue/cyan) when high enough to go over walls (z >= arena.wallHeight).
    */
   private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
     const ctx = this.ctx;
@@ -182,9 +188,8 @@ export class Renderer {
     const groundY = obj.position.y * ppu;
     const z = obj.position.z;
 
-    // Matches the object size at height 0 and expands as height increases
-    const heightExpansion = 1.0 + (z / arena.wallHeight) * 1.5;
-    const shadowRadius = obj.colliderRadius * ppu * heightExpansion;
+    // Matches the exact collider size (does NOT expand with altitude)
+    const shadowRadius = obj.colliderRadius * ppu;
 
     const alpha = Math.max(0.3, 0.85 - (z / (arena.wallHeight * 7)) * 0.25);
 
@@ -195,7 +200,7 @@ export class Renderer {
     ctx.beginPath();
     if (obj.visualShape === "box") {
       const sz = shadowRadius * 2;
-      const cr = Math.max(3, 4 * heightExpansion);
+      const cr = Math.max(3, shadowRadius * 0.16);
       if (ctx.roundRect) {
         ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
       } else {
@@ -233,17 +238,18 @@ export class Renderer {
     character: Character,
     ppu: number,
     isTargetGrab = false,
-    wallHeight = 1.0
+    arena: Arena
   ): void {
     const ctx = this.ctx;
     const x = obj.position.x * ppu;
     const y = obj.position.y * ppu;
+    const altitudeScale = Renderer.getAltitudeScale(obj.position.z, arena.wallHeight);
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-    const renderRadius = visualRadius * ppu;
+    const renderRadius = visualRadius * ppu * altitudeScale;
 
     // Check if close enough for character to pick up, strictly respecting layer-dependent reach
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
-    const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, wallHeight) ?? false);
+    const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, arena.wallHeight) ?? false);
 
     // Highlight ring around objects in pickup reach
     if (isWithinPickupRange) {
@@ -362,11 +368,12 @@ export class Renderer {
   /**
    * Character: Pure top-down circle with two black circles on facing side
    */
-  private drawCharacter(char: Character, allEntities: GameObject[], ppu: number): void {
+  private drawCharacter(char: Character, allEntities: GameObject[], ppu: number, arena: Arena): void {
     const ctx = this.ctx;
     const x = char.position.x * ppu;
     const y = char.position.y * ppu;
-    const r = char.colliderRadius * ppu;
+    const altitudeScale = Renderer.getAltitudeScale(char.position.z, arena.wallHeight);
+    const r = char.colliderRadius * ppu * altitudeScale;
 
     // Check if character is passing over another entity
     let isPassingOverAnother = false;
