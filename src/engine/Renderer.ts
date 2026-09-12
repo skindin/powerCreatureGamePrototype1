@@ -37,9 +37,18 @@ export class Renderer {
       this.drawWallEditorHover(arena, hoverWallTile, ppu);
     }
 
-    // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position
+    // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position,
+    // except objects held by a character, which render BELOW the character holding them.
     const allRenderables = [character, ...objects];
     allRenderables.sort((a, b) => {
+      // Objects held by a character render BELOW that character
+      if ((a.isHeld && a.heldBy === b) || (character.heldObject === a && b === character)) {
+        return -1;
+      }
+      if ((b.isHeld && b.heldBy === a) || (character.heldObject === b && a === character)) {
+        return 1;
+      }
+
       // Primary: Objects at higher virtual position (height z) ALWAYS render on top
       if (Math.abs(a.position.z - b.position.z) > 0.001) {
         return a.position.z - b.position.z;
