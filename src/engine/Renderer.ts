@@ -561,50 +561,88 @@ export class Renderer {
 
     ctx.shadowBlur = 0;
 
-    // Impact or Landing Marker
+    // Impact or Landing Marker:
+    // Matches the exact collider footprint size of the held object so the player can visualize if it will fit!
     const finalPt = points[points.length - 1];
-    if (traj.isBlockedByWall) {
-      // Red Impact X on side wall collision
-      ctx.strokeStyle = "#ef4444";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([]);
-      const sz = 8;
+    const targetRadius = (traj.colliderRadius ?? 0.35) * ppu;
+    const landX = traj.landPoint.x * ppu;
+    const landY = traj.landPoint.y * ppu;
+
+    const drawColliderFootprint = (x: number, y: number) => {
       ctx.beginPath();
-      ctx.moveTo(finalPt.x * ppu - sz, finalPt.y * ppu - sz);
-      ctx.lineTo(finalPt.x * ppu + sz, finalPt.y * ppu + sz);
-      ctx.moveTo(finalPt.x * ppu + sz, finalPt.y * ppu - sz);
-      ctx.lineTo(finalPt.x * ppu - sz, finalPt.y * ppu + sz);
+      if (traj.visualShape === "box") {
+        const sz = targetRadius * 2;
+        const cr = Math.max(3, targetRadius * 0.16);
+        if (ctx.roundRect) {
+          ctx.roundRect(x - targetRadius, y - targetRadius, sz, sz, cr);
+        } else {
+          ctx.rect(x - targetRadius, y - targetRadius, sz, sz);
+        }
+      } else {
+        ctx.arc(x, y, targetRadius, 0, Math.PI * 2);
+      }
+    };
+
+    if (traj.isBlockedByWall) {
+      // Wall Collision: Show exact collider footprint at collision point in dashed red, with a central red X
+      const impX = finalPt.x * ppu;
+      const impY = finalPt.y * ppu;
+
+      ctx.save();
+      ctx.strokeStyle = "#ef4444";
+      ctx.fillStyle = "rgba(239, 68, 68, 0.25)";
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([4, 3]);
+      drawColliderFootprint(impX, impY);
+      ctx.fill();
       ctx.stroke();
-    } else if (traj.isLandingOnWallTop) {
-      // Landing Target on Wall Top (Layer 2: semi-transparent)
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
-      ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+
+      // Red Impact X at center
+      ctx.strokeStyle = "#ef4444";
       ctx.lineWidth = 2.5;
       ctx.setLineDash([]);
+      const sz = Math.min(8, targetRadius * 0.55);
       ctx.beginPath();
-      ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 14, 0, Math.PI * 2);
+      ctx.moveTo(impX - sz, impY - sz);
+      ctx.lineTo(impX + sz, impY + sz);
+      ctx.moveTo(impX + sz, impY - sz);
+      ctx.lineTo(impX - sz, impY + sz);
+      ctx.stroke();
+      ctx.restore();
+    } else if (traj.isLandingOnWallTop) {
+      // Landing Target on Wall Top (Layer 2: semi-transparent, exact collider footprint size)
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([]);
+      drawColliderFootprint(landX, landY);
       ctx.fill();
       ctx.stroke();
 
+      // Central pinpoint dot
       ctx.beginPath();
-      ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
+      ctx.arc(landX, landY, Math.min(4, targetRadius * 0.22), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(56, 189, 248, 0.95)";
       ctx.fill();
+      ctx.restore();
     } else {
-      // Landing target circle on the ground
+      // Landing Target on Ground (Layer 1: exact collider footprint size)
+      ctx.save();
       ctx.strokeStyle = "#22c55e";
       ctx.fillStyle = "rgba(34, 197, 94, 0.25)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
       ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 14, 0, Math.PI * 2);
+      drawColliderFootprint(landX, landY);
       ctx.fill();
       ctx.stroke();
 
+      // Central pinpoint dot
       ctx.beginPath();
-      ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 4, 0, Math.PI * 2);
+      ctx.arc(landX, landY, Math.min(4, targetRadius * 0.22), 0, Math.PI * 2);
       ctx.fillStyle = "#22c55e";
       ctx.fill();
+      ctx.restore();
     }
 
     ctx.restore();

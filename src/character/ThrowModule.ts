@@ -20,6 +20,8 @@ export interface TrajectoryCalculation {
   isLandingOnWallTop?: boolean;
   peakHeight?: number;
   flightTime?: number;
+  colliderRadius?: number;
+  visualShape?: "circle" | "box";
 }
 
 export class ThrowModule {
@@ -238,7 +240,11 @@ export class ThrowModule {
             const wasAbove = points.length > 0 && points[points.length - 1].z >= wall.wallHeight - 0.05;
             if (wasAbove && currentVz <= 0) {
               // Descending onto top of wall
-              if (targetSurfaceHeight > 0 && (step >= steps - 2 || Math.hypot(currentX - finalTargetX, currentY - finalTargetY) < 0.2)) {
+              const isTargetedWall = targetSurfaceHeight > 0 &&
+                finalTargetX >= wall.x - 0.1 && finalTargetX <= wall.x + wall.width + 0.1 &&
+                finalTargetY >= wall.y - 0.1 && finalTargetY <= wall.y + wall.height + 0.1;
+
+              if (isTargetedWall || (targetSurfaceHeight > 0 && step >= steps - 3)) {
                 // This is the intended landing on top of the targeted wall!
                 isLandingOnWallTop = true;
                 break;
@@ -251,11 +257,13 @@ export class ThrowModule {
                 break;
               }
             } else if (currentZ < wall.wallHeight - 0.05) {
-              // Side wall collision
-              collidesWall = true;
-              isBlocked = true;
-              blockedWallId = wall.id;
-              break;
+              // Side wall collision (ignore departure at step <= 1 if starting in contact)
+              if (step > 1) {
+                collidesWall = true;
+                isBlocked = true;
+                blockedWallId = wall.id;
+                break;
+              }
             }
           }
         }
@@ -288,6 +296,8 @@ export class ThrowModule {
       blockedAtWallId: blockedWallId,
       peakHeight,
       flightTime: totalTime,
+      colliderRadius: held.colliderRadius,
+      visualShape: held.visualShape,
     };
   }
 
