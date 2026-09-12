@@ -64,7 +64,7 @@ export class Renderer {
 
     // 5. Trajectory Line (Rendered OVER walls and entities!)
     if (character.activeTrajectory) {
-      this.drawTrajectory(character.activeTrajectory, ppu);
+      this.drawTrajectory(character.activeTrajectory, ppu, arena);
     }
 
     // 6. Selection & Hover Gizmos (Only active and visible during Edit Mode)
@@ -502,59 +502,64 @@ export class Renderer {
   }
 
   /**
-   * Pure Top-Down Straight Trajectory (No curve, drawn OVER walls)
+   * Trajectory Line:
+   * Rendered as a dotted white line where every fixed 3D distance interval (including vertical distance)
+   * renders a white dot. Dots get bigger as altitude increases, and become transparent once within Layer 2.
    */
-  private drawTrajectory(traj: TrajectoryCalculation, ppu: number): void {
+  private drawTrajectory(traj: TrajectoryCalculation, ppu: number, arena: Arena): void {
     const ctx = this.ctx;
     const points = traj.points;
     if (points.length < 2) return;
 
     ctx.save();
 
-    // Draw straight trajectory line segment by segment in pure top-down (x, y) scaled by ppu
+    // Subtle drop shadow so white dots stand out clearly on all backgrounds
+    ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+    ctx.shadowBlur = 3;
+
+    // Fixed 3D distance interval between dots in world units (~19px at 50ppu)
+    const dotSpacing = 0.38;
+    let currentDist = 0;
+    let nextDotDist = dotSpacing * 0.5;
+
+    const baseRadius = Math.max(2.2, 0.048 * ppu);
+    const layer2Threshold = arena.wallHeight - 0.05;
+
+    // Step through piecewise 3D linear segments and sample dots at uniform 3D arc lengths
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dz = p2.z - p1.z;
+      // 3D distance traveled including vertical altitude
+      const segLen = Math.hypot(dx, dy, dz);
+      if (segLen <= 0.0001) continue;
 
-      ctx.beginPath();
-      ctx.moveTo(p1.x * ppu, p1.y * ppu);
-      ctx.lineTo(p2.x * ppu, p2.y * ppu);
+      while (currentDist + segLen >= nextDotDist) {
+        const t = (nextDotDist - currentDist) / segLen;
+        const dotX = p1.x + dx * t;
+        const dotY = p1.y + dy * t;
+        const dotZ = p1.z + dz * t;
 
-      // Altitude scaling for the visual arc: thickness scales smoothly with altitude
-      const avgZ = (p1.z + p2.z) * 0.5;
-      const altScale = Renderer.getAltitudeScale(avgZ, 1.0);
+        // Dot gets bigger as altitude increases
+        const altRatio = Math.max(0, dotZ) / Math.max(0.1, arena.wallHeight);
+        const radius = baseRadius * (1.0 + altRatio * 0.75);
 
-      // The entire part of the trajectory that could go over a wall is blue (even if not over a wall)
-      if (p1.couldClearWall || p2.couldClearWall) {
-        // High section capable of clearing standard wall height: vibrant cyan / blue
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 3.6 * altScale;
-        ctx.setLineDash([7, 3]);
-      } else {
-        // Normal lower flight section: amber dashed line
-        ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = 2.2 * altScale;
-        ctx.setLineDash([4, 4]);
+        // Transparent once within Layer 2 (z >= wallHeight - 0.05)
+        const isLayer2 = dotZ >= layer2Threshold;
+        ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+
+        ctx.beginPath();
+        ctx.arc(dotX * ppu, dotY * ppu, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        nextDotDist += dotSpacing;
       }
-      ctx.stroke();
+      currentDist += segLen;
     }
 
-    // Apex height marker along the trajectory
-    if (points.length > 2 && traj.peakHeight && traj.peakHeight > 0.25) {
-      let apexPt = points[0];
-      for (const pt of points) {
-        if (pt.z > apexPt.z) apexPt = pt;
-      }
-      ctx.save();
-      const ax = apexPt.x * ppu;
-      const ay = apexPt.y * ppu;
-      const isHigh = apexPt.z >= 1.0;
-      ctx.fillStyle = isHigh ? "#38bdf8" : "#f59e0b";
-      ctx.beginPath();
-      ctx.arc(ax, ay, isHigh ? 4 : 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    ctx.shadowBlur = 0;
 
     // Impact or Landing Marker
     const finalPt = points[points.length - 1];
@@ -571,9 +576,9 @@ export class Renderer {
       ctx.lineTo(finalPt.x * ppu - sz, finalPt.y * ppu + sz);
       ctx.stroke();
     } else if (traj.isLandingOnWallTop) {
-      // Vibrant Cyan Landing Target on Wall Top!
-      ctx.strokeStyle = "#38bdf8";
-      ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+      // Landing Target on Wall Top (Layer 2: semi-transparent)
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
+      ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
       ctx.lineWidth = 2.5;
       ctx.setLineDash([]);
       ctx.beginPath();
@@ -583,7 +588,7 @@ export class Renderer {
 
       ctx.beginPath();
       ctx.arc(traj.landPoint.x * ppu, traj.landPoint.y * ppu, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#38bdf8";
+      ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
       ctx.fill();
     } else {
       // Landing target circle on the ground
