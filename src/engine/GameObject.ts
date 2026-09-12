@@ -299,16 +299,14 @@ export class GameObject {
         (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2);
 
       if (isAtWallLayer) {
-        // If the character has jumped / dismounted off a wall (climbSuppressedUntilRePress),
-        // and is jumping down into a gap or 1x1 hole between walls, do NOT treat adjacent walls as supporting surface!
         const char = this.isCharacter ? (this as any) : null;
         const isDismountFalling = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
 
         if (isDismountFalling) {
-          supportingWall = arena.getWallAt(this.position.x, this.position.y);
-          if (supportingWall) {
-            surfaceHeight = supportingWall.wallHeight;
-          }
+          // While in dismount freefall, entity must ALWAYS fall down to ground!
+          // No wall provides layer 2 support.
+          surfaceHeight = 0;
+          supportingWall = null;
         } else {
           // Standard layer 2 support: entity is supported as long as collider circle overlaps ANY wall tile
           supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
@@ -559,8 +557,11 @@ export class GameObject {
 
       // Detect stepping/jumping off wall with climb button held
       if (char && wasStandingOnWallTop) {
+        const col = Math.floor(this.position.x / arena.tileSize);
+        const row = Math.floor(this.position.y / arena.tileSize);
+        const centerTileHasWall = arena.hasWall(col, row);
         const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-        if (!newSupport && char.climbingModule && char.isClimbInputHeld) {
+        if ((!newSupport || !centerTileHasWall) && char.climbingModule && char.isClimbInputHeld) {
           char.climbingModule.climbSuppressedUntilRelease = true;
         }
       }
@@ -592,9 +593,12 @@ export class GameObject {
         this.resolveWallImpact(0, -1, bRestitution);
       }
 
-      // Internal arena walls collision: strictly enforced for any entity below wall height
+      // Internal arena walls collision:
+      // Strictly enforced for any entity below wall height,
+      // AND also strictly enforced during dismount freefall against all walls (collider cannot enter any other wall!)
+      const isDismountFallingNow = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
       for (const wall of arena.walls) {
-        if (this.position.z < wall.wallHeight - 0.05) {
+        if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow) {
           this.resolveWallCollision(wall);
         }
       }
