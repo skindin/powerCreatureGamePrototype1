@@ -558,7 +558,7 @@ export class GameObject {
 
     if (moveDist > 0.0001) {
       if (isPreventWalkOffActive) {
-        const hangDistance = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.25);
+        const hangDistance = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.10);
         let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, hangDistance);
         this.standingWall = currentWall;
 

@@ -56,7 +56,7 @@ export class Character extends GameObject {
   }
 
   public get hangDistance(): number {
-    return this.climbingModule ? this.climbingModule.hangDistance : 0.25;
+    return this.climbingModule ? this.climbingModule.hangDistance : 0.10;
   }
 
   public set hangDistance(val: number) {
