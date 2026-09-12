@@ -21,17 +21,17 @@ export class PickupModule {
     // Cannot grab an object you just threw while it is departing your reach
     if (obj.lastThrower === character) return false;
 
-    // Determine character height layer (0: Ground layer < wallHeight - 0.05, 1: Wall layer >= wallHeight - 0.05)
-    const charLayer = character.position.z >= wallHeight - 0.05 ? 1 : 0;
+    // Determine character layer (1: Ground layer, 2: Wall / elevated layer) - vertical position z is NOT considered
+    const charLayer = (character.standingWall !== null || character.supportingSurfaceHeight >= wallHeight - 0.05) ? 2 : 1;
 
-    // Determine object's height layer
-    const objLayer = obj.position.z >= wallHeight - 0.05 ? 1 : 0;
-    const isCrossLayer = charLayer !== objLayer;
+    // Determine object layer (1: Ground layer, 2: Wall / elevated layer) - vertical position z is NOT considered
+    const objLayer = (obj.standingWall !== null || obj.supportingSurfaceHeight >= wallHeight - 0.05) ? 2 : 1;
+    const isSameLayer = charLayer === objLayer;
 
-    // Effective physical reach is reduced when attempting to grab across different height layers
-    const effectiveReach = isCrossLayer
-      ? this.pickupReach * this.crossLayerReachRatio
-      : this.pickupReach;
+    // If on the same layer: same layer reach. If on a different layer: different layer reach.
+    const effectiveReach = isSameLayer
+      ? this.pickupReach
+      : this.pickupReach * this.crossLayerReachRatio;
 
     // Distance from character to object (must be within physical reach)
     const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
