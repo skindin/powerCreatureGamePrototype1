@@ -20,7 +20,7 @@ export class ClimbingModule {
   public horizontalClimb = false;
 
   // Maximum distance character is allowed to hang off of elevated walls before ledge guard clamps movement (in units)
-  public hangDistance = 0.5;
+  public hangDistance = 0.25;
 
   // When climbing up onto a wall top, dismount is suppressed until climb control is released
   public dismountSuppressedUntilRelease = false;

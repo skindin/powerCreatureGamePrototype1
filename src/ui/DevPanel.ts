@@ -716,9 +716,9 @@ export class DevPanel {
                 <div class="slider-group">
                   <div class="slider-label">
                     <span>Ledge Hang Distance (u)</span>
-                    <span id="val-climb-hang">${(this.character.climbingModule?.hangDistance ?? 0.5).toFixed(2)}</span>
+                    <span id="val-climb-hang">${(this.character.climbingModule?.hangDistance ?? 0.25).toFixed(2)}</span>
                   </div>
-                  <input type="range" id="slide-climb-hang" min="0.1" max="1.5" step="0.05" value="${this.character.climbingModule?.hangDistance ?? 0.5}">
+                  <input type="range" id="slide-climb-hang" min="0.05" max="1.5" step="0.05" value="${this.character.climbingModule?.hangDistance ?? 0.25}">
                 </div>
               </div>
             </div>
@@ -1895,7 +1895,7 @@ export class DevPanel {
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Ledge Hang Limit</span>
-        <span class="inspect-v">${(this.character.climbingModule?.hangDistance ?? 0.5).toFixed(2)} u</span>
+        <span class="inspect-v">${(this.character.climbingModule?.hangDistance ?? 0.25).toFixed(2)} u</span>
       </div>
       ` : ''}
     `;
