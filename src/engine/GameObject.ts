@@ -314,6 +314,9 @@ export class GameObject {
           const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, this.standingWall);
           if (touchesCurrent) {
             surfaceHeight = this.standingWall.wallHeight;
+          } else if (char?.climbingModule?.dismountSuppressedUntilRelease) {
+            // Player just climbed onto wall top: dismount is suppressed until climb control is released
+            surfaceHeight = this.standingWall.wallHeight;
           } else {
             let contiguousSupport: Wall | null = null;
             for (const wall of arena.walls) {
@@ -633,7 +636,7 @@ export class GameObject {
             if (nextSupport) {
               currentWall = nextSupport;
               this.standingWall = nextSupport;
-            } else {
+            } else if (!char?.climbingModule?.dismountSuppressedUntilRelease) {
               // Collider does not touch current wall or any contiguous wall: dismount into gap!
               hasDismountedIntoGap = true;
               currentWall = null;
@@ -651,8 +654,8 @@ export class GameObject {
 
           // If dismounted into a gap, airborne, or in dismount falling:
           // Immediately resolve collision with any wall ahead so collider cannot enter another wall across the gap!
-          const isFallingInGap = hasDismountedIntoGap ||
-            (!this.standingWall && (this.position.z <= arena.wallHeight || Boolean(char?.climbingModule?.climbSuppressedUntilRePress)));
+          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap ||
+            (!this.standingWall && Boolean(char?.climbingModule?.climbSuppressedUntilRePress)));
 
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
@@ -695,7 +698,7 @@ export class GameObject {
       const isDismountFallingNow = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
       const isNotSupportedOnWall = this.standingWall === null || this.supportingSurfaceHeight < arena.wallHeight - 0.05;
       for (const wall of arena.walls) {
-        if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || isNotSupportedOnWall) {
+        if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || (isNotSupportedOnWall && !this.isClimbing)) {
           // If standing on a wall, that wall and its contiguous walls don't collide
           if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
             continue;
