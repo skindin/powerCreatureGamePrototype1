@@ -18,6 +18,8 @@ export interface TrajectoryCalculation {
   isBlockedByWall: boolean;
   blockedAtWallId?: string;
   isLandingOnWallTop?: boolean;
+  peakHeight?: number;
+  flightTime?: number;
 }
 
 export class ThrowModule {
@@ -55,7 +57,8 @@ export class ThrowModule {
     throwPower: number,
     hasGravity = true,
     hasVerticalVelocity = true,
-    colliderRadius = 0.35
+    colliderRadius = 0.35,
+    charVel?: { x: number; y: number; z?: number }
   ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
     const dx = targetX - startX;
     const dy = targetY - startY;
@@ -69,12 +72,24 @@ export class ThrowModule {
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
 
+    // Inertial velocity integration:
+    // When moving, the character's velocity vector influences the throw.
+    // To land on target, the arm cancels sideways drift while contributing forward throw power,
+    // altering the flight time, vertical arc, and launch velocity.
+    const vxChar = charVel?.x ?? 0;
+    const vyChar = charVel?.y ?? 0;
+    const vAlong = vxChar * dirX + vyChar * dirY;
+    const vPerp = vxChar * (-dirY) + vyChar * dirX;
+
+    // Arm velocity available in target direction after countering perpendicular momentum
+    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
+    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+
     // Straight-line horizontal flight if zero-G or no vertical velocity module
     if (!hasGravity || !hasVerticalVelocity) {
-      const maxThrowSpeed = Math.max(3.0, throwPower);
-      const totalTime = Math.max(0.14, actualDist / maxThrowSpeed);
-      const vx = dirX * maxThrowSpeed;
-      const vy = dirY * maxThrowSpeed;
+      const totalTime = Math.max(0.14, actualDist / maxForwardSpeed);
+      const vx = dirX * maxForwardSpeed;
+      const vy = dirY * maxForwardSpeed;
       const vz = 0;
       return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ };
     }
@@ -84,9 +99,8 @@ export class ThrowModule {
     const deltaZ = targetSurfaceHeight - startZ;
 
     // Minimum angle trajectory calculation:
-    // Throws with maximum available throw speed for the flattest, minimum possible launch angle to hit the target.
-    const maxThrowSpeed = Math.max(3.0, throwPower);
-    const minFlightTime = Math.max(0.14, actualDist / maxThrowSpeed);
+    // Moving towards the target enables faster, flatter throws; backpedaling results in a higher lob.
+    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
     let totalTime = minFlightTime;
 
     // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
@@ -173,8 +187,15 @@ export class ThrowModule {
 
     const throwPower = this.baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+
+    const charVel = {
+      x: character.velocity.x,
+      y: character.velocity.y,
+      z: character.isAboveGround ? character.verticalVelocity : 0,
+    };
+
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel
     );
     if (!launch) return null;
 
@@ -188,6 +209,7 @@ export class ThrowModule {
     let isBlocked = false;
     let isLandingOnWallTop = targetSurfaceHeight > 0;
     let blockedWallId: string | undefined;
+    let peakHeight = startZ;
 
     for (let step = 0; step <= steps; step++) {
       const t = step * dtStep;
@@ -197,6 +219,10 @@ export class ThrowModule {
       const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
       const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
       const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
+
+      if (currentZ > peakHeight) {
+        peakHeight = currentZ;
+      }
 
       // Blue section: height > standard wall height
       const couldClearWall = currentZ > arena.wallHeight;
@@ -260,6 +286,8 @@ export class ThrowModule {
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : (targetSurfaceHeight > 0),
       blockedAtWallId: blockedWallId,
+      peakHeight,
+      flightTime: totalTime,
     };
   }
 
@@ -280,8 +308,13 @@ export class ThrowModule {
     const startZ = held.position.z;
 
     const throwPower = this.baseThrowForce * character.strength;
+    const charVel = {
+      x: character.velocity.x,
+      y: character.velocity.y,
+      z: character.isAboveGround ? character.verticalVelocity : 0,
+    };
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel
     );
     if (!launch) return null;
 

@@ -559,19 +559,40 @@ export class Renderer {
       ctx.moveTo(p1.x * ppu, p1.y * ppu);
       ctx.lineTo(p2.x * ppu, p2.y * ppu);
 
+      // Altitude scaling for the visual arc: thickness scales smoothly with altitude
+      const avgZ = (p1.z + p2.z) * 0.5;
+      const altScale = Renderer.getAltitudeScale(avgZ, 1.0);
+
       // The entire part of the trajectory that could go over a wall is blue (even if not over a wall)
       if (p1.couldClearWall || p2.couldClearWall) {
         // High section capable of clearing standard wall height: vibrant cyan / blue
         ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 4;
-        ctx.setLineDash([6, 3]);
+        ctx.lineWidth = 3.6 * altScale;
+        ctx.setLineDash([7, 3]);
       } else {
         // Normal lower flight section: amber dashed line
         ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.2 * altScale;
         ctx.setLineDash([4, 4]);
       }
       ctx.stroke();
+    }
+
+    // Apex height marker along the trajectory
+    if (points.length > 2 && traj.peakHeight && traj.peakHeight > 0.25) {
+      let apexPt = points[0];
+      for (const pt of points) {
+        if (pt.z > apexPt.z) apexPt = pt;
+      }
+      ctx.save();
+      const ax = apexPt.x * ppu;
+      const ay = apexPt.y * ppu;
+      const isHigh = apexPt.z >= 1.0;
+      ctx.fillStyle = isHigh ? "#38bdf8" : "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(ax, ay, isHigh ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     // Impact or Landing Marker
