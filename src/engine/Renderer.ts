@@ -495,11 +495,8 @@ export class Renderer {
       ctx.setLineDash([]);
       ctx.stroke();
 
-      // 1. Upward facing rounded, skewed triangles rotating at fixed speed (underneath dotted line)
-      ctx.save();
-      ctx.translate(x, y);
-      this.drawFixedSpeedTriangles(ctx, outerRadius, outerRadius, spinSign, renderRadius, true);
-      ctx.restore();
+      // 1. Upward facing rounded, skewed triangles from player's perspective (underneath dotted line)
+      this.drawFixedSpeedTriangles(ctx, x, y, outerRadius, outerRadius, 0, spinSign, renderRadius, true);
 
       // 2. Circular dotted outline rotating around it at physical speed
       ctx.beginPath();
@@ -519,16 +516,16 @@ export class Renderer {
       const fz = Math.abs(wz) / wTotal; // Fraction vertical
       // Generous 3D oval opening (at least 35% opening even when rolling horizontally, opening to full circle)
       const b = a * Math.max(0.35, Math.pow(fz, 0.65));
+      const spinSign = wz !== 0 ? Math.sign(wz) : 1;
 
+      // 1. Upward facing rounded, skewed triangles from player's perspective (underneath dotted line)
+      this.drawFixedSpeedTriangles(ctx, x, y, a, b, rollDirAngle, spinSign, renderRadius, false);
+
+      // 2. Classic animated dotted roll oval (rotating at physical roll speed)
+      ctx.save();
       ctx.translate(x, y);
       ctx.rotate(rollDirAngle);
 
-      const spinSign = wz !== 0 ? Math.sign(wz) : 1;
-
-      // 1. Upward facing rounded, skewed triangles rotating at fixed speed (underneath dotted line)
-      this.drawFixedSpeedTriangles(ctx, a, b, spinSign, renderRadius, false);
-
-      // 2. Classic animated dotted roll oval (rotating at physical roll speed)
       // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
       ctx.beginPath();
       ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
@@ -546,6 +543,8 @@ export class Renderer {
       ctx.setLineDash([dashLen, dashGap]);
       ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
       ctx.stroke();
+
+      ctx.restore();
     }
 
     ctx.restore();
@@ -557,8 +556,8 @@ export class Renderer {
   private drawRoundedTriangle(
     ctx: CanvasRenderingContext2D,
     x1: number, y1: number, // Apex
-    x2: number, y2: number, // Base 1
-    x3: number, y3: number, // Base 2
+    x2: number, y2: number, // Base Left
+    x3: number, y3: number, // Base Right
     radius: number
   ): void {
     ctx.beginPath();
@@ -574,12 +573,15 @@ export class Renderer {
 
   /**
    * Draws upward facing rounded, skewed triangles rotating at a fixed speed in the direction of the object,
-   * rendered underneath the animated dotted line.
+   * rendered in 2D from the player's perspective underneath the animated dotted line.
    */
   private drawFixedSpeedTriangles(
     ctx: CanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
     a: number,
     b: number,
+    rollDirAngle: number,
     spinSign: number,
     renderRadius: number,
     isUniformAlpha: boolean = false
@@ -588,13 +590,16 @@ export class Renderer {
     const fixedRate = 2.5;
     const fixedPhase = (performance.now() * 0.001 * fixedRate) % (Math.PI * 2);
 
-    const numTriangles = renderRadius > 26 ? 3 : 2;
+    const numTriangles = renderRadius > 24 ? 3 : 2;
     const sliceAngle = (Math.PI * 2) / numTriangles;
 
-    const H = Math.max(8, Math.min(14, renderRadius * 0.38));
-    const W = Math.max(6, Math.min(11, renderRadius * 0.30));
-    const cornerRadius = Math.max(1.5, Math.min(2.8, renderRadius * 0.07));
-    const skewX = spinSign * (W * 0.35);
+    // Prominent, clearly visible 2D triangle dimensions from the user's perspective
+    const H = Math.max(14, Math.min(22, renderRadius * 0.58));
+    const W = Math.max(11, Math.min(18, renderRadius * 0.46));
+    const cornerRadius = 1.4; // Sleek, clean corner rounding that preserves crisp triangle shape
+
+    const cosR = Math.cos(rollDirAngle);
+    const sinR = Math.sin(rollDirAngle);
 
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
@@ -602,23 +607,37 @@ export class Renderer {
 
     for (let k = 0; k < numTriangles; k++) {
       const t = (k * sliceAngle + spinSign * fixedPhase) % (Math.PI * 2);
-      const x0 = a * Math.cos(t);
-      const y0 = b * Math.sin(t);
 
-      // On 3D oval: upper half is opaque, underside is semi-transparent
+      // Current position along the oval in screen space
+      const lx1 = a * Math.cos(t);
+      const ly1 = b * Math.sin(t);
+      const sx1 = centerX + lx1 * cosR - ly1 * sinR;
+      const sy1 = centerY + lx1 * sinR + ly1 * cosR;
+
+      // Position a moment ahead along the orbit to determine horizontal motion on screen
+      const dt = 0.05 * (spinSign || 1);
+      const lx2 = a * Math.cos(t + dt);
+      const ly2 = b * Math.sin(t + dt);
+      const sx2 = centerX + lx2 * cosR - ly2 * sinR;
+
+      const dX = sx2 - sx1;
+      const skewSign = Math.abs(dX) > 0.001 ? Math.sign(dX) : (spinSign || 1);
+      const skewX = skewSign * (W * 0.32);
+
+      // On 3D oval: upper hemisphere is opaque, underside is semi-transparent
       const isTopHalf = Math.sin(t) >= 0;
-      const alpha = isUniformAlpha ? 0.85 : (isTopHalf ? 0.85 : 0.28);
+      const alpha = isUniformAlpha ? 0.90 : (isTopHalf ? 0.90 : 0.32);
 
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
 
-      // Upward facing: apex points upward (-Y), base sits below (+Y)
-      // Skewed: apex is slanted in the direction of spin
-      const apexX = x0 + skewX;
-      const apexY = y0 - H * 0.55;
-      const blX = x0 - W * 0.5;
-      const blY = y0 + H * 0.45;
-      const brX = x0 + W * 0.5;
-      const brY = y0 + H * 0.45;
+      // 2D Upward Facing Triangle from player's perspective:
+      // Apex points straight up (-Y on screen), skewed horizontally in motion direction
+      const apexX = sx1 + skewX;
+      const apexY = sy1 - H * 0.55;
+      const blX = sx1 - W * 0.5;
+      const blY = sy1 + H * 0.45;
+      const brX = sx1 + W * 0.5;
+      const brY = sy1 + H * 0.45;
 
       this.drawRoundedTriangle(ctx, apexX, apexY, blX, blY, brX, brY, cornerRadius);
     }
