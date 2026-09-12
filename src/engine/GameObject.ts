@@ -265,7 +265,11 @@ export class GameObject {
 
   /** Readonly getter: true if elevated at or above standard arena wall height (1.0 unit) or resting on a wall */
   public get isAboveWalls(): boolean {
-    return this.hasVerticalPosition && (this.position.z >= 0.95 || this.supportingSurfaceHeight >= 0.95);
+    return this.hasVerticalPosition && (
+      this.position.z >= 0.85 ||
+      this.supportingSurfaceHeight >= 0.85 ||
+      this.standingWall !== null
+    );
   }
 
   /** Update physics, gravity, friction, and ground/wall collision */
@@ -298,7 +302,8 @@ export class GameObject {
     if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
       // Layer 2 threshold: entity is elevated to or resting on layer 2 (wall height)
       const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 ||
-        (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2);
+        (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2) ||
+        this.standingWall !== null;
 
       if (isAtWallLayer) {
         const char = this.isCharacter ? (this as any) : null;
@@ -339,7 +344,7 @@ export class GameObject {
           }
         } else {
           // standingWall not set yet: acquire if resting at wall height and not climbing
-          if (!this.isClimbing && this.position.z >= arena.wallHeight - 0.05) {
+          if (!this.isClimbing && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
             const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
             if (wall) {
               this.standingWall = wall;

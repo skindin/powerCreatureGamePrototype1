@@ -347,6 +347,7 @@ export class InputManager {
 
     this.onMouseUp = (_x: number, _y: number) => {
       if (this.draggedEntity) {
+        arena.syncEntitiesWithWalls([this.draggedEntity]);
         this.draggedEntity = null;
       }
       if (devPanel?.isEditMode) {

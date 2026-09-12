@@ -165,8 +165,8 @@ export class GameLoop {
           // 1. All colliders below wall height collide with each other, and NOT with colliders above wall height.
           // 2. All colliders above wall height (including objects resting on walls) collide with each other, and NOT with colliders below wall height.
           const wallThreshold = this.arena.wallHeight - 0.15;
-          const aAboveWall = a.position.z >= wallThreshold || a.supportingSurfaceHeight >= wallThreshold;
-          const bAboveWall = b.position.z >= wallThreshold || b.supportingSurfaceHeight >= wallThreshold;
+          const aAboveWall = a.position.z >= wallThreshold || a.supportingSurfaceHeight >= wallThreshold || a.standingWall !== null || a.isAboveWalls;
+          const bAboveWall = b.position.z >= wallThreshold || b.supportingSurfaceHeight >= wallThreshold || b.standingWall !== null || b.isAboveWalls;
 
           // If one is above wall height and the other is not, they never collide (clean pass-over)
           if (aAboveWall !== bAboveWall) continue;

@@ -85,6 +85,9 @@ function bootstrap(): void {
     }),
   ];
 
+  // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
+  arena.syncEntitiesWithWalls([character, ...objects]);
+
   // 4. Initialize Renderer & Dev Panel
   const renderer = new Renderer(ctx);
   const devPanel = new DevPanel({
@@ -93,6 +96,7 @@ function bootstrap(): void {
     arena,
     objects,
     onSpawnObject: (newObj) => {
+      arena.syncEntitiesWithWalls([newObj]);
       objects.push(newObj);
       devPanel.updateSelectorOptions();
     },
