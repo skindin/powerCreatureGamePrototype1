@@ -108,7 +108,7 @@ export class PickupModule {
     character.heldObject = null;
     dropped.isHeld = false;
     dropped.heldBy = null;
-    dropped.lastThrower = character;
+    dropped.lastThrower = null; // Instantly available to pick back up
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;
     dropped.verticalVelocity = character.isAboveGround ? character.verticalVelocity : 0;

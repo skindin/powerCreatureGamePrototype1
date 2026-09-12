@@ -8,6 +8,7 @@ export class InputManager {
   private canvas: HTMLCanvasElement;
   private arena: Arena;
   private keysPressed: Set<string> = new Set();
+  private isEKeyDepressed = false;
   
   public mousePos: Vector2D = { x: 0, y: 0 };
   public isMouseDown = false;
@@ -53,7 +54,10 @@ export class InputManager {
       this.updateMovementVector();
 
       if (e.code === "KeyE") {
-        // Alternative interact / drop key
+        // Must release E key first before pressing it again to pick up or drop
+        if (e.repeat || this.isEKeyDepressed) return;
+        this.isEKeyDepressed = true;
+
         if (this.onDropAttempt) {
           this.onDropAttempt();
         }
@@ -62,6 +66,16 @@ export class InputManager {
 
     window.addEventListener("keyup", (e) => {
       this.keysPressed.delete(e.code);
+      this.updateMovementVector();
+
+      if (e.code === "KeyE") {
+        this.isEKeyDepressed = false;
+      }
+    });
+
+    window.addEventListener("blur", () => {
+      this.isEKeyDepressed = false;
+      this.keysPressed.clear();
       this.updateMovementVector();
     });
 
@@ -376,10 +390,7 @@ export class InputManager {
 
     this.onDropAttempt = () => {
       if (character.heldObject && character.pickupModule) {
-        const dropped = character.pickupModule.drop(character);
-        if (dropped) {
-          this.isThrowingPress = true; // Prevents mouse hold from immediately re-grabbing dropped object
-        }
+        character.pickupModule.drop(character);
       } else if (!character.heldObject && character.pickupModule) {
         const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects, arena.wallHeight);
         if (target) {
