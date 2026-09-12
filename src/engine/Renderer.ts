@@ -545,45 +545,86 @@ export class Renderer {
     ctx.shadowBlur = 3;
 
     // Fixed 3D distance interval between dots in world units (~19px at 50ppu)
-    const dotSpacing = 0.38;
-    let currentDist = 0;
-    let nextDotDist = dotSpacing * 0.5;
-
+    const base3DSpacing = 0.38;
     const baseRadius = Math.max(2.2, 0.048 * ppu);
     const layer2Threshold = arena.wallHeight - 0.05;
 
-    // Step through piecewise 3D linear segments and sample dots at uniform 3D arc lengths
+    let lastX = points[0].x;
+    let lastY = points[0].y;
+    let lastRadius = baseRadius;
+    let dist3DSinceLast = 0;
+    let isFirstDot = true;
+
+    // Step through piecewise 3D linear segments and sample dots with 2D overlap prevention
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const dz = p2.z - p1.z;
-      // 3D distance traveled including vertical altitude
       const segLen = Math.hypot(dx, dy, dz);
       if (segLen <= 0.0001) continue;
 
-      while (currentDist + segLen >= nextDotDist) {
-        const t = (nextDotDist - currentDist) / segLen;
-        const dotX = p1.x + dx * t;
-        const dotY = p1.y + dy * t;
-        const dotZ = p1.z + dz * t;
+      // Sub-sample each segment finely so we can accurately position dots
+      const subSteps = Math.max(1, Math.ceil(segLen / 0.02));
+      const subDx = dx / subSteps;
+      const subDy = dy / subSteps;
+      const subDz = dz / subSteps;
+      const subLen = segLen / subSteps;
 
-        // Dot gets bigger as altitude increases
-        const altRatio = Math.max(0, dotZ) / Math.max(0.1, arena.wallHeight);
+      for (let s = 1; s <= subSteps; s++) {
+        const curX = p1.x + subDx * s;
+        const curY = p1.y + subDy * s;
+        const curZ = p1.z + subDz * s;
+
+        dist3DSinceLast += subLen;
+
+        const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
         const radius = baseRadius * (1.0 + altRatio * 0.75);
 
-        // Transparent once within Layer 2 (z >= wallHeight - 0.05)
-        const isLayer2 = dotZ >= layer2Threshold;
-        ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+        if (isFirstDot) {
+          if (dist3DSinceLast >= base3DSpacing * 0.5) {
+            const isLayer2 = curZ >= layer2Threshold;
+            ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+            ctx.beginPath();
+            ctx.arc(curX * ppu, curY * ppu, radius, 0, Math.PI * 2);
+            ctx.fill();
 
-        ctx.beginPath();
-        ctx.arc(dotX * ppu, dotY * ppu, radius, 0, Math.PI * 2);
-        ctx.fill();
+            lastX = curX;
+            lastY = curY;
+            lastRadius = radius;
+            dist3DSinceLast = 0;
+            isFirstDot = false;
+          }
+          continue;
+        }
 
-        nextDotDist += dotSpacing;
+        // 2D distance on screen in pixels from the previous placed dot
+        const dist2DPx = Math.hypot(curX - lastX, curY - lastY) * ppu;
+
+        // When dots get close to each other in 2D (due to steep vertical arc),
+        // decrease how often dots are placed so dots never bunch up or overlap!
+        // At minimum, ensure a visible gap between dot perimeters:
+        const min2DSpacingPx = Math.max(18, lastRadius + radius + 7);
+
+        if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
+          // Don't draw dot on top of the landing target
+          const distToLandPx = Math.hypot(curX - traj.landPoint.x, curY - traj.landPoint.y) * ppu;
+          const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
+          if (distToLandPx > landRadiusPx * 0.8) {
+            const isLayer2 = curZ >= layer2Threshold;
+            ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+            ctx.beginPath();
+            ctx.arc(curX * ppu, curY * ppu, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            lastX = curX;
+            lastY = curY;
+            lastRadius = radius;
+            dist3DSinceLast = 0;
+          }
+        }
       }
-      currentDist += segLen;
     }
 
     ctx.shadowBlur = 0;
