@@ -472,6 +472,9 @@ export class Renderer {
     const wh = Math.hypot(wx, wy); // Horizontal angular speed
     const isPerfectVertical = wh < 0.05 * wTotal;
 
+    // Hide fixed-speed arrows when it has zero angular velocity or is being held
+    const showArrows = !obj.isHeld && wTotal > 0.02;
+
     // Stroke thickness remains fixed and does not get thicker as altitude increases
     const strokeWidth = 2.5;
     const dashLen = 5;
@@ -495,8 +498,10 @@ export class Renderer {
       ctx.setLineDash([]);
       ctx.stroke();
 
-      // 1. Upward facing rounded, skewed triangles from player's perspective (underneath dotted line)
-      this.drawFixedSpeedTriangles(ctx, x, y, outerRadius, outerRadius, 0, spinSign, renderRadius, true);
+      // 1. Upward facing rounded, skewed triangles from player's perspective (hidden if held or zero angular velocity)
+      if (showArrows) {
+        this.drawFixedSpeedTriangles(ctx, x, y, outerRadius, outerRadius, 0, spinSign, renderRadius, true);
+      }
 
       // 2. Circular dotted outline rotating around it at physical speed
       ctx.beginPath();
@@ -518,8 +523,10 @@ export class Renderer {
       const b = a * Math.max(0.35, Math.pow(fz, 0.65));
       const spinSign = wz !== 0 ? Math.sign(wz) : 1;
 
-      // 1. Upward facing rounded, skewed triangles from player's perspective (underneath dotted line)
-      this.drawFixedSpeedTriangles(ctx, x, y, a, b, rollDirAngle, spinSign, renderRadius, false);
+      // 1. Upward facing rounded, skewed triangles from player's perspective (hidden if held or zero angular velocity)
+      if (showArrows) {
+        this.drawFixedSpeedTriangles(ctx, x, y, a, b, rollDirAngle, spinSign, renderRadius, false);
+      }
 
       // 2. Classic animated dotted roll oval (rotating at physical roll speed)
       ctx.save();
