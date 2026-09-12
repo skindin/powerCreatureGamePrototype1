@@ -272,6 +272,7 @@ export class Arena {
           }
           ent.position.z = supportingWall.wallHeight;
           ent.supportingSurfaceHeight = supportingWall.wallHeight;
+          (ent as any).standingWall = supportingWall;
           ent.verticalVelocity = 0;
         }
       }
@@ -334,6 +335,16 @@ export class Arena {
       }
     }
     return null;
+  }
+
+  /**
+   * Tests if two walls touch or are contiguous (share an edge or corner with no gap)
+   */
+  public areWallsContiguous(w1: Wall, w2: Wall): boolean {
+    if (w1.id === w2.id) return true;
+    const xDist = Math.max(0, Math.max(w1.x, w2.x) - Math.min(w1.x + w1.width, w2.x + w2.width));
+    const yDist = Math.max(0, Math.max(w1.y, w2.y) - Math.min(w1.y + w1.height, w2.y + w2.height));
+    return xDist < 0.001 && yDist < 0.001;
   }
 
   /**

@@ -169,6 +169,7 @@ export class ClimbingModule {
       // Clinging to the wall: stay supported at current elevation, neutralize gravity
       character.isClimbing = true;
       character.verticalVelocity = 0;
+      (character as any).standingWall = null;
 
       // Handle horizontal traverse along the wall face if horizontalClimb is enabled
       if (this.horizontalClimb && hasMoveInput && Math.abs(inputDotTangent) >= 0.1) {
@@ -198,6 +199,7 @@ export class ClimbingModule {
         if (character.position.z >= targetWall.wallHeight) {
           character.position.z = targetWall.wallHeight;
           character.supportingSurfaceHeight = targetWall.wallHeight;
+          (character as any).standingWall = targetWall;
           character.verticalVelocity = 0;
           character.isClimbing = false;
           // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
