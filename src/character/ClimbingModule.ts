@@ -95,19 +95,12 @@ export class ClimbingModule {
     const moveDirX = hasMoveInput ? movementInput.x / inputMag : 0;
     const moveDirY = hasMoveInput ? movementInput.y / inputMag : 0;
 
-    // If standing on top of a wall and player hits Space bar, perform a dismount jump off the wall
-    // Only allowed if dismount is not suppressed (must have released climb control after climbing)
-    if (character.position.z >= arena.wallHeight - 0.05 && !this.dismountSuppressedUntilRelease) {
-      if (isFreshClimbPress) {
-        const jumpDirX = hasMoveInput ? moveDirX : Math.cos(character.facingAngle);
-        const jumpDirY = hasMoveInput ? moveDirY : Math.sin(character.facingAngle);
-        character.velocity.x = jumpDirX * 3.5;
-        character.velocity.y = jumpDirY * 3.5;
-        this.climbSuppressedUntilRelease = true;
-        this.isDismountFreefall = true;
-        character.isClimbing = false;
-        return false;
-      }
+    // When standing on top of a wall (layer 2), climbing is inactive.
+    // Pressing or holding the climb button (Space) simply temporarily disables preventWalkOff in GameObject.ts,
+    // allowing the player to walk off an edge if they choose, without causing them to climb.
+    if (!character.isClimbing && (character.standingWall !== null || character.position.z >= arena.wallHeight)) {
+      character.isClimbing = false;
+      return false;
     }
 
     // Find closest adjacent wall

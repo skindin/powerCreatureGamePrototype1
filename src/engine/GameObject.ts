@@ -304,12 +304,7 @@ export class GameObject {
         const char = this.isCharacter ? (this as any) : null;
         const isDismountFalling = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
 
-        if (isDismountFalling) {
-          // While in dismount freefall, entity must ALWAYS fall down to ground!
-          // No wall provides layer 2 support.
-          surfaceHeight = 0;
-          this.standingWall = null;
-        } else if (this.standingWall) {
+        if (this.standingWall) {
           // Verify entity still overlaps current standing wall or a contiguous wall
           const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, this.standingWall);
           if (touchesCurrent) {
@@ -338,7 +333,7 @@ export class GameObject {
               }
             }
           }
-        } else {
+        } else if (!isDismountFalling) {
           // standingWall not set yet: acquire if resting at wall height and not climbing
           if (!this.isClimbing && this.position.z >= arena.wallHeight - 0.05) {
             const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
