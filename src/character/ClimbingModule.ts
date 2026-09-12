@@ -25,10 +25,14 @@ export class ClimbingModule {
   // When stepping/jumping off a wall with climb key held, suppress re-grabbing until released or grounded
   public climbSuppressedUntilRelease = false;
 
+  // Set when dismounting or stepping into an open gap until hitting ground or fresh press
+  public isDismountFreefall = false;
+
   public get climbSuppressedUntilRePress(): boolean {
-    return this.climbSuppressedUntilRelease;
+    return this.isDismountFreefall || this.climbSuppressedUntilRelease;
   }
   public set climbSuppressedUntilRePress(val: boolean) {
+    this.isDismountFreefall = val;
     this.climbSuppressedUntilRelease = val;
   }
 
@@ -70,6 +74,11 @@ export class ClimbingModule {
       this.climbSuppressedUntilRelease = false;
     }
 
+    // Ground contact or fresh press clears dismount freefall
+    if (character.position.z <= 0.01 || isFreshClimbPress) {
+      this.isDismountFreefall = false;
+    }
+
     if (this.climbSuppressedUntilRelease) {
       character.isClimbing = false;
       return false;
@@ -95,6 +104,7 @@ export class ClimbingModule {
         character.velocity.x = jumpDirX * 3.5;
         character.velocity.y = jumpDirY * 3.5;
         this.climbSuppressedUntilRelease = true;
+        this.isDismountFreefall = true;
         character.isClimbing = false;
         return false;
       }

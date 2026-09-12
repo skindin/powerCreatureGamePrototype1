@@ -659,7 +659,9 @@ export class GameObject {
 
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
-              this.resolveWallCollision(wall);
+              if (this.position.z <= wall.wallHeight) {
+                this.resolveWallCollision(wall);
+              }
             }
           }
         }
@@ -693,17 +695,18 @@ export class GameObject {
       }
 
       // Internal arena walls collision:
-      // Strictly enforced for any entity below wall height,
-      // AND also strictly enforced whenever entity is not supported on top of a wall (e.g. in gap or dismount falling)
+      // A wall only exists physically from z=0 up to wall.wallHeight.
+      // If an entity or thrown object is elevated above the wall (z > wall.wallHeight), it flies cleanly over the wall!
       const isDismountFallingNow = Boolean(char?.climbingModule?.climbSuppressedUntilRePress);
-      const isNotSupportedOnWall = this.standingWall === null || this.supportingSurfaceHeight < arena.wallHeight - 0.05;
       for (const wall of arena.walls) {
-        if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || (isNotSupportedOnWall && !this.isClimbing)) {
-          // If standing on a wall, that wall and its contiguous walls don't collide
-          if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
-            continue;
+        if (this.position.z <= wall.wallHeight) {
+          if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow) {
+            // If standing on a wall, that wall and its contiguous walls don't collide
+            if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
+              continue;
+            }
+            this.resolveWallCollision(wall);
           }
-          this.resolveWallCollision(wall);
         }
       }
     }
