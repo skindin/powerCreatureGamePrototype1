@@ -593,11 +593,7 @@ export class GameObject {
 
         if (isInsideClampZone) {
           // Inside the clamp zone (within 0.1 units of the wall)
-          if (char.isClimbInputHeld && !climbMod.dismountSuppressedUntilRelease) {
-            // Player pressed Space: disable the assist clamp!
-            climbMod.isAssistClampArmed = false;
-            climbMod.hasLeftClampZoneSinceDismount = false;
-          } else if (climbMod.hasLeftClampZoneSinceDismount) {
+          if (climbMod.hasLeftClampZoneSinceDismount) {
             // Once character moves within 0.1 units of the wall after being outside: clamp is enabled!
             climbMod.isAssistClampArmed = true;
           }
@@ -680,27 +676,45 @@ export class GameObject {
 
             // Outward velocity attempting to step into the void beyond hangDistance
             const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
-            if (outwardVel > 0) {
-              // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
-              this.velocity.x -= outwardVel * normalX;
-              this.velocity.y -= outwardVel * normalY;
-            }
+            const moveInput = char?.movementInput ?? { x: 0, y: 0 };
+            const outwardInput = moveInput.x * normalX + moveInput.y * normalY;
 
-            // Clamp position along the normal to valid hang distance (hangDistance - 0.002) so character is prevented from moving more than hangDistance off walls
-            const maxAllowedDist = hangDistance - 0.002;
-            if (closest.dist > maxAllowedDist) {
-              this.position.x = closest.closestX + normalX * maxAllowedDist;
-              this.position.y = closest.closestY + normalY * maxAllowedDist;
-            } else {
+            // Actively pushing against the guardrail: outward velocity or directional input towards the void
+            const isPushingAgainstGuardrail = outwardVel > 0.001 || outwardInput > 0.05;
+
+            // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail!
+            if (isPushingAgainstGuardrail && char?.isClimbInputHeld && !climbMod?.dismountSuppressedUntilRelease) {
+              if (climbMod) {
+                climbMod.isAssistClampArmed = false;
+                climbMod.hasLeftClampZoneSinceDismount = false;
+              }
+              // Allow character to step forward naturally without the guardrail holding them back.
+              // Character remains supported on the wall until they naturally walk off the edge!
               this.position.x = candidateX;
               this.position.y = candidateY;
-            }
+            } else {
+              if (outwardVel > 0) {
+                // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
+                this.velocity.x -= outwardVel * normalX;
+                this.velocity.y -= outwardVel * normalY;
+              }
 
-            const newSupport = arena.testWallOverlap(this.position.x, this.position.y, hangDistance, closest.wall)
-              ? closest.wall
-              : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, hangDistance, w));
-            if (newSupport) {
-              this.standingWall = newSupport;
+              // Clamp position along the normal to valid hang distance (hangDistance - 0.002) so character is prevented from moving more than hangDistance off walls
+              const maxAllowedDist = hangDistance - 0.002;
+              if (closest.dist > maxAllowedDist) {
+                this.position.x = closest.closestX + normalX * maxAllowedDist;
+                this.position.y = closest.closestY + normalY * maxAllowedDist;
+              } else {
+                this.position.x = candidateX;
+                this.position.y = candidateY;
+              }
+
+              const newSupport = arena.testWallOverlap(this.position.x, this.position.y, hangDistance, closest.wall)
+                ? closest.wall
+                : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, hangDistance, w));
+              if (newSupport) {
+                this.standingWall = newSupport;
+              }
             }
           } else {
             this.velocity.x = 0;
