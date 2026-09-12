@@ -344,7 +344,9 @@ export class Arena {
     if (w1.id === w2.id) return true;
     const xDist = Math.max(0, Math.max(w1.x, w2.x) - Math.min(w1.x + w1.width, w2.x + w2.width));
     const yDist = Math.max(0, Math.max(w1.y, w2.y) - Math.min(w1.y + w1.height, w2.y + w2.height));
-    return xDist < 0.001 && yDist < 0.001;
+    const xOverlap = Math.min(w1.x + w1.width, w2.x + w2.width) - Math.max(w1.x, w2.x);
+    const yOverlap = Math.min(w1.y + w1.height, w2.y + w2.height) - Math.max(w1.y, w2.y);
+    return (xDist < 0.001 && yOverlap > 0.05) || (yDist < 0.001 && xOverlap > 0.05);
   }
 
   /**
