@@ -280,46 +280,12 @@ export class Renderer {
     const y = obj.position.y * ppu;
     const altitudeScale = Renderer.getAltitudeScale(obj.position.z, arena.wallHeight);
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-    const renderRadius = visualRadius * ppu * altitudeScale;
+    const realRadius = visualRadius * ppu;
+    const renderRadius = realRadius * altitudeScale;
 
     // Check if close enough for character to pick up, strictly respecting layer-dependent reach
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
     const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, arena.wallHeight) ?? false);
-
-    // Highlight ring around objects in pickup reach
-    if (isWithinPickupRange) {
-      ctx.save();
-      ctx.beginPath();
-      if (obj.visualShape === "box") {
-        const sz = (renderRadius + 5) * 2;
-        if (ctx.roundRect) {
-          ctx.roundRect(x - renderRadius - 5, y - renderRadius - 5, sz, sz, 6);
-        } else {
-          ctx.rect(x - renderRadius - 5, y - renderRadius - 5, sz, sz);
-        }
-      } else {
-        ctx.arc(x, y, renderRadius + 5, 0, Math.PI * 2);
-      }
-      if (isTargetGrab) {
-        // Active mouse target: solid vibrant glowing cyan ring & prominent badge
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 3.0;
-        ctx.setLineDash([]);
-        ctx.stroke();
-
-        ctx.fillStyle = "#38bdf8";
-        ctx.font = "bold 11px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("GRAB", x, y - renderRadius - 8);
-      } else {
-        // In physical reach, but another object is closer to mouse: subtle dashed ring
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
 
     // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
     const isOnLayer2 = Renderer.isEntityOnLayer2(obj, arena.wallHeight);
@@ -385,6 +351,43 @@ export class Renderer {
     this.drawRollIndicator(obj, x, y, renderRadius);
 
     ctx.restore();
+
+    // Highlight ring around objects in pickup reach (matches real physical size of the object, not inflated elevation size)
+    if (isWithinPickupRange) {
+      const grabRadius = realRadius + 2;
+      ctx.save();
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = grabRadius * 2;
+        const cr = Math.max(3, grabRadius * 0.16);
+        if (ctx.roundRect) {
+          ctx.roundRect(x - grabRadius, y - grabRadius, sz, sz, cr);
+        } else {
+          ctx.rect(x - grabRadius, y - grabRadius, sz, sz);
+        }
+      } else {
+        ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
+      }
+      if (isTargetGrab) {
+        // Active mouse target: solid vibrant glowing cyan ring & prominent badge
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2.8;
+        ctx.setLineDash([]);
+        ctx.stroke();
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GRAB", x, y - grabRadius - 6);
+      } else {
+        // In physical reach, but another object is closer to mouse: subtle dashed ring
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   /**
