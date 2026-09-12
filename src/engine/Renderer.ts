@@ -200,9 +200,9 @@ export class Renderer {
 
   /**
    * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
-   * - Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
-   * - If the object is higher than wall height, also draws another transparent dotted outline
-   *   the size the object would be if it was exactly at wall height.
+   * - When wall height or below: only shows the base size outline, fully opaque.
+   * - When above wall height: shows the outer outline (wall-height size) as opaque,
+   *   and the inner outline (base ground size) as transparent.
    * Only rendered when elevated above ground (z > 0.01) so true footprints are visible.
    */
   private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
@@ -212,11 +212,16 @@ export class Renderer {
     const ctx = this.ctx;
     const groundX = obj.position.x * ppu;
     const groundY = obj.position.y * ppu;
-
-    // 1. Plain simple dotted line of the shape of the object at ground level (does NOT expand with altitude)
-    const shadowRadius = obj.colliderRadius * ppu;
+    const isAboveWall = z > arena.wallHeight + 0.01;
 
     ctx.save();
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 4]);
+
+    // 1. Base size outline (inner outline, matching collider shape at ground level):
+    // Transparent when above wall height; fully opaque when at wall height or below.
+    const shadowRadius = obj.colliderRadius * ppu;
+
     ctx.beginPath();
     if (obj.visualShape === "box") {
       const sz = shadowRadius * 2;
@@ -230,14 +235,12 @@ export class Renderer {
       ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
     }
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = isAboveWall ? "rgba(255, 255, 255, 0.40)" : "rgba(255, 255, 255, 0.95)";
     ctx.stroke();
 
-    // 2. If higher than wall height, draw another transparent dotted outline
-    // the size the object would be if it was exactly at wall height
-    if (z > arena.wallHeight + 0.01) {
+    // 2. Outer outline (wall-height size):
+    // Only rendered when above wall height, and rendered fully opaque.
+    if (isAboveWall) {
       const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
       const wallRadius = obj.colliderRadius * ppu * wallAltScale;
 
@@ -254,9 +257,7 @@ export class Renderer {
         ctx.arc(groundX, groundY, wallRadius, 0, Math.PI * 2);
       }
 
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = 1.8;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.stroke();
     }
 
