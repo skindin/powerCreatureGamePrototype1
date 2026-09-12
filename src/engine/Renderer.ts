@@ -54,12 +54,12 @@ export class Renderer {
 
     for (const entity of allRenderables) {
       if (entity instanceof Character) {
-        this.drawCharacter(entity, allRenderables, ppu, arena);
+        this.drawCharacter(entity, ppu, arena);
       } else {
-        this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity, arena);
+        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
       }
       // Outline stays the same size as the collider and renders OVER the sprite
-      this.drawObjectShadow(entity, arena, ppu);
+      this.drawObjectShadow(entity, ppu);
     }
 
     // 5. Trajectory Line (Rendered OVER walls and entities!)
@@ -177,53 +177,33 @@ export class Renderer {
   }
 
   /**
-   * Checks if an entity is elevated above and passing over any other entity (object or character).
-   * Evaluates visual sprite scaling so transparency triggers when the upper sprite overlaps the lower entity.
+   * Checks if an entity is on Layer 2 (elevated at or above wall height, standing on a wall, or above walls).
    */
-  private isEntityPassingOverAnother(entity: GameObject, allEntities: GameObject[], arena: Arena): boolean {
-    const ez = entity.position.z;
-    const evScale = Renderer.getAltitudeScale(ez, arena.wallHeight);
-    const eRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
-    const eVisualRadius = eRadius * evScale;
-
-    for (const other of allEntities) {
-      if (other === entity) continue;
-
-      const oz = other.position.z;
-      const isHigher = ez > oz + 0.001 || (Math.abs(ez - oz) <= 0.01 && entity.verticalVelocity > other.verticalVelocity);
-      if (!isHigher) continue;
-
-      const ovScale = Renderer.getAltitudeScale(oz, arena.wallHeight);
-      const oRadius = other.hasCollider ? other.colliderRadius : (other.colliderModule?.radius ?? 0.32);
-      const oVisualRadius = oRadius * ovScale;
-
-      const groundDist = Math.hypot(entity.position.x - other.position.x, entity.position.y - other.position.y);
-      const maxOverlapDist = Math.max(eRadius + oRadius, eVisualRadius + oVisualRadius * 0.7);
-
-      if (groundDist < maxOverlapDist) {
-        return true;
-      }
-    }
-    return false;
+  public static isEntityOnLayer2(entity: GameObject, wallHeight: number): boolean {
+    const threshold = wallHeight - 0.05;
+    return (
+      entity.position.z >= threshold ||
+      entity.supportingSurfaceHeight >= threshold ||
+      entity.standingWall !== null ||
+      entity.isAboveWalls
+    );
   }
 
   /**
    * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
-   * The outline stays the exact same size as the collider (fixed at colliderRadius).
-   * Renders OVER the enlarged object sprite so the true collider footprint is visible.
-   * Changes color (to vibrant blue/cyan) when high enough to go over walls (z >= arena.wallHeight).
+   * Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
+   * Only rendered when elevated above ground (z > 0.01) so the true ground collider footprint is visible.
    */
-  private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
+  private drawObjectShadow(obj: GameObject, ppu: number): void {
+    const z = obj.position.z;
+    if (z <= 0.01) return;
+
     const ctx = this.ctx;
     const groundX = obj.position.x * ppu;
     const groundY = obj.position.y * ppu;
-    const z = obj.position.z;
 
-    // Matches the exact collider size (does NOT expand with altitude)
+    // Matches the exact collider size at ground level (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
-
-    // High enough to go over walls (or resting on a wall): change outline color to blue
-    const canClearWalls = z >= arena.wallHeight - 0.001;
 
     ctx.save();
     ctx.beginPath();
@@ -239,28 +219,10 @@ export class Renderer {
       ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
     }
 
-    if (z > 0.01) {
-      ctx.setLineDash([7, 4]); // Bold distinct dashes when airborne
-    }
-
-    // High-visibility dual-pass stroke:
-    // 1. Dark high-contrast backing stroke so the outline is unmistakably visible over any colored sprite or floor
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
-    ctx.lineWidth = canClearWalls ? 5.2 : 4.0;
-    ctx.stroke();
-
-    // 2. Vibrant foreground stroke
-    if (canClearWalls) {
-      // High-altitude / wall-clearing: vibrant glowing neon cyan
-      ctx.strokeStyle = "#38bdf8";
-      ctx.lineWidth = 3.2;
-      ctx.shadowColor = "#0284c7";
-      ctx.shadowBlur = 8;
-    } else {
-      // Standard white outline displaying collider footprint
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2.2;
-    }
+    // Plain simple dotted line of the shape of the object at ground level
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 4]);
     ctx.stroke();
     ctx.restore();
   }
@@ -272,7 +234,6 @@ export class Renderer {
    */
   private drawFreebodyObject(
     obj: GameObject,
-    allEntities: GameObject[],
     character: Character,
     ppu: number,
     isTargetGrab = false,
@@ -324,11 +285,11 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Check if this object is passing over any other entity (higher elevation than other)
-    const isPassingOverAnother = this.isEntityPassingOverAnother(obj, allEntities, arena);
+    // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
+    const isOnLayer2 = Renderer.isEntityOnLayer2(obj, arena.wallHeight);
 
     ctx.save();
-    ctx.globalAlpha = isPassingOverAnother ? 0.55 : 1.0;
+    ctx.globalAlpha = isOnLayer2 ? 0.55 : 1.0;
 
     if (obj.visualShape === "box") {
       // 2D Box / Crate visualization (with circular collider of radius renderRadius)
@@ -393,18 +354,18 @@ export class Renderer {
   /**
    * Character: Pure top-down circle with two black circles on facing side
    */
-  private drawCharacter(char: Character, allEntities: GameObject[], ppu: number, arena: Arena): void {
+  private drawCharacter(char: Character, ppu: number, arena: Arena): void {
     const ctx = this.ctx;
     const x = char.position.x * ppu;
     const y = char.position.y * ppu;
     const altitudeScale = Renderer.getAltitudeScale(char.position.z, arena.wallHeight);
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Check if character is passing over any other entity (higher elevation than other)
-    const isPassingOverAnother = this.isEntityPassingOverAnother(char, allEntities, arena);
+    // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
+    const isOnLayer2 = Renderer.isEntityOnLayer2(char, arena.wallHeight);
 
     ctx.save();
-    ctx.globalAlpha = isPassingOverAnother ? 0.55 : 1.0;
+    ctx.globalAlpha = isOnLayer2 ? 0.55 : 1.0;
 
     // Base colored circle
     ctx.beginPath();
