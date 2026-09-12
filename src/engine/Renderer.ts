@@ -173,7 +173,7 @@ export class Renderer {
    * while the physical outline stays fixed at the collider size (showing exact collider footprint).
    */
   public static getAltitudeScale(z: number, wallHeight: number): number {
-    return Math.min(2.5, 1.0 + (Math.max(0, z) / Math.max(0.1, wallHeight)) * 0.5);
+    return 1.0 + (Math.max(0, z) / Math.max(0.1, wallHeight)) * 0.5;
   }
 
   /**
