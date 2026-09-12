@@ -2,7 +2,6 @@ import { Vector2D } from "../engine/GameObject.js";
 import { Character } from "../character/Character.js";
 import { Arena } from "../engine/Arena.js";
 import { GameObject } from "../engine/GameObject.js";
-import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import type { DevPanel } from "./DevPanel.js";
 
 export class InputManager {
@@ -217,33 +216,8 @@ export class InputManager {
       if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
       const changed = arena.setWallTile(col, row, true);
       if (changed) {
-        // Elevate any entity overlapping this tile on the ground
-        const tileWall = {
-          id: `wall-${col}-${row}`,
-          x: col * arena.tileSize,
-          y: row * arena.tileSize,
-          width: arena.tileSize,
-          height: arena.tileSize,
-          wallHeight: arena.wallHeight,
-        };
         const allEntities = [character, ...objects];
-        for (const ent of allEntities) {
-          const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.32);
-          if (arena.testWallOverlap(ent.position.x, ent.position.y, r, tileWall)) {
-            if (ent.position.z < arena.wallHeight) {
-              if (!ent.hasVerticalPosition) {
-                if (!ent.verticalPositionModule) {
-                  ent.verticalPositionModule = new VerticalPositionModule({ z: arena.wallHeight, hasVerticalVelocity: true });
-                } else {
-                  ent.verticalPositionModule.enabled = true;
-                }
-              }
-              ent.position.z = arena.wallHeight;
-              ent.supportingSurfaceHeight = arena.wallHeight;
-              ent.verticalVelocity = 0;
-            }
-          }
-        }
+        arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
       }
@@ -253,10 +227,11 @@ export class InputManager {
       if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
       if (arena.tileGrid[row][col] === 1) {
         arena.setWallTile(col, row, false);
+        const allEntities = [character, ...objects];
+        arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
       }
-      // Erased walls remove supporting surfaces; GameObject.updatePosition will naturally drop unsupported entities
     };
 
     this.onMouseDown = (x: number, y: number) => {

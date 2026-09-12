@@ -313,28 +313,48 @@ export class GameObject {
           // While in dismount freefall into gap or off wall: entity must fall down to ground!
           this.standingWall = null;
           surfaceHeight = 0;
-        } else if (this.standingWall) {
-          // Standard physical support on wall top: character stands on top as long as collider overlaps the wall/platform
-          const supportRadius = this.colliderRadius;
-          const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, supportRadius, this.standingWall);
-          if (touchesCurrent) {
-            surfaceHeight = this.standingWall.wallHeight;
-          } else if (char?.climbingModule?.dismountSuppressedUntilRelease) {
-            // Player just climbed onto wall top: dismount is suppressed until climb control is released
-            surfaceHeight = this.standingWall.wallHeight;
+        } else if (!this.isCharacter) {
+          // Freebody object: supported if and only if its collider overlaps an active wall in arena
+          const supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+          if (supportingWall) {
+            this.standingWall = supportingWall;
+            surfaceHeight = supportingWall.wallHeight;
           } else {
-            let contiguousSupport: Wall | null = null;
-            for (const wall of arena.walls) {
-              if (arena.areWallsContiguous(this.standingWall, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
-                contiguousSupport = wall;
-                break;
+            this.standingWall = null;
+            surfaceHeight = 0;
+          }
+        } else if (this.standingWall) {
+          // Character standing on wall top:
+          // Check if this.standingWall still exists in arena (was not deleted)
+          const wallStillExists = arena.walls.find(w => w.id === this.standingWall!.id);
+          const supportRadius = this.colliderRadius;
+          const touchesCurrent = wallStillExists ? arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wallStillExists) : false;
+
+          if (touchesCurrent && wallStillExists) {
+            this.standingWall = wallStillExists;
+            surfaceHeight = wallStillExists.wallHeight;
+          } else if (wallStillExists && char?.climbingModule?.dismountSuppressedUntilRelease) {
+            this.standingWall = wallStillExists;
+            surfaceHeight = wallStillExists.wallHeight;
+          } else {
+            let nextSupport: Wall | null = null;
+            if (wallStillExists) {
+              for (const wall of arena.walls) {
+                if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
+                  nextSupport = wall;
+                  break;
+                }
               }
-            }
-            if (contiguousSupport) {
-              this.standingWall = contiguousSupport;
-              surfaceHeight = contiguousSupport.wallHeight;
             } else {
-              // Left the contiguous platform! Dismount into gap
+              // The wall the character was on was deleted! Find any other active wall overlapping the collider
+              nextSupport = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
+            }
+
+            if (nextSupport) {
+              this.standingWall = nextSupport;
+              surfaceHeight = nextSupport.wallHeight;
+            } else {
+              // Left the contiguous platform or all supporting walls were deleted! Fall into gap
               this.standingWall = null;
               surfaceHeight = 0;
               if (char?.climbingModule) {
@@ -356,6 +376,9 @@ export class GameObject {
       } else {
         this.standingWall = null;
       }
+    } else {
+      this.standingWall = null;
+      surfaceHeight = 0;
     }
     if (this.isClimbing) {
       surfaceHeight = Math.max(surfaceHeight, this.position.z);
@@ -782,6 +805,10 @@ export class GameObject {
       const isDismountFallingNow = Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
       for (const wall of arena.walls) {
         if (this.position.z <= wall.wallHeight) {
+          const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
+          if (isAtWallTop && (this.standingWall?.id === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
+            continue;
+          }
           if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
             // If standing on a wall, that wall and its contiguous walls don't collide
             if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {

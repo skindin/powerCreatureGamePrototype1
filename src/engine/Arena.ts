@@ -270,10 +270,29 @@ export class Arena {
               ent.verticalPositionModule.enabled = true;
             }
           }
+          // Immediately elevate to wall height without adding velocity
           ent.position.z = supportingWall.wallHeight;
           ent.supportingSurfaceHeight = supportingWall.wallHeight;
           (ent as any).standingWall = supportingWall;
           ent.verticalVelocity = 0;
+        } else {
+          // At or above wall height: keep standingWall reference refreshed to active wall
+          (ent as any).standingWall = supportingWall;
+          ent.supportingSurfaceHeight = supportingWall.wallHeight;
+        }
+      } else {
+        // No wall remains under the entity's collider:
+        // If entity was resting on or supported by a wall, clear support so it falls naturally
+        if (ent.supportingSurfaceHeight >= this.wallHeight - 0.05 || (ent as any).standingWall !== null) {
+          (ent as any).standingWall = null;
+          ent.supportingSurfaceHeight = 0;
+          if (ent.isCharacter) {
+            const char = ent as any;
+            if (char.climbingModule) {
+              char.climbingModule.isDismountFreefall = true;
+              char.climbingModule.climbSuppressedUntilRelease = true;
+            }
+          }
         }
       }
     }
