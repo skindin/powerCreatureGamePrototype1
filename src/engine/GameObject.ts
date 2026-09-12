@@ -547,68 +547,93 @@ export class GameObject {
     const moveDist = Math.hypot(deltaX, deltaY);
 
     if (moveDist > 0.0001) {
-      // Sub-step interpolation approach (continuous collision detection):
-      // Step by at most 1 cm per sub-step to catch any gaps or wall transitions between current point and next point
-      const stepSize = 0.01;
-      const numSteps = Math.max(1, Math.ceil(moveDist / stepSize));
-      const stepDx = deltaX / numSteps;
-      const stepDy = deltaY / numSteps;
-
       if (isPreventWalkOffActive) {
         let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
         this.standingWall = currentWall;
 
-        for (let s = 1; s <= numSteps; s++) {
-          const candX = this.position.x + stepDx;
-          const candY = this.position.y + stepDy;
+        const candidateX = this.position.x + deltaX;
+        const candidateY = this.position.y + deltaY;
 
-          let supportedWall: Wall | null = null;
-          if (currentWall && arena.testWallOverlap(candX, candY, this.colliderRadius, currentWall)) {
-            supportedWall = currentWall;
-          } else if (currentWall) {
-            for (const w of arena.walls) {
-              if (arena.areWallsContiguous(currentWall, w) && arena.testWallOverlap(candX, candY, this.colliderRadius, w)) {
-                supportedWall = w;
-                break;
-              }
+        let supportedWall: Wall | null = null;
+        if (currentWall && arena.testWallOverlap(candidateX, candidateY, this.colliderRadius, currentWall)) {
+          supportedWall = currentWall;
+        } else if (currentWall) {
+          for (const w of arena.walls) {
+            if (arena.areWallsContiguous(currentWall, w) && arena.testWallOverlap(candidateX, candidateY, this.colliderRadius, w)) {
+              supportedWall = w;
+              break;
             }
           }
+        }
 
-          if (supportedWall) {
-            this.position.x = candX;
-            this.position.y = candY;
-            this.standingWall = supportedWall;
-            currentWall = supportedWall;
-          } else {
-            // Ledge guard with corner sliding deflection:
-            const closest = GameObject.getClosestWallPoint(candX, candY, arena);
-            if (closest && closest.dist > 0) {
-              const r = this.colliderRadius;
-              const normalX = closest.dx / closest.dist;
-              const normalY = closest.dy / closest.dist;
+        if (supportedWall) {
+          this.position.x = candidateX;
+          this.position.y = candidateY;
+          this.standingWall = supportedWall;
+        } else {
+          // Ledge guard with corner sliding deflection at full speed:
+          // Find the closest point on any wall footprint to the candidate position
+          const closest = GameObject.getClosestWallPoint(candidateX, candidateY, arena);
+          if (closest && closest.dist > 0) {
+            const r = this.colliderRadius;
+            const normalX = closest.dx / closest.dist;
+            const normalY = closest.dy / closest.dist;
 
-              const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
-              if (outwardVel > 0) {
-                this.velocity.x -= outwardVel * normalX;
-                this.velocity.y -= outwardVel * normalY;
-              }
+            // Tangent vector along the wall perimeter
+            const tangentX = -normalY;
+            const tangentY = normalX;
+            const tangentDot = this.velocity.x * tangentX + this.velocity.y * tangentY;
+            const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
 
+            if (Math.abs(tangentDot) > 0.001 && currentSpeed > 0.01) {
+              // Redirect velocity along the allowed tangent at full speed
+              const dir = Math.sign(tangentDot);
+              this.velocity.x = tangentX * dir * currentSpeed;
+              this.velocity.y = tangentY * dir * currentSpeed;
+
+              // Clamp position to valid edge contact arc (r - 0.002) so collider circle remains on wall
               const maxAllowedDist = r - 0.002;
-              if (closest.dist > maxAllowedDist) {
-                this.position.x = closest.closestX + normalX * maxAllowedDist;
-                this.position.y = closest.closestY + normalY * maxAllowedDist;
+              const clampedX = closest.closestX + normalX * Math.min(closest.dist, maxAllowedDist);
+              const clampedY = closest.closestY + normalY * Math.min(closest.dist, maxAllowedDist);
+
+              const nextX = clampedX + this.velocity.x * dt;
+              const nextY = clampedY + this.velocity.y * dt;
+
+              const nextClosest = GameObject.getClosestWallPoint(nextX, nextY, arena);
+              if (nextClosest && nextClosest.dist > maxAllowedDist) {
+                const nx = nextClosest.dx / nextClosest.dist;
+                const ny = nextClosest.dy / nextClosest.dist;
+                this.position.x = nextClosest.closestX + nx * maxAllowedDist;
+                this.position.y = nextClosest.closestY + ny * maxAllowedDist;
               } else {
-                this.position.x = candX;
-                this.position.y = candY;
+                this.position.x = nextX;
+                this.position.y = nextY;
               }
             } else {
+              // Moving perpendicularly into the void: stop horizontal velocity and clamp to edge
               this.velocity.x = 0;
               this.velocity.y = 0;
+              const maxAllowedDist = r - 0.002;
+              this.position.x = closest.closestX + normalX * Math.min(closest.dist, maxAllowedDist);
+              this.position.y = closest.closestY + normalY * Math.min(closest.dist, maxAllowedDist);
             }
-            break;
+
+            const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+            if (newSupport) {
+              this.standingWall = newSupport;
+            }
+          } else {
+            this.velocity.x = 0;
+            this.velocity.y = 0;
           }
         }
       } else {
+        // Sub-step interpolation approach (continuous collision detection):
+        // Step by at most 1 cm per sub-step to catch any gaps or wall transitions between current point and next point
+        const stepSize = 0.01;
+        const numSteps = Math.max(1, Math.ceil(moveDist / stepSize));
+        const stepDx = deltaX / numSteps;
+        const stepDy = deltaY / numSteps;
         // Standard movement / dismount / airborne:
         // Interpolate continuously. If at any point between current point and next point the collider
         // wouldn't be touching a wall and they have just dismounted a wall, they should collide with

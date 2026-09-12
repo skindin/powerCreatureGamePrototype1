@@ -215,19 +215,8 @@ export class ClimbingModule {
           // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
           this.dismountSuppressedUntilRelease = true;
 
-          // Pull character safely onto top of targetWall so collider is firmly resting on top of the wall
-          const closestX = Math.max(targetWall.x, Math.min(character.position.x, targetWall.x + targetWall.width));
-          const closestY = Math.max(targetWall.y, Math.min(character.position.y, targetWall.y + targetWall.height));
           const toWallDirX = shortestDist > 0.001 ? targetDx / shortestDist : (hasMoveInput ? moveDirX : Math.cos(character.facingAngle));
           const toWallDirY = shortestDist > 0.001 ? targetDy / shortestDist : (hasMoveInput ? moveDirY : Math.sin(character.facingAngle));
-
-          const r = character.colliderRadius;
-          const minOverlap = 0.15;
-          const maxAllowedDist = r - minOverlap;
-          if (shortestDist > maxAllowedDist) {
-            character.position.x = closestX - toWallDirX * maxAllowedDist;
-            character.position.y = closestY - toWallDirY * maxAllowedDist;
-          }
 
           // Transition smoothly onto the top of the wall
           if (hasMoveInput) {
