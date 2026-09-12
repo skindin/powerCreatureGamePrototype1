@@ -485,6 +485,7 @@ export class Renderer {
       // Perfectly vertical spin (ωz): circle with a circular outline rotating around it
       const innerRadius = renderRadius * 0.50;
       const outerRadius = renderRadius * 0.88;
+      const spinSign = wz !== 0 ? Math.sign(wz) : 1;
 
       // Central reference circle
       ctx.beginPath();
@@ -494,13 +495,19 @@ export class Renderer {
       ctx.setLineDash([]);
       ctx.stroke();
 
-      // Circular dotted outline rotating around it
+      // 1. Upward facing rounded, skewed triangles rotating at fixed speed (underneath dotted line)
+      ctx.save();
+      ctx.translate(x, y);
+      this.drawFixedSpeedTriangles(ctx, outerRadius, outerRadius, spinSign, renderRadius, true);
+      ctx.restore();
+
+      // 2. Circular dotted outline rotating around it at physical speed
       ctx.beginPath();
       ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
       ctx.lineWidth = strokeWidth;
       ctx.setLineDash([dashLen, dashGap]);
-      ctx.lineDashOffset = -roll.visualPhase * outerRadius * Math.sign(wz || 1);
+      ctx.lineDashOffset = -roll.visualPhase * outerRadius * spinSign;
       ctx.stroke();
     } else {
       // General 3D rolling / tilted rotation:
@@ -518,6 +525,10 @@ export class Renderer {
 
       const spinSign = wz !== 0 ? Math.sign(wz) : 1;
 
+      // 1. Upward facing rounded, skewed triangles rotating at fixed speed (underneath dotted line)
+      this.drawFixedSpeedTriangles(ctx, a, b, spinSign, renderRadius, false);
+
+      // 2. Classic animated dotted roll oval (rotating at physical roll speed)
       // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
       ctx.beginPath();
       ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
@@ -535,6 +546,81 @@ export class Renderer {
       ctx.setLineDash([dashLen, dashGap]);
       ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
       ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draws a filled triangle with rounded corners.
+   */
+  private drawRoundedTriangle(
+    ctx: CanvasRenderingContext2D,
+    x1: number, y1: number, // Apex
+    x2: number, y2: number, // Base 1
+    x3: number, y3: number, // Base 2
+    radius: number
+  ): void {
+    ctx.beginPath();
+    const midX = (x2 + x1) * 0.5;
+    const midY = (y2 + y1) * 0.5;
+    ctx.moveTo(midX, midY);
+    ctx.arcTo(x1, y1, x3, y3, radius);
+    ctx.arcTo(x3, y3, x2, y2, radius);
+    ctx.arcTo(x2, y2, x1, y1, radius);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /**
+   * Draws upward facing rounded, skewed triangles rotating at a fixed speed in the direction of the object,
+   * rendered underneath the animated dotted line.
+   */
+  private drawFixedSpeedTriangles(
+    ctx: CanvasRenderingContext2D,
+    a: number,
+    b: number,
+    spinSign: number,
+    renderRadius: number,
+    isUniformAlpha: boolean = false
+  ): void {
+    // Fixed comfortable rotation speed: ~2.5 rad/s (~0.4 rev/sec)
+    const fixedRate = 2.5;
+    const fixedPhase = (performance.now() * 0.001 * fixedRate) % (Math.PI * 2);
+
+    const numTriangles = renderRadius > 26 ? 3 : 2;
+    const sliceAngle = (Math.PI * 2) / numTriangles;
+
+    const H = Math.max(8, Math.min(14, renderRadius * 0.38));
+    const W = Math.max(6, Math.min(11, renderRadius * 0.30));
+    const cornerRadius = Math.max(1.5, Math.min(2.8, renderRadius * 0.07));
+    const skewX = spinSign * (W * 0.35);
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+    ctx.shadowBlur = 3;
+
+    for (let k = 0; k < numTriangles; k++) {
+      const t = (k * sliceAngle + spinSign * fixedPhase) % (Math.PI * 2);
+      const x0 = a * Math.cos(t);
+      const y0 = b * Math.sin(t);
+
+      // On 3D oval: upper half is opaque, underside is semi-transparent
+      const isTopHalf = Math.sin(t) >= 0;
+      const alpha = isUniformAlpha ? 0.85 : (isTopHalf ? 0.85 : 0.28);
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+
+      // Upward facing: apex points upward (-Y), base sits below (+Y)
+      // Skewed: apex is slanted in the direction of spin
+      const apexX = x0 + skewX;
+      const apexY = y0 - H * 0.55;
+      const blX = x0 - W * 0.5;
+      const blY = y0 + H * 0.45;
+      const brX = x0 + W * 0.5;
+      const brY = y0 + H * 0.45;
+
+      this.drawRoundedTriangle(ctx, apexX, apexY, blX, blY, brX, brY, cornerRadius);
     }
 
     ctx.restore();
