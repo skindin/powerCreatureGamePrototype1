@@ -99,7 +99,7 @@ export class PickupModule {
   }
 
   /**
-   * Drops the currently held object onto the ground at character feet
+   * Drops the currently held object onto the ground, inheriting character velocity
    */
   public drop(character: Character): GameObject | null {
     if (!character.heldObject) return null;
@@ -108,9 +108,17 @@ export class PickupModule {
     character.heldObject = null;
     dropped.isHeld = false;
     dropped.heldBy = null;
-    dropped.velocity.x = character.velocity.x * 0.4;
-    dropped.velocity.y = character.velocity.y * 0.4;
-    dropped.verticalVelocity = 0;
+    dropped.lastThrower = character;
+    dropped.velocity.x = character.velocity.x;
+    dropped.velocity.y = character.velocity.y;
+    dropped.verticalVelocity = character.isAboveGround ? character.verticalVelocity : 0;
+
+    if (dropped.hasFriction && dropped.rollModule && dropped.rollModule.enabled) {
+      const R = dropped.colliderRadius > 0 ? dropped.colliderRadius : 0.3;
+      dropped.rollModule.angularVelocity.y = dropped.velocity.x / R;
+      dropped.rollModule.angularVelocity.x = -dropped.velocity.y / R;
+    }
+
     return dropped;
   }
 }
