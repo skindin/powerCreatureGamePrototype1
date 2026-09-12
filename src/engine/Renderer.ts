@@ -572,8 +572,8 @@ export class Renderer {
   }
 
   /**
-   * Draws upward facing rounded, skewed triangles rotating at a fixed speed in the direction of the object,
-   * rendered in 2D from the player's perspective underneath the animated dotted line.
+   * Draws stretched, rounded triangles pointing in the direction of travel,
+   * symmetrical across the travel vector, rotating at a fixed speed underneath the animated dotted line.
    */
   private drawFixedSpeedTriangles(
     ctx: CanvasRenderingContext2D,
@@ -593,51 +593,60 @@ export class Renderer {
     const numTriangles = renderRadius > 24 ? 3 : 2;
     const sliceAngle = (Math.PI * 2) / numTriangles;
 
-    // Prominent, clearly visible 2D triangle dimensions from the user's perspective
-    const H = Math.max(14, Math.min(22, renderRadius * 0.58));
-    const W = Math.max(11, Math.min(18, renderRadius * 0.46));
-    const cornerRadius = 1.4; // Sleek, clean corner rounding that preserves crisp triangle shape
+    // Stretched triangle: longer in pointing/travel direction (L) than width across (W)
+    const L = Math.max(14, Math.min(22, renderRadius * 0.58));
+    const W = Math.max(7, Math.min(12, renderRadius * 0.32));
+    const cornerRadius = 1.2;
 
     const cosR = Math.cos(rollDirAngle);
     const sinR = Math.sin(rollDirAngle);
+    const sSign = spinSign || 1;
 
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
     ctx.shadowBlur = 3;
 
     for (let k = 0; k < numTriangles; k++) {
-      const t = (k * sliceAngle + spinSign * fixedPhase) % (Math.PI * 2);
+      const t = (k * sliceAngle + sSign * fixedPhase) % (Math.PI * 2);
 
-      // Current position along the oval in screen space
-      const lx1 = a * Math.cos(t);
-      const ly1 = b * Math.sin(t);
-      const sx1 = centerX + lx1 * cosR - ly1 * sinR;
-      const sy1 = centerY + lx1 * sinR + ly1 * cosR;
+      // Current position on the ellipse in screen space
+      const lx = a * Math.cos(t);
+      const ly = b * Math.sin(t);
+      const sx = centerX + lx * cosR - ly * sinR;
+      const sy = centerY + lx * sinR + ly * cosR;
 
-      // Position a moment ahead along the orbit to determine horizontal motion on screen
-      const dt = 0.05 * (spinSign || 1);
-      const lx2 = a * Math.cos(t + dt);
-      const ly2 = b * Math.sin(t + dt);
-      const sx2 = centerX + lx2 * cosR - ly2 * sinR;
+      // Exact tangent vector in direction of travel: d(position)/dt * sSign
+      // dx_local/dt = -a * sin(t), dy_local/dt = b * cos(t)
+      const dlx = -a * Math.sin(t) * sSign;
+      const dly = b * Math.cos(t) * sSign;
+      const dsx = dlx * cosR - dly * sinR;
+      const dsy = dlx * sinR + dly * cosR;
+      const speed = Math.hypot(dsx, dsy);
+      if (speed < 0.0001) continue;
 
-      const dX = sx2 - sx1;
-      const skewSign = Math.abs(dX) > 0.001 ? Math.sign(dX) : (spinSign || 1);
-      const skewX = skewSign * (W * 0.32);
+      // Unit tangent vector (travel direction)
+      const tx = dsx / speed;
+      const ty = dsy / speed;
+
+      // Unit normal vector (perpendicular to travel direction)
+      const nx = -ty;
+      const ny = tx;
 
       // On 3D oval: upper hemisphere is opaque, underside is semi-transparent
       const isTopHalf = Math.sin(t) >= 0;
       const alpha = isUniformAlpha ? 0.90 : (isTopHalf ? 0.90 : 0.32);
-
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
 
-      // 2D Upward Facing Triangle from player's perspective:
-      // Apex points straight up (-Y on screen), skewed horizontally in motion direction
-      const apexX = sx1 + skewX;
-      const apexY = sy1 - H * 0.55;
-      const blX = sx1 - W * 0.5;
-      const blY = sy1 + H * 0.45;
-      const brX = sx1 + W * 0.5;
-      const brY = sy1 + H * 0.45;
+      // Symmetrical triangle stretched along travel direction:
+      // Apex points forward along the travel direction
+      const apexX = sx + tx * (L * 0.55);
+      const apexY = sy + ty * (L * 0.55);
+
+      // Base corners symmetrical on either side of the travel axis
+      const blX = sx - tx * (L * 0.45) + nx * (W * 0.50);
+      const blY = sy - ty * (L * 0.45) + ny * (W * 0.50);
+      const brX = sx - tx * (L * 0.45) - nx * (W * 0.50);
+      const brY = sy - ty * (L * 0.45) - ny * (W * 0.50);
 
       this.drawRoundedTriangle(ctx, apexX, apexY, blX, blY, brX, brY, cornerRadius);
     }
