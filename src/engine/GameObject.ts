@@ -599,71 +599,28 @@ export class GameObject {
             const r = this.colliderRadius;
             const normalX = closest.dx / closest.dist;
             const normalY = closest.dy / closest.dist;
+
+            // Outward velocity attempting to step into the void
+            const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
+            if (outwardVel > 0) {
+              // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
+              this.velocity.x -= outwardVel * normalX;
+              this.velocity.y -= outwardVel * normalY;
+            }
+
+            // Clamp position along the normal to valid contact distance (r - 0.002) so collider circle remains overlapping wall
             const maxAllowedDist = r - 0.002;
-            const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
-            const walkSpeed = char?.walkingModule
-              ? (char.walkingModule.maxWalkSpeed / (1.0 + (char.carriedMass / (Math.max(0.1, char.strength) * 8.0))))
-              : currentSpeed;
-            const targetSpeed = Math.max(currentSpeed, walkSpeed);
-
-            // User requirement:
-            // "if im moving diagonally, i should slide along a horizontal wall at my movement speed.
-            // it should feel exactly like walking into a wall, except instead of not being able to enter
-            // the wall at all, i can't entirely leave the wall. simplify, don't complicate."
-            if (Math.abs(normalY) > 0.95) {
-              // Horizontal wall edge: blocked in Y, slides along X at movement speed
-              this.velocity.y = 0;
-              if (Math.abs(this.velocity.x) > 0.01 && targetSpeed > 0.01) {
-                this.velocity.x = Math.sign(this.velocity.x) * targetSpeed;
-              }
-              this.position.y = closest.closestY + normalY * Math.min(closest.dist, maxAllowedDist);
-              this.position.x = candidateX;
-            } else if (Math.abs(normalX) > 0.95) {
-              // Vertical wall edge: blocked in X, slides along Y at movement speed
-              this.velocity.x = 0;
-              if (Math.abs(this.velocity.y) > 0.01 && targetSpeed > 0.01) {
-                this.velocity.y = Math.sign(this.velocity.y) * targetSpeed;
-              }
-              this.position.x = closest.closestX + normalX * Math.min(closest.dist, maxAllowedDist);
-              this.position.y = candidateY;
+            if (closest.dist > maxAllowedDist) {
+              this.position.x = closest.closestX + normalX * maxAllowedDist;
+              this.position.y = closest.closestY + normalY * maxAllowedDist;
             } else {
-              // Corner vertex: smooth natural deflection (no artificial tangential whipping)
-              const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
-              if (outwardVel > 0) {
-                this.velocity.x -= outwardVel * normalX;
-                this.velocity.y -= outwardVel * normalY;
-              }
-              if (closest.dist > maxAllowedDist) {
-                this.position.x = closest.closestX + normalX * maxAllowedDist;
-                this.position.y = closest.closestY + normalY * maxAllowedDist;
-              } else {
-                this.position.x = candidateX;
-                this.position.y = candidateY;
-              }
+              this.position.x = candidateX;
+              this.position.y = candidateY;
             }
 
-            // Safety clamp: keep collider within platform bounds
-            let endBestDistSq = Infinity;
-            let endClosest: { cx: number; cy: number; dist: number; dx: number; dy: number } | null = null;
-            for (const wall of platformWalls) {
-              const cx = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
-              const cy = Math.max(wall.y, Math.min(this.position.y, wall.y + wall.height));
-              const dx = this.position.x - cx;
-              const dy = this.position.y - cy;
-              const distSq = dx * dx + dy * dy;
-              if (distSq < endBestDistSq) {
-                endBestDistSq = distSq;
-                endClosest = { cx, cy, dist: Math.sqrt(distSq), dx, dy };
-              }
-            }
-            if (endClosest && endClosest.dist > maxAllowedDist) {
-              const nx = endClosest.dx / endClosest.dist;
-              const ny = endClosest.dy / endClosest.dist;
-              this.position.x = endClosest.cx + nx * maxAllowedDist;
-              this.position.y = endClosest.cy + ny * maxAllowedDist;
-            }
-
-            let newSupport = platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, w));
+            const newSupport = arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, closest.wall)
+              ? closest.wall
+              : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, w));
             if (newSupport) {
               this.standingWall = newSupport;
             }
