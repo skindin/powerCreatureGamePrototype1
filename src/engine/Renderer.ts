@@ -191,8 +191,6 @@ export class Renderer {
     // Matches the exact collider size (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
 
-    const alpha = Math.max(0.3, 0.85 - (z / (arena.wallHeight * 7)) * 0.25);
-
     // High enough to go over walls (or resting on a wall): change outline color to blue
     const canClearWalls = z >= arena.wallHeight - 0.001;
 
@@ -210,18 +208,27 @@ export class Renderer {
       ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
     }
 
-    if (canClearWalls) {
-      // Blue/cyan outline indicating it will fly cleanly over walls
-      ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
-      ctx.lineWidth = 2.5;
-    } else {
-      // Standard white outline displaying height
-      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.lineWidth = 1.8;
+    if (z > 0.01) {
+      ctx.setLineDash([7, 4]); // Bold distinct dashes when airborne
     }
 
-    if (z > 0.01) {
-      ctx.setLineDash([4, 3]); // Dashed when airborne
+    // High-visibility dual-pass stroke:
+    // 1. Dark high-contrast backing stroke so the outline is unmistakably visible over any colored sprite or floor
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.lineWidth = canClearWalls ? 5.2 : 4.0;
+    ctx.stroke();
+
+    // 2. Vibrant foreground stroke
+    if (canClearWalls) {
+      // High-altitude / wall-clearing: vibrant glowing neon cyan
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 3.2;
+      ctx.shadowColor = "#0284c7";
+      ctx.shadowBlur = 8;
+    } else {
+      // Standard white outline displaying collider footprint
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.2;
     }
     ctx.stroke();
     ctx.restore();
@@ -460,75 +467,72 @@ export class Renderer {
     const wh = Math.hypot(wx, wy); // Horizontal angular speed
     const isPerfectVertical = wh < 0.05 * wTotal;
 
+    // Relative visual scale based on altitude/size
+    const colliderR = (obj.hasCollider ? obj.colliderRadius : 0.44) * (this.ctx.canvas.width / 20);
+    const scaleRatio = colliderR > 0 ? Math.max(1.0, renderRadius / colliderR) : 1.0;
+
+    const strokeWidth = Math.max(2.5, 2.5 * Math.pow(scaleRatio, 1.15));
+    const dashLen = Math.max(5, 5 * scaleRatio);
+    const dashGap = Math.max(4, 4 * scaleRatio);
+
     ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+    ctx.shadowBlur = Math.max(3, 3 * scaleRatio);
 
     if (isPerfectVertical) {
       // Perfectly vertical spin (ωz): circle with a circular outline rotating around it
-      const innerRadius = renderRadius * 0.45;
-      const outerRadius = renderRadius * 0.78;
+      const innerRadius = renderRadius * 0.50;
+      const outerRadius = renderRadius * 0.88;
 
       // Central reference circle
       ctx.beginPath();
       ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.lineWidth = Math.max(1.8, 1.8 * scaleRatio);
       ctx.setLineDash([]);
       ctx.stroke();
 
       // Circular dotted outline rotating around it
       ctx.beginPath();
       ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-      ctx.lineWidth = 2.0;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
+      ctx.lineWidth = strokeWidth;
+      ctx.setLineDash([dashLen, dashGap]);
       ctx.lineDashOffset = -roll.visualPhase * outerRadius * Math.sign(wz || 1);
       ctx.stroke();
     } else {
       // General 3D rolling / tilted rotation:
-      // The roll motion direction across the screen (linear direction coupled to roll)
-      // v_roll = (wy, -wx) -> heading angle = atan2(-wx, wy)
       const rollDirAngle = Math.atan2(-wx, wy);
 
       // Semi-major axis a (across roll axis) and semi-minor axis b (along roll axis)
-      const a = renderRadius * 0.82;
+      // Generously scaled up across the sphere (90% of radius)
+      const a = renderRadius * 0.90;
       const fz = Math.abs(wz) / wTotal; // Fraction vertical
-      // Warps from flat (b = 0) when purely horizontal up to a full circle (b = a) when vertical
-      const b = a * Math.pow(fz, 0.85);
+      // Generous 3D oval opening (at least 35% opening even when rolling horizontally, opening to full circle)
+      const b = a * Math.max(0.35, Math.pow(fz, 0.65));
 
       ctx.translate(x, y);
       ctx.rotate(rollDirAngle);
 
       const spinSign = wz !== 0 ? Math.sign(wz) : 1;
 
-      if (b < 0.5) {
-        // Perfectly flat stripe across the top of the ball when angular velocity is perpendicular to up
-        ctx.beginPath();
-        ctx.moveTo(-a, 0);
-        ctx.lineTo(a, 0);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.lineWidth = 2.2;
-        ctx.setLineDash([4, 4]);
-        ctx.lineDashOffset = -roll.visualPhase * a;
-        ctx.stroke();
-      } else {
-        // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
-        ctx.beginPath();
-        ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.lineWidth = 2.2;
-        ctx.setLineDash([4, 4]);
-        ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
-        ctx.stroke();
+      // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
+      ctx.beginPath();
+      ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
+      ctx.lineWidth = strokeWidth;
+      ctx.setLineDash([dashLen, dashGap]);
+      ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+      ctx.stroke();
 
-        // The other LONG side (the underside of the ball) is TRANSPARENT
-        ctx.beginPath();
-        ctx.ellipse(0, 0, a, b, 0, Math.PI, Math.PI * 2);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([4, 4]);
-        ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
-        ctx.stroke();
-      }
+      // The other LONG side (the underside of the ball) is SEMI-TRANSPARENT
+      ctx.beginPath();
+      ctx.ellipse(0, 0, a, b, 0, Math.PI, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      ctx.lineWidth = Math.max(1.8, strokeWidth * 0.8);
+      ctx.setLineDash([dashLen, dashGap]);
+      ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+      ctx.stroke();
     }
 
     ctx.restore();

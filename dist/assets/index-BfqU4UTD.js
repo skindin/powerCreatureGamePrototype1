@@ -1,0 +1,710 @@
+var $t=Object.defineProperty;var Dt=(O,t,i)=>t in O?$t(O,t,{enumerable:!0,configurable:!0,writable:!0,value:i}):O[t]=i;var r=(O,t,i)=>Dt(O,typeof t!="symbol"?t+"":t,i);(function(){const t=document.createElement("link").relList;if(t&&t.supports&&t.supports("modulepreload"))return;for(const e of document.querySelectorAll('link[rel="modulepreload"]'))s(e);new MutationObserver(e=>{for(const l of e)if(l.type==="childList")for(const n of l.addedNodes)n.tagName==="LINK"&&n.rel==="modulepreload"&&s(n)}).observe(document,{childList:!0,subtree:!0});function i(e){const l={};return e.integrity&&(l.integrity=e.integrity),e.referrerPolicy&&(l.referrerPolicy=e.referrerPolicy),e.crossOrigin==="use-credentials"?l.credentials="include":e.crossOrigin==="anonymous"?l.credentials="omit":l.credentials="same-origin",l}function s(e){if(e.ep)return;e.ep=!0;const l=i(e);fetch(e.href,l)}})();class rt{constructor(t={}){r(this,"z");r(this,"hasVerticalVelocity");r(this,"verticalVelocity");r(this,"enabled");this.z=t.z??0,this.hasVerticalVelocity=t.hasVerticalVelocity!==void 0?t.hasVerticalVelocity:!0,this.verticalVelocity=t.verticalVelocity??0,this.enabled=t.enabled!==void 0?t.enabled:!0}}const St=class St{constructor(t=20,i=14,s=1){r(this,"width");r(this,"height");r(this,"tileSize");r(this,"cols");r(this,"rows");r(this,"wallHeight");r(this,"gravity");r(this,"frictionCoeff");r(this,"staticFrictionThreshold");r(this,"tileGrid");r(this,"walls",[]);r(this,"currentPresetId","trenches");this.width=t,this.height=i,this.tileSize=s,this.cols=Math.floor(t/s),this.rows=Math.floor(i/s),this.wallHeight=1,this.gravity=10,this.frictionCoeff=10.4,this.staticFrictionThreshold=.16,this.tileGrid=Array.from({length:this.rows},()=>Array.from({length:this.cols},()=>0)),this.loadWallPreset("trenches")}rebuildWalls(){this.walls=[];for(let t=0;t<this.rows;t++)for(let i=0;i<this.cols;i++)this.tileGrid[t][i]===1&&this.walls.push({id:`wall-${i}-${t}`,x:i*this.tileSize,y:t*this.tileSize,width:this.tileSize,height:this.tileSize,wallHeight:this.wallHeight})}setStandardWallHeight(t){this.wallHeight=t,this.rebuildWalls()}setWallTile(t,i,s){if(t<0||t>=this.cols||i<0||i>=this.rows)return!1;const e=s?1:0;return this.tileGrid[i][t]===e?!1:(this.tileGrid[i][t]=e,this.rebuildWalls(),!0)}hasWall(t,i){return t<0||t>=this.cols||i<0||i>=this.rows?!1:this.tileGrid[i][t]===1}loadWallPreset(t,i){const s=St.WALL_PRESETS.find(e=>e.id===t);return s?(this.currentPresetId=t,this.tileGrid=s.generate(this.cols,this.rows),this.rebuildWalls(),this.syncEntitiesWithWalls(i),!0):!1}syncEntitiesWithWalls(t){var i;if(t)for(const s of t){const e=s.hasCollider?s.colliderRadius:((i=s.colliderModule)==null?void 0:i.radius)??.32,l=this.getSupportingWall(s.position.x,s.position.y,e);l&&s.position.z<l.wallHeight&&(s.hasVerticalPosition||(s.verticalPositionModule?s.verticalPositionModule.enabled=!0:s.verticalPositionModule=new rt({z:l.wallHeight,hasVerticalVelocity:!0})),s.position.z=l.wallHeight,s.supportingSurfaceHeight=l.wallHeight,s.standingWall=l,s.verticalVelocity=0)}}clearAllWalls(t){this.loadWallPreset("empty",t)}resetDefaultWalls(t){this.loadWallPreset("trenches",t)}getWallAt(t,i){for(const s of this.walls)if(t>=s.x&&t<=s.x+s.width&&i>=s.y&&i<=s.y+s.height)return s;return null}testWallOverlap(t,i,s,e){const l=Math.max(e.x,Math.min(t,e.x+e.width)),n=Math.max(e.y,Math.min(i,e.y+e.height)),o=t-l,a=i-n;return o*o+a*a<s*s}getSupportingWall(t,i,s=0){if(s<=0)return this.getWallAt(t,i);for(const e of this.walls)if(this.testWallOverlap(t,i,s,e))return e;return null}areWallsContiguous(t,i){if(t.id===i.id)return!0;const s=Math.max(0,Math.max(t.x,i.x)-Math.min(t.x+t.width,i.x+i.width)),e=Math.max(0,Math.max(t.y,i.y)-Math.min(t.y+t.height,i.y+i.height)),l=Math.min(t.x+t.width,i.x+i.width)-Math.max(t.x,i.x),n=Math.min(t.y+t.height,i.y+i.height)-Math.max(t.y,i.y);return s<.001&&n>.05||e<.001&&l>.05}getSupportingSurfaceHeight(t,i,s=0){const e=this.getSupportingWall(t,i,s);return e?e.wallHeight:0}};r(St,"WALL_PRESETS",[{id:"trenches",name:"⛏️ Trench Tunnels",badge:"Dense Walls",description:"Mostly elevated walls with a winding network of 1-tile-wide ground-level trench tunnels.",generate:(t,i)=>{const s=Array.from({length:i},()=>Array.from({length:t},()=>1));for(let e=2;e<=17;e++)s[3][e]=0,s[7][e]=0,s[10][e]=0;for(let e=2;e<=11;e++)s[e][5]=0,s[e][10]=0,s[e][14]=0;s[1][10]=0,s[12][10]=0,s[7][1]=0,s[7][18]=0;for(let e=5;e<=9;e++)s[e][2]=0;for(let e=5;e<=9;e++)s[e][17]=0;for(let e=2;e<=5;e++)s[5][e]=0;for(let e=10;e<=14;e++)s[5][e]=0;for(let e=5;e<=10;e++)s[9][e]=0;for(let e=14;e<=17;e++)s[9][e]=0;return s[7][5]=0,s}},{id:"standard",name:"🏛️ Standard Arena",badge:"Balanced",description:"Center dividing wall with an open gateway and two 2×2 cover obstacles.",generate:(t,i)=>{const s=Array.from({length:i},()=>Array.from({length:t},()=>0)),e=10;for(let l=1;l<=4;l++)s[l][e]=1;for(let l=8;l<=12;l++)s[l][e]=1;return s[4][4]=1,s[5][4]=1,s[4][5]=1,s[5][5]=1,s[7][15]=1,s[8][15]=1,s[7][16]=1,s[8][16]=1,s}},{id:"courtyards",name:"🏰 Courtyards & Platforms",badge:"4 Quadrants",description:"Four large raised platforms in each corner with a central dais and open courtyards.",generate:(t,i)=>{const s=Array.from({length:i},()=>Array.from({length:t},()=>0));for(let e=2;e<=4;e++){for(let l=3;l<=6;l++)s[e][l]=1;for(let l=13;l<=16;l++)s[e][l]=1}for(let e=9;e<=11;e++){for(let l=3;l<=6;l++)s[e][l]=1;for(let l=13;l<=16;l++)s[e][l]=1}for(let e=6;e<=7;e++)for(let l=9;l<=10;l++)s[e][l]=1;return s}},{id:"pillars",name:"🗿 Pillars & Monoliths",badge:"Tactical Cover",description:"Raised monoliths and stepping-stone pillars scattered across the arena.",generate:(t,i)=>{const s=Array.from({length:i},()=>Array.from({length:t},()=>0)),e=[[3,2],[8,2],[15,2],[3,10],[8,10],[15,10],[5,6],[13,6],[9,6]];for(const[l,n]of e)s[n][l]=1,s[n+1][l]=1,s[n][l+1]=1,s[n+1][l+1]=1;return s}},{id:"maze",name:"🌀 Labyrinth Maze",badge:"Winding Paths",description:"Interlocking corridors and winding paths with high walls to climb over or navigate.",generate:(t,i)=>{const s=Array.from({length:i},()=>Array.from({length:t},()=>0));for(let e=1;e<=9;e++)s[e][4]=1;for(let e=4;e<=12;e++)s[e][7]=1;for(let e=1;e<=9;e++)s[e][10]=1;for(let e=4;e<=12;e++)s[e][13]=1;for(let e=1;e<=9;e++)s[e][16]=1;for(let e=7;e<=10;e++)s[4][e]=1;for(let e=13;e<=16;e++)s[4][e]=1;for(let e=4;e<=7;e++)s[9][e]=1;for(let e=10;e<=13;e++)s[9][e]=1;return s}},{id:"empty",name:"⬜ Empty (Open Arena)",badge:"Clean Slate",description:"Completely open arena with zero walls for custom level design.",generate:(t,i)=>Array.from({length:i},()=>Array.from({length:t},()=>0))}]);let J=St;class dt{constructor(t={}){r(this,"radius");r(this,"enabled");this.radius=t.radius??.32,this.enabled=t.enabled??!0}}class ht{constructor(t={}){r(this,"mass");r(this,"enabled");this.mass=t.mass??1,this.enabled=t.enabled??!0}}class ut{constructor(t={}){r(this,"staticFrictionMod");r(this,"dynamicFrictionMod");r(this,"enabled");this.staticFrictionMod=t.staticFrictionMod??1,this.dynamicFrictionMod=t.dynamicFrictionMod??1,this.enabled=t.enabled??!0}}class yt{constructor(t={}){r(this,"bounceMod");r(this,"verticalBounce");r(this,"enabled");this.bounceMod=t.bounceMod??.4,this.verticalBounce=t.verticalBounce??!0,this.enabled=t.enabled??!0}}class bt{constructor(t={}){r(this,"enabled");this.enabled=t.enabled??!0}}class tt{constructor(t={}){r(this,"id");r(this,"name");r(this,"position");r(this,"velocity");r(this,"color");r(this,"isHeld");r(this,"heldBy");r(this,"lastThrower",null);r(this,"isCharacter",!1);r(this,"isClimbing",!1);r(this,"visualShape","circle");r(this,"colliderModule",null);r(this,"massModule",null);r(this,"frictionModule",null);r(this,"bounceModule",null);r(this,"verticalPositionModule",null);r(this,"gravityModule",null);r(this,"rollModule",null);r(this,"supportingSurfaceHeight",0);r(this,"standingWall",null);var i,s,e,l,n;this.id=t.id??`obj-${Math.random().toString(36).substring(2,9)}`,this.name=t.name??"Entity",this.position={x:((i=t.position)==null?void 0:i.x)??0,y:((s=t.position)==null?void 0:s.y)??0,z:((e=t.position)==null?void 0:e.z)??0},this.velocity={x:((l=t.velocity)==null?void 0:l.x)??0,y:((n=t.velocity)==null?void 0:n.y)??0},this.color=t.color??"#94a3b8",this.isHeld=!1,this.heldBy=null,this.visualShape=t.visualShape??"circle",this.colliderModule=t.colliderModule!==void 0?t.colliderModule:t.colliderRadius!==void 0?new dt({radius:t.colliderRadius}):new dt({radius:.35}),this.massModule=t.massModule!==void 0?t.massModule:t.mass!==void 0?new ht({mass:t.mass}):new ht({mass:1}),this.frictionModule=t.frictionModule!==void 0?t.frictionModule:new ut({staticFrictionMod:t.staticGroundFrictionMod??1,dynamicFrictionMod:t.dynamicGroundFrictionMod??1}),this.bounceModule=t.bounceModule!==void 0?t.bounceModule:t.bounceMod!==void 0&&t.bounceMod!==null?new yt({bounceMod:t.bounceMod}):new yt({bounceMod:.4}),this.verticalPositionModule=t.verticalPositionModule!==void 0?t.verticalPositionModule:t.hasVerticalPosition===!1?null:new rt({z:this.position.z,hasVerticalVelocity:t.hasVerticalVelocity!==!1,verticalVelocity:t.verticalVelocity??0}),this.hasVerticalPosition||(this.position.z=0),this.gravityModule=t.gravityModule!==void 0?t.gravityModule:t.hasGravity===!1?null:new bt,this.rollModule=t.rollModule??null}get hasCollider(){return!!(this.colliderModule&&this.colliderModule.enabled)}get colliderRadius(){return this.colliderModule&&this.colliderModule.enabled?this.colliderModule.radius:0}set colliderRadius(t){this.colliderModule?this.colliderModule.radius=t:this.colliderModule=new dt({radius:t})}get hasMass(){return!!(this.massModule&&this.massModule.enabled&&this.massModule.mass>0)}get mass(){return this.massModule&&this.massModule.enabled?this.massModule.mass:0}set mass(t){this.massModule?this.massModule.mass=t:this.massModule=new ht({mass:t})}get hasFriction(){return!!(this.hasMass&&this.frictionModule&&this.frictionModule.enabled)}get staticGroundFrictionMod(){return this.hasFriction&&this.frictionModule?this.frictionModule.staticFrictionMod:0}set staticGroundFrictionMod(t){this.frictionModule?this.frictionModule.staticFrictionMod=t:this.frictionModule=new ut({staticFrictionMod:t})}get dynamicGroundFrictionMod(){return this.hasFriction&&this.frictionModule?this.frictionModule.dynamicFrictionMod:0}set dynamicGroundFrictionMod(t){this.frictionModule?this.frictionModule.dynamicFrictionMod=t:this.frictionModule=new ut({dynamicFrictionMod:t})}get hasBounce(){return!!(this.hasMass&&this.bounceModule&&this.bounceModule.enabled)}get bounceMod(){return this.hasBounce&&this.bounceModule?this.bounceModule.bounceMod:null}set bounceMod(t){t===null||t<=.01?this.bounceModule=null:this.bounceModule?this.bounceModule.bounceMod=t:this.bounceModule=new yt({bounceMod:t})}get hasVerticalPosition(){return!!(this.verticalPositionModule&&this.verticalPositionModule.enabled)}get hasVerticalVelocity(){var t;return!!(this.hasVerticalPosition&&((t=this.verticalPositionModule)!=null&&t.hasVerticalVelocity))}get verticalVelocity(){return this.hasVerticalVelocity&&this.verticalPositionModule?this.verticalPositionModule.verticalVelocity:0}set verticalVelocity(t){this.hasVerticalVelocity&&this.verticalPositionModule&&(this.verticalPositionModule.verticalVelocity=t)}get hasVerticalBounce(){var t;return!!(this.hasBounce&&((t=this.bounceModule)!=null&&t.verticalBounce)&&this.hasVerticalVelocity)}get hasGravity(){return!!(this.gravityModule&&this.gravityModule.enabled)}get isRestingOnSurface(){return Math.abs(this.position.z-this.supportingSurfaceHeight)<=.01&&Math.abs(this.verticalVelocity)<=.05}get isAboveGround(){return this.hasVerticalPosition&&this.position.z>.001}get isAboveWalls(){return this.hasVerticalPosition&&(this.position.z>=.85||this.supportingSurfaceHeight>=.85||this.standingWall!==null)}updatePosition(t,i){var b,k,m,y,M,R,V,E,z,L,T;if(this.isHeld)return;if(this.lastThrower){const x=this.lastThrower.hasCollider?this.lastThrower.colliderRadius:.44,h=(((b=this.lastThrower.pickupModule)==null?void 0:b.pickupReach)??1.3)+this.colliderRadius+x;(Math.hypot(this.position.x-this.lastThrower.position.x,this.position.y-this.lastThrower.position.y)>h||this.isRestingOnSurface)&&(this.lastThrower=null)}this.hasVerticalPosition||(this.position.z=0,this.verticalVelocity=0,this.supportingSurfaceHeight=0);let s=0;if(this.hasCollider&&this.hasVerticalPosition&&i.walls.length>0)if(this.position.z>=i.wallHeight-.05||this.supportingSurfaceHeight>=i.wallHeight-.05&&this.position.z>=i.wallHeight-.2||this.standingWall!==null){const h=this.isCharacter?this:null;if(!!((k=h==null?void 0:h.climbingModule)!=null&&k.isDismountFreefall||(m=h==null?void 0:h.climbingModule)!=null&&m.climbSuppressedUntilRePress))this.standingWall=null,s=0;else if(this.standingWall){const $=this.colliderRadius;if(i.testWallOverlap(this.position.x,this.position.y,$,this.standingWall))s=this.standingWall.wallHeight;else if((y=h==null?void 0:h.climbingModule)!=null&&y.dismountSuppressedUntilRelease)s=this.standingWall.wallHeight;else{let P=null;for(const W of i.walls)if(i.areWallsContiguous(this.standingWall,W)&&i.testWallOverlap(this.position.x,this.position.y,$,W)){P=W;break}P?(this.standingWall=P,s=P.wallHeight):(this.standingWall=null,s=0,h!=null&&h.climbingModule&&(h.climbingModule.isDismountFreefall=!0,h.climbingModule.climbSuppressedUntilRelease=!0))}}else if(!this.isClimbing&&(this.position.z>=i.wallHeight-.05||this.supportingSurfaceHeight>=i.wallHeight-.05)){const $=i.getSupportingWall(this.position.x,this.position.y,this.colliderRadius);$&&(this.standingWall=$,s=$.wallHeight)}}else this.standingWall=null;if(this.isClimbing&&(s=Math.max(s,this.position.z),this.verticalVelocity=0),this.supportingSurfaceHeight=s,this.hasGravity&&this.hasVerticalVelocity){if((this.position.z>s||this.verticalVelocity!==0)&&(this.verticalVelocity-=i.gravity*t,this.position.z+=this.verticalVelocity*t,this.position.z<=s))if(this.position.z=s,!this.isCharacter&&this.hasVerticalBounce&&this.bounceMod!==null&&this.bounceMod>0&&Math.abs(this.verticalVelocity)>.25){const x=Math.abs(this.verticalVelocity);if(this.verticalVelocity=-this.verticalVelocity*this.bounceMod,this.hasFriction&&this.rollModule&&this.rollModule.enabled){const h=this.rollModule,w=this.colliderRadius>0?this.colliderRadius:.3,$=.4,S=this.bounceMod,P=(1+S)*this.mass*x,W=i.frictionCoeff*this.dynamicGroundFrictionMod*.05,D=this.velocity.x-h.angularVelocity.y*w,B=this.velocity.y+h.angularVelocity.x*w,C=Math.hypot(D,B);if(C>.001&&W>0){const A=W*P,q=C*this.mass/(1+1/$),H=Math.min(q,A),j=D/C*H,G=B/C*H;this.velocity.x-=j/this.mass,this.velocity.y-=G/this.mass,h.angularVelocity.y+=j/($*this.mass*w),h.angularVelocity.x-=G/($*this.mass*w)}const F=Math.max(.65,1-(1-S)*.35);h.angularVelocity.x*=F,h.angularVelocity.y*=F,h.angularVelocity.z*=F}}else this.verticalVelocity=0}else this.hasVerticalVelocity&&this.verticalVelocity!==0&&(this.position.z+=this.verticalVelocity*t,this.position.z<=s&&(this.position.z=s,this.hasVerticalBounce&&this.bounceMod!==null&&this.bounceMod>0&&Math.abs(this.verticalVelocity)>.25?this.verticalVelocity=-this.verticalVelocity*this.bounceMod:this.verticalVelocity=0));if(Math.abs(this.position.z-s)<=.01&&Math.abs(this.verticalVelocity)<=.05&&this.hasFriction){if(!(this.isCharacter&&((M=this.walkingModule)==null?void 0:M.enabled)))if(this.rollModule&&this.rollModule.enabled){const h=this.rollModule,w=this.colliderRadius>0?this.colliderRadius:.3,$=i.frictionCoeff*this.dynamicGroundFrictionMod,S=.4,P=this.velocity.x-h.angularVelocity.y*w,W=this.velocity.y+h.angularVelocity.x*w,D=Math.hypot(P,W);if($>0&&D>.001){const C=$*(1+1/S)*t;if(D<=C){const F=this.velocity.x+S*h.angularVelocity.y*w,A=this.velocity.y-S*h.angularVelocity.x*w,q=F/(1+S),H=A/(1+S);this.velocity.x=q,this.velocity.y=H,h.angularVelocity.y=q/w,h.angularVelocity.x=-H/w}else{const F=P/D*$*t,A=W/D*$*t;this.velocity.x-=F,this.velocity.y-=A,h.angularVelocity.y+=F/(S*w),h.angularVelocity.x-=A/(S*w)}}const B=Math.hypot(this.velocity.x,this.velocity.y);if(B>0){if(h.rollResistance>0){const C=h.rollResistance*t,F=Math.max(0,B-C);if(F<.005)this.velocity.x=0,this.velocity.y=0,h.angularVelocity.x=0,h.angularVelocity.y=0;else{const A=F/B;this.velocity.x*=A,this.velocity.y*=A,h.angularVelocity.x*=A,h.angularVelocity.y*=A}}}else{const C=Math.hypot(h.angularVelocity.x,h.angularVelocity.y);if(C>0&&$>0){const F=$/(S*w)*t,A=Math.max(0,C-F),q=C>0?A/C:0;h.angularVelocity.x*=q,h.angularVelocity.y*=q}}if(Math.abs(h.angularVelocity.z)>.001&&h.rollResistance>0){const C=h.rollResistance/(S*w)*t,F=Math.sign(h.angularVelocity.z),A=Math.abs(h.angularVelocity.z);h.angularVelocity.z=A<=C?0:F*(A-C)}h.updateVisualPhase(t)}else{const h=Math.hypot(this.velocity.x,this.velocity.y);if(h>0){const w=i.staticFrictionThreshold*this.staticGroundFrictionMod;if(h<w)this.velocity.x=0,this.velocity.y=0;else{const $=i.frictionCoeff*this.dynamicGroundFrictionMod*t,P=Math.max(0,h-$)/h;this.velocity.x*=P,this.velocity.y*=P}}}}else this.rollModule&&this.rollModule.enabled&&this.rollModule.updateVisualPhase(t);const l=this.isCharacter?this:null,n=l==null?void 0:l.climbingModule,o=!this.isClimbing&&this.supportingSurfaceHeight>=i.wallHeight-.05&&this.standingWall!==null,a=Math.max(.01,(n==null?void 0:n.hangDistance)??.1);if(n)if(this.position.z<=.01)n.isAssistClampArmed=!1,n.hasLeftClampZoneSinceDismount=!0;else if(o&&this.standingWall){const x=this.standingWall,h=[x];for(const S of i.walls)S.id!==x.id&&i.areWallsContiguous(x,S)&&h.push(S);let w=1/0;for(const S of h){const P=Math.max(S.x,Math.min(this.position.x,S.x+S.width)),W=Math.max(S.y,Math.min(this.position.y,S.y+S.height)),D=Math.hypot(this.position.x-P,this.position.y-W);D<w&&(w=D)}w<=a+.001?l.isClimbInputHeld&&!n.dismountSuppressedUntilRelease?(n.isAssistClampArmed=!1,n.hasLeftClampZoneSinceDismount=!1):n.hasLeftClampZoneSinceDismount&&(n.isAssistClampArmed=!0):(n.hasLeftClampZoneSinceDismount=!0,n.isAssistClampArmed=!1)}else n.isAssistClampArmed=!1;const d=!!(l&&o&&(n!=null&&n.enabled)&&(n!=null&&n.preventWalkOff)&&(n!=null&&n.isAssistClampArmed)),c=this.velocity.x*t,g=this.velocity.y*t,v=Math.hypot(c,g);if(v>1e-4)if(d){const x=Math.max(.01,((R=l==null?void 0:l.climbingModule)==null?void 0:R.hangDistance)??.1);let h=this.standingWall??i.getSupportingWall(this.position.x,this.position.y,x);this.standingWall=h;const w=this.position.x+c,$=this.position.y+g,S=[];if(h){S.push(h);for(const W of i.walls)W.id!==h.id&&i.areWallsContiguous(h,W)&&S.push(W)}let P=null;for(const W of S)if(i.testWallOverlap(w,$,x,W)){P=W;break}if(P)this.position.x=w,this.position.y=$,this.standingWall=P;else if(S.length>0){let W=1/0,D=null;for(const B of S){const C=Math.max(B.x,Math.min(w,B.x+B.width)),F=Math.max(B.y,Math.min($,B.y+B.height)),A=w-C,q=$-F,H=A*A+q*q;H<W&&(W=H,D={wall:B,closestX:C,closestY:F,dist:Math.sqrt(H),dx:A,dy:q})}if(D&&D.dist>0){const B=D.dx/D.dist,C=D.dy/D.dist,F=this.velocity.x*B+this.velocity.y*C;F>0&&(this.velocity.x-=F*B,this.velocity.y-=F*C);const A=x-.002;D.dist>A?(this.position.x=D.closestX+B*A,this.position.y=D.closestY+C*A):(this.position.x=w,this.position.y=$);const q=i.testWallOverlap(this.position.x,this.position.y,x,D.wall)?D.wall:S.find(H=>i.testWallOverlap(this.position.x,this.position.y,x,H));q&&(this.standingWall=q)}else this.velocity.x=0,this.velocity.y=0}}else{const h=Math.max(1,Math.ceil(v/.01)),w=c/h,$=g/h;let S=this.standingWall??(o?i.getSupportingWall(this.position.x,this.position.y,this.colliderRadius):null),P=!1;for(let W=1;W<=h;W++){const D=this.position.x+w,B=this.position.y+$;if(S){let F=null;if(i.testWallOverlap(D,B,this.colliderRadius,S))F=S;else for(const A of i.walls)if(i.areWallsContiguous(S,A)&&i.testWallOverlap(D,B,this.colliderRadius,A)){F=A;break}F?(S=F,this.standingWall=F):(V=l==null?void 0:l.climbingModule)!=null&&V.dismountSuppressedUntilRelease||(P=!0,S=null,this.standingWall=null,this.supportingSurfaceHeight=0,l!=null&&l.climbingModule&&(l.climbingModule.isDismountFreefall=!0,l.climbingModule.climbSuppressedUntilRelease=!0))}if(this.position.x=D,this.position.y=B,!this.isClimbing&&(P||!this.standingWall&&!!((E=l==null?void 0:l.climbingModule)!=null&&E.isDismountFreefall||(z=l==null?void 0:l.climbingModule)!=null&&z.climbSuppressedUntilRePress))&&this.hasCollider)for(const F of i.walls)this.position.z<=F.wallHeight&&this.resolveWallCollision(F)}}if(this.hasCollider){const x=this.colliderRadius,h=x,w=i.width-x,$=x,S=i.height-x,P=this.isCharacter?0:this.hasBounce&&this.bounceMod!==null?this.bounceMod:0;this.position.x<h?(this.position.x=h,this.resolveWallImpact(1,0,P)):this.position.x>w&&(this.position.x=w,this.resolveWallImpact(-1,0,P)),this.position.y<$?(this.position.y=$,this.resolveWallImpact(0,1,P)):this.position.y>S&&(this.position.y=S,this.resolveWallImpact(0,-1,P));const W=!!((L=l==null?void 0:l.climbingModule)!=null&&L.isDismountFreefall||(T=l==null?void 0:l.climbingModule)!=null&&T.climbSuppressedUntilRePress);for(const D of i.walls)if(this.position.z<=D.wallHeight&&(this.position.z<D.wallHeight-.05||W||this.standingWall===null)){if(this.standingWall&&(this.standingWall.id===D.id||i.areWallsContiguous(this.standingWall,D)))continue;this.resolveWallCollision(D)}}const f=16,p=Math.hypot(this.velocity.x,this.velocity.y);if(p>f){const x=f/p;this.velocity.x*=x,this.velocity.y*=x}if(this.rollModule&&this.rollModule.enabled){const h=this.rollModule.angularSpeed;if(h>35){const w=35/h;this.rollModule.angularVelocity.x*=w,this.rollModule.angularVelocity.y*=w,this.rollModule.angularVelocity.z*=w}}this.verticalPositionModule&&(this.verticalPositionModule.z=this.position.z)}static getClosestWallPoint(t,i,s){if(!s.walls||s.walls.length===0)return null;let e=1/0,l=null;for(const n of s.walls){const o=Math.max(n.x,Math.min(t,n.x+n.width)),a=Math.max(n.y,Math.min(i,n.y+n.height)),d=t-o,c=i-a,g=d*d+c*c;g<e&&(e=g,l={wall:n,closestX:o,closestY:a,dist:Math.sqrt(g),dx:d,dy:c})}return l}resolveWallImpact(t,i,s){this.lastThrower=null;const e=this.velocity.x*t+this.velocity.y*i;if(e>=0)return;const l=e;if(s>0&&this.hasMass?(this.velocity.x-=(1+s)*l*t,this.velocity.y-=(1+s)*l*i):(this.velocity.x-=l*t,this.velocity.y-=l*i),this.hasFriction&&this.rollModule&&this.rollModule.enabled){const n=this.rollModule,o=this.colliderRadius>0?this.colliderRadius:.3,a=.4,d=.35,c=-i,g=t,v=this.velocity.x*c+this.velocity.y*g,f=-(1+s)*this.mass*l,p=v-n.angularVelocity.z*o,b=Math.abs(p)*this.mass/(1+1/a),k=d*f,m=Math.min(b,k),y=-Math.sign(p)*m,M=v,R=M+y/this.mass,V=Math.abs(R)<=Math.abs(M)+.01?R-M:-M*.1;this.velocity.x+=V*c,this.velocity.y+=V*g;const z=-(V*this.mass)/(a*this.mass*o);n.angularVelocity.z+=z,n.angularVelocity.z=Math.max(-30,Math.min(30,n.angularVelocity.z)),n.angularVelocity.y=this.velocity.x/o,n.angularVelocity.x=-this.velocity.y/o}}resolveWallCollision(t){if(!this.hasCollider)return;const i=this.colliderRadius,s=Math.max(t.x,Math.min(this.position.x,t.x+t.width)),e=Math.max(t.y,Math.min(this.position.y,t.y+t.height)),l=this.position.x-s,n=this.position.y-e,o=l*l+n*n;if(o<i*i){this.lastThrower=null;const a=Math.sqrt(o);let d=0,c=0,g=0;if(a===0){const f=Math.abs(this.position.x-t.x),p=Math.abs(t.x+t.width-this.position.x),b=Math.abs(this.position.y-t.y),k=Math.abs(t.y+t.height-this.position.y),m=Math.min(f,p,b,k);m===f?(d=-1,g=f+i):m===p?(d=1,g=p+i):m===b?(c=-1,g=b+i):(c=1,g=k+i)}else g=i-a,d=l/a,c=n/a;this.position.x+=d*g,this.position.y+=c*g;const v=this.isCharacter?0:this.hasBounce&&this.bounceMod!==null?this.bounceMod:0;this.resolveWallImpact(d,c,v)}}}class Rt{constructor(){r(this,"id","walking");r(this,"name","Walking Module");r(this,"enabled",!0);r(this,"maxWalkForce",35);r(this,"maxWalkSpeed",5.2);r(this,"dragDamping",8.01)}update(t,i,s,e){var L;if(!this.enabled||!t.isRestingOnSurface||t.isClimbing){t.isActivelyWalking=!1;return}if(!t.hasFriction||!((L=t.frictionModule)!=null&&L.enabled)||!t.hasMass||!t.hasStrength||t.strength<=0){t.isActivelyWalking=!1;return}const l=Math.hypot(i.x,i.y),n=l>.05;if(t.isActivelyWalking=n,t.mass<=.01)return;const a=t.dynamicGroundFrictionMod;if(a<=.001)return;const d=e.frictionCoeff/10,c=a*d,v=t.carriedMass/(Math.max(.1,t.strength)*8),f=this.maxWalkSpeed/(1+v);let p=0,b=0;if(n){const T=i.x/l,x=i.y/l;p=T*f,b=x*f}const k=p-t.velocity.x,m=b-t.velocity.y,y=Math.hypot(k,m);if(y<.001){t.velocity.x=p,t.velocity.y=b;return}const M=Math.hypot(t.velocity.x,t.velocity.y),R=Math.max(.02,e.staticFrictionThreshold*t.staticGroundFrictionMod),V=t.hasMass?Math.max(.2,t.baseMass):1,z=this.maxWalkForce*t.strength/V*c*s;if(y<=z||!n&&M<R)t.velocity.x=p,t.velocity.y=b;else{const T=z/y;t.velocity.x+=k*T,t.velocity.y+=m*T}}}class Pt{constructor(){r(this,"id","pickup");r(this,"name","Pickup Ability");r(this,"enabled",!0);r(this,"pickupReach",1.3);r(this,"crossLayerReachRatio",.55)}isObjectInReach(t,i,s=1){var c;if(!this.enabled||i===t||i.isHeld||i.isCharacter||i.lastThrower===t)return!1;const e=t.position.z>=s-.05?1:0,l=i.position.z>=s-.05?1:0,o=e!==l?this.pickupReach*this.crossLayerReachRatio:this.pickupReach,a=i.hasCollider?i.colliderRadius:((c=i.colliderModule)==null?void 0:c.radius)??.32;return Math.hypot(i.position.x-t.position.x,i.position.y-t.position.y)<=o+a}findTargetObject(t,i,s,e,l=1){if(!this.enabled)return null;let n=null,o=1/0;for(const a of e){if(!this.isObjectInReach(t,a,l))continue;const d=Math.hypot(a.position.x-i,a.position.y-s);d<o&&(o=d,n=a)}return n}pickup(t,i){if(!this.enabled||t.heldObject)return!1;const s=i.velocity.x,e=i.velocity.y,l=i.mass/Math.max(.2,t.mass);return t.velocity.x+=s*l,t.velocity.y+=e*l,t.isAboveGround&&Math.abs(i.verticalVelocity)>.1&&(t.verticalVelocity+=i.verticalVelocity*l),t.heldObject=i,i.isHeld=!0,i.heldBy=t,i.velocity.x=0,i.velocity.y=0,i.verticalVelocity=0,i.position.z=i.hasVerticalPosition?.45:0,!0}drop(t){if(!t.heldObject)return null;const i=t.heldObject;return t.heldObject=null,i.isHeld=!1,i.heldBy=null,i.velocity.x=t.velocity.x*.4,i.velocity.y=t.velocity.y*.4,i.verticalVelocity=0,i}}class Wt{constructor(){r(this,"id","throw");r(this,"name","Throw Ability");r(this,"enabled",!0);r(this,"baseThrowForce",7.6);r(this,"maxThrowAimDistance",13)}testWallIntersection(t,i,s,e){const l=Math.max(e.x,Math.min(t,e.x+e.width)),n=Math.max(e.y,Math.min(i,e.y+e.height)),o=t-l,a=i-n;return o*o+a*a<s*s}computeLaunchVelocity(t,i,s,e,l,n,o,a=!0,d=!0,c=.35){const g=e-t,v=l-i,f=Math.hypot(g,v);if(f<.1)return null;const p=Math.min(f,this.maxThrowAimDistance),b=g/f,k=v/f,m=t+b*p,y=i+k*p;if(!a||!d){const P=Math.max(3,o),W=Math.max(.14,p/P),D=b*P,B=k*P;return{vx:D,vy:B,vz:0,totalTime:W,finalTargetX:m,finalTargetY:y,targetSurfaceHeight:s}}const M=n.getSupportingSurfaceHeight(m,y),R=M-s,V=Math.max(3,o);let z=Math.max(.14,p/V);R>0&&(z=Math.max(z,Math.sqrt(2*R/n.gravity)));const L=40,T=c>0?c:.35,x=.25;for(let P=1;P<L;P++){const W=P/L,D=t+(m-t)*W,B=i+(y-i)*W;for(const C of n.walls)if(this.testWallIntersection(D,B,T,C)){if(M>0&&m>=C.x&&m<=C.x+C.width&&y>=C.y&&y<=C.y+C.height&&W>.65)continue;const A=(1-W)*s+W*M,H=C.wallHeight+x-A;if(H>0){const j=n.gravity*W*(1-W);if(j>.001){const G=2*H/j;if(G>0){const U=Math.sqrt(G);U>z&&(z=U)}}}}}if(z<=.05)return null;const h=(R+.5*n.gravity*z*z)/z,w=p/z,$=b*w,S=k*w;return{vx:$,vy:S,vz:h,totalTime:z,finalTargetX:m,finalTargetY:y,targetSurfaceHeight:M}}calculateTrajectory(t,i,s,e){if(!this.enabled||!t.heldObject)return null;const l=t.heldObject,n=l.position.x,o=l.position.y,a=l.position.z,d=this.baseThrowForce*t.strength,c=l.hasGravity&&l.hasVerticalVelocity,g=this.computeLaunchVelocity(n,o,a,i,s,e,d,l.hasGravity,l.hasVerticalVelocity,l.colliderRadius);if(!g)return null;const{vx:v,vy:f,vz:p,totalTime:b,finalTargetX:k,finalTargetY:m,targetSurfaceHeight:y}=g,M=90,R=b/M,V=[];let E=!1,z=y>0,L;for(let x=0;x<=M;x++){const h=x*R,w=x===M?k:n+v*h,$=x===M?m:o+f*h,S=c?a+p*h-.5*e.gravity*h*h:a,P=c?x===M?y:Math.max(y,S):a,W=c?p-e.gravity*h:0,D=P>e.wallHeight;let B=!1,C=!1;for(const F of e.walls)if(this.testWallIntersection(w,$,l.colliderRadius,F)&&(B=!0,P<=F.wallHeight+.001)){if(V.length>0&&V[V.length-1].z>=F.wallHeight-.05&&W<=0){if(y>0&&(x>=M-2||Math.hypot(w-k,$-m)<.2)){z=!0;break}else if(y===0){z=!0,C=!0,E=!0,L=F.id;break}}else if(P<F.wallHeight-.05){C=!0,E=!0,L=F.id;break}}if(V.push({x:w,y:$,z:P,t:h,couldClearWall:D,isOverWall:B,collidesWall:C}),C)break}const T=V[V.length-1];return{points:V,landPoint:{x:E?T.x:k,y:E?T.y:m},isBlockedByWall:E,isLandingOnWallTop:E?z:y>0,blockedAtWallId:L}}throwHeldObject(t,i,s,e){if(!this.enabled||!t.heldObject)return null;const l=t.heldObject,n=l.position.x,o=l.position.y,a=l.position.z,d=this.baseThrowForce*t.strength,c=this.computeLaunchVelocity(n,o,a,i,s,e,d,l.hasGravity,l.hasVerticalVelocity,l.colliderRadius);if(!c)return null;if(l.isHeld=!1,l.heldBy=null,l.lastThrower=t,l.velocity.x=c.vx,l.velocity.y=c.vy,l.verticalVelocity=c.vz,l.position.z=l.hasVerticalPosition?Math.max(.3,l.position.z):0,l.hasFriction&&l.rollModule&&l.rollModule.enabled){const k=l.colliderRadius>0?l.colliderRadius:.3;l.rollModule.angularVelocity.y=c.vx/k,l.rollModule.angularVelocity.x=-c.vy/k}const g=l.hasMass?l.mass:0,v=t.hasMass?Math.max(.2,t.baseMass):0,f=g>0&&v>0?g/v:0;t.heldObject=null;const p=c.vx-t.velocity.x,b=c.vy-t.velocity.y;if(t.velocity.x-=p*f,t.velocity.y-=b*f,t.isAboveGround&&l.hasVerticalVelocity){const k=c.vz-t.verticalVelocity;t.verticalVelocity-=k*f}return l}}class Ft{constructor(t){r(this,"id","climbing");r(this,"name","Climbing Module");r(this,"enabled",!0);r(this,"maxAdhesion",35);r(this,"maxClimbSpeed",3);r(this,"preventWalkOff",!0);r(this,"horizontalClimb",!1);r(this,"hangDistance",.1);r(this,"dismountSuppressedUntilRelease",!1);r(this,"climbSuppressedUntilRelease",!1);r(this,"isDismountFreefall",!1);r(this,"isAssistClampArmed",!1);r(this,"hasLeftClampZoneSinceDismount",!0);r(this,"wasClimbHeldLastTick",!1);(t==null?void 0:t.maxAdhesion)!==void 0&&(this.maxAdhesion=t.maxAdhesion),(t==null?void 0:t.maxClimbSpeed)!==void 0&&(this.maxClimbSpeed=t.maxClimbSpeed),(t==null?void 0:t.preventWalkOff)!==void 0&&(this.preventWalkOff=t.preventWalkOff),(t==null?void 0:t.horizontalClimb)!==void 0&&(this.horizontalClimb=t.horizontalClimb),(t==null?void 0:t.hangDistance)!==void 0&&(this.hangDistance=t.hangDistance)}get climbSuppressedUntilRePress(){return this.isDismountFreefall||this.climbSuppressedUntilRelease}set climbSuppressedUntilRePress(t){this.isDismountFreefall=t,this.climbSuppressedUntilRelease=t}update(t,i,s,e,l){const n=s&&!this.wasClimbHeldLastTick;if(this.wasClimbHeldLastTick=s,s||(this.dismountSuppressedUntilRelease=!1,this.climbSuppressedUntilRelease=!1),(t.position.z<=.01||n)&&(this.isDismountFreefall=!1,t.position.z<=.01&&(this.isAssistClampArmed=!1,this.hasLeftClampZoneSinceDismount=!0)),this.climbSuppressedUntilRelease||!this.enabled||!t.hasVerticalPosition||!t.hasStrength||t.strength<=0)return t.isClimbing=!1,!1;const o=t.hasCollider?t.colliderRadius:.44,a=Math.hypot(i.x,i.y),d=a>=.05,c=d?i.x/a:0,g=d?i.y/a:0;if(!t.isClimbing&&(t.standingWall!==null||t.position.z>=l.wallHeight))return t.isClimbing=!1,!1;let v=null,f=1/0,p=0,b=0,k=0;for(const V of l.walls){const E=Math.max(V.x,Math.min(t.position.x,V.x+V.width)),z=Math.max(V.y,Math.min(t.position.y,V.y+V.height)),L=E-t.position.x,T=z-t.position.y,x=Math.hypot(L,T);x<=o+.15&&x<f&&(f=x,v=V,p=d?c*L+g*T:0,b=L,k=T)}if(!v)return t.isClimbing=!1,!1;const m=t.mass;if(m*l.gravity>this.maxAdhesion)return t.isClimbing=!1,!1;const M=t.isClimbing;if(M&&t.position.z<v.wallHeight){const V=f>.001?b/f:0,E=f>.001?k/f:0,z=-E,L=V,T=d?c*V+g*E:0,x=d?c*z+g*L:0;if(d&&(T<-.3||!this.horizontalClimb&&p<-.1))return t.isClimbing=!1,t.velocity.x=c*3,t.velocity.y=g*3,s&&(this.climbSuppressedUntilRelease=!0),!1;if(t.isClimbing=!0,t.verticalVelocity=0,t.standingWall=null,this.horizontalClimb&&d&&Math.abs(x)>=.1){const h=t.baseMass,w=Math.max(.5,Math.min(this.maxClimbSpeed,this.maxClimbSpeed*h*t.strength/Math.max(.1,m)));t.velocity.x=z*x*w,t.velocity.y=L*x*w}else t.velocity.x=0,t.velocity.y=0;if(s){const h=t.baseMass,w=Math.max(.2,Math.min(this.maxClimbSpeed,this.maxClimbSpeed*h*t.strength/Math.max(.1,m)));t.position.z+=w*e,t.position.z>=v.wallHeight&&(t.position.z=v.wallHeight,t.supportingSurfaceHeight=v.wallHeight,t.standingWall=v,t.verticalVelocity=0,t.isClimbing=!1,this.dismountSuppressedUntilRelease=!0,this.isAssistClampArmed=!1,this.hasLeftClampZoneSinceDismount=!0)}return!0}if(!M&&t.position.z>.05&&t.position.z<v.wallHeight)return n?(t.isClimbing=!0,t.verticalVelocity=0,t.velocity.x=0,t.velocity.y=0,!0):(t.isClimbing=!1,!1);if(s&&d&&p>.01&&f<=o+.03&&t.position.z<v.wallHeight){if(f>.001){const z=b/f,L=k/f;t.position.x=t.position.x+b-z*o,t.position.y=t.position.y+k-L*o}t.isClimbing=!0,t.verticalVelocity=0,t.velocity.x=0,t.velocity.y=0;const V=t.baseMass,E=Math.max(.2,Math.min(this.maxClimbSpeed,this.maxClimbSpeed*V*t.strength/Math.max(.1,m)));return t.position.z+=E*e,!0}return t.isClimbing=!1,!1}}class wt{constructor(t={}){r(this,"id","strength");r(this,"name","Strength Module");r(this,"enabled",!0);r(this,"strength",1);this.strength=t.strength??1,this.enabled=t.enabled??!0}}class Mt extends tt{constructor(i={}){super({name:"Player Character",position:{x:i.x??5,y:i.y??7,z:0},mass:i.mass??1.2,colliderRadius:i.colliderRadius??.44,color:i.color??"#f59e0b",bounceMod:.1});r(this,"strengthModule");r(this,"facingAngle");r(this,"heldObject");r(this,"isCharacter",!0);r(this,"isActivelyWalking",!1);r(this,"isClimbInputHeld",!1);r(this,"baseMass",1.2);r(this,"walkingModule");r(this,"pickupModule");r(this,"throwModule");r(this,"climbingModule");r(this,"isAiming");r(this,"aimTarget");r(this,"activeTrajectory");this.baseMass=i.mass??1.2,this.strength=i.strength??1,this.facingAngle=0,this.heldObject=null,this.isAiming=!1,this.aimTarget=null,this.activeTrajectory=null,this.strengthModule=new wt({strength:i.strength??1}),this.walkingModule=new Rt,this.pickupModule=new Pt,this.throwModule=new Wt,this.climbingModule=new Ft}get hasStrength(){return!!(this.strengthModule&&this.strengthModule.enabled&&this.strengthModule.strength>0)}get strength(){return this.hasStrength?this.strengthModule.strength:0}set strength(i){this.strengthModule?this.strengthModule.strength=Math.max(.1,i):this.strengthModule=new wt({strength:i})}get mass(){const i=this.hasMass?this.baseMass:0,s=this.heldObject&&this.heldObject.hasMass?this.heldObject.mass:0;return i+s}set mass(i){this.baseMass=Math.max(.1,i),this.massModule&&(this.massModule.mass=this.baseMass)}get carriedMass(){return this.heldObject&&this.heldObject.hasMass?this.heldObject.mass:0}get hangDistance(){return this.climbingModule?this.climbingModule.hangDistance:.1}set hangDistance(i){this.climbingModule&&(this.climbingModule.hangDistance=Math.max(0,i))}updateFacingDirection(i,s,e){if((this.heldObject!==null||i)&&s&&(this.throwModule!==null||this.pickupModule!==null)){const l=s.x-this.position.x,n=s.y-this.position.y;if(Math.hypot(l,n)>.1){this.facingAngle=Math.atan2(n,l);return}}e&&Math.hypot(e.x,e.y)>.05&&(this.facingAngle=Math.atan2(e.y,e.x))}updateCharacter(i,s,e,l,n,o=!1){if(this.isClimbInputHeld=o,this.climbingModule&&this.climbingModule.update(this,s,o,i,n),this.walkingModule&&this.walkingModule.update(this,s,i,n),this.updatePosition(i,n),this.updateFacingDirection(e,l,s),this.heldObject){const a=this.colliderRadius+this.heldObject.colliderRadius*.5+.08;this.heldObject.position.x=this.position.x+Math.cos(this.facingAngle)*a,this.heldObject.position.y=this.position.y+Math.sin(this.facingAngle)*a,this.heldObject.position.z=this.heldObject.hasVerticalPosition?this.position.z+.45:0,this.heldObject.velocity.x=this.velocity.x,this.heldObject.velocity.y=this.velocity.y,this.heldObject.verticalVelocity=0}this.isAiming=this.heldObject!==null||e,this.aimTarget=l,this.heldObject&&this.throwModule&&l?this.activeTrajectory=this.throwModule.calculateTrajectory(this,l.x,l.y,n):this.activeTrajectory=null}}class mt{constructor(t={}){r(this,"enabled",!0);r(this,"angularVelocity",{x:0,y:0,z:0});r(this,"rollResistance",.4);r(this,"visualPhase",0);var i,s,e;this.enabled=t.enabled??!0,this.angularVelocity={x:((i=t.angularVelocity)==null?void 0:i.x)??0,y:((s=t.angularVelocity)==null?void 0:s.y)??0,z:((e=t.angularVelocity)==null?void 0:e.z)??0},this.rollResistance=t.rollResistance??.4}get angularSpeed(){return Math.hypot(this.angularVelocity.x,this.angularVelocity.y,this.angularVelocity.z)}updateVisualPhase(t){const i=this.angularSpeed;i>.001&&(this.visualPhase=(this.visualPhase+i*t)%(Math.PI*2))}}class xt{constructor(t){r(this,"ctx");this.ctx=t}render(t,i,s,e,l=!1,n,o,a=!1,d){const c=this.ctx,g=c.canvas.width/t.width;c.clearRect(0,0,c.canvas.width,c.canvas.height),this.drawFloorGrid(t,g),this.drawWalls(t,g),a&&d&&this.drawWallEditorHover(t,d,g);const v=[i,...s];v.sort((f,p)=>Math.abs(f.position.z-p.position.z)>.001?f.position.z-p.position.z:Math.abs(f.verticalVelocity-p.verticalVelocity)>.001?f.verticalVelocity-p.verticalVelocity:f.position.y-p.position.y);for(const f of v)f instanceof Mt?this.drawCharacter(f,s,g,t):this.drawFreebodyObject(f,v,i,g,f===o,t),this.drawObjectShadow(f,t,g);i.activeTrajectory&&this.drawTrajectory(i.activeTrajectory,g),l&&(n&&n!==e&&this.drawHoverGizmo(n,g),e&&this.drawSelectionGizmo(e,l,g))}drawFloorGrid(t,i){const s=this.ctx;s.fillStyle="#0f172a",s.fillRect(0,0,t.width*i,t.height*i),s.strokeStyle="rgba(148, 163, 184, 0.08)",s.lineWidth=1;for(let e=1;e<t.width;e++)s.beginPath(),s.moveTo(e*i,0),s.lineTo(e*i,t.height*i),s.stroke();for(let e=1;e<t.height;e++)s.beginPath(),s.moveTo(0,e*i),s.lineTo(t.width*i,e*i),s.stroke();s.strokeStyle="rgba(148, 163, 184, 0.35)",s.lineWidth=3,s.strokeRect(1.5,1.5,t.width*i-3,t.height*i-3)}drawWalls(t,i){const s=this.ctx;for(const e of t.walls)s.fillStyle="#1e293b",s.fillRect(e.x*i,e.y*i,e.width*i,e.height*i),s.strokeStyle="#475569",s.lineWidth=2,s.strokeRect(e.x*i,e.y*i,e.width*i,e.height*i)}drawWallEditorHover(t,i,s){if(i.col<0||i.col>=t.cols||i.row<0||i.row>=t.rows)return;const e=this.ctx,l=i.col*t.tileSize*s,n=i.row*t.tileSize*s,o=t.tileSize*s,a=t.hasWall(i.col,i.row);e.save(),a?(e.fillStyle="rgba(239, 68, 68, 0.35)",e.strokeStyle="#ef4444",e.lineWidth=2.5,e.fillRect(l,n,o,o),e.strokeRect(l,n,o,o),e.font="bold 12px system-ui, sans-serif",e.fillStyle="#fca5a5",e.textAlign="center",e.textBaseline="middle",e.fillText("✕ Erase",l+o/2,n+o/2)):(e.fillStyle="rgba(56, 189, 248, 0.3)",e.strokeStyle="#38bdf8",e.lineWidth=2.5,e.fillRect(l,n,o,o),e.strokeRect(l,n,o,o),e.font="bold 12px system-ui, sans-serif",e.fillStyle="#7dd3fc",e.textAlign="center",e.textBaseline="middle",e.fillText("+ Draw",l+o/2,n+o/2)),e.restore()}static getAltitudeScale(t,i){return 1+Math.max(0,t)/Math.max(.1,i)*.5}drawObjectShadow(t,i,s){const e=this.ctx,l=t.position.x*s,n=t.position.y*s,o=t.position.z,a=t.colliderRadius*s,d=o>=i.wallHeight-.001;if(e.save(),e.beginPath(),t.visualShape==="box"){const c=a*2,g=Math.max(3,a*.16);e.roundRect?e.roundRect(l-a,n-a,c,c,g):e.rect(l-a,n-a,c,c)}else e.arc(l,n,a,0,Math.PI*2);o>.01&&e.setLineDash([7,4]),e.strokeStyle="rgba(0, 0, 0, 0.85)",e.lineWidth=d?5.2:4,e.stroke(),d?(e.strokeStyle="#38bdf8",e.lineWidth=3.2,e.shadowColor="#0284c7",e.shadowBlur=8):(e.strokeStyle="#ffffff",e.lineWidth=2.2),e.stroke(),e.restore()}drawFreebodyObject(t,i,s,e,l=!1,n){var k,m;const o=this.ctx,a=t.position.x*e,d=t.position.y*e,c=xt.getAltitudeScale(t.position.z,n.wallHeight),v=(t.hasCollider?t.colliderRadius:((k=t.colliderModule)==null?void 0:k.radius)??.32)*e*c,p=!s.heldObject&&s.pickupModule!==null&&s.pickupModule.enabled&&!t.isHeld&&(((m=s.pickupModule)==null?void 0:m.isObjectInReach(s,t,n.wallHeight))??!1);if(p){if(o.save(),o.beginPath(),t.visualShape==="box"){const y=(v+5)*2;o.roundRect?o.roundRect(a-v-5,d-v-5,y,y,6):o.rect(a-v-5,d-v-5,y,y)}else o.arc(a,d,v+5,0,Math.PI*2);l?(o.strokeStyle="#38bdf8",o.lineWidth=3,o.setLineDash([]),o.stroke(),o.fillStyle="#38bdf8",o.font="bold 11px sans-serif",o.textAlign="center",o.fillText("GRAB",a,d-v-8)):(o.strokeStyle="rgba(56, 189, 248, 0.45)",o.lineWidth=1.8,o.setLineDash([4,4]),o.stroke()),o.restore()}let b=!1;if(t.isAboveGround)for(const y of i){if(y===t)continue;if(Math.hypot(t.position.x-y.position.x,t.position.y-y.position.y)<t.colliderRadius+y.colliderRadius&&(t.position.z>y.position.z||Math.abs(t.position.z-y.position.z)<=.01&&t.verticalVelocity>y.verticalVelocity)){b=!0;break}}if(o.save(),o.globalAlpha=b?.55:1,t.visualShape==="box"){const y=v*2,M=Math.max(3,v*.16),R=a-v,V=d-v;o.beginPath(),o.roundRect?o.roundRect(R,V,y,y,M):o.rect(R,V,y,y),o.fillStyle=t.color,o.fill(),o.strokeStyle=p?"#ffffff":"rgba(255, 255, 255, 0.45)",o.lineWidth=p?2.5:2,o.stroke();const E=Math.max(3,v*.22);o.beginPath(),o.roundRect?o.roundRect(R+E,V+E,y-E*2,y-E*2,M*.7):o.rect(R+E,V+E,y-E*2,y-E*2),o.strokeStyle="rgba(0, 0, 0, 0.25)",o.lineWidth=1.6,o.stroke(),o.beginPath(),o.moveTo(R+E,V+E),o.lineTo(R+y-E,V+y-E),o.moveTo(R+y-E,V+E),o.lineTo(R+E,V+y-E),o.strokeStyle="rgba(0, 0, 0, 0.16)",o.lineWidth=1.4,o.stroke()}else o.beginPath(),o.arc(a,d,v,0,Math.PI*2),o.fillStyle=t.color,o.fill(),o.strokeStyle=p?"#ffffff":"rgba(255, 255, 255, 0.45)",o.lineWidth=p?2.5:2,o.stroke();this.drawRollIndicator(t,a,d,v),o.restore()}drawCharacter(t,i,s,e){const l=this.ctx,n=t.position.x*s,o=t.position.y*s,a=xt.getAltitudeScale(t.position.z,e.wallHeight),d=t.colliderRadius*s*a;let c=!1;if(t.isAboveGround)for(const R of i){if(R===t)continue;if(Math.hypot(t.position.x-R.position.x,t.position.y-R.position.y)<t.colliderRadius+R.colliderRadius&&(t.position.z>R.position.z||Math.abs(t.position.z-R.position.z)<=.01&&t.verticalVelocity>R.verticalVelocity)){c=!0;break}}l.save(),l.globalAlpha=c?.55:1,l.beginPath(),l.arc(n,o,d,0,Math.PI*2),l.fillStyle=t.color,l.fill(),l.strokeStyle="#ffffff",l.lineWidth=2.5,l.stroke(),this.drawRollIndicator(t,n,o,d);const g=.52,v=d*.72,f=Math.max(3.5,d*.18),p=t.facingAngle-g,b=t.facingAngle+g,k=n+Math.cos(p)*v,m=o+Math.sin(p)*v,y=n+Math.cos(b)*v,M=o+Math.sin(b)*v;l.fillStyle="#000000",l.beginPath(),l.arc(k,m,f,0,Math.PI*2),l.arc(y,M,f,0,Math.PI*2),l.fill(),t.heldObject&&(l.strokeStyle="rgba(255, 255, 255, 0.6)",l.setLineDash([3,3]),l.lineWidth=1.5,l.beginPath(),l.moveTo(n,o),l.lineTo(t.heldObject.position.x*s,t.heldObject.position.y*s),l.stroke(),l.setLineDash([])),l.restore()}drawRollIndicator(t,i,s,e){if(!t.rollModule||!t.rollModule.enabled)return;const l=t.rollModule,n=l.angularVelocity.x,o=l.angularVelocity.y,a=l.angularVelocity.z,d=Math.hypot(n,o,a);if(d<.02)return;const c=this.ctx,v=Math.hypot(n,o)<.05*d,f=(t.hasCollider?t.colliderRadius:.44)*(this.ctx.canvas.width/20),p=f>0?Math.max(1,e/f):1,b=Math.max(2.5,2.5*Math.pow(p,1.15)),k=Math.max(5,5*p),m=Math.max(4,4*p);if(c.save(),c.shadowColor="rgba(0, 0, 0, 0.75)",c.shadowBlur=Math.max(3,3*p),v){const y=e*.5,M=e*.88;c.beginPath(),c.arc(i,s,y,0,Math.PI*2),c.strokeStyle="rgba(255, 255, 255, 0.5)",c.lineWidth=Math.max(1.8,1.8*p),c.setLineDash([]),c.stroke(),c.beginPath(),c.arc(i,s,M,0,Math.PI*2),c.strokeStyle="rgba(255, 255, 255, 0.98)",c.lineWidth=b,c.setLineDash([k,m]),c.lineDashOffset=-l.visualPhase*M*Math.sign(a||1),c.stroke()}else{const y=Math.atan2(-n,o),M=e*.9,R=Math.abs(a)/d,V=M*Math.max(.35,Math.pow(R,.65));c.translate(i,s),c.rotate(y);const E=a!==0?Math.sign(a):1;c.beginPath(),c.ellipse(0,0,M,V,0,0,Math.PI),c.strokeStyle="rgba(255, 255, 255, 0.98)",c.lineWidth=b,c.setLineDash([k,m]),c.lineDashOffset=-l.visualPhase*M*E,c.stroke(),c.beginPath(),c.ellipse(0,0,M,V,0,Math.PI,Math.PI*2),c.strokeStyle="rgba(255, 255, 255, 0.35)",c.lineWidth=Math.max(1.8,b*.8),c.setLineDash([k,m]),c.lineDashOffset=-l.visualPhase*M*E,c.stroke()}c.restore()}drawTrajectory(t,i){const s=this.ctx,e=t.points;if(e.length<2)return;s.save();for(let n=0;n<e.length-1;n++){const o=e[n],a=e[n+1];s.beginPath(),s.moveTo(o.x*i,o.y*i),s.lineTo(a.x*i,a.y*i),o.couldClearWall||a.couldClearWall?(s.strokeStyle="#38bdf8",s.lineWidth=4,s.setLineDash([6,3])):(s.strokeStyle="#f59e0b",s.lineWidth=2.5,s.setLineDash([4,4])),s.stroke()}const l=e[e.length-1];if(t.isBlockedByWall){s.strokeStyle="#ef4444",s.lineWidth=3,s.setLineDash([]);const n=8;s.beginPath(),s.moveTo(l.x*i-n,l.y*i-n),s.lineTo(l.x*i+n,l.y*i+n),s.moveTo(l.x*i+n,l.y*i-n),s.lineTo(l.x*i-n,l.y*i+n),s.stroke()}else t.isLandingOnWallTop?(s.strokeStyle="#38bdf8",s.fillStyle="rgba(56, 189, 248, 0.35)",s.lineWidth=2.5,s.setLineDash([]),s.beginPath(),s.arc(t.landPoint.x*i,t.landPoint.y*i,14,0,Math.PI*2),s.fill(),s.stroke(),s.beginPath(),s.arc(t.landPoint.x*i,t.landPoint.y*i,4,0,Math.PI*2),s.fillStyle="#38bdf8",s.fill()):(s.strokeStyle="#22c55e",s.fillStyle="rgba(34, 197, 94, 0.25)",s.lineWidth=2,s.setLineDash([]),s.beginPath(),s.arc(t.landPoint.x*i,t.landPoint.y*i,14,0,Math.PI*2),s.fill(),s.stroke(),s.beginPath(),s.arc(t.landPoint.x*i,t.landPoint.y*i,4,0,Math.PI*2),s.fillStyle="#22c55e",s.fill());s.restore()}drawHoverGizmo(t,i){var a;const s=this.ctx,e=t.position.x*i,l=t.position.y*i,o=((t.hasCollider?t.colliderRadius:((a=t.colliderModule)==null?void 0:a.radius)??.32)+.08)*i;s.save(),s.strokeStyle="rgba(251, 191, 36, 0.6)",s.lineWidth=1.5,s.setLineDash([4,4]),s.beginPath(),s.arc(e,l,o,0,Math.PI*2),s.stroke(),s.restore()}drawSelectionGizmo(t,i,s){var v;const e=this.ctx,l=t.position.x*s,n=t.position.y*s,d=(t.hasCollider?t.colliderRadius:((v=t.colliderModule)==null?void 0:v.radius)??.32)*s+6,c=Math.max(6,d*.4),g=i?"#fbbf24":"#38bdf8";if(e.save(),e.strokeStyle=g,e.lineWidth=2,e.setLineDash([]),e.beginPath(),e.moveTo(l-d,n-d+c),e.lineTo(l-d,n-d),e.lineTo(l-d+c,n-d),e.stroke(),e.beginPath(),e.moveTo(l+d-c,n-d),e.lineTo(l+d,n-d),e.lineTo(l+d,n-d+c),e.stroke(),e.beginPath(),e.moveTo(l+d,n+d-c),e.lineTo(l+d,n+d),e.lineTo(l+d-c,n+d),e.stroke(),e.beginPath(),e.moveTo(l-d+c,n+d),e.lineTo(l-d,n+d),e.lineTo(l-d,n+d-c),e.stroke(),i){const f=`${t.name} (${t.mass.toFixed(1)}kg)`;e.font="bold 10px 'Segoe UI', system-ui, sans-serif";const b=e.measureText(f).width+12,k=16,m=l-b/2,y=n-d-k-4;e.fillStyle="rgba(15, 23, 42, 0.85)",e.strokeStyle=g,e.lineWidth=1,e.beginPath(),e.roundRect(m,y,b,k,4),e.fill(),e.stroke(),e.fillStyle=g,e.textAlign="center",e.textBaseline="middle",e.fillText(f,l,y+k/2)}e.restore()}}class At{constructor(t,i){r(this,"canvas");r(this,"arena");r(this,"keysPressed",new Set);r(this,"mousePos",{x:0,y:0});r(this,"isMouseDown",!1);r(this,"isRightMouseDown",!1);r(this,"hoverWallTile",null);r(this,"movementVector",{x:0,y:0});r(this,"justPickedUp",!1);r(this,"isThrowingPress",!1);r(this,"hoverEntity",null);r(this,"selectedCanvasEntity",null);r(this,"draggedEntity",null);r(this,"dragOffset",{x:0,y:0});r(this,"handleClick");r(this,"onMouseDown");r(this,"onRightMouseDown");r(this,"onMouseUp");r(this,"onRightClick");r(this,"onDropAttempt");r(this,"onMouseMove");this.canvas=t,this.arena=i,this.setupListeners()}get isGrabHeld(){return!this.isThrowingPress&&this.isMouseDown}get isClimbHeld(){return this.keysPressed.has("Space")}setupListeners(){window.addEventListener("keydown",t=>{this.keysPressed.add(t.code),this.updateMovementVector(),t.code==="KeyE"&&this.onDropAttempt&&this.onDropAttempt()}),window.addEventListener("keyup",t=>{this.keysPressed.delete(t.code),this.updateMovementVector()}),this.canvas.addEventListener("mousemove",t=>{this.updateMousePos(t),this.onMouseMove&&this.onMouseMove(this.mousePos.x,this.mousePos.y)}),this.canvas.addEventListener("mousedown",t=>{if(this.updateMousePos(t),t.button===2){this.isRightMouseDown=!0,this.onRightMouseDown&&this.onRightMouseDown(this.mousePos.x,this.mousePos.y);return}t.button===0&&(this.isMouseDown=!0,this.onMouseDown&&this.onMouseDown(this.mousePos.x,this.mousePos.y),this.handleClick&&this.handleClick(this.mousePos.x,this.mousePos.y))}),this.canvas.addEventListener("contextmenu",t=>{t.preventDefault(),this.updateMousePos(t),this.onRightClick&&this.onRightClick(this.mousePos.x,this.mousePos.y)}),window.addEventListener("mouseup",t=>{if(t.button===2){this.isRightMouseDown=!1;return}t.button===0&&(this.isMouseDown=!1,this.justPickedUp=!1,this.isThrowingPress=!1,this.onMouseUp&&this.onMouseUp(this.mousePos.x,this.mousePos.y))}),this.canvas.addEventListener("touchstart",t=>{t.touches.length>0&&(this.isMouseDown=!0,this.updateTouchPos(t.touches[0]),this.onMouseDown&&this.onMouseDown(this.mousePos.x,this.mousePos.y),this.handleClick&&this.handleClick(this.mousePos.x,this.mousePos.y))},{passive:!1}),this.canvas.addEventListener("touchmove",t=>{t.touches.length>0&&(this.updateTouchPos(t.touches[0]),this.onMouseMove&&this.onMouseMove(this.mousePos.x,this.mousePos.y))},{passive:!1}),window.addEventListener("touchend",()=>{this.isMouseDown=!1,this.justPickedUp=!1,this.isThrowingPress=!1,this.onMouseUp&&this.onMouseUp(this.mousePos.x,this.mousePos.y)})}updateMousePos(t){const i=this.canvas.getBoundingClientRect(),s=this.arena.width/i.width,e=this.arena.height/i.height;this.mousePos.x=(t.clientX-i.left)*s,this.mousePos.y=(t.clientY-i.top)*e}updateTouchPos(t){const i=this.canvas.getBoundingClientRect(),s=this.arena.width/i.width,e=this.arena.height/i.height;this.mousePos.x=(t.clientX-i.left)*s,this.mousePos.y=(t.clientY-i.top)*e}updateMovementVector(){let t=0,i=0;(this.keysPressed.has("KeyW")||this.keysPressed.has("ArrowUp"))&&(i-=1),(this.keysPressed.has("KeyS")||this.keysPressed.has("ArrowDown"))&&(i+=1),(this.keysPressed.has("KeyA")||this.keysPressed.has("ArrowLeft"))&&(t-=1),(this.keysPressed.has("KeyD")||this.keysPressed.has("ArrowRight"))&&(t+=1);const s=Math.hypot(t,i);s>0?(this.movementVector.x=t/s,this.movementVector.y=i/s):(this.movementVector.x=0,this.movementVector.y=0)}handleInteractions(t,i,s,e){e&&(this.selectedCanvasEntity=e.selectedEntity);const l=(a,d,c=.35)=>{var f;for(let p=s.length-1;p>=0;p--){const b=s[p],k=b.hasCollider?b.colliderRadius:((f=b.colliderModule)==null?void 0:f.radius)??.32;if(Math.hypot(b.position.x-a,b.position.y-d)<=k+c)return b}const g=t.hasCollider?t.colliderRadius:.44;return Math.hypot(t.position.x-a,t.position.y-d)<=g+c?t:null},n=(a,d)=>{var g;if(a<0||a>=i.cols||d<0||d>=i.rows)return;if(i.setWallTile(a,d,!0)){const v={id:`wall-${a}-${d}`,x:a*i.tileSize,y:d*i.tileSize,width:i.tileSize,height:i.tileSize,wallHeight:i.wallHeight},f=[t,...s];for(const p of f){const b=p.hasCollider?p.colliderRadius:((g=p.colliderModule)==null?void 0:g.radius)??.32;i.testWallOverlap(p.position.x,p.position.y,b,v)&&p.position.z<i.wallHeight&&(p.hasVerticalPosition||(p.verticalPositionModule?p.verticalPositionModule.enabled=!0:p.verticalPositionModule=new rt({z:i.wallHeight,hasVerticalVelocity:!0})),p.position.z=i.wallHeight,p.supportingSurfaceHeight=i.wallHeight,p.verticalVelocity=0)}i.currentPresetId="custom",e==null||e.updateWallPresetUI()}},o=(a,d)=>{a<0||a>=i.cols||d<0||d>=i.rows||i.tileGrid[d][a]===1&&(i.setWallTile(a,d,!1),i.currentPresetId="custom",e==null||e.updateWallPresetUI())};this.onMouseDown=(a,d)=>{if(e!=null&&e.isEditMode){if(e.editTool==="walls"){const g=Math.floor(a/i.tileSize),v=Math.floor(d/i.tileSize);n(g,v);return}const c=l(a,d,.35);c?(this.selectedCanvasEntity=c,e.setSelectedEntity(c),this.draggedEntity=c,this.dragOffset.x=c.position.x-a,this.dragOffset.y=c.position.y-d,this.canvas.style.cursor="grabbing"):(this.selectedCanvasEntity=null,this.draggedEntity=null)}},this.onRightMouseDown=(a,d)=>{if(e!=null&&e.isEditMode&&e.editTool==="walls"){const c=Math.floor(a/i.tileSize),g=Math.floor(d/i.tileSize);o(c,g)}},this.onMouseMove=(a,d)=>{var v;const c=Math.floor(a/i.tileSize),g=Math.floor(d/i.tileSize);if(c>=0&&c<i.cols&&g>=0&&g<i.rows?this.hoverWallTile={col:c,row:g}:this.hoverWallTile=null,e!=null&&e.isEditMode){if(e.editTool==="walls"){this.hoverEntity=null,this.draggedEntity=null,this.canvas.style.cursor="cell",this.isMouseDown&&this.hoverWallTile?n(this.hoverWallTile.col,this.hoverWallTile.row):this.isRightMouseDown&&this.hoverWallTile&&o(this.hoverWallTile.col,this.hoverWallTile.row);return}if(this.isMouseDown&&this.draggedEntity){const f=a+this.dragOffset.x,p=d+this.dragOffset.y,b=this.draggedEntity.hasCollider?this.draggedEntity.colliderRadius:((v=this.draggedEntity.colliderModule)==null?void 0:v.radius)??.32;this.draggedEntity.position.x=Math.max(b,Math.min(i.width-b,f)),this.draggedEntity.position.y=Math.max(b,Math.min(i.height-b,p)),this.draggedEntity.velocity.x=0,this.draggedEntity.velocity.y=0,this.draggedEntity.verticalVelocity=0,this.draggedEntity.rollModule&&(this.draggedEntity.rollModule.angularVelocity.x=0,this.draggedEntity.rollModule.angularVelocity.y=0,this.draggedEntity.rollModule.angularVelocity.z=0),this.canvas.style.cursor="grabbing"}else{const f=l(a,d,.3);this.hoverEntity=f,this.canvas.style.cursor=f?"grab":"crosshair"}}else this.hoverEntity=null,this.draggedEntity=null,this.canvas.style.cursor="default"},this.onMouseUp=(a,d)=>{if(this.draggedEntity&&(i.syncEntitiesWithWalls([this.draggedEntity]),this.draggedEntity=null),e!=null&&e.isEditMode)if(e.editTool==="walls")this.canvas.style.cursor="cell";else{const c=l(this.mousePos.x,this.mousePos.y,.3);this.hoverEntity=c,this.canvas.style.cursor=c?"grab":"crosshair"}},this.handleClick=(a,d)=>{if(!(e!=null&&e.isEditMode)){if(t.heldObject&&t.throwModule&&!this.justPickedUp){t.throwModule.throwHeldObject(t,a,d,i),this.isThrowingPress=!0;return}if(!t.heldObject&&t.pickupModule){const c=t.pickupModule.findTargetObject(t,a,d,s,i.wallHeight);c&&(t.pickupModule.pickup(t,c),this.justPickedUp=!0)}}},this.onRightClick=(a,d)=>{if(e!=null&&e.isEditMode&&e.editTool==="walls"||!e)return;const c=l(a,d,.4);c&&(this.selectedCanvasEntity=c,e.setSelectedEntity(c))},this.onDropAttempt=()=>{if(t.heldObject&&t.pickupModule)t.pickupModule.drop(t)&&(this.isThrowingPress=!0);else if(!t.heldObject&&t.pickupModule){const a=t.pickupModule.findTargetObject(t,this.mousePos.x,this.mousePos.y,s,i.wallHeight);a&&t.pickupModule.pickup(t,a)}}}}class zt{constructor(t){r(this,"container");r(this,"character");r(this,"arena");r(this,"objects");r(this,"onSpawnObject");r(this,"onDeleteObject");r(this,"onClearObjects");r(this,"selectedEntity");r(this,"isEditMode",!1);r(this,"editTool","entities");r(this,"onSelectionChange");r(this,"creatorState",{name:"Custom Box",visualShape:"box",color:"#38bdf8",hasCollider:!0,colliderRadius:.3,hasMass:!0,mass:1,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.2,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4});r(this,"presets",{"Light Blue Box":{name:"Light Blue Box",visualShape:"box",color:"#38bdf8",hasCollider:!0,colliderRadius:.26,hasMass:!0,mass:.7,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.25,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Heavy Red Box":{name:"Heavy Red Box",visualShape:"box",color:"#f87171",hasCollider:!0,colliderRadius:.4,hasMass:!0,mass:2.6,hasFriction:!0,staticFrictionMod:1.2,dynamicFrictionMod:1.2,hasBounce:!1,bounceMod:.05,verticalBounce:!1,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Bouncy Ball":{name:"Super Bouncy Ball",visualShape:"circle",color:"#4ade80",hasCollider:!0,colliderRadius:.24,hasMass:!0,mass:.5,hasFriction:!0,staticFrictionMod:.8,dynamicFrictionMod:.8,hasBounce:!0,bounceMod:.88,verticalBounce:!0,hasVerticalPosition:!0,elevation:.6,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Rolling Ball":{name:"Rolling Ball",visualShape:"circle",color:"#a855f7",hasCollider:!0,colliderRadius:.28,hasMass:!0,mass:.6,hasFriction:!0,staticFrictionMod:.5,dynamicFrictionMod:.5,hasBounce:!0,bounceMod:.95,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!0,rollResistance:0},"Ghost Box":{name:"Ghost Box (No Collider)",visualShape:"box",color:"#94a3b8",hasCollider:!1,colliderRadius:.3,hasMass:!1,mass:0,hasFriction:!1,staticFrictionMod:0,dynamicFrictionMod:0,hasBounce:!1,bounceMod:0,verticalBounce:!1,hasVerticalPosition:!1,elevation:0,hasVerticalVelocity:!1,hasGravity:!1,hasRollModule:!1,rollResistance:0}});r(this,"inspectorEl");r(this,"entitySelectorEl");r(this,"characterSpecificControlsEl");r(this,"objectSpecificControlsEl");r(this,"modePlayBtn");r(this,"modeEditBtn");this.container=t.container,this.character=t.character,this.arena=t.arena,this.objects=t.objects,this.onSpawnObject=t.onSpawnObject,this.onDeleteObject=t.onDeleteObject,this.onClearObjects=t.onClearObjects,this.selectedEntity=this.character,this.renderPanel()}setSelectedEntity(t){var i;this.selectedEntity=t,this.updateSelectorOptions(),this.syncEntitySliders(),(i=this.onSelectionChange)==null||i.call(this,t)}setMode(t){this.isEditMode=t,this.modePlayBtn&&this.modeEditBtn&&(this.isEditMode?(this.modePlayBtn.classList.remove("active-play"),this.modeEditBtn.classList.add("active-edit")):(this.modePlayBtn.classList.add("active-play"),this.modeEditBtn.classList.remove("active-edit")));const i=this.container.querySelector("#edit-submode-container");i&&(i.style.display=this.isEditMode?"flex":"none"),this.updateToolVisibility()}setEditTool(t){this.editTool=t;const i=this.container.querySelector("#submode-entities"),s=this.container.querySelector("#submode-walls");i&&s&&(i.classList.toggle("active",t==="entities"),s.classList.toggle("active",t==="walls")),this.updateToolVisibility()}updateToolVisibility(){const t=this.container.querySelector("#wall-editor-section");t&&(t.style.display=this.isEditMode&&this.editTool==="walls"?"block":"none");const i=this.container.querySelector("#edit-hint-label");i&&(this.isEditMode?this.editTool==="walls"?i.textContent="Left-drag: Draw | Right-drag: Erase":i.textContent="Click & drag object in arena":i.textContent="Right-click in arena to select")}updateSelectorOptions(){if(!this.entitySelectorEl)return;const t=this.selectedEntity.id;let i=`<option value="${this.character.id}" ${t===this.character.id?"selected":""}>⭐ Player Character (${this.character.mass.toFixed(1)}kg)</option>`;for(const e of this.objects){const l=e.id===t?"selected":"",n=e.visualShape==="box"?"📦":"⚪",o=e.hasMass?`${e.mass.toFixed(1)}kg`:"Massless";i+=`<option value="${e.id}" ${l}>${n} ${e.name} (${o})</option>`}this.entitySelectorEl.innerHTML=i;const s=this.selectedEntity===this.character;this.characterSpecificControlsEl&&(this.characterSpecificControlsEl.style.display=s?"flex":"none"),this.objectSpecificControlsEl&&(this.objectSpecificControlsEl.style.display=s?"none":"flex")}renderPanel(){var t,i,s,e,l,n,o,a,d,c,g,v,f,p,b,k,m,y,M,R,V,E,z,L,T,x,h,w,$,S,P,W,D,B,C,F,A,q,H,j,G,U,u,I,X,Y,K,et,gt,it,st,pt,lt,ot,vt,at,nt,ft,ct,Q,Z,N,_,kt,Vt,Et,Ct;this.container.innerHTML=`
+      <div class="dev-panel-header">
+        <div class="header-top-row">
+          <h2>🛠️ Sandbox & Engine</h2>
+          <span class="badge">1 Wall = 1 Unit</span>
+        </div>
+        <div class="mode-switcher">
+          <button id="mode-play" class="mode-btn ${this.isEditMode?"":"active-play"}">🎮 Play Mode</button>
+          <button id="mode-edit" class="mode-btn ${this.isEditMode?"active-edit":""}">✏️ Edit Mode</button>
+        </div>
+        <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode?"flex":"none"};">
+          <button id="submode-entities" class="submode-btn ${this.editTool==="entities"?"active":""}">📦 Move Entities</button>
+          <button id="submode-walls" class="submode-btn ${this.editTool==="walls"?"active":""}">🧱 Edit Walls</button>
+        </div>
+      </div>
+
+      <div class="dev-scrollable">
+        <!-- Wall Tile Editor Section (Active when Edit Mode & Edit Walls selected) -->
+        <div id="wall-editor-section" class="dev-section wall-tool-panel" style="display: ${this.isEditMode&&this.editTool==="walls"?"block":"none"};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3 style="margin: 0;">🧱 Wall Tile Editor</h3>
+            <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);">Grid: 20 × 14</span>
+          </div>
+          <p class="section-desc">Click and drag directly in the arena to paint or erase 1.0 × 1.0 unit wall blocks in real-time.</p>
+
+          <div class="wall-hint-box">
+            <div>🖱️ <strong>Left-Click & Drag:</strong> Draw / place wall tiles</div>
+            <div style="margin-top: 4px;">🖱️ <strong class="danger">Right-Click & Drag:</strong> Erase / remove wall tiles</div>
+            <div style="margin-top: 6px; font-size: 0.72rem; color: #94a3b8;">
+              💡 Drawing a wall under an object on the ground elevates it to wall height. Erasing a wall under an object causes it to fall naturally with gravity.
+            </div>
+          </div>
+
+          <!-- Wall Map Presets Switcher -->
+          <div class="wall-presets-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.78rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 4px;">🗺️ Default Wall Maps</span>
+              <span id="label-wall-map-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem;">
+                ${this.getCurrentWallPresetBadge()}
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-prev-wall-map" class="btn-secondary-action btn-wall-nav" title="Previous Wall Map">◀</button>
+              <select id="select-wall-preset" class="dev-select wall-preset-select">
+                ${this.renderWallPresetOptions()}
+              </select>
+              <button id="btn-next-wall-map" class="btn-secondary-action btn-wall-nav" title="Next Wall Map">▶</button>
+            </div>
+            <p id="desc-wall-map" class="wall-preset-desc">
+              ${this.getCurrentWallPresetDesc()}
+            </p>
+          </div>
+
+          <div class="slider-group" style="margin-top: 12px;">
+            <div class="slider-label">
+              <span>Standard Wall Height (u)</span>
+              <span id="val-editor-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-editor-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button id="btn-reset-walls" class="btn-secondary-action" style="flex: 1;">↺ Reset Layout</button>
+            <button id="btn-clear-walls" class="btn-secondary-action" style="flex: 1; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Clear Walls</button>
+          </div>
+        </div>
+
+        <!-- Target Selection -->
+        <div class="dev-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3>🎯 Target Entity</h3>
+            <span style="font-size: 0.72rem; color: var(--accent-amber);" id="edit-hint-label">
+              ${this.isEditMode?"Click & drag object in arena":"Right-click in arena to select"}
+            </span>
+          </div>
+          <select id="entity-selector" class="dev-select"></select>
+          
+          <!-- Entity Actions (Duplicate / Delete) - Only for Objects -->
+          <div id="object-actions-row" class="entity-actions-row" style="display: none; margin-top: 8px;">
+            <button id="btn-duplicate-entity" class="btn-secondary-action">📋 Duplicate</button>
+            <button id="btn-delete-entity" class="btn-secondary-action" style="color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <!-- Live Diagnostics Inspector -->
+        <div class="dev-section">
+          <h3>📊 Live Diagnostics</h3>
+          <div id="dev-inspector" class="inspector-grid"></div>
+        </div>
+
+        <!-- 🧩 Modular Capabilities & Physical Behaviors -->
+        <div class="dev-section">
+          <h3>🧩 Physical Behaviors</h3>
+          <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
+
+          <!-- Visual Shape -->
+          <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity===this.character?"display:none;":""}">
+            <label>Visual Shape</label>
+            <button id="toggle-entity-shape" class="btn-toggle ${this.selectedEntity.visualShape==="box"?"active":""}">
+              ${this.selectedEntity.visualShape==="box"?"Box 📦":"Circle ⚪"}
+            </button>
+          </div>
+
+          <!-- 1. Collider -->
+          <div class="module-card">
+            <div class="toggle-row">
+              <label>🛡️ Collider</label>
+              <button id="toggle-mod-collider" class="btn-toggle ${this.selectedEntity.hasCollider?"active":""}">
+                ${this.selectedEntity.hasCollider?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="group-mod-collider" style="display: ${this.selectedEntity.hasCollider?"block":"none"};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Collider Radius (u)</span>
+                  <span id="val-entity-radius">${(((t=this.selectedEntity.colliderModule)==null?void 0:t.radius)??.32).toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-radius" min="0.1" max="1.5" step="0.02" value="${((i=this.selectedEntity.colliderModule)==null?void 0:i.radius)??.32}">
+              </div>
+            </div>
+            <div id="note-mod-collider" class="module-detached-note" style="display: ${this.selectedEntity.hasCollider?"none":"block"};">
+              Passes freely through all walls and objects
+            </div>
+          </div>
+
+          <!-- 2. Mass -->
+          <div class="module-card">
+            <div class="toggle-row">
+              <label>⚖️ Mass</label>
+              <button id="toggle-mod-mass" class="btn-toggle ${this.selectedEntity.hasMass?"active":""}">
+                ${this.selectedEntity.hasMass?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="group-mod-mass" style="display: ${this.selectedEntity.hasMass?"block":"none"};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Mass (kg)</span>
+                  <span id="val-entity-mass">${(((s=this.selectedEntity.massModule)==null?void 0:s.mass)??1).toFixed(1)}</span>
+                </div>
+                <input type="range" id="slide-entity-mass" min="0.1" max="8.0" step="0.1" value="${((e=this.selectedEntity.massModule)==null?void 0:e.mass)??1}">
+              </div>
+            </div>
+            <div id="note-mod-mass" class="module-detached-note" style="display: ${this.selectedEntity.hasMass?"none":"block"};">
+              Massless: imparts 0 resistance on massive bodies, only inherits velocity
+            </div>
+          </div>
+
+          <!-- 3. Friction (Requires Mass) -->
+          <div class="module-card" id="card-mod-friction">
+            <div class="toggle-row">
+              <label>🛝 Friction</label>
+              <button id="toggle-mod-friction" class="btn-toggle ${(l=this.selectedEntity.frictionModule)!=null&&l.enabled?"active":""}">
+                ${(n=this.selectedEntity.frictionModule)!=null&&n.enabled?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="warn-friction-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass&&((o=this.selectedEntity.frictionModule)!=null&&o.enabled)?"block":"none"};">
+              ⚠️ Inactive without Mass (no normal force)
+            </div>
+            <div id="group-mod-friction" style="display: ${(a=this.selectedEntity.frictionModule)!=null&&a.enabled?"flex":"none"}; flex-direction: column; gap: 8px;">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Static Friction Mod</span>
+                  <span id="val-entity-static-fric">${(((d=this.selectedEntity.frictionModule)==null?void 0:d.staticFrictionMod)??1).toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-static-fric" min="0" max="3.0" step="0.05" value="${((c=this.selectedEntity.frictionModule)==null?void 0:c.staticFrictionMod)??1}">
+              </div>
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Dynamic Friction Mod</span>
+                  <span id="val-entity-dynamic-fric">${(((g=this.selectedEntity.frictionModule)==null?void 0:g.dynamicFrictionMod)??1).toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${((v=this.selectedEntity.frictionModule)==null?void 0:v.dynamicFrictionMod)??1}">
+              </div>
+            </div>
+            <div id="note-mod-friction" class="module-detached-note" style="display: ${(f=this.selectedEntity.frictionModule)!=null&&f.enabled?"none":"block"};">
+              Frictionless: glides indefinitely without ground resistance
+            </div>
+          </div>
+
+          <!-- 4. Bounciness (Requires Mass) -->
+          <div class="module-card" id="card-mod-bounce">
+            <div class="toggle-row">
+              <label>🏀 Bounciness</label>
+              <button id="toggle-mod-bounce" class="btn-toggle ${(p=this.selectedEntity.bounceModule)!=null&&p.enabled?"active":""}">
+                ${(b=this.selectedEntity.bounceModule)!=null&&b.enabled?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="warn-bounce-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass&&((k=this.selectedEntity.bounceModule)!=null&&k.enabled)?"block":"none"};">
+              ⚠️ Inactive without Mass (no restitution calculation)
+            </div>
+            <div id="group-mod-bounce" style="display: ${(m=this.selectedEntity.bounceModule)!=null&&m.enabled?"block":"none"};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Bounciness (Restitution)</span>
+                  <span id="val-entity-bounce">${(((y=this.selectedEntity.bounceModule)==null?void 0:y.bounceMod)??.4).toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-bounce" min="0.05" max="1.0" step="0.05" value="${((M=this.selectedEntity.bounceModule)==null?void 0:M.bounceMod)??.4}">
+              </div>
+              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="check-mod-vert-bounce" ${(R=this.selectedEntity.bounceModule)!=null&&R.verticalBounce?"checked":""}>
+                  <span>Vertical Bounce</span>
+                </label>
+              </div>
+              <div id="warn-bounce-vert-vel" class="module-dep-warning" style="display: ${(V=this.selectedEntity.bounceModule)!=null&&V.enabled&&((E=this.selectedEntity.bounceModule)!=null&&E.verticalBounce)&&!this.selectedEntity.hasVerticalVelocity?"block":"none"};">
+                ⚠️ Inactive without Vertical Velocity
+              </div>
+            </div>
+            <div id="note-mod-bounce" class="module-detached-note" style="display: ${(z=this.selectedEntity.bounceModule)!=null&&z.enabled?"none":"block"};">
+              Zero bounce: impact velocity immediately absorbed
+            </div>
+          </div>
+
+          <!-- 5. Vertical Position & Velocity -->
+          <div class="module-card" id="card-mod-vert-pos">
+            <div class="toggle-row">
+              <label>↕️ Vertical Position</label>
+              <button id="toggle-mod-vert-pos" class="btn-toggle ${this.selectedEntity.hasVerticalPosition?"active":""}">
+                ${this.selectedEntity.hasVerticalPosition?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="group-mod-vert-pos" style="display: ${this.selectedEntity.hasVerticalPosition?"block":"none"};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Elevation (z)</span>
+                  <span id="val-entity-elevation">${this.selectedEntity.position.z.toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-elevation" min="0.0" max="4.0" step="0.05" value="${this.selectedEntity.position.z}">
+              </div>
+
+              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
+                <button id="toggle-mod-vert-vel" class="btn-toggle ${this.selectedEntity.hasVerticalVelocity?"active":""}">
+                  ${this.selectedEntity.hasVerticalVelocity?"Enabled":"Disabled"}
+                </button>
+              </div>
+
+              <div id="group-mod-vert-vel" style="display: ${this.selectedEntity.hasVerticalVelocity?"block":"none"}; margin-top: 6px;">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Vertical Velocity (u/s)</span>
+                    <span id="val-entity-vert-vel">${this.selectedEntity.verticalVelocity.toFixed(2)}</span>
+                  </div>
+                  <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${this.selectedEntity.verticalVelocity}">
+                </div>
+              </div>
+            </div>
+            <div id="note-mod-vert-pos" class="module-detached-note" style="display: ${this.selectedEntity.hasVerticalPosition?"none":"block"};">
+              Flat on ground: entity has no vertical position (z = 0)
+            </div>
+          </div>
+
+          <!-- 6. Gravity -->
+          <div class="module-card">
+            <div class="toggle-row">
+              <label>🪐 Gravity</label>
+              <button id="toggle-mod-gravity" class="btn-toggle ${this.selectedEntity.hasGravity?"active":""}">
+                ${this.selectedEntity.hasGravity?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="note-mod-gravity" class="module-detached-note">
+              ${this.selectedEntity.hasGravity?"Subject to static world gravity acceleration":"Zero-G: never falls, flies horizontally in a straight line"}
+            </div>
+          </div>
+
+          <!-- 7. Roll -->
+          <div class="module-card">
+            <div class="toggle-row">
+              <label>🔄 Roll</label>
+              <button id="toggle-mod-roll" class="btn-toggle ${(L=this.selectedEntity.rollModule)!=null&&L.enabled?"active":""}">
+                ${(T=this.selectedEntity.rollModule)!=null&&T.enabled?"Attached":"Detached"}
+              </button>
+            </div>
+            <div id="note-roll-friction" class="module-detached-note" style="display: ${(x=this.selectedEntity.rollModule)!=null&&x.enabled&&!this.selectedEntity.hasFriction?"block":"none"}; color: #cbd5e1;">
+              ℹ️ Spin not resisted without Friction
+            </div>
+            <div id="group-mod-roll" style="display: ${(h=this.selectedEntity.rollModule)!=null&&h.enabled?"block":"none"};">
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Roll Resistance (u/s²)</span>
+                  <span id="val-entity-roll-resist">${(((w=this.selectedEntity.rollModule)==null?void 0:w.rollResistance)??.4).toFixed(2)}</span>
+                </div>
+                <input type="range" id="slide-entity-roll-resist" min="0.0" max="4.0" step="0.05" value="${(($=this.selectedEntity.rollModule)==null?void 0:$.rollResistance)??.4}">
+              </div>
+            </div>
+          </div>
+
+          <!-- 7. Character Specific Capabilities (Walking, Pickup, Throw) -->
+          <div id="character-specific-controls" style="display: ${this.selectedEntity===this.character?"flex":"none"}; flex-direction: column; gap: 10px;">
+            <h4 style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase;">Character Abilities</h4>
+
+            <!-- Walking Ability -->
+            <div class="module-card" id="card-mod-walking">
+              <div class="toggle-row">
+                <label>🚶 Walking Ability</label>
+                <button id="toggle-walk" class="btn-toggle ${(S=this.character.walkingModule)!=null&&S.enabled?"active":""}">
+                  ${(P=this.character.walkingModule)!=null&&P.enabled?"Attached":"Detached"}
+                </button>
+              </div>
+              <div id="warn-walk-friction" class="module-dep-warning" style="display: ${!this.character.hasFriction&&((W=this.character.walkingModule)!=null&&W.enabled)?"block":"none"};">
+                ⚠️ Feet slip without Friction (cannot push ground)
+              </div>
+              <div id="warn-walk-strength" class="module-dep-warning" style="display: ${!this.character.hasStrength&&((D=this.character.walkingModule)!=null&&D.enabled)?"block":"none"};">
+                ⚠️ Requires Strength Ability (cannot propel body without muscle strength)
+              </div>
+              <div id="group-mod-walking" style="display: ${(B=this.character.walkingModule)!=null&&B.enabled?"flex":"none"}; flex-direction: column; gap: 8px;">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Max Walk Force (N)</span>
+                    <span id="val-walk-force">${(((C=this.character.walkingModule)==null?void 0:C.maxWalkForce)??35).toFixed(0)}</span>
+                  </div>
+                  <input type="range" id="slide-walk-force" min="10" max="200" step="5" value="${((F=this.character.walkingModule)==null?void 0:F.maxWalkForce)??35}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Max Walk Speed Cap (u/s)</span>
+                    <span id="val-walk-speed">${(((A=this.character.walkingModule)==null?void 0:A.maxWalkSpeed)??5.2).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${((q=this.character.walkingModule)==null?void 0:q.maxWalkSpeed)??5.2}">
+                </div>
+              </div>
+            </div>
+
+            <!-- Strength Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>💪 Strength Ability</label>
+                <button id="toggle-strength" class="btn-toggle ${(H=this.character.strengthModule)!=null&&H.enabled?"active":""}">
+                  ${(j=this.character.strengthModule)!=null&&j.enabled?"Attached":"Detached"}
+                </button>
+              </div>
+              <div id="group-mod-strength" style="display: ${(G=this.character.strengthModule)!=null&&G.enabled?"block":"none"};">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Muscle Strength</span>
+                    <span id="val-strength">${(this.character.strength??1).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-strength" min="0.1" max="5.0" step="0.1" value="${this.character.strength??1}">
+                </div>
+              </div>
+            </div>
+
+            <!-- Pickup Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>✋ Pickup Ability</label>
+                <button id="toggle-pickup" class="btn-toggle ${(U=this.character.pickupModule)!=null&&U.enabled?"active":""}">
+                  ${(u=this.character.pickupModule)!=null&&u.enabled?"Attached":"Detached"}
+                </button>
+              </div>
+              <div id="group-mod-pickup" style="display: ${(I=this.character.pickupModule)!=null&&I.enabled?"block":"none"};">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Pickup Reach (u)</span>
+                    <span id="val-pickup-reach">${(((X=this.character.pickupModule)==null?void 0:X.pickupReach)??1.3).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${((Y=this.character.pickupModule)==null?void 0:Y.pickupReach)??1.3}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Cross-Layer Reach Ratio</span>
+                    <span id="val-pickup-cross-layer">${(((K=this.character.pickupModule)==null?void 0:K.crossLayerReachRatio)??.55).toFixed(2)}</span>
+                  </div>
+                  <input type="range" id="slide-pickup-cross-layer" min="0.10" max="1.00" step="0.05" value="${((et=this.character.pickupModule)==null?void 0:et.crossLayerReachRatio)??.55}">
+                </div>
+              </div>
+            </div>
+
+            <!-- Throw Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>🎯 Throw Ability</label>
+                <button id="toggle-throw" class="btn-toggle ${(gt=this.character.throwModule)!=null&&gt.enabled?"active":""}">
+                  ${(it=this.character.throwModule)!=null&&it.enabled?"Attached":"Detached"}
+                </button>
+              </div>
+              <div id="group-mod-throw" style="display: ${(st=this.character.throwModule)!=null&&st.enabled?"block":"none"};">
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Base Throw Power (u/s)</span>
+                    <span id="val-throw-force">${(((pt=this.character.throwModule)==null?void 0:pt.baseThrowForce)??7.6).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${((lt=this.character.throwModule)==null?void 0:lt.baseThrowForce)??7.6}">
+                </div>
+              </div>
+            </div>
+
+            <!-- Climbing Ability -->
+            <div class="module-card">
+              <div class="toggle-row">
+                <label>🧗 Climbing Ability</label>
+                <button id="toggle-climb" class="btn-toggle ${(ot=this.character.climbingModule)!=null&&ot.enabled?"active":""}">
+                  ${(vt=this.character.climbingModule)!=null&&vt.enabled?"Attached":"Detached"}
+                </button>
+              </div>
+              <div id="warn-climb-deps" class="module-dep-warning" style="display: ${(!this.character.hasVerticalPosition||!this.character.hasStrength)&&((at=this.character.climbingModule)!=null&&at.enabled)?"block":"none"};">
+                ${this.character.hasVerticalPosition?this.character.hasStrength?"":"⚠️ Requires Strength Ability to climb":"⚠️ Requires Vertical Position (3D Z-axis)"}
+              </div>
+              <div id="group-mod-climb" style="display: ${(nt=this.character.climbingModule)!=null&&nt.enabled?"block":"none"};">
+                <div class="toggle-row" style="margin-bottom: 8px;">
+                  <label style="font-size: 0.8rem;">Prevent Walk-Off (Require Space)</label>
+                  <button id="toggle-climb-walkoff" class="btn-toggle ${(ft=this.character.climbingModule)!=null&&ft.preventWalkOff?"active":""}">
+                    ${(ct=this.character.climbingModule)!=null&&ct.preventWalkOff?"Active":"Inactive"}
+                  </button>
+                </div>
+                <div class="toggle-row" style="margin-bottom: 8px;">
+                  <label style="font-size: 0.8rem;">Sideways Climb (Traverse Wall)</label>
+                  <button id="toggle-climb-sideways" class="btn-toggle ${(Q=this.character.climbingModule)!=null&&Q.horizontalClimb?"active":""}">
+                    ${(Z=this.character.climbingModule)!=null&&Z.horizontalClimb?"Active":"Inactive"}
+                  </button>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Max Adhesion (N)</span>
+                    <span id="val-climb-adhesion">${(((N=this.character.climbingModule)==null?void 0:N.maxAdhesion)??35).toFixed(0)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-adhesion" min="5.0" max="80.0" step="1.0" value="${((_=this.character.climbingModule)==null?void 0:_.maxAdhesion)??35}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Max Climb Speed (u/s)</span>
+                    <span id="val-climb-speed">${(((kt=this.character.climbingModule)==null?void 0:kt.maxClimbSpeed)??3).toFixed(1)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${((Vt=this.character.climbingModule)==null?void 0:Vt.maxClimbSpeed)??3}">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Ledge Hang Distance (u)</span>
+                    <span id="val-climb-hang">${(((Et=this.character.climbingModule)==null?void 0:Et.hangDistance)??.1).toFixed(2)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-hang" min="0.02" max="1.5" step="0.02" value="${((Ct=this.character.climbingModule)==null?void 0:Ct.hangDistance)??.1}">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ✨ Add New Object (Creator & Presets) -->
+        <div class="dev-section">
+          <div class="creator-sticky-header">
+            <h3 style="margin: 0;">✨ Add New Object</h3>
+            <span class="not-live-badge">⚠️ NOT LIVE OBJECT</span>
+          </div>
+          <p class="section-desc">Configure template properties or choose a preset to spawn into the arena.</p>
+          
+          <div class="presets-container" style="margin-bottom: 10px;">
+            <button class="preset-chip" data-preset="Light Blue Box">📦 Light Box</button>
+            <button class="preset-chip" data-preset="Heavy Red Box">📦 Heavy Box</button>
+            <button class="preset-chip" data-preset="Bouncy Ball">⚪ Bouncy Ball</button>
+            <button class="preset-chip" data-preset="Rolling Ball">🟣 Rolling Ball</button>
+            <button class="preset-chip" data-preset="Ghost Box">👻 Ghost Box</button>
+          </div>
+
+          <div class="creator-form">
+            <div>
+              <label style="font-size: 0.76rem; color: #94a3b8; display: block; margin-bottom: 4px;">Object Name</label>
+              <input type="text" id="creator-name" class="dev-input" value="${this.creatorState.name}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Visual Shape</label>
+              <button id="creator-toggle-shape" class="btn-toggle ${this.creatorState.visualShape==="box"?"active":""}">
+                ${this.creatorState.visualShape==="box"?"Box 📦":"Circle ⚪"}
+              </button>
+            </div>
+
+            <div class="color-row">
+              <label>Color</label>
+              <div class="color-input-wrapper">
+                <input type="color" id="creator-color" value="${this.creatorState.color}">
+                <span id="val-creator-color" style="font-size: 0.76rem; font-family: monospace; color: #cbd5e1;">${this.creatorState.color}</span>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <label>Collider</label>
+              <button id="creator-toggle-collider" class="btn-toggle ${this.creatorState.hasCollider?"active":""}">
+                ${this.creatorState.hasCollider?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-radius" style="display: ${this.creatorState.hasCollider?"block":"none"};">
+              <div class="slider-label">
+                <span>Collider Radius (u)</span>
+                <span id="val-creator-radius">${this.creatorState.colliderRadius.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-radius" min="0.1" max="1.5" step="0.02" value="${this.creatorState.colliderRadius}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Mass</label>
+              <button id="creator-toggle-mass" class="btn-toggle ${this.creatorState.hasMass?"active":""}">
+                ${this.creatorState.hasMass?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-mass" style="display: ${this.creatorState.hasMass?"block":"none"};">
+              <div class="slider-label">
+                <span>Mass (kg)</span>
+                <span id="val-creator-mass">${this.creatorState.mass.toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-creator-mass" min="0.1" max="8.0" step="0.1" value="${this.creatorState.mass}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Friction</label>
+              <button id="creator-toggle-friction" class="btn-toggle ${this.creatorState.hasFriction?"active":""}">
+                ${this.creatorState.hasFriction?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-fric" style="display: ${this.creatorState.hasFriction?"block":"none"};">
+              <div class="slider-label">
+                <span>Dynamic Friction Mod</span>
+                <span id="val-creator-fric">${this.creatorState.dynamicFrictionMod.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-fric" min="0" max="3.0" step="0.05" value="${this.creatorState.dynamicFrictionMod}">
+            </div>
+
+            <div class="toggle-row">
+              <label>Bounciness</label>
+              <button id="creator-toggle-bounce" class="btn-toggle ${this.creatorState.hasBounce?"active":""}">
+                ${this.creatorState.hasBounce?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-bounce" style="display: ${this.creatorState.hasBounce?"block":"none"};">
+              <div class="slider-label">
+                <span>Bounciness (Restitution)</span>
+                <span id="val-creator-bounce">${this.creatorState.bounceMod.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-bounce" min="0.05" max="1.0" step="0.05" value="${this.creatorState.bounceMod}">
+              <div style="margin-top: 6px;">
+                <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce?"checked":""}>
+                  <span>Vertical Bounce</span>
+                </label>
+              </div>
+              <div id="creator-warn-bounce-vert" class="module-dep-warning" style="display: ${this.creatorState.hasBounce&&this.creatorState.verticalBounce&&(!this.creatorState.hasVerticalPosition||!this.creatorState.hasVerticalVelocity)?"block":"none"};">
+                ⚠️ Inactive without Vertical Velocity
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <label>Vertical Position</label>
+              <button id="creator-toggle-vert-pos" class="btn-toggle ${this.creatorState.hasVerticalPosition?"active":""}">
+                ${this.creatorState.hasVerticalPosition?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-vert-pos" style="display: ${this.creatorState.hasVerticalPosition?"block":"none"};">
+              <div class="slider-label">
+                <span>Elevation (z)</span>
+                <span id="val-creator-elevation">${this.creatorState.elevation.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-elevation" min="0.0" max="4.0" step="0.05" value="${this.creatorState.elevation}">
+
+              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
+                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity?"active":""}">
+                  ${this.creatorState.hasVerticalVelocity?"Enabled":"Disabled"}
+                </button>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <label>Gravity</label>
+              <button id="creator-toggle-gravity" class="btn-toggle ${this.creatorState.hasGravity?"active":""}">
+                ${this.creatorState.hasGravity?"Attached":"Detached"}
+              </button>
+            </div>
+
+            <div class="toggle-row">
+              <label>Roll</label>
+              <button id="creator-toggle-roll" class="btn-toggle ${this.creatorState.hasRollModule?"active":""}">
+                ${this.creatorState.hasRollModule?"Enabled":"Disabled"}
+              </button>
+            </div>
+
+            <div class="slider-group" id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule?"block":"none"};">
+              <div class="slider-label">
+                <span>Roll Resistance (u/s²)</span>
+                <span id="val-creator-roll-resist">${this.creatorState.rollResistance.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-creator-roll-resist" min="0.0" max="4.0" step="0.05" value="${this.creatorState.rollResistance}">
+            </div>
+
+            <button id="btn-spawn-configured" class="btn-spawn-primary">✨ Spawn Object</button>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <button id="btn-clear-entities" class="btn-danger" style="width: 100%;">Clear All Objects</button>
+          </div>
+        </div>
+
+        <!-- 🌍 World & Arena Physics -->
+        <div class="dev-section">
+          <h3>🌍 World Physics & Environment</h3>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Gravity Force (u/s²)</span>
+              <span id="val-gravity">${this.arena.gravity.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-gravity" min="1.0" max="30.0" step="0.5" value="${this.arena.gravity}">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Standard Wall Height (u)</span>
+              <span id="val-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Base Ground Friction Coeff (u/s²)</span>
+              <span id="val-friction">${this.arena.frictionCoeff.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-friction" min="1.0" max="30.0" step="0.5" value="${this.arena.frictionCoeff}">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Static Friction Threshold (u/s)</span>
+              <span id="val-static-thresh">${this.arena.staticFrictionThreshold.toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-static-thresh" min="0.02" max="1.0" step="0.02" value="${this.arena.staticFrictionThreshold}">
+          </div>
+        </div>
+      </div>
+    `,this.inspectorEl=this.container.querySelector("#dev-inspector"),this.entitySelectorEl=this.container.querySelector("#entity-selector"),this.characterSpecificControlsEl=this.container.querySelector("#character-specific-controls"),this.objectSpecificControlsEl=this.container.querySelector("#object-actions-row"),this.modePlayBtn=this.container.querySelector("#mode-play"),this.modeEditBtn=this.container.querySelector("#mode-edit"),this.updateSelectorOptions(),this.bindEvents()}syncEntitySliders(){var F,A,q,H,j,G,U;const t=this.selectedEntity,i=t===this.character,s=this.container.querySelector("#row-visual-shape");s&&(s.style.display=i?"none":"flex");const e=this.container.querySelector("#toggle-entity-shape");e&&(t.visualShape==="box"?(e.textContent="Box 📦",e.classList.add("active")):(e.textContent="Circle ⚪",e.classList.remove("active")));const l=this.container.querySelector("#toggle-mod-collider"),n=this.container.querySelector("#group-mod-collider"),o=this.container.querySelector("#note-mod-collider");l&&(l.textContent=t.hasCollider?"Attached":"Detached",l.classList.toggle("active",t.hasCollider)),n&&(n.style.display=t.hasCollider?"block":"none"),o&&(o.style.display=t.hasCollider?"none":"block"),this.setSliderVal("slide-entity-radius","val-entity-radius",((F=t.colliderModule)==null?void 0:F.radius)??.32,2);const a=this.container.querySelector("#toggle-mod-mass"),d=this.container.querySelector("#group-mod-mass"),c=this.container.querySelector("#note-mod-mass");a&&(a.textContent=t.hasMass?"Attached":"Detached",a.classList.toggle("active",t.hasMass)),d&&(d.style.display=t.hasMass?"block":"none"),c&&(c.style.display=t.hasMass?"none":"block"),this.setSliderVal("slide-entity-mass","val-entity-mass",((A=t.massModule)==null?void 0:A.mass)??1,1);const g=this.container.querySelector("#toggle-mod-friction"),v=this.container.querySelector("#group-mod-friction"),f=this.container.querySelector("#note-mod-friction"),p=this.container.querySelector("#warn-friction-mass"),b=!!(t.frictionModule&&t.frictionModule.enabled);g&&(g.textContent=b?"Attached":"Detached",g.classList.toggle("active",b)),v&&(v.style.display=b?"flex":"none"),f&&(f.style.display=b?"none":"block"),p&&(p.style.display=!t.hasMass&&b?"block":"none"),this.setSliderVal("slide-entity-static-fric","val-entity-static-fric",((q=t.frictionModule)==null?void 0:q.staticFrictionMod)??1,2),this.setSliderVal("slide-entity-dynamic-fric","val-entity-dynamic-fric",((H=t.frictionModule)==null?void 0:H.dynamicFrictionMod)??1,2);const k=this.container.querySelector("#toggle-mod-bounce"),m=this.container.querySelector("#group-mod-bounce"),y=this.container.querySelector("#note-mod-bounce"),M=this.container.querySelector("#warn-bounce-mass"),R=!!(t.bounceModule&&t.bounceModule.enabled);k&&(k.textContent=R?"Attached":"Detached",k.classList.toggle("active",R)),m&&(m.style.display=R?"block":"none"),y&&(y.style.display=R?"none":"block"),M&&(M.style.display=!t.hasMass&&R?"block":"none"),this.setSliderVal("slide-entity-bounce","val-entity-bounce",((j=t.bounceModule)==null?void 0:j.bounceMod)??.4,2);const V=this.container.querySelector("#check-mod-vert-bounce"),E=this.container.querySelector("#warn-bounce-vert-vel");if(V&&(V.checked=!!((G=t.bounceModule)!=null&&G.verticalBounce)),E){const u=!!(R&&((U=t.bounceModule)!=null&&U.verticalBounce)&&!t.hasVerticalVelocity);E.style.display=u?"block":"none"}const z=this.container.querySelector("#toggle-mod-vert-pos"),L=this.container.querySelector("#group-mod-vert-pos"),T=this.container.querySelector("#note-mod-vert-pos"),x=t.hasVerticalPosition;z&&(z.textContent=x?"Attached":"Detached",z.classList.toggle("active",x)),L&&(L.style.display=x?"block":"none"),T&&(T.style.display=x?"none":"block"),this.setSliderVal("slide-entity-elevation","val-entity-elevation",t.position.z,2);const h=this.container.querySelector("#toggle-mod-vert-vel"),w=this.container.querySelector("#group-mod-vert-vel"),$=t.hasVerticalVelocity;h&&(h.textContent=$?"Enabled":"Disabled",h.classList.toggle("active",$)),w&&(w.style.display=$?"block":"none"),this.setSliderVal("slide-entity-vert-vel","val-entity-vert-vel",t.verticalVelocity,2);const S=this.container.querySelector("#toggle-mod-gravity"),P=this.container.querySelector("#note-mod-gravity");S&&(S.textContent=t.hasGravity?"Attached":"Detached",S.classList.toggle("active",t.hasGravity)),P&&(P.textContent=t.hasGravity?"Subject to static world gravity acceleration":"Zero-G: never falls, flies horizontally in a straight line");const W=this.container.querySelector("#toggle-mod-roll"),D=this.container.querySelector("#group-mod-roll"),B=this.container.querySelector("#note-roll-friction"),C=!!(t.rollModule&&t.rollModule.enabled);if(W&&(W.textContent=C?"Attached":"Detached",W.classList.toggle("active",C)),D&&(D.style.display=C?"block":"none"),B&&(B.style.display=C&&!t.hasFriction?"block":"none"),t.rollModule&&this.setSliderVal("slide-entity-roll-resist","val-entity-roll-resist",t.rollModule.rollResistance,2),i){const u=this.container.querySelector("#toggle-walk"),I=this.container.querySelector("#group-mod-walking"),X=this.container.querySelector("#warn-walk-friction"),Y=this.container.querySelector("#warn-walk-strength"),K=!!(this.character.walkingModule&&this.character.walkingModule.enabled);u&&(u.textContent=K?"Attached":"Detached",u.classList.toggle("active",K)),I&&(I.style.display=K?"flex":"none"),X&&(X.style.display=K&&!this.character.hasFriction?"block":"none"),Y&&(Y.style.display=K&&!this.character.hasStrength?"block":"none"),this.character.walkingModule&&(this.setSliderVal("slide-walk-force","val-walk-force",this.character.walkingModule.maxWalkForce,0),this.setSliderVal("slide-walk-speed","val-walk-speed",this.character.walkingModule.maxWalkSpeed,1));const et=this.container.querySelector("#toggle-strength"),gt=this.container.querySelector("#group-mod-strength"),it=!!(this.character.strengthModule&&this.character.strengthModule.enabled);et&&(et.textContent=it?"Attached":"Detached",et.classList.toggle("active",it)),gt&&(gt.style.display=it?"block":"none"),this.character.strengthModule&&this.setSliderVal("slide-strength","val-strength",this.character.strength,1);const st=this.container.querySelector("#toggle-pickup"),pt=this.container.querySelector("#group-mod-pickup"),lt=!!(this.character.pickupModule&&this.character.pickupModule.enabled);st&&(st.textContent=lt?"Attached":"Detached",st.classList.toggle("active",lt)),pt&&(pt.style.display=lt?"block":"none"),this.character.pickupModule&&(this.setSliderVal("slide-pickup-reach","val-pickup-reach",this.character.pickupModule.pickupReach,1),this.setSliderVal("slide-pickup-cross-layer","val-pickup-cross-layer",this.character.pickupModule.crossLayerReachRatio,2));const ot=this.container.querySelector("#toggle-throw"),vt=this.container.querySelector("#group-mod-throw"),at=!!(this.character.throwModule&&this.character.throwModule.enabled);ot&&(ot.textContent=at?"Attached":"Detached",ot.classList.toggle("active",at)),vt&&(vt.style.display=at?"block":"none"),this.character.throwModule&&this.setSliderVal("slide-throw-force","val-throw-force",this.character.throwModule.baseThrowForce,1);const nt=this.container.querySelector("#toggle-climb"),ft=this.container.querySelector("#group-mod-climb"),ct=this.container.querySelector("#warn-climb-deps"),Q=!!(this.character.climbingModule&&this.character.climbingModule.enabled);if(nt&&(nt.textContent=Q?"Attached":"Detached",nt.classList.toggle("active",Q)),ft&&(ft.style.display=Q?"block":"none"),ct){const Z=!this.character.hasVerticalPosition,N=!this.character.hasStrength;ct.style.display=Q&&(Z||N)?"block":"none",ct.textContent=Z?"⚠️ Requires Vertical Position (3D Z-axis)":N?"⚠️ Requires Strength Ability to climb":""}if(this.character.climbingModule){const Z=this.container.querySelector("#toggle-climb-walkoff");if(Z){const _=!!this.character.climbingModule.preventWalkOff;Z.textContent=_?"Active":"Inactive",Z.classList.toggle("active",_)}const N=this.container.querySelector("#toggle-climb-sideways");if(N){const _=!!this.character.climbingModule.horizontalClimb;N.textContent=_?"Active":"Inactive",N.classList.toggle("active",_)}this.setSliderVal("slide-climb-adhesion","val-climb-adhesion",this.character.climbingModule.maxAdhesion,0),this.setSliderVal("slide-climb-speed","val-climb-speed",this.character.climbingModule.maxClimbSpeed,1),this.setSliderVal("slide-climb-hang","val-climb-hang",this.character.climbingModule.hangDistance,2)}}}setSliderVal(t,i,s,e){const l=this.container.querySelector(`#${t}`),n=this.container.querySelector(`#${i}`);l&&(l.value=s.toString()),n&&(n.textContent=e>0?s.toFixed(e):Math.round(s).toString())}syncCreatorInputs(){const t=this.creatorState,i=this.container.querySelector("#creator-name");i&&(i.value=t.name);const s=this.container.querySelector("#creator-toggle-shape");s&&(s.textContent=t.visualShape==="box"?"Box 📦":"Circle ⚪",s.classList.toggle("active",t.visualShape==="box"));const e=this.container.querySelector("#creator-color"),l=this.container.querySelector("#val-creator-color");e&&(e.value=t.color),l&&(l.textContent=t.color);const n=this.container.querySelector("#creator-toggle-collider"),o=this.container.querySelector("#grp-creator-radius");n&&(n.textContent=t.hasCollider?"Attached":"Detached",n.classList.toggle("active",t.hasCollider)),o&&(o.style.display=t.hasCollider?"block":"none"),this.setSliderVal("slide-creator-radius","val-creator-radius",t.colliderRadius,2);const a=this.container.querySelector("#creator-toggle-mass"),d=this.container.querySelector("#grp-creator-mass");a&&(a.textContent=t.hasMass?"Attached":"Detached",a.classList.toggle("active",t.hasMass)),d&&(d.style.display=t.hasMass?"block":"none"),this.setSliderVal("slide-creator-mass","val-creator-mass",t.mass,1);const c=this.container.querySelector("#creator-toggle-friction"),g=this.container.querySelector("#grp-creator-fric");c&&(c.textContent=t.hasFriction?"Attached":"Detached",c.classList.toggle("active",t.hasFriction)),g&&(g.style.display=t.hasFriction?"block":"none"),this.setSliderVal("slide-creator-fric","val-creator-fric",t.dynamicFrictionMod,2);const v=this.container.querySelector("#creator-toggle-bounce"),f=this.container.querySelector("#grp-creator-bounce"),p=this.container.querySelector("#creator-check-vert-bounce"),b=this.container.querySelector("#creator-warn-bounce-vert");v&&(v.textContent=t.hasBounce?"Attached":"Detached",v.classList.toggle("active",t.hasBounce)),f&&(f.style.display=t.hasBounce?"block":"none"),p&&(p.checked=t.verticalBounce),b&&(b.style.display=t.hasBounce&&t.verticalBounce&&(!t.hasVerticalPosition||!t.hasVerticalVelocity)?"block":"none"),this.setSliderVal("slide-creator-bounce","val-creator-bounce",t.bounceMod,2);const k=this.container.querySelector("#creator-toggle-vert-pos"),m=this.container.querySelector("#grp-creator-vert-pos");k&&(k.textContent=t.hasVerticalPosition?"Attached":"Detached",k.classList.toggle("active",t.hasVerticalPosition)),m&&(m.style.display=t.hasVerticalPosition?"block":"none"),this.setSliderVal("slide-creator-elevation","val-creator-elevation",t.elevation,2);const y=this.container.querySelector("#creator-toggle-vert-vel");y&&(y.textContent=t.hasVerticalVelocity?"Enabled":"Disabled",y.classList.toggle("active",t.hasVerticalVelocity));const M=this.container.querySelector("#creator-toggle-gravity");M&&(M.textContent=t.hasGravity?"Attached":"Detached",M.classList.toggle("active",t.hasGravity));const R=this.container.querySelector("#creator-toggle-roll"),V=this.container.querySelector("#group-creator-roll-resist");R&&(R.textContent=t.hasRollModule?"Enabled":"Disabled",R.classList.toggle("active",t.hasRollModule)),V&&(V.style.display=t.hasRollModule?"block":"none"),this.setSliderVal("slide-creator-roll-resist","val-creator-roll-resist",t.rollResistance,2)}bindEvents(){var D,B,C,F,A,q,H,j,G,U;this.modePlayBtn.addEventListener("click",()=>{this.setMode(!1)}),this.modeEditBtn.addEventListener("click",()=>{this.setMode(!0)}),(D=this.container.querySelector("#submode-entities"))==null||D.addEventListener("click",()=>{this.setEditTool("entities")}),(B=this.container.querySelector("#submode-walls"))==null||B.addEventListener("click",()=>{this.setEditTool("walls")}),this.entitySelectorEl.addEventListener("change",()=>{var I;const u=this.entitySelectorEl.value;if(u===this.character.id)this.selectedEntity=this.character;else{const X=this.objects.find(Y=>Y.id===u);X&&(this.selectedEntity=X)}this.updateSelectorOptions(),this.syncEntitySliders(),(I=this.onSelectionChange)==null||I.call(this,this.selectedEntity)}),(C=this.container.querySelector("#btn-duplicate-entity"))==null||C.addEventListener("click",()=>{this.duplicateSelectedEntity()}),(F=this.container.querySelector("#btn-delete-entity"))==null||F.addEventListener("click",()=>{this.deleteSelectedEntity()});const t=this.container.querySelector("#toggle-entity-shape");t==null||t.addEventListener("click",()=>{this.selectedEntity.visualShape=this.selectedEntity.visualShape==="box"?"circle":"box",t.textContent=this.selectedEntity.visualShape==="box"?"Box 📦":"Circle ⚪",t.classList.toggle("active",this.selectedEntity.visualShape==="box"),this.updateSelectorOptions()});const i=this.container.querySelector("#toggle-mod-collider");i==null||i.addEventListener("click",()=>{this.selectedEntity.colliderModule?this.selectedEntity.colliderModule.enabled=!this.selectedEntity.colliderModule.enabled:this.selectedEntity.colliderModule=new dt({radius:.32}),this.syncEntitySliders()}),this.setupSlider("slide-entity-radius","val-entity-radius",u=>{this.selectedEntity.colliderRadius=u},2);const s=this.container.querySelector("#toggle-mod-mass");s==null||s.addEventListener("click",()=>{this.selectedEntity.massModule?this.selectedEntity.massModule.enabled=!this.selectedEntity.massModule.enabled:this.selectedEntity.massModule=new ht({mass:1}),this.syncEntitySliders(),this.updateSelectorOptions()}),this.setupSlider("slide-entity-mass","val-entity-mass",u=>{this.selectedEntity.mass=u,this.updateSelectorOptions()},1);const e=this.container.querySelector("#toggle-mod-friction");e==null||e.addEventListener("click",()=>{this.selectedEntity.frictionModule?this.selectedEntity.frictionModule.enabled=!this.selectedEntity.frictionModule.enabled:this.selectedEntity.frictionModule=new ut,this.syncEntitySliders()}),this.setupSlider("slide-entity-static-fric","val-entity-static-fric",u=>{this.selectedEntity.staticGroundFrictionMod=u},2),this.setupSlider("slide-entity-dynamic-fric","val-entity-dynamic-fric",u=>{this.selectedEntity.dynamicGroundFrictionMod=u},2);const l=this.container.querySelector("#toggle-mod-bounce");l==null||l.addEventListener("click",()=>{this.selectedEntity.bounceModule?this.selectedEntity.bounceModule.enabled=!this.selectedEntity.bounceModule.enabled:this.selectedEntity.bounceModule=new yt({bounceMod:.4}),this.syncEntitySliders()}),this.setupSlider("slide-entity-bounce","val-entity-bounce",u=>{this.selectedEntity.bounceMod=u},2);const n=this.container.querySelector("#check-mod-vert-bounce");n==null||n.addEventListener("change",()=>{this.selectedEntity.bounceModule&&(this.selectedEntity.bounceModule.verticalBounce=n.checked),this.syncEntitySliders(),this.updateInspector()});const o=this.container.querySelector("#toggle-mod-vert-pos");o==null||o.addEventListener("click",()=>{this.selectedEntity.verticalPositionModule?(this.selectedEntity.verticalPositionModule.enabled=!this.selectedEntity.verticalPositionModule.enabled,this.selectedEntity.verticalPositionModule.enabled||(this.selectedEntity.position.z=0,this.selectedEntity.verticalVelocity=0)):this.selectedEntity.verticalPositionModule=new rt({z:this.selectedEntity.position.z,hasVerticalVelocity:!0,verticalVelocity:0,enabled:!0}),this.syncEntitySliders(),this.updateInspector()}),this.setupSlider("slide-entity-elevation","val-entity-elevation",u=>{this.selectedEntity.verticalPositionModule&&(this.selectedEntity.verticalPositionModule.z=u),this.selectedEntity.position.z=u,this.syncEntitySliders(),this.updateInspector()},2);const a=this.container.querySelector("#toggle-mod-vert-vel");a==null||a.addEventListener("click",()=>{this.selectedEntity.verticalPositionModule&&(this.selectedEntity.verticalPositionModule.hasVerticalVelocity=!this.selectedEntity.verticalPositionModule.hasVerticalVelocity,this.selectedEntity.verticalPositionModule.hasVerticalVelocity||(this.selectedEntity.verticalVelocity=0)),this.syncEntitySliders(),this.updateInspector()}),this.setupSlider("slide-entity-vert-vel","val-entity-vert-vel",u=>{this.selectedEntity.verticalVelocity=u},2);const d=this.container.querySelector("#toggle-mod-gravity");d==null||d.addEventListener("click",()=>{this.selectedEntity.gravityModule?this.selectedEntity.gravityModule.enabled=!this.selectedEntity.gravityModule.enabled:this.selectedEntity.gravityModule=new bt,this.syncEntitySliders()});const c=this.container.querySelector("#toggle-mod-roll");c==null||c.addEventListener("click",()=>{this.selectedEntity.rollModule?this.selectedEntity.rollModule.enabled=!this.selectedEntity.rollModule.enabled:this.selectedEntity.rollModule=new mt({rollResistance:.4}),this.syncEntitySliders()}),this.setupSlider("slide-entity-roll-resist","val-entity-roll-resist",u=>{this.selectedEntity.rollModule&&(this.selectedEntity.rollModule.rollResistance=u)},2);const g=this.container.querySelector("#toggle-walk");g==null||g.addEventListener("click",()=>{this.character.walkingModule?this.character.walkingModule.enabled=!this.character.walkingModule.enabled:this.character.walkingModule=new Rt,this.syncEntitySliders()}),this.setupSlider("slide-walk-force","val-walk-force",u=>{this.character.walkingModule&&(this.character.walkingModule.maxWalkForce=u)},0),this.setupSlider("slide-walk-speed","val-walk-speed",u=>{this.character.walkingModule&&(this.character.walkingModule.maxWalkSpeed=u)},1);const v=this.container.querySelector("#toggle-strength");v==null||v.addEventListener("click",()=>{this.character.strengthModule?this.character.strengthModule.enabled=!this.character.strengthModule.enabled:this.character.strengthModule=new wt({strength:1}),this.syncEntitySliders()}),this.setupSlider("slide-strength","val-strength",u=>{this.character.strength=u},1);const f=this.container.querySelector("#toggle-pickup");f==null||f.addEventListener("click",()=>{this.character.pickupModule?this.character.pickupModule.enabled=!this.character.pickupModule.enabled:this.character.pickupModule=new Pt,this.syncEntitySliders()}),this.setupSlider("slide-pickup-reach","val-pickup-reach",u=>{this.character.pickupModule&&(this.character.pickupModule.pickupReach=u)},1),this.setupSlider("slide-pickup-cross-layer","val-pickup-cross-layer",u=>{this.character.pickupModule&&(this.character.pickupModule.crossLayerReachRatio=u)},2);const p=this.container.querySelector("#toggle-throw");p==null||p.addEventListener("click",()=>{this.character.throwModule?this.character.throwModule.enabled=!this.character.throwModule.enabled:this.character.throwModule=new Wt,this.syncEntitySliders()}),this.setupSlider("slide-throw-force","val-throw-force",u=>{this.character.throwModule&&(this.character.throwModule.baseThrowForce=u)},1);const b=this.container.querySelector("#toggle-climb");b==null||b.addEventListener("click",()=>{this.character.climbingModule?this.character.climbingModule.enabled=!this.character.climbingModule.enabled:this.character.climbingModule=new Ft,this.syncEntitySliders()});const k=this.container.querySelector("#toggle-climb-walkoff");k==null||k.addEventListener("click",()=>{this.character.climbingModule&&(this.character.climbingModule.preventWalkOff=!this.character.climbingModule.preventWalkOff),this.syncEntitySliders()});const m=this.container.querySelector("#toggle-climb-sideways");m==null||m.addEventListener("click",()=>{this.character.climbingModule&&(this.character.climbingModule.horizontalClimb=!this.character.climbingModule.horizontalClimb),this.syncEntitySliders()}),this.setupSlider("slide-climb-adhesion","val-climb-adhesion",u=>{this.character.climbingModule&&(this.character.climbingModule.maxAdhesion=u)},0),this.setupSlider("slide-climb-speed","val-climb-speed",u=>{this.character.climbingModule&&(this.character.climbingModule.maxClimbSpeed=u)},1),this.setupSlider("slide-climb-hang","val-climb-hang",u=>{this.character.climbingModule&&(this.character.climbingModule.hangDistance=u)},2),this.setupSlider("slide-gravity","val-gravity",u=>{this.arena.gravity=u},1),this.setupSlider("slide-wall-height","val-wall-height",u=>{this.arena.setStandardWallHeight(u),this.setSliderVal("slide-editor-wall-height","val-editor-wall-height",u,1)},1),this.setupSlider("slide-editor-wall-height","val-editor-wall-height",u=>{this.arena.setStandardWallHeight(u),this.setSliderVal("slide-wall-height","val-wall-height",u,1)},1);const y=this.container.querySelector("#select-wall-preset");y==null||y.addEventListener("change",()=>{this.arena.loadWallPreset(y.value,[this.character,...this.objects]),this.updateWallPresetUI()}),(A=this.container.querySelector("#btn-prev-wall-map"))==null||A.addEventListener("click",()=>{const u=J.WALL_PRESETS,X=(u.findIndex(Y=>Y.id===this.arena.currentPresetId)-1+u.length)%u.length;this.arena.loadWallPreset(u[X].id,[this.character,...this.objects]),this.updateWallPresetUI()}),(q=this.container.querySelector("#btn-next-wall-map"))==null||q.addEventListener("click",()=>{const u=J.WALL_PRESETS,X=(u.findIndex(Y=>Y.id===this.arena.currentPresetId)+1)%u.length;this.arena.loadWallPreset(u[X].id,[this.character,...this.objects]),this.updateWallPresetUI()}),(H=this.container.querySelector("#btn-reset-walls"))==null||H.addEventListener("click",()=>{this.arena.resetDefaultWalls([this.character,...this.objects]),this.updateWallPresetUI()}),(j=this.container.querySelector("#btn-clear-walls"))==null||j.addEventListener("click",()=>{this.arena.clearAllWalls([this.character,...this.objects]),this.updateWallPresetUI()}),this.setupSlider("slide-friction","val-friction",u=>{this.arena.frictionCoeff=u},1),this.setupSlider("slide-static-thresh","val-static-thresh",u=>{this.arena.staticFrictionThreshold=u},2),this.container.querySelectorAll(".preset-chip").forEach(u=>{u.addEventListener("click",()=>{const I=u.getAttribute("data-preset");I&&this.presets[I]&&(this.creatorState={...this.presets[I]},this.syncCreatorInputs())})});const R=this.container.querySelector("#creator-name");R==null||R.addEventListener("input",()=>{this.creatorState.name=R.value});const V=this.container.querySelector("#creator-toggle-shape");V==null||V.addEventListener("click",()=>{this.creatorState.visualShape=this.creatorState.visualShape==="box"?"circle":"box",V.textContent=this.creatorState.visualShape==="box"?"Box 📦":"Circle ⚪",V.classList.toggle("active",this.creatorState.visualShape==="box")});const E=this.container.querySelector("#creator-color"),z=this.container.querySelector("#val-creator-color");E==null||E.addEventListener("input",()=>{this.creatorState.color=E.value,z&&(z.textContent=E.value)});const L=this.container.querySelector("#creator-toggle-collider");L==null||L.addEventListener("click",()=>{this.creatorState.hasCollider=!this.creatorState.hasCollider,L.textContent=this.creatorState.hasCollider?"Attached":"Detached",L.classList.toggle("active",this.creatorState.hasCollider);const u=this.container.querySelector("#grp-creator-radius");u&&(u.style.display=this.creatorState.hasCollider?"block":"none")}),this.setupSlider("slide-creator-radius","val-creator-radius",u=>{this.creatorState.colliderRadius=u},2);const T=this.container.querySelector("#creator-toggle-mass");T==null||T.addEventListener("click",()=>{this.creatorState.hasMass=!this.creatorState.hasMass,T.textContent=this.creatorState.hasMass?"Attached":"Detached",T.classList.toggle("active",this.creatorState.hasMass);const u=this.container.querySelector("#grp-creator-mass");u&&(u.style.display=this.creatorState.hasMass?"block":"none")}),this.setupSlider("slide-creator-mass","val-creator-mass",u=>{this.creatorState.mass=u},1);const x=this.container.querySelector("#creator-toggle-friction");x==null||x.addEventListener("click",()=>{this.creatorState.hasFriction=!this.creatorState.hasFriction,x.textContent=this.creatorState.hasFriction?"Attached":"Detached",x.classList.toggle("active",this.creatorState.hasFriction);const u=this.container.querySelector("#grp-creator-fric");u&&(u.style.display=this.creatorState.hasFriction?"block":"none")}),this.setupSlider("slide-creator-fric","val-creator-fric",u=>{this.creatorState.dynamicFrictionMod=u},2);const h=this.container.querySelector("#creator-toggle-bounce");h==null||h.addEventListener("click",()=>{this.creatorState.hasBounce=!this.creatorState.hasBounce,h.textContent=this.creatorState.hasBounce?"Attached":"Detached",h.classList.toggle("active",this.creatorState.hasBounce);const u=this.container.querySelector("#grp-creator-bounce");u&&(u.style.display=this.creatorState.hasBounce?"block":"none")}),this.setupSlider("slide-creator-bounce","val-creator-bounce",u=>{this.creatorState.bounceMod=u},2);const w=this.container.querySelector("#creator-check-vert-bounce");w==null||w.addEventListener("change",()=>{this.creatorState.verticalBounce=w.checked,this.syncCreatorInputs()});const $=this.container.querySelector("#creator-toggle-vert-pos");$==null||$.addEventListener("click",()=>{this.creatorState.hasVerticalPosition=!this.creatorState.hasVerticalPosition,this.syncCreatorInputs()}),this.setupSlider("slide-creator-elevation","val-creator-elevation",u=>{this.creatorState.elevation=u},2);const S=this.container.querySelector("#creator-toggle-vert-vel");S==null||S.addEventListener("click",()=>{this.creatorState.hasVerticalVelocity=!this.creatorState.hasVerticalVelocity,this.syncCreatorInputs()});const P=this.container.querySelector("#creator-toggle-gravity");P==null||P.addEventListener("click",()=>{this.creatorState.hasGravity=!this.creatorState.hasGravity,P.textContent=this.creatorState.hasGravity?"Attached":"Detached",P.classList.toggle("active",this.creatorState.hasGravity)});const W=this.container.querySelector("#creator-toggle-roll");W==null||W.addEventListener("click",()=>{this.creatorState.hasRollModule=!this.creatorState.hasRollModule,W.textContent=this.creatorState.hasRollModule?"Enabled":"Disabled",W.classList.toggle("active",this.creatorState.hasRollModule);const u=this.container.querySelector("#group-creator-roll-resist");u&&(u.style.display=this.creatorState.hasRollModule?"block":"none")}),this.setupSlider("slide-creator-roll-resist","val-creator-roll-resist",u=>{this.creatorState.rollResistance=u},2),(G=this.container.querySelector("#btn-spawn-configured"))==null||G.addEventListener("click",()=>{this.spawnFromCreator()}),(U=this.container.querySelector("#btn-clear-entities"))==null||U.addEventListener("click",()=>{this.onClearObjects(),this.setSelectedEntity(this.character)})}spawnFromCreator(){const t=this.creatorState,i=Math.min(Math.max(this.character.position.x+(Math.random()*2-1),1),this.arena.width-1),s=Math.min(Math.max(this.character.position.y+(Math.random()*2-1),1),this.arena.height-1),e=new tt({name:t.name||"Custom Object",position:{x:i,y:s,z:t.hasVerticalPosition?t.elevation:0},visualShape:t.visualShape,color:t.color,colliderModule:t.hasCollider?new dt({radius:t.colliderRadius}):null,massModule:t.hasMass?new ht({mass:t.mass}):null,frictionModule:t.hasFriction?new ut({staticFrictionMod:t.staticFrictionMod,dynamicFrictionMod:t.dynamicFrictionMod}):null,bounceModule:t.hasBounce?new yt({bounceMod:t.bounceMod,verticalBounce:t.verticalBounce}):null,verticalPositionModule:t.hasVerticalPosition?new rt({z:t.elevation,hasVerticalVelocity:t.hasVerticalVelocity,verticalVelocity:0}):null,gravityModule:t.hasGravity?new bt:null,rollModule:t.hasRollModule?new mt({rollResistance:t.rollResistance}):null});this.onSpawnObject(e),this.setSelectedEntity(e)}duplicateSelectedEntity(){if(this.selectedEntity===this.character)return;const t=this.selectedEntity,i=Math.min(Math.max(t.position.x+.6,1),this.arena.width-1),s=Math.min(Math.max(t.position.y+.6,1),this.arena.height-1),e=new tt({name:`${t.name} (Copy)`,position:{x:i,y:s,z:t.position.z},visualShape:t.visualShape,color:t.color,colliderModule:t.colliderModule?new dt({radius:t.colliderModule.radius,enabled:t.colliderModule.enabled}):null,massModule:t.massModule?new ht({mass:t.massModule.mass,enabled:t.massModule.enabled}):null,frictionModule:t.frictionModule?new ut({staticFrictionMod:t.frictionModule.staticFrictionMod,dynamicFrictionMod:t.frictionModule.dynamicFrictionMod,enabled:t.frictionModule.enabled}):null,bounceModule:t.bounceModule?new yt({bounceMod:t.bounceModule.bounceMod,verticalBounce:t.bounceModule.verticalBounce,enabled:t.bounceModule.enabled}):null,verticalPositionModule:t.verticalPositionModule?new rt({z:t.verticalPositionModule.z,hasVerticalVelocity:t.verticalPositionModule.hasVerticalVelocity,verticalVelocity:t.verticalPositionModule.verticalVelocity,enabled:t.verticalPositionModule.enabled}):null,gravityModule:t.gravityModule?new bt({enabled:t.gravityModule.enabled}):null,rollModule:t.rollModule?new mt({rollResistance:t.rollModule.rollResistance,enabled:t.rollModule.enabled}):null});this.onSpawnObject(e),this.setSelectedEntity(e)}deleteSelectedEntity(){if(this.selectedEntity===this.character)return;const t=this.selectedEntity;this.character.heldObject===t&&(t.isHeld=!1,t.heldBy=null,this.character.heldObject=null),this.onDeleteObject&&this.onDeleteObject(t),this.setSelectedEntity(this.character)}setupSlider(t,i,s,e=0){const l=this.container.querySelector(`#${t}`),n=this.container.querySelector(`#${i}`);!l||!n||l.addEventListener("input",()=>{const o=parseFloat(l.value);n.textContent=e>0?o.toFixed(e):Math.round(o).toString(),s(o)})}updateInspector(){var e;const t=this.selectedEntity,i=Math.hypot(t.velocity.x,t.velocity.y).toFixed(2),s=t===this.character;this.inspectorEl.innerHTML=`
+      <div class="inspect-item">
+        <span class="inspect-k">Selected</span>
+        <span class="inspect-v highlight-held">${t.name}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Position (X, Y)</span>
+        <span class="inspect-v">${t.position.x.toFixed(2)}, ${t.position.y.toFixed(2)} u</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Height (Z)</span>
+        <span class="inspect-v ${t.isAboveGround?"highlight-z":""}">${t.position.z.toFixed(2)} u</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Surface</span>
+        <span class="inspect-v ${t.supportingSurfaceHeight>.05&&t.isRestingOnSurface?"highlight-held":""}">${t.isRestingOnSurface?t.supportingSurfaceHeight>.05?`Wall Top (${t.supportingSurfaceHeight.toFixed(1)}u)`:"Ground (0.0u)":`Airborne (${t.verticalVelocity.toFixed(1)}u/s)`}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Linear Speed</span>
+        <span class="inspect-v">${i} u/s</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Collider</span>
+        <span class="inspect-v ${t.hasCollider?"":"highlight-held"}">${t.hasCollider?`Radius ${t.colliderRadius.toFixed(2)}u`:"Detached (Passes through)"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Mass</span>
+        <span class="inspect-v ${t.hasMass?"":"highlight-held"}">${t.hasMass?`${t.mass.toFixed(1)} kg`:"Massless (0kg)"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Friction</span>
+        <span class="inspect-v ${t.hasFriction?"":"highlight-held"}">${t.hasFriction?`${t.dynamicGroundFrictionMod.toFixed(2)}`:"Zero Friction"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Bounciness</span>
+        <span class="inspect-v ${t.hasBounce?"":"highlight-held"}">${t.hasBounce&&t.bounceMod!==null?`${t.bounceMod.toFixed(2)} (Vert: ${t.hasVerticalBounce?"On":"Off"})`:"Zero Bounce"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Vertical Position</span>
+        <span class="inspect-v ${t.hasVerticalPosition?"":"highlight-held"}">${t.hasVerticalPosition?`${t.position.z.toFixed(2)} u`:"Detached (2D Flat)"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Vertical Velocity</span>
+        <span class="inspect-v ${t.hasVerticalVelocity?"":"highlight-held"}">${t.hasVerticalVelocity?`${t.verticalVelocity.toFixed(2)} u/s`:"Disabled (0 u/s)"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Gravity</span>
+        <span class="inspect-v ${t.hasGravity?"":"highlight-held"}">${t.hasGravity?"Standard Gravity":"Zero-G (Constant Z)"}</span>
+      </div>
+      ${t.rollModule&&t.rollModule.enabled?`
+      <div class="inspect-item">
+        <span class="inspect-k">3D Angular Vel</span>
+        <span class="inspect-v highlight-z">(${t.rollModule.angularVelocity.x.toFixed(1)}, ${t.rollModule.angularVelocity.y.toFixed(1)}, ${t.rollModule.angularVelocity.z.toFixed(1)}) rad/s</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Roll Resistance</span>
+        <span class="inspect-v ${t.rollModule.rollResistance===0?"highlight-held":""}">${t.rollModule.rollResistance.toFixed(2)} u/s²</span>
+      </div>
+      `:""}
+      ${s?`
+      <div class="inspect-item">
+        <span class="inspect-k">Base / Total Mass</span>
+        <span class="inspect-v ${this.character.heldObject?"highlight-held":""}">${this.character.baseMass.toFixed(1)}kg ${this.character.heldObject?`(+${this.character.carriedMass.toFixed(1)}kg = ${this.character.mass.toFixed(1)}kg)`:""}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Walk Traction</span>
+        <span class="inspect-v ${this.character.hasFriction?"":"highlight-held"}">${this.character.hasFriction?"Grip OK":"Slipping (No Friction)"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Held Freebody</span>
+        <span class="inspect-v ${this.character.heldObject?"highlight-held":""}">${this.character.heldObject?`${this.character.heldObject.name} (${this.character.heldObject.hasMass?`${this.character.heldObject.mass}kg`:"Massless"})`:"None"}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Ledge Hang Limit</span>
+        <span class="inspect-v">${(((e=this.character.climbingModule)==null?void 0:e.hangDistance)??.1).toFixed(2)} u</span>
+      </div>
+      `:""}
+    `}renderWallPresetOptions(){return J.WALL_PRESETS.map(t=>`<option value="${t.id}" ${this.arena.currentPresetId===t.id?"selected":""}>${t.name}</option>`).join("")}getCurrentWallPresetBadge(){const t=J.WALL_PRESETS.find(i=>i.id===this.arena.currentPresetId);return t?t.badge:"Custom"}getCurrentWallPresetDesc(){const t=J.WALL_PRESETS.find(i=>i.id===this.arena.currentPresetId);return t?t.description:"Custom wall layout painted in the arena."}updateWallPresetUI(){const t=this.container.querySelector("#select-wall-preset");t&&(t.value=this.arena.currentPresetId);const i=this.container.querySelector("#label-wall-map-badge");i&&(i.textContent=this.getCurrentWallPresetBadge());const s=this.container.querySelector("#desc-wall-map");s&&(s.textContent=this.getCurrentWallPresetDesc())}}class Bt{constructor(t){r(this,"arena");r(this,"character");r(this,"objects");r(this,"renderer");r(this,"inputManager");r(this,"devPanel");r(this,"isRunning",!1);r(this,"lastTime",0);r(this,"accumulator",0);r(this,"fixedDt",1/60);this.arena=t.arena,this.character=t.character,this.objects=t.objects,this.renderer=t.renderer,this.inputManager=t.inputManager,this.devPanel=t.devPanel}start(){this.isRunning||(this.isRunning=!0,this.lastTime=performance.now(),requestAnimationFrame(t=>this.tick(t)))}stop(){this.isRunning=!1}tick(t){if(!this.isRunning)return;let i=(t-this.lastTime)/1e3;for(this.lastTime=t,i>.2&&(i=.2),this.accumulator+=i;this.accumulator>=this.fixedDt;)this.updatePhysics(this.fixedDt),this.accumulator-=this.fixedDt;let s=null;!this.devPanel.isEditMode&&!this.character.heldObject&&this.character.pickupModule&&(s=this.character.pickupModule.findTargetObject(this.character,this.inputManager.mousePos.x,this.inputManager.mousePos.y,this.objects,this.arena.wallHeight));const e=this.devPanel.isEditMode&&this.devPanel.editTool==="walls";this.renderer.render(this.arena,this.character,this.objects,this.inputManager.selectedCanvasEntity,this.devPanel.isEditMode,this.inputManager.hoverEntity,s,e,this.inputManager.hoverWallTile),this.devPanel.updateInspector(),requestAnimationFrame(l=>this.tick(l))}updatePhysics(t){const i=this.inputManager;i.draggedEntity!==this.character?this.character.updateCharacter(t,i.movementVector,i.isMouseDown&&!this.devPanel.isEditMode,i.mousePos,this.arena,i.isClimbHeld):(this.character.velocity.x=0,this.character.velocity.y=0);for(const e of this.objects)i.draggedEntity!==e&&e.updatePosition(t,this.arena);const s=i.isGrabHeld;if(!this.devPanel.isEditMode&&s&&!this.character.heldObject&&this.character.pickupModule){const e=this.character.pickupModule.findTargetObject(this.character,i.mousePos.x,i.mousePos.y,this.objects,this.arena.wallHeight);e&&(this.character.pickupModule.pickup(this.character,e),i.justPickedUp=!0)}this.resolveFreebodyCollisions()}resolveFreebodyCollisions(){const t=[this.character,...this.objects],i=this.inputManager,s=3;for(let e=0;e<s;e++)for(let l=0;l<t.length;l++)for(let n=l+1;n<t.length;n++){const o=t[l],a=t[n];if(o.isHeld||a.isHeld||o===i.draggedEntity||a===i.draggedEntity||!o.hasCollider||!a.hasCollider)continue;const d=this.arena.wallHeight-.15,c=o.position.z>=d||o.supportingSurfaceHeight>=d||o.standingWall!==null||o.isAboveWalls,g=a.position.z>=d||a.supportingSurfaceHeight>=d||a.standingWall!==null||a.isAboveWalls;if(c!==g)continue;const v=a.position.x-o.position.x,f=a.position.y-o.position.y,p=v*v+f*f,b=o.colliderRadius+a.colliderRadius;if(p<b*b&&p>1e-6){const k=Math.sqrt(p),m=b-k,y=v/k,M=f/k,R=a.velocity.x-o.velocity.x,V=a.velocity.y-o.velocity.y,E=R*y+V*M,z=!o.hasMass,L=!a.hasMass;if(z&&L){if(o.position.x-=y*m*.5,o.position.y-=M*m*.5,a.position.x+=y*m*.5,a.position.y+=M*m*.5,E<0){const S=-E*.5;o.velocity.x-=S*y,o.velocity.y-=S*M,a.velocity.x+=S*y,a.velocity.y+=S*M}continue}if(!z&&L){this.isEntityPinnedAgainstWall(a,y,M)?(o.position.x-=y*m,o.position.y-=M*m,o.velocity.x=0,o.velocity.y=0):(a.position.x+=y*m,a.position.y+=M*m,E<0&&(a.velocity.x+=(o.velocity.x-a.velocity.x)*Math.abs(y),a.velocity.y+=(o.velocity.y-a.velocity.y)*Math.abs(M)));continue}if(z&&!L){this.isEntityPinnedAgainstWall(o,-y,-M)?(a.position.x+=y*m,a.position.y+=M*m,a.velocity.x=0,a.velocity.y=0):(o.position.x-=y*m,o.position.y-=M*m,E<0&&(o.velocity.x+=(a.velocity.x-o.velocity.x)*Math.abs(y),o.velocity.y+=(a.velocity.y-o.velocity.y)*Math.abs(M)));continue}const T=1/o.mass,x=1/a.mass,h=T+x;if(h<=1e-4)continue;const w=T/h,$=x/h;if(o.position.x-=y*m*w,o.position.y-=M*m*w,a.position.x+=y*m*$,a.position.y+=M*m*$,E<0){const S=o instanceof Mt&&o.isActivelyWalking||a instanceof Mt&&a.isActivelyWalking,P=o.hasBounce&&a.hasBounce,W=o.isCharacter||!o.hasBounce?0:o.bounceMod??0,D=a.isCharacter||!a.hasBounce?0:a.bounceMod??0,C=-(1+(S||!P?0:Math.max(0,Math.min(.98,Math.max(W,D)))))*E/h;o.velocity.x-=C*T*y,o.velocity.y-=C*T*M,a.velocity.x+=C*x*y,a.velocity.y+=C*x*M;const F=-M,A=y,q=R*F+V*A;if(Math.abs(q)>.001){const H=.35*Math.sqrt(o.dynamicGroundFrictionMod*a.dynamicGroundFrictionMod),j=.4,G=Math.abs(q)/(h*(1+1/j)),U=H*Math.abs(C),u=Math.min(G,U)*Math.sign(q);if(o.velocity.x+=u*T*F,o.velocity.y+=u*T*A,a.velocity.x-=u*x*F,a.velocity.y-=u*x*A,o.rollModule&&o.rollModule.enabled){const I=u/(j*o.mass*o.colliderRadius);o.rollModule.angularVelocity.z+=I,o.rollModule.angularVelocity.z=Math.max(-30,Math.min(30,o.rollModule.angularVelocity.z)),o.isRestingOnSurface&&(o.rollModule.angularVelocity.y=o.velocity.x/o.colliderRadius,o.rollModule.angularVelocity.x=-o.velocity.y/o.colliderRadius)}if(a.rollModule&&a.rollModule.enabled){const I=u/(j*a.mass*a.colliderRadius);a.rollModule.angularVelocity.z-=I,a.rollModule.angularVelocity.z=Math.max(-30,Math.min(30,a.rollModule.angularVelocity.z)),a.isRestingOnSurface&&(a.rollModule.angularVelocity.y=a.velocity.x/a.colliderRadius,a.rollModule.angularVelocity.x=-a.velocity.y/a.colliderRadius)}}}}}}isEntityPinnedAgainstWall(t,i,s){const e=t.colliderRadius>0?t.colliderRadius:.3,l=.05;if(i>.3&&t.position.x>=this.arena.width-e-l||i<-.3&&t.position.x<=e+l||s>.3&&t.position.y>=this.arena.height-e-l||s<-.3&&t.position.y<=e+l)return!0;for(const n of this.arena.walls)if(t.position.z<n.wallHeight-.05){const o=t.position.x+i*l,a=t.position.y+s*l,d=Math.max(n.x,Math.min(o,n.x+n.width)),c=Math.max(n.y,Math.min(a,n.y+n.height)),g=o-d,v=a-c;if(g*g+v*v<e*e)return!0}return!1}}function Lt(){const O=document.getElementById("game-canvas"),t=document.getElementById("dev-sidebar");if(!O||!t){console.error("Missing canvas or dev-sidebar container in DOM");return}const i=O.getContext("2d");if(!i){console.error("Failed to acquire 2D canvas context");return}const s=new J(20,14,1);O.width=1e3,O.height=700;const e=new Mt({x:4.8,y:7,color:"#f59e0b",colliderRadius:.44,mass:1.2,strength:1}),l=[new tt({id:"stone-1",name:"Light Blue Box",position:{x:6.8,y:4.4,z:0},mass:.7,colliderRadius:.26,color:"#38bdf8",bounceMod:.25,visualShape:"box"}),new tt({id:"boulder-1",name:"Heavy Red Box",position:{x:7,y:9.2,z:0},mass:2.6,colliderRadius:.4,color:"#f87171",bounceMod:.05,visualShape:"box"}),new tt({id:"bouncy-1",name:"Super Bouncy Ball",position:{x:5.2,y:3,z:.6},mass:.5,colliderRadius:.24,color:"#4ade80",bounceMod:.85,verticalVelocity:1}),new tt({id:"rolling-1",name:"Rolling Ball",position:{x:13.6,y:7,z:0},velocity:{x:4.5,y:1.5},mass:.6,colliderRadius:.28,color:"#a855f7",bounceMod:.95,rollModule:new mt({rollResistance:0,angularVelocity:{x:-1.5/.28,y:4.5/.28,z:0}})})];s.syncEntitiesWithWalls([e,...l]);const n=new xt(i),o=new zt({container:t,character:e,arena:s,objects:l,onSpawnObject:c=>{s.syncEntitiesWithWalls([c]),l.push(c),o.updateSelectorOptions()},onDeleteObject:c=>{const g=l.indexOf(c);g!==-1&&l.splice(g,1),o.updateSelectorOptions()},onClearObjects:()=>{e.heldObject&&(e.heldObject.isHeld=!1,e.heldObject.heldBy=null,e.heldObject=null),l.length=0,o.updateSelectorOptions()}}),a=new At(O,s);a.handleInteractions(e,s,l,o),o.onSelectionChange=c=>{a.selectedCanvasEntity=c},new Bt({arena:s,character:e,objects:l,renderer:n,inputManager:a,devPanel:o}).start(),console.log("🚀 Power Creature Game Prototype 1 (Phase 1.1) running!")}window.addEventListener("DOMContentLoaded",Lt);
