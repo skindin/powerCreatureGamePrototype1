@@ -5,8 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-Bj4BqZb5.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-ChVPjIbc.css">
+    <script type="module" crossorigin src="/assets/index-uek7rR8e.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CVDZeTx3.css">
   </head>
   <body>
     <div id="app-layout">
@@ -17,13 +17,23 @@
             <span>⚡ Power Creature Game</span>
             <span class="brand-badge">Phase 1.1 Sandbox</span>
           </div>
-          <div class="controls-hint">
-            <span><span class="key-tag">W</span><span class="key-tag">A</span><span class="key-tag">S</span><span class="key-tag">D</span> Move</span>
-            <span><span class="key-tag">Space</span> Climb Wall</span>
-            <span><span class="key-tag">Click / Hold</span> Grab / Aim & Throw</span>
-            <span><span class="key-tag">E</span> Grab / Drop</span>
-          </div>
         </header>
+
+        <!-- Controls Box above game view -->
+        <div class="controls-overlay-bar">
+          <div class="controls-box" id="game-controls-box">
+            <span class="controls-box-label">🎮 Controls</span>
+            <div class="controls-box-items">
+              <span class="ctrl-item"><span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span> Move</span>
+              <span class="ctrl-divider">•</span>
+              <span class="ctrl-item"><span class="key-badge">Space</span> Climb / Dismount</span>
+              <span class="ctrl-divider">•</span>
+              <span class="ctrl-item"><span class="key-badge">E</span> Pick Up / Drop</span>
+              <span class="ctrl-divider">•</span>
+              <span class="ctrl-item"><span class="key-badge">Click & Drag</span> Aim & Throw</span>
+            </div>
+          </div>
+        </div>
 
         <main class="canvas-wrapper">
           <canvas id="game-canvas"></canvas>
