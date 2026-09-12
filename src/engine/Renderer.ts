@@ -59,7 +59,7 @@ export class Renderer {
         this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
       }
       // Outline stays the same size as the collider and renders OVER the sprite
-      this.drawObjectShadow(entity, ppu);
+      this.drawObjectShadow(entity, arena, ppu);
     }
 
     // 5. Trajectory Line (Rendered OVER walls and entities!)
@@ -191,10 +191,12 @@ export class Renderer {
 
   /**
    * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
-   * Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
-   * Only rendered when elevated above ground (z > 0.01) so the true ground collider footprint is visible.
+   * - Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
+   * - If the object is higher than wall height, also draws another transparent dotted outline
+   *   the size the object would be if it was exactly at wall height.
+   * Only rendered when elevated above ground (z > 0.01) so true footprints are visible.
    */
-  private drawObjectShadow(obj: GameObject, ppu: number): void {
+  private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
     const z = obj.position.z;
     if (z <= 0.01) return;
 
@@ -202,7 +204,7 @@ export class Renderer {
     const groundX = obj.position.x * ppu;
     const groundY = obj.position.y * ppu;
 
-    // Matches the exact collider size at ground level (does NOT expand with altitude)
+    // 1. Plain simple dotted line of the shape of the object at ground level (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
@@ -219,11 +221,36 @@ export class Renderer {
       ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
     }
 
-    // Plain simple dotted line of the shape of the object at ground level
     ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = 1.8;
     ctx.setLineDash([4, 4]);
     ctx.stroke();
+
+    // 2. If higher than wall height, draw another transparent dotted outline
+    // the size the object would be if it was exactly at wall height
+    if (z > arena.wallHeight + 0.01) {
+      const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
+      const wallRadius = obj.colliderRadius * ppu * wallAltScale;
+
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = wallRadius * 2;
+        const cr = Math.max(3, wallRadius * 0.16);
+        if (ctx.roundRect) {
+          ctx.roundRect(groundX - wallRadius, groundY - wallRadius, sz, sz, cr);
+        } else {
+          ctx.rect(groundX - wallRadius, groundY - wallRadius, sz, sz);
+        }
+      } else {
+        ctx.arc(groundX, groundY, wallRadius, 0, Math.PI * 2);
+      }
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
