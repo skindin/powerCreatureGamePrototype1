@@ -31,6 +31,12 @@ export class ClimbingModule {
   // Set when dismounting or stepping into an open gap until hitting ground or fresh press
   public isDismountFreefall = false;
 
+  // Set when player initiates a dismount off a wall top: clamp is disabled until within hangDistance (0.10) from a wall
+  public dismountWalkOffDisabled = false;
+
+  // Source wall that character is actively dismounting from
+  public dismountSourceWall: Wall | null = null;
+
   public get climbSuppressedUntilRePress(): boolean {
     return this.isDismountFreefall || this.climbSuppressedUntilRelease;
   }
@@ -82,6 +88,10 @@ export class ClimbingModule {
     // Ground contact or fresh press clears dismount freefall
     if (character.position.z <= 0.01 || isFreshClimbPress) {
       this.isDismountFreefall = false;
+      if (character.position.z <= 0.01) {
+        this.dismountWalkOffDisabled = false;
+        this.dismountSourceWall = null;
+      }
     }
 
     if (this.climbSuppressedUntilRelease) {
@@ -203,6 +213,17 @@ export class ClimbingModule {
         );
         character.position.z += effectiveClimbSpeed * dt;
 
+        // Ease horizontal position towards wall face during climb so character smoothly reaches hangDistance at wall top
+        if (shortestDist > this.hangDistance && shortestDist > 0.001 && targetWall.wallHeight > 0.01) {
+          const progress = Math.max(0, Math.min(1, character.position.z / targetWall.wallHeight));
+          const targetDist = r - progress * (r - this.hangDistance);
+          if (shortestDist > targetDist) {
+            const step = shortestDist - targetDist;
+            character.position.x += (targetDx / shortestDist) * step;
+            character.position.y += (targetDy / shortestDist) * step;
+          }
+        }
+
         // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
         if (character.position.z >= targetWall.wallHeight) {
           character.position.z = targetWall.wallHeight;
@@ -212,18 +233,16 @@ export class ClimbingModule {
           character.isClimbing = false;
           // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
           this.dismountSuppressedUntilRelease = true;
+          this.dismountWalkOffDisabled = false;
+          this.dismountSourceWall = null;
 
-          const toWallDirX = shortestDist > 0.001 ? targetDx / shortestDist : (hasMoveInput ? moveDirX : Math.cos(character.facingAngle));
-          const toWallDirY = shortestDist > 0.001 ? targetDy / shortestDist : (hasMoveInput ? moveDirY : Math.sin(character.facingAngle));
-
-          // Transition smoothly onto the top of the wall
-          if (hasMoveInput) {
-            character.velocity.x = moveDirX * 3.5;
-            character.velocity.y = moveDirY * 3.5;
-          } else {
-            character.velocity.x = toWallDirX * 1.5;
-            character.velocity.y = toWallDirY * 1.5;
+          if (shortestDist > this.hangDistance && shortestDist > 0.001) {
+            const excess = shortestDist - this.hangDistance;
+            character.position.x += (targetDx / shortestDist) * excess;
+            character.position.y += (targetDy / shortestDist) * excess;
           }
+
+          // Do NOT artificially snap velocity to full speed (3.5)! WalkingModule handles locomotion naturally.
         }
       }
 
