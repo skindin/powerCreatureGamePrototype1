@@ -472,17 +472,14 @@ export class Renderer {
     const wh = Math.hypot(wx, wy); // Horizontal angular speed
     const isPerfectVertical = wh < 0.05 * wTotal;
 
-    // Relative visual scale based on altitude/size
-    const colliderR = (obj.hasCollider ? obj.colliderRadius : 0.44) * (this.ctx.canvas.width / 20);
-    const scaleRatio = colliderR > 0 ? Math.max(1.0, renderRadius / colliderR) : 1.0;
-
-    const strokeWidth = Math.max(2.5, 2.5 * Math.pow(scaleRatio, 1.15));
-    const dashLen = Math.max(5, 5 * scaleRatio);
-    const dashGap = Math.max(4, 4 * scaleRatio);
+    // Stroke thickness remains fixed and does not get thicker as altitude increases
+    const strokeWidth = 2.5;
+    const dashLen = 5;
+    const dashGap = 4;
 
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
-    ctx.shadowBlur = Math.max(3, 3 * scaleRatio);
+    ctx.shadowBlur = 3;
 
     if (isPerfectVertical) {
       // Perfectly vertical spin (ωz): circle with a circular outline rotating around it
@@ -493,7 +490,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-      ctx.lineWidth = Math.max(1.8, 1.8 * scaleRatio);
+      ctx.lineWidth = 1.8;
       ctx.setLineDash([]);
       ctx.stroke();
 
@@ -534,7 +531,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.ellipse(0, 0, a, b, 0, Math.PI, Math.PI * 2);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-      ctx.lineWidth = Math.max(1.8, strokeWidth * 0.8);
+      ctx.lineWidth = 1.8;
       ctx.setLineDash([dashLen, dashGap]);
       ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
       ctx.stroke();
