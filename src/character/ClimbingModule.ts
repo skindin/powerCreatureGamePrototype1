@@ -31,11 +31,11 @@ export class ClimbingModule {
   // Set when dismounting or stepping into an open gap until hitting ground or fresh press
   public isDismountFreefall = false;
 
-  // Set when player initiates a dismount off a wall top: clamp is disabled until within hangDistance (0.10) from a wall
-  public dismountWalkOffDisabled = false;
+  // Whether the assist clamp (ledge guard) is currently active/armed
+  public isAssistClampArmed = false;
 
-  // Source wall that character is actively dismounting from
-  public dismountSourceWall: Wall | null = null;
+  // Tracks if character has moved outside the clamp zone (> 0.1u) after dismounting
+  public hasLeftClampZoneSinceDismount = true;
 
   public get climbSuppressedUntilRePress(): boolean {
     return this.isDismountFreefall || this.climbSuppressedUntilRelease;
@@ -89,8 +89,8 @@ export class ClimbingModule {
     if (character.position.z <= 0.01 || isFreshClimbPress) {
       this.isDismountFreefall = false;
       if (character.position.z <= 0.01) {
-        this.dismountWalkOffDisabled = false;
-        this.dismountSourceWall = null;
+        this.isAssistClampArmed = false;
+        this.hasLeftClampZoneSinceDismount = true;
       }
     }
 
@@ -213,17 +213,6 @@ export class ClimbingModule {
         );
         character.position.z += effectiveClimbSpeed * dt;
 
-        // Ease horizontal position towards wall face during climb so character smoothly reaches hangDistance at wall top
-        if (shortestDist > this.hangDistance && shortestDist > 0.001 && targetWall.wallHeight > 0.01) {
-          const progress = Math.max(0, Math.min(1, character.position.z / targetWall.wallHeight));
-          const targetDist = r - progress * (r - this.hangDistance);
-          if (shortestDist > targetDist) {
-            const step = shortestDist - targetDist;
-            character.position.x += (targetDx / shortestDist) * step;
-            character.position.y += (targetDy / shortestDist) * step;
-          }
-        }
-
         // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
         if (character.position.z >= targetWall.wallHeight) {
           character.position.z = targetWall.wallHeight;
@@ -233,16 +222,11 @@ export class ClimbingModule {
           character.isClimbing = false;
           // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
           this.dismountSuppressedUntilRelease = true;
-          this.dismountWalkOffDisabled = false;
-          this.dismountSourceWall = null;
+          // Assist clamp starts disarmed; it arms once character intentionally moves within 0.1 units of the wall
+          this.isAssistClampArmed = false;
+          this.hasLeftClampZoneSinceDismount = true;
 
-          if (shortestDist > this.hangDistance && shortestDist > 0.001) {
-            const excess = shortestDist - this.hangDistance;
-            character.position.x += (targetDx / shortestDist) * excess;
-            character.position.y += (targetDy / shortestDist) * excess;
-          }
-
-          // Do NOT artificially snap velocity to full speed (3.5)! WalkingModule handles locomotion naturally.
+          // No artificial velocity or position snaps! WalkingModule handles locomotion naturally.
         }
       }
 

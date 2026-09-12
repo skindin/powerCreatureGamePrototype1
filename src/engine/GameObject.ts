@@ -314,56 +314,39 @@ export class GameObject {
           this.standingWall = null;
           surfaceHeight = 0;
         } else if (this.standingWall) {
-          // If dismounting with walk-off clamp disabled, verify entity is still within hangDistance of standing wall platform
-          const hangDist = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.10);
-          if (char?.climbingModule?.dismountWalkOffDisabled && !arena.testWallOverlap(this.position.x, this.position.y, hangDist, this.standingWall)) {
-            this.standingWall = null;
-            surfaceHeight = 0;
-            if (char?.climbingModule) {
-              char.climbingModule.dismountSourceWall = null;
-              char.climbingModule.isDismountFreefall = true;
-              char.climbingModule.climbSuppressedUntilRelease = true;
-            }
+          // Standard physical support on wall top: character stands on top as long as collider overlaps the wall/platform
+          const supportRadius = this.colliderRadius;
+          const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, supportRadius, this.standingWall);
+          if (touchesCurrent) {
+            surfaceHeight = this.standingWall.wallHeight;
+          } else if (char?.climbingModule?.dismountSuppressedUntilRelease) {
+            // Player just climbed onto wall top: dismount is suppressed until climb control is released
+            surfaceHeight = this.standingWall.wallHeight;
           } else {
-            // Verify entity still overlaps current standing wall or a contiguous wall
-            const supportRadius = (char?.climbingModule?.enabled && char?.climbingModule?.preventWalkOff && !char?.climbingModule?.dismountWalkOffDisabled)
-              ? Math.max(this.colliderRadius, char.climbingModule.hangDistance)
-              : this.colliderRadius;
-            const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, supportRadius, this.standingWall);
-            if (touchesCurrent) {
-              surfaceHeight = this.standingWall.wallHeight;
-            } else if (char?.climbingModule?.dismountSuppressedUntilRelease) {
-              // Player just climbed onto wall top: dismount is suppressed until climb control is released
-              surfaceHeight = this.standingWall.wallHeight;
-            } else {
-              let contiguousSupport: Wall | null = null;
-              for (const wall of arena.walls) {
-                if (arena.areWallsContiguous(this.standingWall, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
-                  contiguousSupport = wall;
-                  break;
-                }
+            let contiguousSupport: Wall | null = null;
+            for (const wall of arena.walls) {
+              if (arena.areWallsContiguous(this.standingWall, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
+                contiguousSupport = wall;
+                break;
               }
-              if (contiguousSupport) {
-                this.standingWall = contiguousSupport;
-                surfaceHeight = contiguousSupport.wallHeight;
-              } else {
-                // Left the contiguous platform! Dismount into gap
-                this.standingWall = null;
-                surfaceHeight = 0;
-                if (char?.climbingModule) {
-                  char.climbingModule.isDismountFreefall = true;
-                  char.climbingModule.climbSuppressedUntilRelease = true;
-                }
+            }
+            if (contiguousSupport) {
+              this.standingWall = contiguousSupport;
+              surfaceHeight = contiguousSupport.wallHeight;
+            } else {
+              // Left the contiguous platform! Dismount into gap
+              this.standingWall = null;
+              surfaceHeight = 0;
+              if (char?.climbingModule) {
+                char.climbingModule.isDismountFreefall = true;
+                char.climbingModule.climbSuppressedUntilRelease = true;
               }
             }
           }
         } else {
           // standingWall not set yet: acquire if resting at wall height and not climbing
           if (!this.isClimbing && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
-            const supportRadius = (char?.climbingModule?.enabled && char?.climbingModule?.preventWalkOff)
-              ? Math.max(this.colliderRadius, char.climbingModule.hangDistance)
-              : this.colliderRadius;
-            const wall = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
+            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
             if (wall) {
               this.standingWall = wall;
               surfaceHeight = wall.wallHeight;
@@ -551,92 +534,66 @@ export class GameObject {
     }
 
     // 3. Horizontal Position Integration
-    // Check climb ability ledge guard / walk-off prevention:
-    // When on top of a wall, prevent walking off unless actively holding the climb control (Space bar).
+    // Assist Clamp (Ledge Guard) Lifecycle:
+    // - Purely an assist feature; does NOT dictate whether the character is allowed on the wall.
+    // - Arming: Enabled once character moves within 0.1 units of the wall.
+    // - Disabling: Pressing Space disables the assist clamp, allowing character to walk off without pressing Space again.
+    // - Re-arming: Remains disabled until character moves outside the clamp area (> 0.1u) and then back into it (<= 0.1u).
     const char = this.isCharacter ? (this as any) : null;
+    const climbMod = char?.climbingModule;
     const wasStandingOnWallTop = !this.isClimbing && this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.standingWall !== null;
-    const isDismountTriggered = Boolean(wasStandingOnWallTop && char?.isClimbInputHeld && !char?.climbingModule?.dismountSuppressedUntilRelease);
-    if (isDismountTriggered && char?.climbingModule) {
-      char.climbingModule.dismountWalkOffDisabled = true;
-      char.climbingModule.dismountSourceWall = this.standingWall;
-    }
+    const hangDistance = Math.max(0.01, climbMod?.hangDistance ?? 0.10);
 
-    const hangDistance = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.10);
-
-    // If dismountWalkOffDisabled and outside hangDistance of standing wall platform, depart!
-    if (char?.climbingModule?.dismountWalkOffDisabled && this.standingWall) {
-      const srcWall = char.climbingModule.dismountSourceWall ?? this.standingWall;
-      let distToPlatform = Infinity;
-      const platformWalls = [srcWall];
-      for (const w of arena.walls) {
-        if (w.id !== srcWall.id && arena.areWallsContiguous(srcWall, w)) {
-          platformWalls.push(w);
-        }
-      }
-      for (const w of platformWalls) {
-        const cx = Math.max(w.x, Math.min(this.position.x, w.x + w.width));
-        const cy = Math.max(w.y, Math.min(this.position.y, w.y + w.height));
-        const d = Math.hypot(this.position.x - cx, this.position.y - cy);
-        if (d < distToPlatform) distToPlatform = d;
-      }
-      if (distToPlatform > hangDistance) {
-        char.climbingModule.dismountSourceWall = null;
-        this.standingWall = null;
-        this.supportingSurfaceHeight = 0;
-        char.climbingModule.isDismountFreefall = true;
-        char.climbingModule.climbSuppressedUntilRelease = true;
-      }
-    }
-
-    // Re-enable clamp if departed source wall and now within hangDistance of any wall
-    if (char?.climbingModule?.dismountWalkOffDisabled) {
+    if (climbMod) {
       if (this.position.z <= 0.01) {
-        char.climbingModule.dismountWalkOffDisabled = false;
-        char.climbingModule.dismountSourceWall = null;
-      } else if (!char.climbingModule.dismountSourceWall) {
-        let minWallDist = Infinity;
-        for (const wall of arena.walls) {
-          const cx = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
-          const cy = Math.max(wall.y, Math.min(this.position.y, wall.y + wall.height));
+        // Grounded: clamp is disarmed, ready to arm when player climbs & enters clamp zone
+        climbMod.isAssistClampArmed = false;
+        climbMod.hasLeftClampZoneSinceDismount = true;
+      } else if (wasStandingOnWallTop && this.standingWall) {
+        // Compute distance to current wall platform
+        const standing = this.standingWall;
+        const platformWalls: Wall[] = [standing];
+        for (const w of arena.walls) {
+          if (w.id !== standing.id && arena.areWallsContiguous(standing, w)) {
+            platformWalls.push(w);
+          }
+        }
+        let distToPlatform = Infinity;
+        for (const w of platformWalls) {
+          const cx = Math.max(w.x, Math.min(this.position.x, w.x + w.width));
+          const cy = Math.max(w.y, Math.min(this.position.y, w.y + w.height));
           const d = Math.hypot(this.position.x - cx, this.position.y - cy);
-          if (d < minWallDist) minWallDist = d;
+          if (d < distToPlatform) distToPlatform = d;
         }
-        // "they should only be clamped within .1 units of the wall after they intentionally move within .1 units of the wall."
-        if (minWallDist <= hangDistance) {
-          char.climbingModule.dismountWalkOffDisabled = false;
+
+        const isInsideClampZone = distToPlatform <= hangDistance + 0.001;
+
+        if (isInsideClampZone) {
+          // Inside the clamp zone (within 0.1 units of the wall)
+          if (char.isClimbInputHeld && !climbMod.dismountSuppressedUntilRelease) {
+            // Player pressed Space: disable the assist clamp!
+            climbMod.isAssistClampArmed = false;
+            climbMod.hasLeftClampZoneSinceDismount = false;
+          } else if (climbMod.hasLeftClampZoneSinceDismount) {
+            // Once character moves within 0.1 units of the wall after being outside: clamp is enabled!
+            climbMod.isAssistClampArmed = true;
+          }
+        } else {
+          // Outside the clamp zone (> 0.1 units from the wall)
+          climbMod.hasLeftClampZoneSinceDismount = true;
+          climbMod.isAssistClampArmed = false;
         }
+      } else {
+        climbMod.isAssistClampArmed = false;
       }
     }
 
-    // Clamp is only active if character was already within hangDistance of the wall platform:
-    // "they should only be clamped within .1 units of the wall after they intentionally move within .1 units of the wall. once they are further than .1 units from a wall, they should be able to move off."
-    let isWithinHangDistOfPlatform = false;
-    if (this.standingWall) {
-      const platformWalls = [this.standingWall];
-      for (const w of arena.walls) {
-        if (w.id !== this.standingWall.id && arena.areWallsContiguous(this.standingWall, w)) {
-          platformWalls.push(w);
-        }
-      }
-      let minDist = Infinity;
-      for (const w of platformWalls) {
-        const cx = Math.max(w.x, Math.min(this.position.x, w.x + w.width));
-        const cy = Math.max(w.y, Math.min(this.position.y, w.y + w.height));
-        const d = Math.hypot(this.position.x - cx, this.position.y - cy);
-        if (d < minDist) minDist = d;
-      }
-      isWithinHangDistOfPlatform = minDist <= hangDistance + 0.002;
-    }
-
-    const dismountAllowed = Boolean(wasStandingOnWallTop && char?.isClimbInputHeld && !char?.climbingModule?.dismountSuppressedUntilRelease);
     const isPreventWalkOffActive = Boolean(
       char &&
       wasStandingOnWallTop &&
-      char.climbingModule?.enabled &&
-      char.climbingModule?.preventWalkOff &&
-      !dismountAllowed &&
-      !char.climbingModule?.dismountWalkOffDisabled &&
-      isWithinHangDistOfPlatform
+      climbMod?.enabled &&
+      climbMod?.preventWalkOff &&
+      climbMod?.isAssistClampArmed
     );
 
     const deltaX = this.velocity.x * dt;
@@ -968,11 +925,7 @@ export class GameObject {
   protected resolveWallCollision(wall: Wall): void {
     if (!this.hasCollider) return;
 
-    const char = this.isCharacter ? (this as any) : null;
-    const isClimbingThisWall = Boolean(char?.isClimbing && this.position.z > 0 && this.position.z <= wall.wallHeight);
-    const hangDist = char?.climbingModule?.hangDistance ?? 0.10;
-    const progress = isClimbingThisWall ? Math.max(0, Math.min(1, this.position.z / wall.wallHeight)) : 0;
-    const r = isClimbingThisWall ? (this.colliderRadius - progress * (this.colliderRadius - hangDist)) : this.colliderRadius;
+    const r = this.colliderRadius;
     const closestX = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
     const closestY = Math.max(wall.y, Math.min(this.position.y, wall.y + wall.height));
 
