@@ -54,7 +54,7 @@ export class Renderer {
 
     for (const entity of allRenderables) {
       if (entity instanceof Character) {
-        this.drawCharacter(entity, objects, ppu, arena);
+        this.drawCharacter(entity, allRenderables, ppu, arena);
       } else {
         this.drawFreebodyObject(entity, allRenderables, character, ppu, entity === targetGrabEntity, arena);
       }
@@ -177,6 +177,37 @@ export class Renderer {
   }
 
   /**
+   * Checks if an entity is elevated above and passing over any other entity (object or character).
+   * Evaluates visual sprite scaling so transparency triggers when the upper sprite overlaps the lower entity.
+   */
+  private isEntityPassingOverAnother(entity: GameObject, allEntities: GameObject[], arena: Arena): boolean {
+    const ez = entity.position.z;
+    const evScale = Renderer.getAltitudeScale(ez, arena.wallHeight);
+    const eRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
+    const eVisualRadius = eRadius * evScale;
+
+    for (const other of allEntities) {
+      if (other === entity) continue;
+
+      const oz = other.position.z;
+      const isHigher = ez > oz + 0.001 || (Math.abs(ez - oz) <= 0.01 && entity.verticalVelocity > other.verticalVelocity);
+      if (!isHigher) continue;
+
+      const ovScale = Renderer.getAltitudeScale(oz, arena.wallHeight);
+      const oRadius = other.hasCollider ? other.colliderRadius : (other.colliderModule?.radius ?? 0.32);
+      const oVisualRadius = oRadius * ovScale;
+
+      const groundDist = Math.hypot(entity.position.x - other.position.x, entity.position.y - other.position.y);
+      const maxOverlapDist = Math.max(eRadius + oRadius, eVisualRadius + oVisualRadius * 0.7);
+
+      if (groundDist < maxOverlapDist) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
    * The outline stays the exact same size as the collider (fixed at colliderRadius).
    * Renders OVER the enlarged object sprite so the true collider footprint is visible.
@@ -293,21 +324,8 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Check if this object is passing over another entity (higher z or higher virtual y velocity)
-    let isPassingOverAnother = false;
-    if (obj.isAboveGround) {
-      for (const other of allEntities) {
-        if (other === obj) continue;
-        const groundDist = Math.hypot(obj.position.x - other.position.x, obj.position.y - other.position.y);
-        if (groundDist < obj.colliderRadius + other.colliderRadius) {
-          if (obj.position.z > other.position.z ||
-             (Math.abs(obj.position.z - other.position.z) <= 0.01 && obj.verticalVelocity > other.verticalVelocity)) {
-            isPassingOverAnother = true;
-            break;
-          }
-        }
-      }
-    }
+    // Check if this object is passing over any other entity (higher elevation than other)
+    const isPassingOverAnother = this.isEntityPassingOverAnother(obj, allEntities, arena);
 
     ctx.save();
     ctx.globalAlpha = isPassingOverAnother ? 0.55 : 1.0;
@@ -382,21 +400,8 @@ export class Renderer {
     const altitudeScale = Renderer.getAltitudeScale(char.position.z, arena.wallHeight);
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Check if character is passing over another entity
-    let isPassingOverAnother = false;
-    if (char.isAboveGround) {
-      for (const other of allEntities) {
-        if (other === char) continue;
-        const groundDist = Math.hypot(char.position.x - other.position.x, char.position.y - other.position.y);
-        if (groundDist < char.colliderRadius + other.colliderRadius) {
-          if (char.position.z > other.position.z ||
-             (Math.abs(char.position.z - other.position.z) <= 0.01 && char.verticalVelocity > other.verticalVelocity)) {
-            isPassingOverAnother = true;
-            break;
-          }
-        }
-      }
-    }
+    // Check if character is passing over any other entity (higher elevation than other)
+    const isPassingOverAnother = this.isEntityPassingOverAnother(char, allEntities, arena);
 
     ctx.save();
     ctx.globalAlpha = isPassingOverAnother ? 0.55 : 1.0;
