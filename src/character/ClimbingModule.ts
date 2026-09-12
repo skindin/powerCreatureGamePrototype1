@@ -248,8 +248,17 @@ export class ClimbingModule {
       return false;
     }
 
-    // On ground (z <= 0.05, not established): Initiate climb only if pressing towards wall and holding Space
-    if (isClimbHeld && hasMoveInput && targetDot > 0.01 && character.position.z < targetWall.wallHeight) {
+    // On ground (z <= 0.05, not established): Initiate climb only if contacting wall, pressing towards wall and holding Space
+    const contactTolerance = 0.03;
+    if (isClimbHeld && hasMoveInput && targetDot > 0.01 && shortestDist <= r + contactTolerance && character.position.z < targetWall.wallHeight) {
+      // Ensure any micro-gap to the wall is completely closed before climbing begins
+      if (shortestDist > 0.001) {
+        const wallNormalX = targetDx / shortestDist;
+        const wallNormalY = targetDy / shortestDist;
+        character.position.x = (character.position.x + targetDx) - wallNormalX * r;
+        character.position.y = (character.position.y + targetDy) - wallNormalY * r;
+      }
+
       character.isClimbing = true;
       character.verticalVelocity = 0;
       character.velocity.x = 0;
