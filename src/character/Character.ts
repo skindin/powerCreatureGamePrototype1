@@ -55,6 +55,16 @@ export class Character extends GameObject {
     return (this.heldObject && this.heldObject.hasMass) ? this.heldObject.mass : 0;
   }
 
+  public get hangDistance(): number {
+    return this.climbingModule ? this.climbingModule.hangDistance : 0.5;
+  }
+
+  public set hangDistance(val: number) {
+    if (this.climbingModule) {
+      this.climbingModule.hangDistance = Math.max(0, val);
+    }
+  }
+
   // Removable Modules
   public walkingModule: WalkingModule | null;
   public pickupModule: PickupModule | null;

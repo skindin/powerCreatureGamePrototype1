@@ -713,6 +713,13 @@ export class DevPanel {
                   </div>
                   <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${this.character.climbingModule?.maxClimbSpeed ?? 3.0}">
                 </div>
+                <div class="slider-group">
+                  <div class="slider-label">
+                    <span>Ledge Hang Distance (u)</span>
+                    <span id="val-climb-hang">${(this.character.climbingModule?.hangDistance ?? 0.5).toFixed(2)}</span>
+                  </div>
+                  <input type="range" id="slide-climb-hang" min="0.1" max="1.5" step="0.05" value="${this.character.climbingModule?.hangDistance ?? 0.5}">
+                </div>
               </div>
             </div>
           </div>
@@ -1150,6 +1157,7 @@ export class DevPanel {
         }
         this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", this.character.climbingModule.maxAdhesion, 0);
         this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.maxClimbSpeed, 1);
+        this.setSliderVal("slide-climb-hang", "val-climb-hang", this.character.climbingModule.hangDistance, 2);
       }
     }
   }
@@ -1545,6 +1553,10 @@ export class DevPanel {
       if (this.character.climbingModule) this.character.climbingModule.maxClimbSpeed = val;
     }, 1);
 
+    this.setupSlider("slide-climb-hang", "val-climb-hang", (val) => {
+      if (this.character.climbingModule) this.character.climbingModule.hangDistance = val;
+    }, 2);
+
     // 7. World Physics Sliders
     this.setupSlider("slide-gravity", "val-gravity", (val) => {
       this.arena.gravity = val;
@@ -1880,6 +1892,10 @@ export class DevPanel {
       <div class="inspect-item">
         <span class="inspect-k">Held Freebody</span>
         <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.heldObject ? `${this.character.heldObject.name} (${this.character.heldObject.hasMass ? `${this.character.heldObject.mass}kg` : 'Massless'})` : 'None'}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Ledge Hang Limit</span>
+        <span class="inspect-v">${(this.character.climbingModule?.hangDistance ?? 0.5).toFixed(2)} u</span>
       </div>
       ` : ''}
     `;

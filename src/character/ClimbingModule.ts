@@ -19,6 +19,9 @@ export class ClimbingModule {
   // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
   public horizontalClimb = false;
 
+  // Maximum distance character is allowed to hang off of elevated walls before ledge guard clamps movement (in units)
+  public hangDistance = 0.5;
+
   // When climbing up onto a wall top, dismount is suppressed until climb control is released
   public dismountSuppressedUntilRelease = false;
 
@@ -44,11 +47,13 @@ export class ClimbingModule {
     maxClimbSpeed?: number;
     preventWalkOff?: boolean;
     horizontalClimb?: boolean;
+    hangDistance?: number;
   }) {
     if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
     if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
     if (options?.preventWalkOff !== undefined) this.preventWalkOff = options.preventWalkOff;
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
+    if (options?.hangDistance !== undefined) this.hangDistance = options.hangDistance;
   }
 
   /**

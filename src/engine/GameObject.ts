@@ -315,7 +315,10 @@ export class GameObject {
           surfaceHeight = 0;
         } else if (this.standingWall) {
           // Verify entity still overlaps current standing wall or a contiguous wall
-          const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, this.standingWall);
+          const supportRadius = (char?.climbingModule?.enabled && char?.climbingModule?.preventWalkOff)
+            ? Math.max(this.colliderRadius, char.climbingModule.hangDistance)
+            : this.colliderRadius;
+          const touchesCurrent = arena.testWallOverlap(this.position.x, this.position.y, supportRadius, this.standingWall);
           if (touchesCurrent) {
             surfaceHeight = this.standingWall.wallHeight;
           } else if (char?.climbingModule?.dismountSuppressedUntilRelease) {
@@ -324,7 +327,7 @@ export class GameObject {
           } else {
             let contiguousSupport: Wall | null = null;
             for (const wall of arena.walls) {
-              if (arena.areWallsContiguous(this.standingWall, wall) && arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall)) {
+              if (arena.areWallsContiguous(this.standingWall, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
                 contiguousSupport = wall;
                 break;
               }
@@ -345,7 +348,10 @@ export class GameObject {
         } else {
           // standingWall not set yet: acquire if resting at wall height and not climbing
           if (!this.isClimbing && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
-            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+            const supportRadius = (char?.climbingModule?.enabled && char?.climbingModule?.preventWalkOff)
+              ? Math.max(this.colliderRadius, char.climbingModule.hangDistance)
+              : this.colliderRadius;
+            const wall = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
             if (wall) {
               this.standingWall = wall;
               surfaceHeight = wall.wallHeight;
@@ -552,7 +558,8 @@ export class GameObject {
 
     if (moveDist > 0.0001) {
       if (isPreventWalkOffActive) {
-        let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+        const hangDistance = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.5);
+        let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, hangDistance);
         this.standingWall = currentWall;
 
         const candidateX = this.position.x + deltaX;
@@ -571,7 +578,7 @@ export class GameObject {
 
         let supportedWall: Wall | null = null;
         for (const w of platformWalls) {
-          if (arena.testWallOverlap(candidateX, candidateY, this.colliderRadius, w)) {
+          if (arena.testWallOverlap(candidateX, candidateY, hangDistance, w)) {
             supportedWall = w;
             break;
           }
@@ -583,7 +590,7 @@ export class GameObject {
           this.standingWall = supportedWall;
         } else if (platformWalls.length > 0) {
           // Ledge guard: dual of walking into a wall on the ground.
-          // Instead of not being able to enter the wall at all, character cannot entirely leave the wall.
+          // Instead of not being able to enter the wall at all, character cannot move further than hangDistance off the wall.
           // Find closest point on current platform walls ONLY (never jump/clamp to walls across gaps)
           let bestDistSq = Infinity;
           let closest: { wall: Wall; closestX: number; closestY: number; dist: number; dx: number; dy: number } | null = null;
@@ -601,11 +608,10 @@ export class GameObject {
           }
 
           if (closest && closest.dist > 0) {
-            const r = this.colliderRadius;
             const normalX = closest.dx / closest.dist;
             const normalY = closest.dy / closest.dist;
 
-            // Outward velocity attempting to step into the void
+            // Outward velocity attempting to step into the void beyond hangDistance
             const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
             if (outwardVel > 0) {
               // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
@@ -613,8 +619,8 @@ export class GameObject {
               this.velocity.y -= outwardVel * normalY;
             }
 
-            // Clamp position along the normal to valid contact distance (r - 0.002) so collider circle remains overlapping wall
-            const maxAllowedDist = r - 0.002;
+            // Clamp position along the normal to valid hang distance (hangDistance - 0.002) so character is prevented from moving more than hangDistance off walls
+            const maxAllowedDist = hangDistance - 0.002;
             if (closest.dist > maxAllowedDist) {
               this.position.x = closest.closestX + normalX * maxAllowedDist;
               this.position.y = closest.closestY + normalY * maxAllowedDist;
@@ -623,9 +629,9 @@ export class GameObject {
               this.position.y = candidateY;
             }
 
-            const newSupport = arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, closest.wall)
+            const newSupport = arena.testWallOverlap(this.position.x, this.position.y, hangDistance, closest.wall)
               ? closest.wall
-              : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, w));
+              : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, hangDistance, w));
             if (newSupport) {
               this.standingWall = newSupport;
             }
