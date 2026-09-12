@@ -566,7 +566,7 @@ export class GameObject {
           this.position.y = candidateY;
           this.standingWall = supportedWall;
         } else {
-          // Ledge guard with corner sliding deflection at full speed:
+          // Ledge guard with corner sliding deflection:
           // Find the closest point on any wall footprint to the candidate position
           const closest = GameObject.getClosestWallPoint(candidateX, candidateY, arena);
           if (closest && closest.dist > 0) {
@@ -574,43 +574,22 @@ export class GameObject {
             const normalX = closest.dx / closest.dist;
             const normalY = closest.dy / closest.dist;
 
-            // Tangent vector along the wall perimeter
-            const tangentX = -normalY;
-            const tangentY = normalX;
-            const tangentDot = this.velocity.x * tangentX + this.velocity.y * tangentY;
-            const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
+            // Outward velocity attempting to step into the void
+            const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
+            if (outwardVel > 0) {
+              // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
+              this.velocity.x -= outwardVel * normalX;
+              this.velocity.y -= outwardVel * normalY;
+            }
 
-            if (Math.abs(tangentDot) > 0.001 && currentSpeed > 0.01) {
-              // Redirect velocity along the allowed tangent at full speed
-              const dir = Math.sign(tangentDot);
-              this.velocity.x = tangentX * dir * currentSpeed;
-              this.velocity.y = tangentY * dir * currentSpeed;
-
-              // Clamp position to valid edge contact arc (r - 0.002) so collider circle remains on wall
-              const maxAllowedDist = r - 0.002;
-              const clampedX = closest.closestX + normalX * Math.min(closest.dist, maxAllowedDist);
-              const clampedY = closest.closestY + normalY * Math.min(closest.dist, maxAllowedDist);
-
-              const nextX = clampedX + this.velocity.x * dt;
-              const nextY = clampedY + this.velocity.y * dt;
-
-              const nextClosest = GameObject.getClosestWallPoint(nextX, nextY, arena);
-              if (nextClosest && nextClosest.dist > maxAllowedDist) {
-                const nx = nextClosest.dx / nextClosest.dist;
-                const ny = nextClosest.dy / nextClosest.dist;
-                this.position.x = nextClosest.closestX + nx * maxAllowedDist;
-                this.position.y = nextClosest.closestY + ny * maxAllowedDist;
-              } else {
-                this.position.x = nextX;
-                this.position.y = nextY;
-              }
+            // Clamp position along the normal to valid contact distance (r - 0.002) so collider circle remains overlapping wall
+            const maxAllowedDist = r - 0.002;
+            if (closest.dist > maxAllowedDist) {
+              this.position.x = closest.closestX + normalX * maxAllowedDist;
+              this.position.y = closest.closestY + normalY * maxAllowedDist;
             } else {
-              // Moving perpendicularly into the void: stop horizontal velocity and clamp to edge
-              this.velocity.x = 0;
-              this.velocity.y = 0;
-              const maxAllowedDist = r - 0.002;
-              this.position.x = closest.closestX + normalX * Math.min(closest.dist, maxAllowedDist);
-              this.position.y = closest.closestY + normalY * Math.min(closest.dist, maxAllowedDist);
+              this.position.x = candidateX;
+              this.position.y = candidateY;
             }
 
             const newSupport = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
