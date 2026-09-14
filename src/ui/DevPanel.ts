@@ -291,8 +291,11 @@ export class DevPanel {
     this.container.innerHTML = `
       <div class="dev-panel-header">
         <div class="header-top-row">
-          <h2>🛠️ Sandbox & Engine</h2>
-          <span class="badge">1 Wall = 1 Unit</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2>🛠️ Sandbox & Engine</h2>
+            <span class="badge">1 Wall = 1 Unit</span>
+          </div>
+          <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
         </div>
         <div class="mode-switcher">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>

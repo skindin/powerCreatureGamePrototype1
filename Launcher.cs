@@ -35,7 +35,20 @@ class Program
             Console.WriteLine("[INFO] Starting Vite development server...");
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = "cmd.exe";
-            psi.Arguments = "/c npm run dev";
+
+            string nodeDir = @"C:\Program Files\nodejs";
+            string npmCmd = "npm";
+            if (File.Exists(Path.Combine(nodeDir, "npm.cmd")))
+            {
+                npmCmd = "\"" + Path.Combine(nodeDir, "npm.cmd") + "\"";
+                string currentPath = psi.EnvironmentVariables["PATH"] ?? "";
+                if (!currentPath.Contains(nodeDir))
+                {
+                    psi.EnvironmentVariables["PATH"] = nodeDir + ";" + currentPath;
+                }
+            }
+
+            psi.Arguments = "/c " + npmCmd + " run dev";
             psi.WorkingDirectory = projectDir;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = false;
@@ -61,22 +74,52 @@ class Program
                 Thread.Sleep(300);
                 attempts++;
             }
+
+            if (!IsServerReady(out activePort))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("[ERROR] Server failed to respond on port 5173 after 12 seconds.");
+                Console.WriteLine("Please check if another process is blocking the port or run 'npm run dev' manually.");
+                Console.ResetColor();
+                Console.WriteLine("Press any key to exit...");
+                Console.ReadKey();
+                return;
+            }
         }
 
         string url = "http://localhost:" + activePort + "/";
 
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("[INFO] Opening " + url + " in your default browser...");
-        Console.ResetColor();
-
-        try
+        string appExe = Path.Combine(projectDir, "app", "PowerCreatureGame.exe");
+        if (File.Exists(appExe))
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[INFO] Launching Desktop Window: " + appExe);
+            Console.ResetColor();
+            try
+            {
+                Process.Start(new ProcessStartInfo(appExe) { WorkingDirectory = Path.GetDirectoryName(appExe) });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[WARN] Could not launch desktop window: " + ex.Message);
+                try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+            }
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine("[WARN] Could not automatically open browser: " + ex.Message);
-            Console.WriteLine("Please navigate to: " + url);
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[INFO] Opening " + url + " in your default browser...");
+            Console.ResetColor();
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[WARN] Could not automatically open browser: " + ex.Message);
+                Console.WriteLine("Please navigate to: " + url);
+            }
         }
 
         Console.WriteLine();

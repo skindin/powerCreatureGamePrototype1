@@ -109,6 +109,12 @@ powerCreatureGamePrototype1/
 4. **Desktop / Laptop Development Workflow**:
    - The primary code repository is hosted on GitHub: `https://github.com/skindin/powerCreatureGamePrototype1.git` on branch `branch1`.
    - Work is synced across desktop and laptop via Git commits and pulls.
+5. **Dynamic UI Scaling & Aspect-Ratio Preservation**:
+   - Canvas wrapper and viewport containers enforce `min-width: 0; min-height: 0;` so flexbox children scale down fluidly on laptop displays and high-DPI scaling (125%/150%).
+   - `#game-canvas` uses `aspect-ratio: 20 / 14; object-fit: contain;` to guarantee the complete arena is visible with zero edge cropping across all window sizes.
+   - DevPanel inspector sidebar is collapsible via header toggle button, close button, and hotkeys (`Backquote` or `KeyI`), auto-collapsing on compact screens (< 1180px) to maximize gameplay area.
+6. **Resilient Local Launcher**:
+   - `Launcher.cs` / `LaunchGame.exe` automatically searches for and injects `C:\Program Files\nodejs` into the process environment and verifies port 5173 health before opening the game window.
 
 ---
 

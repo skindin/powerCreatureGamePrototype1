@@ -34,11 +34,14 @@ body {
   width: 100vw;
   height: 100vh;
   position: relative;
+  overflow: hidden;
 }
 
 /* Left Arena Viewport */
 .viewport-container {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -51,20 +54,24 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
-  background: rgba(15, 23, 42, 0.6);
+  padding: 8px clamp(10px, 1.5vw, 20px);
+  background: rgba(15, 23, 42, 0.7);
   border-bottom: 1px solid var(--panel-border);
   backdrop-filter: blur(8px);
   z-index: 10;
+  flex-shrink: 0;
+  gap: 10px;
+  min-height: 48px;
 }
 
 .brand-title {
-  font-size: 1.05rem;
+  font-size: clamp(0.85rem, 1.1vw, 1.05rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .brand-badge {
@@ -382,56 +389,65 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 10px 16px 0;
+  padding: 6px 12px 0;
   z-index: 5;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .controls-box {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(6px, 1.2vw, 14px);
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
-  padding: 7px 16px;
+  padding: 5px clamp(8px, 1.2vw, 14px);
   backdrop-filter: blur(12px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  max-width: 98%;
 }
 
 .controls-box-label {
   color: var(--accent-cyan);
-  font-size: 0.78rem;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 .controls-box-items {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 0.82rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(6px, 1vw, 12px);
+  font-size: clamp(0.72rem, 0.85vw, 0.82rem);
   color: var(--text-main);
 }
 
 .ctrl-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
 }
 
 .key-badge {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
   color: #fff;
   font-family: monospace;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 600;
 }
 
@@ -442,11 +458,14 @@ body {
 
 .canvas-wrapper {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 12px;
+  padding: clamp(6px, 1.2vw, 14px);
+  overflow: hidden;
 }
 
 #game-canvas {
@@ -454,13 +473,68 @@ body {
   box-shadow: 0 10px 35px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 163, 184, 0.15);
   border-radius: var(--radius-md);
   cursor: crosshair;
+  aspect-ratio: 20 / 14;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Sidebar Toggle in Top Bar */
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(51, 65, 85, 0.95);
+  color: var(--text-main);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.sidebar-toggle-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.btn-close-panel {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-close-panel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 /* Right Dev Panel Sidebar */
 #dev-sidebar {
-  width: 380px;
+  width: clamp(290px, 28vw, 380px);
+  min-width: 280px;
   height: 100%;
   background: var(--panel-bg);
   border-left: 1px solid var(--panel-border);
@@ -468,14 +542,24 @@ body {
   flex-direction: column;
   backdrop-filter: blur(14px);
   z-index: 20;
+  flex-shrink: 0;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease;
+}
+
+#dev-sidebar.collapsed {
+  margin-right: -400px;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .dev-panel-header {
-  padding: 14px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .header-top-row {
@@ -1044,6 +1128,61 @@ input[type="color"] {
   color: #64748b;
   font-style: italic;
   padding-left: 2px;
+}
+
+/* ==========================================================================
+   Responsive Scaling & Compact Screen Optimizations
+   ========================================================================== */
+
+@media (max-width: 1200px) {
+  .brand-badge {
+    display: none;
+  }
+  .top-bar {
+    padding: 6px 12px;
+  }
+  .mode-btn {
+    padding: 5px 10px;
+    font-size: 0.76rem;
+  }
+  .controls-box-label {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  #dev-sidebar {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.7);
+  }
+  .top-bar-center {
+    display: none;
+  }
+}
+
+@media (max-height: 760px) {
+  .top-bar {
+    min-height: 40px;
+    padding: 4px 10px;
+  }
+  .controls-overlay-bar {
+    padding-top: 4px;
+  }
+  .controls-box {
+    padding: 3px 10px;
+  }
+  .canvas-wrapper {
+    padding: 4px 8px;
+  }
+}
+
+@media (max-height: 640px) {
+  .controls-overlay-bar {
+    display: none;
+  }
 }
 
 

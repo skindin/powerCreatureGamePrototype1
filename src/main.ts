@@ -263,6 +263,46 @@ function bootstrap(): void {
     rate30Btn?.classList.remove("active");
   });
 
+  // 8. Setup Inspector Sidebar Toggle & Auto-Responsive Layout
+  const toggleSidebarBtn = document.getElementById("toggle-sidebar-btn");
+  const setSidebarOpen = (open: boolean) => {
+    if (!devContainer) return;
+    if (open) {
+      devContainer.classList.remove("collapsed");
+      toggleSidebarBtn?.classList.add("active");
+    } else {
+      devContainer.classList.add("collapsed");
+      toggleSidebarBtn?.classList.remove("active");
+    }
+  };
+
+  // If initial window width is compact (< 1180px), start with sidebar collapsed so arena has plenty of room
+  if (window.innerWidth < 1180) {
+    setSidebarOpen(false);
+  }
+
+  toggleSidebarBtn?.addEventListener("click", () => {
+    const isCollapsed = devContainer.classList.contains("collapsed");
+    setSidebarOpen(isCollapsed);
+  });
+
+  devContainer.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest("#btn-close-dev-panel")) {
+      setSidebarOpen(false);
+    }
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (
+      (e.code === "Backquote" || (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey)) &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
+    ) {
+      const isCollapsed = devContainer.classList.contains("collapsed");
+      setSidebarOpen(isCollapsed);
+    }
+  });
+
   // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
   gameLoop.getGhostSnapshot = () => (isMultiplayerMode ? relayClient.getLatestGhost() : null);
   gameLoop.onPhysicsTick = (_dt, nowMs) => {
