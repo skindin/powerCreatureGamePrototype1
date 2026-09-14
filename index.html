@@ -16,7 +16,71 @@
             <span>⚡ Power Creature Game</span>
             <span class="brand-badge">Phase 1.1 Sandbox</span>
           </div>
+
+          <div class="top-bar-center">
+            <div class="mode-pill-group">
+              <button id="mode-singleplayer-btn" class="mode-btn active" title="Local single player simulation">
+                <span>👤 Single Player</span>
+              </button>
+              <button id="mode-multiplayer-btn" class="mode-btn" title="Multiplayer relay test with ghost echo">
+                <span>🌐 Multiplayer (Relay Test)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="top-bar-right">
+            <div id="relay-status-pill" class="relay-pill hidden">
+              <span class="status-dot"></span>
+              <span id="relay-ping-display">-- ms</span>
+            </div>
+          </div>
         </header>
+
+        <!-- Multiplayer Relay HUD (Visible when Multiplayer mode is active) -->
+        <div id="multiplayer-relay-hud" class="relay-hud-container hidden">
+          <div class="relay-hud-card">
+            <div class="relay-hud-header">
+              <div class="relay-title">
+                <span class="relay-icon">🛰️</span>
+                <span class="relay-name">3rd-Party Relay Echo</span>
+                <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
+              </div>
+              <div class="relay-hud-actions">
+                <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
+                <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
+              </div>
+            </div>
+
+            <div class="relay-hud-body">
+              <div class="relay-stat-item">
+                <span class="stat-label">Relay URL</span>
+                <div class="url-input-wrapper">
+                  <input id="relay-url-input" class="relay-url-input" type="text" value="wss://echo.websocket.org" />
+                  <button id="btn-preset-postman" class="btn-preset" title="Use Postman Echo">Postman</button>
+                  <button id="btn-preset-org" class="btn-preset" title="Use Websocket.org">Echo.ws</button>
+                </div>
+              </div>
+              <div class="relay-stat-item rtt-item">
+                <span class="stat-label">Round-Trip Latency (RTT)</span>
+                <div class="rtt-metrics">
+                  <span class="rtt-current" id="rtt-current">-- ms</span>
+                  <span class="rtt-sub" id="rtt-sub">min: -- ms | max: -- ms | avg: -- ms</span>
+                </div>
+              </div>
+              <div class="relay-stat-item">
+                <span class="stat-label">Telemetry Packets</span>
+                <span class="stat-value" id="relay-packet-counts">Sent: 0 | Echoed: 0</span>
+              </div>
+              <div class="relay-stat-item">
+                <span class="stat-label">Send Rate</span>
+                <div class="rate-toggle-group">
+                  <button id="rate-30hz-btn" class="rate-btn active">30 Hz</button>
+                  <button id="rate-60hz-btn" class="rate-btn">60 Hz</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Controls Box above game view -->
         <div class="controls-overlay-bar">

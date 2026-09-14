@@ -6,6 +6,7 @@ import { Renderer } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
+import { RelayClient } from "./network/RelayClient.js";
 
 function bootstrap(): void {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -134,6 +135,141 @@ function bootstrap(): void {
     inputManager,
     devPanel,
   });
+
+  // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching
+  const relayClient = new RelayClient("wss://echo.websocket.org");
+  let isMultiplayerMode = false;
+
+  const btnSinglePlayer = document.getElementById("mode-singleplayer-btn");
+  const btnMultiplayer = document.getElementById("mode-multiplayer-btn");
+  const relayHud = document.getElementById("multiplayer-relay-hud");
+  const relayStatusPill = document.getElementById("relay-status-pill");
+  const relayPingDisplay = document.getElementById("relay-ping-display");
+  const relayBadgeStatus = document.getElementById("relay-badge-status");
+  const relayConnectBtn = document.getElementById("relay-connect-btn") as HTMLButtonElement | null;
+  const relayToggleGhostsBtn = document.getElementById("relay-toggle-ghosts-btn") as HTMLButtonElement | null;
+  const relayUrlInput = document.getElementById("relay-url-input") as HTMLInputElement | null;
+  const btnPresetPostman = document.getElementById("btn-preset-postman");
+  const btnPresetOrg = document.getElementById("btn-preset-org");
+  const rttCurrent = document.getElementById("rtt-current");
+  const rttSub = document.getElementById("rtt-sub");
+  const packetCounts = document.getElementById("relay-packet-counts");
+  const rate30Btn = document.getElementById("rate-30hz-btn");
+  const rate60Btn = document.getElementById("rate-60hz-btn");
+
+  const setMode = (multiplayer: boolean) => {
+    isMultiplayerMode = multiplayer;
+    if (multiplayer) {
+      btnSinglePlayer?.classList.remove("active");
+      btnMultiplayer?.classList.add("active");
+      relayHud?.classList.remove("hidden");
+      relayStatusPill?.classList.remove("hidden");
+      relayClient.connect();
+    } else {
+      btnSinglePlayer?.classList.add("active");
+      btnMultiplayer?.classList.remove("active");
+      relayHud?.classList.add("hidden");
+      relayStatusPill?.classList.add("hidden");
+      relayClient.disconnect();
+    }
+  };
+
+  btnSinglePlayer?.addEventListener("click", () => setMode(false));
+  btnMultiplayer?.addEventListener("click", () => setMode(true));
+
+  relayClient.onStatsChange = (stats) => {
+    if (relayBadgeStatus) {
+      relayBadgeStatus.textContent = stats.status;
+      relayBadgeStatus.className = `relay-badge-status ${stats.status}`;
+    }
+
+    if (relayConnectBtn) {
+      relayConnectBtn.textContent = stats.status === "connected" ? "Disconnect" : "Connect";
+    }
+
+    const dot = relayStatusPill?.querySelector(".status-dot");
+    if (dot) {
+      dot.className = `status-dot ${stats.status}`;
+    }
+
+    const pingText = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
+    if (relayPingDisplay) relayPingDisplay.textContent = pingText;
+    if (rttCurrent) {
+      rttCurrent.textContent = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : "-- ms";
+      if (stats.lastRttMs < 70) rttCurrent.style.color = "#22c55e";
+      else if (stats.lastRttMs < 140) rttCurrent.style.color = "#f59e0b";
+      else rttCurrent.style.color = "#ef4444";
+    }
+
+    if (rttSub) {
+      rttSub.textContent = `min: ${Math.round(stats.minRttMs)} ms | max: ${Math.round(stats.maxRttMs)} ms | avg: ${Math.round(stats.avgRttMs)} ms`;
+    }
+
+    if (packetCounts) {
+      packetCounts.textContent = `Sent: ${stats.packetsSent} | Echoed: ${stats.packetsReceived}`;
+    }
+  };
+
+  relayConnectBtn?.addEventListener("click", () => {
+    if (relayClient.status === "connected") {
+      relayClient.disconnect();
+    } else {
+      if (relayUrlInput) relayClient.url = relayUrlInput.value.trim();
+      relayClient.connect();
+    }
+  });
+
+  relayToggleGhostsBtn?.addEventListener("click", () => {
+    relayClient.showGhostClones = !relayClient.showGhostClones;
+    if (relayClient.showGhostClones) {
+      relayToggleGhostsBtn.textContent = "👻 Ghosts: ON";
+      relayToggleGhostsBtn.className = "btn-ghost-toggle active";
+    } else {
+      relayToggleGhostsBtn.textContent = "👻 Ghosts: OFF";
+      relayToggleGhostsBtn.className = "btn-ghost-toggle off";
+    }
+  });
+
+  relayUrlInput?.addEventListener("change", () => {
+    relayClient.url = relayUrlInput.value.trim();
+    if (relayClient.status === "connected") {
+      relayClient.connect();
+    }
+  });
+
+  btnPresetPostman?.addEventListener("click", () => {
+    const url = "wss://ws.postman-echo.com/raw";
+    if (relayUrlInput) relayUrlInput.value = url;
+    relayClient.url = url;
+    relayClient.connect();
+  });
+
+  btnPresetOrg?.addEventListener("click", () => {
+    const url = "wss://echo.websocket.org";
+    if (relayUrlInput) relayUrlInput.value = url;
+    relayClient.url = url;
+    relayClient.connect();
+  });
+
+  rate30Btn?.addEventListener("click", () => {
+    relayClient.sendRateHz = 30;
+    rate30Btn.classList.add("active");
+    rate60Btn?.classList.remove("active");
+  });
+
+  rate60Btn?.addEventListener("click", () => {
+    relayClient.sendRateHz = 60;
+    rate60Btn.classList.add("active");
+    rate30Btn?.classList.remove("active");
+  });
+
+  // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
+  gameLoop.getGhostSnapshot = () => (isMultiplayerMode ? relayClient.getLatestGhost() : null);
+  gameLoop.onPhysicsTick = (_dt, nowMs) => {
+    if (isMultiplayerMode) {
+      relayClient.update(character, objects, nowMs);
+    }
+  };
 
   gameLoop.start();
   console.log("🚀 Power Creature Game Prototype 1 (Phase 1.1) running!");

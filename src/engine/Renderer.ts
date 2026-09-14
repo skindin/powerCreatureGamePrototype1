@@ -2,6 +2,7 @@ import { Arena } from "./Arena.js";
 import { GameObject } from "./GameObject.js";
 import { Character } from "../character/Character.js";
 import { TrajectoryCalculation } from "../character/ThrowModule.js";
+import { GhostSnapshot } from "../network/RelayClient.js";
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -19,7 +20,8 @@ export class Renderer {
     hoverEntity?: GameObject | null,
     targetGrabEntity?: GameObject | null,
     isWallEditor = false,
-    hoverWallTile?: { col: number; row: number } | null
+    hoverWallTile?: { col: number; row: number } | null,
+    ghostSnapshot?: GhostSnapshot | null
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -85,6 +87,117 @@ export class Renderer {
         this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
       }
     }
+
+    // 7. Ghost Clones (Echoed states from 3rd-party relay server)
+    if (ghostSnapshot) {
+      this.drawGhostClones(ghostSnapshot, ppu, arena);
+    }
+  }
+
+  /**
+   * Draws echoed ghost clones returned from the 3rd party relay server.
+   * Renders with semi-transparency and dashed spectral outlines to show network echo delay.
+   */
+  public drawGhostClones(ghostSnapshot: GhostSnapshot, ppu: number, arena: Arena): void {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // 1. Draw Ghost Character
+    const gChar = ghostSnapshot.character;
+    if (gChar) {
+      const charScale = Renderer.getAltitudeScale(gChar.z, arena.wallHeight);
+      const px = gChar.x * ppu;
+      const py = (gChar.y - gChar.z) * ppu;
+      const r = gChar.radius * ppu * charScale;
+
+      // Ghost ground shadow
+      if (gChar.z > 0.05) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Ghost body
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#38bdf8"; // Spectral Cyan
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+
+      // Ghost badge / ping label
+      ctx.setLineDash([]);
+      ctx.font = "bold 9px monospace";
+      ctx.fillStyle = "#e0f2fe";
+      ctx.textAlign = "center";
+      ctx.fillText(`👻 ECHO (${Math.round(ghostSnapshot.rttMs)}ms)`, px, py - r - 6);
+      ctx.restore();
+    }
+
+    // 2. Draw Ghost Objects
+    if (ghostSnapshot.objects) {
+      for (const obj of ghostSnapshot.objects) {
+        const altScale = Renderer.getAltitudeScale(obj.z, arena.wallHeight);
+        const px = obj.x * ppu;
+        const py = (obj.y - obj.z) * ppu;
+        const r = obj.radius * ppu * altScale;
+
+        // Ghost ground shadow
+        if (obj.z > 0.05) {
+          ctx.save();
+          ctx.beginPath();
+          if (obj.shape === "box") {
+            ctx.rect((obj.x - obj.radius) * ppu, (obj.y - obj.radius) * ppu, obj.radius * 2 * ppu, obj.radius * 2 * ppu);
+          } else {
+            ctx.arc(obj.x * ppu, obj.y * ppu, obj.radius * ppu, 0, Math.PI * 2);
+          }
+          ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.5)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        if (obj.shape === "box") {
+          const sz = r * 2;
+          ctx.rect(px - r, py - r, sz, sz);
+        } else {
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = obj.color || "#a855f7";
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+
+        // Small ghost label
+        ctx.setLineDash([]);
+        ctx.font = "8px monospace";
+        ctx.fillStyle = "#f3e8ff";
+        ctx.textAlign = "center";
+        ctx.fillText("👻", px, py + 3);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
   }
 
   private drawFloorGrid(arena: Arena, ppu: number): void {

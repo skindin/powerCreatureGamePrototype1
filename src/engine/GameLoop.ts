@@ -18,6 +18,9 @@ export class GameLoop {
   private accumulator = 0;
   private readonly fixedDt = 1 / 60; // 60Hz fixed simulation timestep
 
+  public getGhostSnapshot?: () => import("../network/RelayClient.js").GhostSnapshot | null;
+  public onPhysicsTick?: (dt: number, nowMs: number) => void;
+
   constructor(options: {
     arena: Arena;
     character: Character;
@@ -61,6 +64,9 @@ export class GameLoop {
     // Fixed timestep simulation updates
     while (this.accumulator >= this.fixedDt) {
       this.updatePhysics(this.fixedDt);
+      if (this.onPhysicsTick) {
+        this.onPhysicsTick(this.fixedDt, currentTime);
+      }
       this.accumulator -= this.fixedDt;
     }
 
@@ -78,6 +84,8 @@ export class GameLoop {
 
     // Render current frame with active selection highlight & wall tool indicators
     const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
+    const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot() : null;
+
     this.renderer.render(
       this.arena,
       this.character,
@@ -87,7 +95,8 @@ export class GameLoop {
       this.inputManager.hoverEntity,
       targetGrabEntity,
       isWallEditor,
-      this.inputManager.hoverWallTile
+      this.inputManager.hoverWallTile,
+      ghostData
     );
 
     // Update live inspector
