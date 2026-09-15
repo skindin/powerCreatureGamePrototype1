@@ -272,6 +272,25 @@ export class GameObject {
     );
   }
 
+  /**
+   * Virtual Infinite Layer System:
+   * Objects only collide if they are on the exact same layer.
+   * Virtually infinite layers where layer = Math.floor(objectHeight / wallHeight) + 1.
+   * - Layer 1 (0 <= z < wallHeight): Ground layer (only layer with walls).
+   * - Layer 2 (wallHeight <= z < 2 * wallHeight): Wall elevation / first elevated layer.
+   * - Layer 3, 4, ...: Infinite higher altitude layers.
+   */
+  public static getEntityLayer(entity: GameObject, wallHeight: number = 1.0): number {
+    const effectiveH = Math.max(
+      0,
+      entity.position.z,
+      entity.supportingSurfaceHeight ?? 0,
+      entity.standingWall ? wallHeight : 0
+    );
+    const safeWallH = Math.max(0.01, wallHeight);
+    return Math.floor(effectiveH / safeWallH) + 1;
+  }
+
   /** Update physics, gravity, friction, and ground/wall collision */
   public updatePosition(dt: number, arena: Arena): void {
     if (this.isHeld) {

@@ -194,6 +194,11 @@ powerCreatureGamePrototype1/
 14. **Held Objects & Bigger-Without-Hover Wall Transparency**:
     - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.
     - Entities on walls render semi-transparent (`globalAlpha = 0.55`) when they get bigger and are not hovering over a shadow (`useBigger && (!useHover || hoverScale <= 0) && isOnLayer2`), ensuring players can see what is underneath them on the wall/floor. When hovering over a shadow in Hover mode, they render opaque.
+15. **Virtual Infinite Layer Collision System**:
+    - Objects only collide with each other if they occupy the exact same vertical layer: $\text{layer} = \lfloor \text{effectiveHeight} / \text{wallHeight} \rfloor + 1$.
+    - **Layer 1** ($0 \le z < \text{wallHeight}$): Ground layer — this is the **only** layer that has physical walls.
+    - **Layer 2** ($\text{wallHeight} \le z < 2 \times \text{wallHeight}$): Wall-top elevation layer.
+    - **Layer 3, 4, ...**: Infinite higher elevation layers. Projectiles and high-flying entities pass completely through entities on other layers without collision unless they are on the exact same layer.
 
 ---
 

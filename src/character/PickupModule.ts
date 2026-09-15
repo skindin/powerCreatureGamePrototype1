@@ -21,11 +21,9 @@ export class PickupModule {
     // Cannot grab an object you just threw while it is departing your reach
     if (obj.lastThrower === character) return false;
 
-    // Determine character layer (1: Ground layer, 2: Wall / elevated layer) - vertical position z is NOT considered
-    const charLayer = (character.standingWall !== null || character.supportingSurfaceHeight >= wallHeight - 0.05) ? 2 : 1;
-
-    // Determine object layer (1: Ground layer, 2: Wall / elevated layer) - vertical position z is NOT considered
-    const objLayer = (obj.standingWall !== null || obj.supportingSurfaceHeight >= wallHeight - 0.05) ? 2 : 1;
+    // Determine character and object layers (virtually infinite layers: height / wallHeight)
+    const charLayer = GameObject.getEntityLayer(character, wallHeight);
+    const objLayer = GameObject.getEntityLayer(obj, wallHeight);
     const isSameLayer = charLayer === objLayer;
 
     // If on the same layer: same layer reach. If on a different layer: different layer reach.

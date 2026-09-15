@@ -187,15 +187,12 @@ export class GameLoop {
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;
 
-          // Two-Tier Altitude Collision Rule:
-          // 1. All colliders below wall height collide with each other, and NOT with colliders above wall height.
-          // 2. All colliders above wall height (including objects resting on walls) collide with each other, and NOT with colliders below wall height.
-          const wallThreshold = this.arena.wallHeight - 0.15;
-          const aAboveWall = a.position.z >= wallThreshold || a.supportingSurfaceHeight >= wallThreshold || a.standingWall !== null || a.isAboveWalls;
-          const bAboveWall = b.position.z >= wallThreshold || b.supportingSurfaceHeight >= wallThreshold || b.standingWall !== null || b.isAboveWalls;
-
-          // If one is above wall height and the other is not, they never collide (clean pass-over)
-          if (aAboveWall !== bAboveWall) continue;
+          // Infinite Virtual Layer Collision Rule:
+          // Objects only collide if they are on the exact same layer (height / wallHeight).
+          // Only Layer 1 has walls.
+          const layerA = GameObject.getEntityLayer(a, this.arena.wallHeight);
+          const layerB = GameObject.getEntityLayer(b, this.arena.wallHeight);
+          if (layerA !== layerB) continue;
 
           // 2D planar distance between the centers of the two colliders
           const dx = b.position.x - a.position.x;
