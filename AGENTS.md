@@ -209,6 +209,12 @@ powerCreatureGamePrototype1/
     - Replaced the legacy 2D distance and cross-layer multiplier ratio with true 3D Euclidean distance math.
     - An object is in grab reach if and only if the delta magnitude of their 3D positions $\sqrt{\Delta x^2 + \Delta y^2 + \Delta z^2} \le \text{pickupReach}$, using the exact physical coordinates of the character and target object (accounting for surface elevation when standing on wall tops).
     - Forces the character to be within a single pickup range across all vertical altitudes: airborne objects high overhead ($z \gg 0$) or objects far below can no longer be grabbed by flat 2D proximity. DevPanel pickup slider governs the single 3D sphere reach.
+18. **Dynamic Object Behavior Modules & Add Behavior Menu**:
+    - Replaced the static, monolithic inspector cards in `DevPanel.ts` with a fully dynamic module management system:
+      - **Only Attached Behaviors Render**: An entity only displays module cards for behaviors that are actively attached (`collider`, `mass`, `friction`, `bounce`, `verticalPosition`, `gravity`, `roll`, plus creature abilities `walking`, `strength`, `pickup`, `throw`, `climbing`).
+      - **Individual Module Removal**: Every active module card features a dedicated `✕ Remove` button at top-right. Clicking it immediately detaches the module from the entity (setting the module property to `null` and resetting relevant dynamic fields like velocity, elevation, or grip), removing the card from the UI.
+      - **Bottom `➕ Add Behavior` Button**: Placed cleanly at the bottom of the behaviors list. Shows a dynamic count of unattached behaviors. Clicking it toggles a styled dropdown listing only behaviors not yet attached.
+      - **Instant Re-Addition**: Selecting any behavior from the dropdown instantiates that module on the entity, immediately re-renders its card with live tuning sliders, and removes it from the dropdown. Fully synchronized with entity selection, duplication, and deletion.
 
 ---
 
