@@ -47,6 +47,8 @@ export class ThrowModule {
   /**
    * Clamps an object's start position so that it does not overlap any wall if starting on the ground.
    * If overlapping, pushes it out to the closest valid position outside the wall.
+   * Also exposes a near-wall check: if the clamped position is within `safeDistance` of any wall
+   * face, the caller should pull the start back to the character's own position.
    */
   public static clampStartOutsideWalls(
     x: number,
@@ -56,15 +58,17 @@ export class ThrowModule {
     charZ: number,
     charX: number,
     charY: number
-  ): { x: number; y: number } {
+  ): { x: number; y: number; nearWall: boolean } {
     if (charZ >= arena.wallHeight) {
-      return { x, y }; // On or above walls
+      return { x, y, nearWall: false }; // On or above walls
     }
 
     let clampedX = x;
     let clampedY = y;
     const r = radius > 0 ? radius : 0.3;
     const requiredClearance = r + 0.04;
+    // "near wall" threshold: within 1 physics step of clearance (vMax * fixedDt ≈ 16 * 1/60 ≈ 0.27u)
+    const nearWallThreshold = r + 0.30;
 
     // Up to 3 iterations to resolve adjacent corners/walls
     for (let iter = 0; iter < 3; iter++) {
@@ -107,7 +111,20 @@ export class ThrowModule {
       if (!collided) break;
     }
 
-    return { x: clampedX, y: clampedY };
+    // Check if the clamped position is still dangerously close to any wall face
+    let nearWall = false;
+    for (const wall of arena.walls) {
+      const closestX = Math.max(wall.x, Math.min(clampedX, wall.x + wall.width));
+      const closestY = Math.max(wall.y, Math.min(clampedY, wall.y + wall.height));
+      const dx = clampedX - closestX;
+      const dy = clampedY - closestY;
+      if (dx * dx + dy * dy < nearWallThreshold * nearWallThreshold) {
+        nearWall = true;
+        break;
+      }
+    }
+
+    return { x: clampedX, y: clampedY, nearWall };
   }
 
   /**
@@ -260,7 +277,9 @@ export class ThrowModule {
     let startY = held.position.y;
     const startZ = held.position.z;
 
-    // If starting on the ground and overlapping a wall, clamp start position outside walls
+    // If starting on the ground, clamp start position outside walls.
+    // If the clamped start is still within ~0.3u of a wall face, pull back to the
+    // character's own position so the arc has room to gain altitude before the wall.
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -271,8 +290,14 @@ export class ThrowModule {
         character.position.x,
         character.position.y
       );
-      startX = clamped.x;
-      startY = clamped.y;
+      if (clamped.nearWall) {
+        // Start from the character's own safe position instead
+        startX = character.position.x;
+        startY = character.position.y;
+      } else {
+        startX = clamped.x;
+        startY = clamped.y;
+      }
     }
 
     const throwPower = this.baseThrowForce * character.strength;
@@ -405,7 +430,9 @@ export class ThrowModule {
     let startY = held.position.y;
     const startZ = held.position.z;
 
-    // If starting on the ground and overlapping a wall, clamp start position outside walls
+    // If starting on the ground, clamp start position outside walls.
+    // If the clamped start is still within ~0.3u of a wall face, pull back to the
+    // character's own position so the arc has room to gain altitude before the wall.
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -416,8 +443,14 @@ export class ThrowModule {
         character.position.x,
         character.position.y
       );
-      startX = clamped.x;
-      startY = clamped.y;
+      if (clamped.nearWall) {
+        // Start from the character's own safe position instead
+        startX = character.position.x;
+        startY = character.position.y;
+      } else {
+        startX = clamped.x;
+        startY = clamped.y;
+      }
     }
 
     const throwPower = this.baseThrowForce * character.strength;

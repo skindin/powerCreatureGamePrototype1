@@ -223,6 +223,13 @@ powerCreatureGamePrototype1/
       - If even distance 0 overlaps (e.g. held object is larger than character and character is touching wall), it attempts pulling slightly behind the character or resolves clearance away from the closest wall face, strictly clamping the final distance $\le \text{defaultHandDist}$.
     - **Dense Trajectory Clearance Sampling**:
       - In `ThrowModule.computeLaunchVelocity`, dense sampling near the start of the throw trajectory ($s \in [0.005, 0.1]$) ensures that walls immediately in front of the thrower are detected and the parabolic arc is granted sufficient upward launch velocity ($v_z$) to cleanly clear the wall top without colliding on release.
+    - **Near-Wall Throw Origin Pull-back** (critical fix):
+      - Root cause: after clamping the held object to just outside the wall face (~0.05u clearance), the projectile's first physics tick advanced it `vx*dt` (~0.12u) back into the wall, triggering `resolveWallCollision` which killed velocity and cleared `lastThrower`.
+      - Fix: `ThrowModule.clampStartOutsideWalls` now also returns `nearWall: boolean` (true if the clamped position is within `r + 0.30u` of any wall face). If `nearWall`, both `calculateTrajectory` and `throwHeldObject` pull the launch origin all the way back to the **character's own position** (which is always safely outside all walls). The parabolic arc then has room to gain altitude before reaching the wall face, and the physics integration never re-enters the wall.
+20. **Gamepad Hold-to-Grab (RT & B)**:
+    - **RT (Right Trigger)**: Previously only grabbed on the initial press edge. Now, if RT is held while empty-handed and no object is in range, `rtHeld = true` is set and `pickupAndSwap` is re-called every physics tick while RT remains held. The moment an object enters the aim cursor's pickup radius, it is grabbed automatically. `rtHeld` clears when the grab succeeds or RT is released.
+    - **B Button**: Same hold-to-grab behavior via `bHeld` flag. Retries `pickupAndSwap` every tick while B is held and the character is empty-handed. Drops/swaps (fresh press only) when already holding an object.
+    - The release-lock (`rtGrabbed`) still applies: after grabbing via RT, the trigger must be released before RT can throw — preventing accidental immediate throws.
 
 ---
 

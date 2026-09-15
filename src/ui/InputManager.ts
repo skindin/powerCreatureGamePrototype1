@@ -31,6 +31,8 @@ export class InputManager {
   private isGamepadAimOffsetInitialized = false;
   private prevButtons: boolean[] = [];
   private rtGrabbed = false; // true when the current held object was grabbed via RT — must release RT before RT can throw
+  private rtHeld = false;    // true when RT is held down while empty-handed waiting for a target to enter range
+  private bHeld = false;     // true when B is held down while empty-handed waiting for a target to enter range
 
   public get isGrabHeld(): boolean {
     return !this.isThrowingPress && this.isMouseDown;
@@ -366,36 +368,67 @@ export class InputManager {
     }
 
     // 5. Button 1 (B on Xbox / Circle on PS): Pickup & Swap
+    // Holding B while empty-handed will grab the moment an object enters range.
     const bCurrent = isButtonPressed(1);
-    if (bCurrent && !isPrevPressed(1)) {
-      if (character.pickupModule) {
-        character.pickupModule.pickupAndSwap(
-          character,
-          objects,
-          arena.wallHeight,
-          this.gamepadAimPos.x,
-          this.gamepadAimPos.y
-        );
+    const bJustReleased = !bCurrent && isPrevPressed(1);
+    if (bJustReleased) {
+      this.bHeld = false;
+    }
+    if (bCurrent) {
+      if (!character.heldObject && character.pickupModule) {
+        // On first press OR while holding waiting for an object, try to grab
+        if (!isPrevPressed(1) || this.bHeld) {
+          character.pickupModule.pickupAndSwap(
+            character,
+            objects,
+            arena.wallHeight,
+            this.gamepadAimPos.x,
+            this.gamepadAimPos.y
+          );
+          if (!character.heldObject) {
+            // Nothing in range yet — keep waiting
+            this.bHeld = true;
+          } else {
+            this.bHeld = false;
+          }
+        } else if (character.heldObject) {
+          // Was holding and already has object — bHeld should already be false
+          this.bHeld = false;
+        }
+      } else if (character.heldObject) {
+        this.bHeld = false;
+        // B while holding: drop / swap (only on fresh press)
+        if (!isPrevPressed(1) && character.pickupModule) {
+          character.pickupModule.pickupAndSwap(
+            character,
+            objects,
+            arena.wallHeight,
+            this.gamepadAimPos.x,
+            this.gamepadAimPos.y
+          );
+        }
       }
     }
 
     // 6. Right Trigger (RT / R2, button 7): Grab when empty-handed, Throw when holding
     //    - Must RELEASE the trigger between grabbing and throwing (rtGrabbed flag prevents instant throw)
+    //    - Holding RT while empty-handed will grab the moment an object enters range.
     // 7. Right Bumper (RB / R1, button 5): Throw only (never grabs)
     const rbCurrent = isButtonPressed(5);
     const rbJustPressed = rbCurrent && !isPrevPressed(5);
     const rtCurrent = isButtonPressed(7);
-    const rtJustPressed = rtCurrent && !isPrevPressed(7);
     const rtJustReleased = !rtCurrent && isPrevPressed(7);
 
-    // Clear the grab-lock when RT is fully released
+    // Clear the grab-lock and waiting flag when RT is fully released
     if (rtJustReleased) {
       this.rtGrabbed = false;
+      this.rtHeld = false;
     }
 
     if (!character.heldObject) {
-      // Empty-handed: RT grabs the closest object to aim cursor
-      if (rtJustPressed && character.pickupModule) {
+      // Empty-handed: RT grabs the closest object to aim cursor.
+      // If holding RT with nothing in range, keep trying each tick.
+      if (rtCurrent && character.pickupModule && (!isPrevPressed(7) || this.rtHeld)) {
         character.pickupModule.pickupAndSwap(
           character,
           objects,
@@ -405,12 +438,16 @@ export class InputManager {
         );
         if (character.heldObject) {
           this.rtGrabbed = true; // locked — must release RT before it can throw
+          this.rtHeld = false;
+        } else {
+          this.rtHeld = true; // nothing in range yet — keep waiting
         }
       }
     } else {
+      this.rtHeld = false;
       // Holding an object:
       // RT throws only if trigger was released since the grab (rtGrabbed = false)
-      if (rtJustPressed && !this.rtGrabbed && character.throwModule) {
+      if (!isPrevPressed(7) && rtCurrent && !this.rtGrabbed && character.throwModule) {
         character.throwModule.throwHeldObject(
           character, this.gamepadAimPos.x, this.gamepadAimPos.y, arena
         );
