@@ -19,7 +19,25 @@ static class Program
         }
         catch { }
 
-        ApplicationConfiguration.Initialize();
-        Application.Run(new Form1());
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (s, e) => {
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"), e.Exception.ToString());
+            MessageBox.Show(e.Exception.ToString(), "Application Error");
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => {
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"), e.ExceptionObject.ToString());
+            MessageBox.Show(e.ExceptionObject.ToString(), "Unhandled Exception");
+        };
+
+        try
+        {
+            ApplicationConfiguration.Initialize();
+            Application.Run(new Form1());
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"), ex.ToString());
+            MessageBox.Show(ex.ToString(), "Fatal Error");
+        }
     }    
 }

@@ -295,7 +295,10 @@ export class DevPanel {
             <h2>🛠️ Sandbox & Engine</h2>
             <span class="badge">1 Wall = 1 Unit</span>
           </div>
-          <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button id="btn-dev-view-settings" class="btn-secondary-action" style="flex: 0 0 auto; padding: 3px 8px; font-size: 0.74rem; border-color: rgba(56, 189, 248, 0.35); color: #38bdf8;" title="Open 3D View Settings (V)">👁️ View</button>
+            <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
+          </div>
         </div>
         <div class="mode-switcher">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>

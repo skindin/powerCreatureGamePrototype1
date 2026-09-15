@@ -70,13 +70,16 @@ export class GameLoop {
       this.accumulator -= this.fixedDt;
     }
 
-    // Determine which object is targeted for grab by the mouse (in Play Mode)
+    // Determine which object is targeted for grab by the mouse or gamepad (in Play Mode)
     let targetGrabEntity: GameObject | null = null;
     if (!this.devPanel.isEditMode && !this.character.heldObject && this.character.pickupModule) {
+      const grabAimTarget = this.inputManager.isUsingGamepad
+        ? this.inputManager.gamepadAimPos
+        : this.inputManager.mousePos;
       targetGrabEntity = this.character.pickupModule.findTargetObject(
         this.character,
-        this.inputManager.mousePos.x,
-        this.inputManager.mousePos.y,
+        grabAimTarget.x,
+        grabAimTarget.y,
         this.objects,
         this.arena.wallHeight
       );
@@ -96,7 +99,9 @@ export class GameLoop {
       targetGrabEntity,
       isWallEditor,
       this.inputManager.hoverWallTile,
-      ghostData
+      ghostData,
+      this.inputManager.isUsingGamepad,
+      this.inputManager.gamepadAimPos
     );
 
     // Update live inspector
@@ -108,13 +113,25 @@ export class GameLoop {
   private updatePhysics(dt: number): void {
     const input = this.inputManager;
 
+    // Poll connected Gamepad (joysticks, triggers, buttons)
+    input.pollGamepad(this.character, this.objects, this.arena);
+
+    // Determine aim state and aim target coordinates (mouse vs gamepad)
+    const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || this.character.heldObject !== null);
+    const isAiming = this.inputManager.isUsingGamepad
+      ? true
+      : isMouseAiming;
+    const aimTarget = this.inputManager.isUsingGamepad
+      ? input.gamepadAimPos
+      : (isMouseAiming ? input.mousePos : null);
+
     // 1. Update character with movement and aim inputs
     if (input.draggedEntity !== this.character) {
       this.character.updateCharacter(
         dt,
         input.movementVector,
-        input.isMouseDown && !this.devPanel.isEditMode,
-        input.mousePos,
+        isAiming,
+        aimTarget,
         this.arena,
         input.isClimbHeld
       );

@@ -126,4 +126,57 @@ export class PickupModule {
 
     return dropped;
   }
+
+  /**
+   * Pickup and swap:
+   * - If aimX/aimY provided, targets reachable object closest to the cursor.
+   * - If holding an object and another reachable object is nearby, drops the held object and grabs the new one.
+   * - If holding an object and no other object is nearby, drops the held object.
+   * - If not holding an object, picks up the closest reachable object.
+   */
+  public pickupAndSwap(
+    character: Character,
+    objects: GameObject[],
+    wallHeight: number,
+    aimX?: number,
+    aimY?: number
+  ): boolean {
+    if (!this.enabled) return false;
+
+    // Find reachable object closest to cursor (if aimX/aimY provided) or closest to character
+    let bestTarget: GameObject | null = null;
+    if (aimX !== undefined && aimY !== undefined) {
+      bestTarget = this.findTargetObject(character, aimX, aimY, objects, wallHeight);
+    } else {
+      let bestDist = Infinity;
+      for (const obj of objects) {
+        if (obj === character.heldObject || obj.isHeld) continue;
+        if (this.isObjectInReach(character, obj, wallHeight)) {
+          const d = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestTarget = obj;
+          }
+        }
+      }
+    }
+
+    if (character.heldObject) {
+      if (bestTarget) {
+        // Swap: drop old, pick up new!
+        this.drop(character);
+        return this.pickup(character, bestTarget);
+      } else {
+        // No other object nearby: drop
+        this.drop(character);
+        return true;
+      }
+    } else {
+      if (bestTarget) {
+        return this.pickup(character, bestTarget);
+      }
+    }
+
+    return false;
+  }
 }

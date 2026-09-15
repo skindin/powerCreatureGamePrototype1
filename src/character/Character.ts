@@ -31,6 +31,15 @@ export class Character extends GameObject {
   public override isCharacter = true;
   public isActivelyWalking = false;
   public isClimbInputHeld = false;
+  public isSprinting = false;
+  public onSprintChange?: (isSprinting: boolean) => void;
+
+  public setSprinting(sprint: boolean): void {
+    if (this.isSprinting !== sprint) {
+      this.isSprinting = sprint;
+      this.onSprintChange?.(this.isSprinting);
+    }
+  }
 
   // Base mass when not carrying anything
   public baseMass = 1.2;
@@ -115,21 +124,21 @@ export class Character extends GameObject {
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
   public updateFacingDirection(
-    isAimingInput: boolean,
+    _isAimingInput: boolean,
     aimTargetPos: Vector2D | null,
     movementInput?: Vector2D
   ): void {
-    // When holding an object OR when actively aiming, face the cursor
-    if ((this.heldObject !== null || isAimingInput) && aimTargetPos && (this.throwModule !== null || this.pickupModule !== null)) {
+    // The character ONLY faces the aim cursor when holding an object!
+    if (this.heldObject && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;
       const dy = aimTargetPos.y - this.position.y;
-      if (Math.hypot(dx, dy) > 0.1) {
+      if (Math.hypot(dx, dy) > 0.05) {
         this.facingAngle = Math.atan2(dy, dx);
         return;
       }
     }
 
-    // Default to the direction the player INTENDS to move
+    // When empty-handed, character faces the direction they are moving:
     if (movementInput) {
       const inputMag = Math.hypot(movementInput.x, movementInput.y);
       if (inputMag > 0.05) {
@@ -180,11 +189,11 @@ export class Character extends GameObject {
       this.heldObject.verticalVelocity = 0;
     }
 
-    // 5. Update trajectory preview: active whenever holding an object, aimed at cursor!
-    this.isAiming = (this.heldObject !== null) || isAimingInput;
-    this.aimTarget = aimTargetPos;
+    // 5. Update trajectory preview: ONLY active when actively aiming (Right Stick or Mouse aim)
+    this.isAiming = isAimingInput;
+    this.aimTarget = isAimingInput ? aimTargetPos : null;
 
-    if (this.heldObject && this.throwModule && aimTargetPos) {
+    if (this.heldObject && this.throwModule && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

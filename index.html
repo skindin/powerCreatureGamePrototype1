@@ -2,113 +2,230 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#090d16" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <div id="app-layout">
-      <!-- Left Arena Viewport -->
-      <div class="viewport-container">
-        <header class="top-bar">
-          <div class="brand-title">
-            <span>⚡ Power Creature Game</span>
-            <span class="brand-badge">Phase 1.1 Sandbox</span>
-          </div>
+      <!-- Full-Width Top Bar -->
+      <header class="top-bar">
+        <div class="brand-title">
+          <span>⚡ Power Creature Game</span>
+          <span class="brand-badge">Phase 1.1 Sandbox</span>
+        </div>
 
-          <div class="top-bar-center">
-            <div class="mode-pill-group">
-              <button id="mode-singleplayer-btn" class="mode-btn active" title="Local single player simulation">
-                <span>👤 Single Player</span>
-              </button>
-              <button id="mode-multiplayer-btn" class="mode-btn" title="Multiplayer relay test with ghost echo">
-                <span>🌐 Multiplayer (Relay Test)</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="top-bar-right">
-            <div id="relay-status-pill" class="relay-pill hidden">
-              <span class="status-dot"></span>
-              <span id="relay-ping-display">-- ms</span>
-            </div>
-            <button id="toggle-sidebar-btn" class="sidebar-toggle-btn active" title="Toggle Inspector Sidebar (I or `)">
-              <span class="sidebar-btn-icon">🛠️</span>
-              <span class="sidebar-btn-text">Inspector</span>
+        <div class="top-bar-center">
+          <div class="mode-pill-group">
+            <button id="mode-singleplayer-btn" class="mode-btn active" title="Local single player simulation">
+              <span>👤 Single Player</span>
+            </button>
+            <button id="mode-multiplayer-btn" class="mode-btn" title="Multiplayer relay test with ghost echo">
+              <span>🌐 Multiplayer (Relay Test)</span>
             </button>
           </div>
-        </header>
+        </div>
 
-        <!-- Multiplayer Relay HUD (Visible when Multiplayer mode is active) -->
-        <div id="multiplayer-relay-hud" class="relay-hud-container hidden">
-          <div class="relay-hud-card">
-            <div class="relay-hud-header">
-              <div class="relay-title">
-                <span class="relay-icon">🛰️</span>
-                <span class="relay-name">3rd-Party Relay Echo</span>
-                <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
-              </div>
-              <div class="relay-hud-actions">
-                <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
-                <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
-              </div>
+        <div class="top-bar-right">
+          <div id="relay-status-pill" class="relay-pill hidden">
+            <span class="status-dot"></span>
+            <span id="relay-ping-display">-- ms</span>
+          </div>
+          <div class="public-link-widget" id="public-link-widget" title="Live nationwide public URL">
+            <span class="status-dot" id="public-status-dot"></span>
+            <span class="public-label">PUBLIC:</span>
+            <button id="btn-public-url-display" class="public-url-btn" title="Click to copy public link">https://pcg-arena-teal.loca.lt</button>
+            <button id="btn-copy-public-url" class="btn-mini-action" title="Copy public link to clipboard">📋 Copy</button>
+            <a href="https://pcg-arena-teal.loca.lt" target="_blank" id="btn-open-public-url" class="btn-mini-action" title="Open public link in new browser tab">↗</a>
+            <button id="btn-phone-connect" class="btn-mini-action btn-qr-action" title="Scan QR code on phone">📱 QR</button>
+          </div>
+          <button id="toggle-view-settings-btn" class="sidebar-toggle-btn" title="Toggle View Settings (V)">
+            <span class="sidebar-btn-icon">👁️</span>
+            <span class="sidebar-btn-text">View Settings</span>
+          </button>
+          <button id="toggle-sidebar-btn" class="sidebar-toggle-btn active" title="Toggle Inspector Sidebar (I or `)">
+            <span class="sidebar-btn-icon">🛠️</span>
+            <span class="sidebar-btn-text">Inspector</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Phone Connect Modal -->
+      <div id="phone-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card phone-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">📱</span>
+              <span>Connect Phone</span>
             </div>
-
-            <div class="relay-hud-body">
-              <div class="relay-stat-item">
-                <span class="stat-label">Relay URL</span>
-                <div class="url-input-wrapper">
-                  <input id="relay-url-input" class="relay-url-input" type="text" value="wss://echo.websocket.org" />
-                  <button id="btn-preset-postman" class="btn-preset" title="Use Postman Echo">Postman</button>
-                  <button id="btn-preset-org" class="btn-preset" title="Use Websocket.org">Echo.ws</button>
-                </div>
-              </div>
-              <div class="relay-stat-item rtt-item">
-                <span class="stat-label">Round-Trip Latency (RTT)</span>
-                <div class="rtt-metrics">
-                  <span class="rtt-current" id="rtt-current">-- ms</span>
-                  <span class="rtt-sub" id="rtt-sub">min: -- ms | max: -- ms | avg: -- ms</span>
-                </div>
-              </div>
-              <div class="relay-stat-item">
-                <span class="stat-label">Telemetry Packets</span>
-                <span class="stat-value" id="relay-packet-counts">Sent: 0 | Echoed: 0</span>
-              </div>
-              <div class="relay-stat-item">
-                <span class="stat-label">Send Rate</span>
-                <div class="rate-toggle-group">
-                  <button id="rate-30hz-btn" class="rate-btn active">30 Hz</button>
-                  <button id="rate-60hz-btn" class="rate-btn">60 Hz</button>
-                </div>
-              </div>
+            <button id="btn-close-phone-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+          <div class="phone-modal-body">
+            <p class="phone-modal-desc" id="phone-modal-desc">Scan with your phone camera to play from anywhere in the country:</p>
+            <div class="qr-canvas-wrapper">
+              <canvas id="qr-canvas"></canvas>
+            </div>
+            <div class="phone-url-row">
+              <input type="text" id="phone-url-input" class="relay-url-input" readonly value="https://pcg-arena-teal.loca.lt" />
+              <button id="btn-copy-phone-url" class="btn-preset">Copy</button>
+            </div>
+            <div class="phone-modal-status-box" id="phone-modal-tip">
+              <span>💡 Run <code>npm run share</code> in terminal to create an instant worldwide tunnel!</span>
             </div>
           </div>
         </div>
-
-        <!-- Controls Box above game view -->
-        <div class="controls-overlay-bar">
-          <div class="controls-box" id="game-controls-box">
-            <span class="controls-box-label">🎮 Controls</span>
-            <div class="controls-box-items">
-              <span class="ctrl-item"><span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span> Move</span>
-              <span class="ctrl-divider">•</span>
-              <span class="ctrl-item"><span class="key-badge">Space</span> Climb / Dismount</span>
-              <span class="ctrl-divider">•</span>
-              <span class="ctrl-item"><span class="key-badge">Left Click</span> Pick Up / Throw</span>
-              <span class="ctrl-divider">•</span>
-              <span class="ctrl-item"><span class="key-badge">E</span> Pick Up / Drop</span>
-            </div>
-          </div>
-        </div>
-
-        <main class="canvas-wrapper">
-          <canvas id="game-canvas"></canvas>
-        </main>
       </div>
 
-      <!-- Right Dev Sidebar -->
-      <aside id="dev-sidebar"></aside>
+      <!-- View Settings Floating Panel (Available in both Single Player & Multiplayer) -->
+      <div id="view-settings-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👁️</span>
+              <span>View Settings</span>
+            </div>
+            <button id="btn-close-view-settings" class="btn-close-panel" title="Close View Settings (V or Esc)">✕</button>
+          </div>
+
+          <div class="view-settings-body">
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Vertical Visuals</h3>
+                <p class="settings-section-desc">Choose how pseudo-3D altitude and physical elevation are rendered.</p>
+              </div>
+
+              <div class="visual-mode-options" role="radiogroup" aria-label="Vertical Visuals Mode">
+                <button type="button" class="visual-option-btn active" data-mode="bigger">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Bigger Sprites</span>
+                  </div>
+                  <p class="option-desc">Sprites scale larger with altitude while staying on the ground plane. Internal outlines show elevation layers.</p>
+                </button>
+
+                <button type="button" class="visual-option-btn" data-mode="hover">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Hover Above Shadow</span>
+                  </div>
+                  <p class="option-desc">Sprites hover upward at (y - z) above a ground collider shadow, with a vertical dotted line that transitions to transparent at Layer 2.</p>
+                </button>
+
+                <button type="button" class="visual-option-btn" data-mode="both">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Both</span>
+                  </div>
+                  <p class="option-desc">Combines both modes: sprites scale larger with altitude AND hover upward above their ground shadow placeholder.</p>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Application Body (Viewport & Dockable Sidebar) -->
+      <div class="app-body">
+        <!-- Left Arena Viewport -->
+        <div class="viewport-container">
+          <!-- Multiplayer Relay HUD (Visible when Multiplayer mode is active) -->
+          <div id="multiplayer-relay-hud" class="relay-hud-container hidden">
+            <div class="relay-hud-card">
+              <div class="relay-hud-header">
+                <div class="relay-title">
+                  <span class="relay-icon">🛰️</span>
+                  <span class="relay-name">3rd-Party Relay Echo</span>
+                  <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
+                </div>
+                <div class="relay-hud-actions">
+                  <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
+                  <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
+                </div>
+              </div>
+
+              <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Public Game Room</span>
+                  <div class="url-input-wrapper">
+                    <input id="public-room-url-input" class="relay-url-input" type="text" readonly value="https://pcg-arena-teal.loca.lt" />
+                    <button id="btn-copy-room-url" class="btn-preset" title="Copy public game link">📋 Copy</button>
+                    <a href="https://pcg-arena-teal.loca.lt" target="_blank" class="btn-preset" style="text-decoration:none; display:inline-flex; align-items:center;" title="Open in browser">↗ Open</a>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Relay URL</span>
+                  <div class="url-input-wrapper">
+                    <input id="relay-url-input" class="relay-url-input" type="text" value="wss://echo.websocket.org" />
+                    <button id="btn-preset-postman" class="btn-preset" title="Use Postman Echo">Postman</button>
+                    <button id="btn-preset-org" class="btn-preset" title="Use Websocket.org">Echo.ws</button>
+                  </div>
+                </div>
+                <div class="relay-stat-item rtt-item">
+                  <span class="stat-label">Round-Trip Latency (RTT)</span>
+                  <div class="rtt-metrics">
+                    <span class="rtt-current" id="rtt-current">-- ms</span>
+                    <span class="rtt-sub" id="rtt-sub">min: -- ms | max: -- ms | avg: -- ms</span>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Telemetry Packets</span>
+                  <span class="stat-value" id="relay-packet-counts">Sent: 0 | Echoed: 0</span>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Send Rate</span>
+                  <div class="rate-toggle-group">
+                    <button id="rate-30hz-btn" class="rate-btn active">30 Hz</button>
+                    <button id="rate-60hz-btn" class="rate-btn">60 Hz</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls Box above game view -->
+          <div class="controls-overlay-bar">
+            <div class="controls-box" id="game-controls-box">
+              <span class="controls-box-label">🎮 Controls</span>
+              <div class="controls-box-items">
+                <span class="ctrl-item"><span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span> / <span class="key-badge">L-Stick</span> Move</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item"><span class="key-badge">Space</span> / <span class="key-badge">A</span> Climb</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span> Throw</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item"><span class="key-badge">B</span> Swap</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> Sprint</span>
+              </div>
+              <div class="controls-box-status">
+                <span class="sprint-status-badge" id="sprint-badge" title="Toggle Sprint (Shift or LB)">⚡ WALK</span>
+                <span class="controller-status-badge hidden" id="controller-badge" title="Gamepad Connected">🎮 GAMEPAD</span>
+              </div>
+            </div>
+          </div>
+
+          <main class="canvas-wrapper">
+            <canvas id="game-canvas"></canvas>
+          </main>
+
+          <!-- Quick Sidebar Tab (Shown when inspector is collapsed) -->
+          <button id="quick-sidebar-tab" class="quick-sidebar-tab hidden" title="Open Inspector (I or `)">
+            <span>🛠️</span>
+            <span>Inspector</span>
+          </button>
+        </div>
+
+        <!-- Right Dev Sidebar -->
+        <aside id="dev-sidebar"></aside>
+      </div>
     </div>
 
     <script type="module" src="./src/main.ts"></script>

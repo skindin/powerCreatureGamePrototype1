@@ -18,8 +18,11 @@ public partial class Form1 : Form
     private Panel loadingPanel = null!;
     private Label titleLabel = null!;
     private Label statusLabel = null!;
+    private Button btnPublicLink = null!;
+    private Button btnOpenPublic = null!;
     private Button btnToggleTunnel = null!;
     private Button btnCopyLink = null!;
+    private Button btnViewSettings = null!;
     private Button btnReload = null!;
     private Button btnFullscreen = null!;
     private Button btnDevTools = null!;
@@ -33,6 +36,7 @@ public partial class Form1 : Form
     private int currentPort = 5173;
     private string activeUrl = "http://localhost:5173/";
     private bool isFullscreen = false;
+    private string ephemeralUserDataFolder = "";
     private FormWindowState previousWindowState = FormWindowState.Normal;
     private FormBorderStyle previousBorderStyle = FormBorderStyle.Sizable;
 
@@ -108,15 +112,37 @@ public partial class Form1 : Form
             Padding = new Padding(0, 7, 0, 0)
         };
 
-        // Public Tunnel Toggle Button
-        btnToggleTunnel = CreateHeaderButton("🌐 Public: OFF", async (s, e) => await ToggleTunnelAsync());
-        btnToggleTunnel.ForeColor = Color.FromArgb(148, 163, 184);
-        toolTip.SetToolTip(btnToggleTunnel, "Click to create a secure public tunnel URL for other devices/networks");
+        // Public Link Display Button (prominently displays https://pcg-arena-teal.loca.lt)
+        btnPublicLink = CreateHeaderButton("🌐 https://pcg-arena-teal.loca.lt", async (s, e) => await CopyLinkAsync());
+        btnPublicLink.ForeColor = Color.FromArgb(56, 189, 248);
+        btnPublicLink.BackColor = Color.FromArgb(15, 23, 42);
+        btnPublicLink.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
+        toolTip.SetToolTip(btnPublicLink, "Click to copy permanent nationwide link: https://pcg-arena-teal.loca.lt");
 
-        // Copy Link Button (initially hidden until public tunnel is active)
-        btnCopyLink = CreateHeaderButton("📋 Copy Link", async (s, e) => await CopyLinkAsync());
+        btnOpenPublic = CreateHeaderButton("↗ Open", (s, e) => OpenPublicUrl());
+        btnOpenPublic.ForeColor = Color.FromArgb(203, 213, 225);
+        toolTip.SetToolTip(btnOpenPublic, "Open https://pcg-arena-teal.loca.lt in default web browser");
+
+        // Public Tunnel Toggle Button
+        btnToggleTunnel = CreateHeaderButton("🌐 Tunnel: ON", async (s, e) => await ToggleTunnelAsync());
+        btnToggleTunnel.ForeColor = Color.FromArgb(74, 222, 128);
+        btnToggleTunnel.BackColor = Color.FromArgb(20, 83, 45);
+        btnToggleTunnel.FlatAppearance.BorderColor = Color.FromArgb(34, 197, 94);
+        toolTip.SetToolTip(btnToggleTunnel, "Click to turn public tunnel ON or OFF");
+
+        // Copy Link Button
+        btnCopyLink = CreateHeaderButton("📋 Copy", async (s, e) => await CopyLinkAsync());
         btnCopyLink.ForeColor = Color.FromArgb(56, 189, 248);
-        btnCopyLink.Visible = false;
+        btnCopyLink.Visible = true;
+
+        btnViewSettings = CreateHeaderButton("👁 View", async (s, e) =>
+        {
+            if (webView?.CoreWebView2 != null)
+            {
+                await webView.ExecuteScriptAsync("document.getElementById('toggle-view-settings-btn')?.click()");
+            }
+        });
+        toolTip.SetToolTip(btnViewSettings, "Toggle 3D View Settings (V)");
 
         btnReload = CreateHeaderButton("🔄 Reload", (s, e) => webView?.Reload());
         btnFullscreen = CreateHeaderButton("⛶ Fullscreen", (s, e) => ToggleFullscreen());
@@ -126,16 +152,29 @@ public partial class Form1 : Form
         toolTip.SetToolTip(btnReload, "Reload the game (F5)");
         toolTip.SetToolTip(btnFullscreen, "Toggle fullscreen (F11)");
         toolTip.SetToolTip(btnDevTools, "Open DevTools inspect window (F12)");
-        toolTip.SetToolTip(btnBrowser, "Open in your default web browser");
+        toolTip.SetToolTip(btnBrowser, "Open http://localhost:5173 in your default web browser");
 
+        buttonFlow.Controls.Add(btnPublicLink);
+        buttonFlow.Controls.Add(btnOpenPublic);
         buttonFlow.Controls.Add(btnToggleTunnel);
         buttonFlow.Controls.Add(btnCopyLink);
+        buttonFlow.Controls.Add(btnViewSettings);
         buttonFlow.Controls.Add(btnReload);
         buttonFlow.Controls.Add(btnFullscreen);
         buttonFlow.Controls.Add(btnDevTools);
         buttonFlow.Controls.Add(btnBrowser);
         topBar.Controls.Add(buttonFlow);
 
+        // Add webView first so DockStyle.Fill takes the remaining area
+        webView = new WebView2
+        {
+            Dock = DockStyle.Fill,
+            DefaultBackgroundColor = Color.FromArgb(11, 15, 25),
+            Visible = false
+        };
+        this.Controls.Add(webView);
+
+        // Add topBar so it docks cleanly to the top without stealing client margins
         this.Controls.Add(topBar);
 
         // Loading Overlay Panel
@@ -187,15 +226,7 @@ public partial class Form1 : Form
         loadBox.Controls.Add(progressBar);
         loadingPanel.Controls.Add(loadBox);
         this.Controls.Add(loadingPanel);
-
-        // WebView2 Control
-        webView = new WebView2
-        {
-            Dock = DockStyle.Fill,
-            DefaultBackgroundColor = Color.FromArgb(11, 15, 25),
-            Visible = false
-        };
-        this.Controls.Add(webView);
+        loadingPanel.BringToFront();
     }
 
     private Button CreateHeaderButton(string text, EventHandler onClick)
@@ -243,13 +274,34 @@ public partial class Form1 : Form
         statusLabel.Text = $"🟢 Online (Port {activePort})";
         statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
 
-        // 2. Initialize WebView2
+        // 2. Initialize WebView2 with zero persistent cache (ephemeral isolated profile)
         try
         {
-            await webView.EnsureCoreWebView2Async();
+            // Use an isolated ephemeral folder per instance so no persistent cache can ever linger
+            ephemeralUserDataFolder = Path.Combine(Path.GetTempPath(), $"PowerCreatureGame_Session_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(ephemeralUserDataFolder);
+
+            // Pass chromium flags to completely disable HTTP and disk caches
+            var options = new CoreWebView2EnvironmentOptions("--disable-http-cache --disable-cache --disk-cache-size=0 --disable-application-cache");
+            var env = await CoreWebView2Environment.CreateAsync(null, ephemeralUserDataFolder, options);
+            await webView.EnsureCoreWebView2Async(env);
+
             webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+
+            // Clear all browsing data kinds on startup
+            try
+            {
+                await webView.CoreWebView2.Profile.ClearBrowsingDataAsync(
+                    CoreWebView2BrowsingDataKinds.DiskCache |
+                    CoreWebView2BrowsingDataKinds.ServiceWorkers |
+                    CoreWebView2BrowsingDataKinds.CacheStorage |
+                    CoreWebView2BrowsingDataKinds.IndexedDb |
+                    CoreWebView2BrowsingDataKinds.WebSql
+                );
+            }
+            catch { }
 
             webView.NavigationCompleted += (s, e) =>
             {
@@ -261,7 +313,12 @@ public partial class Form1 : Form
                 }
             };
 
-            webView.CoreWebView2.Navigate(activeUrl);
+            // Force cache busting timestamp on initial load URL to bypass any internal intermediary caches
+            string cacheBustUrl = activeUrl + (activeUrl.Contains("?") ? "&" : "?") + $"_v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            webView.CoreWebView2.Navigate(cacheBustUrl);
+
+            // Auto-start nationwide public tunnel so https://pcg-arena-teal.loca.lt is immediately live
+            _ = StartTunnelAsync();
         }
         catch (Exception ex)
         {
@@ -290,10 +347,17 @@ public partial class Form1 : Form
 
         try
         {
+            string nodeDir = @"C:\Program Files\nodejs";
+            string currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            if (!currentPath.Contains(nodeDir) && Directory.Exists(nodeDir))
+            {
+                currentPath = nodeDir + ";" + currentPath;
+            }
+
             var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = $"/c npx -y localtunnel --port {currentPort}",
+                Arguments = $"/c npx localtunnel --port {currentPort} --subdomain pcg-arena-teal --local-host localhost",
                 WorkingDirectory = projectDir,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
@@ -301,6 +365,7 @@ public partial class Form1 : Form
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            psi.EnvironmentVariables["PATH"] = currentPath;
 
             tunnelProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
@@ -343,29 +408,48 @@ public partial class Form1 : Form
             var completedTask = await Task.WhenAny(tcsUrl.Task, Task.Delay(15000));
             if (completedTask == tcsUrl.Task)
             {
-                publicTunnelUrl = await tcsUrl.Task;
-                btnToggleTunnel.Text = "🌐 Public: ON";
+                publicTunnelUrl = "https://pcg-arena-teal.loca.lt";
+                btnToggleTunnel.Text = "🌐 Tunnel: ON";
                 btnToggleTunnel.ForeColor = Color.FromArgb(74, 222, 128);
                 btnToggleTunnel.BackColor = Color.FromArgb(20, 83, 45);
                 btnToggleTunnel.FlatAppearance.BorderColor = Color.FromArgb(34, 197, 94);
                 btnToggleTunnel.Enabled = true;
 
+                btnPublicLink.Text = "🌐 https://pcg-arena-teal.loca.lt";
+                btnPublicLink.ForeColor = Color.FromArgb(56, 189, 248);
+
                 btnCopyLink.Visible = true;
                 toolTip.SetToolTip(btnToggleTunnel, $"Public link: {publicTunnelUrl}\nClick to turn OFF");
                 toolTip.SetToolTip(btnCopyLink, $"Copy public link:\n{publicTunnelUrl}");
 
-                statusLabel.Text = $"🟢 Online ({currentPort}) | 🌐 Public Active";
+                statusLabel.Text = $"🟢 Online ({currentPort}) | 🌐 Public: Active";
+
+                // Automatically copy to clipboard
+                try { Clipboard.SetText(publicTunnelUrl); } catch { }
+
+                // Sync with public/tunnel.json and dist/tunnel.json so in-game UI has the live link
+                try
+                {
+                    string tunnelJson = Path.Combine(projectDir, "public", "tunnel.json");
+                    Directory.CreateDirectory(Path.GetDirectoryName(tunnelJson)!);
+                    File.WriteAllText(tunnelJson, $"{{\"active\":true,\"url\":\"{publicTunnelUrl}\"}}");
+
+                    string distTunnelJson = Path.Combine(projectDir, "dist", "tunnel.json");
+                    if (Directory.Exists(Path.GetDirectoryName(distTunnelJson)!))
+                    {
+                        File.WriteAllText(distTunnelJson, $"{{\"active\":true,\"url\":\"{publicTunnelUrl}\"}}");
+                    }
+                }
+                catch { }
             }
             else
             {
                 StopTunnel();
-                MessageBox.Show("Could not obtain public tunnel URL within 15 seconds. Please verify your internet connection and try again.", "Public Tunnel", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             StopTunnel();
-            MessageBox.Show($"Failed to launch tunnel:\n{ex.Message}", "Public Tunnel", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -396,35 +480,61 @@ public partial class Form1 : Form
             }
         }
 
+        try
+        {
+            string tunnelJson = Path.Combine(projectDir, "public", "tunnel.json");
+            File.WriteAllText(tunnelJson, "{\"active\":false,\"url\":\"https://pcg-arena-teal.loca.lt\"}");
+
+            string distTunnelJson = Path.Combine(projectDir, "dist", "tunnel.json");
+            if (Directory.Exists(Path.GetDirectoryName(distTunnelJson)!))
+            {
+                File.WriteAllText(distTunnelJson, "{\"active\":false,\"url\":\"https://pcg-arena-teal.loca.lt\"}");
+            }
+        }
+        catch { }
+
         publicTunnelUrl = null;
-        btnToggleTunnel.Text = "🌐 Public: OFF";
+        btnToggleTunnel.Text = "🌐 Tunnel: OFF";
         btnToggleTunnel.ForeColor = Color.FromArgb(148, 163, 184);
         btnToggleTunnel.BackColor = Color.FromArgb(30, 41, 59);
         btnToggleTunnel.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85);
         btnToggleTunnel.Enabled = true;
 
-        btnCopyLink.Visible = false;
-        toolTip.SetToolTip(btnToggleTunnel, "Click to create a secure public tunnel URL for other devices/networks");
+        btnPublicLink.Text = "🌐 https://pcg-arena-teal.loca.lt (Standby)";
+        btnPublicLink.ForeColor = Color.FromArgb(148, 163, 184);
+
+        toolTip.SetToolTip(btnToggleTunnel, "Click to start the nationwide public tunnel URL");
         statusLabel.Text = $"🟢 Online (Port {currentPort})";
+    }
+
+    private void OpenPublicUrl()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://pcg-arena-teal.loca.lt") { UseShellExecute = true });
+        }
+        catch { }
     }
 
     private async Task CopyLinkAsync()
     {
-        if (string.IsNullOrEmpty(publicTunnelUrl)) return;
-
+        string url = "https://pcg-arena-teal.loca.lt";
         try
         {
-            Clipboard.SetText(publicTunnelUrl);
+            Clipboard.SetText(url);
+            btnPublicLink.Text = "✅ Copied Public Link!";
+            btnPublicLink.ForeColor = Color.FromArgb(74, 222, 128);
             btnCopyLink.Text = "✅ Copied!";
             btnCopyLink.ForeColor = Color.FromArgb(74, 222, 128);
+
             await Task.Delay(1500);
-            btnCopyLink.Text = "📋 Copy Link";
+
+            btnPublicLink.Text = "🌐 https://pcg-arena-teal.loca.lt";
+            btnPublicLink.ForeColor = Color.FromArgb(56, 189, 248);
+            btnCopyLink.Text = "📋 Copy";
             btnCopyLink.ForeColor = Color.FromArgb(56, 189, 248);
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to copy to clipboard: {ex.Message}", "Clipboard Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
+        catch { }
     }
 
     private string FindProjectDirectory()
@@ -447,15 +557,32 @@ public partial class Form1 : Form
     {
         try
         {
+            string nodeDir = @"C:\Program Files\nodejs";
             var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = "/c npm run dev",
                 WorkingDirectory = projectDir,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
                 UseShellExecute = false
             };
+
+            string currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            if (Directory.Exists(nodeDir) && !currentPath.Contains(nodeDir))
+            {
+                currentPath = nodeDir + ";" + currentPath;
+            }
+            psi.EnvironmentVariables["PATH"] = currentPath;
+
+            if (File.Exists(Path.Combine(nodeDir, "npm.cmd")))
+            {
+                psi.Arguments = $"/c \"{Path.Combine(nodeDir, "npm.cmd")}\" run dev";
+            }
+            else
+            {
+                psi.Arguments = "/c npm run dev";
+            }
+
             serverProcess = Process.Start(psi);
         }
         catch (Exception ex)
@@ -579,6 +706,20 @@ public partial class Form1 : Form
                 });
             }
             catch { }
+        }
+
+        // Delete ephemeral WebView2 folder on exit to guarantee zero persistent cache
+        if (!string.IsNullOrEmpty(ephemeralUserDataFolder) && Directory.Exists(ephemeralUserDataFolder))
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(800);
+                    Directory.Delete(ephemeralUserDataFolder, true);
+                }
+                catch { }
+            });
         }
     }
 }

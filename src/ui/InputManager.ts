@@ -19,12 +19,29 @@ export class InputManager {
 
   public isThrowingPress = false;
 
+  // Gamepad controller state
+  public gamepadConnected = false;
+  public gamepadName = "";
+  public isGamepadClimbHeld = false;
+  public isGamepadAiming = false;
+  public isGamepadAimActive = false;
+  public activeInputDevice: "keyboard" | "gamepad" = "keyboard";
+  public gamepadAimPos: Vector2D = { x: 0, y: 0 };
+  public gamepadAimOffset: Vector2D = { x: 3.5, y: 0 };
+  private isGamepadAimOffsetInitialized = false;
+  private prevButtons: boolean[] = [];
+  private rtGrabbed = false; // true when the current held object was grabbed via RT — must release RT before RT can throw
+
   public get isGrabHeld(): boolean {
     return !this.isThrowingPress && this.isMouseDown;
   }
 
+  public get isUsingGamepad(): boolean {
+    return this.gamepadConnected && this.activeInputDevice === "gamepad";
+  }
+
   public get isClimbHeld(): boolean {
-    return this.keysPressed.has("Space");
+    return this.keysPressed.has("Space") || this.isGamepadClimbHeld;
   }
 
   // Selection & dragging state
@@ -41,6 +58,8 @@ export class InputManager {
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
+  public onToggleSprint?: () => void;
+  public onGamepadStatusChange?: (connected: boolean, name: string) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -50,8 +69,16 @@ export class InputManager {
 
   private setupListeners(): void {
     window.addEventListener("keydown", (e) => {
+      this.activeInputDevice = "keyboard";
       this.keysPressed.add(e.code);
       this.updateMovementVector();
+
+      // Shift + WASD sprint toggle
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        if (!e.repeat && this.onToggleSprint) {
+          this.onToggleSprint();
+        }
+      }
 
       if (e.code === "KeyE") {
         // Must release E key first before pressing it again to pick up or drop
@@ -79,7 +106,9 @@ export class InputManager {
       this.updateMovementVector();
     });
 
-    this.canvas.addEventListener("mousemove", (e) => {
+    // Track mouse position globally so the aim cursor NEVER goes stale when the
+    // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
+    window.addEventListener("mousemove", (e) => {
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -87,6 +116,7 @@ export class InputManager {
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
+      this.activeInputDevice = "keyboard";
       this.updateMousePos(e);
       if (e.button === 2) {
         this.isRightMouseDown = true;
@@ -160,22 +190,44 @@ export class InputManager {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
     });
+
+    window.addEventListener("gamepadconnected", (e) => {
+      this.gamepadConnected = true;
+      this.gamepadName = e.gamepad.id;
+      this.activeInputDevice = "gamepad";
+      this.isGamepadAiming = true;
+      this.isGamepadAimActive = true;
+      if (this.onGamepadStatusChange) {
+        this.onGamepadStatusChange(true, this.gamepadName);
+      }
+    });
+
+    window.addEventListener("gamepaddisconnected", () => {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const hasAny = Array.from(gamepads).some((gp) => gp && gp.connected);
+      this.gamepadConnected = hasAny;
+      if (!hasAny) {
+        this.gamepadName = "";
+        this.isGamepadClimbHeld = false;
+        this.isGamepadAiming = false;
+        this.isGamepadAimActive = false;
+      }
+      if (this.onGamepadStatusChange) {
+        this.onGamepadStatusChange(this.gamepadConnected, this.gamepadName);
+      }
+    });
   }
 
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.arena.width / rect.width;
-    const scaleY = this.arena.height / rect.height;
-    this.mousePos.x = (e.clientX - rect.left) * scaleX;
-    this.mousePos.y = (e.clientY - rect.top) * scaleY;
+    this.mousePos.x = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / rect.width)));
+    this.mousePos.y = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / rect.height)));
   }
 
   private updateTouchPos(touch: Touch): void {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.arena.width / rect.width;
-    const scaleY = this.arena.height / rect.height;
-    this.mousePos.x = (touch.clientX - rect.left) * scaleX;
-    this.mousePos.y = (touch.clientY - rect.top) * scaleY;
+    this.mousePos.x = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / rect.width)));
+    this.mousePos.y = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / rect.height)));
   }
 
   private updateMovementVector(): void {
@@ -197,6 +249,184 @@ export class InputManager {
     }
   }
 
+  public pollGamepad(
+    character: Character,
+    objects: GameObject[],
+    arena: Arena
+  ): void {
+    if (!navigator.getGamepads) return;
+    const gamepads = navigator.getGamepads();
+    let gp: Gamepad | null = null;
+    for (let i = 0; i < gamepads.length; i++) {
+      if (gamepads[i] && gamepads[i]!.connected) {
+        gp = gamepads[i];
+        break;
+      }
+    }
+
+    if (!gp) {
+      if (this.gamepadConnected) {
+        this.gamepadConnected = false;
+        this.gamepadName = "";
+        this.isGamepadClimbHeld = false;
+        this.isGamepadAiming = false;
+        this.isGamepadAimActive = false;
+        this.onGamepadStatusChange?.(false, "");
+      }
+      return;
+    }
+
+    if (!this.gamepadConnected) {
+      this.gamepadConnected = true;
+      this.gamepadName = gp.id;
+      this.onGamepadStatusChange?.(true, gp.id);
+    }
+
+    // 1. Left Joystick for movement (axes 0, 1)
+    const deadzone = 0.18;
+    const lx = gp.axes[0] ?? 0;
+    const ly = gp.axes[1] ?? 0;
+    const rx = gp.axes[2] ?? 0;
+    const ry = gp.axes[3] ?? 0;
+    const lMag = Math.hypot(lx, ly);
+    const rMag = Math.hypot(rx, ry);
+
+    // Detect if gamepad has intentional active input
+    const anyButtonPressed = gp.buttons.some((b) => (typeof b === "object" ? b.pressed || b.value > 0.25 : (b as unknown as number) > 0.25));
+    if (lMag > deadzone || rMag > deadzone || anyButtonPressed) {
+      this.activeInputDevice = "gamepad";
+    }
+
+    if (!this.isUsingGamepad) {
+      this.isGamepadAiming = false;
+      this.isGamepadAimActive = false;
+      return;
+    }
+
+    if (lMag > deadzone) {
+      const normalizedMag = Math.min(1.0, (lMag - deadzone) / (1.0 - deadzone));
+      this.movementVector.x = (lx / lMag) * normalizedMag;
+      this.movementVector.y = (ly / lMag) * normalizedMag;
+    } else {
+      // Revert to keyboard keys if left stick is centered
+      if (this.keysPressed.size > 0) {
+        this.updateMovementVector();
+      } else {
+        this.movementVector.x = 0;
+        this.movementVector.y = 0;
+      }
+    }
+
+    // 2. Right Joystick (axes 2, 3): Virtual aim cursor as ABSOLUTE arena position
+    // Stays exactly where it is on screen — only moves when joystick is pushed.
+    // Character walking does NOT drag the cursor.
+    this.isGamepadAiming = true;
+    this.isGamepadAimActive = true;
+
+    // Initialize cursor in front of character on first connect
+    if (!this.isGamepadAimOffsetInitialized) {
+      this.gamepadAimPos.x = character.position.x + Math.cos(character.facingAngle) * 3.0;
+      this.gamepadAimPos.y = character.position.y + Math.sin(character.facingAngle) * 3.0;
+      this.isGamepadAimOffsetInitialized = true;
+    }
+
+    // When the right joystick is pushed, move the cursor in that direction on screen
+    if (rMag > deadzone) {
+      const cursorSpeed = 17.0;
+      const dt = 1 / 60;
+      this.gamepadAimPos.x += rx * cursorSpeed * dt;
+      this.gamepadAimPos.y += ry * cursorSpeed * dt;
+    }
+    // When joystick is released, cursor stays at its current screen position — no drift!
+
+    // Clamp cursor within arena boundaries
+    this.gamepadAimPos.x = Math.max(0.1, Math.min(arena.width - 0.1, this.gamepadAimPos.x));
+    this.gamepadAimPos.y = Math.max(0.1, Math.min(arena.height - 0.1, this.gamepadAimPos.y));
+
+    // Helper to read button states safely
+    const isButtonPressed = (btnIndex: number): boolean => {
+      const b = gp!.buttons[btnIndex];
+      if (!b) return false;
+      return typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3;
+    };
+
+    const isPrevPressed = (btnIndex: number): boolean => {
+      return this.prevButtons[btnIndex] === true;
+    };
+
+    // 3. Button 0 (A on Xbox / Cross on PS): Climbing / Dismounting
+    this.isGamepadClimbHeld = isButtonPressed(0);
+
+    // 4. Button 4 (Left Bumper / LB / L1): Toggle Sprint
+    const lbCurrent = isButtonPressed(4);
+    if (lbCurrent && !isPrevPressed(4)) {
+      if (this.onToggleSprint) {
+        this.onToggleSprint();
+      }
+    }
+
+    // 5. Button 1 (B on Xbox / Circle on PS): Pickup & Swap
+    const bCurrent = isButtonPressed(1);
+    if (bCurrent && !isPrevPressed(1)) {
+      if (character.pickupModule) {
+        character.pickupModule.pickupAndSwap(
+          character,
+          objects,
+          arena.wallHeight,
+          this.gamepadAimPos.x,
+          this.gamepadAimPos.y
+        );
+      }
+    }
+
+    // 6. Right Trigger (RT / R2, button 7): Grab when empty-handed, Throw when holding
+    //    - Must RELEASE the trigger between grabbing and throwing (rtGrabbed flag prevents instant throw)
+    // 7. Right Bumper (RB / R1, button 5): Throw only (never grabs)
+    const rbCurrent = isButtonPressed(5);
+    const rbJustPressed = rbCurrent && !isPrevPressed(5);
+    const rtCurrent = isButtonPressed(7);
+    const rtJustPressed = rtCurrent && !isPrevPressed(7);
+    const rtJustReleased = !rtCurrent && isPrevPressed(7);
+
+    // Clear the grab-lock when RT is fully released
+    if (rtJustReleased) {
+      this.rtGrabbed = false;
+    }
+
+    if (!character.heldObject) {
+      // Empty-handed: RT grabs the closest object to aim cursor
+      if (rtJustPressed && character.pickupModule) {
+        character.pickupModule.pickupAndSwap(
+          character,
+          objects,
+          arena.wallHeight,
+          this.gamepadAimPos.x,
+          this.gamepadAimPos.y
+        );
+        if (character.heldObject) {
+          this.rtGrabbed = true; // locked — must release RT before it can throw
+        }
+      }
+    } else {
+      // Holding an object:
+      // RT throws only if trigger was released since the grab (rtGrabbed = false)
+      if (rtJustPressed && !this.rtGrabbed && character.throwModule) {
+        character.throwModule.throwHeldObject(
+          character, this.gamepadAimPos.x, this.gamepadAimPos.y, arena
+        );
+      }
+      // RB throws immediately (separate button, no grab-lock needed)
+      if (rbJustPressed && character.throwModule) {
+        character.throwModule.throwHeldObject(
+          character, this.gamepadAimPos.x, this.gamepadAimPos.y, arena
+        );
+      }
+    }
+
+    // Store button states for edge detection on next tick
+    this.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+  }
+
   public handleInteractions(
     character: Character,
     arena: Arena,
@@ -212,15 +442,19 @@ export class InputManager {
       for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
         const r = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-        const dist = Math.hypot(obj.position.x - x, obj.position.y - y);
-        if (dist <= r + tolerance) {
+        // Check physical ground collider position
+        const distGround = Math.hypot(obj.position.x - x, obj.position.y - y);
+        // Check hovering visual position (if elevated above ground)
+        const distHover = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z) - y);
+        if (distGround <= r + tolerance || distHover <= r + tolerance) {
           return obj;
         }
       }
       // Check character
       const charR = character.hasCollider ? character.colliderRadius : 0.44;
-      const distChar = Math.hypot(character.position.x - x, character.position.y - y);
-      if (distChar <= charR + tolerance) {
+      const distCharGround = Math.hypot(character.position.x - x, character.position.y - y);
+      const distCharHover = Math.hypot(character.position.x - x, (character.position.y - character.position.z) - y);
+      if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance) {
         return character;
       }
       return null;
@@ -389,10 +623,12 @@ export class InputManager {
     };
 
     this.onDropAttempt = () => {
+      const aimX = this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x;
+      const aimY = this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y;
       if (character.heldObject && character.pickupModule) {
         character.pickupModule.drop(character);
       } else if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, this.mousePos.x, this.mousePos.y, objects, arena.wallHeight);
+        const target = character.pickupModule.findTargetObject(character, aimX, aimY, objects, arena.wallHeight);
         if (target) {
           character.pickupModule.pickup(character, target);
         }

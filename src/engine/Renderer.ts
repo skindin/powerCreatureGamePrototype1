@@ -1,14 +1,28 @@
 import { Arena } from "./Arena.js";
-import { GameObject } from "./GameObject.js";
+import { GameObject, Vector2D } from "./GameObject.js";
 import { Character } from "../character/Character.js";
 import { TrajectoryCalculation } from "../character/ThrowModule.js";
 import { GhostSnapshot } from "../network/RelayClient.js";
 
+export type VerticalVisualMode = "bigger" | "hover" | "both";
+
+export interface ViewSettings {
+  verticalVisuals: VerticalVisualMode;
+}
+
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
 
+  public viewSettings: ViewSettings = {
+    verticalVisuals: "bigger",
+  };
+
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
+  }
+
+  public setVerticalVisualMode(mode: VerticalVisualMode): void {
+    this.viewSettings.verticalVisuals = mode;
   }
 
   public render(
@@ -21,7 +35,9 @@ export class Renderer {
     targetGrabEntity?: GameObject | null,
     isWallEditor = false,
     hoverWallTile?: { col: number; row: number } | null,
-    ghostSnapshot?: GhostSnapshot | null
+    ghostSnapshot?: GhostSnapshot | null,
+    isUsingGamepad = false,
+    gamepadAimPos?: Vector2D | null
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -63,19 +79,32 @@ export class Renderer {
       return a.position.y - b.position.y;
     });
 
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+
+    // 3a. Draw vertical connector lines underneath elevated sprites (in hover or both modes)
+    if (useHover) {
+      for (const entity of allRenderables) {
+        this.drawVerticalConnectorLine(entity, arena, ppu);
+      }
+    }
+
+    // 3b. Draw entity sprites and ground shadow placeholders
     for (const entity of allRenderables) {
       if (entity instanceof Character) {
         this.drawCharacter(entity, ppu, arena);
       } else {
         this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
       }
-      // Outline stays the same size as the collider and renders OVER the sprite
+      // Shadow placeholder / elevation outlines
       this.drawObjectShadow(entity, arena, ppu);
     }
 
-    // 5. Trajectory Line (Rendered OVER walls and entities!)
+    // 5. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
+    const activeAimCursor = isUsingGamepad ? (character.aimTarget || gamepadAimPos) : null;
     if (character.activeTrajectory) {
-      this.drawTrajectory(character.activeTrajectory, ppu, arena);
+      this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor);
+    } else if (isUsingGamepad && activeAimCursor) {
+      this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu);
     }
 
     // 6. Selection & Hover Gizmos (Only active and visible during Edit Mode)
@@ -102,31 +131,48 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.save();
 
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+
     // 1. Draw Ghost Character
     const gChar = ghostSnapshot.character;
     if (gChar) {
-      const charScale = Renderer.getAltitudeScale(gChar.z, arena.wallHeight);
+      const charScale = useBigger ? Renderer.getAltitudeScale(gChar.z, arena.wallHeight) : 1.0;
       const px = gChar.x * ppu;
-      const py = (gChar.y - gChar.z) * ppu;
+      const py = useHover ? (gChar.y - gChar.z) * ppu : gChar.y * ppu;
       const r = gChar.radius * ppu * charScale;
 
-      // Ghost ground shadow
-      if (gChar.z > 0.05) {
+      // Ghost ground shadow (drawn when elevated above ground level)
+      if (gChar.z > 0.01) {
         ctx.save();
         ctx.beginPath();
         ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+        if (useHover) {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+          ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
+
+        // Second dotted outline at wall elevation (when bigger sprites is active and z > wallHeight)
+        if (useBigger && gChar.z > arena.wallHeight + 0.01) {
+          const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
+          ctx.beginPath();
+          ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu * wallAltScale, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([2, 4]);
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
       // Ghost body
       ctx.save();
-      ctx.globalAlpha = 0.55;
+      const isOnLayer2 = gChar.z >= arena.wallHeight;
+      ctx.globalAlpha = isOnLayer2 ? 0.35 : 0.55;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = "#38bdf8"; // Spectral Cyan
@@ -148,13 +194,13 @@ export class Renderer {
     // 2. Draw Ghost Objects
     if (ghostSnapshot.objects) {
       for (const obj of ghostSnapshot.objects) {
-        const altScale = Renderer.getAltitudeScale(obj.z, arena.wallHeight);
+        const altScale = useBigger ? Renderer.getAltitudeScale(obj.z, arena.wallHeight) : 1.0;
         const px = obj.x * ppu;
-        const py = (obj.y - obj.z) * ppu;
+        const py = useHover ? (obj.y - obj.z) * ppu : obj.y * ppu;
         const r = obj.radius * ppu * altScale;
 
         // Ghost ground shadow
-        if (obj.z > 0.05) {
+        if (obj.z > 0.01) {
           ctx.save();
           ctx.beginPath();
           if (obj.shape === "box") {
@@ -162,17 +208,36 @@ export class Renderer {
           } else {
             ctx.arc(obj.x * ppu, obj.y * ppu, obj.radius * ppu, 0, Math.PI * 2);
           }
-          ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
-          ctx.fill();
-          ctx.strokeStyle = "rgba(168, 85, 247, 0.5)";
+          if (useHover) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+            ctx.fill();
+          }
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.55)";
           ctx.lineWidth = 1.5;
           ctx.setLineDash([3, 3]);
           ctx.stroke();
+
+          // Second dotted outline at wall elevation (when bigger sprites is active and z > wallHeight)
+          if (useBigger && obj.z > arena.wallHeight + 0.01) {
+            const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
+            const wallR = obj.radius * ppu * wallAltScale;
+            ctx.beginPath();
+            if (obj.shape === "box") {
+              ctx.rect(obj.x * ppu - wallR, obj.y * ppu - wallR, wallR * 2, wallR * 2);
+            } else {
+              ctx.arc(obj.x * ppu, obj.y * ppu, wallR, 0, Math.PI * 2);
+            }
+            ctx.strokeStyle = "rgba(168, 85, 247, 0.3)";
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([2, 4]);
+            ctx.stroke();
+          }
           ctx.restore();
         }
 
         ctx.save();
-        ctx.globalAlpha = 0.5;
+        const isOnLayer2 = obj.z >= arena.wallHeight;
+        ctx.globalAlpha = isOnLayer2 ? 0.35 : 0.5;
         ctx.beginPath();
         if (obj.shape === "box") {
           const sz = r * 2;
@@ -312,10 +377,65 @@ export class Renderer {
   }
 
   /**
+   * Draws a vertical dotted line from the center of the airborne object (renderY)
+   * down to the center of the ground shadow placeholder (groundY).
+   * The dotted line transitions from opaque (Layer 1: z <= wallHeight)
+   * to transparent (Layer 2: z > wallHeight) at the wall-height transition point.
+   */
+  private drawVerticalConnectorLine(obj: GameObject, arena: Arena, ppu: number): void {
+    const z = obj.position.z;
+    if (z <= 0.01) return;
+
+    const ctx = this.ctx;
+    const groundX = obj.position.x * ppu;
+    const groundY = obj.position.y * ppu;
+    const renderY = (obj.position.y - z) * ppu;
+    const wallH = arena.wallHeight;
+    const transY = (obj.position.y - wallH) * ppu;
+
+    ctx.save();
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 4]);
+
+    if (z <= wallH) {
+      // Entire line is in Layer 1 (opaque / prominent white dotted line)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, groundY);
+      ctx.lineTo(groundX, renderY);
+      ctx.stroke();
+    } else {
+      // Line crosses from Layer 1 into Layer 2:
+      // 1. Layer 1 portion: ground to wall height (opaque)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, groundY);
+      ctx.lineTo(groundX, transY);
+      ctx.stroke();
+
+      // 2. Layer 2 portion: wall height up to object center (transparent)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, transY);
+      ctx.lineTo(groundX, renderY);
+      ctx.stroke();
+
+      // Subtle transition marker dot at the wall-height Layer 1 -> Layer 2 threshold
+      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.beginPath();
+      ctx.arc(groundX, transY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
    * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
    * - Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
+   * - When hover above shadow is on, draws a dark shadow placeholder representing the ground collider.
    * - If the object is higher than wall height, also draws another transparent dotted outline
-   *   the size the object would be if it was exactly at wall height.
+   *   the size the object would be if it was exactly at wall height (when bigger sprites is on).
    * Only rendered when elevated above ground (z > 0.01) so true footprints are visible.
    */
   private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
@@ -325,6 +445,8 @@ export class Renderer {
     const ctx = this.ctx;
     const groundX = obj.position.x * ppu;
     const groundY = obj.position.y * ppu;
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
 
     // 1. Plain simple dotted line of the shape of the object at ground level (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
@@ -343,14 +465,20 @@ export class Renderer {
       ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
     }
 
+    // Soft dark floor shadow placeholder when hovering above ground
+    if (useHover) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+      ctx.fill();
+    }
+
     ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = 1.8;
     ctx.setLineDash([4, 4]);
     ctx.stroke();
 
     // 2. If higher than wall height, draw another transparent dotted outline
-    // the size the object would be if it was exactly at wall height
-    if (z > arena.wallHeight + 0.01) {
+    // the size the object would be if it was exactly at wall height (active in Bigger Sprites & Both)
+    if (useBigger && z > arena.wallHeight + 0.01) {
       const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
       const wallRadius = obj.colliderRadius * ppu * wallAltScale;
 
@@ -389,9 +517,12 @@ export class Renderer {
     arena: Arena
   ): void {
     const ctx = this.ctx;
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+
     const x = obj.position.x * ppu;
-    const y = obj.position.y * ppu;
-    const altitudeScale = Renderer.getAltitudeScale(obj.position.z, arena.wallHeight);
+    const y = useHover ? (obj.position.y - obj.position.z) * ppu : obj.position.y * ppu;
+    const altitudeScale = useBigger ? Renderer.getAltitudeScale(obj.position.z, arena.wallHeight) : 1.0;
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;
@@ -508,9 +639,12 @@ export class Renderer {
    */
   private drawCharacter(char: Character, ppu: number, arena: Arena): void {
     const ctx = this.ctx;
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+
     const x = char.position.x * ppu;
-    const y = char.position.y * ppu;
-    const altitudeScale = Renderer.getAltitudeScale(char.position.z, arena.wallHeight);
+    const y = useHover ? (char.position.y - char.position.z) * ppu : char.position.y * ppu;
+    const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
     // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
@@ -552,12 +686,16 @@ export class Renderer {
 
     // If holding an object, draw pickup tether / hands
     if (char.heldObject) {
+      const heldX = char.heldObject.position.x * ppu;
+      const heldY = useHover
+        ? (char.heldObject.position.y - char.heldObject.position.z) * ppu
+        : char.heldObject.position.y * ppu;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
       ctx.setLineDash([3, 3]);
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(char.heldObject.position.x * ppu, char.heldObject.position.y * ppu);
+      ctx.lineTo(heldX, heldY);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -779,7 +917,12 @@ export class Renderer {
    * Rendered as a dotted white line where every fixed 3D distance interval (including vertical distance)
    * renders a white dot. Dots get bigger as altitude increases, and become transparent once within Layer 2.
    */
-  private drawTrajectory(traj: TrajectoryCalculation, ppu: number, arena: Arena): void {
+  private drawTrajectory(
+    traj: TrajectoryCalculation,
+    ppu: number,
+    arena: Arena,
+    aimTarget?: Vector2D | null
+  ): void {
     const ctx = this.ctx;
     const points = traj.points;
     if (points.length < 2) return;
@@ -818,6 +961,9 @@ export class Renderer {
       const subDz = dz / subSteps;
       const subLen = segLen / subSteps;
 
+      const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+      const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+
       for (let s = 1; s <= subSteps; s++) {
         const curX = p1.x + subDx * s;
         const curY = p1.y + subDy * s;
@@ -826,18 +972,20 @@ export class Renderer {
         dist3DSinceLast += subLen;
 
         const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
-        const radius = baseRadius * (1.0 + altRatio * 0.75);
+        const radius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
+        const screenX = curX * ppu;
+        const screenY = useHover ? (curY - curZ) * ppu : curY * ppu;
 
         if (isFirstDot) {
           if (dist3DSinceLast >= base3DSpacing * 0.5) {
             const isLayer2 = curZ >= layer2Threshold;
             ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
             ctx.beginPath();
-            ctx.arc(curX * ppu, curY * ppu, radius, 0, Math.PI * 2);
+            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
             ctx.fill();
 
-            lastX = curX;
-            lastY = curY;
+            lastX = screenX;
+            lastY = screenY;
             lastRadius = radius;
             dist3DSinceLast = 0;
             isFirstDot = false;
@@ -846,7 +994,7 @@ export class Renderer {
         }
 
         // 2D distance on screen in pixels from the previous placed dot
-        const dist2DPx = Math.hypot(curX - lastX, curY - lastY) * ppu;
+        const dist2DPx = Math.hypot(screenX - lastX, screenY - lastY);
 
         // When dots get close to each other in 2D (due to steep vertical arc),
         // decrease how often dots are placed so dots never bunch up or overlap!
@@ -855,17 +1003,19 @@ export class Renderer {
 
         if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
           // Don't draw dot on top of the landing target
-          const distToLandPx = Math.hypot(curX - traj.landPoint.x, curY - traj.landPoint.y) * ppu;
+          const landZ = traj.isLandingOnWallTop ? arena.wallHeight : 0;
+          const targetScreenY = useHover ? (traj.landPoint.y - landZ) * ppu : traj.landPoint.y * ppu;
+          const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - targetScreenY);
           const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
           if (distToLandPx > landRadiusPx * 0.8) {
             const isLayer2 = curZ >= layer2Threshold;
             ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
             ctx.beginPath();
-            ctx.arc(curX * ppu, curY * ppu, radius, 0, Math.PI * 2);
+            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
             ctx.fill();
 
-            lastX = curX;
-            lastY = curY;
+            lastX = screenX;
+            lastY = screenY;
             lastRadius = radius;
             dist3DSinceLast = 0;
           }
@@ -877,10 +1027,12 @@ export class Renderer {
 
     // Impact or Landing Marker:
     // Matches the exact collider footprint size of the held object so the player can visualize if it will fit!
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const finalPt = points[points.length - 1];
     const targetRadius = (traj.colliderRadius ?? 0.35) * ppu;
     const landX = traj.landPoint.x * ppu;
-    const landY = traj.landPoint.y * ppu;
+    const landZ = traj.isLandingOnWallTop ? arena.wallHeight : 0;
+    const landY = useHover ? (traj.landPoint.y - landZ) * ppu : traj.landPoint.y * ppu;
 
     const drawColliderFootprint = (x: number, y: number) => {
       ctx.beginPath();
@@ -900,7 +1052,7 @@ export class Renderer {
     if (traj.isBlockedByWall) {
       // Wall Collision: Show exact collider footprint at collision point in dashed red, with a central red X
       const impX = finalPt.x * ppu;
-      const impY = finalPt.y * ppu;
+      const impY = useHover ? (finalPt.y - finalPt.z) * ppu : finalPt.y * ppu;
 
       ctx.save();
       ctx.strokeStyle = "#ef4444";
@@ -959,15 +1111,86 @@ export class Renderer {
       ctx.restore();
     }
 
+    // 6. Aim Cursor & Sightline (when actively aiming)
+    if (aimTarget) {
+      const cursorX = aimTarget.x * ppu;
+      const cursorY = useHover ? (aimTarget.y - (traj.isLandingOnWallTop ? arena.wallHeight : 0)) * ppu : aimTarget.y * ppu;
+      const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
+
+      // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
+      if (distToCursor > 0.25) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(landX, landY);
+        ctx.lineTo(cursorX, cursorY);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      this.drawAimReticle(cursorX, cursorY);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draws a precision aim reticle / crosshair at the cursor position
+   */
+  public drawAimReticle(screenX: number, screenY: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+    ctx.shadowBlur = 4;
+
+    // Reticle circle
+    const reticleRadius = 8;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, reticleRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // 4 Crosshair ticks extending outward
+    const tickInner = reticleRadius + 2;
+    const tickOuter = tickInner + 5;
+    ctx.beginPath();
+    // Top
+    ctx.moveTo(screenX, screenY - tickInner);
+    ctx.lineTo(screenX, screenY - tickOuter);
+    // Bottom
+    ctx.moveTo(screenX, screenY + tickInner);
+    ctx.lineTo(screenX, screenY + tickOuter);
+    // Left
+    ctx.moveTo(screenX - tickInner, screenY);
+    ctx.lineTo(screenX - tickOuter, screenY);
+    // Right
+    ctx.moveTo(screenX + tickInner, screenY);
+    ctx.lineTo(screenX + tickOuter, screenY);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Center pinpoint dot
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = "#38bdf8"; // Spectral cyan center
+    ctx.fill();
+
     ctx.restore();
   }
 
   private drawHoverGizmo(entity: GameObject, ppu: number): void {
     const ctx = this.ctx;
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const px = entity.position.x * ppu;
-    const py = entity.position.y * ppu;
+    const py = useHover ? (entity.position.y - entity.position.z) * ppu : entity.position.y * ppu;
     const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
-    const pad = (visualRadius + 0.08) * ppu;
+    const scale = useBigger ? Renderer.getAltitudeScale(entity.position.z, 1.0) : 1.0;
+    const pad = (visualRadius * scale + 0.08) * ppu;
 
     ctx.save();
     ctx.strokeStyle = "rgba(251, 191, 36, 0.6)"; // Soft amber
@@ -983,10 +1206,13 @@ export class Renderer {
 
   private drawSelectionGizmo(entity: GameObject, isEditMode: boolean, ppu: number): void {
     const ctx = this.ctx;
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const px = entity.position.x * ppu;
-    const py = entity.position.y * ppu;
+    const py = useHover ? (entity.position.y - entity.position.z) * ppu : entity.position.y * ppu;
     const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
-    const r = visualRadius * ppu;
+    const scale = useBigger ? Renderer.getAltitudeScale(entity.position.z, 1.0) : 1.0;
+    const r = visualRadius * ppu * scale;
     const pad = r + 6;
     const bracketLen = Math.max(6, pad * 0.4);
 

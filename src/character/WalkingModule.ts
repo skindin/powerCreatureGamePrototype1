@@ -40,8 +40,13 @@ export class WalkingModule {
     const isMoving = inputMag > 0.05;
     character.isActivelyWalking = isMoving;
 
-    // Total effective mass (base character + any carried object)
-    const totalMass = character.mass;
+    // Letting go of movement control automatically toggles sprint off
+    if (!isMoving && character.isSprinting) {
+      character.setSprinting(false);
+    }
+
+    // Total effective mass (base character + any carried object) — used for Newton's 2nd law: a = F/m
+    const totalMass = character.hasMass ? Math.max(0.2, character.mass) : 1.0;
     if (totalMass <= 0.01) return;
 
     // Active ground friction: if 0 (frictionless ice), feet slip and cannot push or stop
@@ -55,10 +60,11 @@ export class WalkingModule {
 
     // Target velocity:
     // Carrying a load reduces top walking speed smoothly based on carried mass and strength.
-    // Heavy Red Box (2.6kg) slows speed down to ~75% ("a little bit slower"), not a crawl.
+    // Sprinting multiplies top speed and propulsion force.
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
-    const effectiveSpeed = this.maxWalkSpeed / (1.0 + loadFactor);
+    const sprintFactor = character.isSprinting ? 1.55 : 1.0;
+    const effectiveSpeed = (this.maxWalkSpeed * sprintFactor) / (1.0 + loadFactor);
 
     let targetVx = 0;
     let targetVy = 0;
@@ -83,11 +89,12 @@ export class WalkingModule {
     const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
     const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
 
-    // Symmetrical acceleration and deceleration:
-    // Base character mass drives leg acceleration/braking (a = F_walk / accelMass * grip)
-    // while carriedMass smoothly reduces top speed via loadFactor, avoiding double mass penalty
-    const accelMass = character.hasMass ? Math.max(0.2, character.baseMass) : 1.0;
-    const maxAccel = ((this.maxWalkForce * character.strength) / accelMass) * grip;
+    // Symmetrical acceleration and deceleration: a = F_walk / totalMass * grip
+    // totalMass includes carried object — heavy loads genuinely reduce how fast you can start and stop.
+    // Sprint force bonus is applied to the force (numerator), but total mass in the denominator
+    // means sprinting with a boulder is still slower to spin up than sprinting empty-handed.
+    const effectiveWalkForce = character.isSprinting ? this.maxWalkForce * 1.5 : this.maxWalkForce;
+    const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
     const maxStep = maxAccel * dt;
 
     if (diffSpeed <= maxStep || (!isMoving && currentSpeed < staticThreshold)) {

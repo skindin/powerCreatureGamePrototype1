@@ -89,8 +89,28 @@ class Program
 
         string url = "http://localhost:" + activePort + "/";
 
+        string appDll = Path.Combine(projectDir, "app", "PowerCreatureGame.dll");
         string appExe = Path.Combine(projectDir, "app", "PowerCreatureGame.exe");
-        if (File.Exists(appExe))
+        if (File.Exists(appDll))
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("[INFO] Launching Desktop Window: " + appDll);
+            Console.ResetColor();
+            try
+            {
+                Process.Start(new ProcessStartInfo("dotnet", "\"" + appDll + "\"")
+                {
+                    WorkingDirectory = projectDir,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[WARN] Could not launch desktop window: " + ex.Message);
+                try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+            }
+        }
+        else if (File.Exists(appExe))
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("[INFO] Launching Desktop Window: " + appExe);

@@ -2,11 +2,12 @@ import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
-import { Renderer } from "./engine/Renderer.js";
+import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
+import QRCode from "qrcode";
 
 function bootstrap(): void {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -27,6 +28,23 @@ function bootstrap(): void {
   const arena = new Arena(20, 14, 1.0);
   canvas.width = 1000;
   canvas.height = 700;
+
+  // Size the canvas CSS dimensions to exactly fit the wrapper at 20:14 ratio.
+  // This is done in JS (not CSS) so getBoundingClientRect() always matches the
+  // true arena display area — making the mouse coordinate formula pixel-perfect.
+  const fitCanvas = () => {
+    const wrapper = canvas.parentElement as HTMLElement;
+    if (!wrapper) return;
+    const s = getComputedStyle(wrapper);
+    const availW = wrapper.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+    const availH = wrapper.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+    const scale = Math.min(availW / arena.width, availH / arena.height);
+    canvas.style.width  = `${Math.floor(arena.width  * scale)}px`;
+    canvas.style.height = `${Math.floor(arena.height * scale)}px`;
+  };
+  const canvasResizeObserver = new ResizeObserver(fitCanvas);
+  canvasResizeObserver.observe(canvas.parentElement!);
+  fitCanvas();
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
@@ -125,6 +143,56 @@ function bootstrap(): void {
   devPanel.onSelectionChange = (entity) => {
     inputManager.selectedCanvasEntity = entity;
   };
+
+  // Sprint Toggle UI feedback & interaction
+  const sprintBadge = document.getElementById("sprint-badge");
+  const updateSprintUI = () => {
+    if (!sprintBadge) return;
+    if (character.isSprinting) {
+      sprintBadge.textContent = "⚡ SPRINTING";
+      sprintBadge.classList.add("active");
+    } else {
+      sprintBadge.textContent = "⚡ WALK";
+      sprintBadge.classList.remove("active");
+    }
+  };
+  character.onSprintChange = () => {
+    updateSprintUI();
+  };
+  inputManager.onToggleSprint = () => {
+    character.setSprinting(!character.isSprinting);
+  };
+  sprintBadge?.addEventListener("click", () => {
+    inputManager.onToggleSprint?.();
+  });
+
+  // Gamepad Connection Indicator
+  const controllerBadge = document.getElementById("controller-badge");
+  inputManager.onGamepadStatusChange = (connected, name) => {
+    if (!controllerBadge) return;
+    if (connected) {
+      controllerBadge.classList.remove("hidden");
+      controllerBadge.title = `Gamepad Connected: ${name}`;
+    } else {
+      controllerBadge.classList.add("hidden");
+    }
+  };
+
+  // Register PWA Service Worker for offline play on HTTPS/tunnel, unregister on localhost for live updates
+  if ("serviceWorker" in navigator) {
+    if (window.location.protocol === "https:") {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        console.warn("PWA ServiceWorker registration notice:", err);
+      });
+    } else {
+      // On localhost / desktop app: unregister service workers so changes are always 100% live
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  }
 
   // 6. Start Fixed-Timestep Game Loop
   const gameLoop = new GameLoop({
@@ -265,31 +333,280 @@ function bootstrap(): void {
 
   // 8. Setup Inspector Sidebar Toggle & Auto-Responsive Layout
   const toggleSidebarBtn = document.getElementById("toggle-sidebar-btn");
+  const quickSidebarTab = document.getElementById("quick-sidebar-tab");
+
   const setSidebarOpen = (open: boolean) => {
     if (!devContainer) return;
     if (open) {
       devContainer.classList.remove("collapsed");
       toggleSidebarBtn?.classList.add("active");
+      quickSidebarTab?.classList.add("hidden");
     } else {
       devContainer.classList.add("collapsed");
       toggleSidebarBtn?.classList.remove("active");
+      quickSidebarTab?.classList.remove("hidden");
+    }
+    try {
+      localStorage.setItem("pcg_sidebar_open", open ? "true" : "false");
+    } catch {
+      // Ignore localStorage errors
     }
   };
 
-  // If initial window width is compact (< 1180px), start with sidebar collapsed so arena has plenty of room
-  if (window.innerWidth < 1180) {
-    setSidebarOpen(false);
+  // Default to open on desktop/laptop (>= 950px), or restore saved user preference
+  let startSidebarOpen = true;
+  try {
+    const saved = localStorage.getItem("pcg_sidebar_open");
+    if (saved !== null) {
+      startSidebarOpen = saved === "true";
+    } else if (window.innerWidth < 950) {
+      startSidebarOpen = false;
+    }
+  } catch {
+    startSidebarOpen = window.innerWidth >= 950;
   }
+  setSidebarOpen(startSidebarOpen);
 
   toggleSidebarBtn?.addEventListener("click", () => {
     const isCollapsed = devContainer.classList.contains("collapsed");
     setSidebarOpen(isCollapsed);
   });
 
+  quickSidebarTab?.addEventListener("click", () => {
+    setSidebarOpen(true);
+  });
+
   devContainer.addEventListener("click", (e) => {
     const target = e.target as HTMLElement | null;
     if (target && target.closest("#btn-close-dev-panel")) {
       setSidebarOpen(false);
+    }
+    if (target && target.closest("#btn-dev-view-settings")) {
+      const isOpen = !viewSettingsPanel?.classList.contains("hidden");
+      setViewSettingsOpen(!isOpen);
+    }
+  });
+
+  // 8b. Setup View Settings Floating Panel & Vertical Visuals Mode
+  const toggleViewSettingsBtn = document.getElementById("toggle-view-settings-btn");
+  const viewSettingsPanel = document.getElementById("view-settings-panel");
+  const btnCloseViewSettings = document.getElementById("btn-close-view-settings");
+  const visualOptionBtns = document.querySelectorAll<HTMLButtonElement>(".visual-option-btn");
+
+  const setViewSettingsOpen = (open: boolean) => {
+    if (!viewSettingsPanel) return;
+    if (open) {
+      viewSettingsPanel.classList.remove("hidden");
+      toggleViewSettingsBtn?.classList.add("active");
+    } else {
+      viewSettingsPanel.classList.add("hidden");
+      toggleViewSettingsBtn?.classList.remove("active");
+    }
+  };
+
+  toggleViewSettingsBtn?.addEventListener("click", () => {
+    const isOpen = !viewSettingsPanel?.classList.contains("hidden");
+    setViewSettingsOpen(!isOpen);
+  });
+
+  btnCloseViewSettings?.addEventListener("click", () => {
+    setViewSettingsOpen(false);
+  });
+
+  // Apply saved or default vertical visuals mode
+  const validModes: VerticalVisualMode[] = ["bigger", "hover", "both"];
+  let savedMode: VerticalVisualMode = "bigger";
+  try {
+    const stored = localStorage.getItem("pcg_vertical_visuals") as VerticalVisualMode;
+    if (stored && validModes.includes(stored)) {
+      savedMode = stored;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+
+  const applyVisualMode = (mode: VerticalVisualMode) => {
+    renderer.setVerticalVisualMode(mode);
+    try {
+      localStorage.setItem("pcg_vertical_visuals", mode);
+    } catch {
+      // Ignore localStorage errors
+    }
+    visualOptionBtns.forEach((btn) => {
+      if (btn.getAttribute("data-mode") === mode) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  };
+
+  applyVisualMode(savedMode);
+
+  visualOptionBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.getAttribute("data-mode") as VerticalVisualMode;
+      if (mode && validModes.includes(mode)) {
+        applyVisualMode(mode);
+      }
+    });
+  });
+
+  // View Settings remains open while testing gameplay modes; close via '✕', 'V', 'Esc', or toggle button
+
+  // Phone Connect Modal Logic
+  const btnPhoneConnect = document.getElementById("btn-phone-connect");
+  const phoneModal = document.getElementById("phone-modal");
+  const btnClosePhoneModal = document.getElementById("btn-close-phone-modal");
+  const qrCanvas = document.getElementById("qr-canvas") as HTMLCanvasElement | null;
+  const phoneUrlInput = document.getElementById("phone-url-input") as HTMLInputElement | null;
+  const btnCopyPhoneUrl = document.getElementById("btn-copy-phone-url");
+  const phoneModalTip = document.getElementById("phone-modal-tip");
+
+  const setPhoneModalOpen = async (open: boolean) => {
+    if (!phoneModal) return;
+    if (open) {
+      phoneModal.classList.remove("hidden");
+      btnPhoneConnect?.classList.add("active");
+      setViewSettingsOpen(false);
+
+      // Persistent worldwide URL requested by user - NEVER display any random link
+      const persistentUrl = "https://pcg-arena-teal.loca.lt";
+
+      try {
+        const res = await fetch("/tunnel.json?" + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data.active) {
+            if (phoneModalTip) {
+              phoneModalTip.innerHTML = `<span>🟢 <b>Live Worldwide Tunnel Active!</b> Open <code>${persistentUrl}</code> from anywhere in the country.</span>`;
+            }
+          } else {
+            if (phoneModalTip) {
+              phoneModalTip.innerHTML = `<span>🌐 <b>Permanent Link:</b> <code>${persistentUrl}</code><br/>💡 Toggle <b>Public</b> in the app header or run <code>npm run share</code> to activate.</span>`;
+            }
+          }
+        }
+      } catch {
+        // Keep persistentUrl
+      }
+
+      if (phoneUrlInput) {
+        phoneUrlInput.value = persistentUrl;
+      }
+
+      if (qrCanvas) {
+        QRCode.toCanvas(qrCanvas, persistentUrl, {
+          width: 180,
+          margin: 1,
+          color: {
+            dark: "#0f172a",
+            light: "#ffffff",
+          },
+        }).catch((err) => console.error("QR render error:", err));
+      }
+    } else {
+      phoneModal.classList.add("hidden");
+      btnPhoneConnect?.classList.remove("active");
+    }
+  };
+
+  // Public Worldwide Link Widget Handlers
+  const persistentWorldwideUrl = "https://pcg-arena-teal.loca.lt";
+  const btnPublicUrlDisplay = document.getElementById("btn-public-url-display") as HTMLButtonElement | null;
+  const btnCopyPublicUrl = document.getElementById("btn-copy-public-url") as HTMLButtonElement | null;
+  const publicStatusDot = document.getElementById("public-status-dot");
+  const btnCopyRoomUrl = document.getElementById("btn-copy-room-url");
+
+  const copyPublicLink = async (triggerBtn?: HTMLElement | null) => {
+    try {
+      await navigator.clipboard.writeText(persistentWorldwideUrl);
+      if (btnPublicUrlDisplay) {
+        const originalText = btnPublicUrlDisplay.textContent;
+        btnPublicUrlDisplay.textContent = "✅ Copied!";
+        btnPublicUrlDisplay.classList.add("copied");
+        setTimeout(() => {
+          btnPublicUrlDisplay.textContent = originalText;
+          btnPublicUrlDisplay.classList.remove("copied");
+        }, 1500);
+      }
+      if (btnCopyPublicUrl) {
+        btnCopyPublicUrl.textContent = "✅ Copied!";
+        btnCopyPublicUrl.classList.add("copied");
+        setTimeout(() => {
+          btnCopyPublicUrl.textContent = "📋 Copy";
+          btnCopyPublicUrl.classList.remove("copied");
+        }, 1500);
+      }
+      if (triggerBtn && triggerBtn !== btnCopyPublicUrl && triggerBtn !== btnPublicUrlDisplay) {
+        triggerBtn.textContent = "✅ Copied!";
+        setTimeout(() => {
+          triggerBtn.textContent = "📋 Copy";
+        }, 1500);
+      }
+    } catch {
+      // Fallback
+    }
+  };
+
+  btnPublicUrlDisplay?.addEventListener("click", () => copyPublicLink());
+  btnCopyPublicUrl?.addEventListener("click", () => copyPublicLink());
+  btnCopyRoomUrl?.addEventListener("click", () => copyPublicLink(btnCopyRoomUrl));
+
+  // Periodic Tunnel Status Checker
+  const checkTunnelStatus = async () => {
+    try {
+      const res = await fetch("/tunnel.json?" + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (publicStatusDot) {
+          if (data.active) {
+            publicStatusDot.className = "status-dot";
+            publicStatusDot.setAttribute("title", "Public tunnel is online & accessible nationwide");
+          } else {
+            publicStatusDot.className = "status-dot connecting";
+            publicStatusDot.setAttribute("title", "Public tunnel is in standby");
+          }
+        }
+      }
+    } catch {
+      // Offline / error
+    }
+  };
+
+  checkTunnelStatus();
+  setInterval(checkTunnelStatus, 4000);
+
+  btnPhoneConnect?.addEventListener("click", () => {
+    const isOpen = !phoneModal?.classList.contains("hidden");
+    setPhoneModalOpen(!isOpen);
+  });
+
+  btnClosePhoneModal?.addEventListener("click", () => {
+    setPhoneModalOpen(false);
+  });
+
+  btnCopyPhoneUrl?.addEventListener("click", async () => {
+    if (phoneUrlInput?.value) {
+      await navigator.clipboard.writeText(phoneUrlInput.value);
+      btnCopyPhoneUrl.textContent = "Copied!";
+      setTimeout(() => {
+        btnCopyPhoneUrl.textContent = "Copy";
+      }, 1500);
+    }
+  });
+
+  // Close Phone Modal if clicking outside
+  document.addEventListener("pointerdown", (e) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      phoneModal &&
+      !phoneModal.classList.contains("hidden") &&
+      target &&
+      !phoneModal.contains(target) &&
+      !btnPhoneConnect?.contains(target)
+    ) {
+      setPhoneModalOpen(false);
     }
   });
 
@@ -300,6 +617,22 @@ function bootstrap(): void {
     ) {
       const isCollapsed = devContainer.classList.contains("collapsed");
       setSidebarOpen(isCollapsed);
+    }
+
+    if (
+      e.code === "KeyV" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
+    ) {
+      const isOpen = !viewSettingsPanel?.classList.contains("hidden");
+      setViewSettingsOpen(!isOpen);
+    }
+
+    if (e.code === "Escape") {
+      setViewSettingsOpen(false);
+      setPhoneModalOpen(false);
     }
   });
 
