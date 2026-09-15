@@ -758,6 +758,13 @@ export class Renderer {
     const z = obj.position.z;
     if (z <= 0.01) return;
 
+    // No outline if the object is resting exactly at the floor of its layer:
+    // - On ground → z ≤ 0.01 (caught above)
+    // - On wall top → standingWall set and z ≤ wallHeight (resting on Layer 2 floor, no elevation above surface)
+    const supportSurface = obj.supportingSurfaceHeight ?? 0;
+    const effectiveSurface = obj.standingWall ? arena.wallHeight : supportSurface;
+    if (z <= effectiveSurface + 0.02) return;
+
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
