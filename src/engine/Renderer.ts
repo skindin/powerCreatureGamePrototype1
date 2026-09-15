@@ -536,7 +536,8 @@ export class Renderer {
     const groundY = obj.position.y * ppu;
     const renderY = (obj.position.y - z * hoverScale) * ppu;
     const wallH = arena.wallHeight;
-    const transY = (obj.position.y - wallH * hoverScale) * ppu;
+    const layer2BaseY = (obj.position.y - wallH * hoverScale) * ppu;
+    const layer2CeilingY = (obj.position.y - 2 * wallH * hoverScale) * ppu;
 
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
@@ -545,32 +546,88 @@ export class Renderer {
     ctx.setLineDash([4, 4]);
 
     if (z <= wallH) {
-      // Entire line is at or below wall elevation: prominent high-contrast white dotted line
+      // Entire line is at or below wall elevation (Layer 1): high-contrast white dashed line
       ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.moveTo(groundX, groundY);
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
+    } else if (z < 2 * wallH) {
+      // Object is in Layer 2 (wallHeight <= z < 2 * wallHeight)
+      // 1. Layer 1 portion (ground to wall height)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, groundY);
+      ctx.lineTo(groundX, layer2BaseY);
+      ctx.stroke();
+
+      // 2. Layer 2 portion (wall height to object - cyan tinted to indicate Layer 2)
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, layer2BaseY);
+      ctx.lineTo(groundX, renderY);
+      ctx.stroke();
+
+      // Layer 2 Base threshold notch (z = wallHeight)
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(groundX - 6, layer2BaseY);
+      ctx.lineTo(groundX + 6, layer2BaseY);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
     } else {
-      // Line extends higher than wall height:
-      // 1. Portion from ground to wall height (prominent white)
+      // Object is in Layer 3 or higher (z >= 2 * wallHeight):
+      // Must be as low as layer2CeilingY (z = 2 * wallH) to collide with Layer 2!
+      // 1. Layer 1 portion (ground to wall height)
       ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.moveTo(groundX, groundY);
-      ctx.lineTo(groundX, transY);
+      ctx.lineTo(groundX, layer2BaseY);
       ctx.stroke();
 
-      // 2. Upper portion from wall height up to object center (clear white with subtle translucency)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.70)";
+      // 2. Layer 2 collision zone (wallHeight to 2 * wallHeight)
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
       ctx.beginPath();
-      ctx.moveTo(groundX, transY);
+      ctx.moveTo(groundX, layer2BaseY);
+      ctx.lineTo(groundX, layer2CeilingY);
+      ctx.stroke();
+
+      // 3. Layer 3+ portion (above Layer 2 ceiling up to object)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.50)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, layer2CeilingY);
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
 
-      // Transition marker dot at the wall-height Layer 1 -> Layer 2 threshold
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      // Layer 2 Base notch (z = wallHeight)
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
-      ctx.arc(groundX, transY, 2.5, 0, Math.PI * 2);
+      ctx.moveTo(groundX - 6, layer2BaseY);
+      ctx.lineTo(groundX + 6, layer2BaseY);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Layer 2 Ceiling threshold notch (z = 2 * wallHeight) - shows how LOW object must be to enter Layer 2!
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.95)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(groundX - 8, layer2CeilingY);
+      ctx.lineTo(groundX + 8, layer2CeilingY);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(56, 189, 248, 0.95)";
+      ctx.beginPath();
+      ctx.arc(groundX, layer2CeilingY, 2.8, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -731,6 +788,44 @@ export class Renderer {
       ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
       ctx.lineWidth = 1.8;
       ctx.setLineDash([4, 4]);
+      ctx.stroke();
+
+      // If in Layer 3+ (z >= 2 * wallHeight), also draw Layer 2 ceiling reference ring (how low it must be to enter Layer 2!)
+      if (z >= 2 * arena.wallHeight + 0.01) {
+        const layer2CeilAltScale = Renderer.getAltitudeScale(2 * arena.wallHeight, arena.wallHeight);
+        const layer2CeilRadius = obj.colliderRadius * ppu * layer2CeilAltScale;
+        ctx.beginPath();
+        if (obj.visualShape === "box") {
+          const sz = layer2CeilRadius * 2;
+          const cr = Math.max(3, layer2CeilRadius * 0.16);
+          if (ctx.roundRect) ctx.roundRect(groundX - layer2CeilRadius, outlineY - layer2CeilRadius, sz, sz, cr);
+          else ctx.rect(groundX - layer2CeilRadius, outlineY - layer2CeilRadius, sz, sz);
+        } else {
+          ctx.arc(groundX, outlineY, layer2CeilRadius, 0, Math.PI * 2);
+        }
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+      }
+    }
+
+    // In Hover mode, when object is in Layer 3+ (z >= 2 * wallHeight), draw the Layer 2 ceiling outline
+    // showing the exact elevation footprint where the object becomes low enough to enter and collide with Layer 2!
+    if (useHover && hoverScale > 0 && z >= 2 * arena.wallHeight - 0.05) {
+      const ceilingY = (obj.position.y - 2 * arena.wallHeight * hoverScale) * ppu;
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, ceilingY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, ceilingY - shadowRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, ceilingY, shadowRadius, 0, Math.PI * 2);
+      }
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.70)"; // Distinct cyan dashed ring for Layer 2 ceiling
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([3, 3]);
       ctx.stroke();
     }
     ctx.restore();

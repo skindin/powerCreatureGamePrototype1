@@ -194,11 +194,14 @@ powerCreatureGamePrototype1/
 14. **Held Objects & Bigger-Without-Hover Wall Transparency**:
     - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.
     - Entities on walls render semi-transparent (`globalAlpha = 0.55`) when they get bigger and are not hovering over a shadow (`useBigger && (!useHover || hoverScale <= 0) && isOnLayer2`), ensuring players can see what is underneath them on the wall/floor. When hovering over a shadow in Hover mode, they render opaque.
-15. **Virtual Infinite Layer Collision System**:
+15. **Virtual Infinite Layer Collision System & Layer 2 Collision Indicators**:
     - Objects only collide with each other if they occupy the exact same vertical layer: $\text{layer} = \lfloor \text{effectiveHeight} / \text{wallHeight} \rfloor + 1$.
     - **Layer 1** ($0 \le z < \text{wallHeight}$): Ground layer — this is the **only** layer that has physical walls.
     - **Layer 2** ($\text{wallHeight} \le z < 2 \times \text{wallHeight}$): Wall-top elevation layer.
     - **Layer 3, 4, ...**: Infinite higher elevation layers. Projectiles and high-flying entities pass completely through entities on other layers without collision unless they are on the exact same layer.
+    - **Layer 2 Collision Visuals**:
+      - **Vertical Altitude Line Notches & Zone**: The vertical line marks the Layer 2 floor ($z = \text{wallHeight}$) and Layer 2 ceiling ($z = 2 \times \text{wallHeight}$) with distinct horizontal brackets and transition dots, tinting the Layer 2 collision zone in cyan (`#38bdf8`).
+      - **Layer 2 Ceiling Footprint Outline**: When an airborne object is in Layer 3 or higher ($z \ge 2 \times \text{wallHeight}$), a dashed cyan footprint outline renders at the Layer 2 ceiling height ($(y - 2 \times \text{wallHeight} \times \text{hoverScale}) \times \text{ppu}$ in Hover mode, or $2\times$ reference ring in Bigger Sprites mode), visually showing the exact threshold the object must drop below to enter and collide with Layer 2.
 
 ---
 
