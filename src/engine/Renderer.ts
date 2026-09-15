@@ -512,14 +512,19 @@ export class Renderer {
   }
 
   /**
-   * Draws a vertical dotted line from the center of the airborne object (renderY)
-   * down to the center of the ground shadow placeholder (groundY).
-   * The dotted line transitions from opaque (Layer 1: z <= wallHeight)
-   * to transparent (Layer 2: z > wallHeight) at the wall-height transition point.
+   * Draws a vertical dotted line from the center of the airborne/elevated object (renderY)
+   * down to the object's real 2D position (groundY).
+   * "the dotted virtical line that points to the objects real 2d position should still be visible when they're on a wall.
+   * maybe it's covered, maybe it's logically hidden, but it should be visible for every object that has higher elevation than 0"
    */
   private drawVerticalConnectorLine(obj: GameObject, arena: Arena, ppu: number): void {
-    const z = obj.position.z;
-    if (z <= 0.01) return;
+    // Check effective elevation across physical position, supporting surface, or standing wall
+    const z = Math.max(
+      obj.position.z,
+      obj.supportingSurfaceHeight ?? 0,
+      (obj.standingWall ? arena.wallHeight : 0)
+    );
+    if (z <= 0.001) return;
 
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
@@ -533,38 +538,51 @@ export class Renderer {
     const transY = (obj.position.y - wallH * hoverScale) * ppu;
 
     ctx.save();
-    ctx.lineWidth = 1.8;
+    ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+    ctx.shadowBlur = 3;
+    ctx.lineWidth = 2.0;
     ctx.setLineDash([4, 4]);
 
     if (z <= wallH) {
-      // Entire line is in Layer 1 (opaque / prominent white dotted line)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      // Entire line is at or below wall elevation: prominent high-contrast white dotted line
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.moveTo(groundX, groundY);
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
     } else {
-      // Line crosses from Layer 1 into Layer 2:
-      // 1. Layer 1 portion: ground to wall height (opaque)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      // Line extends higher than wall height:
+      // 1. Portion from ground to wall height (prominent white)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.moveTo(groundX, groundY);
       ctx.lineTo(groundX, transY);
       ctx.stroke();
 
-      // 2. Layer 2 portion: wall height up to object center (transparent)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      // 2. Upper portion from wall height up to object center (clear white with subtle translucency)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.70)";
       ctx.beginPath();
       ctx.moveTo(groundX, transY);
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
 
-      // Subtle transition marker dot at the wall-height Layer 1 -> Layer 2 threshold
-      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+      // Transition marker dot at the wall-height Layer 1 -> Layer 2 threshold
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
       ctx.beginPath();
       ctx.arc(groundX, transY, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Prominent anchor dot at the object's real 2D position on the ground / wall surface
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#38bdf8"; // Vibrant spectral cyan pinpoint dot
+    ctx.beginPath();
+    ctx.arc(groundX, groundY, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
 
     ctx.restore();
   }
