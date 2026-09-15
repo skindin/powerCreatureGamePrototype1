@@ -926,20 +926,6 @@ export class Renderer {
     ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // If holding an object, draw pickup tether / hands
-    if (char.heldObject) {
-      const heldX = char.heldObject.position.x * ppu;
-      const heldY = (char.heldObject.position.y - char.heldObject.position.z * hoverScale) * ppu;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(heldX, heldY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
     ctx.restore();
   }
 
@@ -1184,45 +1170,51 @@ export class Renderer {
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     // 1. Straight Shadow Trajectory Line (Hover & Both modes):
-    // "the straight dotted line from the the start pos to the end pos seems to be dotted twice, once with dashes and once with dots.
-    // just make it dots, and make the dots transparent when at or above wall height and opaque when below wall height."
+    // Straight dotted line broken into sections:
+    // - Below wall height: rendered along ground track (opaque)
+    // - At or above wall height: section is moved upwards to wall height (transparent)
     if (useHover && hoverScale > 0) {
-      const startZ = points[0].z;
-      const startOnWall = startZ >= layer2Threshold;
-      const startShadowX = points[0].x * ppu;
-      const startShadowY = (points[0].y - (startOnWall ? arena.wallHeight * hoverScale : 0)) * ppu;
+      const startGroundX = points[0].x * ppu;
+      const startGroundY = points[0].y * ppu;
 
-      let endShadowX = traj.landPoint.x * ppu;
-      let endShadowY = traj.landPoint.y * ppu;
+      let endGroundX = traj.landPoint.x * ppu;
+      let endGroundY = traj.landPoint.y * ppu;
 
-      if (traj.isLandingOnWallTop) {
-        endShadowY = (traj.landPoint.y - arena.wallHeight * hoverScale) * ppu;
-      } else if (traj.isBlockedByWall) {
-        const finalPt = points[points.length - 1];
-        endShadowX = finalPt.x * ppu;
-        if (finalPt.z >= arena.wallHeight) {
-          endShadowY = (finalPt.y - arena.wallHeight * hoverScale) * ppu;
-        } else {
-          endShadowY = finalPt.y * ppu;
-        }
+      const finalPt = points[points.length - 1];
+      if (traj.isBlockedByWall) {
+        endGroundX = finalPt.x * ppu;
+        endGroundY = finalPt.y * ppu;
       }
 
-      const totalDx = endShadowX - startShadowX;
-      const totalDy = endShadowY - startShadowY;
+      const totalDx = endGroundX - startGroundX;
+      const totalDy = endGroundY - startGroundY;
       const totalDistPx = Math.hypot(totalDx, totalDy);
 
       if (totalDistPx > 5) {
-        // Dots along the straight line to the bottom-most visible shadow (no redundant dashed line!)
         const baseGroundSpacingPx = base3DSpacing * ppu;
         const numDots = Math.max(1, Math.floor(totalDistPx / baseGroundSpacingPx));
         const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
 
+        const landZ = traj.isLandingOnWallTop
+          ? arena.wallHeight
+          : (traj.isBlockedByWall && finalPt.z >= layer2Threshold ? arena.wallHeight : 0);
+        const landScreenY = endGroundY - landZ * hoverScale * ppu;
+
         for (let k = 1; k <= numDots; k++) {
           const t = k / (numDots + 1);
-          const dotX = startShadowX + totalDx * t;
-          const dotY = startShadowY + totalDy * t;
+          const groundDotX = startGroundX + totalDx * t;
+          const groundDotY = startGroundY + totalDy * t;
 
-          // Don't draw dots inside the character's body (shadows render below character)
+          // Sample altitude along trajectory points at fraction t
+          const sampleIdx = Math.min(points.length - 1, Math.floor(t * (points.length - 1)));
+          const curZ = points[sampleIdx].z;
+          const isLayer2 = curZ >= layer2Threshold;
+
+          // If at or above wall height, move the section upwards to wall height; otherwise keep on ground
+          const dotX = groundDotX;
+          const dotY = isLayer2 ? (groundDotY - arena.wallHeight * hoverScale * ppu) : groundDotY;
+
+          // Don't draw dots inside the character's body
           if (character) {
             const charOnWall = character.position.z >= layer2Threshold;
             const charScreenY = (character.position.y - (charOnWall ? arena.wallHeight * hoverScale : 0)) * ppu;
@@ -1231,13 +1223,8 @@ export class Renderer {
           }
 
           // Don't draw dot on top of the landing footprint
-          const distToEnd = Math.hypot(dotX - endShadowX, dotY - endShadowY);
+          const distToEnd = Math.hypot(dotX - endGroundX, dotY - landScreenY);
           if (distToEnd < landRadiusPx * 0.75) continue;
-
-          // Sample altitude along trajectory points at fraction t
-          const sampleIdx = Math.min(points.length - 1, Math.floor(t * (points.length - 1)));
-          const curZ = points[sampleIdx].z;
-          const isLayer2 = curZ >= layer2Threshold;
 
           // Transparent when at or above wall height, opaque when below wall height
           ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";

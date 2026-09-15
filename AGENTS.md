@@ -180,10 +180,12 @@ powerCreatureGamePrototype1/
     - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
     - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
     - Elevated entities cast secondary shadows on top of wall surfaces when hovering over walls at $z \ge \text{wallHeight}$.
-12. **Straight Trajectory Dots to Bottom-Most Visible Shadow (Hover & Both Modes)**:
-    - When `useHover && visualAltitudeScale > 0`, in addition to the elevated 3D parabolic arc, a straight line composed strictly of dots (no duplicate dashed stroke) connects the throw start position shadow directly to the **bottom-most visible shadow** of the trajectory.
-    - If landing on or hitting a wall at altitude ($z \ge \text{wallHeight}$), the bottom-most visible shadow targets the top of that wall at $(y - \text{wallHeight} \times \text{visualAltitudeScale}) \times \text{ppu}$. If landing on the floor, it targets the true ground coordinates.
-    - Dots are opaque (`rgba(255, 255, 255, 0.95)`) when below wall height ($z < \text{wallHeight}$), and transparent (`rgba(255, 255, 255, 0.38)`) when at or above wall height ($z \ge \text{wallHeight}$). Dots overlapping the character's body are skipped.
+12. **Straight Trajectory Dots Broken into Ground & Wall-Height Sections (Hover & Both Modes)**:
+    - In addition to the elevated 3D parabolic arc, the straight dotted guide line along the throw path is broken into parallel sections based on projectile altitude:
+      - **Below Wall Height ($z < \text{wallHeight}$)**: Rendered on the ground track ($(x, y)$) as opaque white dots (`rgba(255, 255, 255, 0.95)`).
+      - **At or Above Wall Height ($z \ge \text{wallHeight}$)**: Moved vertically upwards on screen to wall height ($(x, y - \text{wallHeight} \times \text{visualAltitudeScale})$) as transparent white dots (`rgba(255, 255, 255, 0.38)`).
+      - For an arched throw over wall height, this renders as 3 parallel straight dotted sections (2 aligned ground segments at start and end, with the mid-air segment elevated and parallel between them).
+    - No tether or connector lines are drawn between the character and held objects.
 13. **Shadow Fills Covered Below Entities & Collider Outlines Render On Top of Everything**:
     - **Shadow Fills**: Only the dark shadow fills are covered by walls and entities. Ground shadow fills render on the floor grid below wall bases and ground entities; wall-top shadow fills (masked to wall squares) render on wall roofs before elevated entities are drawn.
     - **Collider Position Outlines Render On Top of Everything**: The dashed outline of the actual collider position (`drawObjectColliderPositionOutline`) renders **ON TOP OF EVERYTHING** (after walls, ground entities, and elevated entities).
