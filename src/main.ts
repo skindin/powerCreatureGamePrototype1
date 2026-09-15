@@ -298,6 +298,63 @@ function bootstrap(): void {
     }
   });
 
+  const relayToggleLerpBtn = document.getElementById("relay-toggle-lerp-btn") as HTMLButtonElement | null;
+  const relayLerpRateInput = document.getElementById("relay-lerp-rate-input") as HTMLInputElement | null;
+
+  // Restore saved lerp settings
+  try {
+    const savedLerp = localStorage.getItem("pcg_ghost_lerp");
+    if (savedLerp !== null) {
+      relayClient.lerpGhosts = savedLerp === "true";
+    }
+    const savedRate = localStorage.getItem("pcg_ghost_lerp_rate");
+    if (savedRate !== null) {
+      const parsed = parseFloat(savedRate);
+      if (!isNaN(parsed) && parsed >= 0) {
+        relayClient.ghostLerpRatePercent = parsed;
+      }
+    }
+  } catch {}
+
+  const updateLerpUi = () => {
+    if (relayToggleLerpBtn) {
+      if (relayClient.lerpGhosts) {
+        relayToggleLerpBtn.textContent = "⚡ Lerp: ON";
+        relayToggleLerpBtn.className = "btn-lerp-toggle active";
+      } else {
+        relayToggleLerpBtn.textContent = "⚡ Lerp: OFF";
+        relayToggleLerpBtn.className = "btn-lerp-toggle off";
+      }
+    }
+    if (relayLerpRateInput) {
+      relayLerpRateInput.value = relayClient.ghostLerpRatePercent.toString();
+    }
+  };
+
+  updateLerpUi();
+
+  relayToggleLerpBtn?.addEventListener("click", () => {
+    relayClient.lerpGhosts = !relayClient.lerpGhosts;
+    updateLerpUi();
+    try {
+      localStorage.setItem("pcg_ghost_lerp", relayClient.lerpGhosts ? "true" : "false");
+    } catch {}
+  });
+
+  const handleRateChange = () => {
+    if (!relayLerpRateInput) return;
+    const val = parseFloat(relayLerpRateInput.value);
+    if (!isNaN(val) && val >= 0) {
+      relayClient.ghostLerpRatePercent = val;
+      try {
+        localStorage.setItem("pcg_ghost_lerp_rate", val.toString());
+      } catch {}
+    }
+  };
+
+  relayLerpRateInput?.addEventListener("input", handleRateChange);
+  relayLerpRateInput?.addEventListener("change", handleRateChange);
+
   relayUrlInput?.addEventListener("change", () => {
     relayClient.url = relayUrlInput.value.trim();
     if (relayClient.status === "connected") {
@@ -674,7 +731,11 @@ function bootstrap(): void {
   });
 
   // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
-  gameLoop.getGhostSnapshot = () => (isMultiplayerMode ? relayClient.getLatestGhost() : null);
+  gameLoop.getGhostSnapshot = (dt: number) => {
+    if (!isMultiplayerMode) return null;
+    relayClient.updateGhostLerp(dt);
+    return relayClient.getLatestGhost();
+  };
   gameLoop.onPhysicsTick = (_dt, nowMs) => {
     if (isMultiplayerMode) {
       relayClient.update(character, objects, nowMs);

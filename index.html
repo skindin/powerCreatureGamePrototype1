@@ -202,6 +202,16 @@
                     <button id="rate-60hz-btn" class="rate-btn">60 Hz</button>
                   </div>
                 </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Ghost Lerp</span>
+                  <div class="lerp-control-group">
+                    <button id="relay-toggle-lerp-btn" class="btn-lerp-toggle active" title="Toggle Ghost Interpolation Smoothing">⚡ Lerp: ON</button>
+                    <div class="lerp-input-wrapper" title="Percent of delta distance to move per second">
+                      <input id="relay-lerp-rate-input" class="relay-number-input" type="number" step="any" min="0" value="100.0" />
+                      <span class="lerp-unit-label">% / s</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

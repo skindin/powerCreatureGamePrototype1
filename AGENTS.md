@@ -202,6 +202,9 @@ powerCreatureGamePrototype1/
     - **Layer 2 Collision Visuals**:
       - **Vertical Altitude Line Notches & Zone**: The vertical line marks the Layer 2 floor ($z = \text{wallHeight}$) and Layer 2 ceiling ($z = 2 \times \text{wallHeight}$) with distinct horizontal brackets and transition dots, tinting the Layer 2 collision zone in cyan (`#38bdf8`).
       - **Layer 2 Ceiling Footprint Outline**: When an airborne object is in Layer 3 or higher ($z \ge 2 \times \text{wallHeight}$), a dashed cyan footprint outline renders at the Layer 2 ceiling height ($(y - 2 \times \text{wallHeight} \times \text{hoverScale}) \times \text{ppu}$ in Hover mode, or $2\times$ reference ring in Bigger Sprites mode), visually showing the exact threshold the object must drop below to enter and collide with Layer 2.
+16. **Multiplayer Ghost Interpolation (Lerp)**:
+    - In `#multiplayer-relay-hud`, players can toggle ghost clone position smoothing on/off (`#relay-toggle-lerp-btn`) and adjust the float speed field (`#relay-lerp-rate-input` in `% / s`, persisted in `localStorage` under `pcg_ghost_lerp` and `pcg_ghost_lerp_rate`).
+    - Interpolation advances each render frame via `relayClient.updateGhostLerp(dt)`: moves each ghost entity (character and freebody objects) along the delta vector $(\mathbf{P}_{\text{target}} - \mathbf{P}_{\text{current}})$ by $\min(1.0, (\text{rate} / 100) \times dt)$ of the delta distance per second. When disabled, raw network snapshot coordinates render directly.
 
 ---
 

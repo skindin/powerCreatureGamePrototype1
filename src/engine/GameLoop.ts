@@ -18,7 +18,7 @@ export class GameLoop {
   private accumulator = 0;
   private readonly fixedDt = 1 / 60; // 60Hz fixed simulation timestep
 
-  public getGhostSnapshot?: () => import("../network/RelayClient.js").GhostSnapshot | null;
+  public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
 
   constructor(options: {
@@ -87,7 +87,7 @@ export class GameLoop {
 
     // Render current frame with active selection highlight & wall tool indicators
     const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
-    const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot() : null;
+    const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
     this.renderer.render(
       this.arena,

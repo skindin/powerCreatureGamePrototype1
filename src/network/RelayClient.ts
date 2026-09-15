@@ -46,11 +46,14 @@ export class RelayClient {
   public status: RelayStatus = "disconnected";
   public sendRateHz: number = 30; // 30 updates per second
   public showGhostClones: boolean = true;
+  public lerpGhosts: boolean = true;
+  public ghostLerpRatePercent: number = 100.0; // percent of delta distance to move per second
 
   private socket: WebSocket | null = null;
   private seq: number = 0;
   private lastSendTime: number = 0;
   private latestGhostSnapshot: GhostSnapshot | null = null;
+  private currentGhostSnapshot: GhostSnapshot | null = null;
 
   // Stats
   private packetsSent: number = 0;
@@ -87,17 +90,15 @@ export class RelayClient {
         this.notifyStats();
       };
 
-      this.socket.onerror = (err) => {
-        console.warn("[RelayClient] Socket error:", err);
+      this.socket.onerror = () => {
         this.status = "error";
         this.notifyStats();
       };
 
-      this.socket.onmessage = (event) => {
+      this.socket.onmessage = (event: MessageEvent) => {
         this.handleMessage(event.data);
       };
     } catch (e) {
-      console.error("[RelayClient] Connection failed:", e);
       this.status = "error";
       this.notifyStats();
     }
@@ -118,9 +119,95 @@ export class RelayClient {
     this.notifyStats();
   }
 
+  /**
+   * Updates the ghost interpolation state towards the latest received snapshot.
+   * Moves by (ghostLerpRatePercent / 100) * dt of the delta distance per second.
+   */
+  public updateGhostLerp(dt: number): void {
+    if (!this.latestGhostSnapshot) {
+      this.currentGhostSnapshot = null;
+      return;
+    }
+
+    if (!this.lerpGhosts || this.ghostLerpRatePercent <= 0) {
+      this.currentGhostSnapshot = this.latestGhostSnapshot;
+      return;
+    }
+
+    // Fraction of delta distance to move this frame: (rate / 100) * dt
+    const moveFrac = Math.min(1.0, Math.max(0.0, (this.ghostLerpRatePercent / 100) * dt));
+
+    if (!this.currentGhostSnapshot) {
+      this.currentGhostSnapshot = {
+        ...this.latestGhostSnapshot,
+        character: { ...this.latestGhostSnapshot.character },
+        objects: this.latestGhostSnapshot.objects ? this.latestGhostSnapshot.objects.map(o => ({ ...o })) : [],
+      };
+      return;
+    }
+
+    const target = this.latestGhostSnapshot;
+    const cur = this.currentGhostSnapshot;
+
+    cur.rttMs = target.rttMs;
+    cur.seq = target.seq;
+    cur.sentAt = target.sentAt;
+    cur.receivedAt = target.receivedAt;
+
+    // 1. Lerp Character
+    if (target.character) {
+      if (!cur.character) {
+        cur.character = { ...target.character };
+      } else {
+        const cTar = target.character;
+        const cCur = cur.character;
+        cCur.x += (cTar.x - cCur.x) * moveFrac;
+        cCur.y += (cTar.y - cCur.y) * moveFrac;
+        cCur.z += (cTar.z - cCur.z) * moveFrac;
+        cCur.vx = cTar.vx;
+        cCur.vy = cTar.vy;
+        cCur.radius = cTar.radius;
+        cCur.color = cTar.color;
+        cCur.isHeld = cTar.isHeld;
+        cCur.shape = cTar.shape;
+        cCur.isAboveWalls = cTar.isAboveWalls;
+        cCur.isClimbing = cTar.isClimbing;
+      }
+    }
+
+    // 2. Lerp Objects
+    if (target.objects) {
+      if (!cur.objects) {
+        cur.objects = target.objects.map(o => ({ ...o }));
+      } else {
+        const updatedObjects: GhostEntityState[] = [];
+        for (const oTar of target.objects) {
+          const existing = cur.objects.find(o => o.id === oTar.id);
+          if (existing) {
+            existing.x += (oTar.x - existing.x) * moveFrac;
+            existing.y += (oTar.y - existing.y) * moveFrac;
+            existing.z += (oTar.z - existing.z) * moveFrac;
+            existing.vx = oTar.vx;
+            existing.vy = oTar.vy;
+            existing.radius = oTar.radius;
+            existing.color = oTar.color;
+            existing.isHeld = oTar.isHeld;
+            existing.shape = oTar.shape;
+            existing.isAboveWalls = oTar.isAboveWalls;
+            existing.isClimbing = oTar.isClimbing;
+            updatedObjects.push(existing);
+          } else {
+            updatedObjects.push({ ...oTar });
+          }
+        }
+        cur.objects = updatedObjects;
+      }
+    }
+  }
+
   public getLatestGhost(): GhostSnapshot | null {
     if (!this.showGhostClones) return null;
-    return this.latestGhostSnapshot;
+    return this.lerpGhosts ? (this.currentGhostSnapshot ?? this.latestGhostSnapshot) : this.latestGhostSnapshot;
   }
 
   public getStats(): RelayStats {
