@@ -64,6 +64,7 @@ export class ThrowModule {
     let clampedX = x;
     let clampedY = y;
     const r = radius > 0 ? radius : 0.3;
+    const requiredClearance = r + 0.04;
 
     // Up to 3 iterations to resolve adjacent corners/walls
     for (let iter = 0; iter < 3; iter++) {
@@ -75,30 +76,30 @@ export class ThrowModule {
         const dy = clampedY - closestY;
         const distSq = dx * dx + dy * dy;
 
-        if (distSq < r * r) {
+        if (distSq < requiredClearance * requiredClearance) {
           collided = true;
           const dist = Math.sqrt(distSq);
           if (dist > 0.0001) {
-            const pushDist = (r + 0.01) - dist;
+            const pushDist = (requiredClearance + 0.01) - dist;
             clampedX += (dx / dist) * pushDist;
             clampedY += (dy / dist) * pushDist;
           } else {
-            const cdx = charX - clampedX;
-            const cdy = charY - clampedY;
+            const cdx = charX - closestX;
+            const cdy = charY - closestY;
             const cdist = Math.hypot(cdx, cdy);
             if (cdist > 0.0001) {
-              clampedX += (cdx / cdist) * (r + 0.02);
-              clampedY += (cdy / cdist) * (r + 0.02);
+              clampedX = closestX + (cdx / cdist) * (requiredClearance + 0.01);
+              clampedY = closestY + (cdy / cdist) * (requiredClearance + 0.01);
             } else {
               const dL = clampedX - wall.x;
               const dR = wall.x + wall.width - clampedX;
               const dT = clampedY - wall.y;
               const dB = wall.y + wall.height - clampedY;
               const minD = Math.min(dL, dR, dT, dB);
-              if (minD === dL) clampedX = wall.x - r - 0.01;
-              else if (minD === dR) clampedX = wall.x + wall.width + r + 0.01;
-              else if (minD === dT) clampedY = wall.y - r - 0.01;
-              else clampedY = wall.y + wall.height + r + 0.01;
+              if (minD === dL) clampedX = wall.x - requiredClearance - 0.01;
+              else if (minD === dR) clampedX = wall.x + wall.width + requiredClearance + 0.01;
+              else if (minD === dT) clampedY = wall.y - requiredClearance - 0.01;
+              else clampedY = wall.y + wall.height + requiredClearance + 0.01;
             }
           }
         }
@@ -178,12 +179,19 @@ export class ThrowModule {
     // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
     // If the flat trajectory would collide with an intermediate wall, increase totalTime to the minimum
     // required to clear the wall top with a tight, minimal clearance arc.
-    const sampleCount = 40;
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
     const clearance = 0.25; // Clean clearance over intermediate walls
 
-    for (let i = 1; i < sampleCount; i++) {
-      const s = i / sampleCount;
+    // Dense sampling near the start (s < 0.1) ensures walls directly in front of the thrower are detected immediately
+    const sampleRatios: number[] = [];
+    for (let s = 0.005; s < 0.1; s += 0.005) {
+      sampleRatios.push(s);
+    }
+    for (let i = 4; i <= 40; i++) {
+      sampleRatios.push(i / 40);
+    }
+
+    for (const s of sampleRatios) {
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
 
@@ -207,7 +215,7 @@ export class ThrowModule {
           const requiredDeltaZ = requiredHeight - baselineZ;
           if (requiredDeltaZ > 0) {
             const denom = arena.gravity * s * (1 - s);
-            if (denom > 0.001) {
+            if (denom > 0.0001) {
               const reqTimeSq = (2 * requiredDeltaZ) / denom;
               if (reqTimeSq > 0) {
                 const reqTime = Math.sqrt(reqTimeSq);

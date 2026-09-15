@@ -215,6 +215,14 @@ powerCreatureGamePrototype1/
       - **Individual Module Removal**: Every active module card features a dedicated `✕ Remove` button at top-right. Clicking it immediately detaches the module from the entity (setting the module property to `null` and resetting relevant dynamic fields like velocity, elevation, or grip), removing the card from the UI.
       - **Bottom `➕ Add Behavior` Button**: Placed cleanly at the bottom of the behaviors list. Shows a dynamic count of unattached behaviors. Clicking it toggles a styled dropdown listing only behaviors not yet attached.
       - **Instant Re-Addition**: Selecting any behavior from the dropdown instantiates that module on the entity, immediately re-renders its card with live tuning sliders, and removes it from the dropdown. Fully synchronized with entity selection, duplication, and deletion.
+19. **Held Object Wall Clamping & Throw Clearance**:
+    - **Wall Clearance Clamping within Default Distance**:
+      - Previously, objects held while facing into a wall could clip into or penetrate wall geometry because `handDist` was fixed along the facing vector. Upon throwing, the projectile spawned inside the wall and immediately triggered bounce/stop collision on frame 1.
+      - In `Character.calculateHeldObjectPosition(arena)`: computes `defaultHandDist = colliderRadius + held.colliderRadius * 0.5 + 0.08`. When on the ground ($z < \text{wallHeight}$), tests whether the default hand position collides with any wall within `requiredClearance = held.colliderRadius + 0.05`.
+      - If an overlap is detected, binary searches for the maximum safe distance within $[0, \text{defaultHandDist}]$ along the character's facing direction, pulling the object closer to the character to prevent it from entering the wall.
+      - If even distance 0 overlaps (e.g. held object is larger than character and character is touching wall), it attempts pulling slightly behind the character or resolves clearance away from the closest wall face, strictly clamping the final distance $\le \text{defaultHandDist}$.
+    - **Dense Trajectory Clearance Sampling**:
+      - In `ThrowModule.computeLaunchVelocity`, dense sampling near the start of the throw trajectory ($s \in [0.005, 0.1]$) ensures that walls immediately in front of the thrower are detected and the parabolic arc is granted sufficient upward launch velocity ($v_z$) to cleanly clear the wall top without colliding on release.
 
 ---
 

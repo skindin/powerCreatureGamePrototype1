@@ -178,30 +178,10 @@ export class Character extends GameObject {
 
     // 4. Update held object position if carrying one
     if (this.heldObject) {
-      // Position held object slightly in front of character along facing direction
-      const handDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
-      let targetX = this.position.x + Math.cos(this.facingAngle) * handDist;
-      let targetY = this.position.y + Math.sin(this.facingAngle) * handDist;
-
-      // If character is on the ground, clamp so held object does not overlap walls
-      if (this.position.z < arena.wallHeight) {
-        const clamped = ThrowModule.clampStartOutsideWalls(
-          targetX,
-          targetY,
-          this.heldObject.colliderRadius,
-          arena,
-          this.position.z,
-          this.position.x,
-          this.position.y
-        );
-        targetX = clamped.x;
-        targetY = clamped.y;
-      }
-
-      this.heldObject.position.x = targetX;
-      this.heldObject.position.y = targetY;
-      // Object elevation dynamically matches character elevation + 0.45 in hands
-      this.heldObject.position.z = this.heldObject.hasVerticalPosition ? (this.position.z + 0.45) : 0;
+      const heldPos = this.calculateHeldObjectPosition(arena);
+      this.heldObject.position.x = heldPos.x;
+      this.heldObject.position.y = heldPos.y;
+      this.heldObject.position.z = heldPos.z;
       this.heldObject.velocity.x = this.velocity.x;
       this.heldObject.velocity.y = this.velocity.y;
       this.heldObject.verticalVelocity = 0;
@@ -221,5 +201,137 @@ export class Character extends GameObject {
     } else {
       this.activeTrajectory = null;
     }
+  }
+
+  /**
+   * Calculates the physical position of an object held in the character's hands.
+   * Naturally holds the object at defaultHandDist in front along facing angle.
+   * If a wall is in front or adjacent, dynamically clamps the hold distance within
+   * [0, defaultHandDist] (and pushes clear of walls) so the object never clips or hits
+   * walls when held or thrown.
+   */
+  public calculateHeldObjectPosition(arena: Arena): { x: number; y: number; z: number } {
+    if (!this.heldObject) {
+      return { x: this.position.x, y: this.position.y, z: this.position.z };
+    }
+
+    const defaultHandDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
+    const dirX = Math.cos(this.facingAngle);
+    const dirY = Math.sin(this.facingAngle);
+    const heldZ = this.heldObject.hasVerticalPosition ? (this.position.z + 0.45) : 0;
+
+    // If standing on or above walls (Layer 2+), ground walls are below and do not collide
+    if (this.position.z >= arena.wallHeight) {
+      return {
+        x: this.position.x + dirX * defaultHandDist,
+        y: this.position.y + dirY * defaultHandDist,
+        z: heldZ,
+      };
+    }
+
+    const objRadius = this.heldObject.colliderRadius > 0 ? this.heldObject.colliderRadius : 0.26;
+    const safetyMargin = 0.05; // 5cm safety clearance from wall edges
+    const requiredClearance = objRadius + safetyMargin;
+
+    const isPointSafe = (px: number, py: number): boolean => {
+      for (const wall of arena.walls) {
+        const closestX = Math.max(wall.x, Math.min(px, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(py, wall.y + wall.height));
+        const dx = px - closestX;
+        const dy = py - closestY;
+        if (dx * dx + dy * dy < requiredClearance * requiredClearance) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    let targetX = this.position.x + dirX * defaultHandDist;
+    let targetY = this.position.y + dirY * defaultHandDist;
+
+    // If default position is completely safe from all walls, use it directly
+    if (isPointSafe(targetX, targetY)) {
+      return { x: targetX, y: targetY, z: heldZ };
+    }
+
+    // Default distance hits/overlaps a wall:
+    // Clamp the hold distance within [0, defaultHandDist] along facing direction
+    if (isPointSafe(this.position.x, this.position.y)) {
+      let low = 0;
+      let high = defaultHandDist;
+      for (let i = 0; i < 16; i++) {
+        const mid = (low + high) * 0.5;
+        if (isPointSafe(this.position.x + dirX * mid, this.position.y + dirY * mid)) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      targetX = this.position.x + dirX * low;
+      targetY = this.position.y + dirY * low;
+    } else {
+      // Even at d=0 (e.g. held object is larger than character and character is touching wall),
+      // try pulling slightly back towards the character's rear up to -colliderRadius
+      const maxBack = Math.max(0.05, this.colliderRadius - 0.05);
+      let foundSafe = false;
+      let safeBackD = 0;
+      for (let d = -0.02; d >= -maxBack; d -= 0.02) {
+        if (isPointSafe(this.position.x + dirX * d, this.position.y + dirY * d)) {
+          safeBackD = d;
+          foundSafe = true;
+          break;
+        }
+      }
+
+      if (foundSafe) {
+        targetX = this.position.x + dirX * safeBackD;
+        targetY = this.position.y + dirY * safeBackD;
+      } else {
+        // Fallback: resolve push vector to ensure requiredClearance from any overlapping wall
+        targetX = this.position.x;
+        targetY = this.position.y;
+        for (let iter = 0; iter < 3; iter++) {
+          let adjusted = false;
+          for (const wall of arena.walls) {
+            const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
+            const closestY = Math.max(wall.y, Math.min(targetY, wall.y + wall.height));
+            const dx = targetX - closestX;
+            const dy = targetY - closestY;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < requiredClearance * requiredClearance) {
+              adjusted = true;
+              const dist = Math.sqrt(distSq);
+              if (dist > 0.0001) {
+                const push = (requiredClearance + 0.01) - dist;
+                targetX += (dx / dist) * push;
+                targetY += (dy / dist) * push;
+              } else {
+                const cdx = this.position.x - closestX;
+                const cdy = this.position.y - closestY;
+                const cdist = Math.hypot(cdx, cdy);
+                if (cdist > 0.0001) {
+                  targetX = closestX + (cdx / cdist) * (requiredClearance + 0.01);
+                  targetY = closestY + (cdy / cdist) * (requiredClearance + 0.01);
+                } else {
+                  targetX = wall.x - requiredClearance - 0.01;
+                }
+              }
+            }
+          }
+          if (!adjusted) break;
+        }
+      }
+    }
+
+    // Clamp within default distance so the object is never pushed further than defaultHandDist
+    const offsetDx = targetX - this.position.x;
+    const offsetDy = targetY - this.position.y;
+    const offsetDist = Math.hypot(offsetDx, offsetDy);
+    if (offsetDist > defaultHandDist && offsetDist > 0.0001) {
+      targetX = this.position.x + (offsetDx / offsetDist) * defaultHandDist;
+      targetY = this.position.y + (offsetDy / offsetDist) * defaultHandDist;
+    }
+
+    return { x: targetX, y: targetY, z: heldZ };
   }
 }
