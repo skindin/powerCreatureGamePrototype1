@@ -647,17 +647,10 @@ export class DevPanel {
               <div id="group-mod-pickup" style="display: ${this.character.pickupModule?.enabled ? 'block' : 'none'};">
                 <div class="slider-group">
                   <div class="slider-label">
-                    <span>Pickup Reach (u)</span>
-                    <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)}</span>
+                    <span>Pickup Reach (3D)</span>
+                    <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)} u</span>
                   </div>
                   <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${this.character.pickupModule?.pickupReach ?? 1.3}">
-                </div>
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Cross-Layer Reach Ratio</span>
-                    <span id="val-pickup-cross-layer">${(this.character.pickupModule?.crossLayerReachRatio ?? 0.55).toFixed(2)}</span>
-                  </div>
-                  <input type="range" id="slide-pickup-cross-layer" min="0.10" max="1.00" step="0.05" value="${this.character.pickupModule?.crossLayerReachRatio ?? 0.55}">
                 </div>
               </div>
             </div>
@@ -1116,7 +1109,6 @@ export class DevPanel {
       if (grpPickup) grpPickup.style.display = hasPickupMod ? "block" : "none";
       if (this.character.pickupModule) {
         this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
-        this.setSliderVal("slide-pickup-cross-layer", "val-pickup-cross-layer", this.character.pickupModule.crossLayerReachRatio, 2);
       }
 
       const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
@@ -1506,10 +1498,6 @@ export class DevPanel {
     this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
       if (this.character.pickupModule) this.character.pickupModule.pickupReach = val;
     }, 1);
-
-    this.setupSlider("slide-pickup-cross-layer", "val-pickup-cross-layer", (val) => {
-      if (this.character.pickupModule) this.character.pickupModule.crossLayerReachRatio = val;
-    }, 2);
 
     const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
     btnThrow?.addEventListener("click", () => {

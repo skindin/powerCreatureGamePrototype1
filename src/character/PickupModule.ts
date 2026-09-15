@@ -5,12 +5,13 @@ export class PickupModule {
   public id = "pickup";
   public name = "Pickup Ability";
   public enabled = true;
-  public pickupReach = 1.3; // Radius in units to reach and pick up freebodies (~1.3 wall tiles)
-  public crossLayerReachRatio = 0.55; // Multiplier on reach when target is on a different height layer
+  public pickupReach = 1.3; // 3D radius in units to reach and pick up freebodies (~1.3 wall tiles)
+  public crossLayerReachRatio = 1.0; // Deprecated: single 3D pickup range now governs reach across all layers
 
   /**
-   * Returns true if the object is within the character's physical grab reach,
-   * accounting for cross-layer reach reductions if character and object are on different layers.
+   * Returns true if the object is within the character's physical grab reach using true 3D math.
+   * Gets the delta magnitude of the 3D positions (dx, dy, dz) and forces the character
+   * to be within a single pickup range.
    */
   public isObjectInReach(
     character: Character,
@@ -21,20 +22,26 @@ export class PickupModule {
     // Cannot grab an object you just threw while it is departing your reach
     if (obj.lastThrower === character) return false;
 
-    // Determine character and object layers (virtually infinite layers: height / wallHeight)
-    const charLayer = GameObject.getEntityLayer(character, wallHeight);
-    const objLayer = GameObject.getEntityLayer(obj, wallHeight);
-    const isSameLayer = charLayer === objLayer;
+    // Real 3D z-positions (accounting for elevation on wall tops)
+    const charZ = Math.max(
+      character.position.z,
+      character.supportingSurfaceHeight ?? 0,
+      character.standingWall ? wallHeight : 0
+    );
+    const objZ = Math.max(
+      obj.position.z,
+      obj.supportingSurfaceHeight ?? 0,
+      obj.standingWall ? wallHeight : 0
+    );
 
-    // If on the same layer: same layer reach. If on a different layer: different layer reach.
-    const effectiveReach = isSameLayer
-      ? this.pickupReach
-      : this.pickupReach * this.crossLayerReachRatio;
+    // Delta magnitude of 3D positions: ||P_obj - P_char||
+    const dx = obj.position.x - character.position.x;
+    const dy = obj.position.y - character.position.y;
+    const dz = objZ - charZ;
+    const deltaMagnitude = Math.hypot(dx, dy, dz);
 
-    // Distance from character to object (must be within physical reach)
-    const objRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-    const distFromChar = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
-    return distFromChar <= effectiveReach + objRadius;
+    // Force the character to have to be within a single pickup range
+    return deltaMagnitude <= this.pickupReach;
   }
 
   /**
@@ -147,10 +154,24 @@ export class PickupModule {
       bestTarget = this.findTargetObject(character, aimX, aimY, objects, wallHeight);
     } else {
       let bestDist = Infinity;
+      const charZ = Math.max(
+        character.position.z,
+        character.supportingSurfaceHeight ?? 0,
+        character.standingWall ? wallHeight : 0
+      );
       for (const obj of objects) {
         if (obj === character.heldObject || obj.isHeld) continue;
         if (this.isObjectInReach(character, obj, wallHeight)) {
-          const d = Math.hypot(obj.position.x - character.position.x, obj.position.y - character.position.y);
+          const objZ = Math.max(
+            obj.position.z,
+            obj.supportingSurfaceHeight ?? 0,
+            obj.standingWall ? wallHeight : 0
+          );
+          const d = Math.hypot(
+            obj.position.x - character.position.x,
+            obj.position.y - character.position.y,
+            objZ - charZ
+          );
           if (d < bestDist) {
             bestDist = d;
             bestTarget = obj;

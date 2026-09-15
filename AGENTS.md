@@ -205,6 +205,10 @@ powerCreatureGamePrototype1/
 16. **Multiplayer Ghost Interpolation (Lerp)**:
     - In `#multiplayer-relay-hud`, players can toggle ghost clone position smoothing on/off (`#relay-toggle-lerp-btn`) and adjust the float speed field (`#relay-lerp-rate-input` in `% / s`, persisted in `localStorage` under `pcg_ghost_lerp` and `pcg_ghost_lerp_rate`).
     - Interpolation advances each render frame via `relayClient.updateGhostLerp(dt)`: moves each ghost entity (character and freebody objects) along the delta vector $(\mathbf{P}_{\text{target}} - \mathbf{P}_{\text{current}})$ by $\min(1.0, (\text{rate} / 100) \times dt)$ of the delta distance per second. When disabled, raw network snapshot coordinates render directly.
+17. **True 3D Pickup Range & Delta Magnitude Calculation**:
+    - Replaced the legacy 2D distance and cross-layer multiplier ratio with true 3D Euclidean distance math.
+    - An object is in grab reach if and only if the delta magnitude of their 3D positions $\sqrt{\Delta x^2 + \Delta y^2 + \Delta z^2} \le \text{pickupReach}$, using the exact physical coordinates of the character and target object (accounting for surface elevation when standing on wall tops).
+    - Forces the character to be within a single pickup range across all vertical altitudes: airborne objects high overhead ($z \gg 0$) or objects far below can no longer be grabbed by flat 2D proximity. DevPanel pickup slider governs the single 3D sphere reach.
 
 ---
 

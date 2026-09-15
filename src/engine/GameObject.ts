@@ -300,10 +300,23 @@ export class GameObject {
 
     // If thrown, track when it has exited thrower's reach or settled on a surface
     if (this.lastThrower) {
-      const throwerRadius = this.lastThrower.hasCollider ? this.lastThrower.colliderRadius : 0.44;
-      const reach = ((this.lastThrower as any).pickupModule?.pickupReach ?? 1.3) + this.colliderRadius + throwerRadius;
-      const dist = Math.hypot(this.position.x - this.lastThrower.position.x, this.position.y - this.lastThrower.position.y);
-      if (dist > reach || this.isRestingOnSurface) {
+      const reach = ((this.lastThrower as any).pickupModule?.pickupReach ?? 1.3);
+      const throwerZ = Math.max(
+        this.lastThrower.position.z,
+        this.lastThrower.supportingSurfaceHeight ?? 0,
+        this.lastThrower.standingWall ? arena.wallHeight : 0
+      );
+      const myZ = Math.max(
+        this.position.z,
+        this.supportingSurfaceHeight ?? 0,
+        this.standingWall ? arena.wallHeight : 0
+      );
+      const dist3D = Math.hypot(
+        this.position.x - this.lastThrower.position.x,
+        this.position.y - this.lastThrower.position.y,
+        myZ - throwerZ
+      );
+      if (dist3D > reach || this.isRestingOnSurface) {
         this.lastThrower = null;
       }
     }
