@@ -170,6 +170,15 @@ powerCreatureGamePrototype1/
 8. **Movement Auto-Cancels Sprint**:
    - In `WalkingModule.ts`, letting go of directional movement controls (`!isMoving`, i.e. keys or left joystick released) automatically resets `character.isSprinting = false`.
    - `Character.ts` dispatches `onSprintChange` events so HUD badges (`#sprint-badge`) update instantly without desync.
+9. **Wall-Start Throw Clamping**:
+   - `ThrowModule.clampStartOutsideWalls`: If a character is on the ground ($z < \text{wallHeight}$) and facing into a wall, held objects and projectile trajectories are clamped to the closest non-overlapping coordinates outside the wall face, preventing items from clipping or spawning embedded inside wall geometry.
+10. **Isometric 2.5D Walls & Character Occlusion Transparency**:
+    - In Hover Above Shadow and Both modes, walls render with 2.5D depth as two stacked squares: a darker bottom square (`#0f172a`) at ground level and a lighter top square (`#334155`) shifted vertically by $y - \text{wallHeight} \times \text{visualAltitudeScale}$.
+    - **Occlusion Transparency**: When the character is north of a wall in 2D ($cy < wy + \text{height}$) on the ground, the top square renders semi-transparent (`globalAlpha = 0.35`) so the character is visible through the virtual 45° angle. When south of the wall ($cy \ge wy + \text{height}$), it renders opaque (`globalAlpha = 1.0`).
+11. **Visual Wall Height Slider & Cursor Aim Alignment**:
+    - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
+    - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
+    - Elevated entities cast secondary shadows on top of wall surfaces when hovering over walls at $z \ge \text{wallHeight}$.
 
 ---
 

@@ -180,8 +180,26 @@ export class Character extends GameObject {
     if (this.heldObject) {
       // Position held object slightly in front of character along facing direction
       const handDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
-      this.heldObject.position.x = this.position.x + Math.cos(this.facingAngle) * handDist;
-      this.heldObject.position.y = this.position.y + Math.sin(this.facingAngle) * handDist;
+      let targetX = this.position.x + Math.cos(this.facingAngle) * handDist;
+      let targetY = this.position.y + Math.sin(this.facingAngle) * handDist;
+
+      // If character is on the ground, clamp so held object does not overlap walls
+      if (this.position.z < arena.wallHeight) {
+        const clamped = ThrowModule.clampStartOutsideWalls(
+          targetX,
+          targetY,
+          this.heldObject.colliderRadius,
+          arena,
+          this.position.z,
+          this.position.x,
+          this.position.y
+        );
+        targetX = clamped.x;
+        targetY = clamped.y;
+      }
+
+      this.heldObject.position.x = targetX;
+      this.heldObject.position.y = targetY;
       // Object elevation dynamically matches character elevation + 0.45 in hands
       this.heldObject.position.z = this.heldObject.hasVerticalPosition ? (this.position.z + 0.45) : 0;
       this.heldObject.velocity.x = this.velocity.x;

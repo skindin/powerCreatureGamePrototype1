@@ -45,6 +45,71 @@ export class ThrowModule {
   }
 
   /**
+   * Clamps an object's start position so that it does not overlap any wall if starting on the ground.
+   * If overlapping, pushes it out to the closest valid position outside the wall.
+   */
+  public static clampStartOutsideWalls(
+    x: number,
+    y: number,
+    radius: number,
+    arena: Arena,
+    charZ: number,
+    charX: number,
+    charY: number
+  ): { x: number; y: number } {
+    if (charZ >= arena.wallHeight) {
+      return { x, y }; // On or above walls
+    }
+
+    let clampedX = x;
+    let clampedY = y;
+    const r = radius > 0 ? radius : 0.3;
+
+    // Up to 3 iterations to resolve adjacent corners/walls
+    for (let iter = 0; iter < 3; iter++) {
+      let collided = false;
+      for (const wall of arena.walls) {
+        const closestX = Math.max(wall.x, Math.min(clampedX, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(clampedY, wall.y + wall.height));
+        const dx = clampedX - closestX;
+        const dy = clampedY - closestY;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < r * r) {
+          collided = true;
+          const dist = Math.sqrt(distSq);
+          if (dist > 0.0001) {
+            const pushDist = (r + 0.01) - dist;
+            clampedX += (dx / dist) * pushDist;
+            clampedY += (dy / dist) * pushDist;
+          } else {
+            const cdx = charX - clampedX;
+            const cdy = charY - clampedY;
+            const cdist = Math.hypot(cdx, cdy);
+            if (cdist > 0.0001) {
+              clampedX += (cdx / cdist) * (r + 0.02);
+              clampedY += (cdy / cdist) * (r + 0.02);
+            } else {
+              const dL = clampedX - wall.x;
+              const dR = wall.x + wall.width - clampedX;
+              const dT = clampedY - wall.y;
+              const dB = wall.y + wall.height - clampedY;
+              const minD = Math.min(dL, dR, dT, dB);
+              if (minD === dL) clampedX = wall.x - r - 0.01;
+              else if (minD === dR) clampedX = wall.x + wall.width + r + 0.01;
+              else if (minD === dT) clampedY = wall.y - r - 0.01;
+              else clampedY = wall.y + wall.height + r + 0.01;
+            }
+          }
+        }
+      }
+      if (!collided) break;
+    }
+
+    return { x: clampedX, y: clampedY };
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground or on top of an elevated wall.
@@ -183,9 +248,24 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    const startX = held.position.x;
-    const startY = held.position.y;
+    let startX = held.position.x;
+    let startY = held.position.y;
     const startZ = held.position.z;
+
+    // If starting on the ground and overlapping a wall, clamp start position outside walls
+    if (character.position.z < arena.wallHeight) {
+      const clamped = ThrowModule.clampStartOutsideWalls(
+        startX,
+        startY,
+        held.colliderRadius,
+        arena,
+        character.position.z,
+        character.position.x,
+        character.position.y
+      );
+      startX = clamped.x;
+      startY = clamped.y;
+    }
 
     const throwPower = this.baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
@@ -313,9 +393,24 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    const startX = held.position.x;
-    const startY = held.position.y;
+    let startX = held.position.x;
+    let startY = held.position.y;
     const startZ = held.position.z;
+
+    // If starting on the ground and overlapping a wall, clamp start position outside walls
+    if (character.position.z < arena.wallHeight) {
+      const clamped = ThrowModule.clampStartOutsideWalls(
+        startX,
+        startY,
+        held.colliderRadius,
+        arena,
+        character.position.z,
+        character.position.x,
+        character.position.y
+      );
+      startX = clamped.x;
+      startY = clamped.y;
+    }
 
     const throwPower = this.baseThrowForce * character.strength;
     const charVel = {
@@ -331,6 +426,8 @@ export class ThrowModule {
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.position.x = startX;
+    held.position.y = startY;
     held.velocity.x = launch.vx;
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;

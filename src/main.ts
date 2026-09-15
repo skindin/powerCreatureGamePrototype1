@@ -452,6 +452,43 @@ function bootstrap(): void {
     });
   });
 
+  // Visual Wall Height & Isometric Depth Slider (0.0 to 1.0)
+  const slideVisualWallHeight = document.getElementById("slide-visual-wall-height") as HTMLInputElement | null;
+  const valVisualWallHeight = document.getElementById("val-visual-wall-height");
+
+  let savedVisualWallHeight = 1.0;
+  try {
+    const storedH = localStorage.getItem("pcg_visual_wall_height");
+    if (storedH !== null) {
+      const parsedH = parseFloat(storedH);
+      if (!isNaN(parsedH) && parsedH >= 0 && parsedH <= 1.0) {
+        savedVisualWallHeight = parsedH;
+      }
+    }
+  } catch {
+    // Ignore localStorage error
+  }
+
+  const applyVisualWallHeight = (scale: number) => {
+    renderer.setVisualAltitudeScale(scale);
+    if (slideVisualWallHeight) slideVisualWallHeight.value = scale.toFixed(2);
+    if (valVisualWallHeight) valVisualWallHeight.textContent = scale.toFixed(2);
+    try {
+      localStorage.setItem("pcg_visual_wall_height", scale.toString());
+    } catch {
+      // Ignore localStorage error
+    }
+  };
+
+  applyVisualWallHeight(savedVisualWallHeight);
+
+  slideVisualWallHeight?.addEventListener("input", () => {
+    const val = parseFloat(slideVisualWallHeight.value);
+    if (!isNaN(val)) {
+      applyVisualWallHeight(val);
+    }
+  });
+
   // View Settings remains open while testing gameplay modes; close via '✕', 'V', 'Esc', or toggle button
 
   // Phone Connect Modal Logic

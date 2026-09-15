@@ -8,6 +8,7 @@ export type VerticalVisualMode = "bigger" | "hover" | "both";
 
 export interface ViewSettings {
   verticalVisuals: VerticalVisualMode;
+  visualAltitudeScale: number;
 }
 
 export class Renderer {
@@ -15,6 +16,7 @@ export class Renderer {
 
   public viewSettings: ViewSettings = {
     verticalVisuals: "bigger",
+    visualAltitudeScale: 1.0,
   };
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -23,6 +25,10 @@ export class Renderer {
 
   public setVerticalVisualMode(mode: VerticalVisualMode): void {
     this.viewSettings.verticalVisuals = mode;
+  }
+
+  public setVisualAltitudeScale(scale: number): void {
+    this.viewSettings.visualAltitudeScale = Math.max(0, Math.min(1, scale));
   }
 
   public render(
@@ -47,8 +53,8 @@ export class Renderer {
     // 1. Floor Grid / Surface in Units
     this.drawFloorGrid(arena, ppu);
 
-    // 2. Pure 2D Top-Down Walls
-    this.drawWalls(arena, ppu);
+    // 2. Walls (Pure 2D or Isometric based on View Settings)
+    this.drawWalls(arena, ppu, character);
 
     // 2b. Wall Tile Preview (When in Wall Editor sub-mode)
     if (isWallEditor && hoverWallTile) {
@@ -100,7 +106,7 @@ export class Renderer {
     }
 
     // 5. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
-    const activeAimCursor = isUsingGamepad ? (character.aimTarget || gamepadAimPos) : null;
+    const activeAimCursor = character.aimTarget || (isUsingGamepad ? gamepadAimPos : null);
     if (character.activeTrajectory) {
       this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor);
     } else if (isUsingGamepad && activeAimCursor) {
@@ -133,13 +139,14 @@ export class Renderer {
 
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     // 1. Draw Ghost Character
     const gChar = ghostSnapshot.character;
     if (gChar) {
       const charScale = useBigger ? Renderer.getAltitudeScale(gChar.z, arena.wallHeight) : 1.0;
       const px = gChar.x * ppu;
-      const py = useHover ? (gChar.y - gChar.z) * ppu : gChar.y * ppu;
+      const py = (gChar.y - gChar.z * hoverScale) * ppu;
       const r = gChar.radius * ppu * charScale;
 
       // Ghost ground shadow (drawn when elevated above ground level)
@@ -147,7 +154,7 @@ export class Renderer {
         ctx.save();
         ctx.beginPath();
         ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu, 0, Math.PI * 2);
-        if (useHover) {
+        if (useHover && hoverScale > 0) {
           ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
           ctx.fill();
         }
@@ -196,7 +203,7 @@ export class Renderer {
       for (const obj of ghostSnapshot.objects) {
         const altScale = useBigger ? Renderer.getAltitudeScale(obj.z, arena.wallHeight) : 1.0;
         const px = obj.x * ppu;
-        const py = useHover ? (obj.y - obj.z) * ppu : obj.y * ppu;
+        const py = (obj.y - obj.z * hoverScale) * ppu;
         const r = obj.radius * ppu * altScale;
 
         // Ghost ground shadow
@@ -293,19 +300,81 @@ export class Renderer {
   }
 
   /**
-   * Pure 2D Top-Down Walls (No fake 3D depth, no text)
+   * Walls: Pure 2D or 2.5D Isometric based on View Settings.
+   * In Hover / Both mode with visualAltitudeScale > 0:
+   * - Renders each block as two squares stacked on top of each other.
+   * - Bottom square (front face) is rendered in a darker shade.
+   * - Top square is placed at (y - wallHeight * visualAltitudeScale).
+   *   Values < 1 squish the visible bottom square down to that height.
+   * - Transparency: When character is above the wall in 2D (cy < wy + height),
+   *   the top square renders transparent (globalAlpha = 0.35) so the character
+   *   behind the wall is visible through the virtual 45deg camera angle.
+   *   When below the wall in 2D (cy >= wy + height), it renders opaque.
    */
-  private drawWalls(arena: Arena, ppu: number): void {
+  private drawWalls(arena: Arena, ppu: number, character: Character): void {
     const ctx = this.ctx;
-    for (const wall of arena.walls) {
-      // Solid flat footprint
-      ctx.fillStyle = "#1e293b";
-      ctx.fillRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-      // Clean border
-      ctx.strokeStyle = "#475569";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
+    if (hoverScale > 0) {
+      // Sort walls north to south for proper isometric overlap
+      const sortedWalls = [...arena.walls].sort((a, b) => a.y - b.y);
+
+      for (const wall of sortedWalls) {
+        const wallW = wall.width * ppu;
+        const wallH = wall.height * ppu;
+        const baseX = wall.x * ppu;
+        const baseY = wall.y * ppu;
+        const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
+
+        // 1. Bottom square (front face / ground block): darker shade
+        ctx.save();
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(baseX, baseY, wallW, wallH);
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(baseX, baseY, wallW, wallH);
+        ctx.restore();
+
+        // 2. Top square (elevated top surface): lighter shade
+        ctx.save();
+        // Check if character is overlapped by the image of the top square / above the wall in 2D:
+        // "when my character would be overlapped by the image of the top square, make the wall block transparent,
+        // since they aren't technically on the wall, the volume of the cube is just covering them from the virtual 45deg cam"
+        // "when im above the object in 2d, make the top square transparent, when im below the wall in 2d, make it opaque"
+        const charR = character.colliderRadius ?? 0.35;
+        const charX = character.position.x;
+        const charY = character.position.y;
+        const isCharOnGround = character.position.z < arena.wallHeight;
+
+        // Top square bounds in arena units
+        const topSquareY = wall.y - arena.wallHeight * hoverScale;
+        const inX = charX + charR >= wall.x - 0.1 && charX - charR <= wall.x + wall.width + 0.1;
+        const isAboveIn2D = charY < (wall.y + wall.height + 0.1);
+        const overlapsTopSquare = charY + charR >= topSquareY - 0.1;
+
+        if (isCharOnGround && inX && isAboveIn2D && overlapsTopSquare) {
+          ctx.globalAlpha = 0.35; // See-through X-ray transparency when character is behind/under the top square
+        } else {
+          ctx.globalAlpha = 1.0;  // Fully opaque
+        }
+
+        ctx.fillStyle = "#334155";
+        ctx.fillRect(baseX, topY, wallW, wallH);
+        ctx.strokeStyle = "#64748b";
+        ctx.lineWidth = 1.8;
+        ctx.strokeRect(baseX, topY, wallW, wallH);
+        ctx.restore();
+      }
+    } else {
+      // Standard flat 2D top-down walls
+      for (const wall of arena.walls) {
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
+        ctx.strokeStyle = "#475569";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
+      }
     }
   }
 
@@ -386,12 +455,16 @@ export class Renderer {
     const z = obj.position.z;
     if (z <= 0.01) return;
 
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    if (hoverScale <= 0) return;
+
     const ctx = this.ctx;
     const groundX = obj.position.x * ppu;
     const groundY = obj.position.y * ppu;
-    const renderY = (obj.position.y - z) * ppu;
+    const renderY = (obj.position.y - z * hoverScale) * ppu;
     const wallH = arena.wallHeight;
-    const transY = (obj.position.y - wallH) * ppu;
+    const transY = (obj.position.y - wallH * hoverScale) * ppu;
 
     ctx.save();
     ctx.lineWidth = 1.8;
@@ -436,7 +509,8 @@ export class Renderer {
    * - When hover above shadow is on, draws a dark shadow placeholder representing the ground collider.
    * - If the object is higher than wall height, also draws another transparent dotted outline
    *   the size the object would be if it was exactly at wall height (when bigger sprites is on).
-   * Only rendered when elevated above ground (z > 0.01) so true footprints are visible.
+   * - When overlapping a wall at altitude (z >= wallHeight), renders an elevated shadow
+   *   on top of the wall surface showing where the object would touch down.
    */
   private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
     const z = obj.position.z;
@@ -447,6 +521,7 @@ export class Renderer {
     const groundY = obj.position.y * ppu;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     // 1. Plain simple dotted line of the shape of the object at ground level (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
@@ -466,7 +541,7 @@ export class Renderer {
     }
 
     // Soft dark floor shadow placeholder when hovering above ground
-    if (useHover) {
+    if (useHover && hoverScale > 0) {
       ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
       ctx.fill();
     }
@@ -501,6 +576,45 @@ export class Renderer {
       ctx.stroke();
     }
 
+    // 3. Elevated Wall Top Shadow:
+    // When hovering over a wall at altitude (z >= wallHeight), render another shadow where the object
+    // would stop at the top of the wall surface!
+    if (useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05) {
+      let isOverWall = false;
+      for (const wall of arena.walls) {
+        const closestX = Math.max(wall.x, Math.min(obj.position.x, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(obj.position.y, wall.y + wall.height));
+        const dx = obj.position.x - closestX;
+        const dy = obj.position.y - closestY;
+        if (dx * dx + dy * dy < obj.colliderRadius * obj.colliderRadius) {
+          isOverWall = true;
+          break;
+        }
+      }
+
+      if (isOverWall) {
+        const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
+        ctx.beginPath();
+        if (obj.visualShape === "box") {
+          const sz = shadowRadius * 2;
+          const cr = Math.max(3, shadowRadius * 0.16);
+          if (ctx.roundRect) {
+            ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
+          } else {
+            ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
+          }
+        } else {
+          ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
   }
 
@@ -519,9 +633,10 @@ export class Renderer {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     const x = obj.position.x * ppu;
-    const y = useHover ? (obj.position.y - obj.position.z) * ppu : obj.position.y * ppu;
+    const y = (obj.position.y - obj.position.z * hoverScale) * ppu;
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(obj.position.z, arena.wallHeight) : 1.0;
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const realRadius = visualRadius * ppu;
@@ -641,9 +756,10 @@ export class Renderer {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     const x = char.position.x * ppu;
-    const y = useHover ? (char.position.y - char.position.z) * ppu : char.position.y * ppu;
+    const y = (char.position.y - char.position.z * hoverScale) * ppu;
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
@@ -687,9 +803,7 @@ export class Renderer {
     // If holding an object, draw pickup tether / hands
     if (char.heldObject) {
       const heldX = char.heldObject.position.x * ppu;
-      const heldY = useHover
-        ? (char.heldObject.position.y - char.heldObject.position.z) * ppu
-        : char.heldObject.position.y * ppu;
+      const heldY = (char.heldObject.position.y - char.heldObject.position.z * hoverScale) * ppu;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
       ctx.setLineDash([3, 3]);
       ctx.lineWidth = 1.5;
@@ -963,6 +1077,7 @@ export class Renderer {
 
       const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
       const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+      const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
       for (let s = 1; s <= subSteps; s++) {
         const curX = p1.x + subDx * s;
@@ -974,7 +1089,7 @@ export class Renderer {
         const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
         const radius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
         const screenX = curX * ppu;
-        const screenY = useHover ? (curY - curZ) * ppu : curY * ppu;
+        const screenY = (curY - curZ * hoverScale) * ppu;
 
         if (isFirstDot) {
           if (dist3DSinceLast >= base3DSpacing * 0.5) {
@@ -998,13 +1113,12 @@ export class Renderer {
 
         // When dots get close to each other in 2D (due to steep vertical arc),
         // decrease how often dots are placed so dots never bunch up or overlap!
-        // At minimum, ensure a visible gap between dot perimeters:
         const min2DSpacingPx = Math.max(18, lastRadius + radius + 7);
 
         if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
           // Don't draw dot on top of the landing target
           const landZ = traj.isLandingOnWallTop ? arena.wallHeight : 0;
-          const targetScreenY = useHover ? (traj.landPoint.y - landZ) * ppu : traj.landPoint.y * ppu;
+          const targetScreenY = (traj.landPoint.y - landZ * hoverScale) * ppu;
           const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - targetScreenY);
           const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
           if (distToLandPx > landRadiusPx * 0.8) {
@@ -1028,11 +1142,9 @@ export class Renderer {
     // Impact or Landing Marker:
     // Matches the exact collider footprint size of the held object so the player can visualize if it will fit!
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
     const finalPt = points[points.length - 1];
     const targetRadius = (traj.colliderRadius ?? 0.35) * ppu;
-    const landX = traj.landPoint.x * ppu;
-    const landZ = traj.isLandingOnWallTop ? arena.wallHeight : 0;
-    const landY = useHover ? (traj.landPoint.y - landZ) * ppu : traj.landPoint.y * ppu;
 
     const drawColliderFootprint = (x: number, y: number) => {
       ctx.beginPath();
@@ -1049,10 +1161,35 @@ export class Renderer {
       }
     };
 
+    let finalHitX = traj.landPoint.x * ppu;
+    let finalGroundY = traj.landPoint.y * ppu;
+
     if (traj.isBlockedByWall) {
       // Wall Collision: Show exact collider footprint at collision point in dashed red, with a central red X
       const impX = finalPt.x * ppu;
-      const impY = useHover ? (finalPt.y - finalPt.z) * ppu : finalPt.y * ppu;
+      const impY = (finalPt.y - finalPt.z * hoverScale) * ppu;
+      const groundImpY = finalPt.y * ppu;
+      finalHitX = impX;
+      finalGroundY = groundImpY;
+
+      // If elevated hit above ground, draw vertical altitude connector line from ground up to hit
+      if (hoverScale > 0 && finalPt.z > 0.05) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(impX, groundImpY);
+        ctx.lineTo(impX, impY);
+        ctx.stroke();
+
+        // Subtle ground indicator ring
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.35)";
+        ctx.beginPath();
+        drawColliderFootprint(impX, groundImpY);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.strokeStyle = "#ef4444";
@@ -1077,6 +1214,32 @@ export class Renderer {
       ctx.restore();
     } else if (traj.isLandingOnWallTop) {
       // Landing Target on Wall Top (Layer 2: semi-transparent, exact collider footprint size)
+      const landX = traj.landPoint.x * ppu;
+      const landZ = arena.wallHeight;
+      const landY = (traj.landPoint.y - landZ * hoverScale) * ppu;
+      const groundLandY = traj.landPoint.y * ppu;
+      finalHitX = landX;
+      finalGroundY = groundLandY;
+
+      // Vertical altitude connector from ground up to elevated wall top
+      if (hoverScale > 0) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(landX, groundLandY);
+        ctx.lineTo(landX, landY);
+        ctx.stroke();
+
+        // Subtle ground indicator ring
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+        ctx.beginPath();
+        drawColliderFootprint(landX, groundLandY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       ctx.save();
       ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
       ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
@@ -1094,6 +1257,11 @@ export class Renderer {
       ctx.restore();
     } else {
       // Landing Target on Ground (Layer 1: exact collider footprint size)
+      const landX = traj.landPoint.x * ppu;
+      const landY = traj.landPoint.y * ppu;
+      finalHitX = landX;
+      finalGroundY = landY;
+
       ctx.save();
       ctx.strokeStyle = "#22c55e";
       ctx.fillStyle = "rgba(34, 197, 94, 0.25)";
@@ -1111,17 +1279,18 @@ export class Renderer {
       ctx.restore();
     }
 
-    // 6. Aim Cursor & Sightline (when actively aiming)
+    // 6. Aim Cursor & Sightline:
+    // ALWAYS render a target reticle exactly where the cursor is on the screen!
     if (aimTarget) {
       const cursorX = aimTarget.x * ppu;
-      const cursorY = useHover ? (aimTarget.y - (traj.isLandingOnWallTop ? arena.wallHeight : 0)) * ppu : aimTarget.y * ppu;
+      const cursorY = aimTarget.y * ppu;
       const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
 
       // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
       if (distToCursor > 0.25) {
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(landX, landY);
+        ctx.moveTo(finalHitX, finalGroundY);
         ctx.lineTo(cursorX, cursorY);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
         ctx.lineWidth = 1.4;
@@ -1186,8 +1355,9 @@ export class Renderer {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
     const px = entity.position.x * ppu;
-    const py = useHover ? (entity.position.y - entity.position.z) * ppu : entity.position.y * ppu;
+    const py = (entity.position.y - entity.position.z * hoverScale) * ppu;
     const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
     const scale = useBigger ? Renderer.getAltitudeScale(entity.position.z, 1.0) : 1.0;
     const pad = (visualRadius * scale + 0.08) * ppu;
@@ -1208,8 +1378,9 @@ export class Renderer {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
     const px = entity.position.x * ppu;
-    const py = useHover ? (entity.position.y - entity.position.z) * ppu : entity.position.y * ppu;
+    const py = (entity.position.y - entity.position.z * hoverScale) * ppu;
     const visualRadius = entity.hasCollider ? entity.colliderRadius : (entity.colliderModule?.radius ?? 0.32);
     const scale = useBigger ? Renderer.getAltitudeScale(entity.position.z, 1.0) : 1.0;
     const r = visualRadius * ppu * scale;

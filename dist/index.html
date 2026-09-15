@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-BYXvweEt.js"></script>
+    <script type="module" crossorigin src="/assets/index-D5pNpSON.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-fwngsNym.css">
   </head>
   <body>
@@ -127,6 +127,22 @@
                   </div>
                   <p class="option-desc">Combines both modes: sprites scale larger with altitude AND hover upward above their ground shadow placeholder.</p>
                 </button>
+              </div>
+            </div>
+
+            <!-- Wall Height & Isometric Depth Slider -->
+            <div class="settings-section" id="visual-wall-height-section">
+              <div class="settings-section-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <h3>Wall Isometric Height</h3>
+                  <span id="val-visual-wall-height" style="font-family: monospace; font-size: 0.82rem; color: var(--accent-cyan); font-weight: 700;">1.00</span>
+                </div>
+                <p class="settings-section-desc">Adjust isometric wall height & hover altitude (0 = flat 2D; 1 = full 1:1 isometric height).</p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">0.0</span>
+                <input type="range" id="slide-visual-wall-height" min="0.0" max="1.0" step="0.05" value="1.0" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;" />
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">1.0</span>
               </div>
             </div>
           </div>
