@@ -327,11 +327,11 @@ export class Renderer {
         const baseY = wall.y * ppu;
         const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
 
-        // 1. Bottom square (front face / ground block): darker shade
+        // 1. Bottom square (front face / ground block): intermediate shade between ground (#0f172a) and top (#334155)
         ctx.save();
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = "#1e293b";
         ctx.fillRect(baseX, baseY, wallW, wallH);
-        ctx.strokeStyle = "#1e293b";
+        ctx.strokeStyle = "#334155";
         ctx.lineWidth = 1.6;
         ctx.strokeRect(baseX, baseY, wallW, wallH);
         ctx.restore();
