@@ -53,16 +53,15 @@ export class Renderer {
     // 1. Floor Grid / Surface in Units
     this.drawFloorGrid(arena, ppu);
 
-    // 2. Walls (Pure 2D or Isometric based on View Settings)
-    this.drawWalls(arena, ppu, character);
+    // 2. Wall Bases (Bottom squares / front faces at ground level)
+    this.drawWallBases(arena, ppu);
 
     // 2b. Wall Tile Preview (When in Wall Editor sub-mode)
     if (isWallEditor && hoverWallTile) {
       this.drawWallEditorHover(arena, hoverWallTile, ppu);
     }
 
-    // 3. Entities: Objects at a higher virtual position (z) always render on top of objects at a lower virtual position,
-    // except objects held by a character, which render BELOW the character holding them.
+    // 3. Entities sorting
     const allRenderables = [character, ...objects];
     allRenderables.sort((a, b) => {
       // Objects held by a character render BELOW that character
@@ -87,22 +86,49 @@ export class Renderer {
 
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
 
-    // 3a. Draw vertical connector lines underneath elevated sprites (in hover or both modes)
+    // 3a. Shadow Fills: Always render UNDERNEATH objects
+    for (const entity of allRenderables) {
+      this.drawObjectShadowFill(entity, arena, ppu);
+    }
+
+    // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight)
+    const groundRenderables = allRenderables.filter(e => e.position.z < arena.wallHeight - 0.05);
+    const elevatedRenderables = allRenderables.filter(e => e.position.z >= arena.wallHeight - 0.05);
+
+    // 4. Ground Entities (z < wallHeight)
+    // Rendered before wall tops so top of wall renders OVER ground objects!
+    for (const entity of groundRenderables) {
+      if (entity instanceof Character) {
+        this.drawCharacter(entity, ppu, arena);
+      } else {
+        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
+      }
+    }
+
+    // 5. Top of Walls (Renders OVER ground objects!)
+    this.drawWallTops(arena, ppu, character);
+
+    // 6. Elevated Entities (z >= wallHeight)
+    // Standing on the wall roof or flying in the air above walls
+    for (const entity of elevatedRenderables) {
+      if (entity instanceof Character) {
+        this.drawCharacter(entity, ppu, arena);
+      } else {
+        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
+      }
+    }
+
+    // 7. Vertical connector lines for elevated entities
     if (useHover) {
       for (const entity of allRenderables) {
         this.drawVerticalConnectorLine(entity, arena, ppu);
       }
     }
 
-    // 3b. Draw entity sprites and ground shadow placeholders
+    // 8. Shadow Outlines: Always render ON TOP OF objects!
+    // If an object is above a wall, its bottom outline is omitted to prevent overlapping confusion.
     for (const entity of allRenderables) {
-      if (entity instanceof Character) {
-        this.drawCharacter(entity, ppu, arena);
-      } else {
-        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
-      }
-      // Shadow placeholder / elevation outlines
-      this.drawObjectShadow(entity, arena, ppu);
+      this.drawObjectShadowOutline(entity, arena, ppu);
     }
 
     // 5. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
@@ -301,73 +327,49 @@ export class Renderer {
 
   /**
    * Walls: Pure 2D or 2.5D Isometric based on View Settings.
-   * In Hover / Both mode with visualAltitudeScale > 0:
-   * - Renders each block as two squares stacked on top of each other.
-   * - Bottom square (front face) is rendered in a darker shade.
+  /**
+   * Wall Bases: In Hover / Both mode with visualAltitudeScale > 0:
+   * - Bottom square (front face) is rendered in an intermediate shade at ground level.
+   */
+  private drawWallBases(arena: Arena, ppu: number): void {
+    const ctx = this.ctx;
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    if (hoverScale <= 0) return; // In flat mode, walls are drawn in drawWallTops
+
+    const sortedWalls = [...arena.walls].sort((a, b) => a.y - b.y);
+
+    for (const wall of sortedWalls) {
+      const wallW = wall.width * ppu;
+      const wallH = wall.height * ppu;
+      const baseX = wall.x * ppu;
+      const baseY = wall.y * ppu;
+
+      ctx.save();
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(baseX, baseY, wallW, wallH);
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(baseX, baseY, wallW, wallH);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Top of Wall Squares: Renders OVER ground entities!
    * - Top square is placed at (y - wallHeight * visualAltitudeScale).
    *   Values < 1 squish the visible bottom square down to that height.
-   * - Transparency: When character is above the wall in 2D (cy < wy + height),
-   *   the top square renders transparent (globalAlpha = 0.35) so the character
-   *   behind the wall is visible through the virtual 45deg camera angle.
-   *   When below the wall in 2D (cy >= wy + height), it renders opaque.
+   * - Transparency: Only when the character's collider on screen is completely above the wall's collider,
+   *   and the character and wall collider overlap on screen X.
+   *   Being beside a wall (left or right) does NOT cause transparency.
    */
-  private drawWalls(arena: Arena, ppu: number, character: Character): void {
+  private drawWallTops(arena: Arena, ppu: number, character: Character): void {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-    if (hoverScale > 0) {
-      // Sort walls north to south for proper isometric overlap
-      const sortedWalls = [...arena.walls].sort((a, b) => a.y - b.y);
-
-      for (const wall of sortedWalls) {
-        const wallW = wall.width * ppu;
-        const wallH = wall.height * ppu;
-        const baseX = wall.x * ppu;
-        const baseY = wall.y * ppu;
-        const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
-
-        // 1. Bottom square (front face / ground block): intermediate shade between ground (#0f172a) and top (#334155)
-        ctx.save();
-        ctx.fillStyle = "#1e293b";
-        ctx.fillRect(baseX, baseY, wallW, wallH);
-        ctx.strokeStyle = "#334155";
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(baseX, baseY, wallW, wallH);
-        ctx.restore();
-
-        // 2. Top square (elevated top surface): lighter shade
-        ctx.save();
-        // Check if character is overlapped by the image of the top square / above the wall in 2D:
-        // "when my character would be overlapped by the image of the top square, make the wall block transparent,
-        // since they aren't technically on the wall, the volume of the cube is just covering them from the virtual 45deg cam"
-        // "when im above the object in 2d, make the top square transparent, when im below the wall in 2d, make it opaque"
-        const charR = character.colliderRadius ?? 0.35;
-        const charX = character.position.x;
-        const charY = character.position.y;
-        const isCharOnGround = character.position.z < arena.wallHeight;
-
-        // Top square bounds in arena units
-        const topSquareY = wall.y - arena.wallHeight * hoverScale;
-        const inX = charX + charR >= wall.x - 0.1 && charX - charR <= wall.x + wall.width + 0.1;
-        const isAboveIn2D = charY < (wall.y + wall.height + 0.1);
-        const overlapsTopSquare = charY + charR >= topSquareY - 0.1;
-
-        if (isCharOnGround && inX && isAboveIn2D && overlapsTopSquare) {
-          ctx.globalAlpha = 0.35; // See-through X-ray transparency when character is behind/under the top square
-        } else {
-          ctx.globalAlpha = 1.0;  // Fully opaque
-        }
-
-        ctx.fillStyle = "#334155";
-        ctx.fillRect(baseX, topY, wallW, wallH);
-        ctx.strokeStyle = "#64748b";
-        ctx.lineWidth = 1.8;
-        ctx.strokeRect(baseX, topY, wallW, wallH);
-        ctx.restore();
-      }
-    } else {
-      // Standard flat 2D top-down walls
+    if (hoverScale <= 0) {
+      // Standard flat 2D top-down walls (rendered over ground objects)
       for (const wall of arena.walls) {
         ctx.fillStyle = "#1e293b";
         ctx.fillRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
@@ -375,6 +377,47 @@ export class Renderer {
         ctx.lineWidth = 2;
         ctx.strokeRect(wall.x * ppu, wall.y * ppu, wall.width * ppu, wall.height * ppu);
       }
+      return;
+    }
+
+    const sortedWalls = [...arena.walls].sort((a, b) => a.y - b.y);
+    const charR = character.colliderRadius ?? 0.35;
+    const charX = character.position.x;
+    const charY = character.position.y;
+    const isCharOnGround = character.position.z < arena.wallHeight;
+
+    for (const wall of sortedWalls) {
+      const wallW = wall.width * ppu;
+      const wallH = wall.height * ppu;
+      const baseX = wall.x * ppu;
+      const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
+      const topSquareY = wall.y - arena.wallHeight * hoverScale;
+
+      // 1. Overlap on screen X:
+      // "and the object and wall collider overlap on screen x."
+      const overlapX = (charX + charR > wall.x) && (charX - charR < wall.x + wall.width);
+
+      // 2. Collider on screen is completely above the wall's collider:
+      // "being beside a wall (left or right) should not cause the transparency.
+      // only when collider on screen is completely above the walls collider"
+      const isCompletelyAboveWallCollider = (charY + charR <= wall.y + 0.05);
+
+      // 3. Within the visual region covered by the top square:
+      const overlapsTopSquare = (charY + charR >= topSquareY - 0.05);
+
+      ctx.save();
+      if (isCharOnGround && overlapX && isCompletelyAboveWallCollider && overlapsTopSquare) {
+        ctx.globalAlpha = 0.35; // See-through X-ray transparency when character is behind/under the top square
+      } else {
+        ctx.globalAlpha = 1.0;  // Fully opaque
+      }
+
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(baseX, topY, wallW, wallH);
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(baseX, topY, wallW, wallH);
+      ctx.restore();
     }
   }
 
@@ -504,15 +547,74 @@ export class Renderer {
   }
 
   /**
-   * Height Indicator Ring (Ground Shadow / Collider Footprint Outline):
-   * - Plain simple dotted line matching the shape of the object at ground level (fixed at colliderRadius).
-   * - When hover above shadow is on, draws a dark shadow placeholder representing the ground collider.
-   * - If the object is higher than wall height, also draws another transparent dotted outline
-   *   the size the object would be if it was exactly at wall height (when bigger sprites is on).
-   * - When overlapping a wall at altitude (z >= wallHeight), renders an elevated shadow
-   *   on top of the wall surface showing where the object would touch down.
+   * Checks whether an entity's collider footprint overlaps any wall in 2D.
    */
-  private drawObjectShadow(obj: GameObject, arena: Arena, ppu: number): void {
+  private isEntityOverWall(obj: GameObject, arena: Arena): boolean {
+    for (const wall of arena.walls) {
+      const closestX = Math.max(wall.x, Math.min(obj.position.x, wall.x + wall.width));
+      const closestY = Math.max(wall.y, Math.min(obj.position.y, wall.y + wall.height));
+      const dx = obj.position.x - closestX;
+      const dy = obj.position.y - closestY;
+      if (dx * dx + dy * dy < obj.colliderRadius * obj.colliderRadius) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Draws the shadow FILL (always rendered UNDERNEATH all entity sprites).
+   */
+  private drawObjectShadowFill(obj: GameObject, arena: Arena, ppu: number): void {
+    const z = obj.position.z;
+    if (z <= 0.01) return;
+
+    const ctx = this.ctx;
+    const groundX = obj.position.x * ppu;
+    const groundY = obj.position.y * ppu;
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    if (!useHover || hoverScale <= 0) return;
+
+    const shadowRadius = obj.colliderRadius * ppu;
+    const isAboveWall = z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
+
+    ctx.save();
+    ctx.beginPath();
+    if (isAboveWall) {
+      // Draw shadow fill on top of wall surface
+      const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
+      if (obj.visualShape === "box") {
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.fill();
+    } else {
+      // Draw shadow fill on ground floor
+      if (obj.visualShape === "box") {
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, groundY - shadowRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Draws the shadow OUTLINE (always rendered ON TOP OF entity sprites).
+   * If the object is above a wall, the bottom outline is omitted so it does not overlap confusingly with the wall-top shadow.
+   */
+  private drawObjectShadowOutline(obj: GameObject, arena: Arena, ppu: number): void {
     const z = obj.position.z;
     if (z <= 0.01) return;
 
@@ -523,94 +625,64 @@ export class Renderer {
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-    // 1. Plain simple dotted line of the shape of the object at ground level (does NOT expand with altitude)
     const shadowRadius = obj.colliderRadius * ppu;
+    const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
 
     ctx.save();
-    ctx.beginPath();
-    if (obj.visualShape === "box") {
-      const sz = shadowRadius * 2;
-      const cr = Math.max(3, shadowRadius * 0.16);
-      if (ctx.roundRect) {
-        ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
-      } else {
-        ctx.rect(groundX - shadowRadius, groundY - shadowRadius, sz, sz);
-      }
-    } else {
-      ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
-    }
 
-    // Soft dark floor shadow placeholder when hovering above ground
-    if (useHover && hoverScale > 0) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-      ctx.fill();
-    }
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([4, 4]);
-    ctx.stroke();
-
-    // 2. If higher than wall height, draw another transparent dotted outline
-    // the size the object would be if it was exactly at wall height (active in Bigger Sprites & Both)
-    if (useBigger && z > arena.wallHeight + 0.01) {
-      const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
-      const wallRadius = obj.colliderRadius * ppu * wallAltScale;
-
+    if (isAboveWall) {
+      // "don't even show the bottom outline of an object above a wall.
+      // still draw the vertical line that goes from the center of the object down to it's real place on the ground,
+      // but not the bottom outline since the two shadows overlap and get confusing"
+      const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
       ctx.beginPath();
       if (obj.visualShape === "box") {
-        const sz = wallRadius * 2;
-        const cr = Math.max(3, wallRadius * 0.16);
-        if (ctx.roundRect) {
-          ctx.roundRect(groundX - wallRadius, groundY - wallRadius, sz, sz, cr);
-        } else {
-          ctx.rect(groundX - wallRadius, groundY - wallRadius, sz, sz);
-        }
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
       } else {
-        ctx.arc(groundX, groundY, wallRadius, 0, Math.PI * 2);
+        ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+      }
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+    } else {
+      // Standard ground shadow outline
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, groundY - shadowRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
       }
 
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
       ctx.lineWidth = 1.8;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
-    }
 
-    // 3. Elevated Wall Top Shadow:
-    // When hovering over a wall at altitude (z >= wallHeight), render another shadow where the object
-    // would stop at the top of the wall surface!
-    if (useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05) {
-      let isOverWall = false;
-      for (const wall of arena.walls) {
-        const closestX = Math.max(wall.x, Math.min(obj.position.x, wall.x + wall.width));
-        const closestY = Math.max(wall.y, Math.min(obj.position.y, wall.y + wall.height));
-        const dx = obj.position.x - closestX;
-        const dy = obj.position.y - closestY;
-        if (dx * dx + dy * dy < obj.colliderRadius * obj.colliderRadius) {
-          isOverWall = true;
-          break;
-        }
-      }
+      // If higher than wall height in Bigger Sprites mode, draw reference ring
+      if (useBigger && z > arena.wallHeight + 0.01) {
+        const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
+        const wallRadius = obj.colliderRadius * ppu * wallAltScale;
 
-      if (isOverWall) {
-        const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
         ctx.beginPath();
         if (obj.visualShape === "box") {
-          const sz = shadowRadius * 2;
-          const cr = Math.max(3, shadowRadius * 0.16);
-          if (ctx.roundRect) {
-            ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
-          } else {
-            ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
-          }
+          const sz = wallRadius * 2;
+          const cr = Math.max(3, wallRadius * 0.16);
+          if (ctx.roundRect) ctx.roundRect(groundX - wallRadius, groundY - wallRadius, sz, sz, cr);
+          else ctx.rect(groundX - wallRadius, groundY - wallRadius, sz, sz);
         } else {
-          ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+          ctx.arc(groundX, groundY, wallRadius, 0, Math.PI * 2);
         }
-        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 3]);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
         ctx.stroke();
       }
     }

@@ -174,7 +174,8 @@ powerCreatureGamePrototype1/
    - `ThrowModule.clampStartOutsideWalls`: If a character is on the ground ($z < \text{wallHeight}$) and facing into a wall, held objects and projectile trajectories are clamped to the closest non-overlapping coordinates outside the wall face, preventing items from clipping or spawning embedded inside wall geometry.
 10. **Isometric 2.5D Walls & Character Occlusion Transparency**:
     - In Hover Above Shadow and Both modes, walls render with 2.5D depth as two stacked squares: an intermediate slate bottom square (`#1e293b`) at ground level and a lighter top square (`#334155`) shifted vertically by $y - \text{wallHeight} \times \text{visualAltitudeScale}$. Ground tiles remain deep slate (`#0f172a`), creating clear visual separation between floor, wall front face, and wall roof.
-    - **Occlusion Transparency**: When the character is north of a wall in 2D ($cy < wy + \text{height}$) on the ground, the top square renders semi-transparent (`globalAlpha = 0.35`) so the character is visible through the virtual 45° angle. When south of the wall ($cy \ge wy + \text{height}$), it renders opaque (`globalAlpha = 1.0`).
+    - **Occlusion Transparency**: Transparency only triggers when the character's collider on screen is completely above the wall's ground collider (`charY + charR <= wall.y`), overlapping on screen X, and within the top square's projection. Being beside a wall (left or right) never causes transparency.
+    - **Wall Tops Render Over Objects**: In the rendering pipeline, wall top squares render OVER ground-layer entities ($z < \text{wallHeight}$), ensuring proper occlusion and clean see-through transparency. Elevated entities ($z \ge \text{wallHeight}$) render on top of the wall roof.
 11. **Visual Wall Height Slider & Cursor Aim Alignment**:
     - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
     - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
@@ -183,6 +184,9 @@ powerCreatureGamePrototype1/
     - When `useHover && visualAltitudeScale > 0`, in addition to the elevated 3D trajectory arc in the air, a straight dotted trajectory line is rendered along the floor at $(x \times \text{ppu}, y \times \text{ppu})$.
     - Dots are opaque (`rgba(255, 255, 255, 0.95)`) when below wall height ($z < \text{wallHeight}$), and transparent (`rgba(255, 255, 255, 0.38)`) when at or above wall height ($z \ge \text{wallHeight}$).
     - Allows players in pseudo-3D hover modes to directly trace whether the ground shadow of their thrown object will collide with or clear another object's ground shadow or wall hitbox on the floor.
+13. **Shadow Layering & Above-Wall Outline Suppression**:
+    - Shadow fills are always rendered underneath objects. Shadow outlines are rendered on top of objects for crisp contact visualization.
+    - When an object is hovering above a wall ($z \ge \text{wallHeight}$ over a wall), its bottom ground outline is suppressed to eliminate confusing overlapping shadow rings, while the vertical guide line still traces from object center to its true ground position.
 
 ---
 
