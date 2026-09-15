@@ -1052,6 +1052,85 @@ export class Renderer {
     const baseRadius = Math.max(2.2, 0.048 * ppu);
     const layer2Threshold = arena.wallHeight - 0.05;
 
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+
+    // 1. Straight Ground Shadow Trajectory Line (Hover & Both modes):
+    // In hover mode, the 3D trajectory arc is lifted into the air. We also draw a straight dotted line
+    // along the ground plane (the object's shadow trajectory) so the player can see where the shadow
+    // travels and whether it will collide with another object's shadow or wall on the floor.
+    // Dots are opaque when below wall height, and transparent above or equal to wall height.
+    if (useHover && hoverScale > 0) {
+      let lastGroundX = points[0].x * ppu;
+      let lastGroundY = points[0].y * ppu;
+      let distGroundSinceLast = 0;
+      let isFirstGroundDot = true;
+      const baseGroundSpacing = 0.38;
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dz = p2.z - p1.z;
+        const segLen2D = Math.hypot(dx, dy);
+        if (segLen2D <= 0.0001) continue;
+
+        const subSteps = Math.max(1, Math.ceil(segLen2D / 0.02));
+        const subDx = dx / subSteps;
+        const subDy = dy / subSteps;
+        const subDz = dz / subSteps;
+        const subLen2D = segLen2D / subSteps;
+
+        for (let s = 1; s <= subSteps; s++) {
+          const curX = p1.x + subDx * s;
+          const curY = p1.y + subDy * s;
+          const curZ = p1.z + subDz * s;
+
+          distGroundSinceLast += subLen2D;
+
+          const screenX = curX * ppu;
+          const screenY = curY * ppu;
+
+          if (isFirstGroundDot) {
+            if (distGroundSinceLast >= baseGroundSpacing * 0.5) {
+              const isLayer2 = curZ >= layer2Threshold;
+              ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+              ctx.beginPath();
+              ctx.arc(screenX, screenY, baseRadius, 0, Math.PI * 2);
+              ctx.fill();
+
+              lastGroundX = screenX;
+              lastGroundY = screenY;
+              distGroundSinceLast = 0;
+              isFirstGroundDot = false;
+            }
+            continue;
+          }
+
+          const dist2DPx = Math.hypot(screenX - lastGroundX, screenY - lastGroundY);
+          const min2DSpacingPx = Math.max(16, baseRadius * 2 + 6);
+
+          if (distGroundSinceLast >= baseGroundSpacing && dist2DPx >= min2DSpacingPx) {
+            const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - traj.landPoint.y * ppu);
+            const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
+            if (distToLandPx > landRadiusPx * 0.8) {
+              const isLayer2 = curZ >= layer2Threshold;
+              ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+              ctx.beginPath();
+              ctx.arc(screenX, screenY, baseRadius, 0, Math.PI * 2);
+              ctx.fill();
+
+              lastGroundX = screenX;
+              lastGroundY = screenY;
+              distGroundSinceLast = 0;
+            }
+          }
+        }
+      }
+    }
+
     let lastX = points[0].x;
     let lastY = points[0].y;
     let lastRadius = baseRadius;
@@ -1074,10 +1153,6 @@ export class Renderer {
       const subDy = dy / subSteps;
       const subDz = dz / subSteps;
       const subLen = segLen / subSteps;
-
-      const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
-      const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
-      const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
       for (let s = 1; s <= subSteps; s++) {
         const curX = p1.x + subDx * s;
@@ -1141,8 +1216,6 @@ export class Renderer {
 
     // Impact or Landing Marker:
     // Matches the exact collider footprint size of the held object so the player can visualize if it will fit!
-    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
-    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
     const finalPt = points[points.length - 1];
     const targetRadius = (traj.colliderRadius ?? 0.35) * ppu;
 

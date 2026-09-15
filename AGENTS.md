@@ -179,6 +179,10 @@ powerCreatureGamePrototype1/
     - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
     - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
     - Elevated entities cast secondary shadows on top of wall surfaces when hovering over walls at $z \ge \text{wallHeight}$.
+12. **Straight Ground Shadow Trajectory Line (Hover & Both Modes)**:
+    - When `useHover && visualAltitudeScale > 0`, in addition to the elevated 3D trajectory arc in the air, a straight dotted trajectory line is rendered along the floor at $(x \times \text{ppu}, y \times \text{ppu})$.
+    - Dots are opaque (`rgba(255, 255, 255, 0.95)`) when below wall height ($z < \text{wallHeight}$), and transparent (`rgba(255, 255, 255, 0.38)`) when at or above wall height ($z \ge \text{wallHeight}$).
+    - Allows players in pseudo-3D hover modes to directly trace whether the ground shadow of their thrown object will collide with or clear another object's ground shadow or wall hitbox on the floor.
 
 ---
 
