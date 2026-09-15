@@ -79,13 +79,9 @@ export class Renderer {
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
 
     // 2. Ground Shadows (Rendered BELOW all wall squares including sides and tops)
-    // 2a. Ground Shadow Fills
+    // Only the shadow fill is covered!
     for (const entity of allRenderables) {
       this.drawObjectGroundShadowFill(entity, arena, ppu);
-    }
-    // 2b. Ground Shadow Outlines (Only for top-most relevant shadow - omitted if entity is above a wall)
-    for (const entity of allRenderables) {
-      this.drawObjectGroundShadowOutline(entity, arena, ppu);
     }
 
     // 3. Wall Bases (squares representing the sides / front faces at ground level)
@@ -122,9 +118,9 @@ export class Renderer {
     this.drawWallTops(arena, ppu, allRenderables);
 
     // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
-    // "shadows need to render below the character"
+    // Only the shadow fill is covered!
     for (const entity of allRenderables) {
-      this.drawObjectWallTopShadow(entity, arena, ppu);
+      this.drawObjectWallTopShadowFill(entity, arena, ppu);
     }
 
     // 7. Elevated Entities (z >= wallHeight)
@@ -137,7 +133,12 @@ export class Renderer {
       }
     }
 
-    // 8. Vertical connector lines for elevated entities (renders OVER objects and character!)
+    // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
+    for (const entity of allRenderables) {
+      this.drawObjectColliderPositionOutline(entity, arena, ppu);
+    }
+
+    // 9. Vertical connector lines for elevated entities (renders OVER objects and character!)
     if (useHover) {
       for (const entity of allRenderables) {
         this.drawVerticalConnectorLine(entity, arena, ppu);
@@ -624,69 +625,10 @@ export class Renderer {
   }
 
   /**
-   * Draws the ground shadow outline (rendered below all wall squares).
-   * "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
+   * Draws the shadow fill on top of the wall surface for entities hovering above a wall (rendered below elevated entities).
+   * "mask top of wall shadows to the top of wall squares"
    */
-  private drawObjectGroundShadowOutline(obj: GameObject, arena: Arena, ppu: number): void {
-    const z = obj.position.z;
-    if (z <= 0.01) return;
-
-    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
-    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
-    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
-
-    // If entity is hovering above a wall, the top-most relevant shadow is the wall-top shadow,
-    // so omit the ground outline!
-    const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
-    if (isAboveWall) return;
-
-    const ctx = this.ctx;
-    const groundX = obj.position.x * ppu;
-    const groundY = obj.position.y * ppu;
-    const shadowRadius = obj.colliderRadius * ppu;
-
-    ctx.save();
-    ctx.beginPath();
-    if (obj.visualShape === "box") {
-      const sz = shadowRadius * 2;
-      const cr = Math.max(3, shadowRadius * 0.16);
-      if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, groundY - shadowRadius, sz, sz, cr);
-      else ctx.rect(groundX - shadowRadius, groundY - shadowRadius, sz, sz);
-    } else {
-      ctx.arc(groundX, groundY, shadowRadius, 0, Math.PI * 2);
-    }
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([4, 4]);
-    ctx.stroke();
-
-    // If higher than wall height in Bigger Sprites mode, draw reference ring
-    if (useBigger && z > arena.wallHeight + 0.01) {
-      const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
-      const wallRadius = obj.colliderRadius * ppu * wallAltScale;
-
-      ctx.beginPath();
-      if (obj.visualShape === "box") {
-        const sz = wallRadius * 2;
-        const cr = Math.max(3, wallRadius * 0.16);
-        if (ctx.roundRect) ctx.roundRect(groundX - wallRadius, groundY - wallRadius, sz, sz, cr);
-        else ctx.rect(groundX - wallRadius, groundY - wallRadius, sz, sz);
-      } else {
-        ctx.arc(groundX, groundY, wallRadius, 0, Math.PI * 2);
-      }
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = 1.8;
-      ctx.setLineDash([4, 4]);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  /**
-   * Draws the shadow and outline on top of the wall surface for entities hovering above a wall.
-   * "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
-   */
-  private drawObjectWallTopShadow(obj: GameObject, arena: Arena, ppu: number): void {
+  private drawObjectWallTopShadowFill(obj: GameObject, arena: Arena, ppu: number): void {
     const z = obj.position.z;
     if (z <= 0.01) return;
 
@@ -714,7 +656,7 @@ export class Renderer {
       }
     };
 
-    // 1. Wall top shadow fill (masked to the top of wall squares: "mask top of wall shadows to the top of wall squares")
+    // Wall top shadow fill (masked to the top of wall squares)
     ctx.save();
     ctx.beginPath();
     for (const wall of arena.walls) {
@@ -730,14 +672,67 @@ export class Renderer {
     ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.fill();
     ctx.restore(); // restores clipping region
+  }
 
-    // 2. Wall top shadow outline (unmasked: "do not mask the outline")
+  /**
+   * Draws the outline of the actual collider position on top of everything.
+   * "the outline of the actual collider position should render on top of everything. only the shadow should be covered"
+   * "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
+   */
+  private drawObjectColliderPositionOutline(obj: GameObject, arena: Arena, ppu: number): void {
+    const z = obj.position.z;
+    if (z <= 0.01) return;
+
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+
+    // Check if the entity is above a wall
+    const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
+
+    const ctx = this.ctx;
+    const groundX = obj.position.x * ppu;
+    const outlineY = isAboveWall
+      ? (obj.position.y - arena.wallHeight * hoverScale) * ppu
+      : obj.position.y * ppu;
+    const shadowRadius = obj.colliderRadius * ppu;
+
     ctx.save();
-    constructShadowPath();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([3, 3]);
+    ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+    ctx.shadowBlur = 3;
+    ctx.beginPath();
+    if (obj.visualShape === "box") {
+      const sz = shadowRadius * 2;
+      const cr = Math.max(3, shadowRadius * 0.16);
+      if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, outlineY - shadowRadius, sz, sz, cr);
+      else ctx.rect(groundX - shadowRadius, outlineY - shadowRadius, sz, sz);
+    } else {
+      ctx.arc(groundX, outlineY, shadowRadius, 0, Math.PI * 2);
+    }
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 4]);
     ctx.stroke();
+
+    // If higher than wall height in Bigger Sprites mode on open ground, draw reference ring
+    if (!isAboveWall && useBigger && z > arena.wallHeight + 0.01) {
+      const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
+      const wallRadius = obj.colliderRadius * ppu * wallAltScale;
+
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = wallRadius * 2;
+        const cr = Math.max(3, wallRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - wallRadius, outlineY - wallRadius, sz, sz, cr);
+        else ctx.rect(groundX - wallRadius, outlineY - wallRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, outlineY, wallRadius, 0, Math.PI * 2);
+      }
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
