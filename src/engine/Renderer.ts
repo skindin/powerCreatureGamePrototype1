@@ -119,7 +119,7 @@ export class Renderer {
     }
 
     // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
-    this.drawWallTops(arena, ppu, character);
+    this.drawWallTops(arena, ppu, allRenderables);
 
     // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
     // "shadows need to render below the character"
@@ -372,11 +372,12 @@ export class Renderer {
    * Top of Wall Squares: Renders OVER ground entities!
    * - Top square is placed at (y - wallHeight * visualAltitudeScale).
    *   Values < 1 squish the visible bottom square down to that height.
-   * - Transparency: Only when the character's collider on screen is completely above the wall's collider,
-   *   and the character and wall collider overlap on screen X.
+   * - Transparency: Only when an entity's collider on screen is completely above the wall's collider,
+   *   and the entity and wall collider overlap on screen X.
    *   Being beside a wall (left or right) does NOT cause transparency.
+   *   "if any objects are coverd by the top of a wall, make it transparent. not just if covering the player character"
    */
-  private drawWallTops(arena: Arena, ppu: number, character: Character): void {
+  private drawWallTops(arena: Arena, ppu: number, entities: GameObject[]): void {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
@@ -394,10 +395,6 @@ export class Renderer {
     }
 
     const sortedWalls = [...arena.walls].sort((a, b) => a.y - b.y);
-    const charR = character.colliderRadius ?? 0.35;
-    const charX = character.position.x;
-    const charY = character.position.y;
-    const isCharOnGround = character.position.z < arena.wallHeight;
 
     for (const wall of sortedWalls) {
       const wallW = wall.width * ppu;
@@ -406,21 +403,34 @@ export class Renderer {
       const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
       const topSquareY = wall.y - arena.wallHeight * hoverScale;
 
-      // 1. Overlap on screen X:
-      // "and the object and wall collider overlap on screen x."
-      const overlapX = (charX + charR > wall.x) && (charX - charR < wall.x + wall.width);
+      // Check if ANY ground entity is covered by the visual top square of this wall:
+      let isAnyCovered = false;
+      for (const obj of entities) {
+        const objR = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.35);
+        const objX = obj.position.x;
+        const objY = obj.position.y;
+        const isObjOnGround = obj.position.z < arena.wallHeight - 0.05;
+        if (!isObjOnGround) continue;
 
-      // 2. Collider on screen is completely above the wall's collider:
-      // "being beside a wall (left or right) should not cause the transparency.
-      // only when collider on screen is completely above the walls collider"
-      const isCompletelyAboveWallCollider = (charY + charR <= wall.y + 0.05);
+        // 1. Overlap on screen X:
+        const overlapX = (objX + objR > wall.x) && (objX - objR < wall.x + wall.width);
+        if (!overlapX) continue;
 
-      // 3. Within the visual region covered by the top square:
-      const overlapsTopSquare = (charY + charR >= topSquareY - 0.05);
+        // 2. Collider on screen is completely above the wall's collider:
+        const isCompletelyAboveWallCollider = (objY + objR <= wall.y + 0.05);
+        if (!isCompletelyAboveWallCollider) continue;
+
+        // 3. Within the visual region covered by the top square:
+        const overlapsTopSquare = (objY + objR >= topSquareY - 0.05);
+        if (overlapsTopSquare) {
+          isAnyCovered = true;
+          break;
+        }
+      }
 
       ctx.save();
-      if (isCharOnGround && overlapX && isCompletelyAboveWallCollider && overlapsTopSquare) {
-        ctx.globalAlpha = 0.35; // See-through X-ray transparency when character is behind/under the top square
+      if (isAnyCovered) {
+        ctx.globalAlpha = 0.35; // See-through X-ray transparency when any object is behind/under the top square
       } else {
         ctx.globalAlpha = 1.0;  // Fully opaque
       }

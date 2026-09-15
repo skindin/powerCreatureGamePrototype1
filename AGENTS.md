@@ -172,9 +172,9 @@ powerCreatureGamePrototype1/
    - `Character.ts` dispatches `onSprintChange` events so HUD badges (`#sprint-badge`) update instantly without desync.
 9. **Wall-Start Throw Clamping**:
    - `ThrowModule.clampStartOutsideWalls`: If a character is on the ground ($z < \text{wallHeight}$) and facing into a wall, held objects and projectile trajectories are clamped to the closest non-overlapping coordinates outside the wall face, preventing items from clipping or spawning embedded inside wall geometry.
-10. **Isometric 2.5D Walls & Character Occlusion Transparency**:
+10. **Isometric 2.5D Walls & Entity Occlusion Transparency**:
     - In Hover Above Shadow and Both modes, walls render with 2.5D depth as two stacked squares: an intermediate slate bottom square (`#1e293b`) at ground level and a lighter top square (`#334155`) shifted vertically by $y - \text{wallHeight} \times \text{visualAltitudeScale}$. Ground tiles remain deep slate (`#0f172a`), creating clear visual separation between floor, wall front face, and wall roof.
-    - **Occlusion Transparency**: Transparency only triggers when the character's collider on screen is completely above the wall's ground collider (`charY + charR <= wall.y`), overlapping on screen X, and within the top square's projection. Being beside a wall (left or right) never causes transparency.
+    - **Occlusion Transparency**: Transparency (`globalAlpha = 0.35`) triggers when **any** ground entity's collider (player character, crates, rocks, food, creatures) on screen is completely above the wall's ground collider (`objY + objR <= wall.y`), overlapping on screen X, and within the top square's projection. Being beside a wall (left or right) never causes transparency.
     - **Wall Tops Render Over Objects**: In the rendering pipeline, wall top squares render OVER ground-layer entities ($z < \text{wallHeight}$), ensuring proper occlusion and clean see-through transparency. Elevated entities ($z \ge \text{wallHeight}$) render on top of the wall roof.
 11. **Visual Wall Height Slider & Cursor Aim Alignment**:
     - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
