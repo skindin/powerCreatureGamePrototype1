@@ -780,11 +780,15 @@ export class Renderer {
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
     const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, arena.wallHeight) ?? false);
 
-    // Only held objects render semi-transparent so the player can see through what they carry
+    // Objects on walls must be transparent when they get bigger and aren't hovering over a shadow,
+    // so players can see what is underneath them; held objects are also transparent.
+    const isOnLayer2 = Renderer.isEntityOnLayer2(obj, arena.wallHeight);
     const isHeld = obj.isHeld || character.heldObject === obj;
+    const isBiggerWithoutHover = useBigger && (!useHover || hoverScale <= 0);
+    const shouldBeTransparent = isHeld || (isBiggerWithoutHover && isOnLayer2);
 
     ctx.save();
-    ctx.globalAlpha = isHeld ? 0.55 : 1.0;
+    ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
     if (obj.visualShape === "box") {
       // 2D Box / Crate visualization (with circular collider of radius renderRadius)
@@ -897,11 +901,15 @@ export class Renderer {
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Only held characters render semi-transparent
+    // Characters on walls must be transparent when they get bigger and aren't hovering over a shadow,
+    // so players can see what is underneath them; held characters are also transparent.
+    const isOnLayer2 = Renderer.isEntityOnLayer2(char, arena.wallHeight);
     const isHeld = char.isHeld || char.heldBy !== null;
+    const isBiggerWithoutHover = useBigger && (!useHover || hoverScale <= 0);
+    const shouldBeTransparent = isHeld || (isBiggerWithoutHover && isOnLayer2);
 
     ctx.save();
-    ctx.globalAlpha = isHeld ? 0.55 : 1.0;
+    ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
     // Base colored circle
     ctx.beginPath();
