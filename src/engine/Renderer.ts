@@ -127,20 +127,20 @@ export class Renderer {
       this.drawObjectWallTopShadow(entity, arena, ppu);
     }
 
-    // 7. Vertical connector lines for elevated entities (drawn down to real place on ground, BEFORE entities)
-    if (useHover) {
-      for (const entity of allRenderables) {
-        this.drawVerticalConnectorLine(entity, arena, ppu);
-      }
-    }
-
-    // 8. Elevated Entities (z >= wallHeight)
+    // 7. Elevated Entities (z >= wallHeight)
     // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
     for (const entity of elevatedRenderables) {
       if (entity instanceof Character) {
         this.drawCharacter(entity, ppu, arena);
       } else {
         this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
+      }
+    }
+
+    // 8. Vertical connector lines for elevated entities (renders OVER objects and character!)
+    if (useHover) {
+      for (const entity of allRenderables) {
+        this.drawVerticalConnectorLine(entity, arena, ppu);
       }
     }
 
@@ -572,17 +572,6 @@ export class Renderer {
       ctx.arc(groundX, transY, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    // Prominent anchor dot at the object's real 2D position on the ground / wall surface
-    ctx.setLineDash([]);
-    ctx.fillStyle = "#38bdf8"; // Vibrant spectral cyan pinpoint dot
-    ctx.beginPath();
-    ctx.arc(groundX, groundY, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
 
     ctx.restore();
   }
