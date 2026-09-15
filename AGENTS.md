@@ -187,6 +187,8 @@ powerCreatureGamePrototype1/
 13. **Shadow Layering & Above-Wall Outline Suppression**:
     - Shadow fills are always rendered underneath objects. Shadow outlines are rendered on top of objects for crisp contact visualization.
     - When an object is hovering above a wall ($z \ge \text{wallHeight}$ over a wall), its bottom ground outline is suppressed to eliminate confusing overlapping shadow rings, while the vertical guide line still traces from object center to its true ground position.
+14. **Held Objects Render On Top & Transparent**:
+    - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.
 
 ---
 

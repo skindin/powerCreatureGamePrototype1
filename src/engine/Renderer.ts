@@ -64,12 +64,12 @@ export class Renderer {
     // 3. Entities sorting
     const allRenderables = [character, ...objects];
     allRenderables.sort((a, b) => {
-      // Objects held by a character render BELOW that character
+      // Objects held by a character render ON TOP of that character at all times!
       if ((a.isHeld && a.heldBy === b) || (character.heldObject === a && b === character)) {
-        return -1;
+        return 1;
       }
       if ((b.isHeld && b.heldBy === a) || (character.heldObject === b && a === character)) {
-        return 1;
+        return -1;
       }
 
       // Primary: Objects at higher virtual position (height z) ALWAYS render on top
@@ -91,9 +91,17 @@ export class Renderer {
       this.drawObjectShadowFill(entity, arena, ppu);
     }
 
-    // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight)
-    const groundRenderables = allRenderables.filter(e => e.position.z < arena.wallHeight - 0.05);
-    const elevatedRenderables = allRenderables.filter(e => e.position.z >= arena.wallHeight - 0.05);
+    // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight).
+    // An object held by an elevated character must also be elevated so it renders on top of the character!
+    const isCharElevated = character.position.z >= arena.wallHeight - 0.05;
+    const groundRenderables = allRenderables.filter(e => {
+      if (e === character.heldObject && isCharElevated) return false;
+      return e.position.z < arena.wallHeight - 0.05;
+    });
+    const elevatedRenderables = allRenderables.filter(e => {
+      if (e === character.heldObject && isCharElevated) return true;
+      return e.position.z >= arena.wallHeight - 0.05;
+    });
 
     // 4. Ground Entities (z < wallHeight)
     // Rendered before wall tops so top of wall renders OVER ground objects!
@@ -718,11 +726,12 @@ export class Renderer {
     const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
     const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, arena.wallHeight) ?? false);
 
-    // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
+    // Everything on Layer 2, as well as held objects, render transparent
     const isOnLayer2 = Renderer.isEntityOnLayer2(obj, arena.wallHeight);
+    const isHeld = obj.isHeld || character.heldObject === obj;
 
     ctx.save();
-    ctx.globalAlpha = isOnLayer2 ? 0.55 : 1.0;
+    ctx.globalAlpha = isHeld ? 0.55 : (isOnLayer2 ? 0.55 : 1.0);
 
     if (obj.visualShape === "box") {
       // 2D Box / Crate visualization (with circular collider of radius renderRadius)
@@ -835,11 +844,12 @@ export class Renderer {
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Everything on Layer 2 renders transparent regardless of whether anything is underneath it
+    // Everything on Layer 2, as well as held characters, render transparent
     const isOnLayer2 = Renderer.isEntityOnLayer2(char, arena.wallHeight);
+    const isHeld = char.isHeld || char.heldBy !== null;
 
     ctx.save();
-    ctx.globalAlpha = isOnLayer2 ? 0.55 : 1.0;
+    ctx.globalAlpha = isHeld ? 0.55 : (isOnLayer2 ? 0.55 : 1.0);
 
     // Base colored circle
     ctx.beginPath();
