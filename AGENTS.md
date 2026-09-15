@@ -180,12 +180,14 @@ powerCreatureGamePrototype1/
     - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
     - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
     - Elevated entities cast secondary shadows on top of wall surfaces when hovering over walls at $z \ge \text{wallHeight}$.
-12. **Straight Trajectory Line to Bottom-Most Visible Shadow (Hover & Both Modes)**:
-    - When `useHover && visualAltitudeScale > 0`, in addition to the elevated 3D parabolic arc, a straight dotted sightline is rendered directly from the start position shadow to the **bottom-most visible shadow** of the trajectory.
+12. **Straight Trajectory Dots to Bottom-Most Visible Shadow (Hover & Both Modes)**:
+    - When `useHover && visualAltitudeScale > 0`, in addition to the elevated 3D parabolic arc, a straight line composed strictly of dots (no duplicate dashed stroke) connects the throw start position shadow directly to the **bottom-most visible shadow** of the trajectory.
     - If landing on or hitting a wall at altitude ($z \ge \text{wallHeight}$), the bottom-most visible shadow targets the top of that wall at $(y - \text{wallHeight} \times \text{visualAltitudeScale}) \times \text{ppu}$. If landing on the floor, it targets the true ground coordinates.
-    - Features a continuous subtle dashed guide line and altitude-sampled dots: opaque (`rgba(255, 255, 255, 0.95)`) when below wall height ($z < \text{wallHeight}$), and transparent (`rgba(255, 255, 255, 0.38)`) when at or above wall height ($z \ge \text{wallHeight}$).
-13. **Ground Shadows Render Below All Wall Squares & Top-Most Shadow Outline Rule**:
-    - Ground shadows are rendered directly on the floor grid **below all wall squares**, including the squares representing the front faces/sides (`drawWallBases`) and squares representing the tops (`drawWallTops`).
+    - Dots are opaque (`rgba(255, 255, 255, 0.95)`) when below wall height ($z < \text{wallHeight}$), and transparent (`rgba(255, 255, 255, 0.38)`) when at or above wall height ($z \ge \text{wallHeight}$). Dots overlapping the character's body are skipped.
+13. **Shadows Render Below Entities & Top-Most Shadow Outline Rule**:
+    - All shadows (ground shadow fills, ground outlines, wall-top shadows, and vertical altitude connector lines) render **below entities**:
+      - Ground shadows render on the floor grid below all wall bases and ground entities.
+      - Wall-top shadows and vertical connector lines render on wall tops before elevated entities are drawn.
     - **Top-Most Relevant Shadow Outline Rule**: Outlines are strictly drawn only for the top-most relevant shadow. If an object or landing indicator is above a wall ($z \ge \text{wallHeight}$ over wall geometry), only the outline around the shadow for the top of the wall is drawn (ground footprint outline under the wall is omitted). If over open ground, the ground outline is drawn.
 14. **Held Objects Render On Top & Transparent**:
     - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.

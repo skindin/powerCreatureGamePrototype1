@@ -121,8 +121,21 @@ export class Renderer {
     // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
     this.drawWallTops(arena, ppu, character);
 
-    // 6. Elevated Entities (z >= wallHeight)
-    // Standing on the wall roof or flying in the air above walls
+    // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
+    // "shadows need to render below the character"
+    for (const entity of allRenderables) {
+      this.drawObjectWallTopShadow(entity, arena, ppu);
+    }
+
+    // 7. Vertical connector lines for elevated entities (drawn down to real place on ground, BEFORE entities)
+    if (useHover) {
+      for (const entity of allRenderables) {
+        this.drawVerticalConnectorLine(entity, arena, ppu);
+      }
+    }
+
+    // 8. Elevated Entities (z >= wallHeight)
+    // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
     for (const entity of elevatedRenderables) {
       if (entity instanceof Character) {
         this.drawCharacter(entity, ppu, arena);
@@ -131,23 +144,10 @@ export class Renderer {
       }
     }
 
-    // 7. Wall-Top Shadows (for entities hovering above walls)
-    // "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
-    for (const entity of allRenderables) {
-      this.drawObjectWallTopShadow(entity, arena, ppu);
-    }
-
-    // 8. Vertical connector lines for elevated entities (drawn down to real place on ground)
-    if (useHover) {
-      for (const entity of allRenderables) {
-        this.drawVerticalConnectorLine(entity, arena, ppu);
-      }
-    }
-
-    // 5. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
+    // 9. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
     const activeAimCursor = character.aimTarget || (isUsingGamepad ? gamepadAimPos : null);
     if (character.activeTrajectory) {
-      this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor);
+      this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor, character);
     } else if (isUsingGamepad && activeAimCursor) {
       this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu);
     }
@@ -1126,7 +1126,8 @@ export class Renderer {
     traj: TrajectoryCalculation,
     ppu: number,
     arena: Arena,
-    aimTarget?: Vector2D | null
+    aimTarget?: Vector2D | null,
+    character?: Character | null
   ): void {
     const ctx = this.ctx;
     const points = traj.points;
@@ -1148,8 +1149,8 @@ export class Renderer {
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     // 1. Straight Shadow Trajectory Line (Hover & Both modes):
-    // "the player needs to be able to see a straight line from the start position to the bottom most visible shadow of their trajectory
-    // (if its above a wall, the bottom most shadow would be above the wall)"
+    // "the straight dotted line from the the start pos to the end pos seems to be dotted twice, once with dashes and once with dots.
+    // just make it dots, and make the dots transparent when at or above wall height and opaque when below wall height."
     if (useHover && hoverScale > 0) {
       const startZ = points[0].z;
       const startOnWall = startZ >= layer2Threshold;
@@ -1176,18 +1177,7 @@ export class Renderer {
       const totalDistPx = Math.hypot(totalDx, totalDy);
 
       if (totalDistPx > 5) {
-        // Continuous subtle dashed straight line from start position to the bottom-most visible shadow
-        ctx.save();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(startShadowX, startShadowY);
-        ctx.lineTo(endShadowX, endShadowY);
-        ctx.stroke();
-        ctx.restore();
-
-        // Dots along the straight line
+        // Dots along the straight line to the bottom-most visible shadow (no redundant dashed line!)
         const baseGroundSpacingPx = base3DSpacing * ppu;
         const numDots = Math.max(1, Math.floor(totalDistPx / baseGroundSpacingPx));
         const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
@@ -1196,6 +1186,14 @@ export class Renderer {
           const t = k / (numDots + 1);
           const dotX = startShadowX + totalDx * t;
           const dotY = startShadowY + totalDy * t;
+
+          // Don't draw dots inside the character's body (shadows render below character)
+          if (character) {
+            const charOnWall = character.position.z >= layer2Threshold;
+            const charScreenY = (character.position.y - (charOnWall ? arena.wallHeight * hoverScale : 0)) * ppu;
+            const distToChar = Math.hypot(dotX - character.position.x * ppu, dotY - charScreenY);
+            if (distToChar < (character.colliderRadius + 0.05) * ppu) continue;
+          }
 
           // Don't draw dot on top of the landing footprint
           const distToEnd = Math.hypot(dotX - endShadowX, dotY - endShadowY);
@@ -1206,6 +1204,7 @@ export class Renderer {
           const curZ = points[sampleIdx].z;
           const isLayer2 = curZ >= layer2Threshold;
 
+          // Transparent when at or above wall height, opaque when below wall height
           ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
           ctx.beginPath();
           ctx.arc(dotX, dotY, baseRadius, 0, Math.PI * 2);
