@@ -189,6 +189,7 @@ powerCreatureGamePrototype1/
       - Ground shadows render on the floor grid below all wall bases and ground entities.
       - Wall-top shadows and vertical connector lines render on wall tops before elevated entities are drawn.
     - **Top-Most Relevant Shadow Outline Rule**: Outlines are strictly drawn only for the top-most relevant shadow. If an object or landing indicator is above a wall ($z \ge \text{wallHeight}$ over wall geometry), only the outline around the shadow for the top of the wall is drawn (ground footprint outline under the wall is omitted). If over open ground, the ground outline is drawn.
+    - **Top of Wall Shadow Masking**: Wall-top shadow fills (for elevated objects and landing targets) are masked via clipping to the top of wall squares so the shadow fill never bleeds outside the wall roof into open air. The outlines remain unmasked so the full shape is clearly visible.
 14. **Held Objects Render On Top & Transparent**:
     - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.
 

@@ -695,27 +695,42 @@ export class Renderer {
     const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
+    const constructShadowPath = () => {
+      ctx.beginPath();
+      if (obj.visualShape === "box") {
+        const sz = shadowRadius * 2;
+        const cr = Math.max(3, shadowRadius * 0.16);
+        if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
+        else ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
+      } else {
+        ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+      }
+    };
+
+    // 1. Wall top shadow fill (masked to the top of wall squares: "mask top of wall shadows to the top of wall squares")
     ctx.save();
     ctx.beginPath();
-    if (obj.visualShape === "box") {
-      const sz = shadowRadius * 2;
-      const cr = Math.max(3, shadowRadius * 0.16);
-      if (ctx.roundRect) ctx.roundRect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz, cr);
-      else ctx.rect(groundX - shadowRadius, wallTopScreenY - shadowRadius, sz, sz);
-    } else {
-      ctx.arc(groundX, wallTopScreenY, shadowRadius, 0, Math.PI * 2);
+    for (const wall of arena.walls) {
+      const baseX = wall.x * ppu;
+      const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
+      const wallW = wall.width * ppu;
+      const wallH = wall.height * ppu;
+      ctx.rect(baseX, topY, wallW, wallH);
     }
+    ctx.clip();
 
-    // Wall top shadow fill
+    constructShadowPath();
     ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.fill();
+    ctx.restore(); // restores clipping region
 
-    // Wall top shadow outline (top most relevant shadow outline)
+    // 2. Wall top shadow outline (unmasked: "do not mask the outline")
+    ctx.save();
+    constructShadowPath();
     ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
     ctx.lineWidth = 1.6;
     ctx.setLineDash([3, 3]);
     ctx.stroke();
-
     ctx.restore();
   }
 
@@ -1393,13 +1408,29 @@ export class Renderer {
         ctx.restore();
       }
 
+      // 1. Mask footprint fill to top of wall squares
       ctx.save();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.beginPath();
+      for (const wall of arena.walls) {
+        const baseX = wall.x * ppu;
+        const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
+        ctx.rect(baseX, topY, wall.width * ppu, wall.height * ppu);
+      }
+      ctx.clip();
+
       ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
-      ctx.lineWidth = 2.2;
-      ctx.setLineDash([]);
+      ctx.beginPath();
       drawColliderFootprint(landX, landY);
       ctx.fill();
+      ctx.restore(); // restores clip
+
+      // 2. Unmasked outline and central pinpoint
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      drawColliderFootprint(landX, landY);
       ctx.stroke();
 
       // Central pinpoint dot
