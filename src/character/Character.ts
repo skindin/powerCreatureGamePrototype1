@@ -230,8 +230,11 @@ export class Character extends GameObject {
     }
 
     const objRadius = this.heldObject.colliderRadius > 0 ? this.heldObject.colliderRadius : 0.26;
-    const safetyMargin = 0.05; // 5cm safety clearance from wall edges
+    // Generous safety margin — prevents binary search result landing right at the wall edge
+    const safetyMargin = 0.12;
     const requiredClearance = objRadius + safetyMargin;
+    // Extra pull-back applied after binary search so result is never at the knife-edge boundary
+    const extraClearback = 0.06;
 
     const isPointSafe = (px: number, py: number): boolean => {
       for (const wall of arena.walls) {
@@ -255,11 +258,11 @@ export class Character extends GameObject {
     }
 
     // Default distance hits/overlaps a wall:
-    // Clamp the hold distance within [0, defaultHandDist] along facing direction
+    // Binary search for max safe distance within [0, defaultHandDist] along facing direction
     if (isPointSafe(this.position.x, this.position.y)) {
       let low = 0;
       let high = defaultHandDist;
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 20; i++) { // More iterations → tighter convergence
         const mid = (low + high) * 0.5;
         if (isPointSafe(this.position.x + dirX * mid, this.position.y + dirY * mid)) {
           low = mid;
@@ -267,8 +270,10 @@ export class Character extends GameObject {
           high = mid;
         }
       }
-      targetX = this.position.x + dirX * low;
-      targetY = this.position.y + dirY * low;
+      // Pull back by extraClearback so we're safely inside the safe zone, never at its edge
+      const safeD = Math.max(0, low - extraClearback);
+      targetX = this.position.x + dirX * safeD;
+      targetY = this.position.y + dirY * safeD;
     } else {
       // Even at d=0 (e.g. held object is larger than character and character is touching wall),
       // try pulling slightly back towards the character's rear up to -colliderRadius
@@ -277,7 +282,7 @@ export class Character extends GameObject {
       let safeBackD = 0;
       for (let d = -0.02; d >= -maxBack; d -= 0.02) {
         if (isPointSafe(this.position.x + dirX * d, this.position.y + dirY * d)) {
-          safeBackD = d;
+          safeBackD = d - extraClearback; // Extra pull-back here too
           foundSafe = true;
           break;
         }
@@ -287,10 +292,10 @@ export class Character extends GameObject {
         targetX = this.position.x + dirX * safeBackD;
         targetY = this.position.y + dirY * safeBackD;
       } else {
-        // Fallback: resolve push vector to ensure requiredClearance from any overlapping wall
+        // Fallback: push-out from character position to clear all walls
         targetX = this.position.x;
         targetY = this.position.y;
-        for (let iter = 0; iter < 3; iter++) {
+        for (let iter = 0; iter < 4; iter++) {
           let adjusted = false;
           for (const wall of arena.walls) {
             const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
@@ -302,7 +307,7 @@ export class Character extends GameObject {
               adjusted = true;
               const dist = Math.sqrt(distSq);
               if (dist > 0.0001) {
-                const push = (requiredClearance + 0.01) - dist;
+                const push = (requiredClearance + 0.02) - dist;
                 targetX += (dx / dist) * push;
                 targetY += (dy / dist) * push;
               } else {
@@ -310,10 +315,10 @@ export class Character extends GameObject {
                 const cdy = this.position.y - closestY;
                 const cdist = Math.hypot(cdx, cdy);
                 if (cdist > 0.0001) {
-                  targetX = closestX + (cdx / cdist) * (requiredClearance + 0.01);
-                  targetY = closestY + (cdy / cdist) * (requiredClearance + 0.01);
+                  targetX = closestX + (cdx / cdist) * (requiredClearance + 0.02);
+                  targetY = closestY + (cdy / cdist) * (requiredClearance + 0.02);
                 } else {
-                  targetX = wall.x - requiredClearance - 0.01;
+                  targetX = wall.x - requiredClearance - 0.02;
                 }
               }
             }
@@ -332,6 +337,33 @@ export class Character extends GameObject {
       targetY = this.position.y + (offsetDy / offsetDist) * defaultHandDist;
     }
 
+    // Final guaranteed pass: if somehow still overlapping a wall (corner/FP edge case),
+    // resolve clearance directly on the final result
+    for (let iter = 0; iter < 3; iter++) {
+      let adjusted = false;
+      for (const wall of arena.walls) {
+        const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(targetY, wall.y + wall.height));
+        const dx = targetX - closestX;
+        const dy = targetY - closestY;
+        const distSq = dx * dx + dy * dy;
+        // Use just objRadius for the final check — actual physics boundary
+        if (distSq < objRadius * objRadius) {
+          adjusted = true;
+          const dist = Math.sqrt(distSq);
+          if (dist > 0.0001) {
+            targetX += (dx / dist) * (objRadius + 0.03 - dist);
+            targetY += (dy / dist) * (objRadius + 0.03 - dist);
+          } else {
+            targetX = this.position.x;
+            targetY = this.position.y;
+          }
+        }
+      }
+      if (!adjusted) break;
+    }
+
     return { x: targetX, y: targetY, z: heldZ };
   }
 }
+
