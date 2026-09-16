@@ -52,7 +52,8 @@ export class Renderer {
     hoverWallTile?: { col: number; row: number } | null,
     ghostSnapshot?: GhostSnapshot | null,
     activeAimCursorsOrIsGamepad: boolean | ActiveAimCursor[] = false,
-    legacyGamepadAimPos?: Vector2D | null
+    legacyGamepadAimPos?: Vector2D | null,
+    isPaused = false
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -213,6 +214,73 @@ export class Renderer {
     if (ghostSnapshot) {
       this.drawGhostClones(ghostSnapshot, ppu, arena);
     }
+
+    // 12. Simulation Paused Overlay (when all players are removed)
+    if (isPaused) {
+      this.drawPausedOverlay(ctx);
+    }
+  }
+
+  /**
+   * Draws a clean glassmorphic banner when all players have departed and simulation is paused.
+   */
+  private drawPausedOverlay(ctx: CanvasRenderingContext2D): void {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const centerX = w / 2;
+    const centerY = h / 2;
+
+    ctx.save();
+
+    // Subtle dark scrim over arena
+    ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+    ctx.fillRect(0, 0, w, h);
+
+    // Glassmorphic Center Card
+    const cardW = Math.min(w - 48, 480);
+    const cardH = 114;
+    const cardX = centerX - cardW / 2;
+    const cardY = centerY - cardH / 2;
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 6;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(cardX, cardY, cardW, cardH, 14);
+    } else {
+      ctx.rect(cardX, cardY, cardW, cardH);
+    }
+    ctx.fill();
+
+    // Amber glowing border
+    ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Header: ⏸️ SIMULATION PAUSED
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 16px 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillText("⏸️ SIMULATION PAUSED", centerX, cardY + 30);
+
+    // Subtitle: No active characters in arena
+    ctx.font = "12px sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("All players have departed the arena.", centerX, cardY + 56);
+
+    // Join prompts badge
+    ctx.font = "bold 11px monospace";
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillText("Press [SPACEBAR] or Controller (A) to Jump In", centerX, cardY + 84);
+
+    ctx.restore();
   }
 
   /**

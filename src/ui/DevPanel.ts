@@ -271,9 +271,20 @@ export class DevPanel {
 
   public updateSelectorOptions(): void {
     if (!this.entitySelectorEl) return;
-    const currentId = this.selectedEntity.id;
 
     const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+
+    // If current selected entity was a character that is no longer active in the arena, switch cleanly
+    if (this.selectedEntity instanceof Character && !chars.includes(this.selectedEntity)) {
+      this.selectedEntity = chars[0] || this.objects[0] || (null as any);
+      this.onSelectionChange?.(this.selectedEntity);
+    } else if (!this.selectedEntity) {
+      this.selectedEntity = chars[0] || this.objects[0] || (null as any);
+      this.onSelectionChange?.(this.selectedEntity);
+    }
+
+    const currentId = this.selectedEntity ? this.selectedEntity.id : "";
+
     let html = "";
     for (const char of chars) {
       const isSel = char.id === currentId ? "selected" : "";
@@ -286,15 +297,21 @@ export class DevPanel {
       const massDesc = obj.hasMass ? `${obj.mass.toFixed(1)}kg` : "Massless";
       html += `<option value="${obj.id}" ${isSel}>${icon} ${obj.name} (${massDesc})</option>`;
     }
+    if (chars.length === 0 && this.objects.length === 0) {
+      html = `<option value="">(No entities in arena)</option>`;
+    }
     this.entitySelectorEl.innerHTML = html;
 
-    const isChar = this.selectedEntity instanceof Character;
+    const isChar = Boolean(this.selectedEntity && this.selectedEntity instanceof Character);
     if (this.characterSpecificControlsEl) {
       this.characterSpecificControlsEl.style.display = isChar ? "flex" : "none";
     }
     if (this.objectSpecificControlsEl) {
-      this.objectSpecificControlsEl.style.display = isChar ? "none" : "flex";
+      this.objectSpecificControlsEl.style.display = (!isChar && this.selectedEntity) ? "flex" : "none";
     }
+
+    this.renderEntityModules();
+    this.syncEntitySliders();
   }
 
   private renderPanel(): void {
@@ -632,6 +649,7 @@ export class DevPanel {
 
   public syncEntitySliders(): void {
     const e = this.selectedEntity;
+    if (!e) return;
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
@@ -696,6 +714,13 @@ export class DevPanel {
     if (!container || !addBtn || !dropdown) return;
 
     const e = this.selectedEntity;
+    if (!e) {
+      container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">No entity currently selected.<br><span style="font-size: 0.75rem; color: #64748b;">Press Spacebar or Controller (A) to spawn a player.</span></div>`;
+      addBtn.style.display = "none";
+      return;
+    }
+    addBtn.style.display = "flex";
+
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
@@ -1690,14 +1715,19 @@ export class DevPanel {
     // 11. Clear All Objects
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
       this.onClearObjects();
-      this.setSelectedEntity(this.character);
+      const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.setSelectedEntity(chars[0] || (null as any));
     });
   }
 
   private spawnFromCreator(): void {
     const s = this.creatorState;
-    const spawnX = Math.min(Math.max(this.character.position.x + (Math.random() * 2.0 - 1.0), 1.0), this.arena.width - 1.0);
-    const spawnY = Math.min(Math.max(this.character.position.y + (Math.random() * 2.0 - 1.0), 1.0), this.arena.height - 1.0);
+    const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+    const refChar = chars[0];
+    const centerX = refChar ? refChar.position.x : this.arena.width / 2;
+    const centerY = refChar ? refChar.position.y : this.arena.height / 2;
+    const spawnX = Math.min(Math.max(centerX + (Math.random() * 2.0 - 1.0), 1.0), this.arena.width - 1.0);
+    const spawnY = Math.min(Math.max(centerY + (Math.random() * 2.0 - 1.0), 1.0), this.arena.height - 1.0);
 
     const newObj = new GameObject({
       name: s.name || "Custom Object",
@@ -1722,7 +1752,7 @@ export class DevPanel {
   }
 
   public duplicateSelectedEntity(): void {
-    if (this.selectedEntity instanceof Character) return;
+    if (!this.selectedEntity || this.selectedEntity instanceof Character) return;
     const orig = this.selectedEntity;
 
     const spawnX = Math.min(Math.max(orig.position.x + 0.6, 1.0), this.arena.width - 1.0);
@@ -1752,7 +1782,7 @@ export class DevPanel {
   }
 
   public deleteSelectedEntity(): void {
-    if (this.selectedEntity instanceof Character) return;
+    if (!this.selectedEntity || this.selectedEntity instanceof Character) return;
     const target = this.selectedEntity;
 
     const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
@@ -1768,7 +1798,7 @@ export class DevPanel {
       this.onDeleteObject(target);
     }
 
-    this.setSelectedEntity(allChars[0] || this.character);
+    this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
   }
 
   private setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {
@@ -1785,6 +1815,14 @@ export class DevPanel {
 
   public updateInspector(): void {
     const e = this.selectedEntity;
+    if (!e) {
+      this.inspectorEl.innerHTML = `
+        <div class="inspect-item" style="grid-column: span 2; text-align: center; color: var(--text-muted); padding: 12px 0;">
+          <span>⏸️ Simulation Paused — No entity selected</span>
+        </div>
+      `;
+      return;
+    }
     const speed = Math.hypot(e.velocity.x, e.velocity.y).toFixed(2);
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;

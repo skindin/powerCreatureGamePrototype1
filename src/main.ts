@@ -155,12 +155,21 @@ function bootstrap(): void {
   const sprintBadge = document.getElementById("sprint-badge");
   const updateSprintUI = () => {
     if (!sprintBadge) return;
-    if (character.isSprinting) {
+    const activeChar = gameLoop ? gameLoop.primaryCharacter : character;
+    if (!activeChar) {
+      sprintBadge.textContent = "⏸️ PAUSED";
+      sprintBadge.classList.remove("active");
+      sprintBadge.title = "Simulation paused: no active characters in arena";
+      return;
+    }
+    if (activeChar.isSprinting) {
       sprintBadge.textContent = "⚡ SPRINTING";
       sprintBadge.classList.add("active");
+      sprintBadge.title = "Shift or LB to toggle sprint";
     } else {
       sprintBadge.textContent = "⚡ WALK";
       sprintBadge.classList.remove("active");
+      sprintBadge.title = "Shift or LB to toggle sprint";
     }
   };
   character.onSprintChange = () => {
@@ -231,16 +240,18 @@ function bootstrap(): void {
     if (gameLoop) {
       const allChars = gameLoop.allCharacters;
       if (devPanel.selectedEntity instanceof Character && !allChars.includes(devPanel.selectedEntity as Character)) {
-        devPanel.setSelectedEntity(gameLoop.primaryCharacter || allChars[0] || character);
+        devPanel.setSelectedEntity(gameLoop.primaryCharacter || allChars[0] || objects[0] || (null as any));
       }
     }
   };
   updateActiveCharSprintBinding();
 
   inputManager.onToggleSprint = () => {
-    const activeChar = (gameLoop ? gameLoop.primaryCharacter : null) || character;
-    activeChar.setSprinting(!activeChar.isSprinting);
-    updateSprintUI();
+    const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
+    if (activeChar) {
+      activeChar.setSprinting(!activeChar.isSprinting);
+      updateSprintUI();
+    }
   };
 
   // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching

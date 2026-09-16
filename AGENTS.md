@@ -275,6 +275,12 @@ powerCreatureGamePrototype1/
     - **Player-Colored Grab Badges & Highlights**: When any player targets a reachable object (via virtual aim stick or mouse cursor), the object renders an outer highlight border and solid glowing ring matching that targeting player's theme color (e.g. Amber Gold `#f59e0b` for P1, Cyan `#06b6d4` for P2).
     - **Multiplayer Badge Context**: If multiple players are present in the arena, the badge displays `P1 GRAB`, `P2 GRAB`, etc., making it clear which player has lock on the object. In single player, it displays `GRAB`.
     - **Gamepad Pickup Target Expansion**: In `InputManager.pollGamepadSlots`, grabbable candidate lists incorporate other characters (`[...allCharacters.filter(c => c !== char), ...objects]`), ensuring gamepad players can interact with and pick up all eligible entities.
+23. **Simulation Pause & Graceful Zero-Player State**:
+    - **Automatic Simulation Pause**: When all players depart the arena (`isPaused = players.size === 0`), `GameLoop.tick` pauses physics integration and clears the fixed timestep accumulator. Freebody objects remain frozen in place rather than rolling or falling unchecked.
+    - **Continuous Input Polling for Rejoin**: Gamepad polling (`pollGamepadSlots`) and keyboard Spacebar listeners remain active while paused so pressing `Space` or Controller `(A)` immediately spawns a character back into the arena.
+    - **Zero-Backlog Unpausing**: Spawning any player (`spawnKeyboardPlayer` or `spawnGamepadPlayer`) resets `lastTime = performance.now()` and `accumulator = 0`, resuming smooth 60Hz physics without time-skip spikes.
+    - **Glassmorphic Paused Overlay & HUD Sync**: `Renderer` draws a center paused card (`⏸️ SIMULATION PAUSED`) with rejoin prompts; the header badge updates to `⏸️ PAUSED`.
+    - **Defensive DevPanel & Selection Fallbacks**: `DevPanel` selection falls back cleanly to remaining objects or an empty state rather than referencing removed character instances, guarding all sliders, creator spawning, and inspector displays against null reference crashes.
 
 ---
 

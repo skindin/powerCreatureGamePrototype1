@@ -56,6 +56,10 @@ export class GameLoop {
     return first ? first.character : null;
   }
 
+  public get isPaused(): boolean {
+    return this.players.size === 0;
+  }
+
   // Backward compatibility getter for singleplayer inspect references
   public get character(): Character {
     const primary = this.primaryCharacter;
@@ -136,6 +140,8 @@ export class GameLoop {
       char.color = color;
     }
 
+    this.lastTime = performance.now();
+    this.accumulator = 0;
     this.inputManager.isKeyboardActive = true;
     this.players.set("keyboard", {
       id: "keyboard",
@@ -184,6 +190,8 @@ export class GameLoop {
       name: `Player ${playerNum}`,
     });
 
+    this.lastTime = performance.now();
+    this.accumulator = 0;
     this.players.set(key, {
       id: key,
       name: cleanName,
@@ -254,20 +262,30 @@ export class GameLoop {
       deltaSeconds = 0.2;
     }
 
-    this.accumulator += deltaSeconds;
+    const isPaused = this.isPaused;
 
-    // Fixed timestep simulation updates
-    while (this.accumulator >= this.fixedDt) {
-      this.updatePhysics(this.fixedDt);
-      if (this.onPhysicsTick) {
-        this.onPhysicsTick(this.fixedDt, currentTime);
+    if (isPaused) {
+      // Simulation pauses when all player characters are removed
+      this.accumulator = 0;
+
+      // Keep polling gamepads so pressing (A) on any controller immediately jumps in
+      this.inputManager.pollGamepadSlots(this.players, this.objects, this.arena, this.allCharacters);
+    } else {
+      this.accumulator += deltaSeconds;
+
+      // Fixed timestep simulation updates
+      while (this.accumulator >= this.fixedDt) {
+        this.updatePhysics(this.fixedDt);
+        if (this.onPhysicsTick) {
+          this.onPhysicsTick(this.fixedDt, currentTime);
+        }
+        this.accumulator -= this.fixedDt;
       }
-      this.accumulator -= this.fixedDt;
     }
 
     // Determine target grab entities for each active character (for hover highlight)
     const targetGrabEntities = new Map<Character, GameObject | null>();
-    if (!this.devPanel.isEditMode) {
+    if (!this.devPanel.isEditMode && !isPaused) {
       for (const entry of this.players.values()) {
         const char = entry.character;
         if (char.heldObject || !char.pickupModule) continue;
@@ -337,7 +355,9 @@ export class GameLoop {
       isWallEditor,
       this.inputManager.hoverWallTile,
       ghostData,
-      activeAimCursors
+      activeAimCursors,
+      undefined,
+      isPaused
     );
 
     // Update live inspector
