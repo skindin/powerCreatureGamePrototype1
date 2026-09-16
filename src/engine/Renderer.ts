@@ -653,14 +653,6 @@ export class Renderer {
     const layer2BaseY = (obj.position.y - wallH * hoverScale) * ppu;
     const layer2CeilingY = (obj.position.y - 2 * wallH * hoverScale) * ppu;
 
-    // Determine the surface directly beneath the object:
-    // If standing on a wall (or in Layer 2+), anchor the line bottom to the wall-top screen position.
-    // If only above ground, anchor the line bottom to the real ground screen position.
-    const isOnOrAboveWall = obj.standingWall !== null ||
-      (obj.supportingSurfaceHeight ?? 0) >= wallH - 0.05 ||
-      obj.position.z >= wallH - 0.05;
-    const lineBottomY = isOnOrAboveWall ? layer2BaseY : groundY;
-
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
     ctx.shadowBlur = 3;
@@ -668,22 +660,20 @@ export class Renderer {
     ctx.setLineDash([4, 4]);
 
     if (z <= wallH) {
-      // Entire line is at or below wall elevation (Layer 1): high-contrast white dashed line
+      // Entire line is at or below wall elevation (Layer 1): high-contrast white dashed line from ground up to renderY
       ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
-      ctx.moveTo(groundX, lineBottomY);
+      ctx.moveTo(groundX, groundY);
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
     } else if (z < 2 * wallH) {
       // Object is in Layer 2 (wallHeight <= z < 2 * wallHeight)
-      if (!isOnOrAboveWall) {
-        // 1. Layer 1 portion (ground to wall height) — only if not standing on a wall
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.beginPath();
-        ctx.moveTo(groundX, groundY);
-        ctx.lineTo(groundX, layer2BaseY);
-        ctx.stroke();
-      }
+      // 1. Layer 1 portion (ground to wall height)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, groundY);
+      ctx.lineTo(groundX, layer2BaseY);
+      ctx.stroke();
 
       // 2. Layer 2 portion (wall top to object - cyan tinted to indicate Layer 2)
       ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
@@ -692,32 +682,27 @@ export class Renderer {
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
 
-      // Layer 2 Base threshold notch (z = wallHeight) — only show when line crosses that boundary
-      if (!isOnOrAboveWall) {
-        ctx.setLineDash([]);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
-        ctx.lineWidth = 2.0;
-        ctx.beginPath();
-        ctx.moveTo(groundX - 6, layer2BaseY);
-        ctx.lineTo(groundX + 6, layer2BaseY);
-        ctx.stroke();
+      // Layer 2 Base threshold notch (z = wallHeight)
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(groundX - 6, layer2BaseY);
+      ctx.lineTo(groundX + 6, layer2BaseY);
+      ctx.stroke();
 
-        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.beginPath();
-        ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
     } else {
-      // Object is in Layer 3 or higher (z >= 2 * wallHeight):
-      // Must be as low as layer2CeilingY (z = 2 * wallH) to collide with Layer 2!
-      if (!isOnOrAboveWall) {
-        // 1. Layer 1 portion (ground to wall height) — only if not standing on a wall
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.beginPath();
-        ctx.moveTo(groundX, groundY);
-        ctx.lineTo(groundX, layer2BaseY);
-        ctx.stroke();
-      }
+      // Object is in Layer 3 or higher (z >= 2 * wallHeight)
+      // 1. Layer 1 portion (ground to wall height)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.moveTo(groundX, groundY);
+      ctx.lineTo(groundX, layer2BaseY);
+      ctx.stroke();
 
       // 2. Layer 2 collision zone (wallHeight to 2 * wallHeight)
       ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
@@ -733,22 +718,20 @@ export class Renderer {
       ctx.lineTo(groundX, renderY);
       ctx.stroke();
 
-      // Layer 2 Base notch (z = wallHeight) — only show when line crosses that boundary
-      if (!isOnOrAboveWall) {
-        ctx.setLineDash([]);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
-        ctx.lineWidth = 2.0;
-        ctx.beginPath();
-        ctx.moveTo(groundX - 6, layer2BaseY);
-        ctx.lineTo(groundX + 6, layer2BaseY);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-        ctx.beginPath();
-        ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      // Layer 2 Base notch (z = wallHeight)
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.90)";
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(groundX - 6, layer2BaseY);
+      ctx.lineTo(groundX + 6, layer2BaseY);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.arc(groundX, layer2BaseY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Layer 2 Ceiling threshold notch (z = 2 * wallHeight) - shows how LOW object must be to enter Layer 2!
+      // Layer 2 Ceiling threshold notch (z = 2 * wallHeight)
       ctx.setLineDash([]);
       ctx.strokeStyle = "rgba(56, 189, 248, 0.95)";
       ctx.lineWidth = 2.2;

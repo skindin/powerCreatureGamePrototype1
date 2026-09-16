@@ -255,7 +255,7 @@ export class GameObject {
 
   /** True if entity is actively resting on a supporting surface (ground or wall top) */
   public get isRestingOnSurface(): boolean {
-    return Math.abs(this.position.z - this.supportingSurfaceHeight) <= 0.01 && Math.abs(this.verticalVelocity) <= 0.05;
+    return Math.abs(this.position.z - this.supportingSurfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= 0.1;
   }
 
   /** Readonly getter: true if elevated above ground level (z > 0) */
@@ -427,8 +427,9 @@ export class GameObject {
         // Surface impact (hitting floor or top of wall from above)
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          // Bounce vertically only if vertical bounce is enabled (requires Mass, Bounce with verticalBounce=true, and Vertical Velocity)
-          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          // Bounce vertically only if impact speed exceeds the single-step gravity increment (prevents infinite micro-bouncing)
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
             const impactVz = Math.abs(this.verticalVelocity);
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
 
@@ -477,7 +478,8 @@ export class GameObject {
         this.position.z += this.verticalVelocity * dt;
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
           } else {
             this.verticalVelocity = 0;
@@ -487,7 +489,8 @@ export class GameObject {
     }
 
     // 2. Surface Friction & Rolling Behavior (applies only if resting on surface and has friction)
-    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.01 && Math.abs(this.verticalVelocity) <= 0.05;
+    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
+    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
     if (isResting && this.hasFriction) {
       const hasActiveWalkingModule = this.isCharacter && (this as any).walkingModule?.enabled;
       if (!hasActiveWalkingModule) {

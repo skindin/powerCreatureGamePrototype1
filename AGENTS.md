@@ -282,6 +282,11 @@ powerCreatureGamePrototype1/
     - **Zero-Backlog Unpausing**: Spawning any player (`spawnKeyboardPlayer` or `spawnGamepadPlayer`) resets `lastTime = performance.now()` and `accumulator = 0`, resuming smooth 60Hz physics without time-skip spikes.
     - **Glassmorphic Paused Overlay & HUD Sync**: `Renderer` draws a center paused card (`⏸️ SIMULATION PAUSED`) with rejoin prompts; the header badge updates to `⏸️ PAUSED`.
     - **Defensive DevPanel & Selection Fallbacks**: `DevPanel` selection falls back cleanly to remaining objects or an empty state rather than referencing removed character instances, guarding all sliders, creator spawning, and inspector displays against null reference crashes.
+24. **Vertical Connector Line Always Anchors to Ground**:
+    - Fixed `drawVerticalConnectorLine` in `Renderer.ts`: the line now always starts from `groundY` (the entity's 2D footprint on the floor) regardless of whether the entity is on a wall, on the ground, or airborne.
+    - Previously, when `isOnOrAboveWall = true` (entity standing on a wall top with `z = wallH`), `lineBottomY` was set to `layer2BaseY` which equals `renderY`, producing a zero-length invisible line.
+    - Now the white dashed line always runs from `groundY` up through all altitude tiers to `renderY` (the visual hover position). The below-wall portion is white (`rgba(255, 255, 255, 0.95)`), the above-wall-top portion is cyan (`rgba(56, 189, 248, 0.85)`).
+    - The wall-top threshold notch (horizontal tick mark + dot at `layer2BaseY`) is now always shown whenever the entity is at Layer 2 or above, not gated by `isOnOrAboveWall`.
 
 ---
 
