@@ -605,7 +605,7 @@ export class DevPanel {
               <span>Gravity Force (u/s²)</span>
               <span id="val-gravity">${this.arena.gravity.toFixed(1)}</span>
             </div>
-            <input type="range" id="slide-gravity" min="1.0" max="30.0" step="0.5" value="${this.arena.gravity}">
+            <input type="range" id="slide-gravity" min="1.0" max="100.0" step="0.5" value="${this.arena.gravity}">
           </div>
 
           <div class="slider-group">

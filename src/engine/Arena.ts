@@ -175,7 +175,7 @@ export class Arena {
     this.rows = Math.floor(height / tileSize); // 14 rows (1 wall each)
 
     this.wallHeight = 1.0; // Standard single height for all walls (1 unit high)
-    this.gravity = 10.0; // 10.0 u/s²
+    this.gravity = 30.0; // 30.0 u/s²
     this.frictionCoeff = 10.4; // 10.4 u/s²
     this.staticFrictionThreshold = 0.16; // 0.16 u/s
 
