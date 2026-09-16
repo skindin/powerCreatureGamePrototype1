@@ -230,9 +230,12 @@ powerCreatureGamePrototype1/
     - The release-lock (`rtGrabbed`) still applies: after grabbing via RT, the trigger must be released before RT can throw — preventing accidental immediate throws.
 21. **Continuous Climbing & Dismounting Without Releasing Climb Control**:
     - Removed the artificial restrictions that forced players to release the climb button (Space / Gamepad A) before dismounting or before climbing again.
-    - In `ClimbingModule.ts`: mounting the top of a wall sets `dismountSuppressedUntilRelease = false` and suppression flags reset on ground contact ($z \le 0.05$).
-    - In `GameObject.ts`: dismounting past the ledge guard and dismounting into gaps are no longer blocked by `dismountSuppressedUntilRelease`, and dismounting does not set `climbSuppressedUntilRelease`.
-    - Players can now hold the climb button continuously, climb up walls, walk off edges to dismount, land, and climb up walls again over and over seamlessly without letting go of the climb control.
+    - **Inward Mounting Nudge**: Upon reaching wall top ($z \ge \text{wallHeight}$), the character is nudged inward onto the wall platform by $\min(r \times 0.5, 0.18\text{u})$ so they firmly plant on the wall rather than teetering on the exterior edge.
+    - **Movement Requirement Before Dismount (`hasMovedOntoWall`)**:
+      - Prevents the character from instantly dropping back into freefall the moment they hit the wall top.
+      - Tracks movement after mounting (`mountStartX, mountStartY`). Dismounting past the guardrail or into gaps is gated by `canDismount = !climbMod || climbMod.hasMovedOntoWall`.
+      - Requires the character to move onto the wall platform (traveling $\ge 0.20\text{u}$ inward or having character center inside the wall footprint) before a dismount off an edge can occur.
+      - Once on the wall, walking off any edge cleanly dismounts while holding climb, and landing on the ground ($z \le 0.05$) immediately re-arms climbing so players can climb and dismount repeatedly without ever releasing the climb button.
 
 ---
 

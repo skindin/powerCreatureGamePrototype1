@@ -37,6 +37,11 @@ export class ClimbingModule {
   // Tracks if character has moved outside the clamp zone (> 0.1u) after dismounting
   public hasLeftClampZoneSinceDismount = true;
 
+  // Tracks whether character has moved onto the wall top platform after mounting before allowing dismount
+  public hasMovedOntoWall = false;
+  public mountStartX = 0;
+  public mountStartY = 0;
+
   public get climbSuppressedUntilRePress(): boolean {
     return this.isDismountFreefall || this.climbSuppressedUntilRelease;
   }
@@ -91,6 +96,7 @@ export class ClimbingModule {
       if (character.position.z <= 0.05) {
         this.isAssistClampArmed = false;
         this.hasLeftClampZoneSinceDismount = true;
+        this.hasMovedOntoWall = false;
       }
     }
 
@@ -215,13 +221,21 @@ export class ClimbingModule {
           (character as any).standingWall = targetWall;
           character.verticalVelocity = 0;
           character.isClimbing = false;
-          // Dismount is not suppressed: player can dismount naturally if steering off edges
           this.dismountSuppressedUntilRelease = false;
-          // Assist clamp starts disarmed; it arms once character intentionally moves within 0.1 units of the wall
-          this.isAssistClampArmed = false;
-          this.hasLeftClampZoneSinceDismount = true;
 
-          // No artificial velocity or position snaps! WalkingModule handles locomotion naturally.
+          // Pull onto wall platform slightly so character is firmly on top of the wall
+          if (shortestDist > 0.001) {
+            const mountNudge = Math.min(r * 0.5, 0.18);
+            character.position.x = (character.position.x + targetDx) - wallNormalX * (r - mountNudge);
+            character.position.y = (character.position.y + targetDy) - wallNormalY * (r - mountNudge);
+          }
+          this.hasMovedOntoWall = false;
+          this.mountStartX = character.position.x;
+          this.mountStartY = character.position.y;
+
+          // Assist clamp arms once character is on the wall
+          this.isAssistClampArmed = true;
+          this.hasLeftClampZoneSinceDismount = false;
         }
       }
 

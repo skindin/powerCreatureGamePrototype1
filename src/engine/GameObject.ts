@@ -634,6 +634,22 @@ export class GameObject {
           climbMod.hasLeftClampZoneSinceDismount = true;
           climbMod.isAssistClampArmed = false;
         }
+
+        // Check if character has moved onto the wall platform after climbing
+        if (!climbMod.hasMovedOntoWall) {
+          const distMoved = Math.hypot(this.position.x - climbMod.mountStartX, this.position.y - climbMod.mountStartY);
+          let centerInsideWall = false;
+          for (const w of platformWalls) {
+            if (this.position.x >= w.x && this.position.x <= w.x + w.width &&
+                this.position.y >= w.y && this.position.y <= w.y + w.height) {
+              centerInsideWall = true;
+              break;
+            }
+          }
+          if (distMoved >= 0.20 || centerInsideWall) {
+            climbMod.hasMovedOntoWall = true;
+          }
+        }
       } else {
         climbMod.isAssistClampArmed = false;
       }
@@ -714,8 +730,10 @@ export class GameObject {
             // Actively pushing against the guardrail: outward velocity or directional input towards the void
             const isPushingAgainstGuardrail = outwardVel > 0.001 || outwardInput > 0.05;
 
-            // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail!
-            if (isPushingAgainstGuardrail && char?.isClimbInputHeld) {
+            // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail,
+            // and the character has moved onto the wall platform first!
+            const canDismount = !climbMod || climbMod.hasMovedOntoWall;
+            if (isPushingAgainstGuardrail && char?.isClimbInputHeld && canDismount) {
               if (climbMod) {
                 climbMod.isAssistClampArmed = false;
                 climbMod.hasLeftClampZoneSinceDismount = false;
@@ -766,10 +784,11 @@ export class GameObject {
         // the wall they're heading towards and fall.
         let currentWall = this.standingWall ?? (wasStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
         let hasDismountedIntoGap = false;
+        const canDismount = !climbMod || climbMod.hasMovedOntoWall;
 
         for (let s = 1; s <= numSteps; s++) {
-          const candX = this.position.x + stepDx;
-          const candY = this.position.y + stepDy;
+          let candX = this.position.x + stepDx;
+          let candY = this.position.y + stepDy;
 
           if (currentWall) {
             let nextSupport: Wall | null = null;
@@ -787,7 +806,7 @@ export class GameObject {
             if (nextSupport) {
               currentWall = nextSupport;
               this.standingWall = nextSupport;
-            } else {
+            } else if (canDismount) {
               // Collider does not touch current wall or any contiguous wall: dismount into gap!
               hasDismountedIntoGap = true;
               currentWall = null;
@@ -796,6 +815,10 @@ export class GameObject {
               if (char?.climbingModule) {
                 char.climbingModule.isDismountFreefall = true;
               }
+            } else {
+              // Has not moved onto the wall yet: keep position supported on current wall
+              candX = this.position.x;
+              candY = this.position.y;
             }
           }
 
