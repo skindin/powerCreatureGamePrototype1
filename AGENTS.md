@@ -112,6 +112,30 @@ powerCreatureGamePrototype1/
   - Top controls bar displays interactive `⚡ WALK` / `⚡ SPRINTING` badge with animated golden glow.
   - Gamepad connection displays live `🎮 GAMEPAD` status badge.
 
+### Dynamic Multi-Player, Controllers Panel & Colored Sightlines (Phase 1.1 Expansion — Fully Functional)
+- **Multi-Gamepad & Multi-Character Support**:
+  - Deterministically polls multiple gamepads simultaneously via `pollGamepadSlots()`. Each connected controller has its own independent character, movement vectors, aim reticle travel, climbing, sprint, grab, and throw mechanics.
+- **On-Demand Player Join & Rejoin**:
+  - **Keyboard & Mouse**: Pressing `Spacebar` when the keyboard player is not in the arena spawns their character (Player 1). When already in the arena, `Spacebar` operates as the normal wall-climbing key.
+  - **Controllers (Xbox `A` / Cross, `button[0]`)**: When a connected controller's character is not in the arena (or after being removed), pressing `A` instantly spawns their character back into the arena. When active, `A` operates as the normal wall-climbing button.
+  - **Physical Disconnection**: When a controller physically disconnects from the system, its character is safely and automatically removed from the arena.
+  - **Safe Object Drop**: When any character is removed (via remove button or disconnect), `cleanupBeforeRemoval()` drops any held items safely onto the arena floor without physics glitches.
+- **Interactive Arena Players & Controllers Panel (`src/ui/PlayersPanel.ts`)**:
+  - Accessible via top-bar toggle button (`#toggle-players-btn` / `👥 Players (N)`), in-game HUD chip (`#btn-quick-players`), or hotkey (`P`).
+  - Lists every active character with their player number, device name ("Keyboard & Mouse", "Xbox Wireless Controller"), and assigned theme color swatch.
+  - Provides a dedicated **`✕ Remove` button** next to each player's name to remove that player from the arena on demand.
+  - Inactive/Available section lists available join options (`+ Add` button and join key prompts).
+- **Player-Colored Dotted Sightlines to Cursors**:
+  - For every active player, a dotted guide line (`setLineDash([4, 4])`) in that player's assigned color connects directly from the character center to their aim cursor.
+  - Each cursor reticle displays the player's color and floating "P1", "P2" badge, eliminating any ambiguity about which reticle belongs to which player across the arena.
+- **Curated Player Color Palette**:
+  - Player 1: Amber Gold (`#f59e0b`)
+  - Player 2: Cyan (`#06b6d4`)
+  - Player 3: Emerald (`#10b981`)
+  - Player 4: Violet (`#a855f7`)
+  - Player 5: Rose (`#f43f5e`)
+  - Player 6: Blue (`#3b82f6`)
+
 ### Mobile Landscape & PWA (Installable Game — Fully Functional)
 - **Mobile Landscape Layout**:
   - Strictly **no virtual on-screen touch controls** per user directive; full gamepad/controller compatibility.

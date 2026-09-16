@@ -12,8 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-Cp5B24am.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Bnsth5T8.css">
+    <script type="module" crossorigin src="/assets/index-CL6lOx_B.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B1zu3VgR.css">
   </head>
   <body>
     <div id="app-layout">
@@ -48,6 +48,10 @@
             <a href="https://pcg-arena-teal.loca.lt" target="_blank" id="btn-open-public-url" class="btn-mini-action" title="Open public link in new browser tab">↗</a>
             <button id="btn-phone-connect" class="btn-mini-action btn-qr-action" title="Scan QR code on phone">📱 QR</button>
           </div>
+          <button id="toggle-players-btn" class="sidebar-toggle-btn" title="Arena Players & Controllers (P)">
+            <span class="sidebar-btn-icon">👥</span>
+            <span class="sidebar-btn-text" id="players-badge-text">Players (1)</span>
+          </button>
           <button id="toggle-view-settings-btn" class="sidebar-toggle-btn" title="Toggle View Settings (V)">
             <span class="sidebar-btn-icon">👁️</span>
             <span class="sidebar-btn-text">View Settings</span>
@@ -80,6 +84,52 @@
             </div>
             <div class="phone-modal-status-box" id="phone-modal-tip">
               <span>💡 Run <code>npm run share</code> in terminal to create an instant worldwide tunnel!</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arena Players & Controllers Floating Panel -->
+      <div id="players-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card players-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👥</span>
+              <span>Arena Players & Controllers</span>
+              <span id="players-header-count" class="brand-badge">1 Active</span>
+            </div>
+            <button id="btn-close-players-panel" class="btn-close-panel" title="Close Players Panel (P or Esc)">✕</button>
+          </div>
+
+          <div class="view-settings-body">
+            <!-- Active Players Section -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Active Characters</h3>
+                <p class="settings-section-desc">Remove any character from the arena using the button next to their name.</p>
+              </div>
+              <div id="active-players-list" class="players-list-container"></div>
+            </div>
+
+            <!-- Available / Inactive Controllers Section -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Available / Inactive Devices</h3>
+                <p class="settings-section-desc">Join on demand: press <code>Space</code> for Keyboard or <code>A</code> on Xbox controller.</p>
+              </div>
+              <div id="inactive-players-list" class="players-list-container"></div>
+            </div>
+
+            <!-- Quick Instructions Box -->
+            <div class="players-join-banner">
+              <div class="join-banner-item">
+                <span class="key-badge">Space</span>
+                <span>Keyboard: Join / Climb</span>
+              </div>
+              <div class="join-banner-item">
+                <span class="key-badge">A</span>
+                <span>Gamepad: Join / Climb</span>
+              </div>
             </div>
           </div>
         </div>
@@ -233,6 +283,7 @@
                 <span class="ctrl-item"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> Sprint</span>
               </div>
               <div class="controls-box-status">
+                <button class="controller-status-badge has-players" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 1 PLAYER</button>
                 <span class="sprint-status-badge" id="sprint-badge" title="Toggle Sprint (Shift or LB)">⚡ WALK</span>
                 <span class="controller-status-badge hidden" id="controller-badge" title="Gamepad Connected">🎮 GAMEPAD</span>
               </div>

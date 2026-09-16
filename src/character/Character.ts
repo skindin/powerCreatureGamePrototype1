@@ -80,6 +80,11 @@ export class Character extends GameObject {
   public throwModule: ThrowModule | null;
   public climbingModule: ClimbingModule | null;
 
+  // Player identity & multiplayer slot
+  public playerId: string = "keyboard";
+  public playerNumber: number = 1;
+  public playerColor: string = "#f59e0b";
+
   // Aiming state
   public isAiming: boolean;
   public aimTarget: Vector2D | null;
@@ -92,15 +97,23 @@ export class Character extends GameObject {
     mass?: number;
     colliderRadius?: number;
     strength?: number;
+    playerId?: string;
+    playerNumber?: number;
+    name?: string;
   } = {}) {
+    const initialColor = options.color ?? "#f59e0b";
     super({
-      name: "Player Character",
+      name: options.name ?? `Player ${options.playerNumber ?? 1}`,
       position: { x: options.x ?? 5.0, y: options.y ?? 7.0, z: 0 },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
-      color: options.color ?? "#f59e0b", // Amber body
+      color: initialColor,
       bounceMod: 0.1,
     });
+
+    this.playerId = options.playerId ?? "keyboard";
+    this.playerNumber = options.playerNumber ?? 1;
+    this.playerColor = initialColor;
 
     this.baseMass = options.mass ?? 1.2;
     this.strength = options.strength ?? 1.0;
@@ -116,6 +129,28 @@ export class Character extends GameObject {
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();
     this.climbingModule = new ClimbingModule();
+  }
+
+  /**
+   * Safely releases any held objects, clears references, and dismounts
+   * when this character is removed from the arena.
+   */
+  public cleanupBeforeRemoval(): void {
+    if (this.heldObject) {
+      this.heldObject.isHeld = false;
+      this.heldObject.heldBy = null;
+      this.heldObject = null;
+    }
+    if (this.isHeld && this.heldBy) {
+      if (this.heldBy instanceof Character && this.heldBy.heldObject === this) {
+        this.heldBy.heldObject = null;
+      }
+      this.isHeld = false;
+      this.heldBy = null;
+    }
+    this.activeTrajectory = null;
+    this.isActivelyWalking = false;
+    this.isSprinting = false;
   }
 
   /**

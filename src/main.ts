@@ -5,6 +5,7 @@ import { RollModule } from "./engine/RollModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
+import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
 import QRCode from "qrcode";
@@ -203,6 +204,30 @@ function bootstrap(): void {
     inputManager,
     devPanel,
   });
+
+  // 6b. Initialize Players & Controllers Panel
+  const playersPanel = new PlayersPanel(gameLoop, inputManager);
+  void playersPanel;
+
+  // Keep sprint UI synced across dynamic character spawns/removals
+  const updateActiveCharSprintBinding = () => {
+    for (const char of gameLoop.allCharacters) {
+      char.onSprintChange = () => updateSprintUI();
+    }
+  };
+  const originalOnPlayersChanged = gameLoop.onPlayersChanged;
+  gameLoop.onPlayersChanged = () => {
+    originalOnPlayersChanged?.();
+    updateActiveCharSprintBinding();
+    updateSprintUI();
+  };
+  updateActiveCharSprintBinding();
+
+  inputManager.onToggleSprint = () => {
+    const activeChar = gameLoop.primaryCharacter || character;
+    activeChar.setSprinting(!activeChar.isSprinting);
+    updateSprintUI();
+  };
 
   // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching
   const relayClient = new RelayClient("wss://echo.websocket.org");

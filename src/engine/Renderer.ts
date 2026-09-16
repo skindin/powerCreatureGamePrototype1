@@ -11,6 +11,15 @@ export interface ViewSettings {
   visualAltitudeScale: number;
 }
 
+export interface ActiveAimCursor {
+  x: number;
+  y: number;
+  color: string;
+  playerNumber: number;
+  character: Character;
+  isGamepad: boolean;
+}
+
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
 
@@ -33,35 +42,40 @@ export class Renderer {
 
   public render(
     arena: Arena,
-    character: Character,
+    characterInput: Character | Character[],
     objects: GameObject[],
     selectedEntity?: GameObject | null,
     isEditMode = false,
     hoverEntity?: GameObject | null,
-    targetGrabEntity?: GameObject | null,
+    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>,
     isWallEditor = false,
     hoverWallTile?: { col: number; row: number } | null,
     ghostSnapshot?: GhostSnapshot | null,
-    isUsingGamepad = false,
-    gamepadAimPos?: Vector2D | null
+    activeAimCursorsOrIsGamepad: boolean | ActiveAimCursor[] = false,
+    legacyGamepadAimPos?: Vector2D | null
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
 
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+    const characters: Character[] = Array.isArray(characterInput)
+      ? characterInput
+      : (characterInput ? [characterInput] : []);
+    const character = characters[0] || null;
+
     // 1. Floor Grid / Surface in Units
     this.drawFloorGrid(arena, ppu);
 
     // 2. Entities sorting
-    const allRenderables = [character, ...objects];
+    const allRenderables = [...characters, ...objects];
     allRenderables.sort((a, b) => {
       // Objects held by a character render ON TOP of that character at all times!
-      if ((a.isHeld && a.heldBy === b) || (character.heldObject === a && b === character)) {
-        return 1;
-      }
-      if ((b.isHeld && b.heldBy === a) || (character.heldObject === b && a === character)) {
-        return -1;
+      if (a.isHeld && a.heldBy === b) return 1;
+      if (b.isHeld && b.heldBy === a) return -1;
+      for (const char of characters) {
+        if (char.heldObject === a && b === char) return 1;
+        if (char.heldObject === b && a === char) return -1;
       }
 
       // Primary: Objects at higher virtual position (height z) ALWAYS render on top
@@ -93,16 +107,21 @@ export class Renderer {
     }
 
     // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight).
-    // An object held by an elevated character must also be elevated so it renders on top of the character!
-    const isCharElevated = character.position.z >= arena.wallHeight - 0.05;
     const groundRenderables = allRenderables.filter(e => {
-      if (e === character.heldObject && isCharElevated) return false;
+      if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return false;
       return e.position.z < arena.wallHeight - 0.05;
     });
     const elevatedRenderables = allRenderables.filter(e => {
-      if (e === character.heldObject && isCharElevated) return true;
+      if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return true;
       return e.position.z >= arena.wallHeight - 0.05;
     });
+
+    const isGrabTarget = (entity: GameObject): boolean => {
+      if (!targetGrabEntities) return false;
+      if (targetGrabEntities instanceof Set) return targetGrabEntities.has(entity);
+      if (targetGrabEntities instanceof Map) return Array.from(targetGrabEntities.values()).includes(entity);
+      return targetGrabEntities === entity;
+    };
 
     // 4. Ground Entities (z < wallHeight)
     // Rendered before wall tops so top of wall renders OVER ground objects!
@@ -110,7 +129,7 @@ export class Renderer {
       if (entity instanceof Character) {
         this.drawCharacter(entity, ppu, arena);
       } else {
-        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
+        this.drawFreebodyObject(entity, character, ppu, isGrabTarget(entity), arena);
       }
     }
 
@@ -118,7 +137,6 @@ export class Renderer {
     this.drawWallTops(arena, ppu, allRenderables);
 
     // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
-    // Only the shadow fill is covered!
     for (const entity of allRenderables) {
       this.drawObjectWallTopShadowFill(entity, arena, ppu);
     }
@@ -129,7 +147,7 @@ export class Renderer {
       if (entity instanceof Character) {
         this.drawCharacter(entity, ppu, arena);
       } else {
-        this.drawFreebodyObject(entity, character, ppu, entity === targetGrabEntity, arena);
+        this.drawFreebodyObject(entity, character, ppu, isGrabTarget(entity), arena);
       }
     }
 
@@ -145,15 +163,50 @@ export class Renderer {
       }
     }
 
-    // 9. Trajectory Line & Aim Cursor (Rendered OVER walls and entities!)
-    const activeAimCursor = character.aimTarget || (isUsingGamepad ? gamepadAimPos : null);
-    if (character.activeTrajectory) {
-      this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor, character);
-    } else if (isUsingGamepad && activeAimCursor) {
-      this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu);
+    // 10. Trajectory Lines, Aim Cursors, and Colored Dotted Sightlines to Cursors
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    if (Array.isArray(activeAimCursorsOrIsGamepad)) {
+      for (const cursor of activeAimCursorsOrIsGamepad) {
+        const cChar = cursor.character;
+        const charX = cChar.position.x * ppu;
+        const charY = (cChar.position.y - cChar.position.z * hoverScale) * ppu;
+        const cursorX = cursor.x * ppu;
+        const cursorY = cursor.y * ppu;
+
+        // Draw colored dotted line from character to their cursor so players instantly know which reticle is theirs
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = cursor.color;
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+        ctx.shadowBlur = 3;
+        ctx.moveTo(charX, charY);
+        ctx.lineTo(cursorX, cursorY);
+        ctx.stroke();
+        ctx.restore();
+
+        // If holding an object, draw projectile trajectory arc; otherwise draw precision aim reticle
+        if (cChar.activeTrajectory) {
+          this.drawTrajectory(cChar.activeTrajectory, ppu, arena, { x: cursor.x, y: cursor.y }, cChar);
+        } else {
+          this.drawAimReticle(cursorX, cursorY, cursor.color, `P${cursor.playerNumber}`);
+        }
+      }
+    } else {
+      // Legacy singleplayer fallback
+      const isUsingGamepad = activeAimCursorsOrIsGamepad;
+      if (character) {
+        const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
+        if (character.activeTrajectory) {
+          this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor, character);
+        } else if (isUsingGamepad && activeAimCursor) {
+          this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor, `P${character.playerNumber}`);
+        }
+      }
     }
 
-    // 6. Selection & Hover Gizmos (Only active and visible during Edit Mode)
+    // Selection & Hover Gizmos (Only active and visible during Edit Mode)
     if (isEditMode) {
       if (hoverEntity && hoverEntity !== selectedEntity) {
         this.drawHoverGizmo(hoverEntity, ppu);
@@ -163,7 +216,7 @@ export class Renderer {
       }
     }
 
-    // 7. Ghost Clones (Echoed states from 3rd-party relay server)
+    // Ghost Clones (Echoed states from 3rd-party relay server)
     if (ghostSnapshot) {
       this.drawGhostClones(ghostSnapshot, ppu, arena);
     }
@@ -1045,6 +1098,33 @@ export class Renderer {
     ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2);
     ctx.fill();
 
+    // Floating Player tag (e.g. "P1", "P2")
+    if (char.playerNumber) {
+      const badgeText = `P${char.playerNumber}`;
+      ctx.save();
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const textWidth = ctx.measureText(badgeText).width;
+      const pillW = textWidth + 8;
+      const pillH = 14;
+      const pillX = x - pillW / 2;
+      const pillY = y - r - 15;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      ctx.fill();
+
+      ctx.strokeStyle = char.playerColor || char.color;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      ctx.fillStyle = char.playerColor || char.color;
+      ctx.fillText(badgeText, x, pillY + pillH / 2);
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 
@@ -1599,7 +1679,7 @@ export class Renderer {
         ctx.restore();
       }
 
-      this.drawAimReticle(cursorX, cursorY);
+      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined);
     }
 
     ctx.restore();
@@ -1608,18 +1688,18 @@ export class Renderer {
   /**
    * Draws a precision aim reticle / crosshair at the cursor position
    */
-  public drawAimReticle(screenX: number, screenY: number): void {
+  public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", label?: string): void {
     const ctx = this.ctx;
     ctx.save();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
     ctx.shadowBlur = 4;
 
     // Reticle circle
     const reticleRadius = 8;
     ctx.beginPath();
     ctx.arc(screenX, screenY, reticleRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
     ctx.stroke();
 
     // 4 Crosshair ticks extending outward
@@ -1638,15 +1718,24 @@ export class Renderer {
     // Right
     ctx.moveTo(screenX + tickInner, screenY);
     ctx.lineTo(screenX + tickOuter, screenY);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
     ctx.stroke();
 
     // Center pinpoint dot
     ctx.beginPath();
-    ctx.arc(screenX, screenY, 1.8, 0, Math.PI * 2);
-    ctx.fillStyle = "#38bdf8"; // Spectral cyan center
+    ctx.arc(screenX, screenY, 2.0, 0, Math.PI * 2);
+    ctx.fillStyle = color;
     ctx.fill();
+
+    // Player label tag if provided (e.g. "P1", "P2")
+    if (label) {
+      ctx.font = "bold 11px monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
+      ctx.shadowBlur = 3;
+      ctx.fillText(label, screenX + 11, screenY - 5);
+    }
 
     ctx.restore();
   }
