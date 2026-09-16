@@ -151,36 +151,10 @@ function bootstrap(): void {
     inputManager.selectedCanvasEntity = entity;
   };
 
-  // Sprint Toggle UI feedback & interaction
-  const sprintBadge = document.getElementById("sprint-badge");
-  const updateSprintUI = () => {
-    if (!sprintBadge) return;
-    const activeChar = gameLoop ? gameLoop.primaryCharacter : character;
-    if (!activeChar) {
-      sprintBadge.textContent = "⏸️ PAUSED";
-      sprintBadge.classList.remove("active");
-      sprintBadge.title = "Simulation paused: no active characters in arena";
-      return;
-    }
-    if (activeChar.isSprinting) {
-      sprintBadge.textContent = "⚡ SPRINTING";
-      sprintBadge.classList.add("active");
-      sprintBadge.title = "Shift or LB to toggle sprint";
-    } else {
-      sprintBadge.textContent = "⚡ WALK";
-      sprintBadge.classList.remove("active");
-      sprintBadge.title = "Shift or LB to toggle sprint";
-    }
-  };
-  character.onSprintChange = () => {
-    updateSprintUI();
-  };
+  // Sprint toggle interaction
   inputManager.onToggleSprint = () => {
     character.setSprinting(!character.isSprinting);
   };
-  sprintBadge?.addEventListener("click", () => {
-    inputManager.onToggleSprint?.();
-  });
 
   // Gamepad Connection Indicator
   const controllerBadge = document.getElementById("controller-badge");
@@ -224,18 +198,10 @@ function bootstrap(): void {
   const playersPanel = new PlayersPanel(gameLoop, inputManager);
   void playersPanel;
 
-  // Keep sprint UI and dev selector synced across dynamic character spawns/removals
-  const updateActiveCharSprintBinding = () => {
-    if (!gameLoop) return;
-    for (const char of gameLoop.allCharacters) {
-      char.onSprintChange = () => updateSprintUI();
-    }
-  };
+  // Keep dev selector synced across dynamic character spawns/removals
   const originalOnPlayersChanged = gameLoop.onPlayersChanged;
   gameLoop.onPlayersChanged = () => {
     originalOnPlayersChanged?.();
-    updateActiveCharSprintBinding();
-    updateSprintUI();
     devPanel.updateSelectorOptions();
     if (gameLoop) {
       const allChars = gameLoop.allCharacters;
@@ -244,13 +210,11 @@ function bootstrap(): void {
       }
     }
   };
-  updateActiveCharSprintBinding();
 
   inputManager.onToggleSprint = () => {
     const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
     if (activeChar) {
       activeChar.setSprinting(!activeChar.isSprinting);
-      updateSprintUI();
     }
   };
 

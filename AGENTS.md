@@ -109,7 +109,7 @@ powerCreatureGamePrototype1/
   - `Shift + WASD` (or `LB` controller bumper) toggles sprint mode.
   - Increases character speed by **$1.55\times$** and propulsion acceleration by **$1.5\times$** via `WalkingModule.ts`.
   - Releasing directional movement controls automatically resets sprinting to off.
-  - Top controls bar displays interactive `⚡ WALK` / `⚡ SPRINTING` badge with animated golden glow.
+  - Controls bar cleanly displays the `👥 N PLAYERS` roster button and `🎮 GAMEPAD` connection badge (individual player sprinting operates independently without a global status box cluttering the bar).
   - Gamepad connection displays live `🎮 GAMEPAD` status badge.
 
 ### Dynamic Multi-Player, Controllers Panel & Colored Sightlines (Phase 1.1 Expansion — Fully Functional)
