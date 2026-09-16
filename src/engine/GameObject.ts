@@ -391,7 +391,6 @@ export class GameObject {
               surfaceHeight = 0;
               if (char?.climbingModule) {
                 char.climbingModule.isDismountFreefall = true;
-                char.climbingModule.climbSuppressedUntilRelease = true;
               }
             }
           }

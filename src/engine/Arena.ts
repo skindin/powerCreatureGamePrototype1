@@ -290,7 +290,6 @@ export class Arena {
             const char = ent as any;
             if (char.climbingModule) {
               char.climbingModule.isDismountFreefall = true;
-              char.climbingModule.climbSuppressedUntilRelease = true;
             }
           }
         }

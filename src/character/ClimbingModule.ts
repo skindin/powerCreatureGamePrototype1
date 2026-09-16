@@ -179,9 +179,6 @@ export class ClimbingModule {
         character.isClimbing = false;
         character.velocity.x = moveDirX * 3.0;
         character.velocity.y = moveDirY * 3.0;
-        if (isClimbHeld) {
-          this.climbSuppressedUntilRelease = true;
-        }
         return false;
       }
 
@@ -242,22 +239,9 @@ export class ClimbingModule {
       return true;
     }
 
-    // Mid-air re-grab (e.g. falling after dismounting a wall):
-    // Requires releasing and repressing the climb control (isFreshClimbPress)
-    if (!isEstablishedClimb && character.position.z > 0.05 && character.position.z < targetWall.wallHeight) {
-      if (isFreshClimbPress) {
-        character.isClimbing = true;
-        character.verticalVelocity = 0;
-        character.velocity.x = 0;
-        character.velocity.y = 0;
-        return true;
-      }
-      // Otherwise, the character is in freefall and must NOT stick mid-layer 1!
-      character.isClimbing = false;
-      return false;
-    }
-
-    // On ground (z <= 0.05, not established): Initiate climb only if contacting wall, pressing towards wall and holding Space
+    // Initiate or resume climbing at ANY elevation (ground or mid-air):
+    // The second the character contacts a wall they are moving towards while holding climb,
+    // they latch on and start climbing from their current height immediately!
     const contactTolerance = 0.03;
     if (isClimbHeld && hasMoveInput && targetDot > 0.01 && shortestDist <= r + contactTolerance && character.position.z < targetWall.wallHeight) {
       // Ensure any micro-gap to the wall is completely closed before climbing begins
@@ -272,6 +256,9 @@ export class ClimbingModule {
       character.verticalVelocity = 0;
       character.velocity.x = 0;
       character.velocity.y = 0;
+      this.isDismountFreefall = false;
+      this.hasMovedOntoWall = false;
+      (character as any).standingWall = null;
 
       const baseMass = character.baseMass;
       const effectiveClimbSpeed = Math.max(
