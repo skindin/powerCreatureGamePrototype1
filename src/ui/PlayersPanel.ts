@@ -115,7 +115,7 @@ export class PlayersPanel {
       if (count === 0) {
         this.activeListElement.innerHTML = `
           <div class="player-empty-state">
-            <p>No active characters in the arena.</p>
+            <p>No controllers or keyboard connected.</p>
             <p class="sub-hint">Press <kbd>Space</kbd> for Keyboard or <kbd>A</kbd> on any controller to jump in!</p>
           </div>
         `;
@@ -137,7 +137,7 @@ export class PlayersPanel {
                     <div class="player-device-text">${escapeHtml(p.name)}</div>
                   </div>
                 </div>
-                <button class="btn-remove-player" data-player-id="${p.id}" title="Remove this player character from the arena">
+                <button class="btn-remove-player" data-player-id="${p.id}" title="Disconnect this player device">
                   ✕ Remove
                 </button>
               </div>

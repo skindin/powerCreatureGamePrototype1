@@ -1231,8 +1231,8 @@ export class Renderer {
     ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Floating Player tag (e.g. "P1", "P2")
-    if (char.playerNumber) {
+    // Floating Player tag (e.g. "P1", "P2" or "Press Space / A")
+    if (char.playerId) {
       const badgeText = `P${char.playerNumber}`;
       ctx.save();
       ctx.font = "bold 11px monospace";
@@ -1254,6 +1254,31 @@ export class Renderer {
       ctx.stroke();
 
       ctx.fillStyle = char.playerColor || char.color;
+      ctx.fillText(badgeText, x, pillY + pillH / 2);
+      ctx.restore();
+    } else {
+      // Unassigned character waiting for keyboard (Space) or controller (A)
+      const badgeText = "Press Space / A";
+      ctx.save();
+      ctx.font = "bold 10px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const textWidth = ctx.measureText(badgeText).width;
+      const pillW = textWidth + 12;
+      const pillH = 16;
+      const pillX = x - pillW / 2;
+      const pillY = y - r - 17;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#fbbf24";
       ctx.fillText(badgeText, x, pillY + pillH / 2);
       ctx.restore();
     }

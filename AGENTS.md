@@ -115,11 +115,12 @@ powerCreatureGamePrototype1/
 ### Dynamic Multi-Player, Controllers Panel & Colored Sightlines (Phase 1.1 Expansion — Fully Functional)
 - **Multi-Gamepad & Multi-Character Support**:
   - Deterministically polls multiple gamepads simultaneously via `pollGamepadSlots()`. Each connected controller has its own independent character, movement vectors, aim reticle travel, climbing, sprint, grab, and throw mechanics.
-- **On-Demand Player Join & Rejoin**:
-  - **Keyboard & Mouse**: Pressing `Spacebar` when the keyboard player is not in the arena spawns their character (Player 1). When already in the arena, `Spacebar` operates as the normal wall-climbing key.
-  - **Controllers (Xbox `A` / Cross, `button[0]`)**: When a connected controller's character is not in the arena (or after being removed), pressing `A` instantly spawns their character back into the arena. When active, `A` operates as the normal wall-climbing button.
-  - **Physical Disconnection**: When a controller physically disconnects from the system, its character is safely and automatically removed from the arena.
-  - **Safe Object Drop**: When any character is removed (via remove button or disconnect), `cleanupBeforeRemoval()` drops any held items safely onto the arena floor without physics glitches.
+- **On-Demand Player Join, Unassigned Page Load & Device Reconnect**:
+  - **Initial Page Load**: The primary character exists in the arena unassigned (not automatically claimed by keyboard). Floating tag reads `Press Space / A`.
+  - **First Device Connection**: Whichever input device (Keyboard `Space` or any Gamepad `A`) presses join first claims the standing character as Player 1 (Amber Gold).
+  - **Subsequent Device Joins**: When the primary character is already controlled, additional devices pressing `Space` or `A` dynamically spawn Player 2, Player 3, etc.
+  - **Last Player Removal Rule**: Removing the last active player does **never delete the character from the arena**. Instead, it cleanly unassigns the controller/keyboard and drops any held object safely. The character remains standing in the arena, ready to be claimed by the next device to press `Space` or `A`.
+  - **Physical Disconnection**: When a controller disconnects, its player entry is removed; if it was the last player, the character remains standing in place unassigned.
 - **Interactive Arena Players & Controllers Panel (`src/ui/PlayersPanel.ts`)**:
   - Accessible via top-bar toggle button (`#toggle-players-btn` / `👥 Players (N)`), in-game HUD chip (`#btn-quick-players`), or hotkey (`P`).
   - Lists every active character with their player number, device name ("Keyboard & Mouse", "Xbox Wireless Controller"), and assigned theme color swatch.

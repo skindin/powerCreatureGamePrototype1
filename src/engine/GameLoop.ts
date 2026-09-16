@@ -36,6 +36,7 @@ export class GameLoop {
   // Active multiplayer players in the arena
   public players: Map<string, PlayerEntry> = new Map();
   public onPlayersChanged?: () => void;
+  public baseCharacter: Character;
 
   private isRunning = false;
   private lastTime = 0;
@@ -46,26 +47,28 @@ export class GameLoop {
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
 
   public get allCharacters(): Character[] {
-    return Array.from(this.players.values()).map((p) => p.character);
+    const activeChars = Array.from(this.players.values()).map((p) => p.character);
+    if (activeChars.length === 0) {
+      return [this.baseCharacter];
+    }
+    return activeChars;
   }
 
-  public get primaryCharacter(): Character | null {
+  public get primaryCharacter(): Character {
     const k = this.players.get("keyboard");
     if (k) return k.character;
     const first = this.players.values().next().value;
-    return first ? first.character : null;
+    if (first) return first.character;
+    return this.baseCharacter;
   }
 
   public get isPaused(): boolean {
-    return this.players.size === 0;
+    return false;
   }
 
   // Backward compatibility getter for singleplayer inspect references
   public get character(): Character {
-    const primary = this.primaryCharacter;
-    if (primary) return primary;
-    // Fallback dummy character if all players removed
-    return new Character({ name: "Unassigned", x: 0, y: 0 });
+    return this.primaryCharacter;
   }
 
   constructor(options: {
@@ -82,6 +85,25 @@ export class GameLoop {
     this.inputManager = options.inputManager;
     this.devPanel = options.devPanel;
 
+    // Base character that exists in the arena waiting for a device
+    this.baseCharacter = options.character || new Character({
+      name: "Player 1",
+      color: PLAYER_COLORS[0],
+      x: 4.8,
+      y: 7.0,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+      playerNumber: 1,
+    });
+    this.baseCharacter.playerId = ""; // Unassigned
+    this.baseCharacter.playerNumber = 1;
+    this.baseCharacter.playerColor = PLAYER_COLORS[0];
+    this.baseCharacter.color = PLAYER_COLORS[0];
+    this.baseCharacter.name = "Player 1";
+    this.inputManager.isKeyboardActive = false;
+    this.arena.syncEntitiesWithWalls([this.baseCharacter]);
+
     // Hook input manager on-demand join & disconnect callbacks
     this.inputManager.onKeyboardJoin = () => {
       this.spawnKeyboardPlayer();
@@ -95,11 +117,6 @@ export class GameLoop {
     this.inputManager.onGamepadDisconnected = (slotIndex: number) => {
       this.removeGamepadPlayer(slotIndex);
     };
-
-    // Spawn initial keyboard player if provided
-    if (options.character) {
-      this.spawnKeyboardPlayer(options.character);
-    }
   }
 
   private getNextPlayerNumber(): number {
@@ -113,15 +130,24 @@ export class GameLoop {
     return this.players.size + 1;
   }
 
-  public spawnKeyboardPlayer(existingChar?: Character): Character {
+  public spawnKeyboardPlayer(): Character {
     const current = this.players.get("keyboard");
     if (current) return current.character;
 
-    const playerNum = 1;
-    const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-    let char = existingChar;
+    // Check if baseCharacter is currently unassigned (no player device controlling it)
+    const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
+    let char: Character;
 
-    if (!char) {
+    if (isBaseUnassigned) {
+      char = this.baseCharacter;
+      char.playerId = "keyboard";
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
+      char.color = PLAYER_COLORS[0];
+      char.name = "Player 1";
+    } else {
+      const playerNum = this.getNextPlayerNumber();
+      const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
       char = new Character({
         x: 4.8,
         y: 7.0,
@@ -131,13 +157,9 @@ export class GameLoop {
         strength: 1.0,
         playerId: "keyboard",
         playerNumber: playerNum,
-        name: "Player 1",
+        name: `Player ${playerNum}`,
       });
-    } else {
-      char.playerId = "keyboard";
-      char.playerNumber = playerNum;
-      char.playerColor = color;
-      char.color = color;
+      this.arena.syncEntitiesWithWalls([char]);
     }
 
     this.lastTime = performance.now();
@@ -146,13 +168,12 @@ export class GameLoop {
     this.players.set("keyboard", {
       id: "keyboard",
       name: "Keyboard & Mouse",
-      playerNumber: playerNum,
-      color,
+      playerNumber: char.playerNumber,
+      color: char.playerColor,
       isKeyboard: true,
       character: char,
     });
 
-    this.arena.syncEntitiesWithWalls([char]);
     this.onPlayersChanged?.();
     return char;
   }
@@ -162,6 +183,23 @@ export class GameLoop {
     if (!entry) return;
 
     entry.character.cleanupBeforeRemoval();
+    entry.character.velocity.x = 0;
+    entry.character.velocity.y = 0;
+
+    const isLastPlayer = this.players.size <= 1;
+    if (isLastPlayer) {
+      // Don't delete the character! Just remove the keyboard connection
+      entry.character.playerId = "";
+      this.baseCharacter = entry.character;
+    } else {
+      if (entry.character === this.baseCharacter) {
+        const other = Array.from(this.players.values()).find((p) => p.id !== "keyboard");
+        if (other) {
+          this.baseCharacter = other.character;
+        }
+      }
+    }
+
     this.players.delete("keyboard");
     this.inputManager.isKeyboardActive = false;
     this.onPlayersChanged?.();
@@ -172,31 +210,44 @@ export class GameLoop {
     const existing = this.players.get(key);
     if (existing) return existing.character;
 
-    const playerNum = this.getNextPlayerNumber();
-    const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
     const cleanName = gamepadName
       ? (gamepadName.length > 28 ? gamepadName.slice(0, 28) + "…" : gamepadName)
       : `Controller #${slotIndex + 1}`;
 
-    const char = new Character({
-      x: 4.8 + (slotIndex + 1) * 1.2,
-      y: 7.0,
-      color,
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1.0,
-      playerId: key,
-      playerNumber: playerNum,
-      name: `Player ${playerNum}`,
-    });
+    const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
+    let char: Character;
+
+    if (isBaseUnassigned) {
+      char = this.baseCharacter;
+      char.playerId = key;
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
+      char.color = PLAYER_COLORS[0];
+      char.name = "Player 1";
+    } else {
+      const playerNum = this.getNextPlayerNumber();
+      const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      char = new Character({
+        x: 4.8 + (slotIndex + 1) * 1.2,
+        y: 7.0,
+        color,
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: key,
+        playerNumber: playerNum,
+        name: `Player ${playerNum}`,
+      });
+      this.arena.syncEntitiesWithWalls([char]);
+    }
 
     this.lastTime = performance.now();
     this.accumulator = 0;
     this.players.set(key, {
       id: key,
       name: cleanName,
-      playerNumber: playerNum,
-      color,
+      playerNumber: char.playerNumber,
+      color: char.playerColor,
       isKeyboard: false,
       slotIndex,
       character: char,
@@ -208,7 +259,6 @@ export class GameLoop {
       slot.aimOffsetInitialized = false;
     }
 
-    this.arena.syncEntitiesWithWalls([char]);
     this.onPlayersChanged?.();
     return char;
   }
@@ -219,6 +269,23 @@ export class GameLoop {
     if (!entry) return;
 
     entry.character.cleanupBeforeRemoval();
+    entry.character.velocity.x = 0;
+    entry.character.velocity.y = 0;
+
+    const isLastPlayer = this.players.size <= 1;
+    if (isLastPlayer) {
+      // Don't delete the character! Just remove the gamepad connection
+      entry.character.playerId = "";
+      this.baseCharacter = entry.character;
+    } else {
+      if (entry.character === this.baseCharacter) {
+        const other = Array.from(this.players.values()).find((p) => p.id !== key);
+        if (other) {
+          this.baseCharacter = other.character;
+        }
+      }
+    }
+
     this.players.delete(key);
 
     const slot = this.inputManager.gamepadSlots.get(slotIndex);
@@ -262,30 +329,20 @@ export class GameLoop {
       deltaSeconds = 0.2;
     }
 
-    const isPaused = this.isPaused;
+    this.accumulator += deltaSeconds;
 
-    if (isPaused) {
-      // Simulation pauses when all player characters are removed
-      this.accumulator = 0;
-
-      // Keep polling gamepads so pressing (A) on any controller immediately jumps in
-      this.inputManager.pollGamepadSlots(this.players, this.objects, this.arena, this.allCharacters);
-    } else {
-      this.accumulator += deltaSeconds;
-
-      // Fixed timestep simulation updates
-      while (this.accumulator >= this.fixedDt) {
-        this.updatePhysics(this.fixedDt);
-        if (this.onPhysicsTick) {
-          this.onPhysicsTick(this.fixedDt, currentTime);
-        }
-        this.accumulator -= this.fixedDt;
+    // Fixed timestep simulation updates
+    while (this.accumulator >= this.fixedDt) {
+      this.updatePhysics(this.fixedDt);
+      if (this.onPhysicsTick) {
+        this.onPhysicsTick(this.fixedDt, currentTime);
       }
+      this.accumulator -= this.fixedDt;
     }
 
     // Determine target grab entities for each active character (for hover highlight)
     const targetGrabEntities = new Map<Character, GameObject | null>();
-    if (!this.devPanel.isEditMode && !isPaused) {
+    if (!this.devPanel.isEditMode) {
       for (const entry of this.players.values()) {
         const char = entry.character;
         if (char.heldObject || !char.pickupModule) continue;
@@ -357,7 +414,7 @@ export class GameLoop {
       ghostData,
       activeAimCursors,
       undefined,
-      isPaused
+      false
     );
 
     // Update live inspector
@@ -429,6 +486,20 @@ export class GameLoop {
       } else {
         cChar.velocity.x = 0;
         cChar.velocity.y = 0;
+      }
+    }
+
+    // 3b. When no player device is currently connected, update baseCharacter so it settles naturally
+    if (this.players.size === 0) {
+      if (input.draggedEntity !== this.baseCharacter) {
+        this.baseCharacter.updateCharacter(
+          dt,
+          { x: 0, y: 0 },
+          false,
+          null,
+          this.arena,
+          false
+        );
       }
     }
 

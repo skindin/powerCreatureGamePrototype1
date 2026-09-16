@@ -699,7 +699,9 @@ export class InputManager {
         return;
       }
 
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerNumber === 1) : null) || character;
+      if (!this.isKeyboardActive) return;
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
+      if (!activeChar) return;
 
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
@@ -734,7 +736,9 @@ export class InputManager {
     };
 
     this.onDropAttempt = () => {
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerNumber === 1) : null) || character;
+      if (!this.isKeyboardActive) return;
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
+      if (!activeChar) return;
       const aimX = this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x;
       const aimY = this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y;
       if (activeChar.heldObject && activeChar.pickupModule) {
