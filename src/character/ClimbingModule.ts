@@ -8,7 +8,7 @@ export class ClimbingModule {
   public enabled = true;
 
   // Maximum adhesive grip force before character slips and cannot climb/cling (in Newtons)
-  public maxAdhesion = 35.0;
+  public maxAdhesion = 250.0;
 
   // Maximum vertical speed cap when climbing walls (in units per second)
   public maxClimbSpeed = 3.0;

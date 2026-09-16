@@ -1021,9 +1021,9 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Adhesion (N)</span>
-                <span id="val-climb-adhesion">${(char.climbingModule?.maxAdhesion ?? 35.0).toFixed(0)}</span>
+                <span id="val-climb-adhesion">${(char.climbingModule?.maxAdhesion ?? 250.0).toFixed(0)}</span>
               </div>
-              <input type="range" id="slide-climb-adhesion" min="5.0" max="80.0" step="1.0" value="${char.climbingModule?.maxAdhesion ?? 35.0}">
+              <input type="range" id="slide-climb-adhesion" min="10.0" max="500.0" step="5.0" value="${char.climbingModule?.maxAdhesion ?? 250.0}">
             </div>
             <div class="slider-group">
               <div class="slider-label">
