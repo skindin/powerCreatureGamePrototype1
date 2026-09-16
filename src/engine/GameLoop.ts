@@ -350,7 +350,7 @@ export class GameLoop {
     const input = this.inputManager;
 
     // 1. Poll connected Gamepads (rising-edge A button to join, analog sticks, triggers)
-    input.pollGamepadSlots(this.players, this.objects, this.arena);
+    input.pollGamepadSlots(this.players, this.objects, this.arena, this.allCharacters);
 
     // 2. Update Keyboard Player (if active in arena)
     const kEntry = this.players.get("keyboard");

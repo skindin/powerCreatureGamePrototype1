@@ -270,6 +270,11 @@ powerCreatureGamePrototype1/
       - Players do **not** have to wait until hitting the ground to climb again.
       - At any vertical elevation ($z < \text{wallHeight}$), the second the character contacts any wall they are moving towards (`targetDot > 0.01` and `shortestDist <= r + contactTolerance`) while holding the climb button, they immediately latch on and resume climbing upward from their current altitude.
       - Removed mid-air re-grab lockouts (`climbSuppressedUntilRelease`), enabling seamless wall-to-wall traversing, mid-air ledge catches, and continuous dismount/re-climb loops.
+22. **Universal Multi-Player Grab Highlights & Themed Targeting Rings**:
+    - In `Renderer.ts`, `drawFreebodyObject` and `drawCharacter` evaluate pickup reach across `allCharacters` (`charactersInReach = allCharacters.filter(...)`), eliminating the previous restriction where only Player 1 (`characters[0]`) triggered object highlights.
+    - **Player-Colored Grab Badges & Highlights**: When any player targets a reachable object (via virtual aim stick or mouse cursor), the object renders an outer highlight border and solid glowing ring matching that targeting player's theme color (e.g. Amber Gold `#f59e0b` for P1, Cyan `#06b6d4` for P2).
+    - **Multiplayer Badge Context**: If multiple players are present in the arena, the badge displays `P1 GRAB`, `P2 GRAB`, etc., making it clear which player has lock on the object. In single player, it displays `GRAB`.
+    - **Gamepad Pickup Target Expansion**: In `InputManager.pollGamepadSlots`, grabbable candidate lists incorporate other characters (`[...allCharacters.filter(c => c !== char), ...objects]`), ensuring gamepad players can interact with and pick up all eligible entities.
 
 ---
 

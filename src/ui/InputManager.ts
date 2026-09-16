@@ -292,7 +292,8 @@ export class InputManager {
   public pollGamepadSlots(
     playersMap: Map<string, { character: Character; slotIndex?: number; isKeyboard?: boolean }>,
     objects: GameObject[],
-    arena: Arena
+    arena: Arena,
+    allCharacters?: Character[]
   ): void {
     if (!navigator.getGamepads) return;
     const gamepads = navigator.getGamepads();
@@ -408,6 +409,11 @@ export class InputManager {
         char.setSprinting(!char.isSprinting);
       }
 
+      // Grabbable target candidates include freebody objects and other characters
+      const grabbableTargets = allCharacters
+        ? [...allCharacters.filter((c) => c !== char), ...objects]
+        : objects;
+
       // Button 1 (B on Xbox / Circle on PS): Pickup & Swap
       const bCurrent = isButtonPressed(1);
       const bJustReleased = !bCurrent && isPrevPressed(1);
@@ -419,7 +425,7 @@ export class InputManager {
           if (!isPrevPressed(1) || slot.bHeld) {
             char.pickupModule.pickupAndSwap(
               char,
-              objects,
+              grabbableTargets,
               arena.wallHeight,
               slot.aimPos.x,
               slot.aimPos.y
@@ -435,7 +441,7 @@ export class InputManager {
           if (!isPrevPressed(1) && char.pickupModule) {
             char.pickupModule.pickupAndSwap(
               char,
-              objects,
+              grabbableTargets,
               arena.wallHeight,
               slot.aimPos.x,
               slot.aimPos.y
@@ -459,7 +465,7 @@ export class InputManager {
         if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
           char.pickupModule.pickupAndSwap(
             char,
-            objects,
+            grabbableTargets,
             arena.wallHeight,
             slot.aimPos.x,
             slot.aimPos.y

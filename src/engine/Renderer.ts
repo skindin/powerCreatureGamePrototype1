@@ -116,20 +116,13 @@ export class Renderer {
       return e.position.z >= arena.wallHeight - 0.05;
     });
 
-    const isGrabTarget = (entity: GameObject): boolean => {
-      if (!targetGrabEntities) return false;
-      if (targetGrabEntities instanceof Set) return targetGrabEntities.has(entity);
-      if (targetGrabEntities instanceof Map) return Array.from(targetGrabEntities.values()).includes(entity);
-      return targetGrabEntities === entity;
-    };
-
     // 4. Ground Entities (z < wallHeight)
     // Rendered before wall tops so top of wall renders OVER ground objects!
     for (const entity of groundRenderables) {
       if (entity instanceof Character) {
-        this.drawCharacter(entity, ppu, arena);
+        this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
       } else {
-        this.drawFreebodyObject(entity, character, ppu, isGrabTarget(entity), arena);
+        this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
       }
     }
 
@@ -145,9 +138,9 @@ export class Renderer {
     // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
     for (const entity of elevatedRenderables) {
       if (entity instanceof Character) {
-        this.drawCharacter(entity, ppu, arena);
+        this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
       } else {
-        this.drawFreebodyObject(entity, character, ppu, isGrabTarget(entity), arena);
+        this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
       }
     }
 
@@ -911,13 +904,13 @@ export class Renderer {
   /**
    * Freebody Object: Pure top-down at (x, y) with fixed physical radius (no scale expansion).
    * Supports both box and circle visual shapes (both using circle colliders).
-   * Highlights objects within character pickup reach.
+   * Highlights objects within any player character's pickup reach.
    */
   private drawFreebodyObject(
     obj: GameObject,
-    character: Character,
+    allCharacters: Character[],
     ppu: number,
-    isTargetGrab = false,
+    targetGrabEntities: GameObject | null | Map<Character, GameObject | null> | Set<GameObject> | undefined,
     arena: Arena
   ): void {
     const ctx = this.ctx;
@@ -932,14 +925,37 @@ export class Renderer {
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;
 
-    // Check if close enough for character to pick up, strictly respecting layer-dependent reach
-    const canPickup = !character.heldObject && character.pickupModule !== null && character.pickupModule.enabled;
-    const isWithinPickupRange = canPickup && !obj.isHeld && (character.pickupModule?.isObjectInReach(character, obj, arena.wallHeight) ?? false);
+    // Check if close enough for any player character to pick up, strictly respecting layer-dependent reach
+    const charactersInReach = allCharacters.filter(
+      (c) =>
+        !c.isHeld &&
+        !c.heldObject &&
+        c.pickupModule !== null &&
+        c.pickupModule.enabled &&
+        !obj.isHeld &&
+        (c.pickupModule?.isObjectInReach(c, obj, arena.wallHeight) ?? false)
+    );
+    const isWithinPickupRange = charactersInReach.length > 0;
+
+    // Determine which players are currently targeting this object
+    const targetingChars: Character[] = [];
+    if (targetGrabEntities instanceof Map) {
+      for (const [char, target] of targetGrabEntities.entries()) {
+        if (target === obj) targetingChars.push(char);
+      }
+    } else if (targetGrabEntities) {
+      if (targetGrabEntities instanceof Set && targetGrabEntities.has(obj)) {
+        targetingChars.push(...charactersInReach);
+      } else if (targetGrabEntities === obj) {
+        targetingChars.push(...charactersInReach);
+      }
+    }
+    const isTargetGrab = targetingChars.length > 0;
 
     // Objects on walls must be transparent when they get bigger and aren't hovering over a shadow,
     // so players can see what is underneath them; held objects are also transparent.
     const isOnLayer2 = Renderer.isEntityOnLayer2(obj, arena.wallHeight);
-    const isHeld = obj.isHeld || character.heldObject === obj;
+    const isHeld = obj.isHeld || allCharacters.some((c) => c.heldObject === obj);
     const isBiggerWithoutHover = useBigger && (!useHover || hoverScale <= 0);
     const shouldBeTransparent = isHeld || (isBiggerWithoutHover && isOnLayer2);
 
@@ -964,7 +980,9 @@ export class Renderer {
       ctx.fill();
 
       // Outer border
-      ctx.strokeStyle = isWithinPickupRange ? "#ffffff" : "rgba(255, 255, 255, 0.45)";
+      const primaryTargetChar = targetingChars[0];
+      const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
+      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
       ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
       ctx.stroke();
 
@@ -995,7 +1013,9 @@ export class Renderer {
       ctx.arc(x, y, renderRadius, 0, Math.PI * 2);
       ctx.fillStyle = obj.color;
       ctx.fill();
-      ctx.strokeStyle = isWithinPickupRange ? "#ffffff" : "rgba(255, 255, 255, 0.45)";
+      const primaryTargetChar = targetingChars[0];
+      const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
+      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
       ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
       ctx.stroke();
     }
@@ -1022,19 +1042,28 @@ export class Renderer {
         ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
       }
       if (isTargetGrab) {
-        // Active mouse target: solid vibrant glowing cyan ring & prominent badge
-        ctx.strokeStyle = "#38bdf8";
+        // Active target: solid vibrant glowing ring in targeting player's theme color & prominent badge
+        const primaryTargetChar = targetingChars[0];
+        const themeColor = primaryTargetChar.playerColor || "#38bdf8";
+        ctx.strokeStyle = themeColor;
         ctx.lineWidth = 2.8;
         ctx.setLineDash([]);
         ctx.stroke();
 
-        ctx.fillStyle = "#38bdf8";
+        ctx.fillStyle = themeColor;
         ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("GRAB", x, y - grabRadius - 6);
+        const badgeText =
+          allCharacters.length > 1 && primaryTargetChar.playerNumber
+            ? `P${primaryTargetChar.playerNumber} GRAB`
+            : "GRAB";
+        ctx.fillText(badgeText, x, y - grabRadius - 6);
       } else {
-        // In physical reach, but another object is closer to mouse: subtle dashed ring
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        // In physical reach of a player, but not actively targeted: subtle dashed ring
+        const reachColor = charactersInReach[0]?.playerColor
+          ? `${charactersInReach[0].playerColor}99`
+          : "rgba(56, 189, 248, 0.45)";
+        ctx.strokeStyle = reachColor;
         ctx.lineWidth = 1.8;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
@@ -1044,9 +1073,16 @@ export class Renderer {
   }
 
   /**
-   * Character: Pure top-down circle with two black circles on facing side
+   * Character: Pure top-down circle with two black circles on facing side.
+   * Can also be highlighted and grabbed by other characters.
    */
-  private drawCharacter(char: Character, ppu: number, arena: Arena): void {
+  private drawCharacter(
+    char: Character,
+    allCharacters: Character[],
+    ppu: number,
+    arena: Arena,
+    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>
+  ): void {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
@@ -1056,6 +1092,33 @@ export class Renderer {
     const y = (char.position.y - char.position.z * hoverScale) * ppu;
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
+
+    // Check if another character can grab this character
+    const charactersInReach = allCharacters.filter(
+      (c) =>
+        c !== char &&
+        !c.isHeld &&
+        !c.heldObject &&
+        c.pickupModule !== null &&
+        c.pickupModule.enabled &&
+        !char.isHeld &&
+        (c.pickupModule?.isObjectInReach(c, char, arena.wallHeight) ?? false)
+    );
+    const isWithinPickupRange = charactersInReach.length > 0;
+
+    const targetingChars: Character[] = [];
+    if (targetGrabEntities instanceof Map) {
+      for (const [c, target] of targetGrabEntities.entries()) {
+        if (c !== char && target === char) targetingChars.push(c);
+      }
+    } else if (targetGrabEntities) {
+      if (targetGrabEntities instanceof Set && targetGrabEntities.has(char)) {
+        targetingChars.push(...charactersInReach);
+      } else if (targetGrabEntities === char) {
+        targetingChars.push(...charactersInReach);
+      }
+    }
+    const isTargetGrab = targetingChars.length > 0;
 
     // Characters on walls must be transparent when they get bigger and aren't hovering over a shadow,
     // so players can see what is underneath them; held characters are also transparent.
@@ -1072,7 +1135,9 @@ export class Renderer {
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = char.color;
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = isWithinPickupRange && isTargetGrab
+      ? (targetingChars[0].playerColor || "#ffffff")
+      : "#ffffff";
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
@@ -1126,6 +1191,40 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Highlight ring around grabbable character
+    if (isWithinPickupRange) {
+      const grabRadius = r + 3;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
+      if (isTargetGrab) {
+        const primaryTargetChar = targetingChars[0];
+        const themeColor = primaryTargetChar.playerColor || "#38bdf8";
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = 2.8;
+        ctx.setLineDash([]);
+        ctx.stroke();
+
+        ctx.fillStyle = themeColor;
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        const badgeText =
+          allCharacters.length > 1 && primaryTargetChar.playerNumber
+            ? `P${primaryTargetChar.playerNumber} GRAB`
+            : "GRAB";
+        ctx.fillText(badgeText, x, y + grabRadius + 14);
+      } else {
+        const reachColor = charactersInReach[0]?.playerColor
+          ? `${charactersInReach[0].playerColor}99`
+          : "rgba(56, 189, 248, 0.45)";
+        ctx.strokeStyle = reachColor;
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   /**
