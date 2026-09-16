@@ -230,115 +230,99 @@ export class Character extends GameObject {
     }
 
     const objRadius = this.heldObject.colliderRadius > 0 ? this.heldObject.colliderRadius : 0.26;
-    // Generous safety margin — prevents binary search result landing right at the wall edge
     const safetyMargin = 0.12;
     const requiredClearance = objRadius + safetyMargin;
-    // Extra pull-back applied after binary search so result is never at the knife-edge boundary
-    const extraClearback = 0.06;
+    const extraThrowClearback = 0.08;
 
-    const isPointSafe = (px: number, py: number): boolean => {
-      for (const wall of arena.walls) {
-        const closestX = Math.max(wall.x, Math.min(px, wall.x + wall.width));
-        const closestY = Math.max(wall.y, Math.min(py, wall.y + wall.height));
-        const dx = px - closestX;
-        const dy = py - closestY;
-        if (dx * dx + dy * dy < requiredClearance * requiredClearance) {
-          return false;
+    // Exact quadratic ray-AABB & ray-corner distance solver:
+    // Finds the smallest positive distance t along ray (C + t * dir) before the circle of radius
+    // requiredClearance contacts any wall boundary (flat edge or rounded corner).
+    let minHitDistance = Infinity;
+
+    for (const wall of arena.walls) {
+      const x1 = wall.x;
+      const x2 = wall.x + wall.width;
+      const y1 = wall.y;
+      const y2 = wall.y + wall.height;
+      const R = requiredClearance;
+
+      // 1. Flat boundary planes
+      // Left boundary plane: x = x1 - R
+      if (dirX > 0.0001 && this.position.x < x1 - R) {
+        const t = (x1 - R - this.position.x) / dirX;
+        if (t > 0 && t < minHitDistance) {
+          const hitY = this.position.y + t * dirY;
+          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
         }
       }
-      return true;
-    };
-
-    let targetX = this.position.x + dirX * defaultHandDist;
-    let targetY = this.position.y + dirY * defaultHandDist;
-
-    // If default position is completely safe from all walls, use it directly
-    if (isPointSafe(targetX, targetY)) {
-      return { x: targetX, y: targetY, z: heldZ };
-    }
-
-    // Default distance hits/overlaps a wall:
-    // Binary search for max safe distance within [0, defaultHandDist] along facing direction
-    if (isPointSafe(this.position.x, this.position.y)) {
-      let low = 0;
-      let high = defaultHandDist;
-      for (let i = 0; i < 20; i++) { // More iterations → tighter convergence
-        const mid = (low + high) * 0.5;
-        if (isPointSafe(this.position.x + dirX * mid, this.position.y + dirY * mid)) {
-          low = mid;
-        } else {
-          high = mid;
+      // Right boundary plane: x = x2 + R
+      if (dirX < -0.0001 && this.position.x > x2 + R) {
+        const t = (x2 + R - this.position.x) / dirX;
+        if (t > 0 && t < minHitDistance) {
+          const hitY = this.position.y + t * dirY;
+          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
         }
       }
-      // Pull back by extraClearback so we're safely inside the safe zone, never at its edge
-      const safeD = Math.max(0, low - extraClearback);
-      targetX = this.position.x + dirX * safeD;
-      targetY = this.position.y + dirY * safeD;
-    } else {
-      // Even at d=0 (e.g. held object is larger than character and character is touching wall),
-      // try pulling slightly back towards the character's rear up to -colliderRadius
-      const maxBack = Math.max(0.05, this.colliderRadius - 0.05);
-      let foundSafe = false;
-      let safeBackD = 0;
-      for (let d = -0.02; d >= -maxBack; d -= 0.02) {
-        if (isPointSafe(this.position.x + dirX * d, this.position.y + dirY * d)) {
-          safeBackD = d - extraClearback; // Extra pull-back here too
-          foundSafe = true;
-          break;
+      // Top boundary plane: y = y1 - R
+      if (dirY > 0.0001 && this.position.y < y1 - R) {
+        const t = (y1 - R - this.position.y) / dirY;
+        if (t > 0 && t < minHitDistance) {
+          const hitX = this.position.x + t * dirX;
+          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
+        }
+      }
+      // Bottom boundary plane: y = y2 + R
+      if (dirY < -0.0001 && this.position.y > y2 + R) {
+        const t = (y2 + R - this.position.y) / dirY;
+        if (t > 0 && t < minHitDistance) {
+          const hitX = this.position.x + t * dirX;
+          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
         }
       }
 
-      if (foundSafe) {
-        targetX = this.position.x + dirX * safeBackD;
-        targetY = this.position.y + dirY * safeBackD;
-      } else {
-        // Fallback: push-out from character position to clear all walls
-        targetX = this.position.x;
-        targetY = this.position.y;
-        for (let iter = 0; iter < 4; iter++) {
-          let adjusted = false;
-          for (const wall of arena.walls) {
-            const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
-            const closestY = Math.max(wall.y, Math.min(targetY, wall.y + wall.height));
-            const dx = targetX - closestX;
-            const dy = targetY - closestY;
-            const distSq = dx * dx + dy * dy;
-            if (distSq < requiredClearance * requiredClearance) {
-              adjusted = true;
-              const dist = Math.sqrt(distSq);
-              if (dist > 0.0001) {
-                const push = (requiredClearance + 0.02) - dist;
-                targetX += (dx / dist) * push;
-                targetY += (dy / dist) * push;
-              } else {
-                const cdx = this.position.x - closestX;
-                const cdy = this.position.y - closestY;
-                const cdist = Math.hypot(cdx, cdy);
-                if (cdist > 0.0001) {
-                  targetX = closestX + (cdx / cdist) * (requiredClearance + 0.02);
-                  targetY = closestY + (cdy / cdist) * (requiredClearance + 0.02);
-                } else {
-                  targetX = wall.x - requiredClearance - 0.02;
-                }
-              }
+      // 2. Four rounded corner circles: || (C + t * dir) - K ||^2 = R^2
+      // Quadratic equation: t^2 + 2(dir · w)t + (||w||^2 - R^2) = 0, where w = C - K
+      const corners: Array<{ kx: number; ky: number; isExterior: (px: number, py: number) => boolean }> = [
+        { kx: x1, ky: y1, isExterior: (px, py) => px <= x1 && py <= y1 },
+        { kx: x2, ky: y1, isExterior: (px, py) => px >= x2 && py <= y1 },
+        { kx: x1, ky: y2, isExterior: (px, py) => px <= x1 && py >= y2 },
+        { kx: x2, ky: y2, isExterior: (px, py) => px >= x2 && py >= y2 },
+      ];
+
+      for (const corner of corners) {
+        const wx = this.position.x - corner.kx;
+        const wy = this.position.y - corner.ky;
+        const B = 2 * (dirX * wx + dirY * wy);
+        const C_quad = wx * wx + wy * wy - R * R;
+        const disc = B * B - 4 * C_quad;
+
+        if (disc >= 0) {
+          const sqrtDisc = Math.sqrt(disc);
+          const t1 = (-B - sqrtDisc) * 0.5;
+          if (t1 > 0 && t1 < minHitDistance) {
+            const px = this.position.x + t1 * dirX;
+            const py = this.position.y + t1 * dirY;
+            if (corner.isExterior(px, py)) {
+              minHitDistance = t1;
             }
           }
-          if (!adjusted) break;
         }
       }
     }
 
-    // Clamp within default distance so the object is never pushed further than defaultHandDist
-    const offsetDx = targetX - this.position.x;
-    const offsetDy = targetY - this.position.y;
-    const offsetDist = Math.hypot(offsetDx, offsetDy);
-    if (offsetDist > defaultHandDist && offsetDist > 0.0001) {
-      targetX = this.position.x + (offsetDx / offsetDist) * defaultHandDist;
-      targetY = this.position.y + (offsetDy / offsetDist) * defaultHandDist;
+    // Distance is strictly forward (d >= 0) — never pulls the held object behind the character
+    let safeDistance = defaultHandDist;
+    if (minHitDistance < Infinity) {
+      // Pull back from the wall boundary so the object doesn't sit right on the boundary edge
+      // and has extra runway to gain altitude when thrown
+      safeDistance = Math.max(0, Math.min(defaultHandDist, minHitDistance - extraThrowClearback));
     }
 
-    // Final guaranteed pass: if somehow still overlapping a wall (corner/FP edge case),
-    // resolve clearance directly on the final result
+    let targetX = this.position.x + dirX * safeDistance;
+    let targetY = this.position.y + dirY * safeDistance;
+
+    // Safety resolution: if character is very close to a wall and object radius exceeds spacing,
+    // push out slightly away from overlapping wall faces to prevent any penetration
     for (let iter = 0; iter < 3; iter++) {
       let adjusted = false;
       for (const wall of arena.walls) {
@@ -347,13 +331,12 @@ export class Character extends GameObject {
         const dx = targetX - closestX;
         const dy = targetY - closestY;
         const distSq = dx * dx + dy * dy;
-        // Use just objRadius for the final check — actual physics boundary
         if (distSq < objRadius * objRadius) {
           adjusted = true;
           const dist = Math.sqrt(distSq);
           if (dist > 0.0001) {
-            targetX += (dx / dist) * (objRadius + 0.03 - dist);
-            targetY += (dy / dist) * (objRadius + 0.03 - dist);
+            targetX += (dx / dist) * (objRadius + 0.02 - dist);
+            targetY += (dy / dist) * (objRadius + 0.02 - dist);
           } else {
             targetX = this.position.x;
             targetY = this.position.y;

@@ -79,24 +79,19 @@ export class ClimbingModule {
     const isFreshClimbPress = isClimbHeld && !this.wasClimbHeldLastTick;
     this.wasClimbHeldLastTick = isClimbHeld;
 
-    // Reset suppression strictly when climb key is released
-    if (!isClimbHeld) {
+    // Reset suppression flags when climb key is released or upon landing
+    if (!isClimbHeld || character.position.z <= 0.05) {
       this.dismountSuppressedUntilRelease = false;
       this.climbSuppressedUntilRelease = false;
     }
 
     // Ground contact or fresh press clears dismount freefall
-    if (character.position.z <= 0.01 || isFreshClimbPress) {
+    if (character.position.z <= 0.05 || isFreshClimbPress) {
       this.isDismountFreefall = false;
-      if (character.position.z <= 0.01) {
+      if (character.position.z <= 0.05) {
         this.isAssistClampArmed = false;
         this.hasLeftClampZoneSinceDismount = true;
       }
-    }
-
-    if (this.climbSuppressedUntilRelease) {
-      character.isClimbing = false;
-      return false;
     }
 
     if (!this.enabled || !character.hasVerticalPosition || !character.hasStrength || character.strength <= 0) {
@@ -220,8 +215,8 @@ export class ClimbingModule {
           (character as any).standingWall = targetWall;
           character.verticalVelocity = 0;
           character.isClimbing = false;
-          // Crucial: After climbing onto a wall top, dismount is suppressed until climb control is released!
-          this.dismountSuppressedUntilRelease = true;
+          // Dismount is not suppressed: player can dismount naturally if steering off edges
+          this.dismountSuppressedUntilRelease = false;
           // Assist clamp starts disarmed; it arms once character intentionally moves within 0.1 units of the wall
           this.isAssistClampArmed = false;
           this.hasLeftClampZoneSinceDismount = true;

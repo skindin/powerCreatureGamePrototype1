@@ -216,20 +216,23 @@ powerCreatureGamePrototype1/
       - **Bottom `➕ Add Behavior` Button**: Placed cleanly at the bottom of the behaviors list. Shows a dynamic count of unattached behaviors. Clicking it toggles a styled dropdown listing only behaviors not yet attached.
       - **Instant Re-Addition**: Selecting any behavior from the dropdown instantiates that module on the entity, immediately re-renders its card with live tuning sliders, and removes it from the dropdown. Fully synchronized with entity selection, duplication, and deletion.
 19. **Held Object Wall Clamping & Throw Clearance**:
-    - **Wall Clearance Clamping within Default Distance**:
-      - Previously, objects held while facing into a wall could clip into or penetrate wall geometry because `handDist` was fixed along the facing vector. Upon throwing, the projectile spawned inside the wall and immediately triggered bounce/stop collision on frame 1.
-      - In `Character.calculateHeldObjectPosition(arena)`: computes `defaultHandDist = colliderRadius + held.colliderRadius * 0.5 + 0.08`. When on the ground ($z < \text{wallHeight}$), tests whether the default hand position collides with any wall within `requiredClearance = held.colliderRadius + 0.05`.
-      - If an overlap is detected, binary searches for the maximum safe distance within $[0, \text{defaultHandDist}]$ along the character's facing direction, pulling the object closer to the character to prevent it from entering the wall.
-      - If even distance 0 overlaps (e.g. held object is larger than character and character is touching wall), it attempts pulling slightly behind the character or resolves clearance away from the closest wall face, strictly clamping the final distance $\le \text{defaultHandDist}$.
+    - **Exact Quadratic Ray-Wall Distance Solver**:
+      - Replaced discrete binary search and negative pull-back with an exact quadratic ray-obstacle distance solver in `Character.calculateHeldObjectPosition(arena)`.
+      - Solves the ray-plane intersections for the 4 expanded wall edges ($x_1 - R, x_2 + R, y_1 - R, y_2 + R$) and the exact quadratic equation $t^2 + 2(\vec{v} \cdot \vec{w})t + (\|\vec{w}\|^2 - R^2) = 0$ for the 4 rounded corner circles of each wall.
+      - Finds the exact earliest positive contact distance along the facing direction ray ($d_{\text{hit}}$) without iterative guessing.
+      - Pulls the held object back along the ray to $\max(0, d_{\text{hit}} - \text{extraThrowClearback})$, strictly enforcing $d \ge 0$ so the object is **never** pulled behind the player's back or flipped violently from side to side in tight corridors.
+      - Provides clean clearance for throws so the projectile has horizontal distance to gain vertical altitude before reaching the wall face.
     - **Dense Trajectory Clearance Sampling**:
       - In `ThrowModule.computeLaunchVelocity`, dense sampling near the start of the throw trajectory ($s \in [0.005, 0.1]$) ensures that walls immediately in front of the thrower are detected and the parabolic arc is granted sufficient upward launch velocity ($v_z$) to cleanly clear the wall top without colliding on release.
-    - **Near-Wall Throw Origin Pull-back** (critical fix):
-      - Root cause: after clamping the held object to just outside the wall face (~0.05u clearance), the projectile's first physics tick advanced it `vx*dt` (~0.12u) back into the wall, triggering `resolveWallCollision` which killed velocity and cleared `lastThrower`.
-      - Fix: `ThrowModule.clampStartOutsideWalls` now also returns `nearWall: boolean` (true if the clamped position is within `r + 0.30u` of any wall face). If `nearWall`, both `calculateTrajectory` and `throwHeldObject` pull the launch origin all the way back to the **character's own position** (which is always safely outside all walls). The parabolic arc then has room to gain altitude before reaching the wall face, and the physics integration never re-enters the wall.
 20. **Gamepad Hold-to-Grab (RT & B)**:
     - **RT (Right Trigger)**: Previously only grabbed on the initial press edge. Now, if RT is held while empty-handed and no object is in range, `rtHeld = true` is set and `pickupAndSwap` is re-called every physics tick while RT remains held. The moment an object enters the aim cursor's pickup radius, it is grabbed automatically. `rtHeld` clears when the grab succeeds or RT is released.
     - **B Button**: Same hold-to-grab behavior via `bHeld` flag. Retries `pickupAndSwap` every tick while B is held and the character is empty-handed. Drops/swaps (fresh press only) when already holding an object.
     - The release-lock (`rtGrabbed`) still applies: after grabbing via RT, the trigger must be released before RT can throw — preventing accidental immediate throws.
+21. **Continuous Climbing & Dismounting Without Releasing Climb Control**:
+    - Removed the artificial restrictions that forced players to release the climb button (Space / Gamepad A) before dismounting or before climbing again.
+    - In `ClimbingModule.ts`: mounting the top of a wall sets `dismountSuppressedUntilRelease = false` and suppression flags reset on ground contact ($z \le 0.05$).
+    - In `GameObject.ts`: dismounting past the ledge guard and dismounting into gaps are no longer blocked by `dismountSuppressedUntilRelease`, and dismounting does not set `climbSuppressedUntilRelease`.
+    - Players can now hold the climb button continuously, climb up walls, walk off edges to dismount, land, and climb up walls again over and over seamlessly without letting go of the climb control.
 
 ---
 

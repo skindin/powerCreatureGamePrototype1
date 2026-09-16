@@ -715,7 +715,7 @@ export class GameObject {
             const isPushingAgainstGuardrail = outwardVel > 0.001 || outwardInput > 0.05;
 
             // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail!
-            if (isPushingAgainstGuardrail && char?.isClimbInputHeld && !climbMod?.dismountSuppressedUntilRelease) {
+            if (isPushingAgainstGuardrail && char?.isClimbInputHeld) {
               if (climbMod) {
                 climbMod.isAssistClampArmed = false;
                 climbMod.hasLeftClampZoneSinceDismount = false;
@@ -787,7 +787,7 @@ export class GameObject {
             if (nextSupport) {
               currentWall = nextSupport;
               this.standingWall = nextSupport;
-            } else if (!char?.climbingModule?.dismountSuppressedUntilRelease) {
+            } else {
               // Collider does not touch current wall or any contiguous wall: dismount into gap!
               hasDismountedIntoGap = true;
               currentWall = null;
@@ -795,7 +795,6 @@ export class GameObject {
               this.supportingSurfaceHeight = 0;
               if (char?.climbingModule) {
                 char.climbingModule.isDismountFreefall = true;
-                char.climbingModule.climbSuppressedUntilRelease = true;
               }
             }
           }
