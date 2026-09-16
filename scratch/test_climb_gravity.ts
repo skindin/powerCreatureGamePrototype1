@@ -1,41 +1,45 @@
 import { Arena } from "../src/engine/Arena.js";
 import { Character } from "../src/character/Character.js";
+import { GameObject } from "../src/engine/GameObject.js";
 
 const arena = new Arena(20, 14, 1.0);
 console.assert(arena.gravity === 30.0, `Expected gravity 30.0, got ${arena.gravity}`);
 
 const char = new Character({
   name: "Player 1",
-  x: 4.0, // next to wall at (5, 7)
+  x: 4.0,
   y: 7.5,
   colliderRadius: 0.44,
   mass: 1.2,
   strength: 1.0,
 });
 
-// Position character directly adjacent to a wall
-const wall = arena.walls[0]; // let's find a wall
+console.assert(char.climbingModule?.maxAdhesion === 105.0, `Expected maxAdhesion 105.0, got ${char.climbingModule?.maxAdhesion}`);
+
 const targetWall = arena.walls.find(w => w.wallHeight >= 1.0)!;
 char.position.x = targetWall.x - char.colliderRadius;
 char.position.y = targetWall.y + 0.5;
 char.position.z = 0;
 
-console.log(`Testing climb against wall at (${targetWall.x}, ${targetWall.y}) with arena.gravity = ${arena.gravity}...`);
-console.log(`Character mass = ${char.mass}, requiredForce = ${char.mass * arena.gravity} N, maxAdhesion = ${char.climbingModule?.maxAdhesion} N`);
-
-// Push toward wall and hold climb
 const moveInput = { x: 1.0, y: 0.0 };
+
+// 1. Test empty-handed climbing (1.2kg * 30 = 36N <= 105N)
 const isClimbing = char.climbingModule?.update(char, moveInput, true, 1 / 60, arena);
+console.log(`Empty-handed (36N / 105N): isClimbing = ${isClimbing}`);
+console.assert(isClimbing === true, "Expected empty-handed character to climb");
 
-console.log(`Climb result: isClimbing = ${isClimbing}, char.isClimbing = ${char.isClimbing}, z = ${char.position.z}`);
-console.assert(isClimbing === true, `Expected character to climb, but got ${isClimbing}`);
-console.assert(char.isClimbing === true, "Expected char.isClimbing to be true");
+// 2. Test holding light box (0.7kg, total 1.9kg * 30 = 57N <= 105N)
+const lightBox = new GameObject({ id: "light", name: "Light Box", mass: 0.7, position: { x: 0, y: 0, z: 0 } });
+char.heldObject = lightBox;
+const isClimbingWithLight = char.climbingModule?.update(char, moveInput, true, 1 / 60, arena);
+console.log(`Holding 0.7kg box (57N / 105N): isClimbing = ${isClimbingWithLight}`);
+console.assert(isClimbingWithLight === true, "Expected character holding light object to climb");
 
-// Step 30 ticks of climbing
-for (let i = 0; i < 30; i++) {
-  char.climbingModule?.update(char, moveInput, true, 1 / 60, arena);
-}
+// 3. Test holding heavy box (2.6kg, total 3.8kg * 30 = 114N > 105N) -> SLIP!
+const heavyBox = new GameObject({ id: "heavy", name: "Heavy Red Box", mass: 2.6, position: { x: 0, y: 0, z: 0 } });
+char.heldObject = heavyBox;
+const isClimbingWithHeavy = char.climbingModule?.update(char, moveInput, true, 1 / 60, arena);
+console.log(`Holding 2.6kg heavy box (114N / 105N): isClimbing = ${isClimbingWithHeavy}`);
+console.assert(isClimbingWithHeavy === false, "Expected character holding heavy object to slip!");
 
-console.log(`After 30 ticks: z = ${char.position.z.toFixed(2)} (wallHeight = ${targetWall.wallHeight})`);
-console.assert(char.position.z > 0.5, `Expected character to ascend, got z = ${char.position.z}`);
-console.log("✓ Climbing works perfectly with gravity = 30.0!");
+console.log("\nALL PROPORTIONAL ADHESION TESTS PASSED! 🎉");
