@@ -215,7 +215,12 @@ export class Renderer {
       this.drawGhostClones(ghostSnapshot, ppu, arena);
     }
 
-    // 12. Simulation Paused Overlay (when all players are removed)
+    // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
+    for (const char of characters) {
+      this.drawCharacterNameTag(char, arena, ppu);
+    }
+
+    // 13. Simulation Paused Overlay (when all players are removed)
     if (isPaused) {
       this.drawPausedOverlay(ctx);
     }
@@ -970,6 +975,71 @@ export class Renderer {
   }
 
   /**
+   * Draws the floating player name tag (P1, P2 … or "Press Space / A") for a character.
+   * Called in a dedicated final render pass so tags always appear above walls and all entities.
+   */
+  private drawCharacterNameTag(char: Character, arena: Arena, ppu: number): void {
+    const ctx = this.ctx;
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
+    const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
+
+    const x = char.position.x * ppu;
+    const y = (char.position.y - char.position.z * hoverScale) * ppu;
+    const r = char.colliderRadius * ppu * altitudeScale;
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    if (char.playerId) {
+      const badgeText = `P${char.playerNumber}`;
+      ctx.font = "bold 11px monospace";
+      const textWidth = ctx.measureText(badgeText).width;
+      const pillW = textWidth + 8;
+      const pillH = 14;
+      const pillX = x - pillW / 2;
+      const pillY = y - r - 15;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      ctx.fill();
+
+      ctx.strokeStyle = char.playerColor || char.color;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      ctx.fillStyle = char.playerColor || char.color;
+      ctx.fillText(badgeText, x, pillY + pillH / 2);
+    } else {
+      const badgeText = "Press Space / A";
+      ctx.font = "bold 10px monospace";
+      const textWidth = ctx.measureText(badgeText).width;
+      const pillW = textWidth + 12;
+      const pillH = 16;
+      const pillX = x - pillW / 2;
+      const pillY = y - r - 17;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillText(badgeText, x, pillY + pillH / 2);
+    }
+
+    ctx.restore();
+  }
+
+
+  /**
    * Freebody Object: Pure top-down at (x, y) with fixed physical radius (no scale expansion).
    * Supports both box and circle visual shapes (both using circle colliders).
    * Highlights objects within any player character's pickup reach.
@@ -1231,57 +1301,8 @@ export class Renderer {
     ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Floating Player tag (e.g. "P1", "P2" or "Press Space / A")
-    if (char.playerId) {
-      const badgeText = `P${char.playerNumber}`;
-      ctx.save();
-      ctx.font = "bold 11px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const textWidth = ctx.measureText(badgeText).width;
-      const pillW = textWidth + 8;
-      const pillH = 14;
-      const pillX = x - pillW / 2;
-      const pillY = y - r - 15;
-
-      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-      ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, 4);
-      ctx.fill();
-
-      ctx.strokeStyle = char.playerColor || char.color;
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
-
-      ctx.fillStyle = char.playerColor || char.color;
-      ctx.fillText(badgeText, x, pillY + pillH / 2);
-      ctx.restore();
-    } else {
-      // Unassigned character waiting for keyboard (Space) or controller (A)
-      const badgeText = "Press Space / A";
-      ctx.save();
-      ctx.font = "bold 10px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const textWidth = ctx.measureText(badgeText).width;
-      const pillW = textWidth + 12;
-      const pillH = 16;
-      const pillX = x - pillW / 2;
-      const pillY = y - r - 17;
-
-      ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
-      ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, 8);
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      ctx.fillStyle = "#fbbf24";
-      ctx.fillText(badgeText, x, pillY + pillH / 2);
-      ctx.restore();
-    }
+    // NOTE: Player name tags are drawn in a final top-level pass via drawCharacterNameTag()
+    // to ensure they always render above walls, wall tops, and all other entities.
 
     ctx.restore();
 
