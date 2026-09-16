@@ -527,7 +527,8 @@ export class InputManager {
     character: Character,
     arena: Arena,
     objects: GameObject[],
-    devPanel?: DevPanel
+    devPanel?: DevPanel,
+    getAllCharacters?: () => Character[]
   ): void {
     if (devPanel) {
       this.selectedCanvasEntity = devPanel.selectedEntity;
@@ -546,12 +547,16 @@ export class InputManager {
           return obj;
         }
       }
-      // Check character
-      const charR = character.hasCollider ? character.colliderRadius : 0.44;
-      const distCharGround = Math.hypot(character.position.x - x, character.position.y - y);
-      const distCharHover = Math.hypot(character.position.x - x, (character.position.y - character.position.z) - y);
-      if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance) {
-        return character;
+      // Check all active player characters (Player 1, Player 2, etc.)
+      const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+      for (let i = chars.length - 1; i >= 0; i--) {
+        const c = chars[i];
+        const charR = c.hasCollider ? c.colliderRadius : 0.44;
+        const distCharGround = Math.hypot(c.position.x - x, c.position.y - y);
+        const distCharHover = Math.hypot(c.position.x - x, (c.position.y - c.position.z) - y);
+        if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance) {
+          return c;
+        }
       }
       return null;
     };
@@ -560,7 +565,8 @@ export class InputManager {
       if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
       const changed = arena.setWallTile(col, row, true);
       if (changed) {
-        const allEntities = [character, ...objects];
+        const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+        const allEntities = [...chars, ...objects];
         arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
@@ -571,7 +577,8 @@ export class InputManager {
       if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
       if (arena.tileGrid[row][col] === 1) {
         arena.setWallTile(col, row, false);
-        const allEntities = [character, ...objects];
+        const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+        const allEntities = [...chars, ...objects];
         arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
@@ -686,19 +693,21 @@ export class InputManager {
         return;
       }
 
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerNumber === 1) : null) || character;
+
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
-      if (character.heldObject && character.throwModule && !this.justPickedUp) {
-        character.throwModule.throwHeldObject(character, clickX, clickY, arena);
+      if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
+        activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
       }
 
       // 2. If NOT holding an object: attempt pickup
-      if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, clickX, clickY, objects, arena.wallHeight);
+      if (!activeChar.heldObject && activeChar.pickupModule) {
+        const target = activeChar.pickupModule.findTargetObject(activeChar, clickX, clickY, objects, arena.wallHeight);
         if (target) {
-          character.pickupModule.pickup(character, target);
+          activeChar.pickupModule.pickup(activeChar, target);
           this.justPickedUp = true;
         }
       }
@@ -719,14 +728,15 @@ export class InputManager {
     };
 
     this.onDropAttempt = () => {
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerNumber === 1) : null) || character;
       const aimX = this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x;
       const aimY = this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y;
-      if (character.heldObject && character.pickupModule) {
-        character.pickupModule.drop(character);
-      } else if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, aimX, aimY, objects, arena.wallHeight);
+      if (activeChar.heldObject && activeChar.pickupModule) {
+        activeChar.pickupModule.drop(activeChar);
+      } else if (!activeChar.heldObject && activeChar.pickupModule) {
+        const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, objects, arena.wallHeight);
         if (target) {
-          character.pickupModule.pickup(character, target);
+          activeChar.pickupModule.pickup(activeChar, target);
         }
       }
     };

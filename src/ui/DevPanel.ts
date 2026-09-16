@@ -44,6 +44,7 @@ export class DevPanel {
   private onSpawnObject: (obj: GameObject) => void;
   private onDeleteObject?: (obj: GameObject) => void;
   private onClearObjects: () => void;
+  private getAllCharacters?: () => Character[];
 
   public selectedEntity: GameObject;
   public isEditMode: boolean = false;
@@ -198,6 +199,7 @@ export class DevPanel {
     onSpawnObject: (obj: GameObject) => void;
     onDeleteObject?: (obj: GameObject) => void;
     onClearObjects: () => void;
+    getAllCharacters?: () => Character[];
   }) {
     this.container = options.container;
     this.character = options.character;
@@ -206,6 +208,7 @@ export class DevPanel {
     this.onSpawnObject = options.onSpawnObject;
     this.onDeleteObject = options.onDeleteObject;
     this.onClearObjects = options.onClearObjects;
+    this.getAllCharacters = options.getAllCharacters;
 
     this.selectedEntity = this.character;
 
@@ -270,7 +273,13 @@ export class DevPanel {
     if (!this.entitySelectorEl) return;
     const currentId = this.selectedEntity.id;
 
-    let html = `<option value="${this.character.id}" ${currentId === this.character.id ? "selected" : ""}>⭐ Player Character (${this.character.mass.toFixed(1)}kg)</option>`;
+    const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+    let html = "";
+    for (const char of chars) {
+      const isSel = char.id === currentId ? "selected" : "";
+      const massDesc = char.hasMass ? `${char.mass.toFixed(1)}kg` : "Massless";
+      html += `<option value="${char.id}" ${isSel}>⭐ ${char.name} (${massDesc})</option>`;
+    }
     for (const obj of this.objects) {
       const isSel = obj.id === currentId ? "selected" : "";
       const icon = obj.visualShape === "box" ? "📦" : "⚪";
@@ -279,7 +288,7 @@ export class DevPanel {
     }
     this.entitySelectorEl.innerHTML = html;
 
-    const isChar = this.selectedEntity === this.character;
+    const isChar = this.selectedEntity instanceof Character;
     if (this.characterSpecificControlsEl) {
       this.characterSpecificControlsEl.style.display = isChar ? "flex" : "none";
     }
@@ -391,7 +400,7 @@ export class DevPanel {
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
 
           <!-- Visual Shape -->
-          <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity === this.character ? 'display:none;' : ''}">
+          <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity instanceof Character ? 'display:none;' : ''}">
             <label>Visual Shape</label>
             <button id="toggle-entity-shape" class="btn-toggle ${this.selectedEntity.visualShape === 'box' ? 'active' : ''}">
               ${this.selectedEntity.visualShape === 'box' ? 'Box 📦' : 'Circle ⚪'}
@@ -623,7 +632,8 @@ export class DevPanel {
 
   public syncEntitySliders(): void {
     const e = this.selectedEntity;
-    const isChar = e === this.character;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
 
     // Visual shape row visibility
     const shapeRow = this.container.querySelector("#row-visual-shape") as HTMLElement;
@@ -653,24 +663,24 @@ export class DevPanel {
     }
 
     // Character abilities sliders
-    if (isChar) {
-      if (this.character.walkingModule) {
-        this.setSliderVal("slide-walk-force", "val-walk-force", this.character.walkingModule.maxWalkForce, 0);
-        this.setSliderVal("slide-walk-speed", "val-walk-speed", this.character.walkingModule.maxWalkSpeed, 1);
+    if (isChar && char) {
+      if (char.walkingModule) {
+        this.setSliderVal("slide-walk-force", "val-walk-force", char.walkingModule.maxWalkForce, 0);
+        this.setSliderVal("slide-walk-speed", "val-walk-speed", char.walkingModule.maxWalkSpeed, 1);
       }
-      if (this.character.strengthModule) {
-        this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
+      if (char.strengthModule) {
+        this.setSliderVal("slide-strength", "val-strength", char.strength, 1);
       }
-      if (this.character.pickupModule) {
-        this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
+      if (char.pickupModule) {
+        this.setSliderVal("slide-pickup-reach", "val-pickup-reach", char.pickupModule.pickupReach, 1);
       }
-      if (this.character.throwModule) {
-        this.setSliderVal("slide-throw-force", "val-throw-force", this.character.throwModule.baseThrowForce, 1);
+      if (char.throwModule) {
+        this.setSliderVal("slide-throw-force", "val-throw-force", char.throwModule.baseThrowForce, 1);
       }
-      if (this.character.climbingModule) {
-        this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", this.character.climbingModule.maxAdhesion, 0);
-        this.setSliderVal("slide-climb-speed", "val-climb-speed", this.character.climbingModule.maxClimbSpeed, 1);
-        this.setSliderVal("slide-climb-hang", "val-climb-hang", this.character.climbingModule.hangDistance, 2);
+      if (char.climbingModule) {
+        this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", char.climbingModule.maxAdhesion, 0);
+        this.setSliderVal("slide-climb-speed", "val-climb-speed", char.climbingModule.maxClimbSpeed, 1);
+        this.setSliderVal("slide-climb-hang", "val-climb-hang", char.climbingModule.hangDistance, 2);
       }
     }
   }
@@ -686,7 +696,8 @@ export class DevPanel {
     if (!container || !addBtn || !dropdown) return;
 
     const e = this.selectedEntity;
-    const isChar = e === this.character;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
 
     // Check which modules are currently attached
     const hasCollider = Boolean(e.colliderModule && e.colliderModule.enabled);
@@ -697,11 +708,11 @@ export class DevPanel {
     const hasGravity = Boolean(e.gravityModule && e.gravityModule.enabled);
     const hasRoll = Boolean(e.rollModule && e.rollModule.enabled);
 
-    const hasWalking = isChar && Boolean(this.character.walkingModule && this.character.walkingModule.enabled);
-    const hasStrength = isChar && Boolean(this.character.strengthModule && this.character.strengthModule.enabled);
-    const hasPickup = isChar && Boolean(this.character.pickupModule && this.character.pickupModule.enabled);
-    const hasThrow = isChar && Boolean(this.character.throwModule && this.character.throwModule.enabled);
-    const hasClimbing = isChar && Boolean(this.character.climbingModule && this.character.climbingModule.enabled);
+    const hasWalking = isChar && Boolean(char?.walkingModule && char.walkingModule.enabled);
+    const hasStrength = isChar && Boolean(char?.strengthModule && char.strengthModule.enabled);
+    const hasPickup = isChar && Boolean(char?.pickupModule && char.pickupModule.enabled);
+    const hasThrow = isChar && Boolean(char?.throwModule && char.throwModule.enabled);
+    const hasClimbing = isChar && Boolean(char?.climbingModule && char.climbingModule.enabled);
 
     let html = "";
     let attachedCount = 0;
@@ -875,7 +886,7 @@ export class DevPanel {
     }
 
     // Character Abilities (when character is selected)
-    if (isChar) {
+    if (isChar && char) {
       if (hasWalking) {
         attachedCount++;
         html += `
@@ -889,16 +900,16 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Walk Force (N)</span>
-                <span id="val-walk-force">${(this.character.walkingModule?.maxWalkForce ?? 45.0).toFixed(0)}</span>
+                <span id="val-walk-force">${(char.walkingModule?.maxWalkForce ?? 45.0).toFixed(0)}</span>
               </div>
-              <input type="range" id="slide-walk-force" min="5.0" max="100.0" step="1.0" value="${this.character.walkingModule?.maxWalkForce ?? 45.0}">
+              <input type="range" id="slide-walk-force" min="5.0" max="100.0" step="1.0" value="${char.walkingModule?.maxWalkForce ?? 45.0}">
             </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Walk Speed (u/s)</span>
-                <span id="val-walk-speed">${(this.character.walkingModule?.maxWalkSpeed ?? 6.0).toFixed(1)}</span>
+                <span id="val-walk-speed">${(char.walkingModule?.maxWalkSpeed ?? 6.0).toFixed(1)}</span>
               </div>
-              <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${this.character.walkingModule?.maxWalkSpeed ?? 6.0}">
+              <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${char.walkingModule?.maxWalkSpeed ?? 6.0}">
             </div>
           </div>
         `;
@@ -915,9 +926,9 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Muscle Strength Ratio</span>
-                <span id="val-strength">${(this.character.strengthModule?.strength ?? 1.0).toFixed(1)}×</span>
+                <span id="val-strength">${(char.strengthModule?.strength ?? 1.0).toFixed(1)}×</span>
               </div>
-              <input type="range" id="slide-strength" min="0.2" max="4.0" step="0.1" value="${this.character.strengthModule?.strength ?? 1.0}">
+              <input type="range" id="slide-strength" min="0.2" max="4.0" step="0.1" value="${char.strengthModule?.strength ?? 1.0}">
             </div>
           </div>
         `;
@@ -934,9 +945,9 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Pickup Reach (3D)</span>
-                <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)} u</span>
+                <span id="val-pickup-reach">${(char.pickupModule?.pickupReach ?? 1.3).toFixed(1)} u</span>
               </div>
-              <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${this.character.pickupModule?.pickupReach ?? 1.3}">
+              <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${char.pickupModule?.pickupReach ?? 1.3}">
             </div>
           </div>
         `;
@@ -953,9 +964,9 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Base Throw Power (u/s)</span>
-                <span id="val-throw-force">${(this.character.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
+                <span id="val-throw-force">${(char.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
               </div>
-              <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${this.character.throwModule?.baseThrowForce ?? 7.6}">
+              <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${char.throwModule?.baseThrowForce ?? 7.6}">
             </div>
           </div>
         `;
@@ -972,36 +983,36 @@ export class DevPanel {
             ${(!hasVertPos || !hasStrength) ? `<div class="module-dep-warning">${!hasVertPos ? '⚠️ Requires Vertical Position (3D Z-axis)' : '⚠️ Requires Strength Ability to climb'}</div>` : ''}
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
-              <button id="toggle-climb-walkoff" class="btn-toggle ${this.character.climbingModule?.preventWalkOff ? 'active' : ''}">
-                ${this.character.climbingModule?.preventWalkOff ? 'Active' : 'Inactive'}
+              <button id="toggle-climb-walkoff" class="btn-toggle ${char.climbingModule?.preventWalkOff ? 'active' : ''}">
+                ${char.climbingModule?.preventWalkOff ? 'Active' : 'Inactive'}
               </button>
             </div>
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Sideways Climb</label>
-              <button id="toggle-climb-sideways" class="btn-toggle ${this.character.climbingModule?.horizontalClimb ? 'active' : ''}">
-                ${this.character.climbingModule?.horizontalClimb ? 'Active' : 'Inactive'}
+              <button id="toggle-climb-sideways" class="btn-toggle ${char.climbingModule?.horizontalClimb ? 'active' : ''}">
+                ${char.climbingModule?.horizontalClimb ? 'Active' : 'Inactive'}
               </button>
             </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Adhesion (N)</span>
-                <span id="val-climb-adhesion">${(this.character.climbingModule?.maxAdhesion ?? 35.0).toFixed(0)}</span>
+                <span id="val-climb-adhesion">${(char.climbingModule?.maxAdhesion ?? 35.0).toFixed(0)}</span>
               </div>
-              <input type="range" id="slide-climb-adhesion" min="5.0" max="80.0" step="1.0" value="${this.character.climbingModule?.maxAdhesion ?? 35.0}">
+              <input type="range" id="slide-climb-adhesion" min="5.0" max="80.0" step="1.0" value="${char.climbingModule?.maxAdhesion ?? 35.0}">
             </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Climb Speed (u/s)</span>
-                <span id="val-climb-speed">${(this.character.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
+                <span id="val-climb-speed">${(char.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
               </div>
-              <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${this.character.climbingModule?.maxClimbSpeed ?? 3.0}">
+              <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${char.climbingModule?.maxClimbSpeed ?? 3.0}">
             </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Ledge Hang Distance (u)</span>
-                <span id="val-climb-hang">${(this.character.climbingModule?.hangDistance ?? 0.10).toFixed(2)}</span>
+                <span id="val-climb-hang">${(char.climbingModule?.hangDistance ?? 0.10).toFixed(2)}</span>
               </div>
-              <input type="range" id="slide-climb-hang" min="0.02" max="1.5" step="0.02" value="${this.character.climbingModule?.hangDistance ?? 0.10}">
+              <input type="range" id="slide-climb-hang" min="0.02" max="1.5" step="0.02" value="${char.climbingModule?.hangDistance ?? 0.10}">
             </div>
           </div>
         `;
@@ -1122,34 +1133,37 @@ export class DevPanel {
         e.rollModule = null;
         break;
       case "walking":
-        if (e === this.character) {
-          this.character.walkingModule = null;
-          this.character.isActivelyWalking = false;
-          this.character.isSprinting = false;
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.walkingModule = null;
+          char.isActivelyWalking = false;
+          char.isSprinting = false;
         }
         break;
       case "strength":
-        if (e === this.character) {
-          this.character.strengthModule = null;
+        if (e instanceof Character) {
+          (e as Character).strengthModule = null;
         }
         break;
       case "pickup":
-        if (e === this.character) {
-          if (this.character.heldObject) {
-            this.character.pickupModule?.drop(this.character);
+        if (e instanceof Character) {
+          const char = e as Character;
+          if (char.heldObject) {
+            char.pickupModule?.drop(char);
           }
-          this.character.pickupModule = null;
+          char.pickupModule = null;
         }
         break;
       case "throw":
-        if (e === this.character) {
-          this.character.throwModule = null;
+        if (e instanceof Character) {
+          (e as Character).throwModule = null;
         }
         break;
       case "climbing":
-        if (e === this.character) {
-          this.character.climbingModule = null;
-          this.character.isClimbing = false;
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.climbingModule = null;
+          char.isClimbing = false;
         }
         break;
     }
@@ -1189,28 +1203,28 @@ export class DevPanel {
         e.rollModule = new RollModule({ rollResistance: 0.4 });
         break;
       case "walking":
-        if (e === this.character) {
-          this.character.walkingModule = new WalkingModule();
+        if (e instanceof Character) {
+          (e as Character).walkingModule = new WalkingModule();
         }
         break;
       case "strength":
-        if (e === this.character) {
-          this.character.strengthModule = new StrengthModule({ strength: 1.0 });
+        if (e instanceof Character) {
+          (e as Character).strengthModule = new StrengthModule({ strength: 1.0 });
         }
         break;
       case "pickup":
-        if (e === this.character) {
-          this.character.pickupModule = new PickupModule();
+        if (e instanceof Character) {
+          (e as Character).pickupModule = new PickupModule();
         }
         break;
       case "throw":
-        if (e === this.character) {
-          this.character.throwModule = new ThrowModule();
+        if (e instanceof Character) {
+          (e as Character).throwModule = new ThrowModule();
         }
         break;
       case "climbing":
-        if (e === this.character) {
-          this.character.climbingModule = new ClimbingModule();
+        if (e instanceof Character) {
+          (e as Character).climbingModule = new ClimbingModule();
         }
         break;
     }
@@ -1222,7 +1236,8 @@ export class DevPanel {
 
   private bindDynamicModuleControls(): void {
     const e = this.selectedEntity;
-    const isChar = e === this.character;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
 
     // Collider
     this.setupSlider("slide-entity-radius", "val-entity-radius", (val) => {
@@ -1290,52 +1305,52 @@ export class DevPanel {
     }, 2);
 
     // Character Abilities
-    if (isChar) {
+    if (isChar && char) {
       this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
-        if (this.character.walkingModule) this.character.walkingModule.maxWalkForce = val;
+        if (char.walkingModule) char.walkingModule.maxWalkForce = val;
       }, 0);
       this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
-        if (this.character.walkingModule) this.character.walkingModule.maxWalkSpeed = val;
+        if (char.walkingModule) char.walkingModule.maxWalkSpeed = val;
       }, 1);
 
       this.setupSlider("slide-strength", "val-strength", (val) => {
-        this.character.strength = val;
+        char.strength = val;
       }, 1);
 
       this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
-        if (this.character.pickupModule) this.character.pickupModule.pickupReach = val;
+        if (char.pickupModule) char.pickupModule.pickupReach = val;
       }, 1);
 
       this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
-        if (this.character.throwModule) this.character.throwModule.baseThrowForce = val;
+        if (char.throwModule) char.throwModule.baseThrowForce = val;
       }, 1);
 
       const btnClimbWalkOff = this.container.querySelector("#toggle-climb-walkoff") as HTMLButtonElement;
       btnClimbWalkOff?.addEventListener("click", () => {
-        if (this.character.climbingModule) {
-          this.character.climbingModule.preventWalkOff = !this.character.climbingModule.preventWalkOff;
-          btnClimbWalkOff.classList.toggle("active", this.character.climbingModule.preventWalkOff);
-          btnClimbWalkOff.textContent = this.character.climbingModule.preventWalkOff ? "Active" : "Inactive";
+        if (char.climbingModule) {
+          char.climbingModule.preventWalkOff = !char.climbingModule.preventWalkOff;
+          btnClimbWalkOff.classList.toggle("active", char.climbingModule.preventWalkOff);
+          btnClimbWalkOff.textContent = char.climbingModule.preventWalkOff ? "Active" : "Inactive";
         }
       });
 
       const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
       btnClimbSideways?.addEventListener("click", () => {
-        if (this.character.climbingModule) {
-          this.character.climbingModule.horizontalClimb = !this.character.climbingModule.horizontalClimb;
-          btnClimbSideways.classList.toggle("active", this.character.climbingModule.horizontalClimb);
-          btnClimbSideways.textContent = this.character.climbingModule.horizontalClimb ? "Active" : "Inactive";
+        if (char.climbingModule) {
+          char.climbingModule.horizontalClimb = !char.climbingModule.horizontalClimb;
+          btnClimbSideways.classList.toggle("active", char.climbingModule.horizontalClimb);
+          btnClimbSideways.textContent = char.climbingModule.horizontalClimb ? "Active" : "Inactive";
         }
       });
 
       this.setupSlider("slide-climb-adhesion", "val-climb-adhesion", (val) => {
-        if (this.character.climbingModule) this.character.climbingModule.maxAdhesion = val;
+        if (char.climbingModule) char.climbingModule.maxAdhesion = val;
       }, 0);
       this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
-        if (this.character.climbingModule) this.character.climbingModule.maxClimbSpeed = val;
+        if (char.climbingModule) char.climbingModule.maxClimbSpeed = val;
       }, 1);
       this.setupSlider("slide-climb-hang", "val-climb-hang", (val) => {
-        if (this.character.climbingModule) this.character.climbingModule.hangDistance = val;
+        if (char.climbingModule) char.climbingModule.hangDistance = val;
       }, 2);
     }
   }
@@ -1450,12 +1465,14 @@ export class DevPanel {
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
       const selectedId = this.entitySelectorEl.value;
-      if (selectedId === this.character.id) {
-        this.selectedEntity = this.character;
+      const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      const foundChar = chars.find((c) => c.id === selectedId);
+      if (foundChar) {
+        this.selectedEntity = foundChar;
       } else {
-        const found = this.objects.find((o) => o.id === selectedId);
-        if (found) {
-          this.selectedEntity = found;
+        const foundObj = this.objects.find((o) => o.id === selectedId);
+        if (foundObj) {
+          this.selectedEntity = foundObj;
         }
       }
       this.updateSelectorOptions();
@@ -1516,7 +1533,8 @@ export class DevPanel {
 
     const selectWallPreset = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
     selectWallPreset?.addEventListener("change", () => {
-      this.arena.loadWallPreset(selectWallPreset.value, [this.character, ...this.objects]);
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(selectWallPreset.value, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
     });
 
@@ -1524,7 +1542,8 @@ export class DevPanel {
       const presets = Arena.WALL_PRESETS;
       const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
       const prevIdx = (idx - 1 + presets.length) % presets.length;
-      this.arena.loadWallPreset(presets[prevIdx].id, [this.character, ...this.objects]);
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(presets[prevIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
     });
 
@@ -1532,17 +1551,20 @@ export class DevPanel {
       const presets = Arena.WALL_PRESETS;
       const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
       const nextIdx = (idx + 1) % presets.length;
-      this.arena.loadWallPreset(presets[nextIdx].id, [this.character, ...this.objects]);
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(presets[nextIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
     });
 
     this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
-      this.arena.resetDefaultWalls([this.character, ...this.objects]);
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.resetDefaultWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
     });
 
     this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
-      this.arena.clearAllWalls([this.character, ...this.objects]);
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.clearAllWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
     });
 
@@ -1700,7 +1722,7 @@ export class DevPanel {
   }
 
   public duplicateSelectedEntity(): void {
-    if (this.selectedEntity === this.character) return;
+    if (this.selectedEntity instanceof Character) return;
     const orig = this.selectedEntity;
 
     const spawnX = Math.min(Math.max(orig.position.x + 0.6, 1.0), this.arena.width - 1.0);
@@ -1730,20 +1752,23 @@ export class DevPanel {
   }
 
   public deleteSelectedEntity(): void {
-    if (this.selectedEntity === this.character) return;
+    if (this.selectedEntity instanceof Character) return;
     const target = this.selectedEntity;
 
-    if (this.character.heldObject === target) {
-      target.isHeld = false;
-      target.heldBy = null;
-      this.character.heldObject = null;
+    const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+    for (const c of allChars) {
+      if (c.heldObject === target) {
+        target.isHeld = false;
+        target.heldBy = null;
+        c.heldObject = null;
+      }
     }
 
     if (this.onDeleteObject) {
       this.onDeleteObject(target);
     }
 
-    this.setSelectedEntity(this.character);
+    this.setSelectedEntity(allChars[0] || this.character);
   }
 
   private setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {
@@ -1761,7 +1786,8 @@ export class DevPanel {
   public updateInspector(): void {
     const e = this.selectedEntity;
     const speed = Math.hypot(e.velocity.x, e.velocity.y).toFixed(2);
-    const isChar = e === this.character;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
 
     this.inspectorEl.innerHTML = `
       <div class="inspect-item">
@@ -1822,22 +1848,22 @@ export class DevPanel {
         <span class="inspect-v ${e.rollModule.rollResistance === 0 ? 'highlight-held' : ''}">${e.rollModule.rollResistance.toFixed(2)} u/s²</span>
       </div>
       ` : ''}
-      ${isChar ? `
+      ${isChar && char ? `
       <div class="inspect-item">
         <span class="inspect-k">Base / Total Mass</span>
-        <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.baseMass.toFixed(1)}kg ${this.character.heldObject ? `(+${this.character.carriedMass.toFixed(1)}kg = ${this.character.mass.toFixed(1)}kg)` : ''}</span>
+        <span class="inspect-v ${char.heldObject ? 'highlight-held' : ''}">${char.baseMass.toFixed(1)}kg ${char.heldObject ? `(+${char.carriedMass.toFixed(1)}kg = ${char.mass.toFixed(1)}kg)` : ''}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Walk Traction</span>
-        <span class="inspect-v ${this.character.hasFriction ? '' : 'highlight-held'}">${this.character.hasFriction ? 'Grip OK' : 'Slipping (No Friction)'}</span>
+        <span class="inspect-v ${char.hasFriction ? '' : 'highlight-held'}">${char.hasFriction ? 'Grip OK' : 'Slipping (No Friction)'}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Held Freebody</span>
-        <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.heldObject ? `${this.character.heldObject.name} (${this.character.heldObject.hasMass ? `${this.character.heldObject.mass}kg` : 'Massless'})` : 'None'}</span>
+        <span class="inspect-v ${char.heldObject ? 'highlight-held' : ''}">${char.heldObject ? `${char.heldObject.name} (${char.heldObject.hasMass ? `${char.heldObject.mass}kg` : 'Massless'})` : 'None'}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Ledge Hang Limit</span>
-        <span class="inspect-v">${(this.character.climbingModule?.hangDistance ?? 0.10).toFixed(2)} u</span>
+        <span class="inspect-v">${(char.climbingModule?.hangDistance ?? 0.10).toFixed(2)} u</span>
       </div>
       ` : ''}
     `;

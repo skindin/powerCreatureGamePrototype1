@@ -135,6 +135,12 @@ powerCreatureGamePrototype1/
   - Player 4: Violet (`#a855f7`)
   - Player 5: Rose (`#f43f5e`)
   - Player 6: Blue (`#3b82f6`)
+- **Universal Player Character Selection & Independent Customization**:
+  - All player characters (Player 1, Player 2, Player 3, etc.) are fully selectable, hoverable, inspectable, and editable on both the canvas and in the inspector panel.
+  - **Canvas Picking (`InputManager.ts`)**: `findEntityAt` dynamically queries `getAllCharacters()`, allowing left-click dragging in Edit Mode and right-click inspection in Play & Edit Modes for any player character.
+  - **Entity Selector Dropdown (`DevPanel.ts`)**: Lists every active character by name and mass (`⭐ Player 1 (1.2kg)`, `⭐ Player 2 (1.2kg)`). Auto-refreshes when players join or leave.
+  - **Polymorphic Ability Slider Binding**: Selecting any `Character` activates character abilities (Walking, Strength, Pickup, Throw, Climbing). Sliders inspect and directly mutate the selected character's modules without affecting other characters.
+  - **Safe Selection Fallback**: Removing a player character safely updates dropdown options and falls back to the primary character if the removed character was currently selected.
 
 ### Mobile Landscape & PWA (Installable Game — Fully Functional)
 - **Mobile Landscape Layout**:

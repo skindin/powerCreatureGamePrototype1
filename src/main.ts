@@ -109,12 +109,18 @@ function bootstrap(): void {
   arena.syncEntitiesWithWalls([character, ...objects]);
 
   // 4. Initialize Renderer & Dev Panel
+  let gameLoop: GameLoop | null = null;
+  const getAllActiveCharacters = (): Character[] => {
+    return gameLoop ? gameLoop.allCharacters : [character];
+  };
+
   const renderer = new Renderer(ctx);
   const devPanel = new DevPanel({
     container: devContainer,
     character,
     arena,
     objects,
+    getAllCharacters: getAllActiveCharacters,
     onSpawnObject: (newObj) => {
       arena.syncEntitiesWithWalls([newObj]);
       objects.push(newObj);
@@ -140,7 +146,7 @@ function bootstrap(): void {
 
   // 5. Initialize Input Manager with Dev Panel interaction
   const inputManager = new InputManager(canvas, arena);
-  inputManager.handleInteractions(character, arena, objects, devPanel);
+  inputManager.handleInteractions(character, arena, objects, devPanel, getAllActiveCharacters);
   devPanel.onSelectionChange = (entity) => {
     inputManager.selectedCanvasEntity = entity;
   };
@@ -196,7 +202,7 @@ function bootstrap(): void {
   }
 
   // 6. Start Fixed-Timestep Game Loop
-  const gameLoop = new GameLoop({
+  gameLoop = new GameLoop({
     arena,
     character,
     objects,
@@ -209,8 +215,9 @@ function bootstrap(): void {
   const playersPanel = new PlayersPanel(gameLoop, inputManager);
   void playersPanel;
 
-  // Keep sprint UI synced across dynamic character spawns/removals
+  // Keep sprint UI and dev selector synced across dynamic character spawns/removals
   const updateActiveCharSprintBinding = () => {
+    if (!gameLoop) return;
     for (const char of gameLoop.allCharacters) {
       char.onSprintChange = () => updateSprintUI();
     }
@@ -220,11 +227,18 @@ function bootstrap(): void {
     originalOnPlayersChanged?.();
     updateActiveCharSprintBinding();
     updateSprintUI();
+    devPanel.updateSelectorOptions();
+    if (gameLoop) {
+      const allChars = gameLoop.allCharacters;
+      if (devPanel.selectedEntity instanceof Character && !allChars.includes(devPanel.selectedEntity as Character)) {
+        devPanel.setSelectedEntity(gameLoop.primaryCharacter || allChars[0] || character);
+      }
+    }
   };
   updateActiveCharSprintBinding();
 
   inputManager.onToggleSprint = () => {
-    const activeChar = gameLoop.primaryCharacter || character;
+    const activeChar = (gameLoop ? gameLoop.primaryCharacter : null) || character;
     activeChar.setSprinting(!activeChar.isSprinting);
     updateSprintUI();
   };
