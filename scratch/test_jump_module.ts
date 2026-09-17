@@ -20,8 +20,9 @@ console.log("\n1. Verifying Default Character Modules:");
 console.log("  climbingModule:", char.climbingModule ? "Present (FAIL)" : "null (PASS - removed from default)");
 console.log("  jumpModule:", char.jumpModule ? "Present (PASS)" : "null (FAIL)");
 console.log("  wallEdgeAssistModule:", char.wallEdgeAssistModule ? "Present (PASS)" : "null (FAIL)");
+console.log("  walkingModule.walkInAir:", char.walkingModule?.walkInAir ? "true (PASS - enabled by default)" : "false (FAIL)");
 
-if (char.climbingModule !== null || !char.jumpModule || !char.wallEdgeAssistModule) {
+if (char.climbingModule !== null || !char.jumpModule || !char.wallEdgeAssistModule || !char.walkingModule?.walkInAir) {
   console.error("FAILED: Default character module setup incorrect");
   process.exit(1);
 }
