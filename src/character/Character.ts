@@ -219,6 +219,11 @@ export class Character extends GameObject {
       this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
     }
 
+    // Process modular jumping if holding jump input (Space / A) and not climbing
+    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+      this.jump(arena, movementInput);
+    }
+
     // 1. Process modular walking
     if (this.walkingModule) {
       this.walkingModule.update(this, movementInput, dt, arena);
@@ -226,6 +231,11 @@ export class Character extends GameObject {
 
     // 2. Update base physics & collisions
     this.updatePosition(dt, arena);
+
+    // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
+    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+      this.jump(arena, movementInput);
+    }
 
     // 3. Update facing orientation using intended movement input or aim
     this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);

@@ -56,8 +56,12 @@ export class InputManager {
     return this.gamepadConnected && this.activeInputDevice === "gamepad";
   }
 
+  public get isKeyboardJumpHeld(): boolean {
+    return this.isKeyboardActive && this.keysPressed.has("Space");
+  }
+
   public get isClimbHeld(): boolean {
-    return (this.isKeyboardActive && this.keysPressed.has("Space")) || this.isGamepadClimbHeld;
+    return this.isKeyboardJumpHeld || this.isGamepadClimbHeld;
   }
 
   // Selection & dragging state
@@ -92,12 +96,11 @@ export class InputManager {
     window.addEventListener("keydown", (e) => {
       // Spacebar: if keyboard player is not currently active, pressing Space spawns them
       if (e.code === "Space") {
+        e.preventDefault();
         if (!this.isKeyboardActive) {
-          e.preventDefault();
           this.onKeyboardJoin?.();
           return;
         } else if (!e.repeat) {
-          e.preventDefault();
           this.onKeyboardJump?.();
         }
       }

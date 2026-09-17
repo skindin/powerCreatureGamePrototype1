@@ -450,7 +450,7 @@ export class GameLoop {
           isMouseAiming,
           aimTarget,
           this.arena,
-          input.isClimbHeld
+          input.isKeyboardJumpHeld
         );
       } else {
         kChar.velocity.x = 0;

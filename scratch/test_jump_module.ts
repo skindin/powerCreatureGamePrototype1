@@ -263,6 +263,92 @@ if (!char.wallEdgeAssistModule?.isAssistClampArmed) {
 }
 console.log("  PASS: Wall assist correctly arms when resting on top of a wall at exactly wall height!");
 
+// 9. Testing Hold-Down Jump: immediate takeoff the moment character touches the ground
+console.log("\n9. Testing Hold-Down Jump (Auto-jump upon touching the ground):");
+// Reset character to ground at rest
+char.position.x = 5.0;
+char.position.y = 5.0;
+char.position.z = 0;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
+char.climbingModule = null; // Default character has no climbing module
+
+// Simulate tick with isJumpHeld = true: initial takeoff
+char.updateCharacter(dt, { x: 0, y: 0 }, false, null, arena, true);
+console.log("  Initial jump vz:", char.verticalVelocity.toFixed(3), "u/s, z:", char.position.z.toFixed(3));
+if (char.verticalVelocity <= 8.0) {
+  console.error("FAILED: Initial jump failed to initiate!");
+  process.exit(1);
+}
+
+// Keep holding jump throughout flight
+let midAirTicks = 0;
+let touchdownTick = 0;
+for (let t = 1; t <= 100; t++) {
+  const prevZ = char.position.z;
+  const prevVz = char.verticalVelocity;
+  char.updateCharacter(dt, { x: 0, y: 0 }, false, null, arena, true);
+  if (prevVz < 0 && char.verticalVelocity > 8.0) {
+    // Character just touched the ground and immediately launched into next jump!
+    touchdownTick = t;
+    console.log(`  Touched down at tick ${t}: immediately took off with vz = ${char.verticalVelocity.toFixed(3)} u/s, z = ${char.position.z.toFixed(3)}`);
+    break;
+  }
+  if (char.position.z > 0.05) {
+    midAirTicks++;
+  }
+}
+
+if (touchdownTick === 0) {
+  console.error("FAILED: Character did not immediately jump upon touching the ground while holding jump!");
+  process.exit(1);
+}
+console.log("  PASS: Held jump continuously and took off the exact moment of touchdown!");
+
+// 9b. Testing pressing/holding jump in mid-air: launches the moment of ground contact
+char.position.x = 5.0;
+char.position.y = 5.0;
+char.position.z = 0.8;
+char.verticalVelocity = -4.0; // Falling towards ground
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
+
+// While falling, player begins holding jump input (Space / A)
+let midAirHeldLanded = false;
+for (let t = 1; t <= 40; t++) {
+  char.updateCharacter(dt, { x: 0, y: 0 }, false, null, arena, true);
+  if (char.verticalVelocity > 8.0) {
+    midAirHeldLanded = true;
+    console.log(`  Mid-air hold landed at tick ${t}: immediately took off with vz = ${char.verticalVelocity.toFixed(3)} u/s, z = ${char.position.z.toFixed(3)}`);
+    break;
+  }
+}
+
+if (!midAirHeldLanded) {
+  console.error("FAILED: Character did not jump upon touching ground when holding jump from mid-air!");
+  process.exit(1);
+}
+console.log("  PASS: Holding jump in mid-air jumped the moment character touched the ground!");
+
+// 9c. Testing releasing jump before landing: character stays grounded without jumping
+char.position.x = 5.0;
+char.position.y = 5.0;
+char.position.z = 0.5;
+char.verticalVelocity = -3.0; // Falling towards ground
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
+
+for (let t = 1; t <= 40; t++) {
+  char.updateCharacter(dt, { x: 0, y: 0 }, false, null, arena, false); // NOT holding jump
+}
+console.log("  Released jump landing: z =", char.position.z.toFixed(3), "vz =", char.verticalVelocity.toFixed(3), "isRestingOnSurface =", char.isRestingOnSurface);
+if (char.position.z !== 0 || char.verticalVelocity !== 0 || !char.isRestingOnSurface) {
+  console.error("FAILED: Character should be resting on ground when jump is released!");
+  process.exit(1);
+}
+console.log("  PASS: Character safely rests on ground when jump is not held!");
+
 console.log("\n=== ALL JUMP & WALL EDGE ASSIST TESTS PASSED! ===");
 
 

@@ -37,6 +37,7 @@ export class JumpModule {
    */
   public jump(character: Character, _arena?: Arena, movementInput?: Vector2D): boolean {
     if (!this.enabled || !character.hasVerticalPosition) return false;
+    if (character.isHeld) return false;
 
     // Must be resting on a surface (ground or wall top) or close enough with near-zero vertical velocity
     const surfaceZ = character.supportingSurfaceHeight ?? 0;

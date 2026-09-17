@@ -311,6 +311,11 @@ powerCreatureGamePrototype1/
 31. **Strict Wall Assist Standing Height Invariant**:
     - In `GameObject.ts`, wall edge assist (`isPreventWalkOffActive`) strictly requires the character to be at exactly wall height standing on top of a wall: `this.standingWall !== null`, `!this.isClimbing`, `Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01`, `Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01`, and `this.isRestingOnSurface`.
     - If the character is not resting at exactly wall height on top of a wall (e.g. on the ground, climbing, jumping, or airborne at any elevation), `isAssistClampArmed` is disarmed to `false`, `hasLeftClampZoneSinceDismount` is set to `true`, and wall assist is guaranteed inactive.
+32. **Hold-Down Jump & Instant Touchdown Takeoff**:
+    - Supported for both Keyboard (`Space`) and Gamepad (`A` button / Button 0).
+    - In `Character.updateCharacter`, holding the jump input checks for takeoff both pre-physics integration and immediately following `this.updatePosition(dt, arena)`.
+    - The instant a falling or airborne character hits the ground or a supporting wall top (`position.z <= surfaceHeight` resolving to `isRestingOnSurface = true`), `character.jump()` triggers within that same physics tick, immediately relaunching them into the air with initial takeoff velocity without resting or hitching on the ground.
+    - Keyboard jump holding is strictly decoupled via `input.isKeyboardJumpHeld` (`this.keysPressed.has("Space")`), and Spacebar prevents browser scroll during key repeat.
 
 ---
 
