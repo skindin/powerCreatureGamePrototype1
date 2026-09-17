@@ -349,7 +349,7 @@ powerCreatureGamePrototype1/
     - **In-App Submission & Separate Categories**:
       - Accessed via top bar `🐞 Feedback` button (`#toggle-feedback-btn`) with live uncompleted count badge, or via mobile landscape menu (`#mobile-btn-feedback`).
       - Expandable submission drawer (`#feedback-form`) with auto-focused description text box and type selector defaulting to **Suggestion** (`<option value="suggestion" selected>`).
-      - Separates open entries into two dedicated category columns/cards: **💡 Suggestions** and **🐞 Bug Reports**.
+      - Separates open entries into two dedicated category columns/cards with **🐞 Bug Reports** positioned cleanly above **💡 Suggestions**.
     - **Chronological Sorting & Client Local Time**:
       - Open Suggestions are strictly ordered from **oldest to newest** (`new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()`) so earlier ideas stay at the top.
       - Open Bugs are sorted from newest to oldest.

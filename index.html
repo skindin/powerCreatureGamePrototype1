@@ -349,6 +349,25 @@
 
             <!-- Public Log Content (Separated Bugs & Suggestions) -->
             <div class="feedback-sections-container">
+              <!-- Bugs Section -->
+              <div class="feedback-category-card">
+                <div class="category-header">
+                  <div class="category-title">
+                    <span class="cat-icon">🐞</span>
+                    <h3>Bug Reports</h3>
+                    <span id="count-open-bugs" class="category-count-badge">0 Open</span>
+                  </div>
+                </div>
+                <div id="list-open-bugs" class="feedback-items-list"></div>
+                <div class="resolved-accordion">
+                  <button type="button" id="btn-toggle-resolved-bugs" class="btn-resolved-toggle">
+                    <span class="toggle-arrow">▶</span>
+                    <span class="toggle-text">Show Resolved Bugs (0)</span>
+                  </button>
+                  <div id="list-resolved-bugs" class="feedback-items-list resolved hidden"></div>
+                </div>
+              </div>
+
               <!-- Suggestions Section (Oldest to Newest) -->
               <div class="feedback-category-card">
                 <div class="category-header">
@@ -366,25 +385,6 @@
                     <span class="toggle-text">Show Completed Suggestions (0)</span>
                   </button>
                   <div id="list-resolved-suggestions" class="feedback-items-list resolved hidden"></div>
-                </div>
-              </div>
-
-              <!-- Bugs Section -->
-              <div class="feedback-category-card">
-                <div class="category-header">
-                  <div class="category-title">
-                    <span class="cat-icon">🐞</span>
-                    <h3>Bug Reports</h3>
-                    <span id="count-open-bugs" class="category-count-badge">0 Open</span>
-                  </div>
-                </div>
-                <div id="list-open-bugs" class="feedback-items-list"></div>
-                <div class="resolved-accordion">
-                  <button type="button" id="btn-toggle-resolved-bugs" class="btn-resolved-toggle">
-                    <span class="toggle-arrow">▶</span>
-                    <span class="toggle-text">Show Resolved Bugs (0)</span>
-                  </button>
-                  <div id="list-resolved-bugs" class="feedback-items-list resolved hidden"></div>
                 </div>
               </div>
             </div>
