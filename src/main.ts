@@ -8,6 +8,7 @@ import { DevPanel } from "./ui/DevPanel.js";
 import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
+import { DeployNotifier } from "./ui/DeployNotifier.js";
 import QRCode from "qrcode";
 
 function bootstrap(): void {
@@ -757,6 +758,10 @@ function bootstrap(): void {
   };
 
   gameLoop.start();
+
+  // Start background Railway live deployment notifier (never forces a reload)
+  new DeployNotifier();
+
   console.log("🚀 Power Creature Game Prototype 1 (Phase 1.1) running!");
 }
 

@@ -123,6 +123,18 @@ function autoTunnelPlugin(): Plugin {
           Boolean(req.headers['x-forwarded-for']) ||
           Boolean(req.headers['bypass-tunnel-reminder']);
 
+        if (req.url && (req.url.startsWith('/api/version') || req.url === '/health')) {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end(JSON.stringify({
+            deployId: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || 'local-dev',
+            commit: (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').substring(0, 7),
+            bootTime: new Date().toISOString()
+          }));
+          return;
+        }
+
         if (isTunnel) {
           // If a client tries requesting raw unbundled /src files, redirect to fresh /
           if (req.url && req.url.startsWith('/src/')) {

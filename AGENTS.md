@@ -319,6 +319,14 @@ powerCreatureGamePrototype1/
 33. **45-Degree Directional Jump & Air Control (Walk in Air)**:
     - **45-Degree Jump Force**: When jumping while intending to move forward (`inputMag > 0.05`), the jump force is placed at 45 degrees to the direction of jumping. The horizontal takeoff speed matches the vertical takeoff speed ($v_h = v_z$, $\tan(45^\circ) = 1$), propelling the character diagonally up and forward over obstacles while maintaining the 1.5-unit peak vertical clearance.
     - **Air Control (Walk in Air)**: `WalkingModule` introduces the `walkInAir` toggle (default: `true`, configurable in `DevPanel.ts` via checkbox). When active, walking force applies in mid-air to steer, accelerate, or curve the jump trajectory. When movement inputs are released in mid-air (`!isMoving`), horizontal momentum is preserved without dead-stop air braking.
+34. **Live Railway Deployment Notifier (Non-Intrusive)**:
+    - `server.js` and `vite.config.ts` expose `/api/version` returning live deployment metadata: `RAILWAY_GIT_COMMIT_SHA`, `RAILWAY_DEPLOYMENT_ID`, and boot timestamp.
+    - `DeployNotifier.ts` runs in the client background: records baseline deployment on page load, polls every 20s, and re-checks on tab focus (`visibilitychange`).
+    - When a new deployment is detected:
+      - Strictly **never forces a restart or reload**; gameplay continues uninterrupted.
+      - Displays a floating glassmorphic toast notification (`✨ Railway Update Live (commit)`) with an optional `Reload` button and dismiss `✕` button, auto-fading after 14s.
+      - Adds a pulsing header badge (`#header-deploy-badge`) so the player can see at a glance that a new build is ready and reload whenever convenient.
+      - Plays a subtle two-tone audio chime (E5 -> B5).
 
 ---
 

@@ -10,6 +10,15 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = '0.0.0.0';
 const DIST_DIR = path.join(__dirname, 'dist');
 
+// Deployment tracking for live browser update notifications (Railway environment variables)
+const SERVER_BOOT_TIME = new Date().toISOString();
+const DEPLOY_ID =
+  process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.RAILWAY_DEPLOYMENT_ID ||
+  process.env.BUILD_ID ||
+  SERVER_BOOT_TIME;
+const COMMIT_HASH = (process.env.RAILWAY_GIT_COMMIT_SHA || '').substring(0, 7);
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -73,6 +82,21 @@ const server = http.createServer((req, res) => {
   if (urlPath === '/health' || urlPath === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('OK');
+    return;
+  }
+
+  // Version / deployment info endpoint for live browser notification
+  if (urlPath === '/api/version') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({
+      deployId: DEPLOY_ID,
+      commit: COMMIT_HASH,
+      bootTime: SERVER_BOOT_TIME,
+    }));
     return;
   }
 
