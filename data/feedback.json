@@ -13,17 +13,17 @@
     "type": "suggestion",
     "description": "Add speed boost powerup pads on arena corners",
     "author": "BetaTester",
-    "completed": false,
+    "completed": true,
     "createdAt": "2026-09-17T17:05:15.068Z",
-    "completedAt": null
+    "completedAt": "2026-09-17T17:14:31.706Z"
   },
   {
     "id": "fb_1789664744569_9hjxf",
     "type": "bug",
     "description": "Rocks sometimes clip when falling at terminal velocity",
     "author": "BugHunter",
-    "completed": false,
+    "completed": true,
     "createdAt": "2026-09-17T17:05:44.569Z",
-    "completedAt": null
+    "completedAt": "2026-09-17T17:14:28.990Z"
   }
 ]

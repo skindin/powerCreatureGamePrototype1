@@ -15,6 +15,8 @@ ENV PORT=3000
 COPY package*.json ./
 COPY --from=builder /app/dist ./dist
 COPY server.js ./
+COPY server ./server
+COPY data ./data
 
 EXPOSE 3000
 CMD ["node", "server.js"]

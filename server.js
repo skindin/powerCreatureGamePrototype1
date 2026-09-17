@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,8 +68,6 @@ function sendFile(res, filePath, statusCode = 200) {
     fs.createReadStream(filePath).pipe(res);
   });
 }
-
-import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
 
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
