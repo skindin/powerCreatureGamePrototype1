@@ -12,8 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-Es6sFOoj.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-lZaXOScG.css">
+    <script type="module" crossorigin src="/assets/index-D4SYckfa.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Dmj07lom.css">
   </head>
   <body>
     <div id="app-layout">
@@ -346,6 +346,27 @@
                   <button type="submit" id="btn-submit-feedback" class="btn-submit-feedback">Submit</button>
                 </div>
               </form>
+            </div>
+
+            <!-- Bulk Selection & Copy Actions Bar -->
+            <div class="feedback-bulk-bar">
+              <div class="bulk-select-group">
+                <label class="bulk-checkbox-label">
+                  <input type="checkbox" id="btn-feedback-select-all" class="feedback-select-box" title="Select all items" />
+                  <span id="label-feedback-select-all">Select All</span>
+                </label>
+                <span id="feedback-selected-counter" class="bulk-count-pill hidden">0 selected</span>
+              </div>
+              <div class="bulk-actions-group">
+                <button type="button" id="btn-copy-selected-feedback" class="btn-bulk-action" disabled title="Copy selected reports to clipboard">
+                  <span class="btn-icon">📋</span>
+                  <span id="label-copy-selected">Copy Selected</span>
+                </button>
+                <button type="button" id="btn-copy-all-feedback" class="btn-bulk-action secondary" title="Copy all reports to clipboard">
+                  <span class="btn-icon">📑</span>
+                  <span id="label-copy-all">Copy All</span>
+                </button>
+              </div>
             </div>
 
             <!-- Public Log Content (Separated Bugs & Suggestions) -->

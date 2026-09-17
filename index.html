@@ -347,6 +347,27 @@
               </form>
             </div>
 
+            <!-- Bulk Selection & Copy Actions Bar -->
+            <div class="feedback-bulk-bar">
+              <div class="bulk-select-group">
+                <label class="bulk-checkbox-label">
+                  <input type="checkbox" id="btn-feedback-select-all" class="feedback-select-box" title="Select all items" />
+                  <span id="label-feedback-select-all">Select All</span>
+                </label>
+                <span id="feedback-selected-counter" class="bulk-count-pill hidden">0 selected</span>
+              </div>
+              <div class="bulk-actions-group">
+                <button type="button" id="btn-copy-selected-feedback" class="btn-bulk-action" disabled title="Copy selected reports to clipboard">
+                  <span class="btn-icon">📋</span>
+                  <span id="label-copy-selected">Copy Selected</span>
+                </button>
+                <button type="button" id="btn-copy-all-feedback" class="btn-bulk-action secondary" title="Copy all reports to clipboard">
+                  <span class="btn-icon">📑</span>
+                  <span id="label-copy-all">Copy All</span>
+                </button>
+              </div>
+            </div>
+
             <!-- Public Log Content (Separated Bugs & Suggestions) -->
             <div class="feedback-sections-container">
               <!-- Bugs Section -->

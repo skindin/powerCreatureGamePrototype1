@@ -369,6 +369,17 @@ powerCreatureGamePrototype1/
       - WASD character movement, climbing, sprint toggles, and drop/pickup (`KeyE`) actions are suppressed, and `movementVector` is zeroed out.
     - **Focus Reset**: Added a `focusin` listener on `window` that immediately clears `keysPressed` and resets movement whenever a text field receives focus, preventing characters from continuing to run if a text box is clicked while moving.
     - **Hotkey Guards**: Guarded global hotkeys in `PlayersPanel.ts` (`P`) and `main.ts` (`I`, `V`, `~`) against all form input and contenteditable targets so typing letters inside text areas never triggers panel toggles.
+39. **Feedback Multi-Select & Serialized Clipboard Copying**:
+    - **Individual Copy**: Each feedback card (bug or suggestion) features an individual `📋 Copy` button. Clicking it formats that single item as `${Type} : '${description}'` (e.g. `Suggestion : 'text'` or `Bug : 'text'`), copies it to the clipboard, and temporarily flashes `✓ Copied!`.
+    - **Multi-Select & Bulk Actions**:
+      - Added `.feedback-bulk-bar` featuring `Select All` checkbox, dynamic counter pill (`N selected`), `📋 Copy Selected (N)`, and `📑 Copy All`.
+      - Each card has an independent selection checkbox (`.feedback-item-select`), highlighting the selected cards in cyan (`.feedback-item-card.selected`).
+      - Clicking `Copy Selected` or `Copy All` outputs clean newline-delimited serialized entries:
+        ```text
+        Bug : 'Rocks sometimes clip when falling at terminal velocity'
+        Suggestion : 'Add sprint trails for high speed'
+        ```
+      - Supports dual-mode clipboard engine (`navigator.clipboard.writeText` with legacy `document.execCommand('copy')` fallback) ensuring universal cross-browser, WebView2, and mobile compatibility.
 
 ---
 
