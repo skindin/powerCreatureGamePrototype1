@@ -687,6 +687,7 @@ export class DevPanel {
       if (char.walkingModule) {
         this.setSliderVal("slide-walk-force", "val-walk-force", char.walkingModule.maxWalkForce, 0);
         this.setSliderVal("slide-walk-speed", "val-walk-speed", char.walkingModule.maxWalkSpeed, 1);
+        this.setSliderVal("slide-air-fric", "val-air-fric", char.walkingModule.airFriction, 2);
         const checkAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
         if (checkAir) checkAir.checked = Boolean(char.walkingModule.walkInAir);
       }
@@ -951,6 +952,13 @@ export class DevPanel {
                 <span id="val-walk-speed">${(char.walkingModule?.maxWalkSpeed ?? 6.0).toFixed(1)}</span>
               </div>
               <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${char.walkingModule?.maxWalkSpeed ?? 6.0}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Air / Floating Friction</span>
+                <span id="val-air-fric">${(char.walkingModule?.airFriction ?? 1.0).toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-air-fric" min="0.0" max="3.0" step="0.05" value="${char.walkingModule?.airFriction ?? 1.0}">
             </div>
           </div>
         `;
@@ -1421,6 +1429,9 @@ export class DevPanel {
       this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
         if (char.walkingModule) char.walkingModule.maxWalkSpeed = val;
       }, 1);
+      this.setupSlider("slide-air-fric", "val-air-fric", (val) => {
+        if (char.walkingModule) char.walkingModule.airFriction = val;
+      }, 2);
 
       this.setupSlider("slide-strength", "val-strength", (val) => {
         char.strength = val;

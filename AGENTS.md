@@ -399,6 +399,17 @@ powerCreatureGamePrototype1/
       - Applied `100%`, `100dvh`, and `100dvw` on `#app-layout`, `.app-body`, `.viewport-container`, `.canvas-wrapper`, and `#game-canvas` with zero margins and padding, eliminating all letterboxing or thick top/bottom blank bars.
       - Ensured `#dev-sidebar` defaults to collapsed on all mobile/touch devices (`pointer: coarse` or landscape height $< 850\text{px}$), preventing sidebar open state from squeezing the canvas.
       - Attached `fitCanvas` triggers to `resize`, `orientationchange`, `fullscreenchange`, and `screen.orientation.change`.
+41. **Air Friction, Floating Friction Deceleration & Unclamped Airborne Max Speed**:
+    - **Floating Friction in Mid-Air (`!isMoving`)**:
+      - Removed early exit `if (isAirborne && !isMoving) return;` in `WalkingModule.ts`.
+      - When not holding directional input while jumping/airborne, target velocity is $(0, 0)$ and full symmetrical input friction (`maxAccel = ((effectiveWalkForce * strength) / totalMass) * airFriction`) applies.
+      - Smoothly decelerates horizontal velocity to zero within ~11 ticks, resolving the issue where characters maintained horizontal velocity indefinitely while holding jump.
+    - **Unclamped Airborne Max Speed**:
+      - When airborne (`isAirborne = true`) and providing movement input (`isMoving = true`), target speed is `airTargetSpeed = Math.max(effectiveSpeed, currentSpeed)`.
+      - Avoids clamping high-velocity states (e.g. throws, explosions, speed boosts) down to the base ground walking speed ($5.2\text{ u/s}$) while airborne, while still allowing directional steering and braking.
+    - **Configurable `airFriction`**:
+      - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
+      - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
 
 ---
 
