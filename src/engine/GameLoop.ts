@@ -112,7 +112,7 @@ export class GameLoop {
     this.inputManager.onKeyboardJump = () => {
       const kChar = this.players.get("keyboard")?.character;
       if (kChar) {
-        kChar.jump(this.arena);
+        kChar.jump(this.arena, this.inputManager.movementVector);
       }
     };
 

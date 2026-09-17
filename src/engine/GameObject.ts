@@ -396,7 +396,7 @@ export class GameObject {
           }
         } else {
           // standingWall not set yet: acquire if resting at wall height and not climbing
-          if (!this.isClimbing && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
+          if (!this.isClimbing && this.verticalVelocity <= 0.5 && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
             const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
             if (wall) {
               this.standingWall = wall;
@@ -598,7 +598,10 @@ export class GameObject {
     // - Re-arming: Remains disabled until character moves outside the clamp area (> 0.1u) and then back into it (<= 0.1u).
     const char = this.isCharacter ? (this as any) : null;
     const edgeMod = char?.wallEdgeAssistModule ?? char?.climbingModule;
-    const wasStandingOnWallTop = !this.isClimbing && this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.standingWall !== null;
+    const wasStandingOnWallTop = !this.isClimbing &&
+      this.supportingSurfaceHeight >= arena.wallHeight - 0.05 &&
+      this.standingWall !== null &&
+      this.isRestingOnSurface;
     const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
 
     if (edgeMod) {

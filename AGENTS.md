@@ -300,6 +300,10 @@ powerCreatureGamePrototype1/
     - **Removed Climbing from Default Character**: Default player characters spawn with `climbingModule = null`, giving them jump and edge guardrail capabilities by default without vertical wall adhesion.
     - **Decoupled Ledge Protection**: Characters walking on wall tops retain ledge protection (`preventWalkOff = true`) even without climbing abilities attached.
     - **Optional Addable Behavior**: `ClimbingModule` remains fully supported as an opt-in creature ability; players can re-attach climbing at any time via the DevPanel "➕ Add Behavior" dropdown.
+29. **Directional Jump Impulse When Walking Against Obstacles & Wall Assist**:
+    - When walking against a wall obstacle or against the wall edge assist clamp, horizontal velocity is zeroed by the collision/clamp system, which previously resulted in purely vertical jumps with zero horizontal displacement ("no motion").
+    - In `JumpModule.jump`, when a player jumps while holding a directional movement input (`movementInput` from keyboard WASD or gamepad analog stick), the character is granted one physics step of velocity ($v_{\text{step}} = a_{\text{walk}} \cdot dt \approx 0.486\text{ u/s}$, scaling up to $0.729\text{ u/s}$ when sprinting and scaling with carried mass) in the held direction if current velocity along that direction is lower.
+    - Jumping on wall platforms automatically disarms `wallEdgeAssistModule.isAssistClampArmed` and requires `isRestingOnSurface` for `wasStandingOnWallTop`, allowing creatures to cleanly leap off wall ledges and over obstacles without mid-air clamp interference.
 
 ---
 

@@ -145,4 +145,73 @@ console.log("  Re-attached ClimbingModule:", char.climbingModule ? "SUCCESS" : "
 console.log("  ClimbingModule maxAdhesion:", char.climbingModule.maxAdhesion);
 console.log("  ClimbingModule maxClimbSpeed:", char.climbingModule.maxClimbSpeed);
 
+// 6. Directional Jump Velocity Test (One physics step of velocity when holding direction key)
+console.log("\n6. Testing Directional Jump Velocity Boost (walking against obstacle/wall assist):");
+// Reset character to ground at rest
+char.position.x = 5.0;
+char.position.y = 5.0;
+char.position.z = 0;
+char.verticalVelocity = 0;
+char.velocity.x = 0;
+char.velocity.y = 0;
+char.supportingSurfaceHeight = 0;
+
+// Jump with directional input { x: 1, y: 0 }
+const dirJumped = char.jump(arena, { x: 1, y: 0 });
+console.log("  Directional jump returned:", dirJumped);
+console.log("  Initial horizontal vx immediately after jump:", char.velocity.x.toFixed(4), "u/s");
+console.log("  Initial horizontal vy immediately after jump:", char.velocity.y.toFixed(4), "u/s");
+
+const expectedStepVx = ((35.0 * 1.0) / 1.2) * (1 / 60); // 0.4861 u/s
+if (Math.abs(char.velocity.x - expectedStepVx) > 0.01) {
+  console.error(`FAILED: Expected horizontal vx ~${expectedStepVx.toFixed(4)} u/s, got ${char.velocity.x}`);
+  process.exit(1);
+}
+console.log("  PASS: One physics step of velocity (~0.486 u/s) successfully given on jump!");
+
+// 7. Testing Jump Off Wall Edge with Wall Assist Clamp
+console.log("\n7. Testing Jump Off Wall Edge with Wall Edge Assist Clamp:");
+char.climbingModule = null;
+char.position.x = wall.x + wall.width - 0.05; // Near right edge of wall
+char.position.y = wall.y + 0.5;
+char.position.z = wall.wallHeight;
+char.supportingSurfaceHeight = wall.wallHeight;
+char.standingWall = wall;
+char.verticalVelocity = 0;
+char.velocity.x = 0;
+char.velocity.y = 0;
+if (char.wallEdgeAssistModule) {
+  char.wallEdgeAssistModule.isAssistClampArmed = true;
+}
+
+// Jump to the right (off the ledge into the open)
+const ledgeJump = char.jump(arena, { x: 1, y: 0 });
+console.log("  Ledge jump returned:", ledgeJump);
+console.log("  isAssistClampArmed immediately after jump:", char.wallEdgeAssistModule?.isAssistClampArmed);
+console.log("  Horizontal vx immediately after jump:", char.velocity.x.toFixed(4), "u/s");
+
+if (char.wallEdgeAssistModule?.isAssistClampArmed) {
+  console.error("FAILED: wallEdgeAssistModule was not disarmed on jump!");
+  process.exit(1);
+}
+
+// Simulate physics until landing on ground
+let airborneTicks = 0;
+const startX = char.position.x;
+while (char.position.z > 0.001 && airborneTicks < 120) {
+  char.updatePosition(dt, arena);
+  airborneTicks++;
+}
+
+console.log(`  Landed after ${airborneTicks} ticks (${(airborneTicks * dt).toFixed(3)}s)`);
+console.log(`  Start X: ${startX.toFixed(3)}, Landed X: ${char.position.x.toFixed(3)}`);
+console.log(`  Horizontal distance cleared: ${(char.position.x - startX).toFixed(3)} units`);
+
+if (char.position.x <= startX + 0.15) {
+  console.error("FAILED: Character did not move forward through the air off the wall ledge!");
+  process.exit(1);
+}
+console.log("  PASS: Character successfully cleared the wall edge assist obstacle!");
+
 console.log("\n=== ALL JUMP & WALL EDGE ASSIST TESTS PASSED! ===");
+

@@ -33,6 +33,7 @@ export class Character extends GameObject {
   public override isCharacter = true;
   public isActivelyWalking = false;
   public isClimbInputHeld = false;
+  public movementInput: Vector2D = { x: 0, y: 0 };
   public isSprinting = false;
   public onSprintChange?: (isSprinting: boolean) => void;
 
@@ -140,9 +141,9 @@ export class Character extends GameObject {
   /**
    * Attempts to jump using the attached JumpModule.
    */
-  public jump(arena: Arena): boolean {
+  public jump(arena?: Arena, movementInput?: Vector2D): boolean {
     if (this.jumpModule) {
-      return this.jumpModule.jump(this, arena);
+      return this.jumpModule.jump(this, arena, movementInput);
     }
     return false;
   }
@@ -209,6 +210,8 @@ export class Character extends GameObject {
     arena: Arena,
     isClimbInput = false
   ): void {
+    this.movementInput.x = movementInput.x;
+    this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
 
     // 0. Process modular climbing if pressing into wall and holding climb input

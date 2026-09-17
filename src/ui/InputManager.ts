@@ -408,7 +408,7 @@ export class InputManager {
       const btn0Current = isButtonPressed(0);
       slot.isClimbHeld = btn0Current;
       if (btn0Current && !isPrevPressed(0)) {
-        char.jump(arena);
+        char.jump(arena, slot.movementVector);
       }
 
       // Button 4 (Left Bumper / LB / L1): Toggle Sprint
