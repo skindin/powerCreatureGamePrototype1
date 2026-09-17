@@ -47,7 +47,35 @@ function bootstrap(): void {
   };
   const canvasResizeObserver = new ResizeObserver(fitCanvas);
   canvasResizeObserver.observe(canvas.parentElement!);
+  window.addEventListener("resize", fitCanvas);
+  window.addEventListener("orientationchange", () => {
+    setTimeout(fitCanvas, 60);
+    setTimeout(fitCanvas, 250);
+  });
+  document.addEventListener("fullscreenchange", () => {
+    setTimeout(fitCanvas, 60);
+    setTimeout(fitCanvas, 200);
+  });
+  if (screen.orientation) {
+    screen.orientation.addEventListener("change", () => {
+      setTimeout(fitCanvas, 60);
+      setTimeout(fitCanvas, 250);
+    });
+  }
   fitCanvas();
+
+  // Mobile & PWA Fullscreen & Landscape Orientation Lock
+  // On first touch/pointer gesture, enter true immersive fullscreen to hide Android status/notification UI and bottom navigation bar
+  const enterImmersiveFullscreen = () => {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen({ navigationUI: "hide" } as any).catch(() => {});
+    }
+    if (screen.orientation && (screen.orientation as any).lock) {
+      (screen.orientation as any).lock("landscape").catch(() => {});
+    }
+  };
+  window.addEventListener("touchstart", enterImmersiveFullscreen, { passive: true });
+  window.addEventListener("pointerdown", enterImmersiveFullscreen, { passive: true });
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
@@ -153,9 +181,12 @@ function bootstrap(): void {
     inputManager.selectedCanvasEntity = entity;
   };
 
-  // Sprint toggle interaction
+  // Sprint interaction
   inputManager.onToggleSprint = () => {
-    character.setSprinting(!character.isSprinting);
+    character.setSprinting(true);
+  };
+  inputManager.onStopKeyboardSprint = () => {
+    character.setSprinting(false);
   };
 
   // Gamepad Connection Indicator
@@ -229,7 +260,13 @@ function bootstrap(): void {
   inputManager.onToggleSprint = () => {
     const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
     if (activeChar) {
-      activeChar.setSprinting(!activeChar.isSprinting);
+      activeChar.setSprinting(true);
+    }
+  };
+  inputManager.onStopKeyboardSprint = () => {
+    const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
+    if (activeChar) {
+      activeChar.setSprinting(false);
     }
   };
 
@@ -463,15 +500,18 @@ function bootstrap(): void {
 
   // Default to open on desktop/laptop (>= 950px), or restore saved user preference
   let startSidebarOpen = true;
+  const isMobileOrTouch = window.matchMedia("(pointer: coarse), (max-height: 850px) and (orientation: landscape), (max-width: 950px)").matches;
   try {
     const saved = localStorage.getItem("pcg_sidebar_open");
-    if (saved !== null) {
+    if (isMobileOrTouch) {
+      startSidebarOpen = false;
+    } else if (saved !== null) {
       startSidebarOpen = saved === "true";
     } else if (window.innerWidth < 950) {
       startSidebarOpen = false;
     }
   } catch {
-    startSidebarOpen = window.innerWidth >= 950;
+    startSidebarOpen = !isMobileOrTouch && window.innerWidth >= 950;
   }
   setSidebarOpen(startSidebarOpen);
 

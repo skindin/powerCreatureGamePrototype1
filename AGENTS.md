@@ -380,6 +380,25 @@ powerCreatureGamePrototype1/
         Suggestion : 'Add sprint trails for high speed'
         ```
       - Supports dual-mode clipboard engine (`navigator.clipboard.writeText` with legacy `document.execCommand('copy')` fallback) ensuring universal cross-browser, WebView2, and mobile compatibility.
+40. **Keyboard Sprint Persistence, Mobile Controller Sprint & Fullscreen PWA Layout**:
+    - **Keyboard Sprint Persistence Across Direction Changes**:
+      - Pressing or holding `Shift` activates keyboard sprint (`isKeyboardSprintActive = true`).
+      - In `InputManager.ts`, `hasAnyMovementKeyPressed()` checks whether any WASD or Arrow keys are pressed. As long as any movement key is pressed, sprinting remains strictly **ON**, persisting seamlessly across all direction transitions (e.g. W -> D, A -> S).
+      - Sprint only resets to off when the player is **no longer pressing any WASD / arrow keys** (`!hasAnyMovementKeyPressed()`) and Shift is not held.
+      - Removed unilateral sprint cancellation from `WalkingModule.ts` so sprint state is preserved through 1-tick direction changeovers and standing arming.
+    - **Mobile Gamepad Left Bumper & L3 Sprint**:
+      - Checked both Button 4 (Left Bumper / LB / L1) and Button 10 (L3 / Left Stick Click).
+      - Supports both tap-to-arm and hold-to-sprint. If LB or L3 is tapped while stationary, sprint is armed (`slot.sprintArmed = true`), so the character immediately sprints when the analog stick is pushed.
+      - Tracked `slot.wasMoving`; sprint cleanly resets only when the analog stick returns to neutral (`lMag <= deadzone`) and neither LB nor L3 is being held.
+    - **Hidden Mobile Notification Phone UI (Immersive Fullscreen)**:
+      - `public/manifest.webmanifest`: Configured with `"display": "fullscreen"` and `"display_override": ["fullscreen", "standalone", "window-controls-overlay"]`, plus `"orientation": "landscape"`.
+      - `index.html`: Added `<meta name="apple-touch-fullscreen" content="yes" />` and `<meta name="mobile-web-app-capable" content="yes" />` with `black-translucent` status bar style.
+      - `src/main.ts`: Added first-gesture touch/pointer listeners invoking `document.documentElement.requestFullscreen({ navigationUI: "hide" })` and `screen.orientation.lock("landscape")`, completely suppressing Android/iOS notification status bars and system navigation bars during gameplay.
+    - **Elimination of PWA Top/Bottom Blank Bars**:
+      - Expanded the mobile landscape media query in `src/style.css` to cover `@media (max-height: 850px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape), (display-mode: fullscreen) and (orientation: landscape), (display-mode: standalone) and (orientation: landscape)`.
+      - Applied `100%`, `100dvh`, and `100dvw` on `#app-layout`, `.app-body`, `.viewport-container`, `.canvas-wrapper`, and `#game-canvas` with zero margins and padding, eliminating all letterboxing or thick top/bottom blank bars.
+      - Ensured `#dev-sidebar` defaults to collapsed on all mobile/touch devices (`pointer: coarse` or landscape height $< 850\text{px}$), preventing sidebar open state from squeezing the canvas.
+      - Attached `fitCanvas` triggers to `resize`, `orientationchange`, `fullscreenchange`, and `screen.orientation.change`.
 
 ---
 

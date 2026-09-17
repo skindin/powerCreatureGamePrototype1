@@ -67,11 +67,6 @@ export class WalkingModule {
     const isMoving = inputMag > 0.05;
     character.isActivelyWalking = isMoving;
 
-    // Letting go of movement control automatically toggles sprint off
-    if (!isMoving && character.isSprinting) {
-      character.setSprinting(false);
-    }
-
     // In mid-air, if the player is not holding any movement input, do not apply air braking — coast along current ballistic trajectory!
     if (isAirborne && !isMoving) {
       return;

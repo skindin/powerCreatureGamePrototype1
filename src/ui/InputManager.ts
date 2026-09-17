@@ -17,6 +17,8 @@ export interface GamepadSlotState {
   rtHeld: boolean;
   bHeld: boolean;
   aimOffsetInitialized: boolean;
+  sprintArmed?: boolean;
+  wasMoving?: boolean;
 }
 
 export class InputManager {
@@ -24,6 +26,7 @@ export class InputManager {
   private arena: Arena;
   private keysPressed: Set<string> = new Set();
   private isEKeyDepressed = false;
+  public isKeyboardSprintActive = false;
   
   // Keyboard player active state (true when keyboard & mouse character is in arena)
   public isKeyboardActive = true;
@@ -106,6 +109,7 @@ export class InputManager {
   public onDropAttempt?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
   public onToggleSprint?: () => void;
+  public onStopKeyboardSprint?: () => void;
   public onGamepadStatusChange?: (connected: boolean, name: string) => void;
   public onKeyboardJoin?: () => void;
   public onKeyboardJump?: () => void;
@@ -127,6 +131,8 @@ export class InputManager {
       if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
         this.keysPressed.clear();
         this.isEKeyDepressed = false;
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
         this.updateMovementVector();
       }
     });
@@ -154,10 +160,16 @@ export class InputManager {
       this.keysPressed.add(e.code);
       this.updateMovementVector();
 
-      // Shift + WASD sprint toggle
+      // Shift + WASD sprint activation
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
-        if (!e.repeat && this.onToggleSprint) {
-          this.onToggleSprint();
+        this.isKeyboardSprintActive = true;
+        this.onToggleSprint?.();
+      }
+
+      // If user is pressing any movement keys while keyboard sprint is active (or Shift held), maintain sprint
+      if (this.isKeyboardSprintActive || e.shiftKey) {
+        if (this.hasAnyMovementKeyPressed()) {
+          this.onToggleSprint?.();
         }
       }
 
@@ -184,11 +196,22 @@ export class InputManager {
       if (e.code === "KeyE") {
         this.isEKeyDepressed = false;
       }
+
+      // Keep sprint on until the user is no longer pressing ANY wasd / arrow buttons!
+      if (!this.hasAnyMovementKeyPressed()) {
+        const isShiftHeld = this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
+        if (!isShiftHeld) {
+          this.isKeyboardSprintActive = false;
+          this.onStopKeyboardSprint?.();
+        }
+      }
     });
 
     window.addEventListener("blur", () => {
       this.isEKeyDepressed = false;
       this.keysPressed.clear();
+      this.isKeyboardSprintActive = false;
+      this.onStopKeyboardSprint?.();
       this.updateMovementVector();
     });
 
@@ -316,6 +339,22 @@ export class InputManager {
     this.mousePos.y = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / rect.height)));
   }
 
+  /**
+   * Helper to check if any directional movement key (WASD or Arrow keys) is currently pressed.
+   */
+  public hasAnyMovementKeyPressed(): boolean {
+    return (
+      this.keysPressed.has("KeyW") ||
+      this.keysPressed.has("KeyA") ||
+      this.keysPressed.has("KeyS") ||
+      this.keysPressed.has("KeyD") ||
+      this.keysPressed.has("ArrowUp") ||
+      this.keysPressed.has("ArrowLeft") ||
+      this.keysPressed.has("ArrowDown") ||
+      this.keysPressed.has("ArrowRight")
+    );
+  }
+
   private updateMovementVector(): void {
     if (!this.isKeyboardActive || this.isTextInputFocused()) {
       this.movementVector.x = 0;
@@ -388,6 +427,8 @@ export class InputManager {
           rtHeld: false,
           bHeld: false,
           aimOffsetInitialized: false,
+          sprintArmed: false,
+          wasMoving: false,
         };
         this.gamepadSlots.set(i, slot);
       } else {
@@ -464,11 +505,34 @@ export class InputManager {
         char.jump(arena, slot.movementVector);
       }
 
-      // Button 4 (Left Bumper / LB / L1): Toggle Sprint
-      const lbCurrent = isButtonPressed(4);
-      if (lbCurrent && !isPrevPressed(4)) {
-        char.setSprinting(!char.isSprinting);
+      // Button 4 (LB / L1) or Button 10 (L3 / Left Stick Click): Sprint
+      const lbCurrent = isButtonPressed(4) || isButtonPressed(10);
+      const lbJustPressed = lbCurrent && !(isPrevPressed(4) || isPrevPressed(10));
+      const isStickMoving = lMag > deadzone;
+
+      if (lbJustPressed) {
+        slot.sprintArmed = !slot.sprintArmed;
+        char.setSprinting(slot.sprintArmed);
       }
+
+      if (lbCurrent) {
+        slot.sprintArmed = true;
+        char.setSprinting(true);
+      }
+
+      if (isStickMoving) {
+        if (slot.sprintArmed) {
+          char.setSprinting(true);
+        }
+      } else {
+        // Left stick is in neutral deadzone
+        if (slot.wasMoving && !lbCurrent) {
+          // Stick was released after moving, and LB/L3 is not being held
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
+      }
+      slot.wasMoving = isStickMoving;
 
       // Grabbable target candidates include freebody objects and other characters
       const grabbableTargets = allCharacters
