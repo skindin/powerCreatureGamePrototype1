@@ -837,7 +837,11 @@ export class GameObject {
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
-                this.resolveWallCollision(wall);
+                const apexZ = this.hasGravity && this.hasVerticalVelocity
+                  ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
+                  : this.position.z;
+                const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                this.resolveWallCollision(wall, isAscendingJump);
               }
             }
           }
@@ -886,7 +890,11 @@ export class GameObject {
             if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
               continue;
             }
-            this.resolveWallCollision(wall);
+            const apexZ = this.hasGravity && this.hasVerticalVelocity
+              ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
+              : this.position.z;
+            const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            this.resolveWallCollision(wall, isAscendingJump);
           }
         }
       }
@@ -1021,7 +1029,7 @@ export class GameObject {
   }
 
   /** Resolves 2D circle-AABB wall collision on the ground plane */
-  protected resolveWallCollision(wall: Wall): void {
+  protected resolveWallCollision(wall: Wall, isAscendingJump = false): void {
     if (!this.hasCollider) return;
 
     const r = this.colliderRadius;
@@ -1059,8 +1067,12 @@ export class GameObject {
       this.position.x += normalX * overlap;
       this.position.y += normalY * overlap;
 
-      const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
-      this.resolveWallImpact(normalX, normalY, restitution);
+      // When ascending in a jump that can reach or clear the wall top, do not destroy
+      // horizontal velocity into the wall so the character can smoothly vault onto the wall platform!
+      if (!isAscendingJump) {
+        const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
+        this.resolveWallImpact(normalX, normalY, restitution);
+      }
     }
   }
 }

@@ -65,11 +65,10 @@ console.log("  PASS: Reached ~1.5 units (layers)!");
 // 3. Encumbered Jump Test (Carrying heavy object)
 console.log("\n3. Testing Encumbered Jump (Holding 1.2kg crate, total mass 2.4kg):");
 // Reset character to ground
-while (char.position.z > 0.001) {
-  char.updatePosition(dt, arena);
-}
-char.verticalVelocity = 0;
 char.position.z = 0;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
 
 const crate = new GameObject({
   id: "test-crate",

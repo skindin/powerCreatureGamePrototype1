@@ -336,7 +336,7 @@ export class Arena {
     const closestY = Math.max(wall.y, Math.min(y, wall.y + wall.height));
     const dx = x - closestX;
     const dy = y - closestY;
-    return (dx * dx + dy * dy) < (radius * radius);
+    return (dx * dx + dy * dy) <= (radius * radius) + 1e-6;
   }
 
   /**
