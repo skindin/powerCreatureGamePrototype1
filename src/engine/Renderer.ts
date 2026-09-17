@@ -658,14 +658,19 @@ export class Renderer {
     const layer2BaseY = (obj.position.y - wallH * hoverScale) * ppu;
     const layer2CeilingY = (obj.position.y - 2 * wallH * hoverScale) * ppu;
 
-    // Only draw down to the ground when NOT on/above a wall.
-    // When on/above a wall, the line starts at the wall-top level (layer2BaseY) — not groundY.
-    const isOnOrAboveWall = obj.standingWall !== null ||
-      (obj.supportingSurfaceHeight ?? 0) >= wallH - 0.05 ||
-      obj.position.z >= wallH - 0.05;
+    // Determine whether the object is physically supported by or directly above a wall.
+    // Draw the vertical line down to the first surface it would hit if falling straight down:
+    // - If directly above or on a wall (at wall elevation or higher): bottom surface is the wall top (layer2BaseY).
+    // - If above open ground (no wall beneath): bottom surface is the ground (groundY), even if high in the air!
+    const radius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
+    const wallBeneath = (obj.standingWall && arena.walls.some(w => w.id === obj.standingWall!.id))
+      ? obj.standingWall
+      : arena.getSupportingWall(obj.position.x, obj.position.y, radius);
+    const isClimbing = Boolean(obj.isCharacter && (obj as any).isClimbing);
+    const isOnOrAboveWall = wallBeneath !== null && z >= wallH - 0.05 && !isClimbing;
     const lineBottomY = isOnOrAboveWall ? layer2BaseY : groundY;
 
-    // If line has zero or negligible length (e.g. standing exactly on wall top), skip
+    // If line has zero or negligible length (e.g. standing exactly on wall top or surface), skip
     if (Math.abs(lineBottomY - renderY) < 0.5) return;
 
     ctx.save();
