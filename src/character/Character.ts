@@ -4,6 +4,8 @@ import { PickupModule } from "./PickupModule.js";
 import { ThrowModule, TrajectoryCalculation } from "./ThrowModule.js";
 import { ClimbingModule } from "./ClimbingModule.js";
 import { StrengthModule } from "./StrengthModule.js";
+import { JumpModule } from "./JumpModule.js";
+import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
 import type { Arena } from "../engine/Arena.js";
 
 export class Character extends GameObject {
@@ -65,12 +67,12 @@ export class Character extends GameObject {
   }
 
   public get hangDistance(): number {
-    return this.climbingModule ? this.climbingModule.hangDistance : 0.10;
+    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistance : 0.10;
   }
 
   public set hangDistance(val: number) {
-    if (this.climbingModule) {
-      this.climbingModule.hangDistance = Math.max(0, val);
+    if (this.wallEdgeAssistModule) {
+      this.wallEdgeAssistModule.hangDistance = Math.max(0, val);
     }
   }
 
@@ -78,6 +80,8 @@ export class Character extends GameObject {
   public walkingModule: WalkingModule | null;
   public pickupModule: PickupModule | null;
   public throwModule: ThrowModule | null;
+  public jumpModule: JumpModule | null;
+  public wallEdgeAssistModule: WallEdgeAssistModule | null;
   public climbingModule: ClimbingModule | null;
 
   // Player identity & multiplayer slot
@@ -128,7 +132,19 @@ export class Character extends GameObject {
     this.walkingModule = new WalkingModule();
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();
-    this.climbingModule = new ClimbingModule();
+    this.jumpModule = new JumpModule();
+    this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
+  }
+
+  /**
+   * Attempts to jump using the attached JumpModule.
+   */
+  public jump(arena: Arena): boolean {
+    if (this.jumpModule) {
+      return this.jumpModule.jump(this, arena);
+    }
+    return false;
   }
 
   /**

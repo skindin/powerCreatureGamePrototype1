@@ -597,15 +597,15 @@ export class GameObject {
     // - Disabling: Pressing Space disables the assist clamp, allowing character to walk off without pressing Space again.
     // - Re-arming: Remains disabled until character moves outside the clamp area (> 0.1u) and then back into it (<= 0.1u).
     const char = this.isCharacter ? (this as any) : null;
-    const climbMod = char?.climbingModule;
+    const edgeMod = char?.wallEdgeAssistModule ?? char?.climbingModule;
     const wasStandingOnWallTop = !this.isClimbing && this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.standingWall !== null;
-    const hangDistance = Math.max(0.01, climbMod?.hangDistance ?? 0.10);
+    const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
 
-    if (climbMod) {
+    if (edgeMod) {
       if (this.position.z <= 0.01) {
         // Grounded: clamp is disarmed, ready to arm when player climbs & enters clamp zone
-        climbMod.isAssistClampArmed = false;
-        climbMod.hasLeftClampZoneSinceDismount = true;
+        edgeMod.isAssistClampArmed = false;
+        edgeMod.hasLeftClampZoneSinceDismount = true;
       } else if (wasStandingOnWallTop && this.standingWall) {
         // Compute distance to current wall platform
         const standing = this.standingWall;
@@ -627,19 +627,19 @@ export class GameObject {
 
         if (isInsideClampZone) {
           // Inside the clamp zone (within 0.1 units of the wall)
-          if (climbMod.hasLeftClampZoneSinceDismount) {
+          if (edgeMod.hasLeftClampZoneSinceDismount) {
             // Once character moves within 0.1 units of the wall after being outside: clamp is enabled!
-            climbMod.isAssistClampArmed = true;
+            edgeMod.isAssistClampArmed = true;
           }
         } else {
           // Outside the clamp zone (> 0.1 units from the wall)
-          climbMod.hasLeftClampZoneSinceDismount = true;
-          climbMod.isAssistClampArmed = false;
+          edgeMod.hasLeftClampZoneSinceDismount = true;
+          edgeMod.isAssistClampArmed = false;
         }
 
         // Check if character has moved onto the wall platform after climbing
-        if (!climbMod.hasMovedOntoWall) {
-          const distMoved = Math.hypot(this.position.x - climbMod.mountStartX, this.position.y - climbMod.mountStartY);
+        if (!edgeMod.hasMovedOntoWall) {
+          const distMoved = Math.hypot(this.position.x - edgeMod.mountStartX, this.position.y - edgeMod.mountStartY);
           let centerInsideWall = false;
           for (const w of platformWalls) {
             if (this.position.x >= w.x && this.position.x <= w.x + w.width &&
@@ -649,20 +649,20 @@ export class GameObject {
             }
           }
           if (distMoved >= 0.20 || centerInsideWall) {
-            climbMod.hasMovedOntoWall = true;
+            edgeMod.hasMovedOntoWall = true;
           }
         }
       } else {
-        climbMod.isAssistClampArmed = false;
+        edgeMod.isAssistClampArmed = false;
       }
     }
 
     const isPreventWalkOffActive = Boolean(
       char &&
       wasStandingOnWallTop &&
-      climbMod?.enabled &&
-      climbMod?.preventWalkOff &&
-      climbMod?.isAssistClampArmed
+      edgeMod?.enabled &&
+      edgeMod?.preventWalkOff &&
+      edgeMod?.isAssistClampArmed
     );
 
     const deltaX = this.velocity.x * dt;
@@ -671,7 +671,6 @@ export class GameObject {
 
     if (moveDist > 0.0001) {
       if (isPreventWalkOffActive) {
-        const hangDistance = Math.max(0.01, char?.climbingModule?.hangDistance ?? 0.10);
         let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, hangDistance);
         this.standingWall = currentWall;
 
@@ -734,11 +733,11 @@ export class GameObject {
 
             // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail,
             // and the character has moved onto the wall platform first!
-            const canDismount = !climbMod || climbMod.hasMovedOntoWall;
+            const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
             if (isPushingAgainstGuardrail && char?.isClimbInputHeld && canDismount) {
-              if (climbMod) {
-                climbMod.isAssistClampArmed = false;
-                climbMod.hasLeftClampZoneSinceDismount = false;
+              if (edgeMod) {
+                edgeMod.isAssistClampArmed = false;
+                edgeMod.hasLeftClampZoneSinceDismount = false;
               }
               // Allow character to step forward naturally without the guardrail holding them back.
               // Character remains supported on the wall until they naturally walk off the edge!
@@ -786,7 +785,7 @@ export class GameObject {
         // the wall they're heading towards and fall.
         let currentWall = this.standingWall ?? (wasStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
         let hasDismountedIntoGap = false;
-        const canDismount = !climbMod || climbMod.hasMovedOntoWall;
+        const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
 
         for (let s = 1; s <= numSteps; s++) {
           let candX = this.position.x + stepDx;

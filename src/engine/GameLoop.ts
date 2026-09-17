@@ -109,6 +109,13 @@ export class GameLoop {
       this.spawnKeyboardPlayer();
     };
 
+    this.inputManager.onKeyboardJump = () => {
+      const kChar = this.players.get("keyboard")?.character;
+      if (kChar) {
+        kChar.jump(this.arena);
+      }
+    };
+
     this.inputManager.onGamepadJoin = (slotIndex: number) => {
       const slot = this.inputManager.gamepadSlots.get(slotIndex);
       this.spawnGamepadPlayer(slotIndex, slot?.id);

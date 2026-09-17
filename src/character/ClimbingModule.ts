@@ -13,14 +13,8 @@ export class ClimbingModule {
   // Maximum vertical speed cap when climbing walls (in units per second)
   public maxClimbSpeed = 3.0;
 
-  // Whether to prevent walking off elevated walls unless holding climb key (Space bar)
-  public preventWalkOff = true;
-
   // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
   public horizontalClimb = false;
-
-  // Maximum distance character is allowed to hang off of elevated walls before ledge guard clamps movement (in units)
-  public hangDistance = 0.10;
 
   // When climbing up onto a wall top, dismount is suppressed until climb control is released
   public dismountSuppressedUntilRelease = false;
@@ -30,17 +24,6 @@ export class ClimbingModule {
 
   // Set when dismounting or stepping into an open gap until hitting ground or fresh press
   public isDismountFreefall = false;
-
-  // Whether the assist clamp (ledge guard) is currently active/armed
-  public isAssistClampArmed = false;
-
-  // Tracks if character has moved outside the clamp zone (> 0.1u) after dismounting
-  public hasLeftClampZoneSinceDismount = true;
-
-  // Tracks whether character has moved onto the wall top platform after mounting before allowing dismount
-  public hasMovedOntoWall = false;
-  public mountStartX = 0;
-  public mountStartY = 0;
 
   public get climbSuppressedUntilRePress(): boolean {
     return this.isDismountFreefall || this.climbSuppressedUntilRelease;
@@ -56,15 +39,11 @@ export class ClimbingModule {
   constructor(options?: {
     maxAdhesion?: number;
     maxClimbSpeed?: number;
-    preventWalkOff?: boolean;
     horizontalClimb?: boolean;
-    hangDistance?: number;
   }) {
     if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
     if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
-    if (options?.preventWalkOff !== undefined) this.preventWalkOff = options.preventWalkOff;
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
-    if (options?.hangDistance !== undefined) this.hangDistance = options.hangDistance;
   }
 
   /**
@@ -93,10 +72,10 @@ export class ClimbingModule {
     // Ground contact or fresh press clears dismount freefall
     if (character.position.z <= 0.05 || isFreshClimbPress) {
       this.isDismountFreefall = false;
-      if (character.position.z <= 0.05) {
-        this.isAssistClampArmed = false;
-        this.hasLeftClampZoneSinceDismount = true;
-        this.hasMovedOntoWall = false;
+      if (character.position.z <= 0.05 && character.wallEdgeAssistModule) {
+        character.wallEdgeAssistModule.isAssistClampArmed = false;
+        character.wallEdgeAssistModule.hasLeftClampZoneSinceDismount = true;
+        character.wallEdgeAssistModule.hasMovedOntoWall = false;
       }
     }
 
@@ -226,13 +205,13 @@ export class ClimbingModule {
             character.position.x = (character.position.x + targetDx) - wallNormalX * (r - mountNudge);
             character.position.y = (character.position.y + targetDy) - wallNormalY * (r - mountNudge);
           }
-          this.hasMovedOntoWall = false;
-          this.mountStartX = character.position.x;
-          this.mountStartY = character.position.y;
-
-          // Assist clamp arms once character is on the wall
-          this.isAssistClampArmed = true;
-          this.hasLeftClampZoneSinceDismount = false;
+          if (character.wallEdgeAssistModule) {
+            character.wallEdgeAssistModule.hasMovedOntoWall = false;
+            character.wallEdgeAssistModule.mountStartX = character.position.x;
+            character.wallEdgeAssistModule.mountStartY = character.position.y;
+            character.wallEdgeAssistModule.isAssistClampArmed = true;
+            character.wallEdgeAssistModule.hasLeftClampZoneSinceDismount = false;
+          }
         }
       }
 
@@ -257,7 +236,9 @@ export class ClimbingModule {
       character.velocity.x = 0;
       character.velocity.y = 0;
       this.isDismountFreefall = false;
-      this.hasMovedOntoWall = false;
+      if (character.wallEdgeAssistModule) {
+        character.wallEdgeAssistModule.hasMovedOntoWall = false;
+      }
       (character as any).standingWall = null;
 
       const baseMass = character.baseMass;

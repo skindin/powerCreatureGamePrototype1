@@ -290,6 +290,16 @@ powerCreatureGamePrototype1/
     - Player name tags ("P1", "P2", "Press Space / A") are rendered in a dedicated final render pass (`drawCharacterNameTag`) in `Renderer.ts` after walls, 2.5D wall tops, entities, and trajectory lines are drawn, ensuring name tags are never occluded by wall tops.
 26. **Disabled Blue Outline for Above Layer 2 Threshold**:
     - In `Renderer.ts` (`drawObjectColliderPositionOutline`), disabled the cyan/blue dashed outline (`rgba(56, 189, 248)`) that was previously rendered for objects elevated above the Layer 2 ceiling ($z \ge 2 \times \text{wallHeight}$).
+27. **JumpModule Addition & 1.5-Unit Apex Height Calibration (Space / Gamepad A)**:
+    - Added `JumpModule.ts` defining modular vertical jumping mechanics with `jumpStrength` (impulse in $\text{N}\cdot\text{s}$) and `maxInitialSpeed` (maximum takeoff velocity cap).
+    - **Default Calibration**: Configured with `jumpStrength = 11.6` and `maxInitialSpeed = 15.0`. Under standard arena gravity ($g = 30.0$) and default character mass ($1.2\text{kg}$), discrete 60Hz Euler integration yields an apex height of exactly **$1.50\text{ units}$** ($1.498\text{u}$), allowing creatures to clear 1.5 wall-height layers unencumbered.
+    - **Encumbered Physics Scaling**: Vertical takeoff velocity scales with combined load ($v_z = \min(\text{maxInitialSpeed}, \text{jumpStrength} / (m_{\text{char}} + m_{\text{held}}))$), reducing jump height realistically when holding rocks, crates, or other creatures.
+    - **Input Binding**: Initiated on non-repeat `Spacebar` (keyboard) and button 0 / `A` button (gamepad), while preserving initial device claiming / join triggers when unassigned.
+28. **WallEdgeAssistModule Decoupling & Optional ClimbingModule Detachment**:
+    - Separated wall platform edge guardrails and clamp states (`preventWalkOff`, `hangDistance`, `isAssistClampArmed`, `hasMovedOntoWall`, mount tracking) out of `ClimbingModule` into an independent `WallEdgeAssistModule.ts`.
+    - **Removed Climbing from Default Character**: Default player characters spawn with `climbingModule = null`, giving them jump and edge guardrail capabilities by default without vertical wall adhesion.
+    - **Decoupled Ledge Protection**: Characters walking on wall tops retain ledge protection (`preventWalkOff = true`) even without climbing abilities attached.
+    - **Optional Addable Behavior**: `ClimbingModule` remains fully supported as an opt-in creature ability; players can re-attach climbing at any time via the DevPanel "➕ Add Behavior" dropdown.
 
 ---
 

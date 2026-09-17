@@ -77,6 +77,7 @@ export class InputManager {
   public onToggleSprint?: () => void;
   public onGamepadStatusChange?: (connected: boolean, name: string) => void;
   public onKeyboardJoin?: () => void;
+  public onKeyboardJump?: () => void;
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
 
@@ -89,12 +90,15 @@ export class InputManager {
   private setupListeners(): void {
     if (typeof window === "undefined") return;
     window.addEventListener("keydown", (e) => {
-      // Spacebar join trigger: if keyboard player is not currently active, pressing Space spawns them
+      // Spacebar: if keyboard player is not currently active, pressing Space spawns them
       if (e.code === "Space") {
         if (!this.isKeyboardActive) {
           e.preventDefault();
           this.onKeyboardJoin?.();
           return;
+        } else if (!e.repeat) {
+          e.preventDefault();
+          this.onKeyboardJump?.();
         }
       }
 
@@ -400,8 +404,12 @@ export class InputManager {
       slot.aimPos.x = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
       slot.aimPos.y = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
 
-      // Button 0 (A on Xbox / Cross on PS): Climbing / Dismounting for active character
-      slot.isClimbHeld = isButtonPressed(0);
+      // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
+      const btn0Current = isButtonPressed(0);
+      slot.isClimbHeld = btn0Current;
+      if (btn0Current && !isPrevPressed(0)) {
+        char.jump(arena);
+      }
 
       // Button 4 (Left Bumper / LB / L1): Toggle Sprint
       const lbCurrent = isButtonPressed(4);

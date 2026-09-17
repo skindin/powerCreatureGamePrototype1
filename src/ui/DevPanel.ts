@@ -6,6 +6,8 @@ import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
 import { ClimbingModule } from "../character/ClimbingModule.js";
 import { StrengthModule } from "../character/StrengthModule.js";
+import { JumpModule } from "../character/JumpModule.js";
+import { WallEdgeAssistModule } from "../character/WallEdgeAssistModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ColliderModule } from "../engine/ColliderModule.js";
 import { MassModule } from "../engine/MassModule.js";
@@ -695,10 +697,16 @@ export class DevPanel {
       if (char.throwModule) {
         this.setSliderVal("slide-throw-force", "val-throw-force", char.throwModule.baseThrowForce, 1);
       }
+      if (char.jumpModule) {
+        this.setSliderVal("slide-jump-strength", "val-jump-strength", char.jumpModule.jumpStrength, 1);
+        this.setSliderVal("slide-jump-max-speed", "val-jump-max-speed", char.jumpModule.maxInitialSpeed, 1);
+      }
+      if (char.wallEdgeAssistModule) {
+        this.setSliderVal("slide-edge-hang", "val-edge-hang", char.wallEdgeAssistModule.hangDistance, 2);
+      }
       if (char.climbingModule) {
         this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", char.climbingModule.maxAdhesion, 0);
         this.setSliderVal("slide-climb-speed", "val-climb-speed", char.climbingModule.maxClimbSpeed, 1);
-        this.setSliderVal("slide-climb-hang", "val-climb-hang", char.climbingModule.hangDistance, 2);
       }
     }
   }
@@ -737,6 +745,8 @@ export class DevPanel {
     const hasStrength = isChar && Boolean(char?.strengthModule && char.strengthModule.enabled);
     const hasPickup = isChar && Boolean(char?.pickupModule && char.pickupModule.enabled);
     const hasThrow = isChar && Boolean(char?.throwModule && char.throwModule.enabled);
+    const hasJump = isChar && Boolean(char?.jumpModule && char.jumpModule.enabled);
+    const hasEdgeAssist = isChar && Boolean(char?.wallEdgeAssistModule && char.wallEdgeAssistModule.enabled);
     const hasClimbing = isChar && Boolean(char?.climbingModule && char.climbingModule.enabled);
 
     let html = "";
@@ -997,6 +1007,58 @@ export class DevPanel {
         `;
       }
 
+      if (hasJump) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="jump">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🦘 Jump Ability</label>
+              <button class="btn-remove-module" data-module-id="jump" title="Remove Jump Ability">✕ Remove</button>
+            </div>
+            ${!hasVertPos ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>` : ''}
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Jump Strength (N·s)</span>
+                <span id="val-jump-strength">${(char.jumpModule?.jumpStrength ?? 11.6).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-jump-strength" min="2.0" max="40.0" step="0.5" value="${char.jumpModule?.jumpStrength ?? 11.6}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Takeoff Speed (u/s)</span>
+                <span id="val-jump-max-speed">${(char.jumpModule?.maxInitialSpeed ?? 15.0).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-jump-max-speed" min="2.0" max="30.0" step="0.5" value="${char.jumpModule?.maxInitialSpeed ?? 15.0}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasEdgeAssist) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="wallEdgeAssist">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🛡️ Wall Edge Assist</label>
+              <button class="btn-remove-module" data-module-id="wallEdgeAssist" title="Remove Wall Edge Assist">✕ Remove</button>
+            </div>
+            <div class="toggle-row" style="margin-bottom: 8px;">
+              <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
+              <button id="toggle-edge-walkoff" class="btn-toggle ${char.wallEdgeAssistModule?.preventWalkOff ? 'active' : ''}">
+                ${char.wallEdgeAssistModule?.preventWalkOff ? 'Active' : 'Inactive'}
+              </button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Ledge Hang Distance (u)</span>
+                <span id="val-edge-hang">${(char.wallEdgeAssistModule?.hangDistance ?? 0.10).toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-edge-hang" min="0.02" max="0.5" step="0.01" value="${char.wallEdgeAssistModule?.hangDistance ?? 0.10}">
+            </div>
+          </div>
+        `;
+      }
+
       if (hasClimbing) {
         attachedCount++;
         html += `
@@ -1006,12 +1068,6 @@ export class DevPanel {
               <button class="btn-remove-module" data-module-id="climbing" title="Remove Climbing Ability">✕ Remove</button>
             </div>
             ${(!hasVertPos || !hasStrength) ? `<div class="module-dep-warning">${!hasVertPos ? '⚠️ Requires Vertical Position (3D Z-axis)' : '⚠️ Requires Strength Ability to climb'}</div>` : ''}
-            <div class="toggle-row" style="margin-bottom: 8px;">
-              <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
-              <button id="toggle-climb-walkoff" class="btn-toggle ${char.climbingModule?.preventWalkOff ? 'active' : ''}">
-                ${char.climbingModule?.preventWalkOff ? 'Active' : 'Inactive'}
-              </button>
-            </div>
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Sideways Climb</label>
               <button id="toggle-climb-sideways" class="btn-toggle ${char.climbingModule?.horizontalClimb ? 'active' : ''}">
@@ -1031,13 +1087,6 @@ export class DevPanel {
                 <span id="val-climb-speed">${(char.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
               </div>
               <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${char.climbingModule?.maxClimbSpeed ?? 3.0}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Ledge Hang Distance (u)</span>
-                <span id="val-climb-hang">${(char.climbingModule?.hangDistance ?? 0.10).toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-climb-hang" min="0.02" max="1.5" step="0.02" value="${char.climbingModule?.hangDistance ?? 0.10}">
             </div>
           </div>
         `;
@@ -1080,7 +1129,9 @@ export class DevPanel {
         { id: "strength", name: "Strength Ability", icon: "💪", description: "Muscle power for throw speed and climbing", isAttached: hasStrength },
         { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickup },
         { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrow },
-        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, ledge hanging, and vertical traversal", isAttached: hasClimbing }
+        { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJump },
+        { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssist },
+        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbing }
       );
     }
 
@@ -1184,6 +1235,16 @@ export class DevPanel {
           (e as Character).throwModule = null;
         }
         break;
+      case "jump":
+        if (e instanceof Character) {
+          (e as Character).jumpModule = null;
+        }
+        break;
+      case "wallEdgeAssist":
+        if (e instanceof Character) {
+          (e as Character).wallEdgeAssistModule = null;
+        }
+        break;
       case "climbing":
         if (e instanceof Character) {
           const char = e as Character;
@@ -1245,6 +1306,16 @@ export class DevPanel {
       case "throw":
         if (e instanceof Character) {
           (e as Character).throwModule = new ThrowModule();
+        }
+        break;
+      case "jump":
+        if (e instanceof Character) {
+          (e as Character).jumpModule = new JumpModule();
+        }
+        break;
+      case "wallEdgeAssist":
+        if (e instanceof Character) {
+          (e as Character).wallEdgeAssistModule = new WallEdgeAssistModule();
         }
         break;
       case "climbing":
@@ -1350,14 +1421,26 @@ export class DevPanel {
         if (char.throwModule) char.throwModule.baseThrowForce = val;
       }, 1);
 
-      const btnClimbWalkOff = this.container.querySelector("#toggle-climb-walkoff") as HTMLButtonElement;
-      btnClimbWalkOff?.addEventListener("click", () => {
-        if (char.climbingModule) {
-          char.climbingModule.preventWalkOff = !char.climbingModule.preventWalkOff;
-          btnClimbWalkOff.classList.toggle("active", char.climbingModule.preventWalkOff);
-          btnClimbWalkOff.textContent = char.climbingModule.preventWalkOff ? "Active" : "Inactive";
+      // Jump Ability
+      this.setupSlider("slide-jump-strength", "val-jump-strength", (val) => {
+        if (char.jumpModule) char.jumpModule.jumpStrength = val;
+      }, 1);
+      this.setupSlider("slide-jump-max-speed", "val-jump-max-speed", (val) => {
+        if (char.jumpModule) char.jumpModule.maxInitialSpeed = val;
+      }, 1);
+
+      // Wall Edge Assist
+      const btnEdgeWalkOff = this.container.querySelector("#toggle-edge-walkoff") as HTMLButtonElement;
+      btnEdgeWalkOff?.addEventListener("click", () => {
+        if (char.wallEdgeAssistModule) {
+          char.wallEdgeAssistModule.preventWalkOff = !char.wallEdgeAssistModule.preventWalkOff;
+          btnEdgeWalkOff.classList.toggle("active", char.wallEdgeAssistModule.preventWalkOff);
+          btnEdgeWalkOff.textContent = char.wallEdgeAssistModule.preventWalkOff ? "Active" : "Inactive";
         }
       });
+      this.setupSlider("slide-edge-hang", "val-edge-hang", (val) => {
+        if (char.wallEdgeAssistModule) char.wallEdgeAssistModule.hangDistance = val;
+      }, 2);
 
       const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
       btnClimbSideways?.addEventListener("click", () => {
@@ -1374,9 +1457,6 @@ export class DevPanel {
       this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
         if (char.climbingModule) char.climbingModule.maxClimbSpeed = val;
       }, 1);
-      this.setupSlider("slide-climb-hang", "val-climb-hang", (val) => {
-        if (char.climbingModule) char.climbingModule.hangDistance = val;
-      }, 2);
     }
   }
 
@@ -1901,7 +1981,7 @@ export class DevPanel {
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Ledge Hang Limit</span>
-        <span class="inspect-v">${(char.climbingModule?.hangDistance ?? 0.10).toFixed(2)} u</span>
+        <span class="inspect-v">${(char.wallEdgeAssistModule?.hangDistance ?? 0.10).toFixed(2)} u</span>
       </div>
       ` : ''}
     `;
