@@ -938,7 +938,8 @@ export class Renderer {
       ctx.setLineDash([4, 4]);
       ctx.stroke();
 
-      // If in Layer 3+ (z >= 2 * wallHeight), also draw Layer 2 ceiling reference ring (how low it must be to enter Layer 2!)
+      // (Blue outline for above Layer 2 threshold disabled for now per user request)
+      /*
       if (z >= 2 * arena.wallHeight + 0.01) {
         const layer2CeilAltScale = Renderer.getAltitudeScale(2 * arena.wallHeight, arena.wallHeight);
         const layer2CeilRadius = obj.colliderRadius * ppu * layer2CeilAltScale;
@@ -956,10 +957,11 @@ export class Renderer {
         ctx.setLineDash([3, 3]);
         ctx.stroke();
       }
+      */
     }
 
-    // In Hover mode, when object is in Layer 3+ (z >= 2 * wallHeight), draw the Layer 2 ceiling outline
-    // showing the exact elevation footprint where the object becomes low enough to enter and collide with Layer 2!
+    // (Blue outline for above Layer 2 ceiling in hover mode disabled for now per user request)
+    /*
     if (useHover && hoverScale > 0 && z >= 2 * arena.wallHeight - 0.05) {
       const ceilingY = (obj.position.y - 2 * arena.wallHeight * hoverScale) * ppu;
       ctx.beginPath();
@@ -976,6 +978,7 @@ export class Renderer {
       ctx.setLineDash([3, 3]);
       ctx.stroke();
     }
+    */
     ctx.restore();
   }
 

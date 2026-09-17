@@ -288,6 +288,8 @@ powerCreatureGamePrototype1/
       - **On or Directly Above a Wall**: If an actual wall exists directly beneath the entity and elevation is at or above wall height ($z \ge \text{wallHeight} - 0.05$), the line anchors to the wall top (`layer2BaseY`) and draws upward to `renderY`. Entities resting on the wall top have zero-length line (suppressed).
 25. **Player Name Tags Render Above Everything in Final Pass**:
     - Player name tags ("P1", "P2", "Press Space / A") are rendered in a dedicated final render pass (`drawCharacterNameTag`) in `Renderer.ts` after walls, 2.5D wall tops, entities, and trajectory lines are drawn, ensuring name tags are never occluded by wall tops.
+26. **Disabled Blue Outline for Above Layer 2 Threshold**:
+    - In `Renderer.ts` (`drawObjectColliderPositionOutline`), disabled the cyan/blue dashed outline (`rgba(56, 189, 248)`) that was previously rendered for objects elevated above the Layer 2 ceiling ($z \ge 2 \times \text{wallHeight}$).
 
 ---
 
