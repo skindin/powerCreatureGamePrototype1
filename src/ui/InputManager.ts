@@ -56,8 +56,35 @@ export class InputManager {
     return this.gamepadConnected && this.activeInputDevice === "gamepad";
   }
 
+  public isTextInputFocused(): boolean {
+    if (typeof document === "undefined") return false;
+    const active = document.activeElement;
+    if (!active) return false;
+    const tagName = active.tagName.toLowerCase();
+    if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+      return true;
+    }
+    if ((active as HTMLElement).isContentEditable) {
+      return true;
+    }
+    return false;
+  }
+
+  private isTargetTextInput(target: EventTarget | null): boolean {
+    if (!target) return false;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      Boolean((target as HTMLElement)?.isContentEditable)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   public get isKeyboardJumpHeld(): boolean {
-    return this.isKeyboardActive && this.keysPressed.has("Space");
+    return this.isKeyboardActive && !this.isTextInputFocused() && this.keysPressed.has("Space");
   }
 
   public get isClimbHeld(): boolean {
@@ -93,7 +120,25 @@ export class InputManager {
 
   private setupListeners(): void {
     if (typeof window === "undefined") return;
+
+    // When an input/textarea/select receives focus, immediately release any active game keys
+    // so the character doesn't keep running or jumping while the user types.
+    window.addEventListener("focusin", (e) => {
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        this.keysPressed.clear();
+        this.isEKeyDepressed = false;
+        this.updateMovementVector();
+      }
+    });
+
     window.addEventListener("keydown", (e) => {
+      // If user is focused on or typing into ANY text box or form input,
+      // allow default browser behavior (typing characters, spaces, backspaces)
+      // and do NOT hijack input or trigger game actions!
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        return;
+      }
+
       // Spacebar: if keyboard player is not currently active, pressing Space spawns them
       if (e.code === "Space") {
         e.preventDefault();
@@ -128,6 +173,11 @@ export class InputManager {
     });
 
     window.addEventListener("keyup", (e) => {
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        this.keysPressed.delete(e.code);
+        return;
+      }
+
       this.keysPressed.delete(e.code);
       this.updateMovementVector();
 
@@ -267,7 +317,7 @@ export class InputManager {
   }
 
   private updateMovementVector(): void {
-    if (!this.isKeyboardActive) {
+    if (!this.isKeyboardActive || this.isTextInputFocused()) {
       this.movementVector.x = 0;
       this.movementVector.y = 0;
       return;

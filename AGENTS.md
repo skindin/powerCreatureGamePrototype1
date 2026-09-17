@@ -362,6 +362,13 @@ powerCreatureGamePrototype1/
       - Server exposes `GET /api/feedback`, `POST /api/feedback`, and `PATCH /api/feedback/:id` in both `server.js` (production) and `vite.config.ts` (dev server & remote localtunnel).
       - Backed by JSON file store (`data/feedback.json`, `server/feedbackStore.js`).
       - **Railway DB**: Setting up an external Railway DB (e.g. Postgres) is **not strictly required** to use the feedback system right away. However, because Railway's container filesystem is ephemeral across Git redeployments, data in `data/feedback.json` would reset on redeploy. To persist user feedback permanently across future redeployments, attach a Railway Persistent Volume at `/app/data` (0 code changes) or provision a free Railway PostgreSQL database.
+38. **Text Input Focus Precedence & Game Input Isolation**:
+    - **Focus Detection**: Added `isTextInputFocused()` and `isTargetTextInput(e.target)` to `InputManager.ts`, detecting active `HTMLInputElement`, `HTMLTextAreaElement`, `HTMLSelectElement`, and contenteditable elements.
+    - **Spacebar & Key Isolation**: When any text input/field is focused:
+      - `Spacebar` default browser behavior (inserting a space character) is strictly preserved without calling `e.preventDefault()`. Spacebar jumps and player joins are suppressed.
+      - WASD character movement, climbing, sprint toggles, and drop/pickup (`KeyE`) actions are suppressed, and `movementVector` is zeroed out.
+    - **Focus Reset**: Added a `focusin` listener on `window` that immediately clears `keysPressed` and resets movement whenever a text field receives focus, preventing characters from continuing to run if a text box is clicked while moving.
+    - **Hotkey Guards**: Guarded global hotkeys in `PlayersPanel.ts` (`P`) and `main.ts` (`I`, `V`, `~`) against all form input and contenteditable targets so typing letters inside text areas never triggers panel toggles.
 
 ---
 

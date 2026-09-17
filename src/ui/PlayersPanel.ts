@@ -54,7 +54,12 @@ export class PlayersPanel {
 
     // Keyboard hotkey 'P' to toggle players panel
     window.addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement ||
+        Boolean((e.target as HTMLElement)?.isContentEditable)
+      ) return;
       if (e.code === "KeyP") {
         e.preventDefault();
         this.toggle();
