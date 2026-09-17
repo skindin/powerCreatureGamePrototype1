@@ -62,6 +62,165 @@
         </div>
       </header>
 
+      <!-- Floating Hamburger Button (Mobile Horizontal & Small Screens) -->
+      <button id="mobile-menu-btn" class="mobile-hamburger-btn" aria-label="Toggle Game Menu" title="Game Menu">
+        <span class="hamburger-box">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+      </button>
+
+      <!-- Mobile Expanded Landscape Menu -->
+      <div id="mobile-expanded-menu" class="mobile-expanded-menu hidden">
+        <div class="mobile-menu-card">
+          <div class="mobile-menu-header">
+            <div class="mobile-menu-brand">
+              <span class="mobile-menu-logo">⚡ Power Creature</span>
+              <span class="brand-badge">Phase 1.1 Sandbox</span>
+            </div>
+            <div class="mobile-menu-header-actions">
+              <div id="mobile-relay-status" class="relay-pill hidden">
+                <span class="status-dot"></span>
+                <span id="mobile-ping-display">-- ms</span>
+              </div>
+              <button id="btn-close-mobile-menu" class="btn-close-panel" title="Close Menu (Esc)">✕</button>
+            </div>
+          </div>
+
+          <div class="mobile-menu-body">
+            <!-- Column 1: Game Mode & Public Nationwide Link -->
+            <div class="mobile-menu-col">
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🎮</span>
+                  <h3>Game Mode</h3>
+                </div>
+                <div class="mobile-mode-switcher">
+                  <button id="mobile-mode-single-btn" class="mobile-mode-btn active">
+                    <span>👤 Single Player</span>
+                  </button>
+                  <button id="mobile-mode-multi-btn" class="mobile-mode-btn">
+                    <span>🌐 Multiplayer</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🌐</span>
+                  <h3>Public Nationwide Room</h3>
+                </div>
+                <div class="mobile-public-card">
+                  <div class="mobile-url-row">
+                    <span class="status-dot" id="mobile-public-dot"></span>
+                    <span class="mobile-public-url" id="mobile-public-url-text">https://pcg-arena-teal.loca.lt</span>
+                  </div>
+                  <div class="mobile-url-actions">
+                    <button id="mobile-btn-copy-url" class="btn-action-pill">📋 Copy</button>
+                    <a href="https://pcg-arena-teal.loca.lt" target="_blank" id="mobile-btn-open-url" class="btn-action-pill">↗ Open</a>
+                    <button id="mobile-btn-qr" class="btn-action-pill btn-qr-accent">📱 QR</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 2: Visuals & Wall Elevation Settings -->
+            <div class="mobile-menu-col">
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">👁️</span>
+                  <h3>Vertical Visuals</h3>
+                </div>
+                <div class="mobile-visual-options">
+                  <button type="button" class="mobile-visual-btn active" data-visual-mode="bigger">
+                    <span class="vis-dot"></span>
+                    <span>Bigger Sprites</span>
+                  </button>
+                  <button type="button" class="mobile-visual-btn" data-visual-mode="hover">
+                    <span class="vis-dot"></span>
+                    <span>Hover Above Shadow</span>
+                  </button>
+                  <button type="button" class="mobile-visual-btn" data-visual-mode="both">
+                    <span class="vis-dot"></span>
+                    <span>Both Modes</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row" style="justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="section-icon">🧱</span>
+                    <h3>Wall Isometric Height</h3>
+                  </div>
+                  <span id="mobile-val-wall-height" class="mobile-num-val">1.00</span>
+                </div>
+                <div class="mobile-slider-wrapper">
+                  <span>0.0</span>
+                  <input type="range" id="mobile-slide-wall-height" min="0.0" max="1.0" step="0.05" value="1.0" />
+                  <span>1.0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 3: Panels, Tools & Controls Reference -->
+            <div class="mobile-menu-col">
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🛠️</span>
+                  <h3>Panels & Tools</h3>
+                </div>
+                <div class="mobile-panel-buttons">
+                  <button id="mobile-btn-players" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">👥</span>
+                    <span class="nav-btn-text">Players & Controllers</span>
+                    <span id="mobile-players-badge" class="badge">1 Active</span>
+                  </button>
+                  <button id="mobile-btn-inspector" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🛠️</span>
+                    <span class="nav-btn-text">Dev Inspector</span>
+                    <span class="badge" style="background: rgba(56,189,248,0.2); color: var(--accent-cyan);">Open</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🎮</span>
+                  <h3>Controls Reference</h3>
+                </div>
+                <div class="mobile-controls-list">
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge">WASD</span> / <span class="key-badge">L-Stick</span></span>
+                    <span class="ctrl-v">Move</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge">Space</span> / <span class="key-badge">A</span></span>
+                    <span class="ctrl-v">Jump</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span></span>
+                    <span class="ctrl-v">Throw</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span></span>
+                    <span class="ctrl-v">Sprint</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge">B</span></span>
+                    <span class="ctrl-v">Swap</span>
+                  </div>
+                </div>
+                <div id="mobile-gamepad-status" class="mobile-gamepad-badge hidden">
+                  <span>🎮 Controller Connected</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Phone Connect Modal -->
       <div id="phone-modal" class="view-settings-panel hidden">
         <div class="view-settings-card phone-modal-card">

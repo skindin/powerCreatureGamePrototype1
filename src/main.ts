@@ -159,13 +159,22 @@ function bootstrap(): void {
 
   // Gamepad Connection Indicator
   const controllerBadge = document.getElementById("controller-badge");
+  const mobileGamepadStatus = document.getElementById("mobile-gamepad-status");
   inputManager.onGamepadStatusChange = (connected, name) => {
-    if (!controllerBadge) return;
-    if (connected) {
-      controllerBadge.classList.remove("hidden");
-      controllerBadge.title = `Gamepad Connected: ${name}`;
-    } else {
-      controllerBadge.classList.add("hidden");
+    if (controllerBadge) {
+      if (connected) {
+        controllerBadge.classList.remove("hidden");
+        controllerBadge.title = `Gamepad Connected: ${name}`;
+      } else {
+        controllerBadge.classList.add("hidden");
+      }
+    }
+    if (mobileGamepadStatus) {
+      if (connected) {
+        mobileGamepadStatus.classList.remove("hidden");
+      } else {
+        mobileGamepadStatus.classList.add("hidden");
+      }
     }
   };
 
@@ -240,17 +249,24 @@ function bootstrap(): void {
   const rate30Btn = document.getElementById("rate-30hz-btn");
   const rate60Btn = document.getElementById("rate-60hz-btn");
 
+  const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
+  const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
+
   const setMode = (multiplayer: boolean) => {
     isMultiplayerMode = multiplayer;
     if (multiplayer) {
       btnSinglePlayer?.classList.remove("active");
       btnMultiplayer?.classList.add("active");
+      mobileModeSingleBtn?.classList.remove("active");
+      mobileModeMultiBtn?.classList.add("active");
       relayHud?.classList.remove("hidden");
       relayStatusPill?.classList.remove("hidden");
       relayClient.connect();
     } else {
       btnSinglePlayer?.classList.add("active");
       btnMultiplayer?.classList.remove("active");
+      mobileModeSingleBtn?.classList.add("active");
+      mobileModeMultiBtn?.classList.remove("active");
       relayHud?.classList.add("hidden");
       relayStatusPill?.classList.add("hidden");
       relayClient.disconnect();
@@ -259,6 +275,8 @@ function bootstrap(): void {
 
   btnSinglePlayer?.addEventListener("click", () => setMode(false));
   btnMultiplayer?.addEventListener("click", () => setMode(true));
+  mobileModeSingleBtn?.addEventListener("click", () => setMode(false));
+  mobileModeMultiBtn?.addEventListener("click", () => setMode(true));
 
   relayClient.onStatsChange = (stats) => {
     if (relayBadgeStatus) {
@@ -273,6 +291,19 @@ function bootstrap(): void {
     const dot = relayStatusPill?.querySelector(".status-dot");
     if (dot) {
       dot.className = `status-dot ${stats.status}`;
+    }
+
+    const mobileRelayStatus = document.getElementById("mobile-relay-status");
+    const mobilePingDisplay = document.getElementById("mobile-ping-display");
+    if (isMultiplayerMode) {
+      mobileRelayStatus?.classList.remove("hidden");
+      if (mobilePingDisplay) {
+        mobilePingDisplay.textContent = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
+      }
+      const mobileDot = mobileRelayStatus?.querySelector(".status-dot");
+      if (mobileDot) mobileDot.className = `status-dot ${stats.status}`;
+    } else {
+      mobileRelayStatus?.classList.add("hidden");
     }
 
     const pingText = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
@@ -464,6 +495,7 @@ function bootstrap(): void {
   const viewSettingsPanel = document.getElementById("view-settings-panel");
   const btnCloseViewSettings = document.getElementById("btn-close-view-settings");
   const visualOptionBtns = document.querySelectorAll<HTMLButtonElement>(".visual-option-btn");
+  const mobileVisualBtns = document.querySelectorAll<HTMLButtonElement>(".mobile-visual-btn");
 
   const setViewSettingsOpen = (open: boolean) => {
     if (!viewSettingsPanel) return;
@@ -511,6 +543,13 @@ function bootstrap(): void {
         btn.classList.remove("active");
       }
     });
+    mobileVisualBtns.forEach((btn) => {
+      if (btn.getAttribute("data-visual-mode") === mode) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
   };
 
   applyVisualMode(savedMode);
@@ -524,9 +563,20 @@ function bootstrap(): void {
     });
   });
 
+  mobileVisualBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.getAttribute("data-visual-mode") as VerticalVisualMode;
+      if (mode && validModes.includes(mode)) {
+        applyVisualMode(mode);
+      }
+    });
+  });
+
   // Visual Wall Height & Isometric Depth Slider (0.0 to 1.0)
   const slideVisualWallHeight = document.getElementById("slide-visual-wall-height") as HTMLInputElement | null;
   const valVisualWallHeight = document.getElementById("val-visual-wall-height");
+  const mobileSlideWallHeight = document.getElementById("mobile-slide-wall-height") as HTMLInputElement | null;
+  const mobileValWallHeight = document.getElementById("mobile-val-wall-height");
 
   let savedVisualWallHeight = 1.0;
   try {
@@ -545,6 +595,8 @@ function bootstrap(): void {
     renderer.setVisualAltitudeScale(scale);
     if (slideVisualWallHeight) slideVisualWallHeight.value = scale.toFixed(2);
     if (valVisualWallHeight) valVisualWallHeight.textContent = scale.toFixed(2);
+    if (mobileSlideWallHeight) mobileSlideWallHeight.value = scale.toFixed(2);
+    if (mobileValWallHeight) mobileValWallHeight.textContent = scale.toFixed(2);
     try {
       localStorage.setItem("pcg_visual_wall_height", scale.toString());
     } catch {
@@ -556,6 +608,13 @@ function bootstrap(): void {
 
   slideVisualWallHeight?.addEventListener("input", () => {
     const val = parseFloat(slideVisualWallHeight.value);
+    if (!isNaN(val)) {
+      applyVisualWallHeight(val);
+    }
+  });
+
+  mobileSlideWallHeight?.addEventListener("input", () => {
+    const val = parseFloat(mobileSlideWallHeight.value);
     if (!isNaN(val)) {
       applyVisualWallHeight(val);
     }
@@ -677,6 +736,10 @@ function bootstrap(): void {
             publicStatusDot.setAttribute("title", "Public tunnel is in standby");
           }
         }
+        const mobilePublicDot = document.getElementById("mobile-public-dot");
+        if (mobilePublicDot) {
+          mobilePublicDot.className = data.active ? "status-dot" : "status-dot connecting";
+        }
       }
     } catch {
       // Offline / error
@@ -740,10 +803,81 @@ function bootstrap(): void {
     }
 
     if (e.code === "Escape") {
+      setMobileMenuOpen(false);
       setViewSettingsOpen(false);
       setPhoneModalOpen(false);
     }
   });
+
+  // Setup Mobile Landscape Menu & Hamburger Button
+  const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+  const mobileExpandedMenu = document.getElementById("mobile-expanded-menu");
+  const btnCloseMobileMenu = document.getElementById("btn-close-mobile-menu");
+  const mobileBtnCopyUrl = document.getElementById("mobile-btn-copy-url");
+  const mobileBtnQr = document.getElementById("mobile-btn-qr");
+  const mobileBtnPlayers = document.getElementById("mobile-btn-players");
+  const mobileBtnInspector = document.getElementById("mobile-btn-inspector");
+  const mobilePlayersBadge = document.getElementById("mobile-players-badge");
+
+  const setMobileMenuOpen = (open: boolean) => {
+    if (!mobileExpandedMenu) return;
+    if (open) {
+      mobileExpandedMenu.classList.remove("hidden");
+      mobileMenuBtn?.classList.add("active");
+      if (mobilePlayersBadge && gameLoop) {
+        const count = gameLoop.players.size;
+        mobilePlayersBadge.textContent = `${count} Active`;
+      }
+    } else {
+      mobileExpandedMenu.classList.add("hidden");
+      mobileMenuBtn?.classList.remove("active");
+    }
+  };
+
+  mobileMenuBtn?.addEventListener("click", () => {
+    const isOpen = !mobileExpandedMenu?.classList.contains("hidden");
+    setMobileMenuOpen(!isOpen);
+  });
+
+  btnCloseMobileMenu?.addEventListener("click", () => {
+    setMobileMenuOpen(false);
+  });
+
+  mobileExpandedMenu?.addEventListener("click", (e) => {
+    if (e.target === mobileExpandedMenu) {
+      setMobileMenuOpen(false);
+    }
+  });
+
+  mobileBtnCopyUrl?.addEventListener("click", () => {
+    copyPublicLink(mobileBtnCopyUrl);
+  });
+
+  mobileBtnQr?.addEventListener("click", () => {
+    setMobileMenuOpen(false);
+    setPhoneModalOpen(true);
+  });
+
+  mobileBtnPlayers?.addEventListener("click", () => {
+    setMobileMenuOpen(false);
+    playersPanel.toggle();
+  });
+
+  mobileBtnInspector?.addEventListener("click", () => {
+    setMobileMenuOpen(false);
+    const isCollapsed = devContainer.classList.contains("collapsed");
+    setSidebarOpen(isCollapsed);
+  });
+
+  // Keep mobile players badge up to date on player changes
+  const prevOnPlayersChanged = gameLoop.onPlayersChanged;
+  gameLoop.onPlayersChanged = () => {
+    prevOnPlayersChanged?.();
+    if (mobilePlayersBadge && gameLoop) {
+      const count = gameLoop.players.size;
+      mobilePlayersBadge.textContent = `${count} Active`;
+    }
+  };
 
   // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
   gameLoop.getGhostSnapshot = (dt: number) => {
