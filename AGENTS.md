@@ -316,6 +316,9 @@ powerCreatureGamePrototype1/
     - In `Character.updateCharacter`, holding the jump input checks for takeoff both pre-physics integration and immediately following `this.updatePosition(dt, arena)`.
     - The instant a falling or airborne character hits the ground or a supporting wall top (`position.z <= surfaceHeight` resolving to `isRestingOnSurface = true`), `character.jump()` triggers within that same physics tick, immediately relaunching them into the air with initial takeoff velocity without resting or hitching on the ground.
     - Keyboard jump holding is strictly decoupled via `input.isKeyboardJumpHeld` (`this.keysPressed.has("Space")`), and Spacebar prevents browser scroll during key repeat.
+33. **45-Degree Directional Jump & Air Control (Walk in Air)**:
+    - **45-Degree Jump Force**: When jumping while intending to move forward (`inputMag > 0.05`), the jump force is placed at 45 degrees to the direction of jumping. The horizontal takeoff speed matches the vertical takeoff speed ($v_h = v_z$, $\tan(45^\circ) = 1$), propelling the character diagonally up and forward over obstacles while maintaining the 1.5-unit peak vertical clearance.
+    - **Air Control (Walk in Air)**: `WalkingModule` introduces the `walkInAir` toggle (default: `true`, configurable in `DevPanel.ts` via checkbox). When active, walking force applies in mid-air to steer, accelerate, or curve the jump trajectory. When movement inputs are released in mid-air (`!isMoving`), horizontal momentum is preserved without dead-stop air braking.
 
 ---
 

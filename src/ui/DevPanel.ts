@@ -687,6 +687,8 @@ export class DevPanel {
       if (char.walkingModule) {
         this.setSliderVal("slide-walk-force", "val-walk-force", char.walkingModule.maxWalkForce, 0);
         this.setSliderVal("slide-walk-speed", "val-walk-speed", char.walkingModule.maxWalkSpeed, 1);
+        const checkAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
+        if (checkAir) checkAir.checked = Boolean(char.walkingModule.walkInAir);
       }
       if (char.strengthModule) {
         this.setSliderVal("slide-strength", "val-strength", char.strength, 1);
@@ -932,6 +934,10 @@ export class DevPanel {
             </div>
             ${!hasFriction ? `<div class="module-dep-warning">⚠️ Feet slip without Friction (cannot push ground)</div>` : ''}
             ${!hasStrength ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot propel body)</div>` : ''}
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
+              <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
+            </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Walk Force (N)</span>
@@ -1402,6 +1408,13 @@ export class DevPanel {
 
     // Character Abilities
     if (isChar && char) {
+      const checkWalkInAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
+      checkWalkInAir?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.walkInAir = checkWalkInAir.checked;
+        }
+      });
+
       this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
         if (char.walkingModule) char.walkingModule.maxWalkForce = val;
       }, 0);

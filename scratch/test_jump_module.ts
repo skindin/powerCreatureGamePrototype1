@@ -2,6 +2,7 @@ import { Character } from "../src/character/Character.js";
 import { Arena } from "../src/engine/Arena.js";
 import { GameObject } from "../src/engine/GameObject.js";
 import { ClimbingModule } from "../src/character/ClimbingModule.js";
+import { WalkingModule } from "../src/character/WalkingModule.js";
 
 console.log("=== Testing JumpModule & WallEdgeAssistModule ===");
 
@@ -144,8 +145,8 @@ console.log("  Re-attached ClimbingModule:", char.climbingModule ? "SUCCESS" : "
 console.log("  ClimbingModule maxAdhesion:", char.climbingModule.maxAdhesion);
 console.log("  ClimbingModule maxClimbSpeed:", char.climbingModule.maxClimbSpeed);
 
-// 6. Directional Jump Velocity Test (One physics step of velocity when holding direction key)
-console.log("\n6. Testing Directional Jump Velocity Boost (walking against obstacle/wall assist):");
+// 6. Directional Jump Velocity Test (Jump force at 45 degrees to jump direction)
+console.log("\n6. Testing Directional Jump at 45 Degrees to Jump Direction:");
 // Reset character to ground at rest
 char.position.x = 5.0;
 char.position.y = 5.0;
@@ -158,15 +159,18 @@ char.supportingSurfaceHeight = 0;
 // Jump with directional input { x: 1, y: 0 }
 const dirJumped = char.jump(arena, { x: 1, y: 0 });
 console.log("  Directional jump returned:", dirJumped);
-console.log("  Initial horizontal vx immediately after jump:", char.velocity.x.toFixed(4), "u/s");
-console.log("  Initial horizontal vy immediately after jump:", char.velocity.y.toFixed(4), "u/s");
+console.log("  Takeoff vz:", char.verticalVelocity.toFixed(4), "u/s");
+console.log("  Takeoff vx:", char.velocity.x.toFixed(4), "u/s");
+console.log("  Takeoff vy:", char.velocity.y.toFixed(4), "u/s");
 
-const expectedStepVx = ((35.0 * 1.0) / 1.2) * (1 / 60); // 0.4861 u/s
-if (Math.abs(char.velocity.x - expectedStepVx) > 0.01) {
-  console.error(`FAILED: Expected horizontal vx ~${expectedStepVx.toFixed(4)} u/s, got ${char.velocity.x}`);
+const jumpAngleDeg = Math.atan2(char.verticalVelocity, Math.hypot(char.velocity.x, char.velocity.y)) * (180 / Math.PI);
+console.log(`  Trajectory angle with horizontal plane: ${jumpAngleDeg.toFixed(2)}°`);
+
+if (Math.abs(jumpAngleDeg - 45.0) > 0.1) {
+  console.error(`FAILED: Expected jump angle of 45°, got ${jumpAngleDeg.toFixed(2)}°`);
   process.exit(1);
 }
-console.log("  PASS: One physics step of velocity (~0.486 u/s) successfully given on jump!");
+console.log("  PASS: Jump force directed at exactly 45 degrees to the jump direction!");
 
 // 7. Testing Jump Off Wall Edge with Wall Assist Clamp
 console.log("\n7. Testing Jump Off Wall Edge with Wall Edge Assist Clamp:");
@@ -348,6 +352,51 @@ if (char.position.z !== 0 || char.verticalVelocity !== 0 || !char.isRestingOnSur
   process.exit(1);
 }
 console.log("  PASS: Character safely rests on ground when jump is not held!");
+
+// 10. Testing WalkingModule Air Control (walkInAir toggle and mid-air walking force)
+console.log("\n10. Testing WalkingModule Air Control (walkInAir):");
+char.walkingModule = new WalkingModule();
+char.walkingModule.walkInAir = true;
+
+// Reset character in mid-air with zero horizontal velocity
+char.position.x = 5.0;
+char.position.y = 5.0;
+char.position.z = 1.0;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = 0;
+char.velocity.x = 0;
+char.velocity.y = 0;
+
+// 10a. With walkInAir = true, movement input in air should apply walking force
+char.walkingModule.update(char, { x: 1, y: 0 }, dt, arena);
+console.log("  Mid-air with walkInAir=true, holding Right: vx =", char.velocity.x.toFixed(4), "u/s");
+if (char.velocity.x <= 0.1) {
+  console.error("FAILED: WalkingModule did not apply walking force in the air when walkInAir=true!");
+  process.exit(1);
+}
+console.log("  PASS: Walking force successfully applied in mid-air for air control!");
+
+// 10b. With no movement input in mid-air, character should coast (no air braking)
+const coastVx = char.velocity.x;
+char.walkingModule.update(char, { x: 0, y: 0 }, dt, arena);
+console.log("  Mid-air releasing movement input: vx =", char.velocity.x.toFixed(4), "u/s (expected preserved:", coastVx.toFixed(4), ")");
+if (char.velocity.x !== coastVx) {
+  console.error("FAILED: Character should not brake in mid-air when releasing input!");
+  process.exit(1);
+}
+console.log("  PASS: Ballistic momentum preserved in mid-air when not steering!");
+
+// 10c. With walkInAir = false, no walking force should apply in mid-air
+char.walkingModule.walkInAir = false;
+char.velocity.x = 0;
+char.velocity.y = 0;
+char.walkingModule.update(char, { x: 1, y: 0 }, dt, arena);
+console.log("  Mid-air with walkInAir=false, holding Right: vx =", char.velocity.x.toFixed(4), "u/s");
+if (char.velocity.x !== 0) {
+  console.error("FAILED: Walking force should NOT apply in mid-air when walkInAir=false!");
+  process.exit(1);
+}
+console.log("  PASS: Air control cleanly disabled when walkInAir=false!");
 
 console.log("\n=== ALL JUMP & WALL EDGE ASSIST TESTS PASSED! ===");
 

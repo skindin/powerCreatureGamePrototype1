@@ -2,6 +2,14 @@ import { Vector2D } from "../engine/GameObject.js";
 import type { Character } from "./Character.js";
 import type { Arena } from "../engine/Arena.js";
 
+export interface WalkingModuleOptions {
+  maxWalkForce?: number;
+  maxWalkSpeed?: number;
+  dragDamping?: number;
+  walkInAir?: boolean;
+  enabled?: boolean;
+}
+
 export class WalkingModule {
   public id = "walking";
   public name = "Walking Module";
@@ -16,6 +24,17 @@ export class WalkingModule {
   // Drag damping factor for backwards compatibility / reference
   public dragDamping = 8.01;
 
+  // When enabled, walking force applies in the air, granting air control / steering
+  public walkInAir = true;
+
+  constructor(options?: WalkingModuleOptions) {
+    if (options?.maxWalkForce !== undefined) this.maxWalkForce = options.maxWalkForce;
+    if (options?.maxWalkSpeed !== undefined) this.maxWalkSpeed = options.maxWalkSpeed;
+    if (options?.dragDamping !== undefined) this.dragDamping = options.dragDamping;
+    if (options?.walkInAir !== undefined) this.walkInAir = options.walkInAir;
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
   /**
    * Symmetrical Force-Based Locomotion:
    * - Both accelerating and stopping step toward target velocity at the EXACT same rate:
@@ -23,15 +42,23 @@ export class WalkingModule {
    * - Acceleration and deceleration rates are 100% symmetrical.
    * - Carrying heavy objects increases totalMass, reducing acceleration and smoothly lowering top speed.
    * - Pushing heavy objects in the arena resists movement through contact forces, naturally slowing movement.
+   * - When walkInAir is enabled, walking force applies in mid-air for responsive air control.
    */
   public update(character: Character, inputVector: Vector2D, dt: number, arena: Arena): void {
-    if (!this.enabled || !character.isRestingOnSurface || character.isClimbing) {
+    const isAirborne = !character.isRestingOnSurface;
+    if (!this.enabled || (isAirborne && !this.walkInAir) || character.isClimbing) {
       character.isActivelyWalking = false;
       return;
     }
 
-    // Walking strictly requires friction, mass, and muscle strength to propel the body
-    if (!character.hasFriction || !character.frictionModule?.enabled || !character.hasMass || !character.hasStrength || character.strength <= 0) {
+    // Walking strictly requires mass and muscle strength to propel the body
+    if (!character.hasMass || !character.hasStrength || character.strength <= 0) {
+      character.isActivelyWalking = false;
+      return;
+    }
+
+    // On ground, feet require friction to push against the floor
+    if (!isAirborne && (!character.hasFriction || !character.frictionModule?.enabled || character.dynamicGroundFrictionMod <= 0.001)) {
       character.isActivelyWalking = false;
       return;
     }
@@ -45,18 +72,22 @@ export class WalkingModule {
       character.setSprinting(false);
     }
 
+    // In mid-air, if the player is not holding any movement input, do not apply air braking — coast along current ballistic trajectory!
+    if (isAirborne && !isMoving) {
+      return;
+    }
+
     // Total effective mass (base character + any carried object) — used for Newton's 2nd law: a = F/m
     const totalMass = character.hasMass ? Math.max(0.2, character.mass) : 1.0;
     if (totalMass <= 0.01) return;
 
-    // Active ground friction: if 0 (frictionless ice), feet slip and cannot push or stop
-    const activeFrictionMod = character.dynamicGroundFrictionMod;
-    if (activeFrictionMod <= 0.001) {
+    // Active grip: on ground, scales by surface friction. In air, air control force applies.
+    const grip = isAirborne
+      ? 1.0
+      : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10.0);
+    if (grip <= 0.001) {
       return;
     }
-
-    const surfaceFactor = arena.frictionCoeff / 10.0;
-    const grip = activeFrictionMod * surfaceFactor;
 
     // Target velocity:
     // Carrying a load reduces top walking speed smoothly based on carried mass and strength.
@@ -97,8 +128,8 @@ export class WalkingModule {
     const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
     const maxStep = maxAccel * dt;
 
-    if (diffSpeed <= maxStep || (!isMoving && currentSpeed < staticThreshold)) {
-      // Reached terminal target velocity (full speed or crisp complete stop)
+    if (diffSpeed <= maxStep || (!isAirborne && !isMoving && currentSpeed < staticThreshold)) {
+      // Reached terminal target velocity (full speed or crisp complete stop on ground)
       character.velocity.x = targetVx;
       character.velocity.y = targetVy;
     } else {

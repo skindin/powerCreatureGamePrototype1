@@ -68,8 +68,8 @@ export class JumpModule {
       character.wallEdgeAssistModule.hasLeftClampZoneSinceDismount = true;
     }
 
-    // Directional impulse: if walking holding a direction key (e.g. against a wall or wall assist),
-    // give the character one physics step of velocity in that direction so they go from no motion to some motion to get over the obstacle
+    // Directional 45-degree jump impulse: if intending to move forward when jumping,
+    // put the jump force at 45 degrees to the direction of jumping (horizontal component = vertical component, tan(45°) = 1)
     const move = movementInput ?? character.movementInput;
     const moveX = move?.x ?? 0;
     const moveY = move?.y ?? 0;
@@ -79,18 +79,11 @@ export class JumpModule {
       const dirX = moveX / inputMag;
       const dirY = moveY / inputMag;
 
-      const effectiveWalkForce = character.isSprinting
-        ? (character.walkingModule?.maxWalkForce ?? 35.0) * 1.5
-        : (character.walkingModule?.maxWalkForce ?? 35.0);
-      const strength = character.strengthModule?.strength ?? character.strength ?? 1.0;
-      const grip = 1.0;
-      const maxAccel = ((effectiveWalkForce * strength) / totalMass) * grip;
-      const dt = 1 / 60;
-      const oneStepVelocity = maxAccel * dt;
-
+      // 45-degree angle: horizontal launch speed equals vertical takeoff speed
+      const horizTakeoffSpeed = takeoffSpeed;
       const currentSpeedInDir = character.velocity.x * dirX + character.velocity.y * dirY;
-      if (currentSpeedInDir < oneStepVelocity) {
-        const boost = oneStepVelocity - Math.max(0, currentSpeedInDir);
+      if (currentSpeedInDir < horizTakeoffSpeed) {
+        const boost = horizTakeoffSpeed - Math.max(0, currentSpeedInDir);
         character.velocity.x += dirX * boost;
         character.velocity.y += dirY * boost;
       }
