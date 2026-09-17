@@ -345,6 +345,23 @@ powerCreatureGamePrototype1/
       2. **Vertical Visuals & Wall Elevation**: Radio buttons for Bigger Sprites, Hover Above Shadow, and Both Modes, plus live Wall Isometric Height slider (0.0 to 1.0).
       3. **Panels & Controls Reference**: 👥 Players & Controllers (with live active count badge), 🛠️ Dev Inspector toggle, and a compact Controls guide (WASD/L-Stick, Space/A, L-Click/RT, Shift/LB, B) with live controller connection badge.
     - **Modals & Overlays**: Modals (`#players-panel`, `#view-settings-panel`, `#phone-modal`) are centered with `max-height: 92vh` scrollable cards, and `#dev-sidebar` acts as a slide-over panel on mobile.
+37. **Bugs & Suggestions Reporting System (Public Shared Log, Local Time & Chronological Sorting)**:
+    - **In-App Submission & Separate Categories**:
+      - Accessed via top bar `🐞 Feedback` button (`#toggle-feedback-btn`) with live uncompleted count badge, or via mobile landscape menu (`#mobile-btn-feedback`).
+      - Expandable submission drawer (`#feedback-form`) with auto-focused description text box and type selector defaulting to **Suggestion** (`<option value="suggestion" selected>`).
+      - Separates open entries into two dedicated category columns/cards: **💡 Suggestions** and **🐞 Bug Reports**.
+    - **Chronological Sorting & Client Local Time**:
+      - Open Suggestions are strictly ordered from **oldest to newest** (`new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()`) so earlier ideas stay at the top.
+      - Open Bugs are sorted from newest to oldest.
+      - Every entry displays submission date and time formatted in the viewer's **LOCAL timezone and locale** via `Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })`.
+    - **Resolution Checkboxes & Hidden-by-Default Drawers**:
+      - Each card features an interactive checkbox. Checking an item moves it to the bottom of its category into a completed section (`Completed Suggestions` / `Resolved Bugs`).
+      - Both completed sections are collapsed/hidden by default with accordion toggles (`Show Completed Suggestions (N)` / `Show Resolved Bugs (N)`).
+      - Clicking the checkbox sends optimistic `PATCH /api/feedback/:id` updates, instantly toggling completion status across all connected clients via 15s background polling.
+    - **Persistent Store & Railway Database Strategy**:
+      - Server exposes `GET /api/feedback`, `POST /api/feedback`, and `PATCH /api/feedback/:id` in both `server.js` (production) and `vite.config.ts` (dev server & remote localtunnel).
+      - Backed by JSON file store (`data/feedback.json`, `server/feedbackStore.js`).
+      - **Railway DB**: Setting up an external Railway DB (e.g. Postgres) is **not strictly required** to use the feedback system right away. However, because Railway's container filesystem is ephemeral across Git redeployments, data in `data/feedback.json` would reset on redeploy. To persist user feedback permanently across future redeployments, attach a Railway Persistent Volume at `/app/data` (0 code changes) or provision a free Railway PostgreSQL database.
 
 ---
 

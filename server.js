@@ -68,15 +68,95 @@ function sendFile(res, filePath, statusCode = 200) {
   });
 }
 
-const server = http.createServer((req, res) => {
-  // Only allow GET and HEAD
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('405 Method Not Allowed');
+import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
+
+function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1e6) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const urlPath = decodeURIComponent(urlObj.pathname);
+
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
     return;
   }
 
-  const urlPath = decodeURIComponent(new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname);
+  // Feedback API endpoints
+  if (urlPath === '/api/feedback') {
+    if (req.method === 'GET') {
+      const items = getAllFeedback();
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      });
+      res.end(JSON.stringify(items));
+      return;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        if (!body.description || typeof body.description !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Description is required' }));
+          return;
+        }
+        const created = createFeedback(body);
+        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(created));
+        return;
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        return;
+      }
+    }
+  }
+
+  if (urlPath.startsWith('/api/feedback/') && req.method === 'PATCH') {
+    const id = urlPath.replace('/api/feedback/', '');
+    try {
+      const body = await parseJsonBody(req);
+      const updated = updateFeedbackStatus(id, body.completed);
+      if (!updated) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Feedback not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(updated));
+      return;
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+      return;
+    }
+  }
 
   // Health check endpoint for Railway deployment monitoring
   if (urlPath === '/health' || urlPath === '/healthz') {
@@ -90,13 +170,19 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify({
       deployId: DEPLOY_ID,
       commit: COMMIT_HASH,
       bootTime: SERVER_BOOT_TIME,
     }));
+    return;
+  }
+
+  // Only allow GET and HEAD for static files
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('405 Method Not Allowed');
     return;
   }
 

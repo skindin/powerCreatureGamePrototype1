@@ -1,0 +1,29 @@
+[
+  {
+    "id": "fb_1789664685975_9ubpl",
+    "type": "suggestion",
+    "description": "Allow customizing creature colors with hex codes",
+    "author": "AlphaExplorer",
+    "completed": true,
+    "createdAt": "2026-09-17T17:04:45.976Z",
+    "completedAt": "2026-09-17T17:06:24.321Z"
+  },
+  {
+    "id": "fb_1789664715068_vzsay",
+    "type": "suggestion",
+    "description": "Add speed boost powerup pads on arena corners",
+    "author": "BetaTester",
+    "completed": false,
+    "createdAt": "2026-09-17T17:05:15.068Z",
+    "completedAt": null
+  },
+  {
+    "id": "fb_1789664744569_9hjxf",
+    "type": "bug",
+    "description": "Rocks sometimes clip when falling at terminal velocity",
+    "author": "BugHunter",
+    "completed": false,
+    "createdAt": "2026-09-17T17:05:44.569Z",
+    "completedAt": null
+  }
+]

@@ -4,7 +4,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
+
+function parseJsonBody(req: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk: any) => {
+      body += chunk;
+      if (body.length > 1e6) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -122,6 +143,75 @@ function autoTunnelPlugin(): Plugin {
           req.headers['x-forwarded-proto'] === 'https' ||
           Boolean(req.headers['x-forwarded-for']) ||
           Boolean(req.headers['bypass-tunnel-reminder']);
+
+        const rawUrl = req.url || '/';
+        const urlObj = new URL(rawUrl, `http://${req.headers['host'] || 'localhost'}`);
+        const urlPath = decodeURIComponent(urlObj.pathname);
+
+        // Feedback API endpoints
+        if (urlPath === '/api/feedback') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          if (req.method === 'GET') {
+            const items = getAllFeedback();
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.end(JSON.stringify(items));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            parseJsonBody(req).then((body) => {
+              if (!body.description || typeof body.description !== 'string') {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ error: 'Description is required' }));
+                return;
+              }
+              const created = createFeedback(body);
+              res.statusCode = 201;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify(created));
+            }).catch(() => {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            });
+            return;
+          }
+        }
+
+        if (urlPath.startsWith('/api/feedback/') && req.method === 'PATCH') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          const id = urlPath.replace('/api/feedback/', '');
+          parseJsonBody(req).then((body) => {
+            const updated = updateFeedbackStatus(id, body.completed);
+            if (!updated) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ error: 'Feedback not found' }));
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(updated));
+          }).catch(() => {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+          });
+          return;
+        }
 
         if (req.url && (req.url.startsWith('/api/version') || req.url === '/health')) {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');

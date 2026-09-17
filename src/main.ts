@@ -6,6 +6,7 @@ import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { PlayersPanel } from "./ui/PlayersPanel.js";
+import { FeedbackPanel } from "./ui/FeedbackPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
@@ -207,6 +208,10 @@ function bootstrap(): void {
   // 6b. Initialize Players & Controllers Panel
   const playersPanel = new PlayersPanel(gameLoop, inputManager);
   void playersPanel;
+
+  // 6c. Initialize Bugs & Suggestions (Feedback) Panel
+  const feedbackPanel = new FeedbackPanel();
+  void feedbackPanel;
 
   // Keep dev selector synced across dynamic character spawns/removals
   const originalOnPlayersChanged = gameLoop.onPlayersChanged;
@@ -806,6 +811,7 @@ function bootstrap(): void {
       setMobileMenuOpen(false);
       setViewSettingsOpen(false);
       setPhoneModalOpen(false);
+      feedbackPanel.close();
     }
   });
 

@@ -12,8 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-D1263GJc.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DbASLTUb.css">
+    <script type="module" crossorigin src="/assets/index-K7Yy0Rfv.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-lZaXOScG.css">
   </head>
   <body>
     <div id="app-layout">
@@ -51,6 +51,10 @@
           <button id="toggle-players-btn" class="sidebar-toggle-btn" title="Arena Players & Controllers (P)">
             <span class="sidebar-btn-icon">👥</span>
             <span class="sidebar-btn-text" id="players-badge-text">Players (1)</span>
+          </button>
+          <button id="toggle-feedback-btn" class="sidebar-toggle-btn" title="Bugs & Suggestions Log">
+            <span class="sidebar-btn-icon">🐞</span>
+            <span class="sidebar-btn-text" id="feedback-badge-text">Feedback</span>
           </button>
           <button id="toggle-view-settings-btn" class="sidebar-toggle-btn" title="Toggle View Settings (V)">
             <span class="sidebar-btn-icon">👁️</span>
@@ -178,6 +182,11 @@
                     <span class="nav-btn-text">Players & Controllers</span>
                     <span id="mobile-players-badge" class="badge">1 Active</span>
                   </button>
+                  <button id="mobile-btn-feedback" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🐞</span>
+                    <span class="nav-btn-text">Bugs & Suggestions</span>
+                    <span id="mobile-feedback-badge" class="badge">0</span>
+                  </button>
                   <button id="mobile-btn-inspector" class="mobile-nav-btn">
                     <span class="nav-btn-icon">🛠️</span>
                     <span class="nav-btn-text">Dev Inspector</span>
@@ -294,7 +303,95 @@
         </div>
       </div>
 
-      <!-- View Settings Floating Panel (Available in both Single Player & Multiplayer) -->
+      <!-- Bugs & Suggestions Floating Panel -->
+      <div id="feedback-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card feedback-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">🐞</span>
+              <span>Bugs & Suggestions</span>
+              <span id="feedback-header-count" class="brand-badge">0 Open</span>
+            </div>
+            <button id="btn-close-feedback-panel" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+
+          <div class="feedback-modal-body">
+            <!-- Top Action / Add Report Button & Collapsible Form -->
+            <div class="feedback-submission-area">
+              <button type="button" id="btn-toggle-add-feedback" class="btn-add-feedback-toggle">
+                <span id="add-feedback-toggle-icon">➕</span>
+                <span id="add-feedback-toggle-label">Add Bug / Suggestion</span>
+              </button>
+
+              <form id="feedback-form" class="feedback-form hidden">
+                <div class="feedback-form-row">
+                  <div class="form-group type-group">
+                    <label for="feedback-form-type">Category</label>
+                    <select id="feedback-form-type" class="feedback-select">
+                      <option value="suggestion" selected>💡 Suggestion</option>
+                      <option value="bug">🐞 Bug Report</option>
+                    </select>
+                  </div>
+                  <div class="form-group author-group">
+                    <label for="feedback-form-author">Your Name (Optional)</label>
+                    <input type="text" id="feedback-form-author" class="feedback-input" placeholder="Anonymous Creature" maxlength="32" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="feedback-form-desc">Description</label>
+                  <textarea id="feedback-form-desc" class="feedback-textarea" rows="3" placeholder="Describe the suggestion or bug in detail..." required></textarea>
+                </div>
+                <div class="feedback-form-actions">
+                  <span id="feedback-form-msg" class="feedback-form-msg"></span>
+                  <button type="submit" id="btn-submit-feedback" class="btn-submit-feedback">Submit</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Public Log Content (Separated Bugs & Suggestions) -->
+            <div class="feedback-sections-container">
+              <!-- Suggestions Section (Oldest to Newest) -->
+              <div class="feedback-category-card">
+                <div class="category-header">
+                  <div class="category-title">
+                    <span class="cat-icon">💡</span>
+                    <h3>Suggestions</h3>
+                    <span id="count-open-suggestions" class="category-count-badge">0 Open</span>
+                  </div>
+                  <span class="category-sort-hint">Oldest first</span>
+                </div>
+                <div id="list-open-suggestions" class="feedback-items-list"></div>
+                <div class="resolved-accordion">
+                  <button type="button" id="btn-toggle-resolved-suggestions" class="btn-resolved-toggle">
+                    <span class="toggle-arrow">▶</span>
+                    <span class="toggle-text">Show Completed Suggestions (0)</span>
+                  </button>
+                  <div id="list-resolved-suggestions" class="feedback-items-list resolved hidden"></div>
+                </div>
+              </div>
+
+              <!-- Bugs Section -->
+              <div class="feedback-category-card">
+                <div class="category-header">
+                  <div class="category-title">
+                    <span class="cat-icon">🐞</span>
+                    <h3>Bug Reports</h3>
+                    <span id="count-open-bugs" class="category-count-badge">0 Open</span>
+                  </div>
+                </div>
+                <div id="list-open-bugs" class="feedback-items-list"></div>
+                <div class="resolved-accordion">
+                  <button type="button" id="btn-toggle-resolved-bugs" class="btn-resolved-toggle">
+                    <span class="toggle-arrow">▶</span>
+                    <span class="toggle-text">Show Resolved Bugs (0)</span>
+                  </button>
+                  <div id="list-resolved-bugs" class="feedback-items-list resolved hidden"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="view-settings-panel" class="view-settings-panel hidden">
         <div class="view-settings-card">
           <div class="view-settings-header">
