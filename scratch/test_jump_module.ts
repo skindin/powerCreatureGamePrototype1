@@ -212,5 +212,57 @@ if (char.position.x <= startX + 0.15) {
 }
 console.log("  PASS: Character successfully cleared the wall edge assist obstacle!");
 
+// 8. Testing Wall Assist Only Operates at Exactly Wall Height Standing on Top of Wall
+console.log("\n8. Testing Wall Assist Strictly Requires Exactly Wall Height Standing on Top of Wall:");
+// 8a. Airborne above wall (z = 1.20, standing on wall top is false)
+char.position.x = wall.x + wall.width - 0.05;
+char.position.y = wall.y + 0.5;
+char.position.z = 1.20;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = wall.wallHeight;
+char.standingWall = wall;
+char.velocity.x = 2.0; // Moving outward past edge
+char.updatePosition(dt, arena);
+console.log("  Airborne at z=1.20 (above wall top): isAssistClampArmed =", char.wallEdgeAssistModule?.isAssistClampArmed);
+if (char.wallEdgeAssistModule?.isAssistClampArmed) {
+  console.error("FAILED: wall assist armed while airborne above wall height!");
+  process.exit(1);
+}
+console.log("  PASS: Wall assist remains disarmed when airborne above wall height.");
+
+// 8b. Grounded (z = 0)
+char.position.x = wall.x - 0.10;
+char.position.y = wall.y + 0.5;
+char.position.z = 0;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
+char.updatePosition(dt, arena);
+console.log("  Grounded at z=0: isAssistClampArmed =", char.wallEdgeAssistModule?.isAssistClampArmed);
+if (char.wallEdgeAssistModule?.isAssistClampArmed) {
+  console.error("FAILED: wall assist armed while grounded!");
+  process.exit(1);
+}
+console.log("  PASS: Wall assist remains disarmed when on ground.");
+
+// 8c. Standing at exactly wall height resting on wall top
+char.position.x = wall.x + 0.5;
+char.position.y = wall.y + 0.5;
+char.position.z = wall.wallHeight;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = wall.wallHeight;
+char.standingWall = wall;
+char.updatePosition(dt, arena);
+// Move near edge (within hang distance)
+char.position.x = wall.x + wall.width - 0.05;
+char.updatePosition(dt, arena);
+console.log("  Resting at exactly wall height (z=1.00): isAssistClampArmed =", char.wallEdgeAssistModule?.isAssistClampArmed);
+if (!char.wallEdgeAssistModule?.isAssistClampArmed) {
+  console.error("FAILED: wall assist did not arm when resting on wall top at exactly wall height!");
+  process.exit(1);
+}
+console.log("  PASS: Wall assist correctly arms when resting on top of a wall at exactly wall height!");
+
 console.log("\n=== ALL JUMP & WALL EDGE ASSIST TESTS PASSED! ===");
+
 

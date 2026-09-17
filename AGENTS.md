@@ -308,6 +308,9 @@ powerCreatureGamePrototype1/
     - **Ascending Vaulting (`isAscendingJump`)**: When an entity is ascending in a jump ($v_z > 0$) with sufficient vertical energy to reach or clear the wall top ($z + v_z^2 / (2g) \ge \text{wall.wallHeight} - 0.05$), `resolveWallCollision` separates collider penetration along the normal so the character slides smoothly up the exterior wall face, but skips `resolveWallImpact` (which previously cancelled horizontal forward velocity into the wall on tick 2 of the jump before the character reached wall height).
     - Preserving horizontal velocity during ascent allows creatures jumping against wall faces from a dead stop to smoothly vault onto the top of the wall platform from all angles (North, South, East, West, and diagonals).
     - **Floating-Point Epsilon in `testWallOverlap`**: Replaced strict inequality `< (radius * radius)` with `<= (radius * radius) + 1e-6` in `Arena.ts`. Previously, IEEE 754 precision differences ($10^{-16}$) caused West and North boundary tests (which subtract coordinates yielding negative floats) to evaluate to false while East and South evaluated to true, creating artificial directional bias at exact boundary distances.
+31. **Strict Wall Assist Standing Height Invariant**:
+    - In `GameObject.ts`, wall edge assist (`isPreventWalkOffActive`) strictly requires the character to be at exactly wall height standing on top of a wall: `this.standingWall !== null`, `!this.isClimbing`, `Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01`, `Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01`, and `this.isRestingOnSurface`.
+    - If the character is not resting at exactly wall height on top of a wall (e.g. on the ground, climbing, jumping, or airborne at any elevation), `isAssistClampArmed` is disarmed to `false`, `hasLeftClampZoneSinceDismount` is set to `true`, and wall assist is guaranteed inactive.
 
 ---
 

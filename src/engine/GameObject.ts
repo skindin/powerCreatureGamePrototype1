@@ -598,18 +598,22 @@ export class GameObject {
     // - Re-arming: Remains disabled until character moves outside the clamp area (> 0.1u) and then back into it (<= 0.1u).
     const char = this.isCharacter ? (this as any) : null;
     const edgeMod = char?.wallEdgeAssistModule ?? char?.climbingModule;
-    const wasStandingOnWallTop = !this.isClimbing &&
-      this.supportingSurfaceHeight >= arena.wallHeight - 0.05 &&
+    const isStandingOnWallTop = Boolean(
+      char &&
+      !this.isClimbing &&
       this.standingWall !== null &&
-      this.isRestingOnSurface;
+      Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01 &&
+      Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01 &&
+      this.isRestingOnSurface
+    );
     const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
 
     if (edgeMod) {
-      if (this.position.z <= 0.01) {
-        // Grounded: clamp is disarmed, ready to arm when player climbs & enters clamp zone
+      if (!isStandingOnWallTop) {
+        // Only works if character is at exactly wall height standing on top of a wall
         edgeMod.isAssistClampArmed = false;
         edgeMod.hasLeftClampZoneSinceDismount = true;
-      } else if (wasStandingOnWallTop && this.standingWall) {
+      } else if (this.standingWall) {
         // Compute distance to current wall platform
         const standing = this.standingWall;
         const platformWalls: Wall[] = [standing];
@@ -655,14 +659,11 @@ export class GameObject {
             edgeMod.hasMovedOntoWall = true;
           }
         }
-      } else {
-        edgeMod.isAssistClampArmed = false;
       }
     }
 
     const isPreventWalkOffActive = Boolean(
-      char &&
-      wasStandingOnWallTop &&
+      isStandingOnWallTop &&
       edgeMod?.enabled &&
       edgeMod?.preventWalkOff &&
       edgeMod?.isAssistClampArmed
@@ -674,8 +675,7 @@ export class GameObject {
 
     if (moveDist > 0.0001) {
       if (isPreventWalkOffActive) {
-        let currentWall = this.standingWall ?? arena.getSupportingWall(this.position.x, this.position.y, hangDistance);
-        this.standingWall = currentWall;
+        let currentWall = this.standingWall;
 
         const candidateX = this.position.x + deltaX;
         const candidateY = this.position.y + deltaY;
@@ -786,7 +786,7 @@ export class GameObject {
         // Interpolate continuously. If at any point between current point and next point the collider
         // wouldn't be touching a wall and they have just dismounted a wall, they should collide with
         // the wall they're heading towards and fall.
-        let currentWall = this.standingWall ?? (wasStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
+        let currentWall = this.standingWall ?? (isStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
         let hasDismountedIntoGap = false;
         const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
 
