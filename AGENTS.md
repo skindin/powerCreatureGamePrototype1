@@ -327,6 +327,16 @@ powerCreatureGamePrototype1/
       - Displays a floating glassmorphic toast notification (`✨ Railway Update Live (commit)`) with an optional `Reload` button and dismiss `✕` button, auto-fading after 14s.
       - Adds a pulsing header badge (`#header-deploy-badge`) so the player can see at a glance that a new build is ready and reload whenever convenient.
       - Plays a subtle two-tone audio chime (E5 -> B5).
+35. **Calibrated Jump Strength & Max Initial Velocity Invariant**:
+    - **Physical Context**: Base Character mass is $1.2\text{ kg}$. The light blue box (`stone-1`) has mass $0.7\text{ kg}$ (total mass $1.9\text{ kg}$). The heavy red box (`boulder-1`) has mass $2.6\text{ kg}$ (total mass $3.8\text{ kg}$). Spherical balls (`bouncy-1`, `rolling-1`) have masses $0.5\text{ kg}$ and $0.6\text{ kg}$ (total masses $1.7\text{ kg}$ and $1.8\text{ kg}$).
+    - **Apex Height Equation**: Under gravity $g = 30.0\text{ u/s}^2$, reaching an apex of $h = 1.5\text{ units}$ requires an initial vertical velocity $v_z = \sqrt{2gh} = \sqrt{2 \cdot 30.0 \cdot 1.5} = \sqrt{90} \approx 9.67\text{ u/s}$.
+    - **Calibrated Parameters**: `JumpModule` default parameters are set to `jumpStrength = 18.5 N·s` and `maxInitialSpeed = 9.67 u/s`.
+    - **Jump Invariant**:
+      - Unencumbered ($1.2\text{ kg}$): raw speed $18.5 / 1.2 = 15.42\text{ u/s} \ge 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding blue box ($1.9\text{ kg}$): raw speed $18.5 / 1.9 = 9.74\text{ u/s} \ge 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding bouncy ball or rolling ball ($1.7 - 1.8\text{ kg}$): raw speed $> 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding heavy red box ($3.8\text{ kg}$): raw speed $18.5 / 3.8 = 4.87\text{ u/s} < 9.67 \to 4.87\text{ u/s}$ (apex $\sim 0.39\text{ units}$, noticeably encumbered).
+    - **Result**: Every jump in the arena (empty-handed, bouncy ball, rolling ball, and blue cube) looks and behaves identically at $1.5\text{ units}$, with only the heavy red box exhibiting encumbered jump height. Fixed double-counting bug in `JumpModule` where `character.mass` (which already included carried mass) was added to `character.carriedMass`.
 
 ---
 

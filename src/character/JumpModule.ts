@@ -15,15 +15,17 @@ export class JumpModule {
 
   /**
    * Jump strength (impulse in N·s).
-   * Default 11.4 N·s gives initial takeoff velocity v_z = 11.4 / 1.2 = 9.5 u/s for a standard 1.2kg character,
-   * reaching a peak ballistic height of ~1.5 units under gravity 30.0 u/s^2.
+   * Default 18.5 N·s provides enough propulsion to achieve the max takeoff speed (~9.67 u/s, 1.5 units height)
+   * both unencumbered (1.2kg) and when holding the Light Blue Box (0.7kg, total 1.9kg).
+   * When carrying the Heavy Red Box (2.6kg, total 3.8kg), takeoff speed drops to ~4.87 u/s (~0.39 units height).
    */
-  public jumpStrength = 11.6;
+  public jumpStrength = 18.5;
 
   /**
    * Maximum initial takeoff speed cap (in units per second).
+   * 9.67 u/s achieves a peak ballistic jump height of ~1.5 units under gravity 30.0 u/s^2.
    */
-  public maxInitialSpeed = 15.0;
+  public maxInitialSpeed = 9.67;
 
   constructor(options?: JumpModuleOptions) {
     if (options?.jumpStrength !== undefined) this.jumpStrength = options.jumpStrength;
@@ -48,8 +50,8 @@ export class JumpModule {
       return false;
     }
 
-    // Effective mass scales takeoff velocity: heavier load = lower jump
-    const totalMass = Math.max(0.2, character.mass + character.carriedMass);
+    // Effective mass scales takeoff velocity: heavier load = lower jump (character.mass includes carriedMass)
+    const totalMass = Math.max(0.2, character.mass);
     const takeoffSpeed = Math.min(this.maxInitialSpeed, this.jumpStrength / totalMass);
 
     if (takeoffSpeed <= 0.01) return false;

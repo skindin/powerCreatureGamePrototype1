@@ -37,7 +37,7 @@ const jumped = char.jump(arena);
 console.log("  jump() returned:", jumped);
 console.log("  Initial Takeoff Velocity vz:", char.verticalVelocity.toFixed(3), "u/s");
 
-const expectedVz = (char.jumpModule?.jumpStrength ?? 11.6) / 1.2; // ~9.67 u/s
+const expectedVz = char.jumpModule?.maxInitialSpeed ?? 9.67; // ~9.67 u/s cap
 const vzDiff = Math.abs(char.verticalVelocity - expectedVz);
 if (vzDiff > 0.05) {
   console.error(`FAILED: Initial takeoff velocity ${char.verticalVelocity} differs from expected ${expectedVz}`);
@@ -64,44 +64,84 @@ if (maxZ < 1.40 || maxZ > 1.65) {
 }
 console.log("  PASS: Reached ~1.5 units (layers)!");
 
-// 3. Encumbered Jump Test (Carrying heavy object)
-console.log("\n3. Testing Encumbered Jump (Holding 1.2kg crate, total mass 2.4kg):");
+// 3. Jump while holding the Light Blue Box (0.7kg, total 1.9kg)
+console.log("\n3. Testing Jump while holding Light Blue Box (0.7kg, total mass 1.9kg):");
 // Reset character to ground
 char.position.z = 0;
 char.verticalVelocity = 0;
 char.supportingSurfaceHeight = 0;
 char.standingWall = null;
 
-const crate = new GameObject({
-  id: "test-crate",
-  mass: 1.2,
-  colliderRadius: 0.3,
+const blueBox = new GameObject({
+  id: "stone-1",
+  name: "Light Blue Box",
+  mass: 0.7,
+  colliderRadius: 0.26,
 });
-crate.isHeld = true;
-char.heldObject = crate;
+blueBox.isHeld = true;
+char.heldObject = blueBox;
 
-const jumpedEncumbered = char.jump(arena);
-console.log("  jump() while holding 1.2kg object returned:", jumpedEncumbered);
-console.log("  Encumbered Takeoff Velocity vz:", char.verticalVelocity.toFixed(3), "u/s");
+const jumpedBlueBox = char.jump(arena);
+console.log("  jump() while holding Light Blue Box returned:", jumpedBlueBox);
+console.log("  Blue Box Takeoff Velocity vz:", char.verticalVelocity.toFixed(3), "u/s (expected cap: 9.670 u/s)");
 
-let maxZEncumbered = 0;
+if (Math.abs(char.verticalVelocity - expectedVz) > 0.05) {
+  console.error(`FAILED: Jump while holding blue box did not reach maxInitialSpeed ${expectedVz}! Got ${char.verticalVelocity}`);
+  process.exit(1);
+}
+
+let maxZBlueBox = 0;
 ticks = 0;
 while (char.verticalVelocity > 0 && ticks < 120) {
   char.updatePosition(dt, arena);
-  if (char.position.z > maxZEncumbered) maxZEncumbered = char.position.z;
+  if (char.position.z > maxZBlueBox) maxZBlueBox = char.position.z;
   ticks++;
 }
 
-console.log(`  Encumbered Max jump height: ${maxZEncumbered.toFixed(3)} units`);
-if (maxZEncumbered >= maxZ * 0.7) {
-  console.error(`FAILED: Carrying heavy object did not proportionally scale jump height down!`);
+console.log(`  Blue Box Max jump height: ${maxZBlueBox.toFixed(3)} units (expected ~1.5 units)`);
+if (Math.abs(maxZBlueBox - maxZ) > 0.05) {
+  console.error(`FAILED: Jump height with blue box (${maxZBlueBox.toFixed(3)}) does not match unencumbered jump (${maxZ.toFixed(3)})!`);
   process.exit(1);
 }
-console.log("  PASS: Heavy carrying mass naturally scaled jump height!");
+console.log("  PASS: Jump while holding the blue cube is identical to unencumbered jump (~1.5 units)!");
+
+// 3b. Jump while holding the Heavy Red Box (2.6kg, total 3.8kg)
+console.log("\n3b. Testing Jump while holding Heavy Red Box (2.6kg, total mass 3.8kg):");
+char.position.z = 0;
+char.verticalVelocity = 0;
+char.supportingSurfaceHeight = 0;
+char.standingWall = null;
+
+const redBox = new GameObject({
+  id: "boulder-1",
+  name: "Heavy Red Box",
+  mass: 2.6,
+  colliderRadius: 0.40,
+});
+redBox.isHeld = true;
+char.heldObject = redBox;
+
+const jumpedRedBox = char.jump(arena);
+console.log("  jump() while holding Heavy Red Box returned:", jumpedRedBox);
+console.log("  Red Box Takeoff Velocity vz:", char.verticalVelocity.toFixed(3), "u/s (expected ~4.87 u/s)");
+
+let maxZRedBox = 0;
+ticks = 0;
+while (char.verticalVelocity > 0 && ticks < 120) {
+  char.updatePosition(dt, arena);
+  if (char.position.z > maxZRedBox) maxZRedBox = char.position.z;
+  ticks++;
+}
+
+console.log(`  Red Box Max jump height: ${maxZRedBox.toFixed(3)} units`);
+if (maxZRedBox >= maxZ * 0.5) {
+  console.error(`FAILED: Heavy red box did not significantly lower jump height! (got ${maxZRedBox}, expected < ${maxZ * 0.5})`);
+  process.exit(1);
+}
+console.log("  PASS: Heavy red box significantly reduced jump height (~0.39 units) as expected!");
 
 // Clean up held object
 char.heldObject = null;
-crate.isHeld = false;
 
 // 4. Wall Edge Assist Test
 console.log("\n4. Testing Wall Edge Assist (preventWalkOff without ClimbingModule):");

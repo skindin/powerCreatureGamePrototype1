@@ -1025,16 +1025,16 @@ export class DevPanel {
             <div class="slider-group">
               <div class="slider-label">
                 <span>Jump Strength (N·s)</span>
-                <span id="val-jump-strength">${(char.jumpModule?.jumpStrength ?? 11.6).toFixed(1)}</span>
+                <span id="val-jump-strength">${(char.jumpModule?.jumpStrength ?? 18.5).toFixed(1)}</span>
               </div>
-              <input type="range" id="slide-jump-strength" min="2.0" max="40.0" step="0.5" value="${char.jumpModule?.jumpStrength ?? 11.6}">
+              <input type="range" id="slide-jump-strength" min="2.0" max="40.0" step="0.5" value="${char.jumpModule?.jumpStrength ?? 18.5}">
             </div>
             <div class="slider-group">
               <div class="slider-label">
                 <span>Max Takeoff Speed (u/s)</span>
-                <span id="val-jump-max-speed">${(char.jumpModule?.maxInitialSpeed ?? 15.0).toFixed(1)}</span>
+                <span id="val-jump-max-speed">${(char.jumpModule?.maxInitialSpeed ?? 9.7).toFixed(1)}</span>
               </div>
-              <input type="range" id="slide-jump-max-speed" min="2.0" max="30.0" step="0.5" value="${char.jumpModule?.maxInitialSpeed ?? 15.0}">
+              <input type="range" id="slide-jump-max-speed" min="2.0" max="30.0" step="0.1" value="${char.jumpModule?.maxInitialSpeed ?? 9.67}">
             </div>
           </div>
         `;
