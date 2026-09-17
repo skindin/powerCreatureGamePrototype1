@@ -37,7 +37,7 @@ export class JumpModule {
    * Attempts to jump from the current supporting surface (ground or wall top).
    * Returns true if jump was initiated, false otherwise.
    */
-  public jump(character: Character, _arena?: Arena, movementInput?: Vector2D): boolean {
+  public jump(character: Character, _arena?: Arena, _movementInput?: Vector2D): boolean {
     if (!this.enabled || !character.hasVerticalPosition) return false;
     if (character.isHeld) return false;
 
@@ -68,27 +68,6 @@ export class JumpModule {
     if (character.wallEdgeAssistModule) {
       character.wallEdgeAssistModule.isAssistClampArmed = false;
       character.wallEdgeAssistModule.hasLeftClampZoneSinceDismount = true;
-    }
-
-    // Directional 45-degree jump impulse: if intending to move forward when jumping,
-    // put the jump force at 45 degrees to the direction of jumping (horizontal component = vertical component, tan(45°) = 1)
-    const move = movementInput ?? character.movementInput;
-    const moveX = move?.x ?? 0;
-    const moveY = move?.y ?? 0;
-    const inputMag = Math.hypot(moveX, moveY);
-
-    if (inputMag > 0.05) {
-      const dirX = moveX / inputMag;
-      const dirY = moveY / inputMag;
-
-      // 45-degree angle: horizontal launch speed equals vertical takeoff speed
-      const horizTakeoffSpeed = takeoffSpeed;
-      const currentSpeedInDir = character.velocity.x * dirX + character.velocity.y * dirY;
-      if (currentSpeedInDir < horizTakeoffSpeed) {
-        const boost = horizTakeoffSpeed - Math.max(0, currentSpeedInDir);
-        character.velocity.x += dirX * boost;
-        character.velocity.y += dirY * boost;
-      }
     }
 
     return true;

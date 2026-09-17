@@ -186,8 +186,8 @@ console.log("  Re-attached ClimbingModule:", char.climbingModule ? "SUCCESS" : "
 console.log("  ClimbingModule maxAdhesion:", char.climbingModule.maxAdhesion);
 console.log("  ClimbingModule maxClimbSpeed:", char.climbingModule.maxClimbSpeed);
 
-// 6. Directional Jump Velocity Test (Jump force at 45 degrees to jump direction)
-console.log("\n6. Testing Directional Jump at 45 Degrees to Jump Direction:");
+// 6. Consistent Upward Burst Test (Pure vertical burst, no 45 degree horizontal launch force)
+console.log("\n6. Testing Consistent Upward Burst (Pure vertical takeoff):");
 // Reset character to ground at rest
 char.position.x = 5.0;
 char.position.y = 5.0;
@@ -199,22 +199,23 @@ char.supportingSurfaceHeight = 0;
 
 // Jump with directional input { x: 1, y: 0 }
 const dirJumped = char.jump(arena, { x: 1, y: 0 });
-console.log("  Directional jump returned:", dirJumped);
-console.log("  Takeoff vz:", char.verticalVelocity.toFixed(4), "u/s");
-console.log("  Takeoff vx:", char.velocity.x.toFixed(4), "u/s");
-console.log("  Takeoff vy:", char.velocity.y.toFixed(4), "u/s");
+console.log("  Jump with movement input returned:", dirJumped);
+console.log("  Takeoff vz:", char.verticalVelocity.toFixed(4), "u/s (expected 9.67 u/s)");
+console.log("  Takeoff vx:", char.velocity.x.toFixed(4), "u/s (expected 0.00 u/s - pure upward burst)");
+console.log("  Takeoff vy:", char.velocity.y.toFixed(4), "u/s (expected 0.00 u/s - pure upward burst)");
 
-const jumpAngleDeg = Math.atan2(char.verticalVelocity, Math.hypot(char.velocity.x, char.velocity.y)) * (180 / Math.PI);
-console.log(`  Trajectory angle with horizontal plane: ${jumpAngleDeg.toFixed(2)}°`);
-
-if (Math.abs(jumpAngleDeg - 45.0) > 0.1) {
-  console.error(`FAILED: Expected jump angle of 45°, got ${jumpAngleDeg.toFixed(2)}°`);
+if (Math.abs(char.verticalVelocity - 9.67) > 0.05) {
+  console.error(`FAILED: Expected vertical takeoff velocity ~9.67 u/s, got ${char.verticalVelocity}`);
   process.exit(1);
 }
-console.log("  PASS: Jump force directed at exactly 45 degrees to the jump direction!");
+if (Math.abs(char.velocity.x) > 0.001 || Math.abs(char.velocity.y) > 0.001) {
+  console.error(`FAILED: Jump added horizontal velocity! Got vx=${char.velocity.x}, vy=${char.velocity.y}`);
+  process.exit(1);
+}
+console.log("  PASS: Jump produced a consistent purely upward burst without 45° horizontal deflection!");
 
-// 7. Testing Jump Off Wall Edge with Wall Assist Clamp
-console.log("\n7. Testing Jump Off Wall Edge with Wall Edge Assist Clamp:");
+// 7. Testing Jump Off Wall Edge with Wall Assist Clamp & Air Control
+console.log("\n7. Testing Jump Off Wall Edge with Wall Edge Assist Clamp & Air Control:");
 char.climbingModule = null;
 char.position.x = wall.x + wall.width - 0.05; // Near right edge of wall
 char.position.y = wall.y + 0.5;
@@ -228,34 +229,35 @@ if (char.wallEdgeAssistModule) {
   char.wallEdgeAssistModule.isAssistClampArmed = true;
 }
 
-// Jump to the right (off the ledge into the open)
-const ledgeJump = char.jump(arena, { x: 1, y: 0 });
+// Jump off the ledge into the open while steering right using air control
+const ledgeJump = char.jump(arena);
 console.log("  Ledge jump returned:", ledgeJump);
 console.log("  isAssistClampArmed immediately after jump:", char.wallEdgeAssistModule?.isAssistClampArmed);
-console.log("  Horizontal vx immediately after jump:", char.velocity.x.toFixed(4), "u/s");
+console.log("  Initial vz immediately after jump:", char.verticalVelocity.toFixed(4), "u/s");
 
 if (char.wallEdgeAssistModule?.isAssistClampArmed) {
   console.error("FAILED: wallEdgeAssistModule was not disarmed on jump!");
   process.exit(1);
 }
 
-// Simulate physics until landing on ground
+// Simulate physics with air control steering right { x: 1, y: 0 } until landing on ground
 let airborneTicks = 0;
 const startX = char.position.x;
 while (char.position.z > 0.001 && airborneTicks < 120) {
+  char.walkingModule?.update(char, { x: 1, y: 0 }, dt, arena);
   char.updatePosition(dt, arena);
   airborneTicks++;
 }
 
 console.log(`  Landed after ${airborneTicks} ticks (${(airborneTicks * dt).toFixed(3)}s)`);
 console.log(`  Start X: ${startX.toFixed(3)}, Landed X: ${char.position.x.toFixed(3)}`);
-console.log(`  Horizontal distance cleared: ${(char.position.x - startX).toFixed(3)} units`);
+console.log(`  Horizontal distance cleared with air control: ${(char.position.x - startX).toFixed(3)} units`);
 
 if (char.position.x <= startX + 0.15) {
-  console.error("FAILED: Character did not move forward through the air off the wall ledge!");
+  console.error("FAILED: Character did not move forward through the air off the wall ledge via air control!");
   process.exit(1);
 }
-console.log("  PASS: Character successfully cleared the wall edge assist obstacle!");
+console.log("  PASS: Character successfully cleared the wall edge assist obstacle using air control!");
 
 // 8. Testing Wall Assist Only Operates at Exactly Wall Height Standing on Top of Wall
 console.log("\n8. Testing Wall Assist Strictly Requires Exactly Wall Height Standing on Top of Wall:");
