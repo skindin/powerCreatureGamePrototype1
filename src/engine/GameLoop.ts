@@ -1,9 +1,10 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
-import { GameObject } from "./GameObject.js";
+import { GameObject, Vector2D } from "./GameObject.js";
 import { Renderer } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
+import { ContinuousPhysics } from "./ContinuousPhysics.js";
 
 import { ActiveAimCursor } from "./Renderer.js";
 
@@ -39,6 +40,8 @@ export class GameLoop {
   // Active multiplayer players in the arena
   public players: Map<string, PlayerEntry> = new Map();
   public onPlayersChanged?: () => void;
+  public onLocalPlayerJoined?: (entry: PlayerEntry) => void;
+  public onLocalPlayerLeft?: (playerId: string) => void;
   public baseCharacter: Character;
 
   private isRunning = false;
@@ -49,12 +52,29 @@ export class GameLoop {
   public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
 
+  public remoteCharacters: Set<Character> = new Set();
+
+  public addRemoteCharacter(char: Character): void {
+    this.remoteCharacters.add(char);
+    this.onPlayersChanged?.();
+  }
+
+  public removeRemoteCharacter(char: Character): void {
+    this.remoteCharacters.delete(char);
+    this.onPlayersChanged?.();
+  }
+
+  public get allObjects(): GameObject[] {
+    return this.objects;
+  }
+
   public get allCharacters(): Character[] {
     const activeChars = Array.from(this.players.values()).map((p) => p.character);
-    if (activeChars.length === 0) {
+    const remotes = Array.from(this.remoteCharacters);
+    if (activeChars.length === 0 && remotes.length === 0) {
       return [this.baseCharacter];
     }
-    return activeChars;
+    return [...activeChars, ...remotes];
   }
 
   public get primaryCharacter(): Character {
@@ -184,6 +204,8 @@ export class GameLoop {
       character: char,
     });
 
+    const entryObj = this.players.get("keyboard")!;
+    this.onLocalPlayerJoined?.(entryObj);
     this.onPlayersChanged?.();
     return char;
   }
@@ -212,6 +234,7 @@ export class GameLoop {
 
     this.players.delete("keyboard");
     this.inputManager.isKeyboardActive = false;
+    this.onLocalPlayerLeft?.("keyboard");
     this.onPlayersChanged?.();
   }
 
@@ -269,6 +292,8 @@ export class GameLoop {
       slot.aimOffsetInitialized = false;
     }
 
+    const entryObj = this.players.get(key)!;
+    this.onLocalPlayerJoined?.(entryObj);
     this.onPlayersChanged?.();
     return char;
   }
@@ -303,6 +328,7 @@ export class GameLoop {
       slot.isActive = false;
     }
 
+    this.onLocalPlayerLeft?.(key);
     this.onPlayersChanged?.();
   }
 
@@ -605,13 +631,28 @@ export class GameLoop {
       }
     }
 
+    // Record pre-tick positions for continuous swept TOI rollback
+    const prevPositions = new Map<GameObject, Vector2D>();
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      prevPositions.set(ent, { x: ent.position.x, y: ent.position.y });
+    }
+
     // 4. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
       obj.updatePosition(dt, this.arena);
     }
 
-    // 5. Resolve freebody-to-freebody circle collisions across all characters and objects
+    // 5. Continuous swept TOI rollback: rewinds colliding bodies to exact contact instant
+    ContinuousPhysics.resolveContinuousCollisions(
+      allEntities,
+      prevPositions,
+      this.arena,
+      dt
+    );
+
+    // 6. Resolve freebody-to-freebody circle collisions across all characters and objects
     this.resolveFreebodyCollisions();
   }
 

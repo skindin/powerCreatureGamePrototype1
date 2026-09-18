@@ -9,6 +9,7 @@ import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { FeedbackPanel } from "./ui/FeedbackPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
+import { MultiplayerClient } from "./network/MultiplayerClient.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import QRCode from "qrcode";
 
@@ -276,8 +277,10 @@ function bootstrap(): void {
     }
   };
 
-  // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching
+  // 7. Setup Authoritative Universal Multiplayer Client & Mode Switching
+  const multiplayerClient = new MultiplayerClient(gameLoop);
   const relayClient = new RelayClient("wss://echo.websocket.org");
+  relayClient.showGhostClones = false; // Disabled by default per user directive
   let isMultiplayerMode = false;
 
   const btnSinglePlayer = document.getElementById("mode-singleplayer-btn");
@@ -296,6 +299,37 @@ function bootstrap(): void {
   const packetCounts = document.getElementById("relay-packet-counts");
   const rate30Btn = document.getElementById("rate-30hz-btn");
   const rate60Btn = document.getElementById("rate-60hz-btn");
+  void relayHud;
+
+  const multiplayerStatusPill = document.getElementById("multiplayer-status-pill");
+  const lobbyStatusDisplay = document.getElementById("lobby-status-display");
+
+  // Keep multiplayer client synced with dynamic local player join / leave
+  gameLoop.onLocalPlayerJoined = (entry) => {
+    if (isMultiplayerMode) {
+      multiplayerClient.registerLocalPlayer(entry.id, entry.name, entry.color, entry.playerNumber);
+    }
+  };
+  gameLoop.onLocalPlayerLeft = (id) => {
+    if (isMultiplayerMode) {
+      multiplayerClient.unregisterLocalPlayer(id);
+    }
+  };
+
+  multiplayerClient.onStatsChange = (stats) => {
+    if (lobbyStatusDisplay) {
+      if (stats.status === "connected") {
+        const count = stats.connectedPlayersCount;
+        lobbyStatusDisplay.textContent = `${count} Player${count === 1 ? "" : "s"} (${stats.pingMs} ms)`;
+      } else {
+        lobbyStatusDisplay.textContent = stats.status;
+      }
+    }
+    const dot = multiplayerStatusPill?.querySelector(".status-dot");
+    if (dot) {
+      dot.className = `status-dot ${stats.status}`;
+    }
+  };
 
   const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
   const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
@@ -307,17 +341,15 @@ function bootstrap(): void {
       btnMultiplayer?.classList.add("active");
       mobileModeSingleBtn?.classList.remove("active");
       mobileModeMultiBtn?.classList.add("active");
-      relayHud?.classList.remove("hidden");
-      relayStatusPill?.classList.remove("hidden");
-      relayClient.connect();
+      multiplayerStatusPill?.classList.remove("hidden");
+      multiplayerClient.connect();
     } else {
       btnSinglePlayer?.classList.add("active");
       btnMultiplayer?.classList.remove("active");
       mobileModeSingleBtn?.classList.add("active");
       mobileModeMultiBtn?.classList.remove("active");
-      relayHud?.classList.add("hidden");
-      relayStatusPill?.classList.add("hidden");
-      relayClient.disconnect();
+      multiplayerStatusPill?.classList.add("hidden");
+      multiplayerClient.disconnect();
     }
   };
 
@@ -942,7 +974,10 @@ function bootstrap(): void {
   };
   gameLoop.onPhysicsTick = (_dt, nowMs) => {
     if (isMultiplayerMode) {
-      relayClient.update(character, objects, nowMs);
+      multiplayerClient.updatePhysicsTick(gameLoop.players, inputManager);
+      if (relayClient.status === "connected") {
+        relayClient.update(character, objects, nowMs);
+      }
     }
   };
 

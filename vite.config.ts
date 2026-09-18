@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
+import { GameServer } from './server/GameServer.js';
 
 function parseJsonBody(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -316,7 +317,13 @@ function autoTunnelPlugin(): Plugin {
         }
       });
 
-      // 3. Start tunnel
+      // 3. Attach Authoritative Multiplayer Universal Lobby Server
+      if (server.httpServer) {
+        const devGameServer = new GameServer();
+        devGameServer.attach(server.httpServer);
+      }
+
+      // 4. Start tunnel
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address();
         const port = typeof addr === 'object' && addr?.port ? addr.port : 5173;

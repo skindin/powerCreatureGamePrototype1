@@ -30,6 +30,9 @@ powerCreatureGamePrototype1/
 ├── package.json           # Dependencies and scripts (dev, build, preview, start)
 ├── server.js              # Node.js production static server with health checks
 ├── vite.config.ts         # Vite configuration
+├── server/
+│   ├── feedbackStore.js   # Persistent bug/feedback store
+│   └── GameServer.js      # Authoritative WebSocket server & 60Hz universal lobby
 ├── src/
 │   ├── main.ts            # Application bootstrap, entity initialization, mode switching
 │   ├── style.css          # Design system, glassmorphic HUDs, inspector styling
@@ -41,6 +44,7 @@ powerCreatureGamePrototype1/
 │   │   └── ThrowModule.ts
 │   ├── engine/            # Simulation and rendering core
 │   │   ├── Arena.ts       # Grid-based arena with wall heights and tile queries
+│   │   ├── ContinuousPhysics.ts # Swept circle-circle/wall TOI contact rollback
 │   │   ├── GameLoop.ts    # 60Hz fixed timestep simulation loop, collision resolver
 │   │   ├── GameObject.ts  # Universal freebody entity (mass, colliders, altitude)
 │   │   ├── Renderer.ts    # Canvas 2D renderer, altitude projection, ghost clones
@@ -52,6 +56,7 @@ powerCreatureGamePrototype1/
 │   │   ├── RollModule.ts  # 3D angular velocity, rolling resistance, indicators
 │   │   └── VerticalPositionModule.ts
 │   ├── network/           # Networking and telemetry
+│   │   ├── MultiplayerClient.ts # Authoritative universal lobby client (60Hz input sync, state reconciliation)
 │   │   └── RelayClient.ts # WebSocket relay client, RTT latency tracking, ghost snapshots
 │   └── ui/                # User interface and developer tools
 │       ├── DevPanel.ts    # Collapsible live inspector, variable sliders, wall tools
@@ -164,6 +169,20 @@ powerCreatureGamePrototype1/
   - **In-Game `📱 Phone Link` Modal & View Settings Access**:
     - Accessible directly in the browser top-bar (`#btn-phone-connect`, `#toggle-view-settings-btn`), in the desktop app top bar (`👁 View`), and in the Inspector panel (`👁️ View`).
     - View Settings panel is elevated to `z-index: 50` and remains open during live gameplay so players can test visual options live without click-outside closing.
+
+### Universal Multiplayer Lobby & Continuous TOI Rollback (Phase 1.2 — RLAttempt1 Branch)
+- **Authoritative Universal Lobby (`server/GameServer.js`)**:
+  - Attached directly to WebSocket `/ws` on the HTTP server in `server.js` (for Railway deployment / production) and on `server.httpServer` in `vite.config.ts` (for local Vite dev, desktop app, and nationwide tunnel).
+  - Maintains single shared arena state (characters, dynamic stones, crates, apples, walls) at 60Hz.
+  - Supports multiple characters per browser page (e.g. 1 Keyboard + N Gamepads on one machine) and seamlessly networks them with other browser pages/devices in the same arena.
+- **Continuous Swept Time-of-Impact (TOI) Physics (`src/engine/ContinuousPhysics.ts`)**:
+  - Eliminates collision penetration squish and tunneling by solving exact contact time fraction $\alpha \in [0, 1]$ along displacement paths.
+  - Rewinds colliding bodies to exact tangent touch before computing and applying normal & friction impulses, stepping remainder of frame cleanly.
+  - Strictly preserves two-tier altitude gating ($z \ge \text{wallHeight}$ bypasses ground collisions).
+- **Client Prediction & Streamlined UI (`src/network/MultiplayerClient.ts`)**:
+  - Local inputs are predicted instantly on client with zero input lag.
+  - Top bar button cleaned to **`🌐 Multiplayer`** (relay test text removed from primary flow; legacy echo test disabled by default).
+  - Status pill dynamically displays connected player count and round-trip ping (e.g. `🟢 2 Players (28 ms)`).
 
 ---
 
