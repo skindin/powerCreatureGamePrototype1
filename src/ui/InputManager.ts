@@ -115,7 +115,7 @@ export class InputManager {
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
-  public onToggleSprint?: () => void;
+  public onToggleSprint?: (active?: boolean) => void;
   public onStopKeyboardSprint?: () => void;
   public onGamepadStatusChange?: (connected: boolean, name: string) => void;
   public onKeyboardJoin?: () => void;
@@ -154,9 +154,8 @@ export class InputManager {
         return;
       }
 
-      // Spacebar: if keyboard player is not currently active, pressing Space spawns them
+      // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
       if (e.code === "Space") {
-        e.preventDefault();
         if (!this.isKeyboardActive) {
           this.onKeyboardJoin?.();
           return;
@@ -169,16 +168,13 @@ export class InputManager {
       this.keysPressed.add(e.code);
       this.updateMovementVector();
 
-      // Shift + WASD sprint activation
-      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
-        this.isKeyboardSprintActive = true;
-        this.onToggleSprint?.();
-      }
-
-      // If user is pressing any movement keys while keyboard sprint is active (or Shift held), maintain sprint
-      if (this.isKeyboardSprintActive || e.shiftKey) {
-        if (this.hasAnyMovementKeyPressed()) {
-          this.onToggleSprint?.();
+      // Shift toggles sprinting on / off (pressing Shift untoggles sprinting)
+      if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat) {
+        this.isKeyboardSprintActive = !this.isKeyboardSprintActive;
+        if (this.isKeyboardSprintActive) {
+          this.onToggleSprint?.(true);
+        } else {
+          this.onStopKeyboardSprint?.();
         }
       }
 
@@ -206,13 +202,10 @@ export class InputManager {
         this.isEKeyDepressed = false;
       }
 
-      // Keep sprint on until the user is no longer pressing ANY wasd / arrow buttons!
+      // Automatically turn off sprint when all movement keys are released!
       if (!this.hasAnyMovementKeyPressed()) {
-        const isShiftHeld = this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
-        if (!isShiftHeld) {
-          this.isKeyboardSprintActive = false;
-          this.onStopKeyboardSprint?.();
-        }
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
       }
     });
 

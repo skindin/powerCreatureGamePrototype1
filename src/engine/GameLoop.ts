@@ -526,6 +526,9 @@ export class GameLoop {
     const kEntry = this.players.get("keyboard");
     if (kEntry && input.isKeyboardActive) {
       const kChar = kEntry.character;
+      if (kChar.isSprinting !== input.isKeyboardSprintActive) {
+        kChar.setSprinting(input.isKeyboardSprintActive);
+      }
       const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
       const aimTarget = isMouseAiming ? input.mousePos : null;
 

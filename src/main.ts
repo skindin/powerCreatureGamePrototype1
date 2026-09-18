@@ -183,8 +183,9 @@ function bootstrap(): void {
   };
 
   // Sprint interaction
-  inputManager.onToggleSprint = () => {
-    character.setSprinting(true);
+  inputManager.onToggleSprint = (active?: boolean) => {
+    const newState = active !== undefined ? active : !character.isSprinting;
+    character.setSprinting(newState);
   };
   inputManager.onStopKeyboardSprint = () => {
     character.setSprinting(false);
@@ -260,16 +261,18 @@ function bootstrap(): void {
     }
   };
 
-  inputManager.onToggleSprint = () => {
-    const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
-    if (activeChar) {
-      activeChar.setSprinting(true);
+  // Sprint interaction
+  inputManager.onToggleSprint = (active?: boolean) => {
+    const target = gameLoop ? (gameLoop.players.get("keyboard")?.character ?? gameLoop.primaryCharacter) : character;
+    if (target) {
+      const newState = active !== undefined ? active : !target.isSprinting;
+      target.setSprinting(newState);
     }
   };
   inputManager.onStopKeyboardSprint = () => {
-    const activeChar = gameLoop ? gameLoop.primaryCharacter : null;
-    if (activeChar) {
-      activeChar.setSprinting(false);
+    const target = gameLoop ? (gameLoop.players.get("keyboard")?.character ?? gameLoop.primaryCharacter) : character;
+    if (target) {
+      target.setSprinting(false);
     }
   };
 

@@ -443,6 +443,13 @@ powerCreatureGamePrototype1/
     - **Controller Holding Object Preserves Relative Position**:
       - For gamepad players holding an object, the cursor's relative offset to the character (`slot.aimOffset`) is preserved as the character walks and maneuvers around the arena (`slot.aimPos = visualPos + slot.aimOffset`).
       - When the cursor hides (e.g. after throwing or when stepping out of reach) and reappears (e.g. upon grabbing another object or deflecting right stick), it is placed at the exact same relative position to the character (`visualPos + slot.aimOffset`).
+45. **Keyboard Sprint Toggle, Shift Untoggle & Movement Release Reset**:
+    - **Shift Key Toggles and Untoggles**:
+      - Pressing Shift while sprint is OFF toggles sprint ON.
+      - Pressing Shift again while sprint is ON (even while holding movement keys) immediately untoggles sprint OFF, returning the character to normal walking speed.
+    - **Movement Release Auto-Reset**:
+      - While moving, sprint does not turn off on its own unless explicitly untoggled with Shift or until all WASD / arrow movement keys are released.
+      - Releasing all movement keys automatically turns sprint OFF, so the next movement begins at normal speed until Shift is pressed again.
 
 ---
 
