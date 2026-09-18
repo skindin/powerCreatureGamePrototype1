@@ -26,6 +26,7 @@ export class GameServer {
 
     this.initArenaGrid();
     this.initDefaultObjects();
+    this.syncEntitiesWithWalls();
     this.startSimulation();
   }
 
@@ -96,6 +97,7 @@ export class GameServer {
     }
     this.wallMapString = mapStr;
     this.rebuildWalls();
+    this.syncEntitiesWithWalls();
     return true;
   }
 
@@ -104,6 +106,7 @@ export class GameServer {
     this.tileGrid[row][col] = isWall ? 1 : 0;
     this.wallMapString = this.exportWallMapBinaryString();
     this.rebuildWalls();
+    this.syncEntitiesWithWalls();
     return true;
   }
 
@@ -125,18 +128,84 @@ export class GameServer {
     }
   }
 
+  getSupportingWall(x, y, radius = 0) {
+    if (radius <= 0) {
+      for (const wall of this.walls) {
+        if (x >= wall.x && x <= wall.x + wall.width && y >= wall.y && y <= wall.y + wall.height) {
+          return wall;
+        }
+      }
+      return null;
+    }
+    for (const wall of this.walls) {
+      const closestX = Math.max(wall.x, Math.min(x, wall.x + wall.width));
+      const closestY = Math.max(wall.y, Math.min(y, wall.y + wall.height));
+      const dx = x - closestX;
+      const dy = y - closestY;
+      if (dx * dx + dy * dy <= radius * radius + 1e-6) {
+        return wall;
+      }
+    }
+    return null;
+  }
+
+  syncEntitiesWithWalls() {
+    for (const obj of this.objects.values()) {
+      if (obj.isHeld) continue;
+      const r = obj.radius || 0.26;
+      const supportingWall = this.getSupportingWall(obj.x, obj.y, r);
+      if (supportingWall) {
+        if (obj.z < supportingWall.wallHeight) {
+          obj.z = supportingWall.wallHeight;
+          obj.supportingSurfaceHeight = supportingWall.wallHeight;
+          obj.standingWall = supportingWall;
+          obj.vz = 0;
+        } else {
+          obj.standingWall = supportingWall;
+          obj.supportingSurfaceHeight = supportingWall.wallHeight;
+        }
+      } else {
+        if (obj.supportingSurfaceHeight >= this.wallHeight - 0.05 || obj.standingWall) {
+          obj.standingWall = null;
+          obj.supportingSurfaceHeight = 0;
+        }
+      }
+    }
+    for (const p of this.players.values()) {
+      const r = p.colliderRadius || 0.44;
+      const supportingWall = this.getSupportingWall(p.x, p.y, r);
+      if (supportingWall) {
+        if (p.z < supportingWall.wallHeight) {
+          p.z = supportingWall.wallHeight;
+          p.supportingSurfaceHeight = supportingWall.wallHeight;
+          p.standingWall = supportingWall;
+          p.vz = 0;
+        } else {
+          p.standingWall = supportingWall;
+          p.supportingSurfaceHeight = supportingWall.wallHeight;
+        }
+      } else {
+        if (p.supportingSurfaceHeight >= this.wallHeight - 0.05 || p.standingWall) {
+          p.standingWall = null;
+          p.supportingSurfaceHeight = 0;
+        }
+      }
+    }
+  }
+
   initDefaultObjects() {
     const defaults = [
       { id: "stone-1", name: "Light Blue Box", x: 6.8, y: 4.4, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.26, mass: 0.7, color: "#38bdf8", bounceMod: 0.25, shape: "box" },
-      { id: "stone-2", name: "Orange Boulder", x: 13.2, y: 9.6, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.38, mass: 1.8, color: "#fb923c", bounceMod: 0.35, shape: "circle" },
-      { id: "crate-1", name: "Emerald Crate", x: 10.0, y: 4.5, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.35, mass: 1.0, color: "#34d399", bounceMod: 0.2, shape: "box" },
-      { id: "crate-2", name: "Purple Block", x: 10.0, y: 9.5, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.32, mass: 0.9, color: "#c084fc", bounceMod: 0.25, shape: "box" },
-      { id: "food-1", name: "Golden Apple", x: 15.0, y: 4.0, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.22, mass: 0.4, color: "#facc15", bounceMod: 0.5, shape: "circle" },
+      { id: "boulder-1", name: "Heavy Red Box", x: 7.0, y: 9.2, z: 0, vx: 0, vy: 0, vz: 0, radius: 0.40, mass: 2.6, color: "#f87171", bounceMod: 0.05, shape: "box" },
+      { id: "bouncy-1", name: "Super Bouncy Ball", x: 5.2, y: 3.0, z: 0.6, vx: 0, vy: 0, vz: 1.0, radius: 0.24, mass: 0.5, color: "#4ade80", bounceMod: 0.85, shape: "circle" },
+      { id: "rolling-1", name: "Rolling Ball", x: 13.6, y: 7.0, z: 0, vx: 4.5, vy: 1.5, vz: 0, radius: 0.28, mass: 0.6, color: "#a855f7", bounceMod: 0.95, shape: "circle" },
     ];
 
     for (const d of defaults) {
       this.objects.set(d.id, {
         ...d,
+        supportingSurfaceHeight: 0,
+        standingWall: null,
         isHeld: false,
         heldBy: null,
       });
@@ -237,10 +306,11 @@ export class GameServer {
     }
 
     if (msg.type === 'register_player') {
-      const { localId, name, color } = msg;
+      const { localId, name } = msg;
       const playerId = `${client.clientId}_${localId}`;
       const playerNum = this.nextPlayerNumber++;
-      const assignedColor = color || PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      const assignedColor = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      const assignedName = name && !name.startsWith("Player ") ? name : `Player ${playerNum}`;
 
       // Spawn at friendly open coordinates in the trench (col 5, row 7)
       const spawnX = 5.0 + ((playerNum - 1) % 4) * 0.6;
@@ -251,7 +321,7 @@ export class GameServer {
         clientId: client.clientId,
         localId,
         playerNumber: playerNum,
-        name: name || `Player ${playerNum}`,
+        name: assignedName,
         color: assignedColor,
         x: spawnX,
         y: spawnY,
@@ -259,6 +329,8 @@ export class GameServer {
         vx: 0,
         vy: 0,
         vz: 0,
+        supportingSurfaceHeight: 0,
+        standingWall: null,
         facingAngle: 0,
         colliderRadius: 0.44,
         mass: 1.2,
@@ -272,8 +344,26 @@ export class GameServer {
         inputQueue: [],
       };
 
+      // Check if spawned on a wall
+      const spawnWall = this.getSupportingWall(spawnX, spawnY, playerState.colliderRadius);
+      if (spawnWall) {
+        playerState.z = spawnWall.wallHeight;
+        playerState.supportingSurfaceHeight = spawnWall.wallHeight;
+        playerState.standingWall = spawnWall;
+      }
+
       this.players.set(playerId, playerState);
       client.localPlayers.add(playerId);
+
+      // Send authoritative assignment to the registering client
+      this.sendJson(client.ws, {
+        type: 'player_assigned',
+        localId,
+        playerId,
+        playerNumber: playerNum,
+        color: assignedColor,
+        name: assignedName,
+      });
 
       // Broadcast join to all
       this.broadcast({
@@ -327,6 +417,10 @@ export class GameServer {
 
     this.players.delete(playerId);
 
+    if (this.players.size === 0) {
+      this.nextPlayerNumber = 1;
+    }
+
     this.broadcast({
       type: 'player_left',
       playerId,
@@ -338,6 +432,67 @@ export class GameServer {
       this.removePlayer(playerId);
     }
     this.clients.delete(client.ws);
+  }
+
+  calculateHeldObjectPosition(player, obj) {
+    const defaultHandDist = (player.colliderRadius || 0.44) + (obj.radius || 0.26) * 0.5 + 0.08;
+    const dirX = Math.cos(player.facingAngle);
+    const dirY = Math.sin(player.facingAngle);
+    const heldZ = player.z + 0.45;
+
+    // When standing at or above wall height (Layer 2), ground walls are beneath and do not block
+    if (player.z >= this.wallHeight) {
+      return {
+        x: player.x + dirX * defaultHandDist,
+        y: player.y + dirY * defaultHandDist,
+        z: heldZ,
+      };
+    }
+
+    const objRadius = obj.radius || 0.26;
+    const safetyMargin = 0.12;
+    const reqClearance = objRadius + safetyMargin;
+    let minHitDistance = Infinity;
+
+    for (const wall of this.walls) {
+      const x1 = wall.x;
+      const x2 = wall.x + wall.width;
+      const y1 = wall.y;
+      const y2 = wall.y + wall.height;
+      const R = reqClearance;
+
+      if (dirX > 0.0001 && player.x < x1 - R) {
+        const t = (x1 - R - player.x) / dirX;
+        const hitY = player.y + t * dirY;
+        if (hitY >= y1 - R && hitY <= y2 + R && t < minHitDistance) minHitDistance = t;
+      }
+      if (dirX < -0.0001 && player.x > x2 + R) {
+        const t = (x2 + R - player.x) / dirX;
+        const hitY = player.y + t * dirY;
+        if (hitY >= y1 - R && hitY <= y2 + R && t < minHitDistance) minHitDistance = t;
+      }
+      if (dirY > 0.0001 && player.y < y1 - R) {
+        const t = (y1 - R - player.y) / dirY;
+        const hitX = player.x + t * dirX;
+        if (hitX >= x1 - R && hitX <= x2 + R && t < minHitDistance) minHitDistance = t;
+      }
+      if (dirY < -0.0001 && player.y > y2 + R) {
+        const t = (y2 + R - player.y) / dirY;
+        const hitX = player.x + t * dirX;
+        if (hitX >= x1 - R && hitX <= x2 + R && t < minHitDistance) minHitDistance = t;
+      }
+    }
+
+    const maxAllowedDist = isFinite(minHitDistance)
+      ? Math.max(0, minHitDistance - 0.08)
+      : defaultHandDist;
+    const finalDist = Math.min(defaultHandDist, maxAllowedDist);
+
+    return {
+      x: player.x + dirX * finalDist,
+      y: player.y + dirY * finalDist,
+      z: heldZ,
+    };
   }
 
   startSimulation() {
@@ -411,7 +566,49 @@ export class GameServer {
       if (player.y < r) { player.y = r; player.vy = 0; }
       if (player.y > arenaH - r) { player.y = arenaH - r; player.vy = 0; }
 
-      // Wall collision for ground-level players against synchronized grid
+      // Supporting surface check for player (wall elevation or floor)
+      let pSurfaceHeight = 0;
+      if (player.z >= this.wallHeight - 0.05 || (player.supportingSurfaceHeight && player.supportingSurfaceHeight >= this.wallHeight - 0.05)) {
+        const pWall = this.getSupportingWall(player.x, player.y, player.colliderRadius);
+        if (pWall) {
+          player.standingWall = pWall;
+          pSurfaceHeight = pWall.wallHeight;
+        } else {
+          player.standingWall = null;
+          pSurfaceHeight = 0;
+        }
+      } else {
+        player.standingWall = null;
+        pSurfaceHeight = 0;
+      }
+      player.supportingSurfaceHeight = pSurfaceHeight;
+
+      // Wall climbing
+      if (input.isClimbHeld && player.z < this.wallHeight) {
+        const nearWall = this.getSupportingWall(player.x, player.y, player.colliderRadius + 0.15);
+        if (nearWall) {
+          player.isClimbing = true;
+        }
+      }
+
+      if (player.isClimbing) {
+        player.z = Math.min(this.wallHeight, Math.max(player.z, 0) + 3.0 * dt);
+        player.vz = 0;
+        if (player.z >= this.wallHeight) {
+          player.isClimbing = false;
+          player.z = this.wallHeight;
+          player.supportingSurfaceHeight = this.wallHeight;
+        }
+      } else if (player.z > pSurfaceHeight || player.vz !== 0) {
+        player.vz -= 18.0 * dt;
+        player.z += player.vz * dt;
+        if (player.z <= pSurfaceHeight) {
+          player.z = pSurfaceHeight;
+          player.vz = 0;
+        }
+      }
+
+      // Wall collision for ground-level players against synchronized grid (Layer 1)
       if (player.z < this.wallHeight) {
         this.resolveCircleWallsAgainstGrid(player);
       }
@@ -431,12 +628,12 @@ export class GameServer {
         player.heldObjectId = null;
       } else if (input.isGrabHeld && !player.heldObjectId) {
         let closestObj = null;
-        let closestDist = 1.2; // reach distance
+        let closestDist = 1.3; // 3D reach distance
         for (const obj of this.objects.values()) {
           if (obj.isHeld) continue;
-          const d = Math.hypot(obj.x - player.x, obj.y - player.y);
-          if (d < closestDist) {
-            closestDist = d;
+          const deltaMagnitude = Math.hypot(obj.x - player.x, obj.y - player.y, obj.z - player.z);
+          if (deltaMagnitude <= closestDist && deltaMagnitude < closestDist) {
+            closestDist = deltaMagnitude;
             closestObj = obj;
           }
         }
@@ -447,14 +644,15 @@ export class GameServer {
         }
       }
 
-      // Update held object position to attach in front of hands
+      // Update held object position to attach cleanly in front of hands along facing angle,
+      // dynamically clamped outside walls so it never clips
       if (player.heldObjectId) {
         const obj = this.objects.get(player.heldObjectId);
         if (obj) {
-          const holdDist = player.colliderRadius + obj.radius + 0.1;
-          obj.x = player.x + Math.cos(player.facingAngle) * holdDist;
-          obj.y = player.y + Math.sin(player.facingAngle) * holdDist;
-          obj.z = player.z + 0.3;
+          const holdPos = this.calculateHeldObjectPosition(player, obj);
+          obj.x = holdPos.x;
+          obj.y = holdPos.y;
+          obj.z = holdPos.z;
           obj.vx = player.vx;
           obj.vy = player.vy;
           obj.vz = 0;
@@ -466,11 +664,29 @@ export class GameServer {
     for (const obj of this.objects.values()) {
       if (obj.isHeld) continue;
 
-      if (obj.z > 0 || obj.vz !== 0) {
+      // Surface height check: resting on wall top (Layer 2) or floor (Layer 1)
+      let surfaceHeight = 0;
+      if (obj.z >= this.wallHeight - 0.05 || (obj.supportingSurfaceHeight && obj.supportingSurfaceHeight >= this.wallHeight - 0.05)) {
+        const wall = this.getSupportingWall(obj.x, obj.y, obj.radius);
+        if (wall) {
+          obj.standingWall = wall;
+          surfaceHeight = wall.wallHeight;
+        } else {
+          obj.standingWall = null;
+          surfaceHeight = 0;
+        }
+      } else {
+        obj.standingWall = null;
+        surfaceHeight = 0;
+      }
+      obj.supportingSurfaceHeight = surfaceHeight;
+
+      // Vertical gravity & bouncing against surfaceHeight
+      if (obj.z > surfaceHeight || obj.vz !== 0) {
         obj.vz -= 18.0 * dt;
         obj.z += obj.vz * dt;
-        if (obj.z <= 0) {
-          obj.z = 0;
+        if (obj.z <= surfaceHeight) {
+          obj.z = surfaceHeight;
           if (obj.vz < -1.0) {
             obj.vz = -obj.vz * (obj.bounceMod || 0.3);
           } else {
@@ -479,7 +695,8 @@ export class GameServer {
         }
       }
 
-      if (obj.z === 0) {
+      // Ground / wall-top friction
+      if (obj.z <= surfaceHeight + 0.02) {
         const frictionCoeff = 3.5;
         obj.vx -= obj.vx * Math.min(1.0, frictionCoeff * dt);
         obj.vy -= obj.vy * Math.min(1.0, frictionCoeff * dt);
@@ -489,9 +706,11 @@ export class GameServer {
         }
       }
 
+      // Horizontal displacement
       obj.x += obj.vx * dt;
       obj.y += obj.vy * dt;
 
+      // Arena boundary collision
       const r = obj.radius;
       const arenaW = this.cols * this.tileSize;
       const arenaH = this.rows * this.tileSize;
@@ -500,7 +719,7 @@ export class GameServer {
       if (obj.y < r) { obj.y = r; obj.vy = -obj.vy * (obj.bounceMod || 0.3); }
       if (obj.y > arenaH - r) { obj.y = arenaH - r; obj.vy = -obj.vy * (obj.bounceMod || 0.3); }
 
-      // Wall collision against synchronized grid only if below wall height
+      // Wall collision against synchronized grid ONLY if below wall height (Layer 1)
       if (obj.z < this.wallHeight) {
         this.resolveCircleWallsAgainstGrid(obj);
       }
@@ -625,6 +844,7 @@ export class GameServer {
       vx: Number(p.vx.toFixed(3)),
       vy: Number(p.vy.toFixed(3)),
       vz: Number(p.vz.toFixed(3)),
+      supportingSurfaceHeight: Number((p.supportingSurfaceHeight || 0).toFixed(3)),
       facingAngle: Number(p.facingAngle.toFixed(3)),
       isSprinting: p.isSprinting,
       isActivelyWalking: p.isActivelyWalking,
@@ -645,10 +865,12 @@ export class GameServer {
       vx: Number(o.vx.toFixed(3)),
       vy: Number(o.vy.toFixed(3)),
       vz: Number(o.vz.toFixed(3)),
+      supportingSurfaceHeight: Number((o.supportingSurfaceHeight || 0).toFixed(3)),
       radius: o.radius,
       mass: o.mass,
       color: o.color,
       shape: o.shape,
+      bounceMod: o.bounceMod || 0.3,
       isHeld: o.isHeld,
       heldBy: o.heldBy,
     }));

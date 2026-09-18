@@ -179,13 +179,18 @@ powerCreatureGamePrototype1/
   - Eliminates collision penetration squish and tunneling by solving exact contact time fraction $\alpha \in [0, 1]$ along displacement paths.
   - Rewinds colliding bodies to exact tangent touch before computing and applying normal & friction impulses, stepping remainder of frame cleanly.
   - Strictly preserves two-tier altitude gating ($z \ge \text{wallHeight}$ bypasses ground collisions).
-- **Client Prediction & Streamlined UI (`src/network/MultiplayerClient.ts`)**:
-  - Local inputs are predicted instantly on client with zero input lag.
-  - Top bar button cleaned to **`🌐 Multiplayer`** (relay test text removed from primary flow; legacy echo test disabled by default).
-  - Status pill dynamically displays connected player count and round-trip ping (e.g. `🟢 2 Players (28 ms)`).
-- **Binary String Wall Map Synchronization (`exportWallMapBinaryString` / `importWallMapBinaryString`)**:
+- **Map & Object Synchronization Across All Entities**:
   - Encodes the complete 20x14 arena layout (280 tiles) as a compact 280-character binary string (`'0'` = ground, `'1'` = wall), indexed from bottom-left ($r = \text{rows}-1, c=0$) to the right, then up to the top.
-  - Included in `init_state` and synced in real-time via `wall_map_sync` whenever wall tiles or presets are edited, guaranteeing 100% mathematical map parity and identical collision surfaces between server and all clients.
+  - Synchronizes dynamic objects across all clients: if an object exists on the server that a client lacks, it is dynamically spawned; full positions $(x, y, z)$, velocities $(vx, vy, vz)$, mass, radius, and shapes are synchronized.
+- **Wall Elevation & Supporting Surfaces for All Objects**:
+  - Both server and client compute `supportingSurfaceHeight` from active wall footprints. Objects and characters on walls rest at $z = \text{wallHeight} = 1.0$ (Layer 2), eliminating items sinking inside wall geometry.
+  - When objects are pushed or roll off wall tops into trenches, vertical gravity pulls them down to $z = 0$.
+- **Held Object Synchronization & Wall-Clearance Clamping**:
+  - When a player holds an object, its position is attached to the character's hands along `facingAngle` using exact quadratic ray-AABB wall clearance clamping (`calculateHeldObjectPosition`), preventing carried objects from clipping or spawning embedded inside walls.
+  - Carried state and attachments are fully synchronized across remote clients.
+- **Authoritative Player Joining & Color Sequencing**:
+  - The server authoritatively assigns player numbers and theme colors upon connection: Player 1 is always Yellow / Amber Gold (`#f59e0b`), Player 2 is Cyan (`#06b6d4`, matching singleplayer Player 2), Player 3 is Emerald (`#10b981`), etc.
+  - When all players disconnect from the lobby, the player counter resets so the next player to connect starts as Player 1 (Yellow) again.
 
 ---
 

@@ -86,7 +86,6 @@ async function testUniversalLobby() {
     type: 'register_player',
     localId: 'keyboard',
     name: 'Player 1 (Page A)',
-    color: '#f59e0b',
   }));
 
   // 5. Client B registers 2 players (Controller 1 & Controller 2 on the same page!)
@@ -94,23 +93,49 @@ async function testUniversalLobby() {
     type: 'register_player',
     localId: 'gamepad-0',
     name: 'Player 2 (Page B - Controller 1)',
-    color: '#06b6d4',
   }));
 
   wsB.send(JSON.stringify({
     type: 'register_player',
     localId: 'gamepad-1',
     name: 'Player 3 (Page B - Controller 2)',
-    color: '#10b981',
   }));
 
   // Wait for player registrations to process
   await new Promise((r) => setTimeout(r, 200));
 
+  // Verify authoritative player color assignments
+  const assignedA = messagesA.find((m) => m.type === 'player_assigned' && m.localId === 'keyboard');
+  if (!assignedA || assignedA.playerNumber !== 1 || assignedA.color !== '#f59e0b') {
+    throw new Error(`Expected P1 to be yellow #f59e0b, got: ${JSON.stringify(assignedA)}`);
+  }
+  console.log(`✅ First player to join assigned Player 1 with Yellow: ${assignedA.color}`);
+
+  const assignedB0 = messagesB.find((m) => m.type === 'player_assigned' && m.localId === 'gamepad-0');
+  if (!assignedB0 || assignedB0.playerNumber !== 2 || assignedB0.color !== '#06b6d4') {
+    throw new Error(`Expected P2 to be cyan #06b6d4, got: ${JSON.stringify(assignedB0)}`);
+  }
+  console.log(`✅ Second player to join assigned Player 2 with Cyan: ${assignedB0.color}`);
+
+  const assignedB1 = messagesB.find((m) => m.type === 'player_assigned' && m.localId === 'gamepad-1');
+  if (!assignedB1 || assignedB1.playerNumber !== 3 || assignedB1.color !== '#10b981') {
+    throw new Error(`Expected P3 to be emerald #10b981, got: ${JSON.stringify(assignedB1)}`);
+  }
+  console.log(`✅ Third player to join assigned Player 3 with Emerald: ${assignedB1.color}`);
+
   console.log(`Active players in lobby: ${gameServer.players.size}`);
   if (gameServer.players.size !== 3) {
     throw new Error(`Expected 3 players in universal lobby, got ${gameServer.players.size}`);
   }
+
+  // Verify object wall elevation: place a wall directly under stone-1 (x: 6.8, y: 4.4)
+  // Col 6, Row 4 is where stone-1 is located
+  gameServer.setWallTile(6, 4, true);
+  const stone1 = gameServer.objects.get("stone-1");
+  if (!stone1 || stone1.z < 1.0 || stone1.supportingSurfaceHeight < 1.0) {
+    throw new Error(`Expected stone-1 on wall to have z >= 1.0, got z=${stone1?.z}, surface=${stone1?.supportingSurfaceHeight}`);
+  }
+  console.log(`✅ Dynamic object on wall correctly elevated to wall top: z=${stone1.z}`);
 
   // 6. Simulate streaming inputs from both pages for 30 ticks (0.5 seconds)
   for (let tick = 1; tick <= 30; tick++) {

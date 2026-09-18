@@ -268,8 +268,9 @@ export class Arena {
    * is smoothly elevated to the wall height.
    */
   public syncEntitiesWithWalls(entities?: GameObject[]): void {
-    if (!entities) return;
-    for (const ent of entities) {
+    const list = entities ?? this.entities;
+    if (!list) return;
+    for (const ent of list) {
       const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.32);
       const supportingWall = this.getSupportingWall(ent.position.x, ent.position.y, r);
       if (supportingWall) {

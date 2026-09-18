@@ -1,5 +1,5 @@
 import { Character } from "../character/Character.js";
-import { Vector2D } from "../engine/GameObject.js";
+import { GameObject, Vector2D } from "../engine/GameObject.js";
 import { GameLoop } from "../engine/GameLoop.js";
 
 export type MultiplayerStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -306,10 +306,26 @@ export class MultiplayerClient {
         return;
       }
 
+      if (msg.type === "player_assigned") {
+        const localEntry = this.gameLoop?.players.get(msg.localId);
+        if (localEntry) {
+          localEntry.playerNumber = msg.playerNumber;
+          localEntry.color = msg.color;
+          localEntry.name = msg.name;
+          localEntry.character.playerNumber = msg.playerNumber;
+          localEntry.character.playerColor = msg.color;
+          localEntry.character.color = msg.color;
+          localEntry.character.name = msg.name;
+          this.gameLoop?.onPlayersChanged?.();
+        }
+        return;
+      }
+
       if (msg.type === "init_state") {
         this.clientId = msg.clientId;
         if (msg.wallMap && this.gameLoop) {
-          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, this.gameLoop.arena.entities);
+          const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
+          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
         }
         this.reconcileWorldState(msg.players || [], msg.objects || []);
         this.notifyStats();
@@ -318,7 +334,8 @@ export class MultiplayerClient {
 
       if (msg.type === "wall_map_sync") {
         if (msg.wallMap && this.gameLoop) {
-          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, this.gameLoop.arena.entities);
+          const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
+          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
         }
         return;
       }
@@ -363,7 +380,7 @@ export class MultiplayerClient {
           const lChar = localEntry.character;
           const driftDist = Math.hypot(sp.x - lChar.position.x, sp.y - lChar.position.y);
           // If local prediction deviated significantly (e.g. unexpected collision with remote player)
-          if (driftDist > 0.4) {
+          if (driftDist > 0.45) {
             // Smoothly snap position towards authoritative server position
             lChar.position.x += (sp.x - lChar.position.x) * 0.4;
             lChar.position.y += (sp.y - lChar.position.y) * 0.4;
@@ -380,10 +397,44 @@ export class MultiplayerClient {
         rChar.position.z += (sp.z - rChar.position.z) * lerpFactor;
         rChar.velocity.x = sp.vx;
         rChar.velocity.y = sp.vy;
+        rChar.verticalVelocity = sp.vz;
         rChar.facingAngle = sp.facingAngle;
         rChar.setSprinting(sp.isSprinting);
         rChar.isActivelyWalking = sp.isActivelyWalking;
         rChar.isClimbing = sp.isClimbing;
+        rChar.isAiming = sp.isAiming;
+        rChar.aimTarget = sp.aimTarget;
+
+        // Support wall check for remote character
+        const supWall = this.gameLoop.arena.getSupportingWall(rChar.position.x, rChar.position.y, rChar.colliderRadius);
+        if (supWall && rChar.position.z >= supWall.wallHeight - 0.05) {
+          rChar.supportingSurfaceHeight = supWall.wallHeight;
+          (rChar as any).standingWall = supWall;
+        } else {
+          rChar.supportingSurfaceHeight = 0;
+          (rChar as any).standingWall = null;
+        }
+
+        // Held object sync for remote character
+        if (sp.heldObjectId) {
+          const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
+          if (heldObj) {
+            rChar.heldObject = heldObj;
+            heldObj.isHeld = true;
+            heldObj.heldBy = rChar;
+            const heldPos = rChar.calculateHeldObjectPosition(this.gameLoop.arena);
+            heldObj.position.x = heldPos.x;
+            heldObj.position.y = heldPos.y;
+            heldObj.position.z = heldPos.z;
+            heldObj.velocity.x = rChar.velocity.x;
+            heldObj.velocity.y = rChar.velocity.y;
+            heldObj.verticalVelocity = 0;
+          }
+        } else if (rChar.heldObject) {
+          rChar.heldObject.isHeld = false;
+          rChar.heldObject.heldBy = null;
+          rChar.heldObject = null;
+        }
       }
     }
 
@@ -396,17 +447,56 @@ export class MultiplayerClient {
 
     // 2. Reconcile arena dynamic objects
     for (const so of serverObjects) {
-      const localObj = this.gameLoop.allObjects.find((o) => o.id === so.id);
-      if (localObj) {
-        // If not held by a local player, interpolate to server state
-        const isHeldByLocal = localObj.heldBy && Array.from(this.gameLoop.players.values()).some(p => p.character === localObj.heldBy);
-        if (!isHeldByLocal) {
-          localObj.position.x += (so.x - localObj.position.x) * 0.4;
-          localObj.position.y += (so.y - localObj.position.y) * 0.4;
-          localObj.position.z += (so.z - localObj.position.z) * 0.4;
+      let localObj = this.gameLoop.allObjects.find((o) => o.id === so.id);
+      if (!localObj) {
+        localObj = new GameObject({
+          id: so.id,
+          name: so.name,
+          position: { x: so.x, y: so.y, z: so.z },
+          velocity: { x: so.vx, y: so.vy },
+          verticalVelocity: so.vz,
+          mass: so.mass,
+          colliderRadius: so.radius,
+          color: so.color,
+          bounceMod: (so as any).bounceMod ?? 0.3,
+          visualShape: so.shape,
+        });
+        this.gameLoop.objects.push(localObj);
+        this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
+      }
+
+      const isHeldByLocal = localObj.heldBy && Array.from(this.gameLoop.players.values()).some((p) => p.character === localObj.heldBy);
+      if (!isHeldByLocal) {
+        if (so.isHeld && so.heldBy) {
+          localObj.isHeld = true;
+          // Attached along held character hands
+          localObj.position.x = so.x;
+          localObj.position.y = so.y;
+          localObj.position.z = so.z;
           localObj.velocity.x = so.vx;
           localObj.velocity.y = so.vy;
-          localObj.isHeld = so.isHeld;
+          localObj.verticalVelocity = so.vz;
+        } else {
+          localObj.isHeld = false;
+          if (localObj.heldBy && !Array.from(this.gameLoop.players.values()).some((p) => p.character === localObj.heldBy)) {
+            localObj.heldBy = null;
+          }
+          const lerp = 0.45;
+          localObj.position.x += (so.x - localObj.position.x) * lerp;
+          localObj.position.y += (so.y - localObj.position.y) * lerp;
+          localObj.position.z += (so.z - localObj.position.z) * lerp;
+          localObj.velocity.x = so.vx;
+          localObj.velocity.y = so.vy;
+          localObj.verticalVelocity = so.vz;
+
+          const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
+          if (supWall && localObj.position.z >= supWall.wallHeight - 0.05) {
+            localObj.supportingSurfaceHeight = supWall.wallHeight;
+            (localObj as any).standingWall = supWall;
+          } else {
+            localObj.supportingSurfaceHeight = 0;
+            (localObj as any).standingWall = null;
+          }
         }
       }
     }

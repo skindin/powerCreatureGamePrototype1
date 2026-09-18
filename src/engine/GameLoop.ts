@@ -32,7 +32,7 @@ export const PLAYER_COLORS = [
 
 export class GameLoop {
   public arena: Arena;
-  private objects: GameObject[];
+  public objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;
   private devPanel: DevPanel;
@@ -62,6 +62,11 @@ export class GameLoop {
   public removeRemoteCharacter(char: Character): void {
     this.remoteCharacters.delete(char);
     this.onPlayersChanged?.();
+  }
+
+  public addObject(obj: GameObject): void {
+    this.objects.push(obj);
+    this.arena.syncEntitiesWithWalls([obj]);
   }
 
   public get allObjects(): GameObject[] {
