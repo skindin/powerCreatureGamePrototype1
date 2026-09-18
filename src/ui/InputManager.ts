@@ -23,6 +23,7 @@ export interface GamepadSlotState {
   isCursorVisible?: boolean;
   aimMovedWhileInRange?: boolean;
   aimOffset?: Vector2D;
+  isLockHeld?: boolean;
 }
 
 export class InputManager {
@@ -540,6 +541,9 @@ export class InputManager {
       slot.aimOffset.x = clampedX - visualPos.x;
       slot.aimOffset.y = clampedY - visualPos.y;
 
+      // Button 6 (LT / L2): Auto-lock aiming
+      slot.isLockHeld = isButtonPressed(6);
+
       // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
       const btn0Current = isButtonPressed(0);
       slot.isClimbHeld = btn0Current;
@@ -650,14 +654,15 @@ export class InputManager {
         }
       } else {
         slot.rtHeld = false;
+        const isLockHeld = isButtonPressed(6);
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, slot.aimPos.x, slot.aimPos.y, arena
+            char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
           );
         }
         if (rbJustPressed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, slot.aimPos.x, slot.aimPos.y, arena
+            char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
           );
         }
       }
@@ -888,7 +893,8 @@ export class InputManager {
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
-        activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena);
+        const autoLock = this.isRightMouseDown;
+        activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena, undefined, undefined, autoLock);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
       }

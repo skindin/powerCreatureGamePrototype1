@@ -20,6 +20,7 @@ export interface TrajectoryCalculation {
   isLandingOnWallTop?: boolean;
   targetObject?: GameObject | null;
   targetSurfaceHeight?: number;
+  isAutoLocked?: boolean;
   peakHeight?: number;
   flightTime?: number;
   colliderRadius?: number;
@@ -141,11 +142,11 @@ export class ThrowModule {
     exclude?: GameObject | null,
     heldObject?: GameObject | null,
     entities?: GameObject[],
-    hoverScale?: number
+    hoverScale?: number,
+    tolerance = 0.35
   ): GameObject | null {
     const list = entities ?? arena.entities ?? [];
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
-    const tolerance = 0.35;
 
     let bestEntity: GameObject | null = null;
     let bestDist = Infinity;
@@ -184,6 +185,7 @@ export class ThrowModule {
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
+   * If autoLock is true (e.g. holding right click), locks 2D coordinates to the overlapped object center.
    */
   private computeLaunchVelocity(
     startX: number,
@@ -200,7 +202,8 @@ export class ThrowModule {
     candidateEntities?: GameObject[],
     hoverScale?: number,
     thrower?: Character,
-    heldObject?: GameObject | null
+    heldObject?: GameObject | null,
+    autoLock = false
   ): {
     vx: number;
     vy: number;
@@ -210,8 +213,10 @@ export class ThrowModule {
     finalTargetY: number;
     targetSurfaceHeight: number;
     targetObject?: GameObject | null;
+    isAutoLocked?: boolean;
   } | null {
     // Detect if cursor overlaps an object to hit the top of its layer
+    const lockTolerance = autoLock ? 0.65 : 0.35;
     const hoveredEntity = this.findHoveredEntity(
       targetX,
       targetY,
@@ -219,11 +224,23 @@ export class ThrowModule {
       thrower,
       heldObject,
       candidateEntities,
-      hoverScale
+      hoverScale,
+      lockTolerance
     );
 
-    const dx = targetX - startX;
-    const dy = targetY - startY;
+    let effectiveTargetX = targetX;
+    let effectiveTargetY = targetY;
+    let isLocked = false;
+
+    // If holding right click (autoLock = true) and cursor overlaps an object, snap 2D coordinates to object center
+    if (autoLock && hoveredEntity) {
+      effectiveTargetX = hoveredEntity.position.x;
+      effectiveTargetY = hoveredEntity.position.y;
+      isLocked = true;
+    }
+
+    const dx = effectiveTargetX - startX;
+    const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
 
@@ -354,7 +371,7 @@ export class ThrowModule {
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
 
-    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject: hoveredEntity };
+    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject: hoveredEntity, isAutoLocked: isLocked };
   }
 
   /**
@@ -366,7 +383,8 @@ export class ThrowModule {
     aimTargetY: number,
     arena: Arena,
     entities?: GameObject[],
-    hoverScale?: number
+    hoverScale?: number,
+    autoLock = false
   ): TrajectoryCalculation | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -412,11 +430,11 @@ export class ThrowModule {
 
     const launch = this.computeLaunchVelocity(
       startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
-      candidateEntities, scale, character, held
+      candidateEntities, scale, character, held, autoLock
     );
     if (!launch) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject } = launch;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
 
     // Fine simulation steps matching 120Hz physics precision
     const steps = 90;
@@ -512,6 +530,7 @@ export class ThrowModule {
       blockedAtWallId: blockedWallId,
       targetObject,
       targetSurfaceHeight,
+      isAutoLocked,
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
@@ -528,7 +547,8 @@ export class ThrowModule {
     aimTargetY: number,
     arena: Arena,
     entities?: GameObject[],
-    hoverScale?: number
+    hoverScale?: number,
+    autoLock = false
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -571,7 +591,7 @@ export class ThrowModule {
 
     const launch = this.computeLaunchVelocity(
       startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
-      candidateEntities, scale, character, held
+      candidateEntities, scale, character, held, autoLock
     );
     if (!launch) return null;
 

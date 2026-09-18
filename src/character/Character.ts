@@ -209,7 +209,8 @@ export class Character extends GameObject {
     aimTargetPos: Vector2D | null,
     arena: Arena,
     isClimbInput = false,
-    entities?: GameObject[]
+    entities?: GameObject[],
+    autoLock = false
   ): void {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -263,7 +264,8 @@ export class Character extends GameObject {
         aimTargetPos.y,
         arena,
         entities ?? arena.entities,
-        arena.visualAltitudeScale
+        arena.visualAltitudeScale,
+        autoLock
       );
     } else {
       this.activeTrajectory = null;

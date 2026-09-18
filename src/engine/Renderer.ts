@@ -1913,7 +1913,7 @@ export class Renderer {
         ctx.restore();
       }
 
-      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined);
+      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, traj.isAutoLocked);
     }
 
     ctx.restore();
@@ -1922,23 +1922,23 @@ export class Renderer {
   /**
    * Draws a precision aim reticle / crosshair at the cursor position
    */
-  public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", label?: string): void {
+  public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", label?: string, isLocked = false): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
     ctx.shadowBlur = 4;
 
     // Reticle circle
-    const reticleRadius = 8;
+    const reticleRadius = isLocked ? 10 : 8;
     ctx.beginPath();
     ctx.arc(screenX, screenY, reticleRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = isLocked ? "#f59e0b" : color;
+    ctx.lineWidth = isLocked ? 2.4 : 1.8;
     ctx.stroke();
 
     // 4 Crosshair ticks extending outward
     const tickInner = reticleRadius + 2;
-    const tickOuter = tickInner + 5;
+    const tickOuter = tickInner + (isLocked ? 6 : 5);
     ctx.beginPath();
     // Top
     ctx.moveTo(screenX, screenY - tickInner);
@@ -1952,23 +1952,50 @@ export class Renderer {
     // Right
     ctx.moveTo(screenX + tickInner, screenY);
     ctx.lineTo(screenX + tickOuter, screenY);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = isLocked ? "#f59e0b" : color;
+    ctx.lineWidth = isLocked ? 2.4 : 1.8;
     ctx.stroke();
+
+    // Corner lock brackets if auto-locked
+    if (isLocked) {
+      const bsz = 14;
+      const blen = 5;
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      // Top-Left
+      ctx.moveTo(screenX - bsz + blen, screenY - bsz);
+      ctx.lineTo(screenX - bsz, screenY - bsz);
+      ctx.lineTo(screenX - bsz, screenY - bsz + blen);
+      // Top-Right
+      ctx.moveTo(screenX + bsz - blen, screenY - bsz);
+      ctx.lineTo(screenX + bsz, screenY - bsz);
+      ctx.lineTo(screenX + bsz, screenY - bsz + blen);
+      // Bottom-Left
+      ctx.moveTo(screenX - bsz + blen, screenY + bsz);
+      ctx.lineTo(screenX - bsz, screenY + bsz);
+      ctx.lineTo(screenX - bsz, screenY + bsz - blen);
+      // Bottom-Right
+      ctx.moveTo(screenX + bsz - blen, screenY + bsz);
+      ctx.lineTo(screenX + bsz, screenY + bsz);
+      ctx.lineTo(screenX + bsz, screenY + bsz - blen);
+      ctx.stroke();
+    }
 
     // Center pinpoint dot
     ctx.beginPath();
-    ctx.arc(screenX, screenY, 2.0, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.arc(screenX, screenY, isLocked ? 2.5 : 2.0, 0, Math.PI * 2);
+    ctx.fillStyle = isLocked ? "#f59e0b" : color;
     ctx.fill();
 
     // Player label tag if provided (e.g. "P1", "P2")
     if (label) {
       ctx.font = "bold 11px monospace";
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = isLocked ? "#f59e0b" : "#ffffff";
       ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
       ctx.shadowBlur = 3;
-      ctx.fillText(label, screenX + 11, screenY - 5);
+      const text = isLocked ? `${label} [LOCKED]` : label;
+      ctx.fillText(text, screenX + (isLocked ? 16 : 11), screenY - 5);
     }
 
     ctx.restore();

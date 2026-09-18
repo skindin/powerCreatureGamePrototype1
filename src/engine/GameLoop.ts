@@ -536,6 +536,7 @@ export class GameLoop {
       const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
       const aimTarget = isMouseAiming ? input.mousePos : null;
 
+      const autoLock = input.isRightMouseDown;
       if (input.draggedEntity !== kChar) {
         kChar.updateCharacter(
           dt,
@@ -544,7 +545,8 @@ export class GameLoop {
           aimTarget,
           this.arena,
           input.isKeyboardJumpHeld,
-          this.arena.entities
+          this.arena.entities,
+          autoLock
         );
       } else {
         kChar.velocity.x = 0;
@@ -570,6 +572,7 @@ export class GameLoop {
       if (!slot || !slot.connected) continue;
 
       const cChar = entry.character;
+      const isLockHeld = slot.isLockHeld ?? false;
       if (input.draggedEntity !== cChar) {
         cChar.updateCharacter(
           dt,
@@ -578,7 +581,8 @@ export class GameLoop {
           slot.aimPos,
           this.arena,
           slot.isClimbHeld,
-          this.arena.entities
+          this.arena.entities,
+          Boolean(isLockHeld)
         );
       } else {
         cChar.velocity.x = 0;
