@@ -450,22 +450,22 @@ powerCreatureGamePrototype1/
     - **Movement Release Auto-Reset**:
       - While moving, sprint does not turn off on its own unless explicitly untoggled with Shift or until all WASD / arrow movement keys are released.
       - Releasing all movement keys automatically turns sprint OFF, so the next movement begins at normal speed until Shift is pressed again.
-46. **Hovered Object Layer Elevation Targeting & Right-Click Hold Auto-Lock**:
+46. **Hovered Object Layer Elevation Targeting & Right-Click / Left-Trigger (LT) Hold Auto-Lock**:
     - **Dual-Projection Object Detection**:
       - When aiming with a cursor (mouse or controller virtual aim cursor), `ThrowModule.findHoveredEntity` detects if the cursor is hovering over any freebody entity or player character in the arena.
       - Checks both physical 2D ground footprint distance and pseudo-3D isometric visual projection distance ($y_{\text{visual}} = y - z \times \text{visualAltitudeScale}$) with tolerance ($R + 0.35$).
       - Excludes the throwing character and the object currently held.
     - **Layer Surface Height Targeting (Normal Aiming)**:
-      - When Right Click is **NOT** held, the trajectory's 2D target coordinates $(targetX, targetY)$ freely follow the player's exact cursor position without snapping or locking.
+      - When Right Click and Left Trigger (`LT`) are **NOT** held, the trajectory's 2D target coordinates $(targetX, targetY)$ freely follow the player's exact cursor position without snapping or locking.
       - When an object is hovered, trajectory calculation computes `targetSurfaceHeight` to match the top of the layer the object is on:
         - **Layer 1 (Ground)**: `targetSurfaceHeight = 0.0` (lands flat at ground level even if close to wall boundaries).
         - **Layer 2+ (Wall Top / Elevated Platform)**: `targetSurfaceHeight = arena.wallHeight` (or `standingWall.wallHeight`, elevating parabolic arc to land on the wall platform at $z = 1.0$).
       - Allows players complete granular freedom to place throws anywhere around or on the object at that layer's elevation.
-    - **Right-Click Hold Auto-Lock (Holding RMB or Controller LT)**:
-      - **Hold Right Click (Mouse)** or **Hold LT / Button 6 (Gamepad)**: Actively engages auto-lock.
+    - **Hold Auto-Lock (Holding RMB on Mouse or LT / Button 6 on Gamepad)**:
+      - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock. Supported with sensitive trigger threshold ($0.15$) and non-standard axis fallbacks.
       - If the cursor overlaps or is near an object within expanded lock tolerance ($R + 0.65$), the trajectory snaps $(targetX, targetY)$ directly to the object's center coordinates (`hoveredEntity.position.x, hoveredEntity.position.y`) and targets the object's layer top.
-      - **Visual Lock Feedback**: Aim reticle turns amber gold (`#f59e0b`), draws 4 outer corner lock brackets `[ ]`, thickens crosshairs, and displays `${label} [LOCKED]` text.
-      - Releasing Right Click immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
+      - **Visual Lock & Snapping Feedback**: The player's dotted sightline and aim reticle snap directly onto the locked object's visual position, the reticle turns amber gold (`#f59e0b`), draws 4 outer corner lock brackets `[ ]`, thickens crosshairs, and displays `${label} [LOCKED]` text.
+      - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
 
 ---
 

@@ -177,8 +177,10 @@ export class Renderer {
         const cChar = cursor.character;
         const charX = cChar.position.x * ppu;
         const charY = (cChar.position.y - cChar.position.z * hoverScale) * ppu;
-        const cursorX = cursor.x * ppu;
-        const cursorY = cursor.y * ppu;
+        const scale = arena.visualAltitudeScale ?? 0.5;
+        const lockedObj = cChar.activeTrajectory?.isAutoLocked ? cChar.activeTrajectory.targetObject : null;
+        const cursorX = lockedObj ? lockedObj.position.x * ppu : cursor.x * ppu;
+        const cursorY = lockedObj ? (lockedObj.position.y - lockedObj.position.z * scale) * ppu : cursor.y * ppu;
 
         // Draw colored dotted line from character to their cursor so players instantly know which reticle is theirs
         ctx.save();
@@ -1896,16 +1898,21 @@ export class Renderer {
     // 6. Aim Cursor & Sightline:
     // ALWAYS render a target reticle exactly where the cursor is on the screen!
     if (aimTarget) {
-      const cursorX = aimTarget.x * ppu;
-      const cursorY = aimTarget.y * ppu;
+      const scale = arena.visualAltitudeScale ?? 0.5;
+      const targetObj = traj.targetObject;
+      const isLocked = Boolean(traj.isAutoLocked && targetObj);
+
+      const targetScreenX = isLocked && targetObj ? targetObj.position.x * ppu : aimTarget.x * ppu;
+      const targetScreenY = isLocked && targetObj ? (targetObj.position.y - targetObj.position.z * scale) * ppu : aimTarget.y * ppu;
+
       const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
 
       // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
-      if (distToCursor > 0.25) {
+      if (distToCursor > 0.25 && !isLocked) {
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(finalHitX, finalGroundY);
-        ctx.lineTo(cursorX, cursorY);
+        ctx.lineTo(targetScreenX, targetScreenY);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
         ctx.lineWidth = 1.4;
         ctx.setLineDash([3, 4]);
@@ -1913,7 +1920,7 @@ export class Renderer {
         ctx.restore();
       }
 
-      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, traj.isAutoLocked);
+      this.drawAimReticle(targetScreenX, targetScreenY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, traj.isAutoLocked);
     }
 
     ctx.restore();

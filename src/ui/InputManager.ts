@@ -454,10 +454,10 @@ export class InputManager {
         slot.id = gp.id;
       }
 
-      const isButtonPressed = (btnIndex: number): boolean => {
+      const isButtonPressed = (btnIndex: number, threshold = 0.3): boolean => {
         const b = gp.buttons[btnIndex];
         if (!b) return false;
-        return typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3;
+        return typeof b === "object" ? b.pressed || b.value > threshold : (b as unknown as number) > threshold;
       };
 
       const isPrevPressed = (btnIndex: number): boolean => slot.prevButtons[btnIndex] === true;
@@ -542,7 +542,8 @@ export class InputManager {
       slot.aimOffset.y = clampedY - visualPos.y;
 
       // Button 6 (LT / L2): Auto-lock aiming
-      slot.isLockHeld = isButtonPressed(6);
+      const isLtPressed = isButtonPressed(6, 0.15) || Boolean(gp.mapping !== "standard" && gp.axes && ((gp.axes[2] ?? 0) > 0.25 || (gp.axes[5] ?? 0) > 0.25));
+      slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
       const btn0Current = isButtonPressed(0);
