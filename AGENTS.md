@@ -319,14 +319,19 @@ powerCreatureGamePrototype1/
 33. **Consistent Upward Jump Burst & Air Control (Walk in Air)**:
     - **Consistent Upward Burst**: Jumping produces a clean, consistent upward vertical impulse ($v_z = \text{takeoffSpeed}$) every time, without 45-degree angle deflections or artificial forward launch boosts. Horizontal velocity ($v_x, v_y$) is preserved smoothly without interference.
     - **Air Control (Walk in Air)**: `WalkingModule` provides directional air control via the `walkInAir` toggle (default: `true`, configurable in `DevPanel.ts` via checkbox). When active, walking force applies in mid-air to steer, accelerate, or curve the jump trajectory naturally. When movement inputs are released in mid-air (`!isMoving`), horizontal momentum is preserved without dead-stop air braking.
-34. **Live Railway Deployment Notifier (Non-Intrusive)**:
-    - `server.js` and `vite.config.ts` expose `/api/version` returning live deployment metadata: `RAILWAY_GIT_COMMIT_SHA`, `RAILWAY_DEPLOYMENT_ID`, and boot timestamp.
-    - `DeployNotifier.ts` runs in the client background: records baseline deployment on page load, polls every 20s, and re-checks on tab focus (`visibilitychange`).
-    - When a new deployment is detected:
+34. **Live Railway Deployment, Building & Crash Notifier (Non-Intrusive)**:
+    - **Real-Time Build Status Polling**:
+      - `server.js` and `vite.config.ts` query GitHub's public commit status API (`/commits/branch1/status`) cached with a 10-second TTL to respect rate limits, providing live Railway deployment state.
+      - `/api/version` (and `/api/deploy-status`) returns running deployment IDs and current build telemetry: `state` (`pending` / `success` / `failure`), `isBuilding`, `isFailed`, `isSuccess`, `description`, and `targetUrl` (linking directly to live Railway build logs).
+    - **In-Progress Deploying Notifications (`isBuilding`)**:
+      - When a new commit is being built or prepared on Railway, displays an amber pulsing header badge (`⚙️ Deploying (commit)...`) and a floating toast (`🔨 Deploying Railway Update...`).
+      - Features a direct `↗ Logs` button to inspect build progress on Railway and plays a soft ascending chime. Auto-fades toast after 10s while keeping badge active.
+    - **Crashed / Failed Build Notifications (`isFailed`)**:
+      - When a Railway build or container crashes, displays a prominent red pulsing header badge (`❌ Build Crashed (commit)`) and an error toast (`🚨 Railway Build Crashed!`).
+      - Directly includes error description and a `🔍 Error Logs` action linking straight to the failed Railway build log, accompanied by an alert warning sound.
+    - **Live Deployed Update (`isSuccess` / New Deploy ID)**:
       - Strictly **never forces a restart or reload**; gameplay continues uninterrupted.
-      - Displays a floating glassmorphic toast notification (`✨ Railway Update Live (commit)`) with an optional `Reload` button and dismiss `✕` button, auto-fading after 14s.
-      - Adds a pulsing header badge (`#header-deploy-badge`) so the player can see at a glance that a new build is ready and reload whenever convenient.
-      - Plays a subtle two-tone audio chime (E5 -> B5).
+      - Cleans up building/crash alerts and displays green/cyan floating toast (`✨ Railway Update Live (commit)`) with `Reload` and dismiss `✕` buttons, pulsing header badge (`✨ Update Live`), and success chime (E5 -> B5).
 35. **Calibrated Jump Strength & Max Initial Velocity Invariant**:
     - **Physical Context**: Base Character mass is $1.2\text{ kg}$. The light blue box (`stone-1`) has mass $0.7\text{ kg}$ (total mass $1.9\text{ kg}$). The heavy red box (`boulder-1`) has mass $2.6\text{ kg}$ (total mass $3.8\text{ kg}$). Spherical balls (`bouncy-1`, `rolling-1`) have masses $0.5\text{ kg}$ and $0.6\text{ kg}$ (total masses $1.7\text{ kg}$ and $1.8\text{ kg}$).
     - **Apex Height Equation**: Under gravity $g = 30.0\text{ u/s}^2$, reaching an apex of $h = 1.5\text{ units}$ requires an initial vertical velocity $v_z = \sqrt{2gh} = \sqrt{2 \cdot 30.0 \cdot 1.5} = \sqrt{90} \approx 9.67\text{ u/s}$.

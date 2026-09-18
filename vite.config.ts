@@ -64,6 +64,62 @@ function serveDistFile(reqPath: string, res: any): boolean {
   return false;
 }
 
+let cachedBuildStatus: any = null;
+let lastBuildStatusFetch = 0;
+const BUILD_STATUS_CACHE_MS = 10000;
+
+async function getLiveBuildStatus() {
+  const now = Date.now();
+  if (cachedBuildStatus && (now - lastBuildStatusFetch) < BUILD_STATUS_CACHE_MS) {
+    return cachedBuildStatus;
+  }
+
+  try {
+    const headers: Record<string, string> = { 'User-Agent': 'PowerCreatureGame' };
+    if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) {
+      headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}`;
+    }
+
+    const res = await fetch('https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/branch1/status', {
+      headers,
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (!res.ok) {
+      return cachedBuildStatus || { state: 'unknown', isBuilding: false, isFailed: false, isSuccess: false };
+    }
+
+    const data: any = await res.json();
+    const primary = data.statuses && data.statuses.length > 0 ? data.statuses[0] : null;
+    const sha = data.sha || '';
+    const shortSha = sha ? sha.substring(0, 7) : '';
+    const state = data.state || 'unknown';
+    const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
+    const targetUrl = primary?.target_url || '';
+    const currentSha = (process.env.RAILWAY_GIT_COMMIT_SHA || '').substring(0, 7);
+
+    const isBuilding = state === 'pending' || (Boolean(sha) && Boolean(currentSha) && !sha.startsWith(currentSha) && state !== 'failure' && state !== 'error');
+    const isFailed = state === 'failure' || state === 'error';
+    const isSuccess = state === 'success';
+
+    cachedBuildStatus = {
+      state,
+      sha,
+      shortSha,
+      description: desc,
+      targetUrl,
+      isBuilding,
+      isFailed,
+      isSuccess,
+      lastChecked: new Date().toISOString(),
+    };
+    lastBuildStatusFetch = now;
+    return cachedBuildStatus;
+  } catch (err: any) {
+    return cachedBuildStatus || { state: 'unknown', isBuilding: false, isFailed: false, isSuccess: false, error: err?.message };
+  }
+}
+
 function autoTunnelPlugin(): Plugin {
   let tunnelInstance: any = null;
   let isClosing = false;
@@ -213,15 +269,18 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
-        if (req.url && (req.url.startsWith('/api/version') || req.url === '/health')) {
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.end(JSON.stringify({
-            deployId: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || 'local-dev',
-            commit: (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').substring(0, 7),
-            bootTime: new Date().toISOString()
-          }));
+        if (req.url && (req.url.startsWith('/api/version') || req.url.startsWith('/api/deploy-status') || req.url === '/health')) {
+          getLiveBuildStatus().then((buildStatus) => {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({
+              deployId: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_DEPLOYMENT_ID || 'local-dev',
+              commit: (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').substring(0, 7),
+              bootTime: new Date().toISOString(),
+              buildStatus,
+            }));
+          });
           return;
         }
 

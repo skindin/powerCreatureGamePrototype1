@@ -90,6 +90,62 @@ function parseJsonBody(req) {
   });
 }
 
+let cachedBuildStatus = null;
+let lastBuildStatusFetch = 0;
+const BUILD_STATUS_CACHE_MS = 10000;
+
+async function getLiveBuildStatus() {
+  const now = Date.now();
+  if (cachedBuildStatus && (now - lastBuildStatusFetch) < BUILD_STATUS_CACHE_MS) {
+    return cachedBuildStatus;
+  }
+
+  try {
+    const headers = { 'User-Agent': 'PowerCreatureGame' };
+    if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) {
+      headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}`;
+    }
+
+    const res = await fetch('https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/branch1/status', {
+      headers,
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (!res.ok) {
+      return cachedBuildStatus || { state: 'unknown', isBuilding: false, isFailed: false, isSuccess: false };
+    }
+
+    const data = await res.json();
+    const primary = data.statuses && data.statuses.length > 0 ? data.statuses[0] : null;
+    const sha = data.sha || '';
+    const shortSha = sha ? sha.substring(0, 7) : '';
+    const state = data.state || 'unknown';
+    const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
+    const targetUrl = primary?.target_url || '';
+    const currentSha = (process.env.RAILWAY_GIT_COMMIT_SHA || '').substring(0, 7);
+
+    const isBuilding = state === 'pending' || (Boolean(sha) && Boolean(currentSha) && !sha.startsWith(currentSha) && state !== 'failure' && state !== 'error');
+    const isFailed = state === 'failure' || state === 'error';
+    const isSuccess = state === 'success';
+
+    cachedBuildStatus = {
+      state,
+      sha,
+      shortSha,
+      description: desc,
+      targetUrl,
+      isBuilding,
+      isFailed,
+      isSuccess,
+      lastChecked: new Date().toISOString(),
+    };
+    lastBuildStatusFetch = now;
+    return cachedBuildStatus;
+  } catch (err) {
+    return cachedBuildStatus || { state: 'unknown', isBuilding: false, isFailed: false, isSuccess: false, error: err.message };
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const urlPath = decodeURIComponent(urlObj.pathname);
@@ -165,7 +221,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Version / deployment info endpoint for live browser notification
-  if (urlPath === '/api/version') {
+  if (urlPath === '/api/version' || urlPath === '/api/deploy-status') {
+    const buildStatus = await getLiveBuildStatus();
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -174,6 +231,7 @@ const server = http.createServer(async (req, res) => {
       deployId: DEPLOY_ID,
       commit: COMMIT_HASH,
       bootTime: SERVER_BOOT_TIME,
+      buildStatus,
     }));
     return;
   }
