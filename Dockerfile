@@ -13,10 +13,13 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY package*.json ./
+RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY server.js ./
 COPY server ./server
+RUN mkdir -p data
 COPY data ./data
 
 EXPOSE 3000
 CMD ["node", "server.js"]
+
