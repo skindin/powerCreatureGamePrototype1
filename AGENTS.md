@@ -197,9 +197,11 @@ powerCreatureGamePrototype1/
 - **Jumping & Vertical Velocity Synchronization**:
   - Server simulation models full vertical jumping physics (`takeoffSpeed = 9.67 u/s`, `gravity = 30.0 u/s²`), triggered when holding climb/jump input (`Space` / Gamepad `A`) on open ground or wall tops.
   - Remote characters in `GameLoop.ts` step vertical position and surface physics at 60Hz between network snapshots, ensuring airborne jump arcs render fluidly without clipping or desync across clients.
-- **Zero-Setup Universal Server Connectivity**:
+- **Zero-Setup Universal Server Connectivity & Railway Production Containers**:
   - `MultiplayerClient.determineDefaultUrl()` dynamically detects `window.location.protocol` and `window.location.host` to construct `${protocol}//${host}/ws`.
   - Works natively with 0 configuration in Vite local dev (`ws://localhost:5173/ws`), desktop app, localtunnel (`wss://pcg-arena-teal.loca.lt/ws`), and production deployment on Railway (`wss://<app>.up.railway.app/ws`), where `server.js` automatically binds `GameServer` to the HTTP upgrade pipeline on `/ws`.
+  - **Docker & Nixpacks Production Builds**: Multi-stage `Dockerfile` installs all dependencies and builds client assets with Vite in Stage 1 (`builder`), and runs `npm install --omit=dev` in Stage 2 (`runner`) to ensure all production dependencies (`ws`, etc.) are present in `/app/node_modules`. `package-lock.json` retains all multi-platform optional dependencies (`@rollup/rollup-linux-*`) ensuring builds succeed on Alpine/Linux hosts.
+
 
 ---
 
