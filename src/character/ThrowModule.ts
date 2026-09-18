@@ -14,10 +14,12 @@ export interface TrajectoryPoint {
 
 export interface TrajectoryCalculation {
   points: TrajectoryPoint[];
-  landPoint: { x: number; y: number };
+  landPoint: { x: number; y: number; z?: number };
   isBlockedByWall: boolean;
   blockedAtWallId?: string;
   isLandingOnWallTop?: boolean;
+  targetObject?: GameObject | null;
+  targetSurfaceHeight?: number;
   peakHeight?: number;
   flightTime?: number;
   colliderRadius?: number;
@@ -128,9 +130,60 @@ export class ThrowModule {
   }
 
   /**
+   * Finds the entity directly under the aim target cursor (x, y), if any.
+   * Excludes the thrower and the thrower's held object.
+   * Checks both physical 2D ground footprint and pseudo-3D isometric visual position.
+   */
+  public findHoveredEntity(
+    aimX: number,
+    aimY: number,
+    arena: Arena,
+    exclude?: GameObject | null,
+    heldObject?: GameObject | null,
+    entities?: GameObject[],
+    hoverScale?: number
+  ): GameObject | null {
+    const list = entities ?? arena.entities ?? [];
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+    const tolerance = 0.35;
+
+    let bestEntity: GameObject | null = null;
+    let bestDist = Infinity;
+
+    for (let i = list.length - 1; i >= 0; i--) {
+      const ent = list[i];
+      if (ent === exclude || ent === heldObject || ent.isHeld) continue;
+
+      const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.35);
+      const effectiveR = r > 0 ? r : 0.35;
+
+      // Check ground footprint distance
+      const distGround = Math.hypot(ent.position.x - aimX, ent.position.y - aimY);
+
+      // Check pseudo-3D visual position distance
+      const z = ent.position.z ?? 0;
+      const visualY = ent.position.y - z * scale;
+      const distVisual = Math.hypot(ent.position.x - aimX, visualY - aimY);
+
+      // Also check 1:1 isometric distance in case scale is 1.0 or user clicks near top
+      const dist1to1 = Math.hypot(ent.position.x - aimX, (ent.position.y - z) - aimY);
+
+      const minDist = Math.min(distGround, distVisual, dist1to1);
+      if (minDist <= effectiveR + tolerance) {
+        if (minDist < bestDist) {
+          bestDist = minDist;
+          bestEntity = ent;
+        }
+      }
+    }
+
+    return bestEntity;
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
-   * whether on the ground or on top of an elevated wall.
+   * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
    */
   private computeLaunchVelocity(
     startX: number,
@@ -143,10 +196,41 @@ export class ThrowModule {
     hasGravity = true,
     hasVerticalVelocity = true,
     colliderRadius = 0.35,
-    charVel?: { x: number; y: number; z?: number }
-  ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
-    const dx = targetX - startX;
-    const dy = targetY - startY;
+    charVel?: { x: number; y: number; z?: number },
+    candidateEntities?: GameObject[],
+    hoverScale?: number,
+    thrower?: Character,
+    heldObject?: GameObject | null
+  ): {
+    vx: number;
+    vy: number;
+    vz: number;
+    totalTime: number;
+    finalTargetX: number;
+    finalTargetY: number;
+    targetSurfaceHeight: number;
+    targetObject?: GameObject | null;
+  } | null {
+    // Detect if cursor is directly over an object
+    const hoveredEntity = this.findHoveredEntity(
+      targetX,
+      targetY,
+      arena,
+      thrower,
+      heldObject,
+      candidateEntities,
+      hoverScale
+    );
+
+    let effectiveTargetX = targetX;
+    let effectiveTargetY = targetY;
+    if (hoveredEntity) {
+      effectiveTargetX = hoveredEntity.position.x;
+      effectiveTargetY = hoveredEntity.position.y;
+    }
+
+    const dx = effectiveTargetX - startX;
+    const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
 
@@ -170,17 +254,36 @@ export class ThrowModule {
     const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
     const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
 
+    // Target surface elevation:
+    // If cursor is over an object, calculate the trajectory to hit the top of the layer the object is on.
+    // Otherwise fallback to checking walls at the aim position.
+    let targetSurfaceHeight: number;
+    if (hoveredEntity) {
+      const layer = GameObject.getEntityLayer(hoveredEntity, arena.wallHeight);
+      if (layer <= 1) {
+        // Layer 1 is the Ground Layer. Top of the ground layer surface is 0.0.
+        targetSurfaceHeight = 0.0;
+      } else {
+        // Layer 2+ is Wall / Platform elevation. Top of Layer 2 is wallHeight (1.0u).
+        const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
+        targetSurfaceHeight = (layer - 1) * wallH;
+        if (hoveredEntity.supportingSurfaceHeight > 0.05) {
+          targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
+        }
+      }
+    } else {
+      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    }
+
     // Straight-line horizontal flight if zero-G or no vertical velocity module
     if (!hasGravity || !hasVerticalVelocity) {
       const totalTime = Math.max(0.14, actualDist / maxForwardSpeed);
       const vx = dirX * maxForwardSpeed;
       const vy = dirY * maxForwardSpeed;
       const vz = 0;
-      return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ };
+      return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
 
-    // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
-    const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
     const deltaZ = targetSurfaceHeight - startZ;
 
     // Minimum angle trajectory calculation:
@@ -215,10 +318,10 @@ export class ThrowModule {
       // Check if sample intersects any wall
       for (const wall of arena.walls) {
         if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
-          // If the target itself is on top of this wall and we are near the end of the trajectory, skip (it's landing)
-          const isTargetOnThisWall = targetSurfaceHeight > 0 &&
-            finalTargetX >= wall.x && finalTargetX <= wall.x + wall.width &&
-            finalTargetY >= wall.y && finalTargetY <= wall.y + wall.height;
+          // If the target itself is on top of this wall (or destination is on this wall) and we are near the end of the trajectory, skip (it's landing)
+          const isTargetOnThisWall = (targetSurfaceHeight > 0 || (hoveredEntity && hoveredEntity.standingWall === wall)) &&
+            finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
+            finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
           if (isTargetOnThisWall && s > 0.65) {
             continue;
           }
@@ -258,7 +361,7 @@ export class ThrowModule {
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
 
-    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight };
+    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject: hoveredEntity };
   }
 
   /**
@@ -268,7 +371,9 @@ export class ThrowModule {
     character: Character,
     aimTargetX: number,
     aimTargetY: number,
-    arena: Arena
+    arena: Arena,
+    entities?: GameObject[],
+    hoverScale?: number
   ): TrajectoryCalculation | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -309,12 +414,16 @@ export class ThrowModule {
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
 
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+      candidateEntities, scale, character, held
     );
     if (!launch) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight } = launch;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject } = launch;
 
     // Fine simulation steps matching 120Hz physics precision
     const steps = 90;
@@ -332,7 +441,7 @@ export class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
-      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
+      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : (step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
       const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
 
       if (currentZ > peakHeight) {
@@ -354,8 +463,8 @@ export class ThrowModule {
             if (wasAbove && currentVz <= 0) {
               // Descending onto top of wall
               const isTargetedWall = targetSurfaceHeight > 0 &&
-                finalTargetX >= wall.x - 0.1 && finalTargetX <= wall.x + wall.width + 0.1 &&
-                finalTargetY >= wall.y - 0.1 && finalTargetY <= wall.y + wall.height + 0.1;
+                finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
+                finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
 
               if (isTargetedWall || (targetSurfaceHeight > 0 && step >= steps - 3)) {
                 // This is the intended landing on top of the targeted wall!
@@ -403,10 +512,13 @@ export class ThrowModule {
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
+        z: isBlocked ? lastPoint.z : targetSurfaceHeight,
       },
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : (targetSurfaceHeight > 0),
       blockedAtWallId: blockedWallId,
+      targetObject,
+      targetSurfaceHeight,
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
@@ -421,7 +533,9 @@ export class ThrowModule {
     character: Character,
     aimTargetX: number,
     aimTargetY: number,
-    arena: Arena
+    arena: Arena,
+    entities?: GameObject[],
+    hoverScale?: number
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -459,8 +573,12 @@ export class ThrowModule {
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+      candidateEntities, scale, character, held
     );
     if (!launch) return null;
 

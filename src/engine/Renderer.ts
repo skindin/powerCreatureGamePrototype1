@@ -1629,7 +1629,7 @@ export class Renderer {
         const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
 
         const landZ = traj.isLandingOnWallTop
-          ? arena.wallHeight
+          ? (traj.landPoint.z ?? arena.wallHeight)
           : (traj.isBlockedByWall && finalPt.z >= layer2Threshold ? arena.wallHeight : 0);
         const landScreenY = endGroundY - landZ * hoverScale * ppu;
 
@@ -1819,7 +1819,7 @@ export class Renderer {
     } else if (traj.isLandingOnWallTop) {
       // Landing Target on Wall Top (Layer 2: semi-transparent, exact collider footprint size)
       const landX = traj.landPoint.x * ppu;
-      const landZ = arena.wallHeight;
+      const landZ = traj.landPoint.z ?? arena.wallHeight;
       const landY = (traj.landPoint.y - landZ * hoverScale) * ppu;
       const groundLandY = traj.landPoint.y * ppu;
       finalHitX = landX;

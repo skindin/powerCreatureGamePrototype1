@@ -450,6 +450,19 @@ powerCreatureGamePrototype1/
     - **Movement Release Auto-Reset**:
       - While moving, sprint does not turn off on its own unless explicitly untoggled with Shift or until all WASD / arrow movement keys are released.
       - Releasing all movement keys automatically turns sprint OFF, so the next movement begins at normal speed until Shift is pressed again.
+46. **Hovered Object Trajectory Layer Elevation Targeting**:
+    - **Dual-Projection Object Detection**:
+      - When aiming with a cursor (mouse or controller virtual aim cursor), `ThrowModule.findHoveredEntity` detects if the cursor is hovering over any freebody entity or player character in the arena.
+      - Checks both physical 2D ground footprint distance and pseudo-3D isometric visual projection distance ($y_{\text{visual}} = y - z \times \text{visualAltitudeScale}$) with tolerance ($R + 0.35$).
+      - Excludes the throwing character and the object currently held.
+    - **Layer Surface Height Targeting Instead of Just Walls**:
+      - When an object is hovered, trajectory calculation computes `targetSurfaceHeight` to match the top of the layer the object is on:
+        - **Layer 1 (Ground)**: `targetSurfaceHeight = 0.0`.
+        - **Layer 2+ (Wall Top / Elevated Platform)**: `targetSurfaceHeight = arena.wallHeight` (or `standingWall.wallHeight`).
+      - This replaces solely querying `arena.getSupportingSurfaceHeight` at cursor coords, enabling accurate throws directly onto objects on the ground (landing flat at $z = 0$ even near walls) or objects on top of walls (elevating parabolic arc to land cleanly on top of the wall surface at $z = 1.0$).
+    - **Target Physical Centering & Landing Indicator Alignment**:
+      - When an object is hovered, the trajectory target physical coordinates $(targetX, targetY)$ lock cleanly onto the object's physical center (within `maxThrowAimDistance`), ensuring accurate impact and alignment with the visual sprite.
+      - The landing reticle reflects the target layer: green ground-level indicator for Layer 1, and elevated cyan indicator with vertical altitude connector for Layer 2.
 
 ---
 

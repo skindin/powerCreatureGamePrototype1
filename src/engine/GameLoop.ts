@@ -513,6 +513,10 @@ export class GameLoop {
   private updatePhysics(dt: number): void {
     const input = this.inputManager;
 
+    // Synchronize active entities and visual altitude scale on arena
+    this.arena.entities = [...this.allCharacters, ...this.objects];
+    this.arena.visualAltitudeScale = this.renderer.getHoverScale();
+
     // 1. Poll connected Gamepads (rising-edge A button to join, analog sticks, triggers)
     input.pollGamepadSlots(
       this.players,
@@ -539,7 +543,8 @@ export class GameLoop {
           isMouseAiming,
           aimTarget,
           this.arena,
-          input.isKeyboardJumpHeld
+          input.isKeyboardJumpHeld,
+          this.arena.entities
         );
       } else {
         kChar.velocity.x = 0;
@@ -572,7 +577,8 @@ export class GameLoop {
           true, // Controller virtual aim cursor is always active
           slot.aimPos,
           this.arena,
-          slot.isClimbHeld
+          slot.isClimbHeld,
+          this.arena.entities
         );
       } else {
         cChar.velocity.x = 0;
@@ -589,7 +595,8 @@ export class GameLoop {
           false,
           null,
           this.arena,
-          false
+          false,
+          this.arena.entities
         );
       }
     }

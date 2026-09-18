@@ -167,6 +167,11 @@ export class Arena {
   public walls: Wall[] = [];
   public currentPresetId = "trenches";
 
+  /** All active game objects and characters in the arena */
+  public entities: GameObject[] = [];
+  /** Active visual altitude scale for pseudo-3D elevation */
+  public visualAltitudeScale = 0.5;
+
   constructor(width = 20, height = 14, tileSize = 1.0) {
     this.width = width;
     this.height = height;

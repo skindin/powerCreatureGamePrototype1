@@ -506,7 +506,14 @@ export class InputManager {
         ? getVisualPosition(char)
         : { x: char.position.x, y: char.position.y };
 
-      if (!slot.aimOffset || (Math.abs(slot.aimOffset.x) < 0.1 && Math.abs(slot.aimOffset.y) < 0.1)) {
+      if (!slot.aimOffset) {
+        slot.aimOffset = { x: 0, y: 0 };
+      }
+      if (!slot.aimPos) {
+        slot.aimPos = { x: 0, y: 0 };
+      }
+
+      if (!slot.aimOffsetInitialized) {
         const dir = char.facingAngle ?? 0;
         slot.aimOffset = {
           x: Math.cos(dir) * 3.5,
@@ -709,6 +716,7 @@ export class InputManager {
     }
 
     const findEntityAt = (x: number, y: number, tolerance = 0.35): GameObject | null => {
+      const scale = arena.visualAltitudeScale ?? 0.5;
       // Check objects first (so objects on top or near player can be picked)
       for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
@@ -716,8 +724,9 @@ export class InputManager {
         // Check physical ground collider position
         const distGround = Math.hypot(obj.position.x - x, obj.position.y - y);
         // Check hovering visual position (if elevated above ground)
-        const distHover = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z) - y);
-        if (distGround <= r + tolerance || distHover <= r + tolerance) {
+        const distHover = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z * scale) - y);
+        const distHover1to1 = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z) - y);
+        if (distGround <= r + tolerance || distHover <= r + tolerance || distHover1to1 <= r + tolerance) {
           return obj;
         }
       }
@@ -727,8 +736,9 @@ export class InputManager {
         const c = chars[i];
         const charR = c.hasCollider ? c.colliderRadius : 0.44;
         const distCharGround = Math.hypot(c.position.x - x, c.position.y - y);
-        const distCharHover = Math.hypot(c.position.x - x, (c.position.y - c.position.z) - y);
-        if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance) {
+        const distCharHover = Math.hypot(c.position.x - x, (c.position.y - c.position.z * scale) - y);
+        const distCharHover1to1 = Math.hypot(c.position.x - x, (c.position.y - c.position.z) - y);
+        if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance || distCharHover1to1 <= charR + tolerance) {
           return c;
         }
       }
@@ -794,10 +804,14 @@ export class InputManager {
 
     // Hover & drag tracking in Edit Mode
     this.onMouseMove = (x: number, y: number) => {
-      const col = Math.floor(x / arena.tileSize);
-      const row = Math.floor(y / arena.tileSize);
-      if (col >= 0 && col < arena.cols && row >= 0 && row < arena.rows) {
-        this.hoverWallTile = { col, row };
+      if (arena && arena.tileSize) {
+        const col = Math.floor(x / arena.tileSize);
+        const row = Math.floor(y / arena.tileSize);
+        if (col >= 0 && col < arena.cols && row >= 0 && row < arena.rows) {
+          this.hoverWallTile = { col, row };
+        } else {
+          this.hoverWallTile = null;
+        }
       } else {
         this.hoverWallTile = null;
       }
