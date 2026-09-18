@@ -470,7 +470,9 @@ powerCreatureGamePrototype1/
       - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock.
       - **Unclamped Distance (Closest Object Regardless of Range)**: Auto-lock finds the strictly closest entity to the cursor across the entire arena (`lockTolerance = Infinity`), no matter how far away it is.
       - Snaps the trajectory $(effectiveTargetX, effectiveTargetY)$ directly to that closest object's center coordinates and targets the top of its layer.
-      - **Visual Lock & Snapping Feedback**: The player's dotted sightline and aim reticle snap directly onto the locked object's visual position, the reticle turns amber gold (`#f59e0b`), draws 4 outer corner lock brackets `[ ]`, thickens crosshairs, and displays `${label} [LOCKED]` text.
+      - **Independent Cursor Stays Visible & Active**: The player's aim cursor reticle ALWAYS remains visible at its exact independent position on the screen, with the player's color and sightline. It never disappears or gets hijacked.
+      - **Locked Object Lockbox & Guide Line**: While holding lock, dedicated amber corner lock brackets `[ ]` and a `[P# LOCKED]` badge appear directly on the targeted closest object, with a dashed amber guide line connecting from your visible cursor to the locked object.
+      - As the player moves their cursor, they clearly see their cursor roaming freely while the lockbox snaps to whichever object is closest to the cursor.
       - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
 
 ---

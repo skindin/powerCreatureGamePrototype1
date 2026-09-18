@@ -177,10 +177,8 @@ export class Renderer {
         const cChar = cursor.character;
         const charX = cChar.position.x * ppu;
         const charY = (cChar.position.y - cChar.position.z * hoverScale) * ppu;
-        const scale = arena.visualAltitudeScale ?? 0.5;
-        const lockedObj = cChar.activeTrajectory?.isAutoLocked ? cChar.activeTrajectory.targetObject : null;
-        const cursorX = lockedObj ? lockedObj.position.x * ppu : cursor.x * ppu;
-        const cursorY = lockedObj ? (lockedObj.position.y - lockedObj.position.z * scale) * ppu : cursor.y * ppu;
+        const cursorX = cursor.x * ppu;
+        const cursorY = cursor.y * ppu;
 
         // Draw colored dotted line from character to their cursor so players instantly know which reticle is theirs
         ctx.save();
@@ -1895,34 +1893,85 @@ export class Renderer {
       ctx.restore();
     }
 
-    // 6. Aim Cursor & Sightline:
-    // ALWAYS render a target reticle exactly where the cursor is on the screen!
+    // 6. Aim Cursor & Target Reticle:
+    // ALWAYS render a target reticle exactly where the player's cursor is on the screen!
     if (aimTarget) {
+      const cursorX = aimTarget.x * ppu;
+      const cursorY = aimTarget.y * ppu;
+
       const scale = arena.visualAltitudeScale ?? 0.5;
       const targetObj = traj.targetObject;
       const isLocked = Boolean(traj.isAutoLocked && targetObj);
 
-      const targetScreenX = isLocked && targetObj ? targetObj.position.x * ppu : aimTarget.x * ppu;
-      const targetScreenY = isLocked && targetObj ? (targetObj.position.y - targetObj.position.z * scale) * ppu : aimTarget.y * ppu;
+      // If auto-locked on an object, draw dedicated lock brackets and lock badge on the locked object!
+      if (isLocked && targetObj) {
+        const objVisualX = targetObj.position.x * ppu;
+        const objVisualY = (targetObj.position.y - targetObj.position.z * scale) * ppu;
+        const objR = (targetObj.hasCollider ? targetObj.colliderRadius : (targetObj.colliderModule?.radius ?? 0.35)) * ppu;
+        const bsz = Math.max(14, objR + 5);
+        const blen = Math.min(8, bsz * 0.45);
 
-      const distToLocked = isLocked && targetObj
-        ? Math.hypot(targetObj.position.x - traj.landPoint.x, targetObj.position.y - traj.landPoint.y)
-        : Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
-
-      // If locked target or cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to locked object/cursor
-      if (distToLocked > 0.25) {
         ctx.save();
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 2.4;
+        ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
+        ctx.shadowBlur = 5;
+
+        // 4 Corner Lock Brackets around locked object:
         ctx.beginPath();
-        ctx.moveTo(finalHitX, finalGroundY);
-        ctx.lineTo(targetScreenX, targetScreenY);
-        ctx.strokeStyle = isLocked ? "rgba(245, 158, 11, 0.55)" : "rgba(255, 255, 255, 0.45)";
+        // Top-Left
+        ctx.moveTo(objVisualX - bsz + blen, objVisualY - bsz);
+        ctx.lineTo(objVisualX - bsz, objVisualY - bsz);
+        ctx.lineTo(objVisualX - bsz, objVisualY - bsz + blen);
+        // Top-Right
+        ctx.moveTo(objVisualX + bsz - blen, objVisualY - bsz);
+        ctx.lineTo(objVisualX + bsz, objVisualY - bsz);
+        ctx.lineTo(objVisualX + bsz, objVisualY - bsz + blen);
+        // Bottom-Left
+        ctx.moveTo(objVisualX - bsz + blen, objVisualY + bsz);
+        ctx.lineTo(objVisualX - bsz, objVisualY + bsz);
+        ctx.lineTo(objVisualX - bsz, objVisualY + bsz - blen);
+        // Bottom-Right
+        ctx.moveTo(objVisualX + bsz - blen, objVisualY + bsz);
+        ctx.lineTo(objVisualX + bsz, objVisualY + bsz);
+        ctx.lineTo(objVisualX + bsz, objVisualY + bsz - blen);
+        ctx.stroke();
+
+        // Lock Label above target
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "#f59e0b";
+        ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
+        ctx.shadowBlur = 4;
+        const tag = character ? `P${character.playerNumber} LOCKED` : "LOCKED";
+        ctx.fillText(`[${tag}]`, objVisualX - 22, objVisualY - bsz - 4);
+
+        // Thin lock sightline connecting cursor to locked object
+        ctx.beginPath();
+        ctx.moveTo(cursorX, cursorY);
+        ctx.lineTo(objVisualX, objVisualY);
+        ctx.strokeStyle = "rgba(245, 158, 11, 0.55)";
         ctx.lineWidth = 1.4;
         ctx.setLineDash([3, 4]);
         ctx.stroke();
         ctx.restore();
       }
 
-      this.drawAimReticle(targetScreenX, targetScreenY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, traj.isAutoLocked);
+      // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
+      const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
+      if (distToCursor > 0.25 && !isLocked) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(finalHitX, finalGroundY);
+        ctx.lineTo(cursorX, cursorY);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ALWAYS draw the player's aim reticle at the exact cursor position!
+      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, false);
     }
 
     ctx.restore();
