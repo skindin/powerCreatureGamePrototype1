@@ -82,8 +82,11 @@ export class MultiplayerClient {
   // Tracking objects recently thrown or dropped locally to prevent stale server snapshots
   // from snapping them back into character hands before the server processes the release.
   private recentlyReleasedObjects: Map<string, number> = new Map();
-  private pendingThrowEvents: Map<string, { objectId: string; vx: number; vy: number; vz: number; targetX?: number; targetY?: number }> = new Map();
-  private pendingDropEvents: Map<string, { objectId: string; vx: number; vy: number; vz: number }> = new Map();
+  // Tracking objects recently picked up locally to prevent stale server snapshots (before the server confirms the pickup)
+  // from forcibly dropping the item back to the ground.
+  private recentlyPickedUpObjects: Map<string, number> = new Map();
+  private pendingThrowEvents: Map<string, { objectId: string; startX?: number; startY?: number; startZ?: number; vx: number; vy: number; vz: number; targetX?: number; targetY?: number }> = new Map();
+  private pendingDropEvents: Map<string, { objectId: string; startX?: number; startY?: number; startZ?: number; vx: number; vy: number; vz: number }> = new Map();
 
   public onStatsChange?: (stats: MultiplayerStats) => void;
 
@@ -186,8 +189,24 @@ export class MultiplayerClient {
       this.handleLocalPlayerDrop(localId, droppedObj);
     };
     char.onPickup = (pickedObj) => {
-      this.recentlyReleasedObjects.delete(pickedObj.id);
+      this.handleLocalPlayerPickup(localId, pickedObj);
     };
+  }
+
+  public handleLocalPlayerPickup(
+    localId: string,
+    pickedObj: GameObject
+  ): void {
+    this.recentlyReleasedObjects.delete(pickedObj.id);
+    this.recentlyPickedUpObjects.set(pickedObj.id, performance.now() + 1500);
+
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.sendJson({
+        type: "player_pickup",
+        localId,
+        objectId: pickedObj.id,
+      });
+    }
   }
 
   public handleLocalPlayerThrow(
@@ -199,8 +218,19 @@ export class MultiplayerClient {
     targetX?: number,
     targetY?: number
   ): void {
-    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 1000);
-    const evt = { objectId: thrownObj.id, vx, vy, vz, targetX, targetY };
+    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 1500);
+    this.recentlyPickedUpObjects.delete(thrownObj.id);
+    const evt = {
+      objectId: thrownObj.id,
+      startX: thrownObj.position.x,
+      startY: thrownObj.position.y,
+      startZ: thrownObj.position.z,
+      vx,
+      vy,
+      vz,
+      targetX,
+      targetY,
+    };
     this.pendingThrowEvents.set(localId, evt);
 
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -216,9 +246,13 @@ export class MultiplayerClient {
     localId: string,
     droppedObj: GameObject
   ): void {
-    this.recentlyReleasedObjects.set(droppedObj.id, performance.now() + 1000);
+    this.recentlyReleasedObjects.set(droppedObj.id, performance.now() + 1500);
+    this.recentlyPickedUpObjects.delete(droppedObj.id);
     const evt = {
       objectId: droppedObj.id,
+      startX: droppedObj.position.x,
+      startY: droppedObj.position.y,
+      startZ: droppedObj.position.z,
       vx: droppedObj.velocity.x,
       vy: droppedObj.velocity.y,
       vz: droppedObj.verticalVelocity,
@@ -315,8 +349,8 @@ export class MultiplayerClient {
       isClimbHeld: boolean;
       isSprinting: boolean;
       heldObjectId: string | null;
-      throwEvent?: { objectId: string; vx: number; vy: number; vz: number; targetX?: number; targetY?: number } | null;
-      dropEvent?: { objectId: string; vx: number; vy: number; vz: number } | null;
+      throwEvent?: { objectId: string; startX?: number; startY?: number; startZ?: number; vx: number; vy: number; vz: number; targetX?: number; targetY?: number } | null;
+      dropEvent?: { objectId: string; startX?: number; startY?: number; startZ?: number; vx: number; vy: number; vz: number } | null;
     }> = [];
 
 
@@ -502,11 +536,15 @@ export class MultiplayerClient {
                 heldObj.isHeld = true;
                 heldObj.heldBy = lChar;
               }
+              // Server confirmed pickup
+              this.recentlyPickedUpObjects.delete(sp.heldObjectId);
             }
           } else if (lChar.heldObject) {
             const releaseUntil = this.recentlyReleasedObjects.get(lChar.heldObject.id);
             const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
-            if (!isRecentlyReleased) {
+            const pickupUntil = this.recentlyPickedUpObjects.get(lChar.heldObject.id);
+            const isRecentlyPickedUp = pickupUntil !== undefined && performance.now() < pickupUntil;
+            if (!isRecentlyReleased && !isRecentlyPickedUp) {
               lChar.heldObject.isHeld = false;
               lChar.heldObject.heldBy = null;
               lChar.heldObject = null;
@@ -596,14 +634,11 @@ export class MultiplayerClient {
         this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
       }
 
-      // Check if this object was recently thrown or dropped locally
+      // Check if this object was recently thrown, dropped, or picked up locally
       const releaseUntil = this.recentlyReleasedObjects.get(localObj.id);
       const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
-
-      // If server snapshot confirms the object is no longer held by any local player, clear the release lock
-      if (!so.isHeld && releaseUntil !== undefined && !serverPlayers.some(sp => sp.clientId === this.clientId && sp.heldObjectId === localObj.id)) {
-        this.recentlyReleasedObjects.delete(localObj.id);
-      }
+      const pickupUntil = this.recentlyPickedUpObjects.get(localObj.id);
+      const isRecentlyPickedUp = pickupUntil !== undefined && performance.now() < pickupUntil;
 
       const localHolder = !isRecentlyReleased
         ? Array.from(this.gameLoop.players.values()).find(
@@ -625,18 +660,20 @@ export class MultiplayerClient {
         localObj.verticalVelocity = 0;
       } else if (so.isHeld && so.heldBy) {
         // Held by remote player
-        localObj.isHeld = true;
-        localObj.position.x = so.x;
-        localObj.position.y = so.y;
-        localObj.position.z = so.z;
-        localObj.velocity.x = so.vx;
-        localObj.velocity.y = so.vy;
-        localObj.verticalVelocity = so.vz;
+        if (!isRecentlyPickedUp) {
+          localObj.isHeld = true;
+          localObj.position.x = so.x;
+          localObj.position.y = so.y;
+          localObj.position.z = so.z;
+          localObj.velocity.x = so.vx;
+          localObj.velocity.y = so.vy;
+          localObj.verticalVelocity = so.vz;
+        }
       } else {
         // Free-standing on ground, wall top, or airborne in ballistic trajectory
         localObj.isHeld = false;
         localObj.heldBy = null;
-        if (!isRecentlyReleased) {
+        if (!isRecentlyReleased && !isRecentlyPickedUp) {
           const lerp = 0.45;
           localObj.position.x += (so.x - localObj.position.x) * lerp;
           localObj.position.y += (so.y - localObj.position.y) * lerp;

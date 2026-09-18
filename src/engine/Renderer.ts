@@ -46,10 +46,11 @@ export class Renderer {
   }
 
   public getVisualPosition(entity: GameObject): { x: number; y: number } {
+    if (!entity || !entity.position) return { x: 0, y: 0 };
     const hoverScale = this.getHoverScale();
     return {
       x: entity.position.x,
-      y: entity.position.y - entity.position.z * hoverScale,
+      y: entity.position.y - (entity.position.z || 0) * hoverScale,
     };
   }
 

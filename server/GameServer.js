@@ -328,15 +328,41 @@ export class GameServer {
       return;
     }
 
+    if (msg.type === 'player_pickup') {
+      const playerId = `${client.clientId}_${msg.localId}`;
+      this.executePickup(playerId, msg.objectId);
+      return;
+    }
+
     if (msg.type === 'player_throw') {
       const playerId = `${client.clientId}_${msg.localId}`;
-      this.executeThrow(playerId, msg.objectId, msg.vx, msg.vy, msg.vz, msg.targetX, msg.targetY);
+      this.executeThrow(
+        playerId,
+        msg.objectId,
+        msg.vx,
+        msg.vy,
+        msg.vz,
+        msg.targetX,
+        msg.targetY,
+        msg.startX,
+        msg.startY,
+        msg.startZ
+      );
       return;
     }
 
     if (msg.type === 'player_drop') {
       const playerId = `${client.clientId}_${msg.localId}`;
-      this.executeDrop(playerId, msg.objectId, msg.vx, msg.vy, msg.vz);
+      this.executeDrop(
+        playerId,
+        msg.objectId,
+        msg.vx,
+        msg.vy,
+        msg.vz,
+        msg.startX,
+        msg.startY,
+        msg.startZ
+      );
       return;
     }
 
@@ -415,32 +441,6 @@ export class GameServer {
       return;
     }
 
-    if (msg.type === 'player_throw') {
-      const playerId = `${client.clientId}_${msg.localId}`;
-      this.executeThrow(
-        playerId,
-        msg.objectId,
-        msg.vx,
-        msg.vy,
-        msg.vz,
-        msg.targetX,
-        msg.targetY
-      );
-      return;
-    }
-
-    if (msg.type === 'player_drop') {
-      const playerId = `${client.clientId}_${msg.localId}`;
-      this.executeDrop(
-        playerId,
-        msg.objectId,
-        msg.vx,
-        msg.vy,
-        msg.vz
-      );
-      return;
-    }
-
     if (msg.type === 'player_input') {
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
@@ -504,35 +504,116 @@ export class GameServer {
     this.clients.delete(client.ws);
   }
 
-  executeThrow(playerId, objectId, vx, vy, vz, targetX, targetY) {
+  executePickup(playerId, objectId) {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    const targetObj = this.objects.get(objectId);
+    if (!targetObj) return;
+
+    // If held by someone else, prevent pickup
+    if (targetObj.isHeld && targetObj.heldBy && targetObj.heldBy !== playerId) {
+      return;
+    }
+
+    // Proximity check with network tolerance
+    const dist = Math.hypot(
+      targetObj.x - player.x,
+      targetObj.y - player.y,
+      (targetObj.z || 0) - (player.z || 0)
+    );
+    if (dist > 2.8) {
+      return;
+    }
+
+    // Release any previous object held by this player
+    if (player.heldObjectId && player.heldObjectId !== objectId) {
+      const prev = this.objects.get(player.heldObjectId);
+      if (prev) {
+        prev.isHeld = false;
+        prev.heldBy = null;
+      }
+    }
+
+    targetObj.isHeld = true;
+    targetObj.heldBy = playerId;
+    targetObj.lastThrower = null;
+    player.heldObjectId = targetObj.id;
+
+    const holdPos = this.calculateHeldObjectPosition(player, targetObj);
+    targetObj.x = holdPos.x;
+    targetObj.y = holdPos.y;
+    targetObj.z = holdPos.z;
+    targetObj.vx = player.vx;
+    targetObj.vy = player.vy;
+    targetObj.vz = 0;
+  }
+
+  executeThrow(playerId, objectId, vx, vy, vz, targetX, targetY, startX, startY, startZ) {
     const player = this.players.get(playerId);
     const targetObjId = objectId || (player ? player.heldObjectId : null);
     if (!targetObjId) return;
     const obj = this.objects.get(targetObjId);
-    if (obj) {
-      obj.isHeld = false;
-      obj.heldBy = null;
-      obj.lastThrower = playerId;
-      if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
+    if (!obj) return;
+
+    // Verify holding or proximity
+    const wasHolding = (player && player.heldObjectId === targetObjId) || obj.heldBy === playerId;
+    const isNearby = player && Math.hypot(obj.x - player.x, obj.y - player.y) <= 2.5;
+    if (!wasHolding && !isNearby) {
+      return;
+    }
+
+    obj.isHeld = false;
+    obj.heldBy = null;
+    obj.lastThrower = playerId;
+
+    if (typeof startX === 'number' && typeof startY === 'number') {
+      obj.x = startX;
+      obj.y = startY;
+    } else if (player) {
+      const holdPos = this.calculateHeldObjectPosition(player, obj);
+      obj.x = holdPos.x;
+      obj.y = holdPos.y;
+    }
+
+    if (typeof startZ === 'number') {
+      obj.z = Math.max(0.3, startZ);
+    } else if (player) {
+      obj.z = Math.max(0.3, player.z + 0.45);
+    } else {
+      obj.z = Math.max(0.3, obj.z);
+    }
+
+    // Verify throw power / speed (allow up to 25.0 u/s for running recoil)
+    const maxAllowedSpeed = 25.0;
+
+    if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
+      const speed = Math.hypot(vx, vy, vz);
+      if (speed <= maxAllowedSpeed) {
         obj.vx = vx;
         obj.vy = vy;
         obj.vz = vz;
-      } else if (player) {
-        const throwSpeed = 9.0;
-        const tx = typeof targetX === 'number' ? targetX : player.x + Math.cos(player.facingAngle) * 5.0;
-        const ty = typeof targetY === 'number' ? targetY : player.y + Math.sin(player.facingAngle) * 5.0;
-        const dx = tx - obj.x;
-        const dy = ty - obj.y;
-        const dist = Math.max(0.1, Math.hypot(dx, dy));
-        const actualDist = Math.min(dist, 13.0);
-        const dirX = dx / dist;
-        const dirY = dy / dist;
-        const totalTime = Math.max(0.2, actualDist / throwSpeed);
-        obj.vx = dirX * throwSpeed;
-        obj.vy = dirY * throwSpeed;
-        obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
+      } else {
+        const scale = maxAllowedSpeed / speed;
+        obj.vx = vx * scale;
+        obj.vy = vy * scale;
+        obj.vz = vz * scale;
       }
+    } else if (player) {
+      const throwSpeed = 9.0;
+      const tx = typeof targetX === 'number' ? targetX : player.x + Math.cos(player.facingAngle) * 5.0;
+      const ty = typeof targetY === 'number' ? targetY : player.y + Math.sin(player.facingAngle) * 5.0;
+      const dx = tx - obj.x;
+      const dy = ty - obj.y;
+      const dist = Math.max(0.1, Math.hypot(dx, dy));
+      const actualDist = Math.min(dist, 13.0);
+      const dirX = dx / dist;
+      const dirY = dy / dist;
+      const totalTime = Math.max(0.2, actualDist / throwSpeed);
+      obj.vx = dirX * throwSpeed;
+      obj.vy = dirY * throwSpeed;
+      obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
     }
+
     // Unconditionally clear heldObjectId across all player records and queued inputs
     for (const p of this.players.values()) {
       if (p.heldObjectId === targetObjId) {
@@ -548,25 +629,35 @@ export class GameServer {
     }
   }
 
-  executeDrop(playerId, objectId, vx, vy, vz) {
+  executeDrop(playerId, objectId, vx, vy, vz, startX, startY, startZ) {
     const player = this.players.get(playerId);
     const targetObjId = objectId || (player ? player.heldObjectId : null);
     if (!targetObjId) return;
     const obj = this.objects.get(targetObjId);
-    if (obj) {
-      obj.isHeld = false;
-      obj.heldBy = null;
-      obj.lastThrower = playerId;
-      if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
-        obj.vx = vx;
-        obj.vy = vy;
-        obj.vz = vz;
-      } else if (player) {
-        obj.vx = player.vx;
-        obj.vy = player.vy;
-        obj.vz = player.vz;
-      }
+    if (!obj) return;
+
+    obj.isHeld = false;
+    obj.heldBy = null;
+    obj.lastThrower = playerId;
+
+    if (typeof startX === 'number' && typeof startY === 'number') {
+      obj.x = startX;
+      obj.y = startY;
     }
+    if (typeof startZ === 'number') {
+      obj.z = startZ;
+    }
+
+    if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
+      obj.vx = vx;
+      obj.vy = vy;
+      obj.vz = vz;
+    } else if (player) {
+      obj.vx = player.vx;
+      obj.vy = player.vy;
+      obj.vz = player.vz;
+    }
+
     // Unconditionally clear heldObjectId across all player records and queued inputs
     for (const p of this.players.values()) {
       if (p.heldObjectId === targetObjId) {
@@ -786,7 +877,10 @@ export class GameServer {
           input.throwEvent.vy,
           input.throwEvent.vz,
           input.throwEvent.targetX,
-          input.throwEvent.targetY
+          input.throwEvent.targetY,
+          input.throwEvent.startX,
+          input.throwEvent.startY,
+          input.throwEvent.startZ
         );
       } else if (input.dropEvent) {
         this.executeDrop(
@@ -794,7 +888,10 @@ export class GameServer {
           input.dropEvent.objectId,
           input.dropEvent.vx,
           input.dropEvent.vy,
-          input.dropEvent.vz
+          input.dropEvent.vz,
+          input.dropEvent.startX,
+          input.dropEvent.startY,
+          input.dropEvent.startZ
         );
       } else if (input.isThrowHeld && player.heldObjectId) {
         this.executeThrow(
@@ -824,7 +921,10 @@ export class GameServer {
         }
       } else if (player.heldObjectId && input.heldObjectId === null && !input.isGrabHeld && !input.isThrowHeld) {
         // Client released or dropped held object
-        this.executeDrop(player.id, player.heldObjectId);
+        const heldObj = this.objects.get(player.heldObjectId);
+        if (!heldObj || heldObj.lastThrower !== player.id) {
+          this.executeDrop(player.id, player.heldObjectId);
+        }
       } else if (input.isGrabHeld && !player.heldObjectId) {
         let closestObj = null;
         let closestDist = 1.8; // 3D reach distance with network tolerance
@@ -1000,6 +1100,9 @@ export class GameServer {
         // Skip any collision involving held objects
         if (a.isHeld || b.isHeld) continue;
         if (a.heldObjectId === b.id || b.heldObjectId === a.id) continue;
+
+        // Skip collision between thrower and their newly thrown/dropped object while departing
+        if (a.lastThrower === b.id || b.lastThrower === a.id) continue;
 
         // If a player is actively holding grab (or holding the object), do NOT repel the object away
         if ((a.inputQueue && a.inputQueue.some(inp => inp.isGrabHeld) && !b.inputQueue) ||
