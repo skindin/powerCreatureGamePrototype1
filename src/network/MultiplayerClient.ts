@@ -79,6 +79,12 @@ export class MultiplayerClient {
   private reconnectTimer: any = null;
   private isIntentionalDisconnect: boolean = false;
 
+  // Tracking objects recently thrown or dropped locally to prevent stale server snapshots
+  // from snapping them back into character hands before the server processes the release.
+  private recentlyReleasedObjects: Map<string, number> = new Map();
+  private pendingThrowEvents: Map<string, { objectId: string; vx: number; vy: number; vz: number; targetX?: number; targetY?: number }> = new Map();
+  private pendingDropEvents: Map<string, { objectId: string; vx: number; vy: number; vz: number }> = new Map();
+
   public onStatsChange?: (stats: MultiplayerStats) => void;
 
   constructor(gameLoop?: GameLoop) {
@@ -165,9 +171,73 @@ export class MultiplayerClient {
   }
 
   /**
+   * Binds onThrow and onDrop callbacks to a local character to send authoritative throw/drop actions
+   */
+  public bindCharacterCallbacks(localId: string, char: Character): void {
+    char.onThrow = (thrownObj, vx, vy, vz, targetX, targetY) => {
+      this.handleLocalPlayerThrow(localId, thrownObj, vx, vy, vz, targetX, targetY);
+    };
+    char.onDrop = (droppedObj) => {
+      this.handleLocalPlayerDrop(localId, droppedObj);
+    };
+  }
+
+  public handleLocalPlayerThrow(
+    localId: string,
+    thrownObj: GameObject,
+    vx: number,
+    vy: number,
+    vz: number,
+    targetX?: number,
+    targetY?: number
+  ): void {
+    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 1000);
+    const evt = { objectId: thrownObj.id, vx, vy, vz, targetX, targetY };
+    this.pendingThrowEvents.set(localId, evt);
+
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.sendJson({
+        type: "player_throw",
+        localId,
+        ...evt,
+      });
+    }
+  }
+
+  public handleLocalPlayerDrop(
+    localId: string,
+    droppedObj: GameObject
+  ): void {
+    this.recentlyReleasedObjects.set(droppedObj.id, performance.now() + 1000);
+    const evt = {
+      objectId: droppedObj.id,
+      vx: droppedObj.velocity.x,
+      vy: droppedObj.velocity.y,
+      vz: droppedObj.verticalVelocity,
+    };
+    this.pendingDropEvents.set(localId, evt);
+
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.sendJson({
+        type: "player_drop",
+        localId,
+        ...evt,
+      });
+    }
+  }
+
+  /**
    * Registers a local player on this browser page with the authoritative server lobby.
    */
   public registerLocalPlayer(localId: string, name: string, color: string, playerNumber: number): void {
+    if (this.gameLoop) {
+      const entry = this.gameLoop.players.get(localId);
+      if (entry && entry.character) {
+        this.bindCharacterCallbacks(localId, entry.character);
+      } else if (localId === "keyboard" && this.gameLoop.baseCharacter) {
+        this.bindCharacterCallbacks(localId, this.gameLoop.baseCharacter);
+      }
+    }
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
 
     this.sendJson({
@@ -178,6 +248,7 @@ export class MultiplayerClient {
       playerNumber,
     });
   }
+
 
   /**
    * Unregisters a local player from the authoritative server lobby.
@@ -236,7 +307,10 @@ export class MultiplayerClient {
       isClimbHeld: boolean;
       isSprinting: boolean;
       heldObjectId: string | null;
+      throwEvent?: { objectId: string; vx: number; vy: number; vz: number; targetX?: number; targetY?: number } | null;
+      dropEvent?: { objectId: string; vx: number; vy: number; vz: number } | null;
     }> = [];
+
 
     for (const [key, entry] of localPlayers) {
       let moveVector: Vector2D = { x: 0, y: 0 };
@@ -271,6 +345,15 @@ export class MultiplayerClient {
         }
       }
 
+      const throwEvt = this.pendingThrowEvents.get(key) || null;
+      const dropEvt = this.pendingDropEvents.get(key) || null;
+      if (throwEvt) {
+        this.pendingThrowEvents.delete(key);
+      }
+      if (dropEvt) {
+        this.pendingDropEvents.delete(key);
+      }
+
       inputsToSend.push({
         localId: key,
         moveVector,
@@ -280,8 +363,11 @@ export class MultiplayerClient {
         isClimbHeld,
         isSprinting,
         heldObjectId,
+        throwEvent: throwEvt,
+        dropEvent: dropEvt,
       });
     }
+
 
     if (inputsToSend.length > 0) {
       this.sendJson({
@@ -490,9 +576,20 @@ export class MultiplayerClient {
         this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
       }
 
-      const localHolder = Array.from(this.gameLoop.players.values()).find(
-        (p) => p.character.heldObject === localObj || p.character === localObj.heldBy || serverPlayers.some(sp => sp.clientId === this.clientId && sp.localId === p.id && sp.heldObjectId === localObj.id)
-      );
+      // Check if this object was recently thrown or dropped locally
+      const releaseUntil = this.recentlyReleasedObjects.get(localObj.id);
+      const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
+
+      // If server snapshot confirms the object is no longer held by any local player, clear the release lock
+      if (!so.isHeld && releaseUntil !== undefined && !serverPlayers.some(sp => sp.clientId === this.clientId && sp.heldObjectId === localObj.id)) {
+        this.recentlyReleasedObjects.delete(localObj.id);
+      }
+
+      const localHolder = !isRecentlyReleased
+        ? Array.from(this.gameLoop.players.values()).find(
+            (p) => p.character.heldObject === localObj || p.character === localObj.heldBy || (p.character.heldObject === null && serverPlayers.some(sp => sp.clientId === this.clientId && sp.localId === p.id && sp.heldObjectId === localObj.id))
+          )
+        : null;
 
       if (localHolder) {
         // Held by local player on this device
@@ -516,16 +613,18 @@ export class MultiplayerClient {
         localObj.velocity.y = so.vy;
         localObj.verticalVelocity = so.vz;
       } else {
-        // Free-standing on ground or wall top
+        // Free-standing on ground, wall top, or airborne in ballistic trajectory
         localObj.isHeld = false;
         localObj.heldBy = null;
-        const lerp = 0.45;
-        localObj.position.x += (so.x - localObj.position.x) * lerp;
-        localObj.position.y += (so.y - localObj.position.y) * lerp;
-        localObj.position.z += (so.z - localObj.position.z) * lerp;
-        localObj.velocity.x = so.vx;
-        localObj.velocity.y = so.vy;
-        localObj.verticalVelocity = so.vz;
+        if (!isRecentlyReleased) {
+          const lerp = 0.45;
+          localObj.position.x += (so.x - localObj.position.x) * lerp;
+          localObj.position.y += (so.y - localObj.position.y) * lerp;
+          localObj.position.z += (so.z - localObj.position.z) * lerp;
+          localObj.velocity.x = so.vx;
+          localObj.velocity.y = so.vy;
+          localObj.verticalVelocity = so.vz;
+        }
 
         const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
         if (supWall && localObj.position.z >= supWall.wallHeight - 0.05) {
@@ -538,6 +637,7 @@ export class MultiplayerClient {
       }
     }
   }
+
 
   private ensureRemoteCharacter(sp: RemotePlayerSnapshot): Character {
     let char = this.remoteCharacters.get(sp.id);
@@ -589,9 +689,16 @@ export class MultiplayerClient {
   private syncAllLocalPlayers(): void {
     if (!this.gameLoop) return;
     for (const [key, entry] of this.gameLoop.players) {
+      if (entry && entry.character) {
+        this.bindCharacterCallbacks(key, entry.character);
+      }
       this.registerLocalPlayer(key, entry.name, entry.color, entry.playerNumber);
     }
+    if (this.gameLoop.baseCharacter) {
+      this.bindCharacterCallbacks("keyboard", this.gameLoop.baseCharacter);
+    }
   }
+
 
   private startPing(): void {
     clearInterval(this.pingInterval);

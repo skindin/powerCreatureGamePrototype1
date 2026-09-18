@@ -637,6 +637,11 @@ export class ThrowModule {
       character.verticalVelocity -= deltaVz * recoilRatio;
     }
 
+    if (character.onThrow) {
+      character.onThrow(held, launch.vx, launch.vy, launch.vz, aimTargetX, aimTargetY);
+    }
+
     return held;
   }
+
 }

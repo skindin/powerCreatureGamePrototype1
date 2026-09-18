@@ -305,7 +305,20 @@ export class GameServer {
       return;
     }
 
+    if (msg.type === 'player_throw') {
+      const playerId = `${client.clientId}_${msg.localId}`;
+      this.executeThrow(playerId, msg.objectId, msg.vx, msg.vy, msg.vz, msg.targetX, msg.targetY);
+      return;
+    }
+
+    if (msg.type === 'player_drop') {
+      const playerId = `${client.clientId}_${msg.localId}`;
+      this.executeDrop(playerId, msg.objectId, msg.vx, msg.vy, msg.vz);
+      return;
+    }
+
     if (msg.type === 'register_player') {
+
       const { localId, name } = msg;
       const playerId = `${client.clientId}_${localId}`;
       const playerNum = this.nextPlayerNumber++;
@@ -394,10 +407,13 @@ export class GameServer {
               isClimbHeld: Boolean(inp.isClimbHeld),
               isSprinting: Boolean(inp.isSprinting),
               heldObjectId: inp.heldObjectId !== undefined ? inp.heldObjectId : null,
+              throwEvent: inp.throwEvent || null,
+              dropEvent: inp.dropEvent || null,
             });
             if (player.inputQueue.length > 8) {
               player.inputQueue.shift();
             }
+
           }
         }
       }
@@ -435,7 +451,66 @@ export class GameServer {
     this.clients.delete(client.ws);
   }
 
+  executeThrow(playerId, objectId, vx, vy, vz, targetX, targetY) {
+    const player = this.players.get(playerId);
+    const targetObjId = objectId || (player ? player.heldObjectId : null);
+    if (!targetObjId) return;
+    const obj = this.objects.get(targetObjId);
+    if (obj) {
+      obj.isHeld = false;
+      obj.heldBy = null;
+      obj.lastThrower = playerId;
+      if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
+        obj.vx = vx;
+        obj.vy = vy;
+        obj.vz = vz;
+      } else if (player) {
+        const throwSpeed = 9.0;
+        const tx = typeof targetX === 'number' ? targetX : player.x + Math.cos(player.facingAngle) * 5.0;
+        const ty = typeof targetY === 'number' ? targetY : player.y + Math.sin(player.facingAngle) * 5.0;
+        const dx = tx - obj.x;
+        const dy = ty - obj.y;
+        const dist = Math.max(0.1, Math.hypot(dx, dy));
+        const actualDist = Math.min(dist, 13.0);
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        const totalTime = Math.max(0.2, actualDist / throwSpeed);
+        obj.vx = dirX * throwSpeed;
+        obj.vy = dirY * throwSpeed;
+        obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
+      }
+    }
+    if (player && player.heldObjectId === targetObjId) {
+      player.heldObjectId = null;
+    }
+  }
+
+  executeDrop(playerId, objectId, vx, vy, vz) {
+    const player = this.players.get(playerId);
+    const targetObjId = objectId || (player ? player.heldObjectId : null);
+    if (!targetObjId) return;
+    const obj = this.objects.get(targetObjId);
+    if (obj) {
+      obj.isHeld = false;
+      obj.heldBy = null;
+      obj.lastThrower = null;
+      if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
+        obj.vx = vx;
+        obj.vy = vy;
+        obj.vz = vz;
+      } else if (player) {
+        obj.vx = player.vx;
+        obj.vy = player.vy;
+        obj.vz = player.vz;
+      }
+    }
+    if (player && player.heldObjectId === targetObjId) {
+      player.heldObjectId = null;
+    }
+  }
+
   calculateHeldObjectPosition(player, obj) {
+
     const defaultHandDist = (player.colliderRadius || 0.44) + (obj.radius || 0.26) * 0.5 + 0.08;
     const dirX = Math.cos(player.facingAngle);
     const dirY = Math.sin(player.facingAngle);
@@ -628,27 +703,35 @@ export class GameServer {
         this.resolveCircleWallsAgainstGrid(player);
       }
 
-      // Handle Grab / Throw actions
-      if (input.isThrowHeld && player.heldObjectId) {
-        const obj = this.objects.get(player.heldObjectId);
-        if (obj) {
-          obj.isHeld = false;
-          obj.heldBy = null;
-          const throwSpeed = 9.0;
-          const targetX = input.mousePos ? input.mousePos.x : player.x + Math.cos(player.facingAngle) * 5.0;
-          const targetY = input.mousePos ? input.mousePos.y : player.y + Math.sin(player.facingAngle) * 5.0;
-          const dx = targetX - obj.x;
-          const dy = targetY - obj.y;
-          const dist = Math.max(0.1, Math.hypot(dx, dy));
-          const actualDist = Math.min(dist, 13.0);
-          const dirX = dx / dist;
-          const dirY = dy / dist;
-          const totalTime = Math.max(0.2, actualDist / throwSpeed);
-          obj.vx = dirX * throwSpeed;
-          obj.vy = dirY * throwSpeed;
-          obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
-        }
-        player.heldObjectId = null;
+      // Handle Grab / Throw / Drop actions
+      if (input.throwEvent) {
+        this.executeThrow(
+          player.id,
+          input.throwEvent.objectId,
+          input.throwEvent.vx,
+          input.throwEvent.vy,
+          input.throwEvent.vz,
+          input.throwEvent.targetX,
+          input.throwEvent.targetY
+        );
+      } else if (input.dropEvent) {
+        this.executeDrop(
+          player.id,
+          input.dropEvent.objectId,
+          input.dropEvent.vx,
+          input.dropEvent.vy,
+          input.dropEvent.vz
+        );
+      } else if (input.isThrowHeld && player.heldObjectId) {
+        this.executeThrow(
+          player.id,
+          player.heldObjectId,
+          undefined,
+          undefined,
+          undefined,
+          input.mousePos?.x,
+          input.mousePos?.y
+        );
       } else if (input.heldObjectId) {
         // Client authoritatively holds input.heldObjectId
         if (player.heldObjectId !== input.heldObjectId) {
@@ -665,22 +748,15 @@ export class GameServer {
         }
       } else if (player.heldObjectId && input.heldObjectId === null && !input.isGrabHeld && !input.isThrowHeld) {
         // Client released or dropped held object
-        const obj = this.objects.get(player.heldObjectId);
-        if (obj) {
-          obj.isHeld = false;
-          obj.heldBy = null;
-          obj.vx = player.vx;
-          obj.vy = player.vy;
-          obj.vz = player.vz;
-        }
-        player.heldObjectId = null;
+        this.executeDrop(player.id, player.heldObjectId);
       } else if (input.isGrabHeld && !player.heldObjectId) {
         let closestObj = null;
         let closestDist = 1.8; // 3D reach distance with network tolerance
         for (const obj of this.objects.values()) {
           if (obj.isHeld) continue;
+          if (obj.lastThrower === player.id) continue;
           const deltaMagnitude = Math.hypot(obj.x - player.x, obj.y - player.y, obj.z - player.z);
-          if (deltaMagnitude <= closestDist && deltaMagnitude < closestDist) {
+          if (deltaMagnitude <= closestDist) {
             closestDist = deltaMagnitude;
             closestObj = obj;
           }
@@ -691,6 +767,7 @@ export class GameServer {
           player.heldObjectId = closestObj.id;
         }
       }
+
 
       // Update held object position to attach cleanly in front of hands along facing angle,
       // dynamically clamped outside walls so it never clips
@@ -742,6 +819,15 @@ export class GameServer {
           }
         }
       }
+
+      // Clear lastThrower once departed from reach or landed
+      if (obj.lastThrower) {
+        const thrower = this.players.get(obj.lastThrower);
+        if (!thrower || Math.hypot(obj.x - thrower.x, obj.y - thrower.y, obj.z - thrower.z) > 1.8 || obj.z <= surfaceHeight + 0.02) {
+          obj.lastThrower = null;
+        }
+      }
+
 
       // Ground / wall-top friction
       if (obj.z <= surfaceHeight + 0.02) {

@@ -130,8 +130,13 @@ export class PickupModule {
       dropped.rollModule.angularVelocity.x = -dropped.velocity.y / R;
     }
 
+    if (character.onDrop) {
+      character.onDrop(dropped);
+    }
+
     return dropped;
   }
+
 
   /**
    * Pickup and swap:

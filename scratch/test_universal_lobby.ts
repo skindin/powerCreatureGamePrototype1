@@ -262,6 +262,50 @@ async function testUniversalLobby() {
   }
   console.log(`✅ Object throw authoritatively executed on server with ballistic velocity: vx=${heldStone.vx.toFixed(2)}, vy=${heldStone.vy.toFixed(2)}, vz=${heldStone.vz.toFixed(2)}`);
 
+  // 6c. Test player_drop explicit message
+  // Client A picks up boulder-1
+  wsA.send(JSON.stringify({
+    type: 'player_input',
+    tick: 33,
+    inputs: [{
+      localId: 'keyboard',
+      moveVector: { x: 0, y: 0 },
+      isGrabHeld: true,
+      isThrowHeld: false,
+      mousePos: { x: 7.0, y: 9.2 },
+      isClimbHeld: false,
+      isSprinting: false,
+      heldObjectId: 'boulder-1',
+    }],
+  }));
+  await new Promise((r) => setTimeout(r, 100));
+
+  const boulder = gameServer.objects.get('boulder-1');
+  if (!boulder || !boulder.isHeld || boulder.heldBy !== serverP1.id) {
+    throw new Error(`Expected boulder-1 to be held by P1, got: ${boulder?.heldBy}`);
+  }
+
+  // Client A drops boulder-1 via player_drop
+  wsA.send(JSON.stringify({
+    type: 'player_drop',
+    localId: 'keyboard',
+    objectId: 'boulder-1',
+    vx: 1.5,
+    vy: -0.5,
+    vz: 0,
+  }));
+  await new Promise((r) => setTimeout(r, 100));
+
+  if (serverP1.heldObjectId !== null) {
+    throw new Error(`Expected Server Player 1 to have dropped boulder-1, got heldObjectId: ${serverP1.heldObjectId}`);
+  }
+  if (boulder.isHeld) {
+    throw new Error(`Expected boulder-1 to be dropped (isHeld=false)`);
+  }
+  console.log(`✅ player_drop message successfully processed on server, boulder-1 released`);
+
+
+
   // 7. Test unregistering one player from Client B
   wsB.send(JSON.stringify({
     type: 'unregister_player',

@@ -95,6 +95,10 @@ export class Character extends GameObject {
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
 
+  // Action callbacks (used by multiplayer synchronization)
+  public onThrow?: (thrownObject: GameObject, vx: number, vy: number, vz: number, targetX?: number, targetY?: number) => void;
+  public onDrop?: (droppedObject: GameObject) => void;
+
   constructor(options: {
     x?: number;
     y?: number;

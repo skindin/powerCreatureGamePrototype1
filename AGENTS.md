@@ -189,8 +189,12 @@ powerCreatureGamePrototype1/
   - When a player holds an object, its position is attached to the character's hands along `facingAngle` using exact quadratic ray-AABB wall clearance clamping (`calculateHeldObjectPosition`), preventing carried objects from clipping or spawning embedded inside walls.
   - **Bi-directional Held Object Sync (`heldObjectId`)**: `MultiplayerClient.updatePhysicsTick` includes `heldObjectId` directly in the 60Hz `player_input` packets. When received by `GameServer.js`, the server immediately confirms the attachment (`player.heldObjectId`, `obj.isHeld = true`, `obj.heldBy = player.id`).
   - **Pickup Repulsion Exclusion**: In `resolveTOICollisions`, colliding circles are excluded if an entity is held, or if a player approaching an object is actively holding grab (`isGrabHeld`). This eliminates the previous bug where the TOI solver repelled/pushed the object away when the player tried to pick it up.
-  - **Local Player Reconciliation & Trajectory Display**: In `reconcileWorldState`, local characters have their `character.heldObject` explicitly synchronized from the server snapshot (alongside remote characters). Because `character.heldObject` is properly set, `ThrowModule.calculateTrajectory` generates the ballistic arc, and left-click / controller trigger cleanly executes the throw locally and authoritatively on the server.
+  - **Authoritative Throw/Drop & Optimistic Release Lock**:
+    - When a player throws or drops an object, the client immediately sends dedicated `player_throw` / `player_drop` messages and queues `throwEvent` / `dropEvent` in 60Hz `player_input`.
+    - An optimistic release lock (`recentlyReleasedObjects`) prevents in-flight, lagging server snapshots from re-attaching the object to the player's hands or resetting vertical velocity to 0 during the RTT round-trip window.
+    - The server authoritatively releases the object, applies calculated parabolic throw velocities ($v_x, v_y, v_z$), and tags `obj.lastThrower = playerId` until departed from reach, preventing immediate re-grab during departure.
   - Carried state, attachments, and ballistic throw velocities ($v_x, v_y, v_z$) are fully synchronized across remote clients.
+
 - **Authoritative Player Joining & Color Sequencing**:
   - The server authoritatively assigns player numbers and theme colors upon connection: Player 1 is always Yellow / Amber Gold (`#f59e0b`), Player 2 is Cyan (`#06b6d4`, matching singleplayer Player 2), Player 3 is Emerald (`#10b981`), etc.
   - When all players disconnect from the lobby, the player counter resets so the next player to connect starts as Player 1 (Yellow) again.

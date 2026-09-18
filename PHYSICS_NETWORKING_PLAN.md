@@ -187,6 +187,9 @@ In an arena with 50+ freebodies (rocks, food, crates, dummies), rolling back the
   - Full object synchronization: positions, velocities, supporting surface heights, jumping arcs ($v_z = 9.67$, gravity = 30.0).
   - Bi-directional held object and ballistic throw synchronization with dynamic clearance clamping outside walls.
   - TOI collision exclusion for held and grabbed objects to prevent repulsion desyncs.
+  - Authoritative throw & drop actions via instant WebSocket messages (`player_throw`, `player_drop`) and input payload events (`throwEvent`, `dropEvent`).
+  - Optimistic client-side release lock (`recentlyReleasedObjects`) preventing stale in-flight server snapshots from snapping thrown or dropped objects back to character hands.
+
 
 - [ ] **Phase 1.2.3: Active Islands of Influence Graph**
   - Sleeping flag on resting arena objects ($v \approx 0$).
