@@ -316,7 +316,12 @@ export class GameObject {
         this.position.y - this.lastThrower.position.y,
         myZ - throwerZ
       );
-      if (dist3D > reach || this.isRestingOnSurface) {
+      const dist2D = Math.hypot(
+        this.position.x - this.lastThrower.position.x,
+        this.position.y - this.lastThrower.position.y
+      );
+      const minSafeDist = this.colliderRadius + this.lastThrower.colliderRadius + 0.05;
+      if (dist3D > reach || (this.isRestingOnSurface && dist2D > minSafeDist)) {
         this.lastThrower = null;
       }
     }

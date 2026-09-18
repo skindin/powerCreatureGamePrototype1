@@ -996,10 +996,12 @@ export class GameServer {
         }
       }
 
-      // Clear lastThrower once departed from reach or landed
+      // Clear lastThrower once departed from reach or landed safely outside thrower
       if (obj.lastThrower) {
         const thrower = this.players.get(obj.lastThrower);
-        if (!thrower || Math.hypot(obj.x - thrower.x, obj.y - thrower.y, obj.z - thrower.z) > 1.8 || obj.z <= surfaceHeight + 0.02) {
+        const dist2D = thrower ? Math.hypot(obj.x - thrower.x, obj.y - thrower.y) : 999;
+        const minSafeDist = (obj.radius || 0.3) + 0.44 + 0.05;
+        if (!thrower || Math.hypot(obj.x - thrower.x, obj.y - thrower.y, obj.z - thrower.z) > 1.8 || (obj.z <= surfaceHeight + 0.02 && dist2D > minSafeDist)) {
           obj.lastThrower = null;
         }
       }

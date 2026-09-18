@@ -288,6 +288,11 @@ export class ContinuousPhysics {
         if (a.isHeld || b.isHeld || (a as any).heldObject === b || (b as any).heldObject === a) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
 
+        // Skip continuous collision between thrown object and its thrower while departing
+        const isThrowerA = a.lastThrower === b || (Boolean(a.lastThrower) && (a.lastThrower as any).id === b.id);
+        const isThrowerB = b.lastThrower === a || (Boolean(b.lastThrower) && (b.lastThrower as any).id === a.id);
+        if (isThrowerA || isThrowerB) continue;
+
         // Altitude gating: contact sweeps only occur if both are on the same vertical tier
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);

@@ -686,6 +686,11 @@ export class GameLoop {
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;
 
+          // Skip collision between thrown object and its thrower while departing
+          const isThrowerA = a.lastThrower === b || (Boolean(a.lastThrower) && (a.lastThrower as any).id === b.id);
+          const isThrowerB = b.lastThrower === a || (Boolean(b.lastThrower) && (b.lastThrower as any).id === a.id);
+          if (isThrowerA || isThrowerB) continue;
+
           // Infinite Virtual Layer Collision Rule:
           // Objects only collide if they are on the exact same layer (height / wallHeight).
           // Only Layer 1 has walls.

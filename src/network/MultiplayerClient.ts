@@ -640,7 +640,16 @@ export class MultiplayerClient {
       const pickupUntil = this.recentlyPickedUpObjects.get(localObj.id);
       const isRecentlyPickedUp = pickupUntil !== undefined && performance.now() < pickupUntil;
 
-      const localHolder = !isRecentlyReleased
+      // If a remote player intercepted/picked up this object, clear the local release lock
+      const isHeldByAnyLocalPlayer = Array.from(this.gameLoop.players.values()).some(
+        (p) => p.character.id === so.heldBy || (p.character as any).playerId === so.heldBy
+      );
+      if (isRecentlyReleased && so.isHeld && so.heldBy && !isHeldByAnyLocalPlayer) {
+        this.recentlyReleasedObjects.delete(localObj.id);
+      }
+      const activeRecentlyReleased = this.recentlyReleasedObjects.has(localObj.id) && performance.now() < (this.recentlyReleasedObjects.get(localObj.id) || 0);
+
+      const localHolder = !activeRecentlyReleased
         ? Array.from(this.gameLoop.players.values()).find(
             (p) => p.character.heldObject === localObj || p.character === localObj.heldBy
           )
@@ -658,7 +667,7 @@ export class MultiplayerClient {
         localObj.velocity.x = localHolder.character.velocity.x;
         localObj.velocity.y = localHolder.character.velocity.y;
         localObj.verticalVelocity = 0;
-      } else if (so.isHeld && so.heldBy) {
+      } else if (so.isHeld && so.heldBy && !activeRecentlyReleased) {
         // Held by remote player
         if (!isRecentlyPickedUp) {
           localObj.isHeld = true;
@@ -673,7 +682,7 @@ export class MultiplayerClient {
         // Free-standing on ground, wall top, or airborne in ballistic trajectory
         localObj.isHeld = false;
         localObj.heldBy = null;
-        if (!isRecentlyReleased && !isRecentlyPickedUp) {
+        if (!activeRecentlyReleased && !isRecentlyPickedUp) {
           const lerp = 0.45;
           localObj.position.x += (so.x - localObj.position.x) * lerp;
           localObj.position.y += (so.y - localObj.position.y) * lerp;
@@ -681,6 +690,15 @@ export class MultiplayerClient {
           localObj.velocity.x = so.vx;
           localObj.velocity.y = so.vy;
           localObj.verticalVelocity = so.vz;
+        } else if (activeRecentlyReleased && !so.isHeld) {
+          // Server has acknowledged release and is running parallel physics
+          // Softly correct only if significant drift occurs (> 1.2u)
+          const drift = Math.hypot(so.x - localObj.position.x, so.y - localObj.position.y, so.z - localObj.position.z);
+          if (drift > 1.2) {
+            localObj.position.x += (so.x - localObj.position.x) * 0.25;
+            localObj.position.y += (so.y - localObj.position.y) * 0.25;
+            localObj.position.z += (so.z - localObj.position.z) * 0.25;
+          }
         }
 
         const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
