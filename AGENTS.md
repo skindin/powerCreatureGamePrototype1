@@ -460,8 +460,9 @@ powerCreatureGamePrototype1/
         - **Layer 1 (Ground)**: `targetSurfaceHeight = 0.0`.
         - **Layer 2+ (Wall Top / Elevated Platform)**: `targetSurfaceHeight = arena.wallHeight` (or `standingWall.wallHeight`).
       - This replaces solely querying `arena.getSupportingSurfaceHeight` at cursor coords, enabling accurate throws directly onto objects on the ground (landing flat at $z = 0$ even near walls) or objects on top of walls (elevating parabolic arc to land cleanly on top of the wall surface at $z = 1.0$).
-    - **Target Physical Centering & Landing Indicator Alignment**:
-      - When an object is hovered, the trajectory target physical coordinates $(targetX, targetY)$ lock cleanly onto the object's physical center (within `maxThrowAimDistance`), ensuring accurate impact and alignment with the visual sprite.
+    - **Unclamped 2D Aim Freedom (No Coordinate Lock)**:
+      - The trajectory's 2D target coordinates $(targetX, targetY)$ strictly follow the player's exact cursor aim position without snapping, locking, or overriding 2D coordinates to the object.
+      - Overlapping an object only selects the target layer height (`targetSurfaceHeight`), allowing players full granular freedom to place the throw anywhere on or around the object at that layer's elevation.
       - The landing reticle reflects the target layer: green ground-level indicator for Layer 1, and elevated cyan indicator with vertical altitude connector for Layer 2.
 
 ---

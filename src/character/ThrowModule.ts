@@ -211,7 +211,7 @@ export class ThrowModule {
     targetSurfaceHeight: number;
     targetObject?: GameObject | null;
   } | null {
-    // Detect if cursor is directly over an object
+    // Detect if cursor overlaps an object to hit the top of its layer
     const hoveredEntity = this.findHoveredEntity(
       targetX,
       targetY,
@@ -222,15 +222,8 @@ export class ThrowModule {
       hoverScale
     );
 
-    let effectiveTargetX = targetX;
-    let effectiveTargetY = targetY;
-    if (hoveredEntity) {
-      effectiveTargetX = hoveredEntity.position.x;
-      effectiveTargetY = hoveredEntity.position.y;
-    }
-
-    const dx = effectiveTargetX - startX;
-    const dy = effectiveTargetY - startY;
+    const dx = targetX - startX;
+    const dy = targetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
 
