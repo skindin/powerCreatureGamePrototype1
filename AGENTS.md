@@ -419,6 +419,10 @@ powerCreatureGamePrototype1/
       3. The cursor is within selection proximity (`dist <= 1.5 units`) of that reachable object (`PickupModule.findTargetObject(..., maxSelectDistance = 1.5)`).
     - When all conditions are met, the cursor, sightline, and targeted solid grab ring (`P1 GRAB`) appear. If the player moves the cursor away, throws the object, or stops moving it for > 3.0 seconds, the cursor cleanly hides.
     - `PickupModule.pickupAndSwap` gracefully falls back to the nearest reachable object if grab is pressed without actively aiming at a specific item.
+    - **Cursor Unhide Origin (Visual Position Accounting for Isometric Height)**:
+      - Every time the cursor is unhidden (e.g. picking up an object to throw, or aiming at reachable items), it starts directly at the character's current visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
+      - `Renderer.getHoverScale()` and `Renderer.getVisualPosition(entity)` compute the true screen-projected coordinates so elevated characters (e.g. standing on walls with $z = 1.0$) have their aim cursor and trajectory start perfectly centered over their visual body on top of the wall rather than their ground shadow.
+      - While hidden, the cursor position remains anchored to the character's visual coordinates so aiming deflection always radiates naturally outward from the character.
 
 ---
 

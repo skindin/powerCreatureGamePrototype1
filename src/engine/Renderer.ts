@@ -40,6 +40,19 @@ export class Renderer {
     this.viewSettings.visualAltitudeScale = Math.max(0, Math.min(1, scale));
   }
 
+  public getHoverScale(): number {
+    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+    return useHover ? this.viewSettings.visualAltitudeScale : 0;
+  }
+
+  public getVisualPosition(entity: GameObject): { x: number; y: number } {
+    const hoverScale = this.getHoverScale();
+    return {
+      x: entity.position.x,
+      y: entity.position.y - entity.position.z * hoverScale,
+    };
+  }
+
   public render(
     arena: Arena,
     characterInput: Character | Character[],

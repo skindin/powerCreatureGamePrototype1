@@ -235,6 +235,8 @@ function bootstrap(): void {
     inputManager,
     devPanel,
   });
+  (window as any).gameLoop = gameLoop;
+  (window as any).character = character;
 
   // 6b. Initialize Players & Controllers Panel
   const playersPanel = new PlayersPanel(gameLoop, inputManager);

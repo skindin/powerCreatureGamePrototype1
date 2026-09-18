@@ -20,6 +20,7 @@ export interface GamepadSlotState {
   sprintArmed?: boolean;
   wasMoving?: boolean;
   lastAimMoveTime: number;
+  isCursorVisible?: boolean;
 }
 
 export class InputManager {
@@ -395,7 +396,8 @@ export class InputManager {
     playersMap: Map<string, { character: Character; slotIndex?: number; isKeyboard?: boolean }>,
     objects: GameObject[],
     arena: Arena,
-    allCharacters?: Character[]
+    allCharacters?: Character[],
+    getVisualPosition?: (entity: GameObject) => Vector2D
   ): void {
     if (!navigator.getGamepads) return;
     const gamepads = navigator.getGamepads();
@@ -490,10 +492,16 @@ export class InputManager {
         slot.movementVector.y = 0;
       }
 
-      // Right Joystick for absolute arena aim reticle
-      if (!slot.aimOffsetInitialized) {
-        slot.aimPos.x = char.position.x + Math.cos(char.facingAngle) * 3.0;
-        slot.aimPos.y = char.position.y + Math.sin(char.facingAngle) * 3.0;
+      // Right Joystick for absolute arena aim reticle:
+      // Every time the cursor is unhidden (or while hidden), anchor at the character's current position,
+      // making sure to account for the 2D upwards offset from isometric height
+      const visualPos = getVisualPosition
+        ? getVisualPosition(char)
+        : { x: char.position.x, y: char.position.y };
+
+      if (!slot.aimOffsetInitialized || slot.isCursorVisible === false) {
+        slot.aimPos.x = visualPos.x;
+        slot.aimPos.y = visualPos.y;
         slot.aimOffsetInitialized = true;
       }
 

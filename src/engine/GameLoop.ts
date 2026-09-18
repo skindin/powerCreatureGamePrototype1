@@ -15,6 +15,7 @@ export interface PlayerEntry {
   isKeyboard: boolean;
   slotIndex?: number;
   character: Character;
+  wasCursorVisible?: boolean;
 }
 
 export const PLAYER_COLORS = [
@@ -350,6 +351,8 @@ export class GameLoop {
     // Determine target grab entities and active aim cursors for all players
     // Hide cursors when not needed: only show cursor if there's an item nearby and
     // the player has moved their cursor to select a specific one, or if they are holding an object to throw.
+    // Every time the cursor is unhidden it starts at the character's current position,
+    // accounting for the 2D upwards offset from isometric height.
     const targetGrabEntities = new Map<Character, GameObject | null>();
     const activeAimCursors: ActiveAimCursor[] = [];
     const now = performance.now();
@@ -360,21 +363,16 @@ export class GameLoop {
       for (const entry of this.players.values()) {
         const char = entry.character;
         const isHolding = char.heldObject !== null;
+        const visualPos = this.renderer.getVisualPosition(char);
+        let isCursorVisibleNow = false;
 
         if (entry.isKeyboard) {
           if (!this.inputManager.isKeyboardActive) continue;
-          const aimPos = this.inputManager.mousePos;
+          let aimPos = this.inputManager.mousePos;
 
           if (isHolding) {
             // Holding an object: always show cursor and throw trajectory
-            activeAimCursors.push({
-              x: aimPos.x,
-              y: aimPos.y,
-              color: char.playerColor,
-              playerNumber: char.playerNumber,
-              character: char,
-              isGamepad: false,
-            });
+            isCursorVisibleNow = true;
           } else if (char.pickupModule && char.pickupModule.enabled) {
             // Empty-handed: only show cursor if player moved cursor recently and selected a nearby item
             const mouseMovedRecently = (now - this.inputManager.lastMouseMoveTime) < cursorRecentThresholdMs;
@@ -390,32 +388,40 @@ export class GameLoop {
               );
               if (target) {
                 targetGrabEntities.set(char, target);
-                activeAimCursors.push({
-                  x: aimPos.x,
-                  y: aimPos.y,
-                  color: char.playerColor,
-                  playerNumber: char.playerNumber,
-                  character: char,
-                  isGamepad: false,
-                });
+                isCursorVisibleNow = true;
               }
             }
           }
-        } else if (entry.slotIndex !== undefined) {
-          const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
-          if (!slot || !slot.connected) continue;
-          const aimPos = slot.aimPos;
 
-          if (isHolding) {
-            // Holding an object: always show cursor and throw trajectory
+          // Unhidden transition for Keyboard: if cursor was just unhidden (e.g. picked up with E key)
+          // and mouse hasn't moved recently, start at character's visual position accounting for isometric height
+          if (isCursorVisibleNow && !entry.wasCursorVisible) {
+            const mouseMovedRecently = (now - this.inputManager.lastMouseMoveTime) < cursorRecentThresholdMs;
+            if (!mouseMovedRecently) {
+              this.inputManager.mousePos.x = visualPos.x;
+              this.inputManager.mousePos.y = visualPos.y;
+              aimPos = this.inputManager.mousePos;
+            }
+          }
+          entry.wasCursorVisible = isCursorVisibleNow;
+
+          if (isCursorVisibleNow) {
             activeAimCursors.push({
               x: aimPos.x,
               y: aimPos.y,
               color: char.playerColor,
               playerNumber: char.playerNumber,
               character: char,
-              isGamepad: true,
+              isGamepad: false,
             });
+          }
+        } else if (entry.slotIndex !== undefined) {
+          const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+          if (!slot || !slot.connected) continue;
+
+          if (isHolding) {
+            // Holding an object: always show cursor and throw trajectory
+            isCursorVisibleNow = true;
           } else if (char.pickupModule && char.pickupModule.enabled) {
             // Empty-handed: only show cursor if player moved aim stick recently and selected a nearby item
             const stickMovedRecently = (now - (slot.lastAimMoveTime ?? 0)) < cursorRecentThresholdMs;
@@ -423,24 +429,45 @@ export class GameLoop {
               const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
               const target = char.pickupModule.findTargetObject(
                 char,
-                aimPos.x,
-                aimPos.y,
+                slot.aimPos.x,
+                slot.aimPos.y,
                 others,
                 this.arena.wallHeight,
                 maxSelectDist
               );
               if (target) {
                 targetGrabEntities.set(char, target);
-                activeAimCursors.push({
-                  x: aimPos.x,
-                  y: aimPos.y,
-                  color: char.playerColor,
-                  playerNumber: char.playerNumber,
-                  character: char,
-                  isGamepad: true,
-                });
+                isCursorVisibleNow = true;
               }
             }
+          }
+
+          // Every time the cursor is unhidden it should start at the character's current position,
+          // making sure to account for the 2D upwards offset from isometric height
+          if (isCursorVisibleNow && !entry.wasCursorVisible) {
+            slot.aimPos.x = visualPos.x;
+            slot.aimPos.y = visualPos.y;
+          } else if (!isCursorVisibleNow) {
+            // While hidden, keep cursor anchored to character's visual position unless stick is being deflected
+            const stickDeflected = (now - (slot.lastAimMoveTime ?? 0)) < 150;
+            if (!stickDeflected) {
+              slot.aimPos.x = visualPos.x;
+              slot.aimPos.y = visualPos.y;
+            }
+          }
+
+          entry.wasCursorVisible = isCursorVisibleNow;
+          slot.isCursorVisible = isCursorVisibleNow;
+
+          if (isCursorVisibleNow) {
+            activeAimCursors.push({
+              x: slot.aimPos.x,
+              y: slot.aimPos.y,
+              color: char.playerColor,
+              playerNumber: char.playerNumber,
+              character: char,
+              isGamepad: true,
+            });
           }
         }
       }
@@ -476,7 +503,13 @@ export class GameLoop {
     const input = this.inputManager;
 
     // 1. Poll connected Gamepads (rising-edge A button to join, analog sticks, triggers)
-    input.pollGamepadSlots(this.players, this.objects, this.arena, this.allCharacters);
+    input.pollGamepadSlots(
+      this.players,
+      this.objects,
+      this.arena,
+      this.allCharacters,
+      (entity) => this.renderer.getVisualPosition(entity)
+    );
 
     // 2. Update Keyboard Player (if active in arena)
     const kEntry = this.players.get("keyboard");
