@@ -31,7 +31,7 @@ export const PLAYER_COLORS = [
 ];
 
 export class GameLoop {
-  private arena: Arena;
+  public arena: Arena;
   private objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;

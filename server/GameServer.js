@@ -18,22 +18,111 @@ export class GameServer {
     this.nextPlayerNumber = 1;
     this.serverTick = 0;
     this.fixedDt = 1 / 60;
-    this.arena = {
-      width: 20,
-      height: 14,
-      wallHeight: 1.0,
-      walls: [
-        // Center arena internal walls matching client Arena.ts
-        { x: 4, y: 3, width: 2, height: 1, wallHeight: 1.0 },
-        { x: 14, y: 3, width: 2, height: 1, wallHeight: 1.0 },
-        { x: 4, y: 10, width: 2, height: 1, wallHeight: 1.0 },
-        { x: 14, y: 10, width: 2, height: 1, wallHeight: 1.0 },
-        { x: 9, y: 6, width: 2, height: 2, wallHeight: 1.0 },
-      ],
-    };
 
+    this.cols = 20;
+    this.rows = 14;
+    this.tileSize = 1.0;
+    this.wallHeight = 1.0;
+
+    this.initArenaGrid();
     this.initDefaultObjects();
     this.startSimulation();
+  }
+
+  initArenaGrid() {
+    // Default Trench Tunnels layout matching client Arena.ts
+    const grid = Array.from({ length: this.rows }, () => Array.from({ length: this.cols }, () => 1));
+
+    // Carve primary 1-tile-wide horizontal trench tunnels:
+    for (let c = 2; c <= 17; c++) {
+      grid[3][c] = 0;
+      grid[7][c] = 0;
+      grid[10][c] = 0;
+    }
+
+    // Carve primary 1-tile-wide vertical trench tunnels:
+    for (let r = 2; r <= 11; r++) {
+      grid[r][5] = 0;  // Intersects player spawn at (col 5, row 7)
+      grid[r][10] = 0; // Central trench tunnel artery
+      grid[r][14] = 0; // East trench tunnel artery
+    }
+
+    // Winding connector trenches & escape passages:
+    grid[1][10] = 0; // North trench exit
+    grid[12][10] = 0; // South trench exit
+    grid[7][1] = 0;  // West perimeter entry
+    grid[7][18] = 0; // East perimeter entry
+    for (let r = 5; r <= 9; r++) grid[r][2] = 0;  // West auxiliary trench
+    for (let r = 5; r <= 9; r++) grid[r][17] = 0; // East auxiliary trench
+
+    // Short connecting cross-tunnels:
+    for (let c = 2; c <= 5; c++) grid[5][c] = 0;
+    for (let c = 10; c <= 14; c++) grid[5][c] = 0;
+    for (let c = 5; c <= 10; c++) grid[9][c] = 0;
+    for (let c = 14; c <= 17; c++) grid[9][c] = 0;
+
+    // Player spawn point (col 5, row 7) is guaranteed an open trench
+    grid[7][5] = 0;
+
+    this.tileGrid = grid;
+    this.wallMapString = this.exportWallMapBinaryString();
+    this.rebuildWalls();
+  }
+
+  /**
+   * Exports wall grid as a binary string ('0' = ground, '1' = wall)
+   * indexed from bottom-left (row = rows-1, col = 0) to right, then up to top.
+   */
+  exportWallMapBinaryString() {
+    let result = "";
+    for (let r = this.rows - 1; r >= 0; r--) {
+      for (let c = 0; c < this.cols; c++) {
+        result += this.tileGrid[r][c] === 1 ? "1" : "0";
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Imports a wall map binary string from bottom-left to top-right.
+   */
+  importWallMapBinaryString(mapStr) {
+    if (!mapStr || mapStr.length < this.rows * this.cols) return false;
+    let idx = 0;
+    for (let r = this.rows - 1; r >= 0; r--) {
+      for (let c = 0; c < this.cols; c++) {
+        this.tileGrid[r][c] = mapStr[idx++] === "1" ? 1 : 0;
+      }
+    }
+    this.wallMapString = mapStr;
+    this.rebuildWalls();
+    return true;
+  }
+
+  setWallTile(col, row, isWall) {
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return false;
+    this.tileGrid[row][col] = isWall ? 1 : 0;
+    this.wallMapString = this.exportWallMapBinaryString();
+    this.rebuildWalls();
+    return true;
+  }
+
+  rebuildWalls() {
+    this.walls = [];
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (this.tileGrid[r][c] === 1) {
+          this.walls.push({
+            id: `wall-${c}-${r}`,
+            x: c * this.tileSize,
+            y: r * this.tileSize,
+            width: this.tileSize,
+            height: this.tileSize,
+            wallHeight: this.wallHeight,
+          });
+        }
+      }
+    }
   }
 
   initDefaultObjects() {
@@ -75,12 +164,19 @@ export class GameServer {
       };
       this.clients.set(ws, clientRecord);
 
-      // Send initial lobby state
+      // Send initial lobby state with authoritative wallMapString
       this.sendJson(ws, {
         type: 'init_state',
         clientId,
         serverTick: this.serverTick,
-        arena: this.arena,
+        arena: {
+          width: this.cols * this.tileSize,
+          height: this.rows * this.tileSize,
+          wallHeight: this.wallHeight,
+          cols: this.cols,
+          rows: this.rows,
+        },
+        wallMap: this.wallMapString,
         players: this.serializePlayers(),
         objects: this.serializeObjects(),
       });
@@ -119,15 +215,36 @@ export class GameServer {
       return;
     }
 
+    if (msg.type === 'update_wall_tile') {
+      const { col, row, isWall } = msg;
+      if (this.setWallTile(col, row, isWall)) {
+        this.broadcast({
+          type: 'wall_map_sync',
+          wallMap: this.wallMapString,
+        });
+      }
+      return;
+    }
+
+    if (msg.type === 'update_wall_map') {
+      if (typeof msg.wallMap === 'string' && this.importWallMapBinaryString(msg.wallMap)) {
+        this.broadcast({
+          type: 'wall_map_sync',
+          wallMap: this.wallMapString,
+        });
+      }
+      return;
+    }
+
     if (msg.type === 'register_player') {
       const { localId, name, color } = msg;
       const playerId = `${client.clientId}_${localId}`;
       const playerNum = this.nextPlayerNumber++;
       const assignedColor = color || PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
 
-      // Spawn at friendly offsets around center
-      const spawnX = 5.0 + ((playerNum - 1) % 4) * 2.5;
-      const spawnY = 7.0 + (Math.floor((playerNum - 1) / 4) % 2) * 2.0;
+      // Spawn at friendly open coordinates in the trench (col 5, row 7)
+      const spawnX = 5.0 + ((playerNum - 1) % 4) * 0.6;
+      const spawnY = 7.0 + (Math.floor((playerNum - 1) / 4) % 2) * 0.5;
 
       const playerState = {
         id: playerId,
@@ -173,7 +290,6 @@ export class GameServer {
     }
 
     if (msg.type === 'player_input') {
-      // Input packet from client containing inputs for one or more local players
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
           const playerId = `${client.clientId}_${inp.localId}`;
@@ -188,7 +304,6 @@ export class GameServer {
               isClimbHeld: Boolean(inp.isClimbHeld),
               isSprinting: Boolean(inp.isSprinting),
             });
-            // Keep input queue short to absorb minor jitter (target 2-4 ticks)
             if (player.inputQueue.length > 8) {
               player.inputQueue.shift();
             }
@@ -202,7 +317,6 @@ export class GameServer {
     const player = this.players.get(playerId);
     if (!player) return;
 
-    // Drop held object if holding one
     if (player.heldObjectId) {
       const obj = this.objects.get(player.heldObjectId);
       if (obj) {
@@ -290,16 +404,16 @@ export class GameServer {
 
       // Arena boundary collision
       const r = player.colliderRadius;
+      const arenaW = this.cols * this.tileSize;
+      const arenaH = this.rows * this.tileSize;
       if (player.x < r) { player.x = r; player.vx = 0; }
-      if (player.x > this.arena.width - r) { player.x = this.arena.width - r; player.vx = 0; }
+      if (player.x > arenaW - r) { player.x = arenaW - r; player.vx = 0; }
       if (player.y < r) { player.y = r; player.vy = 0; }
-      if (player.y > this.arena.height - r) { player.y = this.arena.height - r; player.vy = 0; }
+      if (player.y > arenaH - r) { player.y = arenaH - r; player.vy = 0; }
 
-      // Wall collision for ground-level players
-      if (player.z < this.arena.wallHeight) {
-        for (const wall of this.arena.walls) {
-          this.resolveCircleWall(player, wall);
-        }
+      // Wall collision for ground-level players against synchronized grid
+      if (player.z < this.wallHeight) {
+        this.resolveCircleWallsAgainstGrid(player);
       }
 
       // Handle Grab / Throw actions
@@ -316,7 +430,6 @@ export class GameServer {
         }
         player.heldObjectId = null;
       } else if (input.isGrabHeld && !player.heldObjectId) {
-        // Find closest reachable object
         let closestObj = null;
         let closestDist = 1.2; // reach distance
         for (const obj of this.objects.values()) {
@@ -353,7 +466,6 @@ export class GameServer {
     for (const obj of this.objects.values()) {
       if (obj.isHeld) continue;
 
-      // Integrate gravity if airborne
       if (obj.z > 0 || obj.vz !== 0) {
         obj.vz -= 18.0 * dt;
         obj.z += obj.vz * dt;
@@ -367,7 +479,6 @@ export class GameServer {
         }
       }
 
-      // Ground friction
       if (obj.z === 0) {
         const frictionCoeff = 3.5;
         obj.vx -= obj.vx * Math.min(1.0, frictionCoeff * dt);
@@ -381,24 +492,44 @@ export class GameServer {
       obj.x += obj.vx * dt;
       obj.y += obj.vy * dt;
 
-      // Arena boundaries
       const r = obj.radius;
+      const arenaW = this.cols * this.tileSize;
+      const arenaH = this.rows * this.tileSize;
       if (obj.x < r) { obj.x = r; obj.vx = -obj.vx * (obj.bounceMod || 0.3); }
-      if (obj.x > this.arena.width - r) { obj.x = this.arena.width - r; obj.vx = -obj.vx * (obj.bounceMod || 0.3); }
+      if (obj.x > arenaW - r) { obj.x = arenaW - r; obj.vx = -obj.vx * (obj.bounceMod || 0.3); }
       if (obj.y < r) { obj.y = r; obj.vy = -obj.vy * (obj.bounceMod || 0.3); }
-      if (obj.y > this.arena.height - r) { obj.y = this.arena.height - r; obj.vy = -obj.vy * (obj.bounceMod || 0.3); }
+      if (obj.y > arenaH - r) { obj.y = arenaH - r; obj.vy = -obj.vy * (obj.bounceMod || 0.3); }
 
-      // Wall collision only if below wall height
-      if (obj.z < this.arena.wallHeight) {
-        for (const wall of this.arena.walls) {
-          this.resolveCircleWall(obj, wall);
-        }
+      // Wall collision against synchronized grid only if below wall height
+      if (obj.z < this.wallHeight) {
+        this.resolveCircleWallsAgainstGrid(obj);
       }
     }
 
     // 3. Swept TOI contact rollback collisions between all bodies
     const all = [...this.players.values(), ...Array.from(this.objects.values()).filter(o => !o.isHeld)];
     this.resolveTOICollisions(all);
+  }
+
+  resolveCircleWallsAgainstGrid(circle) {
+    const r = circle.colliderRadius || circle.radius || 0.35;
+    const minCol = Math.max(0, Math.floor(circle.x - r));
+    const maxCol = Math.min(this.cols - 1, Math.floor(circle.x + r));
+    const minRow = Math.max(0, Math.floor(circle.y - r));
+    const maxRow = Math.min(this.rows - 1, Math.floor(circle.y + r));
+
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        if (this.tileGrid[row][col] === 1) {
+          this.resolveCircleWall(circle, {
+            x: col * this.tileSize,
+            y: row * this.tileSize,
+            width: this.tileSize,
+            height: this.tileSize,
+          });
+        }
+      }
+    }
   }
 
   resolveCircleWall(circle, wall) {
@@ -433,9 +564,8 @@ export class GameServer {
         const a = entities[i];
         const b = entities[j];
 
-        // Altitude tier gating
-        const tierA = (a.z >= this.arena.wallHeight) ? 2 : 1;
-        const tierB = (b.z >= this.arena.wallHeight) ? 2 : 1;
+        const tierA = (a.z >= this.wallHeight) ? 2 : 1;
+        const tierB = (b.z >= this.wallHeight) ? 2 : 1;
         if (tierA !== tierB) continue;
 
         const rA = a.colliderRadius || a.radius || 0.35;

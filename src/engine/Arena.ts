@@ -221,6 +221,9 @@ export class Arena {
     this.rebuildWalls();
   }
 
+  public onWallMapChanged?: () => void;
+  public isSyncingFromNetwork = false;
+
   /**
    * Sets a specific grid cell to wall (1) or empty (0) and rebuilds physical walls
    */
@@ -230,6 +233,9 @@ export class Arena {
     if (this.tileGrid[row][col] === val) return false;
     this.tileGrid[row][col] = val;
     this.rebuildWalls();
+    if (!this.isSyncingFromNetwork) {
+      this.onWallMapChanged?.();
+    }
     return true;
   }
 
@@ -251,6 +257,9 @@ export class Arena {
     this.tileGrid = preset.generate(this.cols, this.rows);
     this.rebuildWalls();
     this.syncEntitiesWithWalls(entities);
+    if (!this.isSyncingFromNetwork) {
+      this.onWallMapChanged?.();
+    }
     return true;
   }
 
@@ -380,5 +389,43 @@ export class Arena {
   public getSupportingSurfaceHeight(x: number, y: number, radius = 0): number {
     const wall = this.getSupportingWall(x, y, radius);
     return wall ? wall.wallHeight : 0;
+  }
+
+  /**
+   * Exports the tile grid as an integer binary string ('0' = ground, '1' = wall)
+   * indexed from bottom-left (row = rows-1, col = 0) to the right, then up to the top.
+   */
+  public exportWallMapBinaryString(): string {
+    let result = "";
+    for (let r = this.rows - 1; r >= 0; r--) {
+      for (let c = 0; c < this.cols; c++) {
+        result += this.tileGrid[r][c] === 1 ? "1" : "0";
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Imports a wall map binary string ('0' = ground, '1' = wall)
+   * indexed from bottom-left to the right, then up to the top.
+   * Rebuilds physical walls and synchronizes entity elevations.
+   */
+  public importWallMapBinaryString(mapStr: string, entities?: GameObject[]): boolean {
+    if (!mapStr || mapStr.length < this.rows * this.cols) return false;
+    this.isSyncingFromNetwork = true;
+    try {
+      let idx = 0;
+      for (let r = this.rows - 1; r >= 0; r--) {
+        for (let c = 0; c < this.cols; c++) {
+          this.tileGrid[r][c] = mapStr[idx++] === "1" ? 1 : 0;
+        }
+      }
+      this.currentPresetId = "custom";
+      this.rebuildWalls();
+      this.syncEntitiesWithWalls(entities);
+      return true;
+    } finally {
+      this.isSyncingFromNetwork = false;
+    }
   }
 }

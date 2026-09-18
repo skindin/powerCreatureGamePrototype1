@@ -27,11 +27,6 @@ async function testUniversalLobby() {
   const wsA = new WebSocket(wsUrl);
   let clientAId = '';
   const messagesA: any[] = [];
-
-  await new Promise<void>((resolve) => {
-    wsA.on('open', () => resolve());
-  });
-
   wsA.on('message', (data) => {
     const parsed = JSON.parse(data.toString());
     messagesA.push(parsed);
@@ -40,15 +35,14 @@ async function testUniversalLobby() {
     }
   });
 
+  await new Promise<void>((resolve) => {
+    wsA.on('open', () => resolve());
+  });
+
   // 3. Connect Browser Page 2 (Client B)
   const wsB = new WebSocket(wsUrl);
   let clientBId = '';
   const messagesB: any[] = [];
-
-  await new Promise<void>((resolve) => {
-    wsB.on('open', () => resolve());
-  });
-
   wsB.on('message', (data) => {
     const parsed = JSON.parse(data.toString());
     messagesB.push(parsed);
@@ -57,10 +51,35 @@ async function testUniversalLobby() {
     }
   });
 
+  await new Promise<void>((resolve) => {
+    wsB.on('open', () => resolve());
+  });
+
   // Wait for init_state
   await new Promise((r) => setTimeout(r, 100));
   console.log(`Client A connected: ${clientAId}`);
   console.log(`Client B connected: ${clientBId}`);
+
+  const initA = messagesA.find((m) => m.type === 'init_state');
+  if (!initA || !initA.wallMap || initA.wallMap.length !== 280) {
+    throw new Error(`Client A failed to receive 280-char wallMap in init_state! Got: ${initA?.wallMap?.length}`);
+  }
+  console.log(`✅ Client A received authoritative wallMap (${initA.wallMap.length} binary chars: bottom-left to top-right)`);
+
+  // Test map sync: Client A edits a wall tile (col 0, row 0 -> wall)
+  wsA.send(JSON.stringify({
+    type: 'update_wall_tile',
+    col: 0,
+    row: 0,
+    isWall: true,
+  }));
+  await new Promise((r) => setTimeout(r, 100));
+
+  const syncB = messagesB.find((m) => m.type === 'wall_map_sync');
+  if (!syncB || !syncB.wallMap) {
+    throw new Error("Client B failed to receive wall_map_sync after Client A updated wall tile!");
+  }
+  console.log(`✅ Client B received real-time wall_map_sync broadcast!`);
 
   // 4. Client A registers 1 player (Keyboard P1)
   wsA.send(JSON.stringify({

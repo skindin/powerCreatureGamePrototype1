@@ -316,6 +316,13 @@ function bootstrap(): void {
     }
   };
 
+  // Synchronize wall map edits/presets across clients and server
+  arena.onWallMapChanged = () => {
+    if (isMultiplayerMode) {
+      multiplayerClient.sendWallMapUpdate(arena.exportWallMapBinaryString());
+    }
+  };
+
   multiplayerClient.onStatsChange = (stats) => {
     if (lobbyStatusDisplay) {
       if (stats.status === "connected") {

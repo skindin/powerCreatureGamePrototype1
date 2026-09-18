@@ -192,6 +192,30 @@ export class MultiplayerClient {
   }
 
   /**
+   * Sends an updated wall map binary string to the server lobby.
+   */
+  public sendWallMapUpdate(wallMap: string): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.sendJson({
+      type: "update_wall_map",
+      wallMap,
+    });
+  }
+
+  /**
+   * Sends a single wall tile change to the server lobby.
+   */
+  public sendWallTileUpdate(col: number, row: number, isWall: boolean): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.sendJson({
+      type: "update_wall_tile",
+      col,
+      row,
+      isWall,
+    });
+  }
+
+  /**
    * Called on every 60Hz physics tick to gather and transmit inputs for all local players on this page.
    */
   public updatePhysicsTick(
@@ -284,8 +308,18 @@ export class MultiplayerClient {
 
       if (msg.type === "init_state") {
         this.clientId = msg.clientId;
+        if (msg.wallMap && this.gameLoop) {
+          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, this.gameLoop.arena.entities);
+        }
         this.reconcileWorldState(msg.players || [], msg.objects || []);
         this.notifyStats();
+        return;
+      }
+
+      if (msg.type === "wall_map_sync") {
+        if (msg.wallMap && this.gameLoop) {
+          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, this.gameLoop.arena.entities);
+        }
         return;
       }
 

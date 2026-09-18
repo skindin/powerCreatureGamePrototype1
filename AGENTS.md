@@ -183,6 +183,9 @@ powerCreatureGamePrototype1/
   - Local inputs are predicted instantly on client with zero input lag.
   - Top bar button cleaned to **`🌐 Multiplayer`** (relay test text removed from primary flow; legacy echo test disabled by default).
   - Status pill dynamically displays connected player count and round-trip ping (e.g. `🟢 2 Players (28 ms)`).
+- **Binary String Wall Map Synchronization (`exportWallMapBinaryString` / `importWallMapBinaryString`)**:
+  - Encodes the complete 20x14 arena layout (280 tiles) as a compact 280-character binary string (`'0'` = ground, `'1'` = wall), indexed from bottom-left ($r = \text{rows}-1, c=0$) to the right, then up to the top.
+  - Included in `init_state` and synced in real-time via `wall_map_sync` whenever wall tiles or presets are edited, guaranteeing 100% mathematical map parity and identical collision surfaces between server and all clients.
 
 ---
 
