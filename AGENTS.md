@@ -410,18 +410,19 @@ powerCreatureGamePrototype1/
     - **Configurable `airFriction`**:
       - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
       - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
-42. **Context-Aware Cursor Visibility (Hide Cursors When Not Needed)**:
-    - **Throw Aiming**: If a player character is holding an object (`char.heldObject !== null`), the player is aiming to throw it; the aim reticle, colored dotted sightline, and 3D parabolic trajectory arc are always shown.
-    - **Empty-Handed Dynamic Cursor Hiding**: When empty-handed (`!char.heldObject`), cursors and sightlines are completely hidden by default to eliminate visual screen clutter.
-    - **Item Selection Proximity & Activity Gating**: The cursor only appears when:
-      1. There is an item in reach of the character (`pickupModule.isObjectInReach`).
-      2. The player has moved their cursor recently (within 3.0 seconds, via `InputManager.lastMouseMoveTime` for mouse/touch or `slot.lastAimMoveTime` for gamepad right-stick deflection).
-      3. The cursor is within selection proximity (`dist <= 1.5 units`) of that reachable object (`PickupModule.findTargetObject(..., maxSelectDistance = 1.5)`).
-    - When all conditions are met, the cursor, sightline, and targeted solid grab ring (`P1 GRAB`) appear. If the player moves the cursor away, throws the object, or stops moving it for > 3.0 seconds, the cursor cleanly hides.
-    - `PickupModule.pickupAndSwap` gracefully falls back to the nearest reachable object if grab is pressed without actively aiming at a specific item.
+42. **Context-Aware Cursor Visibility & Seamless Nearby Grab**:
+    - **Nearby Grab Without Moving Cursor**:
+      - Walking near any grabbable item (`reachable.length > 0`) allows immediate pickup without touching the mouse or right joystick.
+      - Pressing grab (Left Click, hold Left Click, `E` key, Gamepad `RT`, or Gamepad `B`) automatically grabs the nearest reachable object if the cursor is hidden or not actively selecting a specific item.
+    - **Cursor Only Appears on Active Aim Movement While in Reach**:
+      - When empty-handed, walking near an item does **not** automatically show the cursor (preventing unwanted popups).
+      - The cursor only unhides when the player actively starts moving the mouse or deflecting the right joystick *while close enough to grab something* (`aimMovedWhileInRange`).
+      - Moving the mouse/stick while far away from items does not prime or show the cursor.
+    - **Immediate Cursor Hiding When Out of Reach**:
+      - As soon as nothing is within physical pickup range anymore (`reachable.length === 0`), the cursor immediately hides and resets the aim movement trigger.
+      - When holding an object, the cursor is always visible to aim throws; upon throwing, once the projectile departs physical reach, the cursor immediately hides.
     - **Cursor Unhide Origin (Visual Position Accounting for Isometric Height)**:
-      - Every time the cursor is unhidden (e.g. picking up an object to throw, or aiming at reachable items), it starts directly at the character's current visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
-      - `Renderer.getHoverScale()` and `Renderer.getVisualPosition(entity)` compute the true screen-projected coordinates so elevated characters (e.g. standing on walls with $z = 1.0$) have their aim cursor and trajectory start perfectly centered over their visual body on top of the wall rather than their ground shadow.
+      - Every time the cursor is unhidden (upon pickup or upon aiming at reachable items), it starts directly at the character's visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
       - While hidden, the cursor position remains anchored to the character's visual coordinates so aiming deflection always radiates naturally outward from the character.
 
 ---

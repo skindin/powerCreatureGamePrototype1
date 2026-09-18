@@ -21,6 +21,7 @@ export interface GamepadSlotState {
   wasMoving?: boolean;
   lastAimMoveTime: number;
   isCursorVisible?: boolean;
+  aimMovedWhileInRange?: boolean;
 }
 
 export class InputManager {
@@ -35,6 +36,7 @@ export class InputManager {
 
   public mousePos: Vector2D = { x: 0, y: 0 };
   public lastMouseMoveTime = 0;
+  public isCursorVisible = false;
   public isMouseDown = false;
   public isRightMouseDown = false;
   public hoverWallTile: { col: number; row: number } | null = null;
@@ -510,6 +512,7 @@ export class InputManager {
         slot.aimPos.x += rx * cursorSpeed * dt;
         slot.aimPos.y += ry * cursorSpeed * dt;
         slot.lastAimMoveTime = performance.now();
+        slot.aimMovedWhileInRange = true;
       }
       slot.aimPos.x = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
       slot.aimPos.y = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
@@ -555,6 +558,10 @@ export class InputManager {
         ? [...allCharacters.filter((c) => c !== char), ...objects]
         : objects;
 
+      const isCursorVis = slot.isCursorVisible ?? false;
+      const aimX = isCursorVis ? slot.aimPos.x : undefined;
+      const aimY = isCursorVis ? slot.aimPos.y : undefined;
+
       // Button 1 (B on Xbox / Circle on PS): Pickup & Swap
       const bCurrent = isButtonPressed(1);
       const bJustReleased = !bCurrent && isPrevPressed(1);
@@ -568,8 +575,8 @@ export class InputManager {
               char,
               grabbableTargets,
               arena.wallHeight,
-              slot.aimPos.x,
-              slot.aimPos.y
+              aimX,
+              aimY
             );
             if (!char.heldObject) {
               slot.bHeld = true;
@@ -584,8 +591,8 @@ export class InputManager {
               char,
               grabbableTargets,
               arena.wallHeight,
-              slot.aimPos.x,
-              slot.aimPos.y
+              aimX,
+              aimY
             );
           }
         }
@@ -608,8 +615,8 @@ export class InputManager {
             char,
             grabbableTargets,
             arena.wallHeight,
-            slot.aimPos.x,
-            slot.aimPos.y
+            aimX,
+            aimY
           );
           if (char.heldObject) {
             slot.rtGrabbed = true;
@@ -854,9 +861,13 @@ export class InputManager {
 
       // 2. If NOT holding an object: attempt pickup
       if (!activeChar.heldObject && activeChar.pickupModule) {
-        const target = activeChar.pickupModule.findTargetObject(activeChar, clickX, clickY, objects, arena.wallHeight);
-        if (target) {
-          activeChar.pickupModule.pickup(activeChar, target);
+        const grabbableTargets = getAllCharacters
+          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
+          : objects;
+        const isCursorVis = this.isCursorVisible;
+        const aimX = isCursorVis ? clickX : undefined;
+        const aimY = isCursorVis ? clickY : undefined;
+        if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
           this.justPickedUp = true;
         }
       }
@@ -880,15 +891,16 @@ export class InputManager {
       if (!this.isKeyboardActive) return;
       const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
       if (!activeChar) return;
-      const aimX = this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x;
-      const aimY = this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y;
       if (activeChar.heldObject && activeChar.pickupModule) {
         activeChar.pickupModule.drop(activeChar);
       } else if (!activeChar.heldObject && activeChar.pickupModule) {
-        const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, objects, arena.wallHeight);
-        if (target) {
-          activeChar.pickupModule.pickup(activeChar, target);
-        }
+        const grabbableTargets = getAllCharacters
+          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
+          : objects;
+        const isCursorVis = this.isCursorVisible;
+        const aimX = isCursorVis ? (this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x) : undefined;
+        const aimY = isCursorVis ? (this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y) : undefined;
+        activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
       }
     };
   }

@@ -16,6 +16,8 @@ export interface PlayerEntry {
   slotIndex?: number;
   character: Character;
   wasCursorVisible?: boolean;
+  aimMovedWhileInRange?: boolean;
+  lastCheckedMouseMoveTime?: number;
 }
 
 export const PLAYER_COLORS = [
@@ -355,55 +357,67 @@ export class GameLoop {
     // accounting for the 2D upwards offset from isometric height.
     const targetGrabEntities = new Map<Character, GameObject | null>();
     const activeAimCursors: ActiveAimCursor[] = [];
-    const now = performance.now();
-    const cursorRecentThresholdMs = 3000;
-    const maxSelectDist = 1.5;
 
     if (!this.devPanel.isEditMode) {
       for (const entry of this.players.values()) {
         const char = entry.character;
         const isHolding = char.heldObject !== null;
         const visualPos = this.renderer.getVisualPosition(char);
+        const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+        const reachable = (char.pickupModule && char.pickupModule.enabled)
+          ? others.filter((o) => char.pickupModule!.isObjectInReach(char, o, this.arena.wallHeight))
+          : [];
+        const hasReachable = reachable.length > 0;
         let isCursorVisibleNow = false;
 
         if (entry.isKeyboard) {
           if (!this.inputManager.isKeyboardActive) continue;
           let aimPos = this.inputManager.mousePos;
+          const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
+          entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
 
           if (isHolding) {
             // Holding an object: always show cursor and throw trajectory
             isCursorVisibleNow = true;
-          } else if (char.pickupModule && char.pickupModule.enabled) {
-            // Empty-handed: only show cursor if player moved cursor recently and selected a nearby item
-            const mouseMovedRecently = (now - this.inputManager.lastMouseMoveTime) < cursorRecentThresholdMs;
-            if (mouseMovedRecently) {
-              const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-              const target = char.pickupModule.findTargetObject(
+          } else if (!hasReachable) {
+            // Hide cursor once nothing is within range anymore
+            isCursorVisibleNow = false;
+            entry.aimMovedWhileInRange = false;
+            this.inputManager.mousePos.x = visualPos.x;
+            this.inputManager.mousePos.y = visualPos.y;
+          } else {
+            // Has reachable items: cursor should NOT appear until player starts moving mouse
+            if (mouseMoved) {
+              entry.aimMovedWhileInRange = true;
+            }
+            if (entry.aimMovedWhileInRange) {
+              isCursorVisibleNow = true;
+              const target = char.pickupModule!.findTargetObject(
                 char,
                 aimPos.x,
                 aimPos.y,
-                others,
-                this.arena.wallHeight,
-                maxSelectDist
+                reachable,
+                this.arena.wallHeight
               );
               if (target) {
                 targetGrabEntities.set(char, target);
-                isCursorVisibleNow = true;
               }
+            } else {
+              isCursorVisibleNow = false;
+              this.inputManager.mousePos.x = visualPos.x;
+              this.inputManager.mousePos.y = visualPos.y;
             }
           }
 
-          // Unhidden transition for Keyboard: if cursor was just unhidden (e.g. picked up with E key)
-          // and mouse hasn't moved recently, start at character's visual position accounting for isometric height
+          // Every time you unhide the cursor, put it at the position of character
+          // accounting for 2D upwards offset from isometric height
           if (isCursorVisibleNow && !entry.wasCursorVisible) {
-            const mouseMovedRecently = (now - this.inputManager.lastMouseMoveTime) < cursorRecentThresholdMs;
-            if (!mouseMovedRecently) {
-              this.inputManager.mousePos.x = visualPos.x;
-              this.inputManager.mousePos.y = visualPos.y;
-              aimPos = this.inputManager.mousePos;
-            }
+            this.inputManager.mousePos.x = visualPos.x;
+            this.inputManager.mousePos.y = visualPos.y;
+            aimPos = this.inputManager.mousePos;
           }
           entry.wasCursorVisible = isCursorVisibleNow;
+          this.inputManager.isCursorVisible = isCursorVisibleNow;
 
           if (isCursorVisibleNow) {
             activeAimCursors.push({
@@ -422,40 +436,39 @@ export class GameLoop {
           if (isHolding) {
             // Holding an object: always show cursor and throw trajectory
             isCursorVisibleNow = true;
-          } else if (char.pickupModule && char.pickupModule.enabled) {
-            // Empty-handed: only show cursor if player moved aim stick recently and selected a nearby item
-            const stickMovedRecently = (now - (slot.lastAimMoveTime ?? 0)) < cursorRecentThresholdMs;
-            if (stickMovedRecently) {
-              const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-              const target = char.pickupModule.findTargetObject(
+          } else if (!hasReachable) {
+            // Hide cursor once nothing is within range anymore
+            isCursorVisibleNow = false;
+            slot.aimMovedWhileInRange = false;
+            slot.aimPos.x = visualPos.x;
+            slot.aimPos.y = visualPos.y;
+          } else {
+            // Has reachable items: cursor should NOT appear until player starts moving right stick
+            if (slot.aimMovedWhileInRange) {
+              isCursorVisibleNow = true;
+              const target = char.pickupModule!.findTargetObject(
                 char,
                 slot.aimPos.x,
                 slot.aimPos.y,
-                others,
-                this.arena.wallHeight,
-                maxSelectDist
+                reachable,
+                this.arena.wallHeight
               );
               if (target) {
                 targetGrabEntities.set(char, target);
-                isCursorVisibleNow = true;
               }
-            }
-          }
-
-          // Every time the cursor is unhidden it should start at the character's current position,
-          // making sure to account for the 2D upwards offset from isometric height
-          if (isCursorVisibleNow && !entry.wasCursorVisible) {
-            slot.aimPos.x = visualPos.x;
-            slot.aimPos.y = visualPos.y;
-          } else if (!isCursorVisibleNow) {
-            // While hidden, keep cursor anchored to character's visual position unless stick is being deflected
-            const stickDeflected = (now - (slot.lastAimMoveTime ?? 0)) < 150;
-            if (!stickDeflected) {
+            } else {
+              isCursorVisibleNow = false;
               slot.aimPos.x = visualPos.x;
               slot.aimPos.y = visualPos.y;
             }
           }
 
+          // Every time you unhide the cursor, put it at the position of character
+          // accounting for 2D upwards offset from isometric height
+          if (isCursorVisibleNow && !entry.wasCursorVisible) {
+            slot.aimPos.x = visualPos.x;
+            slot.aimPos.y = visualPos.y;
+          }
           entry.wasCursorVisible = isCursorVisibleNow;
           slot.isCursorVisible = isCursorVisibleNow;
 
@@ -535,16 +548,10 @@ export class GameLoop {
       // Continuous hold-to-grab for keyboard mouse:
       if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
         const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...this.objects];
-        const target = kChar.pickupModule.findTargetObject(
-          kChar,
-          input.mousePos.x,
-          input.mousePos.y,
-          otherEntities,
-          this.arena.wallHeight,
-          1.8
-        );
-        if (target) {
-          kChar.pickupModule.pickup(kChar, target);
+        const isCursorVis = kEntry?.wasCursorVisible ?? false;
+        const aimX = isCursorVis ? input.mousePos.x : undefined;
+        const aimY = isCursorVis ? input.mousePos.y : undefined;
+        if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
           input.justPickedUp = true;
         }
       }
