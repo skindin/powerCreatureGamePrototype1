@@ -106,6 +106,9 @@ export class PickupModule {
       target.rollModule.angularVelocity.z = 0;
     }
     target.position.z = target.hasVerticalPosition ? 0.45 : 0; // Lifted off ground only if vertical position enabled
+    if (character.onPickup) {
+      character.onPickup(target);
+    }
     return true;
   }
 

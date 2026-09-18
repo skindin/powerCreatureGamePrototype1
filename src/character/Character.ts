@@ -98,6 +98,7 @@ export class Character extends GameObject {
   // Action callbacks (used by multiplayer synchronization)
   public onThrow?: (thrownObject: GameObject, vx: number, vy: number, vz: number, targetX?: number, targetY?: number) => void;
   public onDrop?: (droppedObject: GameObject) => void;
+  public onPickup?: (pickedObject: GameObject) => void;
 
   constructor(options: {
     x?: number;

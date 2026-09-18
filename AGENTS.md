@@ -191,8 +191,10 @@ powerCreatureGamePrototype1/
   - **Pickup Repulsion Exclusion**: In `resolveTOICollisions`, colliding circles are excluded if an entity is held, or if a player approaching an object is actively holding grab (`isGrabHeld`). This eliminates the previous bug where the TOI solver repelled/pushed the object away when the player tried to pick it up.
   - **Authoritative Throw/Drop & Optimistic Release Lock**:
     - When a player throws or drops an object, the client immediately sends dedicated `player_throw` / `player_drop` messages and queues `throwEvent` / `dropEvent` in 60Hz `player_input`.
-    - An optimistic release lock (`recentlyReleasedObjects`) prevents in-flight, lagging server snapshots from re-attaching the object to the player's hands or resetting vertical velocity to 0 during the RTT round-trip window.
-    - The server authoritatively releases the object, applies calculated parabolic throw velocities ($v_x, v_y, v_z$), and tags `obj.lastThrower = playerId` until departed from reach, preventing immediate re-grab during departure.
+    - **Dual-Loop Optimistic Release Lock (`recentlyReleasedObjects`)**: Prevents in-flight, lagging server snapshots from re-attaching the object to the player's hands or resetting vertical velocity to 0 during the RTT round-trip window. The lock gates **both** the player loop (Section 1: local player `sp.heldObjectId` re-attaching `lChar.heldObject`) and the object loop (Section 2: `localHolder` finding), eliminating the previous race condition where in-flight server packets caused thrown/dropped items to freeze mid-air and snap back into player hands.
+    - **Server Message Handling & Input Queue Purge**: `GameServer.js` handles `player_throw` and `player_drop` messages immediately upon receipt, applies ballistic velocities ($v_x, v_y, v_z$) or drop velocities, clears `player.heldObjectId`, and purges any matching `heldObjectId` entries from pending `player.inputQueue` packets.
+    - **Re-grab Prevention (`lastThrower`)**: `obj.lastThrower = playerId` prevents input queue ticks from re-attaching the item while departing the player's reach.
+    - **Clean Pickup Re-registration (`onPickup`)**: When an object is intentionally picked up via `pickupModule.pickup()`, `onPickup` immediately purges any stale lock from `recentlyReleasedObjects`.
   - Carried state, attachments, and ballistic throw velocities ($v_x, v_y, v_z$) are fully synchronized across remote clients.
 
 - **Authoritative Player Joining & Color Sequencing**:

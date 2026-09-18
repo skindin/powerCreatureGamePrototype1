@@ -185,6 +185,9 @@ export class MultiplayerClient {
     char.onDrop = (droppedObj) => {
       this.handleLocalPlayerDrop(localId, droppedObj);
     };
+    char.onPickup = (pickedObj) => {
+      this.recentlyReleasedObjects.delete(pickedObj.id);
+    };
   }
 
   public handleLocalPlayerThrow(
@@ -490,11 +493,23 @@ export class MultiplayerClient {
 
           // Authoritative held object sync for local character
           if (sp.heldObjectId) {
-            const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
-            if (heldObj && lChar.heldObject !== heldObj) {
-              lChar.heldObject = heldObj;
-              heldObj.isHeld = true;
-              heldObj.heldBy = lChar;
+            const releaseUntil = this.recentlyReleasedObjects.get(sp.heldObjectId);
+            const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
+            if (!isRecentlyReleased) {
+              const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
+              if (heldObj && lChar.heldObject !== heldObj) {
+                lChar.heldObject = heldObj;
+                heldObj.isHeld = true;
+                heldObj.heldBy = lChar;
+              }
+            }
+          } else if (lChar.heldObject) {
+            const releaseUntil = this.recentlyReleasedObjects.get(lChar.heldObject.id);
+            const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
+            if (!isRecentlyReleased) {
+              lChar.heldObject.isHeld = false;
+              lChar.heldObject.heldBy = null;
+              lChar.heldObject = null;
             }
           }
         }
@@ -592,7 +607,7 @@ export class MultiplayerClient {
 
       const localHolder = !isRecentlyReleased
         ? Array.from(this.gameLoop.players.values()).find(
-            (p) => p.character.heldObject === localObj || p.character === localObj.heldBy || (p.character.heldObject === null && serverPlayers.some(sp => sp.clientId === this.clientId && sp.localId === p.id && sp.heldObjectId === localObj.id))
+            (p) => p.character.heldObject === localObj || p.character === localObj.heldBy
           )
         : null;
 

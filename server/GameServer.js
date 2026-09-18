@@ -415,6 +415,32 @@ export class GameServer {
       return;
     }
 
+    if (msg.type === 'player_throw') {
+      const playerId = `${client.clientId}_${msg.localId}`;
+      this.executeThrow(
+        playerId,
+        msg.objectId,
+        msg.vx,
+        msg.vy,
+        msg.vz,
+        msg.targetX,
+        msg.targetY
+      );
+      return;
+    }
+
+    if (msg.type === 'player_drop') {
+      const playerId = `${client.clientId}_${msg.localId}`;
+      this.executeDrop(
+        playerId,
+        msg.objectId,
+        msg.vx,
+        msg.vy,
+        msg.vz
+      );
+      return;
+    }
+
     if (msg.type === 'player_input') {
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
@@ -507,10 +533,17 @@ export class GameServer {
         obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
       }
     }
-    // Unconditionally clear heldObjectId across all player records
+    // Unconditionally clear heldObjectId across all player records and queued inputs
     for (const p of this.players.values()) {
       if (p.heldObjectId === targetObjId) {
         p.heldObjectId = null;
+      }
+      if (p.inputQueue) {
+        for (const inp of p.inputQueue) {
+          if (inp.heldObjectId === targetObjId) {
+            inp.heldObjectId = null;
+          }
+        }
       }
     }
   }
@@ -523,7 +556,7 @@ export class GameServer {
     if (obj) {
       obj.isHeld = false;
       obj.heldBy = null;
-      obj.lastThrower = null;
+      obj.lastThrower = playerId;
       if (typeof vx === 'number' && typeof vy === 'number' && typeof vz === 'number') {
         obj.vx = vx;
         obj.vy = vy;
@@ -534,10 +567,17 @@ export class GameServer {
         obj.vz = player.vz;
       }
     }
-    // Unconditionally clear heldObjectId across all player records
+    // Unconditionally clear heldObjectId across all player records and queued inputs
     for (const p of this.players.values()) {
       if (p.heldObjectId === targetObjId) {
         p.heldObjectId = null;
+      }
+      if (p.inputQueue) {
+        for (const inp of p.inputQueue) {
+          if (inp.heldObjectId === targetObjId) {
+            inp.heldObjectId = null;
+          }
+        }
       }
     }
   }
@@ -768,16 +808,18 @@ export class GameServer {
         );
       } else if (input.heldObjectId) {
         // Client authoritatively holds input.heldObjectId
-        if (player.heldObjectId !== input.heldObjectId) {
-          if (player.heldObjectId) {
-            const oldObj = this.objects.get(player.heldObjectId);
-            if (oldObj) { oldObj.isHeld = false; oldObj.heldBy = null; }
-          }
-          const obj = this.objects.get(input.heldObjectId);
-          if (obj && (!obj.isHeld || obj.heldBy === player.id)) {
-            obj.isHeld = true;
-            obj.heldBy = player.id;
-            player.heldObjectId = obj.id;
+        const obj = this.objects.get(input.heldObjectId);
+        if (obj && obj.lastThrower !== player.id) {
+          if (player.heldObjectId !== input.heldObjectId) {
+            if (player.heldObjectId) {
+              const oldObj = this.objects.get(player.heldObjectId);
+              if (oldObj) { oldObj.isHeld = false; oldObj.heldBy = null; }
+            }
+            if (!obj.isHeld || obj.heldBy === player.id) {
+              obj.isHeld = true;
+              obj.heldBy = player.id;
+              player.heldObjectId = obj.id;
+            }
           }
         }
       } else if (player.heldObjectId && input.heldObjectId === null && !input.isGrabHeld && !input.isThrowHeld) {
