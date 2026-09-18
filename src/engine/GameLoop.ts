@@ -386,22 +386,20 @@ export class GameLoop {
             this.inputManager.mousePos.x = visualPos.x;
             this.inputManager.mousePos.y = visualPos.y;
           } else {
-            // Has reachable items: cursor should NOT appear until player starts moving mouse
+            // Has reachable items: select target reachable object
             if (mouseMoved) {
               entry.aimMovedWhileInRange = true;
             }
+
+            const target = entry.aimMovedWhileInRange
+              ? char.pickupModule!.findTargetObject(char, aimPos.x, aimPos.y, reachable, this.arena.wallHeight)
+              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
+            if (target) {
+              targetGrabEntities.set(char, target);
+            }
+
             if (entry.aimMovedWhileInRange) {
               isCursorVisibleNow = true;
-              const target = char.pickupModule!.findTargetObject(
-                char,
-                aimPos.x,
-                aimPos.y,
-                reachable,
-                this.arena.wallHeight
-              );
-              if (target) {
-                targetGrabEntities.set(char, target);
-              }
             } else {
               isCursorVisibleNow = false;
               this.inputManager.mousePos.x = visualPos.x;
@@ -443,19 +441,16 @@ export class GameLoop {
             slot.aimPos.x = visualPos.x;
             slot.aimPos.y = visualPos.y;
           } else {
-            // Has reachable items: cursor should NOT appear until player starts moving right stick
+            // Has reachable items: select target reachable object
+            const target = slot.aimMovedWhileInRange
+              ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachable, this.arena.wallHeight)
+              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
+            if (target) {
+              targetGrabEntities.set(char, target);
+            }
+
             if (slot.aimMovedWhileInRange) {
               isCursorVisibleNow = true;
-              const target = char.pickupModule!.findTargetObject(
-                char,
-                slot.aimPos.x,
-                slot.aimPos.y,
-                reachable,
-                this.arena.wallHeight
-              );
-              if (target) {
-                targetGrabEntities.set(char, target);
-              }
             } else {
               isCursorVisibleNow = false;
               slot.aimPos.x = visualPos.x;

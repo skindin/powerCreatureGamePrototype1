@@ -410,16 +410,19 @@ powerCreatureGamePrototype1/
     - **Configurable `airFriction`**:
       - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
       - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
-42. **Context-Aware Cursor Visibility & Seamless Nearby Grab**:
+42. **Context-Aware Cursor Visibility & Unified Colored Grab Highlight**:
     - **Nearby Grab Without Moving Cursor**:
       - Walking near any grabbable item (`reachable.length > 0`) allows immediate pickup without touching the mouse or right joystick.
       - Pressing grab (Left Click, hold Left Click, `E` key, Gamepad `RT`, or Gamepad `B`) automatically grabs the nearest reachable object if the cursor is hidden or not actively selecting a specific item.
+    - **Unified Player Theme-Colored Outline & `GRAB` Badge**:
+      - When near an object without moving the cursor, the closest reachable object immediately renders with the player's vibrant theme-colored outline (e.g. amber gold `#f59e0b` for P1) and the prominent `GRAB` / `P1 GRAB` text badge above the object.
+      - This eliminates generic/dim white fallback outlines and provides instant visual feedback of which item is targeted for immediate pickup.
     - **Cursor Only Appears on Active Aim Movement While in Reach**:
-      - When empty-handed, walking near an item does **not** automatically show the cursor (preventing unwanted popups).
-      - The cursor only unhides when the player actively starts moving the mouse or deflecting the right joystick *while close enough to grab something* (`aimMovedWhileInRange`).
+      - When empty-handed, walking near an item does **not** automatically show the cursor reticle or dotted sightline (keeping screen clean).
+      - The cursor reticle and dotted sightline only unhide when the player actively starts moving the mouse or deflecting the right joystick *while close enough to grab something* (`aimMovedWhileInRange`).
       - Moving the mouse/stick while far away from items does not prime or show the cursor.
     - **Immediate Cursor Hiding When Out of Reach**:
-      - As soon as nothing is within physical pickup range anymore (`reachable.length === 0`), the cursor immediately hides and resets the aim movement trigger.
+      - As soon as nothing is within physical pickup range anymore (`reachable.length === 0`), both the highlight/badge and cursor reticle immediately hide and reset the aim movement trigger.
       - When holding an object, the cursor is always visible to aim throws; upon throwing, once the projectile departs physical reach, the cursor immediately hides.
     - **Cursor Unhide Origin (Visual Position Accounting for Isometric Height)**:
       - Every time the cursor is unhidden (upon pickup or upon aiming at reachable items), it starts directly at the character's visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
