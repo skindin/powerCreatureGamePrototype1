@@ -403,6 +403,10 @@ export class GameServer {
         heldObjectId: null,
         isAiming: false,
         aimTarget: null,
+        lastThrowTime: 0,
+        lastThrownObjectId: null,
+        lastProcessedTick: 0,
+        lastProcessedTimestamp: 0,
         inputQueue: [],
       };
 
@@ -442,13 +446,24 @@ export class GameServer {
     }
 
     if (msg.type === 'player_input') {
+      const now = Date.now();
+      if (msg.timestamp && (now - msg.timestamp > 500)) {
+        return; // Discard stale delayed input packet
+      }
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
           const playerId = `${client.clientId}_${inp.localId}`;
           const player = this.players.get(playerId);
           if (player) {
+            if (msg.tick && player.lastProcessedTick && msg.tick < player.lastProcessedTick) {
+              continue; // Discard out-of-order stale input
+            }
+            if (msg.tick) player.lastProcessedTick = msg.tick;
+            if (msg.timestamp) player.lastProcessedTimestamp = msg.timestamp;
+
             player.inputQueue.push({
               tick: msg.tick || this.serverTick,
+              timestamp: msg.timestamp || now,
               moveVector: inp.moveVector || { x: 0, y: 0 },
               isGrabHeld: Boolean(inp.isGrabHeld),
               isThrowHeld: Boolean(inp.isThrowHeld),
@@ -510,6 +525,11 @@ export class GameServer {
     const targetObj = this.objects.get(objectId);
     if (!targetObj) return;
 
+    // Do NOT pick up if player recently threw this object!
+    if (player.lastThrownObjectId === objectId && (Date.now() - (player.lastThrowTime || 0)) < 600) {
+      return;
+    }
+
     // If held by someone else, prevent pickup
     if (targetObj.isHeld && targetObj.heldBy && targetObj.heldBy !== playerId) {
       return;
@@ -565,6 +585,11 @@ export class GameServer {
     obj.isHeld = false;
     obj.heldBy = null;
     obj.lastThrower = playerId;
+
+    if (player) {
+      player.lastThrowTime = Date.now();
+      player.lastThrownObjectId = targetObjId;
+    }
 
     if (typeof startX === 'number' && typeof startY === 'number') {
       obj.x = startX;
@@ -633,6 +658,12 @@ export class GameServer {
     const player = this.players.get(playerId);
     const targetObjId = objectId || (player ? player.heldObjectId : null);
     if (!targetObjId) return;
+
+    // If player recently committed a throw of this object, do NOT drop it!
+    if (player && player.lastThrownObjectId === targetObjId && (Date.now() - (player.lastThrowTime || 0)) < 700) {
+      return;
+    }
+
     const obj = this.objects.get(targetObjId);
     if (!obj) return;
 
@@ -753,6 +784,7 @@ export class GameServer {
         this.broadcast({
           type: 'world_state',
           serverTick: this.serverTick,
+          timestamp: Date.now(),
           players: this.serializePlayers(),
           objects: this.serializeObjects(),
         });
@@ -920,27 +952,33 @@ export class GameServer {
           }
         }
       } else if (player.heldObjectId && input.heldObjectId === null && !input.isGrabHeld && !input.isThrowHeld) {
-        // Client released or dropped held object
-        const heldObj = this.objects.get(player.heldObjectId);
-        if (!heldObj || heldObj.lastThrower !== player.id) {
-          this.executeDrop(player.id, player.heldObjectId);
-        }
-      } else if (input.isGrabHeld && !player.heldObjectId) {
-        let closestObj = null;
-        let closestDist = 1.8; // 3D reach distance with network tolerance
-        for (const obj of this.objects.values()) {
-          if (obj.isHeld) continue;
-          if (obj.lastThrower === player.id) continue;
-          const deltaMagnitude = Math.hypot(obj.x - player.x, obj.y - player.y, obj.z - player.z);
-          if (deltaMagnitude <= closestDist) {
-            closestDist = deltaMagnitude;
-            closestObj = obj;
+        // Client released or dropped held object (ignore if during committed throw window)
+        const timeSinceThrow = Date.now() - (player.lastThrowTime || 0);
+        if (timeSinceThrow > 600) {
+          const heldObj = this.objects.get(player.heldObjectId);
+          if (!heldObj || (heldObj.lastThrower !== player.id && player.lastThrownObjectId !== player.heldObjectId)) {
+            this.executeDrop(player.id, player.heldObjectId);
           }
         }
-        if (closestObj) {
-          closestObj.isHeld = true;
-          closestObj.heldBy = player.id;
-          player.heldObjectId = closestObj.id;
+      } else if (input.isGrabHeld && !player.heldObjectId) {
+        const timeSinceThrow = Date.now() - (player.lastThrowTime || 0);
+        if (timeSinceThrow > 500) {
+          let closestObj = null;
+          let closestDist = 1.8; // 3D reach distance with network tolerance
+          for (const obj of this.objects.values()) {
+            if (obj.isHeld) continue;
+            if (obj.lastThrower === player.id || obj.id === player.lastThrownObjectId) continue;
+            const deltaMagnitude = Math.hypot(obj.x - player.x, obj.y - player.y, obj.z - player.z);
+            if (deltaMagnitude <= closestDist) {
+              closestDist = deltaMagnitude;
+              closestObj = obj;
+            }
+          }
+          if (closestObj) {
+            closestObj.isHeld = true;
+            closestObj.heldBy = player.id;
+            player.heldObjectId = closestObj.id;
+          }
         }
       }
 

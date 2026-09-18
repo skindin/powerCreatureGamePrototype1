@@ -75,6 +75,8 @@ export class MultiplayerClient {
   private socket: WebSocket | null = null;
   private gameLoop: GameLoop | null = null;
   private clientTick: number = 0;
+  private lastServerTick: number = 0;
+  private lastServerTimestamp: number = 0;
   private pingInterval: any = null;
   private reconnectTimer: any = null;
   private isIntentionalDisconnect: boolean = false;
@@ -363,11 +365,17 @@ export class MultiplayerClient {
       let isSprinting = entry.character.isSprinting;
       const heldObjectId = entry.character.heldObject ? entry.character.heldObject.id : null;
 
+      let isThrowCommitted = false;
       if (entry.isKeyboard) {
         if (inputManager.isKeyboardActive) {
+          isThrowCommitted = performance.now() < (inputManager.throwCommitUntil ?? 0);
           moveVector = inputManager.movementVector;
-          isGrabHeld = Boolean(inputManager.isGrabHeld);
-          isThrowHeld = Boolean(inputManager.justThrown || (inputManager.isMouseDown && entry.character.heldObject && !inputManager.justPickedUp));
+          isGrabHeld = Boolean(inputManager.isGrabHeld) && !isThrowCommitted;
+          isThrowHeld = Boolean(
+            isThrowCommitted ||
+            inputManager.justThrown ||
+            (inputManager.isMouseDown && entry.character.heldObject && !inputManager.justPickedUp)
+          );
           mousePos = inputManager.isCursorVisible ? inputManager.mousePos : null;
           isClimbHeld = Boolean(inputManager.isKeyboardJumpHeld);
           isSprinting = Boolean(inputManager.isKeyboardSprintActive);
@@ -378,9 +386,10 @@ export class MultiplayerClient {
       } else if (entry.slotIndex !== undefined) {
         const slot = inputManager.gamepadSlots.get(entry.slotIndex);
         if (slot && slot.connected) {
+          isThrowCommitted = slot.throwCommitUntil !== undefined && performance.now() < slot.throwCommitUntil;
           moveVector = slot.movementVector;
-          isGrabHeld = Boolean(slot.isGrabHeld);
-          isThrowHeld = Boolean(slot.isThrowHeld);
+          isGrabHeld = Boolean(slot.isGrabHeld) && !isThrowCommitted;
+          isThrowHeld = Boolean(slot.isThrowHeld || isThrowCommitted);
           mousePos = slot.aimPos;
           isClimbHeld = Boolean(slot.isClimbHeld);
           isSprinting = Boolean(slot.isSprintToggled);
@@ -389,7 +398,8 @@ export class MultiplayerClient {
 
       const throwEvt = this.pendingThrowEvents.get(key) || null;
       const dropEvt = this.pendingDropEvents.get(key) || null;
-      if (throwEvt) {
+      // Retain throwEvt across frames until throw commit window completes to guarantee network delivery
+      if (throwEvt && !isThrowCommitted) {
         this.pendingThrowEvents.delete(key);
       }
       if (dropEvt) {
@@ -415,6 +425,7 @@ export class MultiplayerClient {
       this.sendJson({
         type: "player_input",
         tick: this.clientTick,
+        timestamp: Date.now(),
         inputs: inputsToSend,
       });
       this.packetsSent++;
@@ -475,7 +486,23 @@ export class MultiplayerClient {
       }
 
       if (msg.type === "world_state") {
-        this.reconcileWorldState(msg.players || [], msg.objects || []);
+        const now = Date.now();
+        if (typeof msg.serverTick === "number") {
+          if (this.lastServerTick !== 0 && msg.serverTick < this.lastServerTick) {
+            return; // Discard out-of-order older tick
+          }
+          this.lastServerTick = msg.serverTick;
+        }
+        if (typeof msg.timestamp === "number") {
+          if (this.lastServerTimestamp !== 0 && msg.timestamp < this.lastServerTimestamp) {
+            return; // Discard out-of-order older timestamp
+          }
+          if (now - msg.timestamp > 600) {
+            return; // Discard snapshot delayed by > 600ms
+          }
+          this.lastServerTimestamp = msg.timestamp;
+        }
+        this.reconcileWorldState(msg.players || [], msg.objects || [], msg.timestamp);
         return;
       }
 
@@ -497,11 +524,17 @@ export class MultiplayerClient {
     }
   }
 
-  private reconcileWorldState(serverPlayers: RemotePlayerSnapshot[], serverObjects: ObjectSnapshot[]): void {
+  private reconcileWorldState(serverPlayers: RemotePlayerSnapshot[], serverObjects: ObjectSnapshot[], snapshotTimestamp?: number): void {
     this.connectedPlayersCount = serverPlayers.length;
     this.notifyStats();
 
     if (!this.gameLoop) return;
+
+    const now = Date.now();
+    const oneWayLatencyMs = snapshotTimestamp && snapshotTimestamp > 0
+      ? Math.max(0, Math.min(200, (now - snapshotTimestamp)))
+      : (this.pingMs > 0 ? this.pingMs / 2 : 25);
+    const latencySec = oneWayLatencyMs / 1000;
 
     // 1. Reconcile remote characters (characters controlled by other browser tabs/devices)
     const activeRemoteIds = new Set<string>();
@@ -683,21 +716,76 @@ export class MultiplayerClient {
         localObj.isHeld = false;
         localObj.heldBy = null;
         if (!activeRecentlyReleased && !isRecentlyPickedUp) {
-          const lerp = 0.45;
-          localObj.position.x += (so.x - localObj.position.x) * lerp;
-          localObj.position.y += (so.y - localObj.position.y) * lerp;
-          localObj.position.z += (so.z - localObj.position.z) * lerp;
-          localObj.velocity.x = so.vx;
-          localObj.velocity.y = so.vy;
-          localObj.verticalVelocity = so.vz;
+          const serverSpeed = Math.hypot(so.vx, so.vy, so.vz);
+          const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y, localObj.verticalVelocity);
+
+          if (serverSpeed < 0.05 && localSpeed < 0.1) {
+            // Object is at rest on both client and server:
+            // Settle cleanly to authoritative server position and zero velocities to prevent micro-jitter
+            const dx = so.x - localObj.position.x;
+            const dy = so.y - localObj.position.y;
+            const dz = so.z - localObj.position.z;
+            const driftDist = Math.hypot(dx, dy, dz);
+            if (driftDist > 0.03) {
+              const settleLerp = driftDist > 0.4 ? 0.35 : 0.15;
+              localObj.position.x += dx * settleLerp;
+              localObj.position.y += dy * settleLerp;
+              localObj.position.z += dz * settleLerp;
+            }
+            localObj.velocity.x = 0;
+            localObj.velocity.y = 0;
+            localObj.verticalVelocity = 0;
+          } else {
+            // Object is in motion (rolling, flying ballistic arc, sliding):
+            // Forward-extrapolate the server's snapshot position by elapsed one-way latency
+            const expectedX = so.x + so.vx * latencySec;
+            const expectedY = so.y + so.vy * latencySec;
+            const expectedZ = Math.max(0, so.z + so.vz * latencySec - (so.vz !== 0 ? 0.5 * 30.0 * latencySec * latencySec : 0));
+
+            const dx = expectedX - localObj.position.x;
+            const dy = expectedY - localObj.position.y;
+            const dz = expectedZ - localObj.position.z;
+            const driftDist = Math.hypot(dx, dy, dz);
+
+            if (driftDist <= 0.35) {
+              // Deadzone: local client simulation matches the latency-compensated server position within 0.35u.
+              // NEVER tug the position backwards! Local simulation runs 100% fluidly and monotonically.
+              const velDrift = Math.hypot(so.vx - localObj.velocity.x, so.vy - localObj.velocity.y, so.vz - localObj.verticalVelocity);
+              if (velDrift > 0.6) {
+                localObj.velocity.x += (so.vx - localObj.velocity.x) * 0.08;
+                localObj.velocity.y += (so.vy - localObj.velocity.y) * 0.08;
+                localObj.verticalVelocity += (so.vz - localObj.verticalVelocity) * 0.08;
+              }
+            } else if (driftDist <= 2.0) {
+              // Moderate drift: gently pull toward latency-compensated expected position without jarring reversals
+              const smoothLerp = 0.12;
+              localObj.position.x += dx * smoothLerp;
+              localObj.position.y += dy * smoothLerp;
+              localObj.position.z += dz * smoothLerp;
+              localObj.velocity.x += (so.vx - localObj.velocity.x) * 0.15;
+              localObj.velocity.y += (so.vy - localObj.velocity.y) * 0.15;
+              localObj.verticalVelocity += (so.vz - localObj.verticalVelocity) * 0.15;
+            } else {
+              // Significant desync (> 2.0u): snap strongly to authoritative state
+              const snapLerp = 0.5;
+              localObj.position.x += dx * snapLerp;
+              localObj.position.y += dy * snapLerp;
+              localObj.position.z += dz * snapLerp;
+              localObj.velocity.x = so.vx;
+              localObj.velocity.y = so.vy;
+              localObj.verticalVelocity = so.vz;
+            }
+          }
         } else if (activeRecentlyReleased && !so.isHeld) {
           // Server has acknowledged release and is running parallel physics
-          // Softly correct only if significant drift occurs (> 1.2u)
-          const drift = Math.hypot(so.x - localObj.position.x, so.y - localObj.position.y, so.z - localObj.position.z);
-          if (drift > 1.2) {
-            localObj.position.x += (so.x - localObj.position.x) * 0.25;
-            localObj.position.y += (so.y - localObj.position.y) * 0.25;
-            localObj.position.z += (so.z - localObj.position.z) * 0.25;
+          // Softly correct only if significant drift occurs (> 1.5u)
+          const expectedX = so.x + so.vx * latencySec;
+          const expectedY = so.y + so.vy * latencySec;
+          const drift = Math.hypot(expectedX - localObj.position.x, expectedY - localObj.position.y, so.z - localObj.position.z);
+          if (drift > 1.5) {
+            localObj.position.x += (expectedX - localObj.position.x) * 0.15;
+            localObj.position.y += (expectedY - localObj.position.y) * 0.15;
+            localObj.position.z += (so.z - localObj.position.z) * 0.15;
           }
         }
 

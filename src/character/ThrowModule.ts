@@ -240,10 +240,17 @@ export class ThrowModule {
       isLocked = true;
     }
 
-    const dx = effectiveTargetX - startX;
-    const dy = effectiveTargetY - startY;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 0.1) return null;
+    let dx = effectiveTargetX - startX;
+    let dy = effectiveTargetY - startY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.1) {
+      const angle = thrower ? thrower.facingAngle : 0;
+      effectiveTargetX = startX + Math.cos(angle) * 2.0;
+      effectiveTargetY = startY + Math.sin(angle) * 2.0;
+      dx = effectiveTargetX - startX;
+      dy = effectiveTargetY - startY;
+      dist = Math.hypot(dx, dy);
+    }
 
     // Clamp aim distance to character reach
     const actualDist = Math.min(dist, this.maxThrowAimDistance);

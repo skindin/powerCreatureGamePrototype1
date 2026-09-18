@@ -584,8 +584,9 @@ export class GameLoop {
         kChar.velocity.y = 0;
       }
 
-      // Continuous hold-to-grab for keyboard mouse:
-      if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
+      // Continuous hold-to-grab for keyboard mouse (locked during committed throw):
+      const isThrowCommitted = performance.now() < (input.throwCommitUntil ?? 0);
+      if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule && !isThrowCommitted) {
         const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...this.objects];
         const isCursorVis = kEntry?.wasCursorVisible ?? false;
         const aimX = isCursorVis ? input.mousePos.x : undefined;

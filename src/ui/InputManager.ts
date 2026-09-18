@@ -27,6 +27,7 @@ export interface GamepadSlotState {
   isGrabHeld?: boolean;
   isThrowHeld?: boolean;
   isSprintToggled?: boolean;
+  throwCommitUntil?: number;
 }
 
 export class InputManager {
@@ -51,6 +52,7 @@ export class InputManager {
   public justThrown = false;
 
   public isThrowingPress = false;
+  public throwCommitUntil = 0;
 
   // Gamepad controller slots (multi-gamepad support)
   public gamepadSlots: Map<number, GamepadSlotState> = new Map();
@@ -64,6 +66,7 @@ export class InputManager {
   public gamepadAimOffset: Vector2D = { x: 3.5, y: 0 };
 
   public get isGrabHeld(): boolean {
+    if (performance.now() < this.throwCommitUntil) return false;
     return this.isKeyboardActive && !this.isThrowingPress && (this.isMouseDown || this.isEKeyDepressed);
   }
 
@@ -271,7 +274,9 @@ export class InputManager {
       if (e.button !== 0) return;
       this.isMouseDown = false;
       this.justPickedUp = false;
-      this.isThrowingPress = false;
+      if (performance.now() >= this.throwCommitUntil) {
+        this.isThrowingPress = false;
+      }
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
@@ -305,7 +310,9 @@ export class InputManager {
     window.addEventListener("touchend", () => {
       this.isMouseDown = false;
       this.justPickedUp = false;
-      this.isThrowingPress = false;
+      if (performance.now() >= this.throwCommitUntil) {
+        this.isThrowingPress = false;
+      }
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
@@ -641,22 +648,29 @@ export class InputManager {
         slot.rtHeld = false;
       }
 
+      const isThrowCommitted = slot.throwCommitUntil !== undefined && performance.now() < slot.throwCommitUntil;
+
       if (!char.heldObject) {
-        slot.isThrowHeld = false;
-        slot.isGrabHeld = Boolean(rtCurrent || bCurrent);
-        if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
-          char.pickupModule.pickupAndSwap(
-            char,
-            grabbableTargets,
-            arena.wallHeight,
-            aimX,
-            aimY
-          );
-          if (char.heldObject) {
-            slot.rtGrabbed = true;
-            slot.rtHeld = false;
-          } else {
-            slot.rtHeld = true;
+        if (isThrowCommitted) {
+          slot.isThrowHeld = true;
+          slot.isGrabHeld = false;
+        } else {
+          slot.isThrowHeld = false;
+          slot.isGrabHeld = Boolean(rtCurrent || bCurrent);
+          if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
+            char.pickupModule.pickupAndSwap(
+              char,
+              grabbableTargets,
+              arena.wallHeight,
+              aimX,
+              aimY
+            );
+            if (char.heldObject) {
+              slot.rtGrabbed = true;
+              slot.rtHeld = false;
+            } else {
+              slot.rtHeld = true;
+            }
           }
         }
       } else {
@@ -664,16 +678,21 @@ export class InputManager {
         slot.isGrabHeld = false;
         const isLockHeld = isButtonPressed(6);
         const willThrow = (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed) || rbJustPressed;
-        slot.isThrowHeld = Boolean(willThrow);
+        slot.isThrowHeld = Boolean(willThrow || isThrowCommitted);
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
             char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
           );
+          slot.throwCommitUntil = performance.now() + 450;
+          slot.rtGrabbed = true;
+          slot.isThrowHeld = true;
         }
         if (rbJustPressed && char.throwModule) {
           char.throwModule.throwHeldObject(
             char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
           );
+          slot.throwCommitUntil = performance.now() + 450;
+          slot.isThrowHeld = true;
         }
       }
       slot.isSprintToggled = Boolean(slot.sprintArmed);
@@ -908,6 +927,7 @@ export class InputManager {
         activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena, undefined, undefined, autoLock);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         this.justThrown = true;
+        this.throwCommitUntil = performance.now() + 450; // Commit throw for at least 450ms regardless of click speed
         return;
       }
 
