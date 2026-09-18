@@ -393,6 +393,7 @@ export class GameServer {
               mousePos: inp.mousePos || null,
               isClimbHeld: Boolean(inp.isClimbHeld),
               isSprinting: Boolean(inp.isSprinting),
+              heldObjectId: inp.heldObjectId !== undefined ? inp.heldObjectId : null,
             });
             if (player.inputQueue.length > 8) {
               player.inputQueue.shift();
@@ -634,15 +635,48 @@ export class GameServer {
           obj.isHeld = false;
           obj.heldBy = null;
           const throwSpeed = 9.0;
-          const dir = player.facingAngle;
-          obj.vx = Math.cos(dir) * throwSpeed;
-          obj.vy = Math.sin(dir) * throwSpeed;
-          obj.vz = 6.0; // Ballistic arc
+          const targetX = input.mousePos ? input.mousePos.x : player.x + Math.cos(player.facingAngle) * 5.0;
+          const targetY = input.mousePos ? input.mousePos.y : player.y + Math.sin(player.facingAngle) * 5.0;
+          const dx = targetX - obj.x;
+          const dy = targetY - obj.y;
+          const dist = Math.max(0.1, Math.hypot(dx, dy));
+          const actualDist = Math.min(dist, 13.0);
+          const dirX = dx / dist;
+          const dirY = dy / dist;
+          const totalTime = Math.max(0.2, actualDist / throwSpeed);
+          obj.vx = dirX * throwSpeed;
+          obj.vy = dirY * throwSpeed;
+          obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
+        }
+        player.heldObjectId = null;
+      } else if (input.heldObjectId) {
+        // Client authoritatively holds input.heldObjectId
+        if (player.heldObjectId !== input.heldObjectId) {
+          if (player.heldObjectId) {
+            const oldObj = this.objects.get(player.heldObjectId);
+            if (oldObj) { oldObj.isHeld = false; oldObj.heldBy = null; }
+          }
+          const obj = this.objects.get(input.heldObjectId);
+          if (obj && (!obj.isHeld || obj.heldBy === player.id)) {
+            obj.isHeld = true;
+            obj.heldBy = player.id;
+            player.heldObjectId = obj.id;
+          }
+        }
+      } else if (player.heldObjectId && input.heldObjectId === null && !input.isGrabHeld && !input.isThrowHeld) {
+        // Client released or dropped held object
+        const obj = this.objects.get(player.heldObjectId);
+        if (obj) {
+          obj.isHeld = false;
+          obj.heldBy = null;
+          obj.vx = player.vx;
+          obj.vy = player.vy;
+          obj.vz = player.vz;
         }
         player.heldObjectId = null;
       } else if (input.isGrabHeld && !player.heldObjectId) {
         let closestObj = null;
-        let closestDist = 1.3; // 3D reach distance
+        let closestDist = 1.8; // 3D reach distance with network tolerance
         for (const obj of this.objects.values()) {
           if (obj.isHeld) continue;
           const deltaMagnitude = Math.hypot(obj.x - player.x, obj.y - player.y, obj.z - player.z);
@@ -800,6 +834,16 @@ export class GameServer {
         const tierA = (a.z >= this.wallHeight) ? 2 : 1;
         const tierB = (b.z >= this.wallHeight) ? 2 : 1;
         if (tierA !== tierB) continue;
+
+        // Skip any collision involving held objects
+        if (a.isHeld || b.isHeld) continue;
+        if (a.heldObjectId === b.id || b.heldObjectId === a.id) continue;
+
+        // If a player is actively holding grab (or holding the object), do NOT repel the object away
+        if ((a.inputQueue && a.inputQueue.some(inp => inp.isGrabHeld) && !b.inputQueue) ||
+            (b.inputQueue && b.inputQueue.some(inp => inp.isGrabHeld) && !a.inputQueue)) {
+          continue;
+        }
 
         const rA = a.colliderRadius || a.radius || 0.35;
         const rB = b.colliderRadius || b.radius || 0.35;

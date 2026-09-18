@@ -203,6 +203,65 @@ async function testUniversalLobby() {
   const maxJumpZ = Math.max(...jumpSnapshots.map((s) => s.players.find((p: any) => p.playerNumber === 1).z));
   console.log(`✅ Player 1 jump successfully synchronized to Client B! Peak jump z reached: ${maxJumpZ}`);
 
+  // 6b. Test Object Pickup & Throw across network
+  // Client A picks up stone-1
+  wsA.send(JSON.stringify({
+    type: 'player_input',
+    tick: 31,
+    inputs: [{
+      localId: 'keyboard',
+      moveVector: { x: 0, y: 0 },
+      isGrabHeld: true,
+      isThrowHeld: false,
+      mousePos: { x: 6.8, y: 4.4 },
+      isClimbHeld: false,
+      isSprinting: false,
+      heldObjectId: 'stone-1',
+    }],
+  }));
+
+  await new Promise((r) => setTimeout(r, 100));
+
+  const serverP1 = Array.from(gameServer.players.values()).find((p) => p.playerNumber === 1);
+  if (!serverP1 || serverP1.heldObjectId !== 'stone-1') {
+    throw new Error(`Expected Server Player 1 to hold stone-1, got: ${serverP1?.heldObjectId}`);
+  }
+  const heldStone = gameServer.objects.get('stone-1');
+  if (!heldStone || !heldStone.isHeld || heldStone.heldBy !== serverP1.id) {
+    throw new Error(`Expected stone-1 to be marked isHeld=true and heldBy=P1, got isHeld=${heldStone?.isHeld}, heldBy=${heldStone?.heldBy}`);
+  }
+  console.log(`✅ Object pickup authoritatively confirmed on server without repulsion: ${heldStone.id} heldBy ${heldStone.heldBy}`);
+
+  // Client A throws stone-1 towards (12, 7)
+  wsA.send(JSON.stringify({
+    type: 'player_input',
+    tick: 32,
+    inputs: [{
+      localId: 'keyboard',
+      moveVector: { x: 0, y: 0 },
+      isGrabHeld: false,
+      isThrowHeld: true,
+      mousePos: { x: 12.0, y: 7.0 },
+      isClimbHeld: false,
+      isSprinting: false,
+      heldObjectId: null,
+    }],
+  }));
+
+  // Wait 3 ticks (50ms) for throw trajectory step
+  await new Promise((r) => setTimeout(r, 100));
+
+  if (serverP1.heldObjectId !== null) {
+    throw new Error(`Expected Server Player 1 to have released stone-1, got: ${serverP1.heldObjectId}`);
+  }
+  if (!heldStone || heldStone.isHeld) {
+    throw new Error(`Expected stone-1 to be released (isHeld=false), got: ${heldStone?.isHeld}`);
+  }
+  if (Math.abs(heldStone.vx) < 0.5 && Math.abs(heldStone.vy) < 0.5) {
+    throw new Error(`Expected stone-1 to have ballistic throw velocity, got vx=${heldStone.vx}, vy=${heldStone.vy}`);
+  }
+  console.log(`✅ Object throw authoritatively executed on server with ballistic velocity: vx=${heldStone.vx.toFixed(2)}, vy=${heldStone.vy.toFixed(2)}, vz=${heldStone.vz.toFixed(2)}`);
+
   // 7. Test unregistering one player from Client B
   wsB.send(JSON.stringify({
     type: 'unregister_player',

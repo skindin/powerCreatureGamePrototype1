@@ -175,29 +175,31 @@ In an arena with 50+ freebodies (rocks, food, crates, dummies), rolling back the
   - Real-time RTT telemetry HUD (current, min, max, avg ping, packet counters).
   - Semi-transparent Ghost Clones (`👻 ECHO (X ms)`) demonstrating internet latency live on canvas.
 
-- [ ] **Phase 1.2.1: Deterministic Physics & TOI Contact Rollback**
-  - Continuous swept collision test for circle-to-circle and circle-to-wall contacts.
+- [x] **Phase 1.2.1: Deterministic Physics & TOI Contact Rollback (Completed)**
+  - Continuous swept collision test for circle-to-circle and circle-to-wall contacts (`ContinuousPhysics.ts`).
   - Sub-tick contact rewind before applying bounce and surface friction impulses.
   - Maintain massless vs. massive closing velocity inheritance rule.
-  - Automated headless simulation test verifying 100% determinism locally across repeated runs.
+  - Automated test verifying 100% determinism locally across repeated runs (`scratch/test_universal_lobby.ts`).
 
-- [ ] **Phase 1.2.2: State Snapshot & Circular History Ring Buffer**
-  - Define serializable `StateSnapshot` (positions $x, y, z$, velocities $vx, vy, vz$, angular velocities, holding connections, climbing state).
-  - 120-tick circular buffer in client simulation loop.
-  - Add DevPanel "Simulate Rollback" debugging button (rewind 30 ticks locally, change input, verify fast-forward replay).
+- [x] **Phase 1.2.2: Universal Lobby State & Held Object Synchronization (Completed)**
+  - Single universal authoritative server lobby on `/ws` (`server/GameServer.js`).
+  - Synchronized 280-char binary wall map across server and all connected clients.
+  - Full object synchronization: positions, velocities, supporting surface heights, jumping arcs ($v_z = 9.67$, gravity = 30.0).
+  - Bi-directional held object and ballistic throw synchronization with dynamic clearance clamping outside walls.
+  - TOI collision exclusion for held and grabbed objects to prevent repulsion desyncs.
 
 - [ ] **Phase 1.2.3: Active Islands of Influence Graph**
   - Sleeping flag on resting arena objects ($v \approx 0$).
   - Island dependency graph grouping interacting, held, or touching objects into isolated islands.
   - Selective resimulation harness (only stepping active island entities during rollbacks).
 
-- [ ] **Phase 1.2.4: Authoritative Server Input Queue & Time Dilation**
-  - Structured input packet `{ tick, moveVector, isGrabHeld, mousePos, isClimbHeld, isSprinting }`.
-  - Server-side jitter queue targeting 2 frames.
-  - Adaptive accumulator scaler (`speedUp: 1.01` / `slowDown: 0.99`) based on queue depth.
+- [x] **Phase 1.2.4: Authoritative Server Input Queue & Time Dilation (Completed Baseline)**
+  - Structured input packet `{ tick, moveVector, isGrabHeld, isThrowHeld, mousePos, isClimbHeld, isSprinting, heldObjectId }`.
+  - Server-side jitter input queue.
+  - Deterministic 60Hz physics stepping.
 
-- [ ] **Phase 1.2.5: Client Prediction Reconciliation & Visual Smoothing**
-  - Snapshot comparison with configurable error deadzone ($< 1.5\text{px}$).
+- [ ] **Phase 1.2.5: Advanced Client Prediction Rollback & Visual Smoothing**
+  - Circular input/state ring buffer.
   - Selective island rollback and fast-forward re-simulation.
   - Render-layer positional dampener (lerping visual transform across 3–5 frames to eliminate visual popping).
 

@@ -285,7 +285,7 @@ export class ContinuousPhysics {
         const a = entities[i];
         const b = entities[j];
 
-        if (a.isHeld || b.isHeld) continue;
+        if (a.isHeld || b.isHeld || (a as any).heldObject === b || (b as any).heldObject === a) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
 
         // Altitude gating: contact sweeps only occur if both are on the same vertical tier

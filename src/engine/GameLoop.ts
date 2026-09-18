@@ -681,7 +681,7 @@ export class GameLoop {
           const b = all[j];
 
           // Skip if either is currently held in hands or actively dragged in Edit Mode
-          if (a.isHeld || b.isHeld || a === input.draggedEntity || b === input.draggedEntity) continue;
+          if (a.isHeld || b.isHeld || (a as any).heldObject === b || (b as any).heldObject === a || a === input.draggedEntity || b === input.draggedEntity) continue;
 
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;

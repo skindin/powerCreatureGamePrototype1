@@ -24,6 +24,9 @@ export interface GamepadSlotState {
   aimMovedWhileInRange?: boolean;
   aimOffset?: Vector2D;
   isLockHeld?: boolean;
+  isGrabHeld?: boolean;
+  isThrowHeld?: boolean;
+  isSprintToggled?: boolean;
 }
 
 export class InputManager {
@@ -45,6 +48,7 @@ export class InputManager {
   public hoverWallTile: { col: number; row: number } | null = null;
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
+  public justThrown = false;
 
   public isThrowingPress = false;
 
@@ -60,7 +64,7 @@ export class InputManager {
   public gamepadAimOffset: Vector2D = { x: 3.5, y: 0 };
 
   public get isGrabHeld(): boolean {
-    return this.isKeyboardActive && !this.isThrowingPress && this.isMouseDown;
+    return this.isKeyboardActive && !this.isThrowingPress && (this.isMouseDown || this.isEKeyDepressed);
   }
 
   public get isUsingGamepad(): boolean {
@@ -638,6 +642,8 @@ export class InputManager {
       }
 
       if (!char.heldObject) {
+        slot.isThrowHeld = false;
+        slot.isGrabHeld = Boolean(rtCurrent || bCurrent);
         if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
           char.pickupModule.pickupAndSwap(
             char,
@@ -655,7 +661,10 @@ export class InputManager {
         }
       } else {
         slot.rtHeld = false;
+        slot.isGrabHeld = false;
         const isLockHeld = isButtonPressed(6);
+        const willThrow = (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed) || rbJustPressed;
+        slot.isThrowHeld = Boolean(willThrow);
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
             char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
@@ -667,6 +676,7 @@ export class InputManager {
           );
         }
       }
+      slot.isSprintToggled = Boolean(slot.sprintArmed);
 
       // Record buttons for edge detection
       slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
@@ -897,6 +907,7 @@ export class InputManager {
         const autoLock = this.isRightMouseDown;
         activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena, undefined, undefined, autoLock);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
+        this.justThrown = true;
         return;
       }
 

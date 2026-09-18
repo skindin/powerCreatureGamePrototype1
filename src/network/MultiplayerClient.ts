@@ -235,6 +235,7 @@ export class MultiplayerClient {
       mousePos: Vector2D | null;
       isClimbHeld: boolean;
       isSprinting: boolean;
+      heldObjectId: string | null;
     }> = [];
 
     for (const [key, entry] of localPlayers) {
@@ -244,15 +245,19 @@ export class MultiplayerClient {
       let mousePos: Vector2D | null = null;
       let isClimbHeld = false;
       let isSprinting = entry.character.isSprinting;
+      const heldObjectId = entry.character.heldObject ? entry.character.heldObject.id : null;
 
       if (entry.isKeyboard) {
         if (inputManager.isKeyboardActive) {
           moveVector = inputManager.movementVector;
           isGrabHeld = Boolean(inputManager.isGrabHeld);
-          isThrowHeld = Boolean(inputManager.isMouseDown && entry.character.heldObject);
+          isThrowHeld = Boolean(inputManager.justThrown || (inputManager.isMouseDown && entry.character.heldObject && !inputManager.justPickedUp));
           mousePos = inputManager.isCursorVisible ? inputManager.mousePos : null;
           isClimbHeld = Boolean(inputManager.isKeyboardJumpHeld);
           isSprinting = Boolean(inputManager.isKeyboardSprintActive);
+          if (inputManager.justThrown) {
+            inputManager.justThrown = false;
+          }
         }
       } else if (entry.slotIndex !== undefined) {
         const slot = inputManager.gamepadSlots.get(entry.slotIndex);
@@ -274,6 +279,7 @@ export class MultiplayerClient {
         mousePos,
         isClimbHeld,
         isSprinting,
+        heldObjectId,
       });
     }
 
@@ -390,6 +396,16 @@ export class MultiplayerClient {
           if (zDrift > 0.6) {
             lChar.position.z += (sp.z - lChar.position.z) * 0.4;
           }
+
+          // Authoritative held object sync for local character
+          if (sp.heldObjectId) {
+            const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
+            if (heldObj && lChar.heldObject !== heldObj) {
+              lChar.heldObject = heldObj;
+              heldObj.isHeld = true;
+              heldObj.heldBy = lChar;
+            }
+          }
         }
       } else {
         // Remote player: ensure remote character exists and update with interpolation
@@ -474,38 +490,50 @@ export class MultiplayerClient {
         this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
       }
 
-      const isHeldByLocal = localObj.heldBy && Array.from(this.gameLoop.players.values()).some((p) => p.character === localObj.heldBy);
-      if (!isHeldByLocal) {
-        if (so.isHeld && so.heldBy) {
-          localObj.isHeld = true;
-          // Attached along held character hands
-          localObj.position.x = so.x;
-          localObj.position.y = so.y;
-          localObj.position.z = so.z;
-          localObj.velocity.x = so.vx;
-          localObj.velocity.y = so.vy;
-          localObj.verticalVelocity = so.vz;
-        } else {
-          localObj.isHeld = false;
-          if (localObj.heldBy && !Array.from(this.gameLoop.players.values()).some((p) => p.character === localObj.heldBy)) {
-            localObj.heldBy = null;
-          }
-          const lerp = 0.45;
-          localObj.position.x += (so.x - localObj.position.x) * lerp;
-          localObj.position.y += (so.y - localObj.position.y) * lerp;
-          localObj.position.z += (so.z - localObj.position.z) * lerp;
-          localObj.velocity.x = so.vx;
-          localObj.velocity.y = so.vy;
-          localObj.verticalVelocity = so.vz;
+      const localHolder = Array.from(this.gameLoop.players.values()).find(
+        (p) => p.character.heldObject === localObj || p.character === localObj.heldBy || serverPlayers.some(sp => sp.clientId === this.clientId && sp.localId === p.id && sp.heldObjectId === localObj.id)
+      );
 
-          const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
-          if (supWall && localObj.position.z >= supWall.wallHeight - 0.05) {
-            localObj.supportingSurfaceHeight = supWall.wallHeight;
-            (localObj as any).standingWall = supWall;
-          } else {
-            localObj.supportingSurfaceHeight = 0;
-            (localObj as any).standingWall = null;
-          }
+      if (localHolder) {
+        // Held by local player on this device
+        localHolder.character.heldObject = localObj;
+        localObj.isHeld = true;
+        localObj.heldBy = localHolder.character;
+        const heldPos = localHolder.character.calculateHeldObjectPosition(this.gameLoop.arena);
+        localObj.position.x = heldPos.x;
+        localObj.position.y = heldPos.y;
+        localObj.position.z = heldPos.z;
+        localObj.velocity.x = localHolder.character.velocity.x;
+        localObj.velocity.y = localHolder.character.velocity.y;
+        localObj.verticalVelocity = 0;
+      } else if (so.isHeld && so.heldBy) {
+        // Held by remote player
+        localObj.isHeld = true;
+        localObj.position.x = so.x;
+        localObj.position.y = so.y;
+        localObj.position.z = so.z;
+        localObj.velocity.x = so.vx;
+        localObj.velocity.y = so.vy;
+        localObj.verticalVelocity = so.vz;
+      } else {
+        // Free-standing on ground or wall top
+        localObj.isHeld = false;
+        localObj.heldBy = null;
+        const lerp = 0.45;
+        localObj.position.x += (so.x - localObj.position.x) * lerp;
+        localObj.position.y += (so.y - localObj.position.y) * lerp;
+        localObj.position.z += (so.z - localObj.position.z) * lerp;
+        localObj.velocity.x = so.vx;
+        localObj.velocity.y = so.vy;
+        localObj.verticalVelocity = so.vz;
+
+        const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
+        if (supWall && localObj.position.z >= supWall.wallHeight - 0.05) {
+          localObj.supportingSurfaceHeight = supWall.wallHeight;
+          (localObj as any).standingWall = supWall;
+        } else {
+          localObj.supportingSurfaceHeight = 0;
+          (localObj as any).standingWall = null;
         }
       }
     }
