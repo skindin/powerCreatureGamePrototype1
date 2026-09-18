@@ -230,8 +230,17 @@ export class GameServer {
         clientId,
         ws,
         localPlayers: new Set(),
+        lastActiveTime: Date.now(),
       };
       this.clients.set(ws, clientRecord);
+
+      // Sanitize any orphaned held states if fresh connection
+      for (const obj of this.objects.values()) {
+        if (obj.isHeld && (!obj.heldBy || !this.players.has(obj.heldBy))) {
+          obj.isHeld = false;
+          obj.heldBy = null;
+        }
+      }
 
       // Send initial lobby state with authoritative wallMapString
       this.sendJson(ws, {
@@ -252,6 +261,7 @@ export class GameServer {
 
       ws.on('message', (message) => {
         try {
+          clientRecord.lastActiveTime = Date.now();
           const data = JSON.parse(message.toString());
           this.handleClientMessage(clientRecord, data);
         } catch (e) {
@@ -268,11 +278,24 @@ export class GameServer {
       });
     });
 
+    // Periodic heartbeat check: prune zombie connections that closed without proper TCP FIN
+    setInterval(() => {
+      const now = Date.now();
+      for (const [ws, clientRecord] of this.clients.entries()) {
+        if (now - clientRecord.lastActiveTime > 4000) {
+          this.handleClientDisconnect(clientRecord);
+          try { ws.terminate(); } catch (e) {}
+        }
+      }
+    }, 1000);
+
     console.log('🎮 [GameServer] Authoritative Universal Lobby attached to /ws');
     return wss;
   }
 
   handleClientMessage(client, msg) {
+    if (client) client.lastActiveTime = Date.now();
+
     if (!msg || !msg.type) return;
 
     if (msg.type === 'ping') {
@@ -424,9 +447,9 @@ export class GameServer {
     const player = this.players.get(playerId);
     if (!player) return;
 
-    if (player.heldObjectId) {
-      const obj = this.objects.get(player.heldObjectId);
-      if (obj) {
+    // Unconditionally release any objects held by this player
+    for (const obj of this.objects.values()) {
+      if (obj.heldBy === playerId || (player && player.heldObjectId === obj.id)) {
         obj.isHeld = false;
         obj.heldBy = null;
       }
@@ -436,6 +459,10 @@ export class GameServer {
 
     if (this.players.size === 0) {
       this.nextPlayerNumber = 1;
+      for (const obj of this.objects.values()) {
+        obj.isHeld = false;
+        obj.heldBy = null;
+      }
     }
 
     this.broadcast({
@@ -480,8 +507,11 @@ export class GameServer {
         obj.vz = (0.5 * 30.0 * totalTime * totalTime) / totalTime;
       }
     }
-    if (player && player.heldObjectId === targetObjId) {
-      player.heldObjectId = null;
+    // Unconditionally clear heldObjectId across all player records
+    for (const p of this.players.values()) {
+      if (p.heldObjectId === targetObjId) {
+        p.heldObjectId = null;
+      }
     }
   }
 
@@ -504,10 +534,14 @@ export class GameServer {
         obj.vz = player.vz;
       }
     }
-    if (player && player.heldObjectId === targetObjId) {
-      player.heldObjectId = null;
+    // Unconditionally clear heldObjectId across all player records
+    for (const p of this.players.values()) {
+      if (p.heldObjectId === targetObjId) {
+        p.heldObjectId = null;
+      }
     }
   }
+
 
   calculateHeldObjectPosition(player, obj) {
 

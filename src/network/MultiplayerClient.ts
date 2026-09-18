@@ -90,7 +90,12 @@ export class MultiplayerClient {
   constructor(gameLoop?: GameLoop) {
     this.gameLoop = gameLoop || null;
     this.determineDefaultUrl();
+
+    window.addEventListener("beforeunload", () => {
+      this.disconnect(true);
+    });
   }
+
 
   public setGameLoop(gameLoop: GameLoop): void {
     this.gameLoop = gameLoop;
