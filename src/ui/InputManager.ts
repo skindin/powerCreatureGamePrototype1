@@ -22,6 +22,7 @@ export interface GamepadSlotState {
   lastAimMoveTime: number;
   isCursorVisible?: boolean;
   aimMovedWhileInRange?: boolean;
+  aimOffset?: Vector2D;
 }
 
 export class InputManager {
@@ -35,6 +36,7 @@ export class InputManager {
   public isKeyboardActive = true;
 
   public mousePos: Vector2D = { x: 0, y: 0 };
+  public actualMousePos: Vector2D = { x: 0, y: 0 };
   public lastMouseMoveTime = 0;
   public isCursorVisible = false;
   public isMouseDown = false;
@@ -124,6 +126,8 @@ export class InputManager {
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
     this.arena = arena;
+    this.mousePos = { x: arena.width / 2, y: arena.height / 2 };
+    this.actualMousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.setupListeners();
   }
 
@@ -338,14 +342,22 @@ export class InputManager {
 
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.mousePos.x = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / rect.width)));
-    this.mousePos.y = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / rect.height)));
+    const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / rect.width)));
+    const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / rect.height)));
+    this.actualMousePos.x = mx;
+    this.actualMousePos.y = my;
+    this.mousePos.x = mx;
+    this.mousePos.y = my;
   }
 
   private updateTouchPos(touch: Touch): void {
     const rect = this.canvas.getBoundingClientRect();
-    this.mousePos.x = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / rect.width)));
-    this.mousePos.y = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / rect.height)));
+    const mx = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / rect.width)));
+    const my = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / rect.height)));
+    this.actualMousePos.x = mx;
+    this.actualMousePos.y = my;
+    this.mousePos.x = mx;
+    this.mousePos.y = my;
   }
 
   /**
@@ -440,6 +452,7 @@ export class InputManager {
           sprintArmed: false,
           wasMoving: false,
           lastAimMoveTime: 0,
+          aimOffset: { x: 3.5, y: 0 },
         };
         this.gamepadSlots.set(i, slot);
       } else {
@@ -495,27 +508,37 @@ export class InputManager {
       }
 
       // Right Joystick for absolute arena aim reticle:
-      // Every time the cursor is unhidden (or while hidden), anchor at the character's current position,
-      // making sure to account for the 2D upwards offset from isometric height
+      // Preserves where the cursor is in relation to the character
       const visualPos = getVisualPosition
         ? getVisualPosition(char)
         : { x: char.position.x, y: char.position.y };
 
-      if (!slot.aimOffsetInitialized || slot.isCursorVisible === false) {
-        slot.aimPos.x = visualPos.x;
-        slot.aimPos.y = visualPos.y;
+      if (!slot.aimOffset || (Math.abs(slot.aimOffset.x) < 0.1 && Math.abs(slot.aimOffset.y) < 0.1)) {
+        const dir = char.facingAngle ?? 0;
+        slot.aimOffset = {
+          x: Math.cos(dir) * 3.5,
+          y: Math.sin(dir) * 3.5,
+        };
         slot.aimOffsetInitialized = true;
       }
 
       if (rMag > deadzone) {
         const cursorSpeed = 17.0;
-        slot.aimPos.x += rx * cursorSpeed * dt;
-        slot.aimPos.y += ry * cursorSpeed * dt;
+        slot.aimOffset.x += rx * cursorSpeed * dt;
+        slot.aimOffset.y += ry * cursorSpeed * dt;
         slot.lastAimMoveTime = performance.now();
         slot.aimMovedWhileInRange = true;
       }
-      slot.aimPos.x = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
-      slot.aimPos.y = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
+
+      slot.aimPos.x = visualPos.x + slot.aimOffset.x;
+      slot.aimPos.y = visualPos.y + slot.aimOffset.y;
+
+      const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
+      const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
+      slot.aimPos.x = clampedX;
+      slot.aimPos.y = clampedY;
+      slot.aimOffset.x = clampedX - visualPos.x;
+      slot.aimOffset.y = clampedY - visualPos.y;
 
       // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
       const btn0Current = isButtonPressed(0);
@@ -670,6 +693,10 @@ export class InputManager {
       this.isGamepadAimActive = true;
       this.gamepadAimPos.x = slot0.aimPos.x;
       this.gamepadAimPos.y = slot0.aimPos.y;
+      if (slot0.aimOffset) {
+        this.gamepadAimOffset.x = slot0.aimOffset.x;
+        this.gamepadAimOffset.y = slot0.aimOffset.y;
+      }
     } else {
       this.isGamepadClimbHeld = false;
       this.isGamepadAiming = false;

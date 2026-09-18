@@ -436,6 +436,13 @@ powerCreatureGamePrototype1/
     - **Default 0.5 Units Isometric Wall Height**:
       - Updated the default visual wall height / altitude scale (`visualAltitudeScale`) from `1.0` to `0.5` units across `Renderer.ts`, `main.ts`, and `index.html`.
       - When opening the View Settings panel or mobile menu, the slider starts positioned at `0.5` with the value displaying `0.50`.
+44. **Mouse Grab Cursor Snap & Controller Relative Aim Preservation**:
+    - **Mouse Controlled Grab Snaps Directly to Mouse Cursor**:
+      - When a character is controlled by mouse and grabs an object, the in-game aim reticle is instantly placed at the player's physical mouse cursor position (`inputManager.actualMousePos`), rather than resetting to the character.
+      - While holding an object with mouse, the throw aim reticle and trajectory continuously follow the mouse cursor with zero lag or character offset.
+    - **Controller Holding Object Preserves Relative Position**:
+      - For gamepad players holding an object, the cursor's relative offset to the character (`slot.aimOffset`) is preserved as the character walks and maneuvers around the arena (`slot.aimPos = visualPos + slot.aimOffset`).
+      - When the cursor hides (e.g. after throwing or when stepping out of reach) and reappears (e.g. upon grabbing another object or deflecting right stick), it is placed at the exact same relative position to the character (`visualPos + slot.aimOffset`).
 
 ---
 

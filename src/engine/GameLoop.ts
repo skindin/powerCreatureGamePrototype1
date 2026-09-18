@@ -372,19 +372,19 @@ export class GameLoop {
 
         if (entry.isKeyboard) {
           if (!this.inputManager.isKeyboardActive) continue;
-          let aimPos = this.inputManager.mousePos;
           const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
           entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
 
           if (isHolding) {
             // Holding an object: always show cursor and throw trajectory
             isCursorVisibleNow = true;
+            // "if the character is being controlled by mouse and they grab something, instantly place the game cursor at the mouse cursor."
+            this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+            this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
           } else if (!hasReachable) {
             // Hide cursor once nothing is within range anymore
             isCursorVisibleNow = false;
             entry.aimMovedWhileInRange = false;
-            this.inputManager.mousePos.x = visualPos.x;
-            this.inputManager.mousePos.y = visualPos.y;
           } else {
             // Has reachable items: select target reachable object
             if (mouseMoved) {
@@ -392,7 +392,7 @@ export class GameLoop {
             }
 
             const target = entry.aimMovedWhileInRange
-              ? char.pickupModule!.findTargetObject(char, aimPos.x, aimPos.y, reachable, this.arena.wallHeight)
+              ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachable, this.arena.wallHeight)
               : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
             if (target) {
               targetGrabEntities.set(char, target);
@@ -400,23 +400,23 @@ export class GameLoop {
 
             if (entry.aimMovedWhileInRange) {
               isCursorVisibleNow = true;
+              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
             } else {
               isCursorVisibleNow = false;
-              this.inputManager.mousePos.x = visualPos.x;
-              this.inputManager.mousePos.y = visualPos.y;
             }
           }
 
-          // Every time you unhide the cursor, put it at the position of character
-          // accounting for 2D upwards offset from isometric height
           if (isCursorVisibleNow && !entry.wasCursorVisible) {
-            this.inputManager.mousePos.x = visualPos.x;
-            this.inputManager.mousePos.y = visualPos.y;
-            aimPos = this.inputManager.mousePos;
+            if (isHolding || entry.aimMovedWhileInRange) {
+              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+            }
           }
           entry.wasCursorVisible = isCursorVisibleNow;
           this.inputManager.isCursorVisible = isCursorVisibleNow;
 
+          const aimPos = this.inputManager.mousePos;
           if (isCursorVisibleNow) {
             activeAimCursors.push({
               x: aimPos.x,
@@ -431,6 +431,15 @@ export class GameLoop {
           const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
           if (!slot || !slot.connected) continue;
 
+          // Ensure slot.aimOffset is maintained in relation to the character
+          if (!slot.aimOffset || (Math.abs(slot.aimOffset.x) < 0.1 && Math.abs(slot.aimOffset.y) < 0.1)) {
+            const dir = char.facingAngle ?? 0;
+            slot.aimOffset = {
+              x: Math.cos(dir) * 3.5,
+              y: Math.sin(dir) * 3.5,
+            };
+          }
+
           if (isHolding) {
             // Holding an object: always show cursor and throw trajectory
             isCursorVisibleNow = true;
@@ -438,8 +447,6 @@ export class GameLoop {
             // Hide cursor once nothing is within range anymore
             isCursorVisibleNow = false;
             slot.aimMovedWhileInRange = false;
-            slot.aimPos.x = visualPos.x;
-            slot.aimPos.y = visualPos.y;
           } else {
             // Has reachable items: select target reachable object
             const target = slot.aimMovedWhileInRange
@@ -453,17 +460,13 @@ export class GameLoop {
               isCursorVisibleNow = true;
             } else {
               isCursorVisibleNow = false;
-              slot.aimPos.x = visualPos.x;
-              slot.aimPos.y = visualPos.y;
             }
           }
 
-          // Every time you unhide the cursor, put it at the position of character
-          // accounting for 2D upwards offset from isometric height
-          if (isCursorVisibleNow && !entry.wasCursorVisible) {
-            slot.aimPos.x = visualPos.x;
-            slot.aimPos.y = visualPos.y;
-          }
+          // "if the character is controller controlled and they are holding an object, preserve where the cursor was in relation to the character, and when it reappears, place it the same relative position to the character"
+          slot.aimPos.x = visualPos.x + slot.aimOffset.x;
+          slot.aimPos.y = visualPos.y + slot.aimOffset.y;
+
           entry.wasCursorVisible = isCursorVisibleNow;
           slot.isCursorVisible = isCursorVisibleNow;
 
