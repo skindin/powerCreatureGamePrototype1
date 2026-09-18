@@ -424,6 +424,15 @@ powerCreatureGamePrototype1/
     - **Cursor Unhide Origin (Visual Position Accounting for Isometric Height)**:
       - Every time the cursor is unhidden (upon pickup or upon aiming at reachable items), it starts directly at the character's visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
       - While hidden, the cursor position remains anchored to the character's visual coordinates so aiming deflection always radiates naturally outward from the character.
+43. **Desktop Zoom Prevention & 0.5 Wall Isometric Height Default**:
+    - **Desktop Layout Protection (No Zoom on Desktop)**:
+      - Restricted the full-screen canvas expansion and UI-hiding media query in `src/style.css` strictly to `@media (pointer: coarse) and (orientation: landscape)`.
+      - Desktops and laptops (which have `pointer: fine`) will never match this rule, preserving the full desktop header bar, controls overlay bar, dev sidebar, and framed canvas regardless of window height or display resolution.
+      - Removed `pointerdown` listener from triggering `enterImmersiveFullscreen` in `src/main.ts`; only mobile touch events (`touchstart` on `pointer: coarse`) can trigger immersive fullscreen.
+      - Refined `isMobileOrTouch` in `src/main.ts` to strictly test `(pointer: coarse)`, keeping the inspector sidebar open by default on desktops and laptops.
+    - **Default 0.5 Units Isometric Wall Height**:
+      - Updated the default visual wall height / altitude scale (`visualAltitudeScale`) from `1.0` to `0.5` units across `Renderer.ts`, `main.ts`, and `index.html`.
+      - When opening the View Settings panel or mobile menu, the slider starts positioned at `0.5` with the value displaying `0.50`.
 
 ---
 

@@ -2243,12 +2243,7 @@ input[type="color"] {
   font-weight: 700;
 }
 
-@media (max-height: 850px) and (orientation: landscape),
-       (pointer: coarse) and (orientation: landscape),
-       (display-mode: fullscreen) and (orientation: landscape),
-       (display-mode: standalone) and (orientation: landscape),
-       (max-height: 560px),
-       (max-width: 950px) and (max-height: 700px) {
+@media (pointer: coarse) and (orientation: landscape) {
   /* LITERALLY HIDE ALL UI EXCEPT FOR ONE HAMBURGER BUTTON */
   .top-bar {
     display: none !important;

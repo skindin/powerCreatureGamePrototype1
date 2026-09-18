@@ -25,7 +25,7 @@ export class Renderer {
 
   public viewSettings: ViewSettings = {
     verticalVisuals: "bigger",
-    visualAltitudeScale: 1.0,
+    visualAltitudeScale: 0.5,
   };
 
   constructor(ctx: CanvasRenderingContext2D) {

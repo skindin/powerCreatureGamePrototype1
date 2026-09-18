@@ -65,8 +65,10 @@ function bootstrap(): void {
   fitCanvas();
 
   // Mobile & PWA Fullscreen & Landscape Orientation Lock
-  // On first touch/pointer gesture, enter true immersive fullscreen to hide Android status/notification UI and bottom navigation bar
+  // On first touch gesture on mobile touch devices, enter true immersive fullscreen to hide Android status/notification UI and bottom navigation bar
   const enterImmersiveFullscreen = () => {
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    if (!isMobile) return;
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen({ navigationUI: "hide" } as any).catch(() => {});
     }
@@ -75,7 +77,6 @@ function bootstrap(): void {
     }
   };
   window.addEventListener("touchstart", enterImmersiveFullscreen, { passive: true });
-  window.addEventListener("pointerdown", enterImmersiveFullscreen, { passive: true });
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
@@ -502,7 +503,7 @@ function bootstrap(): void {
 
   // Default to open on desktop/laptop (>= 950px), or restore saved user preference
   let startSidebarOpen = true;
-  const isMobileOrTouch = window.matchMedia("(pointer: coarse), (max-height: 850px) and (orientation: landscape), (max-width: 950px)").matches;
+  const isMobileOrTouch = window.matchMedia("(pointer: coarse)").matches;
   try {
     const saved = localStorage.getItem("pcg_sidebar_open");
     if (isMobileOrTouch) {
@@ -625,13 +626,16 @@ function bootstrap(): void {
   const mobileSlideWallHeight = document.getElementById("mobile-slide-wall-height") as HTMLInputElement | null;
   const mobileValWallHeight = document.getElementById("mobile-val-wall-height");
 
-  let savedVisualWallHeight = 1.0;
+  let savedVisualWallHeight = 0.5;
   try {
     const storedH = localStorage.getItem("pcg_visual_wall_height");
     if (storedH !== null) {
       const parsedH = parseFloat(storedH);
-      if (!isNaN(parsedH) && parsedH >= 0 && parsedH <= 1.0) {
+      // If user had old default 1.0, update to new default 0.5; if custom, respect it
+      if (!isNaN(parsedH) && parsedH >= 0 && parsedH <= 1.0 && parsedH !== 1.0) {
         savedVisualWallHeight = parsedH;
+      } else if (parsedH === 1.0) {
+        savedVisualWallHeight = 0.5;
       }
     }
   } catch {
