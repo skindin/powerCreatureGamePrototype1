@@ -447,9 +447,6 @@ export class GameServer {
 
     if (msg.type === 'player_input') {
       const now = Date.now();
-      if (msg.timestamp && (now - msg.timestamp > 500)) {
-        return; // Discard stale delayed input packet
-      }
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
           const playerId = `${client.clientId}_${inp.localId}`;

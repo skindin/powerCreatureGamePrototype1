@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-AtkgXTDO.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CQvbfnn0.css">
+    <script type="module" crossorigin src="/assets/index-CO5_AQYo.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B5bzbbSP.css">
   </head>
   <body>
     <div id="app-layout">
@@ -571,6 +571,44 @@
                 <button class="controller-status-badge" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 0 PLAYERS</button>
                 <span class="controller-status-badge hidden" id="controller-badge" title="Gamepad Connected">🎮 GAMEPAD</span>
               </div>
+            </div>
+          </div>
+
+          <!-- Full-Coverage Multiplayer Connection Dialogue -->
+          <div id="multiplayer-connection-dialog" class="multiplayer-dialog-overlay hidden">
+            <div class="multiplayer-dialog-card">
+              <div class="dialog-radar-wrapper">
+                <div class="radar-ping-ring ring-1"></div>
+                <div class="radar-ping-ring ring-2"></div>
+                <div class="radar-ping-ring ring-3"></div>
+                <div class="radar-center-icon">🌐</div>
+              </div>
+
+              <div class="dialog-header-text">
+                <h2 id="mp-dialog-title" class="dialog-title">Connecting to Multiplayer Arena</h2>
+                <p id="mp-dialog-subtitle" class="dialog-subtitle">Establishing connection to authoritative 60Hz physics server...</p>
+              </div>
+
+              <div class="dialog-server-box">
+                <div class="dialog-status-row">
+                  <span class="status-dot connecting" id="mp-dialog-dot"></span>
+                  <span class="dialog-status-text" id="mp-dialog-status">Connecting...</span>
+                </div>
+                <div class="dialog-url-row">
+                  <input type="text" id="mp-dialog-url-input" class="dialog-url-input" spellcheck="false" placeholder="ws://..." />
+                  <button type="button" id="mp-dialog-connect-btn" class="dialog-btn-connect">Connect</button>
+                </div>
+              </div>
+
+              <div class="dialog-actions-row">
+                <button type="button" id="mp-dialog-switch-sp-btn" class="dialog-btn-primary">
+                  <span>🎮 Switch Back to Game View (Single Player)</span>
+                </button>
+              </div>
+
+              <p class="dialog-footer-hint">
+                💡 Single Player runs entirely offline in your browser with full sandbox physics and editing tools.
+              </p>
             </div>
           </div>
 

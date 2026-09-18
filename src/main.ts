@@ -89,8 +89,8 @@ function bootstrap(): void {
     strength: 1.0,
   });
 
-  // 3. Initialize Initial Freebody Objects in unit coordinates
-  const objects: GameObject[] = [
+  // 3. Dedicated Initial Freebody Objects in unit coordinates for Single Player
+  const createSinglePlayerObjects = (): GameObject[] => [
     new GameObject({
       id: "stone-1",
       name: "Light Blue Box",
@@ -136,6 +136,9 @@ function bootstrap(): void {
       }),
     }),
   ];
+
+  const defaultSinglePlayerWallMap = arena.exportWallMapBinaryString();
+  const objects: GameObject[] = createSinglePlayerObjects();
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
   arena.syncEntitiesWithWalls([character, ...objects]);
@@ -323,6 +326,100 @@ function bootstrap(): void {
     }
   };
 
+  // 7b. Full-Coverage Multiplayer Connection Dialogue & Dedicated Scene Setups
+  const mpConnectionDialog = document.getElementById("multiplayer-connection-dialog");
+  const mpDialogSubtitle = document.getElementById("mp-dialog-subtitle");
+  const mpDialogDot = document.getElementById("mp-dialog-dot");
+  const mpDialogStatus = document.getElementById("mp-dialog-status");
+  const mpDialogUrlInput = document.getElementById("mp-dialog-url-input") as HTMLInputElement | null;
+  const mpDialogConnectBtn = document.getElementById("mp-dialog-connect-btn") as HTMLButtonElement | null;
+  const mpDialogSwitchSpBtn = document.getElementById("mp-dialog-switch-sp-btn") as HTMLButtonElement | null;
+
+  const showConnectionDialog = (statusText?: string, subtitleText?: string) => {
+    if (!mpConnectionDialog) return;
+    mpConnectionDialog.classList.remove("hidden");
+    if (mpDialogUrlInput && (!mpDialogUrlInput.value || mpDialogUrlInput.value === "")) {
+      mpDialogUrlInput.value = multiplayerClient.url || multiplayerClient.determineDefaultUrl();
+    }
+    if (statusText && mpDialogStatus) {
+      mpDialogStatus.textContent = statusText;
+    }
+    if (subtitleText && mpDialogSubtitle) {
+      mpDialogSubtitle.textContent = subtitleText;
+    }
+  };
+
+  const hideConnectionDialog = () => {
+    if (mpConnectionDialog) {
+      mpConnectionDialog.classList.add("hidden");
+    }
+  };
+
+  mpDialogSwitchSpBtn?.addEventListener("click", () => {
+    setMode(false);
+  });
+
+  mpDialogConnectBtn?.addEventListener("click", () => {
+    if (mpDialogUrlInput && mpDialogUrlInput.value.trim()) {
+      multiplayerClient.connect(mpDialogUrlInput.value.trim());
+    } else {
+      multiplayerClient.connect();
+    }
+  });
+
+  // Dedicated Setup for Single Player Scene
+  const setupSinglePlayerScene = () => {
+    // 1. Release any held objects before scene swap
+    for (const char of gameLoop.allCharacters) {
+      if (char.heldObject) {
+        char.heldObject.isHeld = false;
+        char.heldObject.heldBy = null;
+        char.heldObject = null;
+      }
+    }
+
+    // 2. Restore clean singleplayer wall preset
+    arena.importWallMapBinaryString(defaultSinglePlayerWallMap, [...gameLoop.allCharacters]);
+
+    // 3. Clear and restore dedicated singleplayer objects
+    objects.length = 0;
+    const freshSpObjs = createSinglePlayerObjects();
+    for (const obj of freshSpObjs) {
+      objects.push(obj);
+    }
+    arena.syncEntitiesWithWalls([...gameLoop.allCharacters, ...objects]);
+
+    // 4. Remove all remote multiplayer characters from arena
+    multiplayerClient.cleanupRemoteCharacters();
+
+    // 5. Update dev selector
+    devPanel.updateSelectorOptions();
+
+    // 6. Hide connection dialogue
+    hideConnectionDialog();
+  };
+
+  // Dedicated Setup for Multiplayer Scene
+  const setupMultiplayerScene = () => {
+    // 1. Clear singleplayer objects so they don't pollute multiplayer
+    for (const char of gameLoop.allCharacters) {
+      if (char.heldObject) {
+        char.heldObject.isHeld = false;
+        char.heldObject.heldBy = null;
+        char.heldObject = null;
+      }
+    }
+    objects.length = 0;
+    devPanel.updateSelectorOptions();
+
+    // 2. Show connection dialogue until connected and initialized
+    showConnectionDialog("Connecting...", "Establishing connection to authoritative 60Hz physics server...");
+
+    // 3. Connect to authoritative multiplayer lobby
+    const customUrl = mpDialogUrlInput && mpDialogUrlInput.value.trim() ? mpDialogUrlInput.value.trim() : undefined;
+    multiplayerClient.connect(customUrl);
+  };
+
   multiplayerClient.onStatsChange = (stats) => {
     if (lobbyStatusDisplay) {
       if (stats.status === "connected") {
@@ -338,6 +435,68 @@ function bootstrap(): void {
     }
   };
 
+  multiplayerClient.onStatusChange = (status, url) => {
+    if (mpDialogDot) {
+      mpDialogDot.className = `status-dot ${status}`;
+    }
+    if (mpDialogUrlInput && url && !mpDialogUrlInput.value) {
+      mpDialogUrlInput.value = url;
+    }
+
+    if (isMultiplayerMode) {
+      if (status === "connecting") {
+        showConnectionDialog("Connecting...", `Connecting to ${url}...`);
+      } else if (status === "error") {
+        showConnectionDialog("Connection Error", `Unable to reach server at ${url}. Check server status or try again.`);
+      } else if (status === "disconnected") {
+        showConnectionDialog("Disconnected", `Multiplayer connection lost. Reconnecting in 3s, or switch back to game view...`);
+      } else if (status === "connected") {
+        if (mpDialogStatus) mpDialogStatus.textContent = "Connected (Syncing State...)";
+        // Remains in connection dialogue until onInitState arrives with world state
+      }
+    } else {
+      hideConnectionDialog();
+    }
+  };
+
+  multiplayerClient.onInitState = (msg: any) => {
+    if (!isMultiplayerMode) return;
+
+    // Apply authoritative server wall layout
+    if (msg.wallMap) {
+      const allEnts = [...gameLoop.allCharacters, ...gameLoop.allObjects];
+      gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
+    }
+
+    // Populate authoritative server objects
+    objects.length = 0;
+    if (Array.isArray(msg.objects)) {
+      for (const so of msg.objects) {
+        const obj = new GameObject({
+          id: so.id,
+          name: so.name,
+          position: { x: so.x, y: so.y, z: so.z },
+          velocity: { x: so.vx, y: so.vy },
+          verticalVelocity: so.vz,
+          mass: so.mass,
+          colliderRadius: so.radius,
+          color: so.color,
+          bounceMod: (so as any).bounceMod ?? 0.3,
+          visualShape: so.shape,
+        });
+        objects.push(obj);
+      }
+      arena.syncEntitiesWithWalls([...gameLoop.allCharacters, ...objects]);
+    }
+
+    // Reconcile players
+    multiplayerClient.reconcileWorldState(msg.players || [], msg.objects || []);
+    devPanel.updateSelectorOptions();
+
+    // Now reveal multiplayer game view!
+    hideConnectionDialog();
+  };
+
   const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
   const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
 
@@ -349,7 +508,7 @@ function bootstrap(): void {
       mobileModeSingleBtn?.classList.remove("active");
       mobileModeMultiBtn?.classList.add("active");
       multiplayerStatusPill?.classList.remove("hidden");
-      multiplayerClient.connect();
+      setupMultiplayerScene();
     } else {
       btnSinglePlayer?.classList.add("active");
       btnMultiplayer?.classList.remove("active");
@@ -357,6 +516,7 @@ function bootstrap(): void {
       mobileModeMultiBtn?.classList.remove("active");
       multiplayerStatusPill?.classList.add("hidden");
       multiplayerClient.disconnect();
+      setupSinglePlayerScene();
     }
   };
 

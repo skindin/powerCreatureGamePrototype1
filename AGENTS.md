@@ -532,6 +532,19 @@ powerCreatureGamePrototype1/
       - **Locked Object Lockbox & Guide Line**: While holding lock, dedicated amber corner lock brackets `[ ]` and a `[P# LOCKED]` badge appear directly on the targeted closest object, with a dashed amber guide line connecting from your visible cursor to the locked object.
       - As the player moves their cursor, they clearly see their cursor roaming freely while the lockbox snaps to whichever object is closest to the cursor.
       - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
+47. **Multiplayer Cross-Device Visibility, Dedicated Scene Setups & Connection Dialogue**:
+    - **Cross-Device Clock Skew Elimination (Mutual Player Visibility)**:
+      - Removed raw cross-machine wall-clock comparisons (`now - msg.timestamp > 500/600`) in `GameServer.js` and `MultiplayerClient.ts` that caused clients on different machines (or phones) with minor clock skews to discard all packets.
+      - Out-of-order rejection is strictly monotonic via `msg.serverTick < this.lastServerTick` and `msg.tick < player.lastProcessedTick`.
+      - Dead-reckoning forward latency compensation relies on local round-trip RTT ping (`this.pingMs / 2`) rather than cross-machine timestamp math.
+    - **Dedicated Single Player vs Multiplayer Scene Separation**:
+      - `setupSinglePlayerScene()`: Restores clean offline arena wall layout, creates and populates dedicated singleplayer objects (`stone-1`, `boulder-1`, `bouncy-1`, `rolling-1`), cleans up remote characters, and updates DevPanel.
+      - `setupMultiplayerScene()`: Empties singleplayer objects from the arena, connects to the authoritative server lobby, applies server wall layout and objects from `init_state`, and reconciles remote players dynamically.
+    - **Full-Coverage Multiplayer Connection Dialogue**:
+      - When switching to or playing in Multiplayer mode, if the client is not connected to the server (`status !== "connected"`), the game view is completely obscured by `#multiplayer-connection-dialog`.
+      - Features an animated radar pulse, status indicator, target URL input, and a prominent primary action button: `🎮 Switch Back to Game View (Single Player)`.
+      - Seamlessly hides as soon as the client connects and receives the authoritative world state, revealing the live multiplayer arena.
+      - Re-appears immediately if the connection drops or is lost, guaranteeing the user is never left looking at an unresponsive arena without an instant escape back to single player.
 
 ---
 

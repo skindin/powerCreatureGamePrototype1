@@ -76,7 +76,6 @@ export class MultiplayerClient {
   private gameLoop: GameLoop | null = null;
   private clientTick: number = 0;
   private lastServerTick: number = 0;
-  private lastServerTimestamp: number = 0;
   private pingInterval: any = null;
   private reconnectTimer: any = null;
   private isIntentionalDisconnect: boolean = false;
@@ -91,6 +90,8 @@ export class MultiplayerClient {
   private pendingDropEvents: Map<string, { objectId: string; startX?: number; startY?: number; startZ?: number; vx: number; vy: number; vz: number }> = new Map();
 
   public onStatsChange?: (stats: MultiplayerStats) => void;
+  public onStatusChange?: (status: MultiplayerStatus, url: string) => void;
+  public onInitState?: (msg: any) => void;
 
   constructor(gameLoop?: GameLoop) {
     this.gameLoop = gameLoop || null;
@@ -115,6 +116,7 @@ export class MultiplayerClient {
 
   public connect(customUrl?: string): void {
     this.isIntentionalDisconnect = false;
+    this.lastServerTick = 0;
     if (customUrl) {
       this.url = customUrl;
     } else if (!this.url) {
@@ -468,11 +470,16 @@ export class MultiplayerClient {
 
       if (msg.type === "init_state") {
         this.clientId = msg.clientId;
-        if (msg.wallMap && this.gameLoop) {
-          const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
-          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
+        this.lastServerTick = msg.serverTick || 0;
+        if (this.onInitState) {
+          this.onInitState(msg);
+        } else {
+          if (msg.wallMap && this.gameLoop) {
+            const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
+            this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
+          }
+          this.reconcileWorldState(msg.players || [], msg.objects || []);
         }
-        this.reconcileWorldState(msg.players || [], msg.objects || []);
         this.notifyStats();
         return;
       }
@@ -486,21 +493,11 @@ export class MultiplayerClient {
       }
 
       if (msg.type === "world_state") {
-        const now = Date.now();
         if (typeof msg.serverTick === "number") {
           if (this.lastServerTick !== 0 && msg.serverTick < this.lastServerTick) {
             return; // Discard out-of-order older tick
           }
           this.lastServerTick = msg.serverTick;
-        }
-        if (typeof msg.timestamp === "number") {
-          if (this.lastServerTimestamp !== 0 && msg.timestamp < this.lastServerTimestamp) {
-            return; // Discard out-of-order older timestamp
-          }
-          if (now - msg.timestamp > 600) {
-            return; // Discard snapshot delayed by > 600ms
-          }
-          this.lastServerTimestamp = msg.timestamp;
         }
         this.reconcileWorldState(msg.players || [], msg.objects || [], msg.timestamp);
         return;
@@ -524,17 +521,13 @@ export class MultiplayerClient {
     }
   }
 
-  private reconcileWorldState(serverPlayers: RemotePlayerSnapshot[], serverObjects: ObjectSnapshot[], snapshotTimestamp?: number): void {
+  public reconcileWorldState(serverPlayers: RemotePlayerSnapshot[], serverObjects: ObjectSnapshot[], _snapshotTimestamp?: number): void {
     this.connectedPlayersCount = serverPlayers.length;
     this.notifyStats();
 
     if (!this.gameLoop) return;
 
-    const now = Date.now();
-    const oneWayLatencyMs = snapshotTimestamp && snapshotTimestamp > 0
-      ? Math.max(0, Math.min(200, (now - snapshotTimestamp)))
-      : (this.pingMs > 0 ? this.pingMs / 2 : 25);
-    const latencySec = oneWayLatencyMs / 1000;
+    const latencySec = (this.pingMs > 0 ? this.pingMs / 2 : 25) / 1000;
 
     // 1. Reconcile remote characters (characters controlled by other browser tabs/devices)
     const activeRemoteIds = new Set<string>();
@@ -840,7 +833,7 @@ export class MultiplayerClient {
     }
   }
 
-  private cleanupRemoteCharacters(): void {
+  public cleanupRemoteCharacters(): void {
     if (this.gameLoop) {
       for (const char of this.remoteCharacters.values()) {
         this.gameLoop.removeRemoteCharacter(char);
@@ -886,6 +879,9 @@ export class MultiplayerClient {
   }
 
   private notifyStats(): void {
+    if (this.onStatusChange) {
+      this.onStatusChange(this.status, this.url);
+    }
     if (this.onStatsChange) {
       this.onStatsChange({
         status: this.status,
