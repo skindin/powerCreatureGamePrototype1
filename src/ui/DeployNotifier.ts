@@ -95,13 +95,25 @@ export class DeployNotifier {
       }
 
       // 2. Check if a build is IN THE PROCESS OF DEPLOYING (Building on Railway)
-      if (build && (build.isBuilding || build.state === "pending")) {
+      if (build && (build.isBuilding || build.state === "pending") && !build.isSuccess && !build.isFailed) {
         const buildingCommit = build.shortSha || build.sha?.substring(0, 7) || "latest";
         if (this.notifiedBuildingCommit !== buildingCommit) {
           this.notifiedBuildingCommit = buildingCommit;
           this.showBuildingNotification(buildingCommit, build.description, build.targetUrl);
         }
         return;
+      }
+
+      // If build is no longer building, clean up any lingering building badges or toasts
+      if (!build || (!build.isBuilding && build.state !== "pending") || build.isSuccess) {
+        const buildingBadge = document.getElementById("header-deploy-badge");
+        if (buildingBadge && buildingBadge.classList.contains("building")) {
+          buildingBadge.remove();
+        }
+        const buildingToast = document.getElementById("deploy-toast-notification");
+        if (buildingToast && buildingToast.classList.contains("building")) {
+          buildingToast.remove();
+        }
       }
 
       // 3. Check if a build has COMPLETED & is LIVE on the server

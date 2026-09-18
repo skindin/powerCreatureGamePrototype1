@@ -81,7 +81,8 @@ async function getLiveBuildStatus() {
       headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}`;
     }
 
-    const res = await fetch('https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/branch1/status', {
+    const branch = process.env.RAILWAY_GIT_BRANCH || 'RLAttempt1';
+    const res = await fetch(`https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/${branch}/status`, {
       headers,
       signal: AbortSignal.timeout(4000),
     });
@@ -97,9 +98,8 @@ async function getLiveBuildStatus() {
     const state = data.state || 'unknown';
     const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
     const targetUrl = primary?.target_url || '';
-    const currentSha = (process.env.RAILWAY_GIT_COMMIT_SHA || '').substring(0, 7);
 
-    const isBuilding = state === 'pending' || (Boolean(sha) && Boolean(currentSha) && !sha.startsWith(currentSha) && state !== 'failure' && state !== 'error');
+    const isBuilding = state === 'pending';
     const isFailed = state === 'failure' || state === 'error';
     const isSuccess = state === 'success';
 
