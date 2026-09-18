@@ -1905,15 +1905,17 @@ export class Renderer {
       const targetScreenX = isLocked && targetObj ? targetObj.position.x * ppu : aimTarget.x * ppu;
       const targetScreenY = isLocked && targetObj ? (targetObj.position.y - targetObj.position.z * scale) * ppu : aimTarget.y * ppu;
 
-      const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
+      const distToLocked = isLocked && targetObj
+        ? Math.hypot(targetObj.position.x - traj.landPoint.x, targetObj.position.y - traj.landPoint.y)
+        : Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
 
-      // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
-      if (distToCursor > 0.25 && !isLocked) {
+      // If locked target or cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to locked object/cursor
+      if (distToLocked > 0.25) {
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(finalHitX, finalGroundY);
         ctx.lineTo(targetScreenX, targetScreenY);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.strokeStyle = isLocked ? "rgba(245, 158, 11, 0.55)" : "rgba(255, 255, 255, 0.45)";
         ctx.lineWidth = 1.4;
         ctx.setLineDash([3, 4]);
         ctx.stroke();

@@ -215,8 +215,9 @@ export class ThrowModule {
     targetObject?: GameObject | null;
     isAutoLocked?: boolean;
   } | null {
-    // Detect if cursor overlaps an object to hit the top of its layer
-    const lockTolerance = autoLock ? 0.65 : 0.35;
+    // If autoLock is true (holding Right Click / LT), lock onto the closest object to the cursor, NO MATTER HOW FAR!
+    // If autoLock is false, only detect if the cursor directly overlaps/touches an object (tolerance = 0.35)
+    const lockTolerance = autoLock ? Infinity : 0.35;
     const hoveredEntity = this.findHoveredEntity(
       targetX,
       targetY,

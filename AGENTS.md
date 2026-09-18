@@ -467,8 +467,9 @@ powerCreatureGamePrototype1/
         - **Layer 2+ (Wall Top / Elevated Platform)**: `targetSurfaceHeight = arena.wallHeight` (or `standingWall.wallHeight`, elevating parabolic arc to land on the wall platform at $z = 1.0$).
       - Allows players complete granular freedom to place throws anywhere around or on the object at that layer's elevation.
     - **Hold Auto-Lock (Holding RMB on Mouse or LT / Button 6 on Gamepad)**:
-      - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock. Supported with sensitive trigger threshold ($0.15$) and non-standard axis fallbacks.
-      - If the cursor overlaps or is near an object within expanded lock tolerance ($R + 0.65$), the trajectory snaps $(targetX, targetY)$ directly to the object's center coordinates (`hoveredEntity.position.x, hoveredEntity.position.y`) and targets the object's layer top.
+      - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock.
+      - **Unclamped Distance (Closest Object Regardless of Range)**: Auto-lock finds the strictly closest entity to the cursor across the entire arena (`lockTolerance = Infinity`), no matter how far away it is.
+      - Snaps the trajectory $(effectiveTargetX, effectiveTargetY)$ directly to that closest object's center coordinates and targets the top of its layer.
       - **Visual Lock & Snapping Feedback**: The player's dotted sightline and aim reticle snap directly onto the locked object's visual position, the reticle turns amber gold (`#f59e0b`), draws 4 outer corner lock brackets `[ ]`, thickens crosshairs, and displays `${label} [LOCKED]` text.
       - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
 
