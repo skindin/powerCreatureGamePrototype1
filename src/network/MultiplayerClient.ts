@@ -385,6 +385,11 @@ export class MultiplayerClient {
             lChar.position.x += (sp.x - lChar.position.x) * 0.4;
             lChar.position.y += (sp.y - lChar.position.y) * 0.4;
           }
+          // Vertical drift check
+          const zDrift = Math.abs(sp.z - lChar.position.z);
+          if (zDrift > 0.6) {
+            lChar.position.z += (sp.z - lChar.position.z) * 0.4;
+          }
         }
       } else {
         // Remote player: ensure remote character exists and update with interpolation
@@ -394,10 +399,14 @@ export class MultiplayerClient {
         const lerpFactor = 0.5;
         rChar.position.x += (sp.x - rChar.position.x) * lerpFactor;
         rChar.position.y += (sp.y - rChar.position.y) * lerpFactor;
-        rChar.position.z += (sp.z - rChar.position.z) * lerpFactor;
+        rChar.verticalVelocity = sp.vz;
+        if (Math.abs(sp.z - rChar.position.z) > 0.05) {
+          rChar.position.z += (sp.z - rChar.position.z) * 0.6;
+        } else {
+          rChar.position.z = sp.z;
+        }
         rChar.velocity.x = sp.vx;
         rChar.velocity.y = sp.vy;
-        rChar.verticalVelocity = sp.vz;
         rChar.facingAngle = sp.facingAngle;
         rChar.setSprinting(sp.isSprinting);
         rChar.isActivelyWalking = sp.isActivelyWalking;

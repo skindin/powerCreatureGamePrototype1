@@ -138,8 +138,9 @@ async function testUniversalLobby() {
   console.log(`✅ Dynamic object on wall correctly elevated to wall top: z=${stone1.z}`);
 
   // 6. Simulate streaming inputs from both pages for 30 ticks (0.5 seconds)
+  // Client A triggers a jump on tick 1 (isClimbHeld = true on open ground)
   for (let tick = 1; tick <= 30; tick++) {
-    // Client A moves right
+    // Client A moves right and jumps on initial ticks
     wsA.send(JSON.stringify({
       type: 'player_input',
       tick,
@@ -149,7 +150,7 @@ async function testUniversalLobby() {
         isGrabHeld: false,
         isThrowHeld: false,
         mousePos: { x: 10.0, y: 7.0 },
-        isClimbHeld: false,
+        isClimbHeld: tick <= 3, // Holding jump for first 3 ticks
         isSprinting: true,
       }],
     }));
@@ -193,6 +194,14 @@ async function testUniversalLobby() {
   if (latestWorldStateA.players.length !== 3) {
     throw new Error(`Expected 3 players in world snapshot, got ${latestWorldStateA.players.length}`);
   }
+
+  // Verify Player 1 was airborne during the jump
+  const jumpSnapshots = messagesB.filter((m) => m.type === 'world_state' && m.players.some((p: any) => p.playerNumber === 1 && p.z > 0.05));
+  if (jumpSnapshots.length === 0) {
+    throw new Error("Client B never received any snapshot with Player 1 jumping (z > 0.05)!");
+  }
+  const maxJumpZ = Math.max(...jumpSnapshots.map((s) => s.players.find((p: any) => p.playerNumber === 1).z));
+  console.log(`✅ Player 1 jump successfully synchronized to Client B! Peak jump z reached: ${maxJumpZ}`);
 
   // 7. Test unregistering one player from Client B
   wsB.send(JSON.stringify({

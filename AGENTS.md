@@ -191,6 +191,12 @@ powerCreatureGamePrototype1/
 - **Authoritative Player Joining & Color Sequencing**:
   - The server authoritatively assigns player numbers and theme colors upon connection: Player 1 is always Yellow / Amber Gold (`#f59e0b`), Player 2 is Cyan (`#06b6d4`, matching singleplayer Player 2), Player 3 is Emerald (`#10b981`), etc.
   - When all players disconnect from the lobby, the player counter resets so the next player to connect starts as Player 1 (Yellow) again.
+- **Jumping & Vertical Velocity Synchronization**:
+  - Server simulation models full vertical jumping physics (`takeoffSpeed = 9.67 u/s`, `gravity = 30.0 u/s²`), triggered when holding climb/jump input (`Space` / Gamepad `A`) on open ground or wall tops.
+  - Remote characters in `GameLoop.ts` step vertical position and surface physics at 60Hz between network snapshots, ensuring airborne jump arcs render fluidly without clipping or desync across clients.
+- **Zero-Setup Universal Server Connectivity**:
+  - `MultiplayerClient.determineDefaultUrl()` dynamically detects `window.location.protocol` and `window.location.host` to construct `${protocol}//${host}/ws`.
+  - Works natively with 0 configuration in Vite local dev (`ws://localhost:5173/ws`), desktop app, localtunnel (`wss://pcg-arena-teal.loca.lt/ws`), and production deployment on Railway (`wss://<app>.up.railway.app/ws`), where `server.js` automatically binds `GameServer` to the HTTP upgrade pipeline on `/ws`.
 
 ---
 

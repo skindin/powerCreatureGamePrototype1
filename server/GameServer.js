@@ -583,11 +583,25 @@ export class GameServer {
       }
       player.supportingSurfaceHeight = pSurfaceHeight;
 
-      // Wall climbing
-      if (input.isClimbHeld && player.z < this.wallHeight) {
-        const nearWall = this.getSupportingWall(player.x, player.y, player.colliderRadius + 0.15);
-        if (nearWall) {
-          player.isClimbing = true;
+      // Wall climbing & Jumping (Space / Controller A)
+      if (input.isClimbHeld) {
+        if (player.z < this.wallHeight) {
+          const nearWall = this.getSupportingWall(player.x, player.y, player.colliderRadius + 0.15);
+          if (nearWall) {
+            player.isClimbing = true;
+          }
+        }
+        if (!player.isClimbing) {
+          const isGrounded = (Math.abs(player.z - pSurfaceHeight) <= 0.08 && Math.abs(player.vz) <= 0.8);
+          if (isGrounded) {
+            const heldObj = player.heldObjectId ? this.objects.get(player.heldObjectId) : null;
+            const carriedMass = (heldObj && heldObj.mass) ? heldObj.mass : 0;
+            const totalMass = Math.max(0.2, (player.mass || 1.2) + carriedMass);
+            const takeoffSpeed = Math.min(9.67, 18.5 / totalMass);
+            player.vz = takeoffSpeed;
+            player.z = Math.max(player.z, pSurfaceHeight + 0.02);
+            player.standingWall = null;
+          }
         }
       }
 
@@ -600,7 +614,7 @@ export class GameServer {
           player.supportingSurfaceHeight = this.wallHeight;
         }
       } else if (player.z > pSurfaceHeight || player.vz !== 0) {
-        player.vz -= 18.0 * dt;
+        player.vz -= 30.0 * dt;
         player.z += player.vz * dt;
         if (player.z <= pSurfaceHeight) {
           player.z = pSurfaceHeight;
@@ -623,7 +637,7 @@ export class GameServer {
           const dir = player.facingAngle;
           obj.vx = Math.cos(dir) * throwSpeed;
           obj.vy = Math.sin(dir) * throwSpeed;
-          obj.vz = 4.5; // Ballistic arc
+          obj.vz = 6.0; // Ballistic arc
         }
         player.heldObjectId = null;
       } else if (input.isGrabHeld && !player.heldObjectId) {
@@ -683,7 +697,7 @@ export class GameServer {
 
       // Vertical gravity & bouncing against surfaceHeight
       if (obj.z > surfaceHeight || obj.vz !== 0) {
-        obj.vz -= 18.0 * dt;
+        obj.vz -= 30.0 * dt;
         obj.z += obj.vz * dt;
         if (obj.z <= surfaceHeight) {
           obj.z = surfaceHeight;

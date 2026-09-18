@@ -636,6 +636,13 @@ export class GameLoop {
       }
     }
 
+    // 3c. Update Remote Players: integrate vertical position, jumping, & surface physics at 60Hz
+    for (const rChar of this.remoteCharacters) {
+      if (input.draggedEntity !== rChar) {
+        rChar.updatePosition(dt, this.arena);
+      }
+    }
+
     // Record pre-tick positions for continuous swept TOI rollback
     const prevPositions = new Map<GameObject, Vector2D>();
     const allEntities = [...this.allCharacters, ...this.objects];
