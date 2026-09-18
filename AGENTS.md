@@ -410,6 +410,15 @@ powerCreatureGamePrototype1/
     - **Configurable `airFriction`**:
       - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
       - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
+42. **Context-Aware Cursor Visibility (Hide Cursors When Not Needed)**:
+    - **Throw Aiming**: If a player character is holding an object (`char.heldObject !== null`), the player is aiming to throw it; the aim reticle, colored dotted sightline, and 3D parabolic trajectory arc are always shown.
+    - **Empty-Handed Dynamic Cursor Hiding**: When empty-handed (`!char.heldObject`), cursors and sightlines are completely hidden by default to eliminate visual screen clutter.
+    - **Item Selection Proximity & Activity Gating**: The cursor only appears when:
+      1. There is an item in reach of the character (`pickupModule.isObjectInReach`).
+      2. The player has moved their cursor recently (within 3.0 seconds, via `InputManager.lastMouseMoveTime` for mouse/touch or `slot.lastAimMoveTime` for gamepad right-stick deflection).
+      3. The cursor is within selection proximity (`dist <= 1.5 units`) of that reachable object (`PickupModule.findTargetObject(..., maxSelectDistance = 1.5)`).
+    - When all conditions are met, the cursor, sightline, and targeted solid grab ring (`P1 GRAB`) appear. If the player moves the cursor away, throws the object, or stops moving it for > 3.0 seconds, the cursor cleanly hides.
+    - `PickupModule.pickupAndSwap` gracefully falls back to the nearest reachable object if grab is pressed without actively aiming at a specific item.
 
 ---
 

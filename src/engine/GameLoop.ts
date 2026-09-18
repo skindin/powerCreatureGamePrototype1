@@ -347,60 +347,102 @@ export class GameLoop {
       this.accumulator -= this.fixedDt;
     }
 
-    // Determine target grab entities for each active character (for hover highlight)
+    // Determine target grab entities and active aim cursors for all players
+    // Hide cursors when not needed: only show cursor if there's an item nearby and
+    // the player has moved their cursor to select a specific one, or if they are holding an object to throw.
     const targetGrabEntities = new Map<Character, GameObject | null>();
+    const activeAimCursors: ActiveAimCursor[] = [];
+    const now = performance.now();
+    const cursorRecentThresholdMs = 3000;
+    const maxSelectDist = 1.5;
+
     if (!this.devPanel.isEditMode) {
       for (const entry of this.players.values()) {
         const char = entry.character;
-        if (char.heldObject || !char.pickupModule) continue;
+        const isHolding = char.heldObject !== null;
 
-        const aimPos = entry.isKeyboard
-          ? this.inputManager.mousePos
-          : (this.inputManager.gamepadSlots.get(entry.slotIndex ?? 0)?.aimPos ?? { x: char.position.x, y: char.position.y });
+        if (entry.isKeyboard) {
+          if (!this.inputManager.isKeyboardActive) continue;
+          const aimPos = this.inputManager.mousePos;
 
-        const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-        const target = char.pickupModule.findTargetObject(
-          char,
-          aimPos.x,
-          aimPos.y,
-          others,
-          this.arena.wallHeight
-        );
-        if (target) {
-          targetGrabEntities.set(char, target);
+          if (isHolding) {
+            // Holding an object: always show cursor and throw trajectory
+            activeAimCursors.push({
+              x: aimPos.x,
+              y: aimPos.y,
+              color: char.playerColor,
+              playerNumber: char.playerNumber,
+              character: char,
+              isGamepad: false,
+            });
+          } else if (char.pickupModule && char.pickupModule.enabled) {
+            // Empty-handed: only show cursor if player moved cursor recently and selected a nearby item
+            const mouseMovedRecently = (now - this.inputManager.lastMouseMoveTime) < cursorRecentThresholdMs;
+            if (mouseMovedRecently) {
+              const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+              const target = char.pickupModule.findTargetObject(
+                char,
+                aimPos.x,
+                aimPos.y,
+                others,
+                this.arena.wallHeight,
+                maxSelectDist
+              );
+              if (target) {
+                targetGrabEntities.set(char, target);
+                activeAimCursors.push({
+                  x: aimPos.x,
+                  y: aimPos.y,
+                  color: char.playerColor,
+                  playerNumber: char.playerNumber,
+                  character: char,
+                  isGamepad: false,
+                });
+              }
+            }
+          }
+        } else if (entry.slotIndex !== undefined) {
+          const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+          if (!slot || !slot.connected) continue;
+          const aimPos = slot.aimPos;
+
+          if (isHolding) {
+            // Holding an object: always show cursor and throw trajectory
+            activeAimCursors.push({
+              x: aimPos.x,
+              y: aimPos.y,
+              color: char.playerColor,
+              playerNumber: char.playerNumber,
+              character: char,
+              isGamepad: true,
+            });
+          } else if (char.pickupModule && char.pickupModule.enabled) {
+            // Empty-handed: only show cursor if player moved aim stick recently and selected a nearby item
+            const stickMovedRecently = (now - (slot.lastAimMoveTime ?? 0)) < cursorRecentThresholdMs;
+            if (stickMovedRecently) {
+              const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+              const target = char.pickupModule.findTargetObject(
+                char,
+                aimPos.x,
+                aimPos.y,
+                others,
+                this.arena.wallHeight,
+                maxSelectDist
+              );
+              if (target) {
+                targetGrabEntities.set(char, target);
+                activeAimCursors.push({
+                  x: aimPos.x,
+                  y: aimPos.y,
+                  color: char.playerColor,
+                  playerNumber: char.playerNumber,
+                  character: char,
+                  isGamepad: true,
+                });
+              }
+            }
+          }
         }
-      }
-    }
-
-    // Build active aim cursors for all players
-    const activeAimCursors: ActiveAimCursor[] = [];
-
-    // Keyboard player aim cursor
-    const kEntry = this.players.get("keyboard");
-    if (kEntry && this.inputManager.isKeyboardActive) {
-      activeAimCursors.push({
-        x: this.inputManager.mousePos.x,
-        y: this.inputManager.mousePos.y,
-        color: kEntry.character.playerColor,
-        playerNumber: kEntry.character.playerNumber,
-        character: kEntry.character,
-        isGamepad: false,
-      });
-    }
-
-    // Gamepad players aim cursors
-    for (const entry of this.players.values()) {
-      if (entry.isKeyboard || entry.slotIndex === undefined) continue;
-      const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
-      if (slot && slot.connected) {
-        activeAimCursors.push({
-          x: slot.aimPos.x,
-          y: slot.aimPos.y,
-          color: entry.character.playerColor,
-          playerNumber: entry.character.playerNumber,
-          character: entry.character,
-          isGamepad: true,
-        });
       }
     }
 
@@ -465,7 +507,8 @@ export class GameLoop {
           input.mousePos.x,
           input.mousePos.y,
           otherEntities,
-          this.arena.wallHeight
+          this.arena.wallHeight,
+          1.8
         );
         if (target) {
           kChar.pickupModule.pickup(kChar, target);

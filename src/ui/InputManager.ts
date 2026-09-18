@@ -19,6 +19,7 @@ export interface GamepadSlotState {
   aimOffsetInitialized: boolean;
   sprintArmed?: boolean;
   wasMoving?: boolean;
+  lastAimMoveTime: number;
 }
 
 export class InputManager {
@@ -32,6 +33,7 @@ export class InputManager {
   public isKeyboardActive = true;
 
   public mousePos: Vector2D = { x: 0, y: 0 };
+  public lastMouseMoveTime = 0;
   public isMouseDown = false;
   public isRightMouseDown = false;
   public hoverWallTile: { col: number; row: number } | null = null;
@@ -218,6 +220,7 @@ export class InputManager {
     // Track mouse position globally so the aim cursor NEVER goes stale when the
     // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
     window.addEventListener("mousemove", (e) => {
+      this.lastMouseMoveTime = performance.now();
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -226,6 +229,7 @@ export class InputManager {
 
     this.canvas.addEventListener("mousedown", (e) => {
       this.activeInputDevice = "keyboard";
+      this.lastMouseMoveTime = performance.now();
       this.updateMousePos(e);
       if (e.button === 2) {
         this.isRightMouseDown = true;
@@ -272,6 +276,7 @@ export class InputManager {
     this.canvas.addEventListener("touchstart", (e) => {
       if (e.touches.length > 0) {
         this.isMouseDown = true;
+        this.lastMouseMoveTime = performance.now();
         this.updateTouchPos(e.touches[0]);
         if (this.onMouseDown) {
           this.onMouseDown(this.mousePos.x, this.mousePos.y);
@@ -284,6 +289,7 @@ export class InputManager {
 
     this.canvas.addEventListener("touchmove", (e) => {
       if (e.touches.length > 0) {
+        this.lastMouseMoveTime = performance.now();
         this.updateTouchPos(e.touches[0]);
         if (this.onMouseMove) {
           this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -429,6 +435,7 @@ export class InputManager {
           aimOffsetInitialized: false,
           sprintArmed: false,
           wasMoving: false,
+          lastAimMoveTime: 0,
         };
         this.gamepadSlots.set(i, slot);
       } else {
@@ -494,6 +501,7 @@ export class InputManager {
         const cursorSpeed = 17.0;
         slot.aimPos.x += rx * cursorSpeed * dt;
         slot.aimPos.y += ry * cursorSpeed * dt;
+        slot.lastAimMoveTime = performance.now();
       }
       slot.aimPos.x = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
       slot.aimPos.y = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));

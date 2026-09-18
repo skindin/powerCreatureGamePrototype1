@@ -52,7 +52,8 @@ export class PickupModule {
     targetX: number,
     targetY: number,
     objects: GameObject[],
-    wallHeight: number = 1.0
+    wallHeight: number = 1.0,
+    maxSelectDistance: number = Infinity
   ): GameObject | null {
     if (!this.enabled) return null;
 
@@ -62,9 +63,9 @@ export class PickupModule {
     for (const obj of objects) {
       if (!this.isObjectInReach(character, obj, wallHeight)) continue;
 
-      // Distance from object to mouse aim position: pick the one closest to the mouse cursor
+      // Distance from object to mouse/aim position: pick the one closest to the cursor within maxSelectDistance
       const distToMouse = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
-      if (distToMouse < shortestDist) {
+      if (distToMouse <= maxSelectDistance && distToMouse < shortestDist) {
         shortestDist = distToMouse;
         bestCandidate = obj;
       }
@@ -148,11 +149,12 @@ export class PickupModule {
   ): boolean {
     if (!this.enabled) return false;
 
-    // Find reachable object closest to cursor (if aimX/aimY provided) or closest to character
+    // Find reachable object closest to cursor (if aimX/aimY provided) or fallback to closest to character
     let bestTarget: GameObject | null = null;
     if (aimX !== undefined && aimY !== undefined) {
       bestTarget = this.findTargetObject(character, aimX, aimY, objects, wallHeight);
-    } else {
+    }
+    if (!bestTarget) {
       let bestDist = Infinity;
       const charZ = Math.max(
         character.position.z,
