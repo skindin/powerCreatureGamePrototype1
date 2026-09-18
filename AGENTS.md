@@ -367,11 +367,12 @@ powerCreatureGamePrototype1/
     - **Air Control (Walk in Air)**: `WalkingModule` provides directional air control via the `walkInAir` toggle (default: `true`, configurable in `DevPanel.ts` via checkbox). When active, walking force applies in mid-air to steer, accelerate, or curve the jump trajectory naturally. When movement inputs are released in mid-air (`!isMoving`), horizontal momentum is preserved without dead-stop air braking.
 34. **Live Railway Deployment, Building & Crash Notifier (Non-Intrusive)**:
     - **Real-Time Build Status Polling**:
-      - `server.js` and `vite.config.ts` query GitHub's public commit status API (`/commits/branch1/status`) cached with a 10-second TTL to respect rate limits, providing live Railway deployment state.
-      - `/api/version` (and `/api/deploy-status`) returns running deployment IDs and current build telemetry: `state` (`pending` / `success` / `failure`), `isBuilding`, `isFailed`, `isSuccess`, `description`, and `targetUrl` (linking directly to live Railway build logs).
+      - `server.js` and `vite.config.ts` query GitHub's public commit status API (`/commits/${branch}/status` using `process.env.RAILWAY_GIT_BRANCH || 'RLAttempt1'`) cached with a 10-second TTL to respect rate limits, providing live Railway deployment state.
+      - `/api/version` (and `/api/deploy-status`) returns running deployment IDs and current build telemetry: `state` (`pending` / `success` / `failure`), `isBuilding` (strictly `state === 'pending'`), `isFailed`, `isSuccess`, `description`, and `targetUrl` (linking directly to live Railway build logs).
     - **In-Progress Deploying Notifications (`isBuilding`)**:
-      - When a new commit is being built or prepared on Railway, displays an amber pulsing header badge (`⚙️ Deploying (commit)...`) and a floating toast (`🔨 Deploying Railway Update...`).
+      - When a new commit is being built or prepared on Railway (`state === 'pending'`), displays an amber pulsing header badge (`⚙️ Deploying (commit)...`) and a floating toast (`🔨 Deploying Railway Update...`).
       - Features a direct `↗ Logs` button to inspect build progress on Railway and plays a soft ascending chime. Auto-fades toast after 10s while keeping badge active.
+      - Cleanly removes the building badge and toast the instant the build completes (`isSuccess`) or finishes building (`!isBuilding`).
     - **Crashed / Failed Build Notifications (`isFailed`)**:
       - When a Railway build or container crashes, displays a prominent red pulsing header badge (`❌ Build Crashed (commit)`) and an error toast (`🚨 Railway Build Crashed!`).
       - Directly includes error description and a `🔍 Error Logs` action linking straight to the failed Railway build log, accompanied by an alert warning sound.
