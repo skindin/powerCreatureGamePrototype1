@@ -407,6 +407,7 @@ export class GameServer {
         lastThrownObjectId: null,
         lastProcessedTick: 0,
         lastProcessedTimestamp: 0,
+        lastExecutedTick: 0,
         inputQueue: [],
       };
 
@@ -447,19 +448,32 @@ export class GameServer {
 
     if (msg.type === 'player_input') {
       const now = Date.now();
+      // Discard inputs received too late (> 350ms old)
+      if (msg.timestamp && (now - msg.timestamp > 350)) {
+        return;
+      }
+
       if (Array.isArray(msg.inputs)) {
         for (const inp of msg.inputs) {
           const playerId = `${client.clientId}_${inp.localId}`;
           const player = this.players.get(playerId);
           if (player) {
-            if (msg.tick && player.lastProcessedTick && msg.tick < player.lastProcessedTick) {
-              continue; // Discard out-of-order stale input
+            // Discard input if server has already executed past this tick
+            if (msg.tick && player.lastExecutedTick && msg.tick <= player.lastExecutedTick) {
+              continue;
             }
-            if (msg.tick) player.lastProcessedTick = msg.tick;
-            if (msg.timestamp) player.lastProcessedTimestamp = msg.timestamp;
 
-            player.inputQueue.push({
-              tick: msg.tick || this.serverTick,
+            const inputTick = msg.tick || (player.lastProcessedTick ? player.lastProcessedTick + 1 : this.serverTick);
+            player.lastProcessedTick = Math.max(player.lastProcessedTick || 0, inputTick);
+            player.lastProcessedTimestamp = msg.timestamp || now;
+
+            // Check if this tick is already queued (prevent duplicate execution)
+            if (player.inputQueue.some((e) => e.tick === inputTick)) {
+              continue;
+            }
+
+            const inputItem = {
+              tick: inputTick,
               timestamp: msg.timestamp || now,
               moveVector: inp.moveVector || { x: 0, y: 0 },
               isGrabHeld: Boolean(inp.isGrabHeld),
@@ -470,11 +484,25 @@ export class GameServer {
               heldObjectId: inp.heldObjectId !== undefined ? inp.heldObjectId : null,
               throwEvent: inp.throwEvent || null,
               dropEvent: inp.dropEvent || null,
-            });
-            if (player.inputQueue.length > 8) {
-              player.inputQueue.shift();
+            };
+
+            // Keep out of order messages in order by inserting in sorted position
+            let inserted = false;
+            for (let i = 0; i < player.inputQueue.length; i++) {
+              if (inputItem.tick < player.inputQueue[i].tick) {
+                player.inputQueue.splice(i, 0, inputItem);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) {
+              player.inputQueue.push(inputItem);
             }
 
+            // Cap input buffer depth to 15 (~250ms), discarding oldest excess
+            if (player.inputQueue.length > 15) {
+              player.inputQueue.shift();
+            }
           }
         }
       }
@@ -800,6 +828,9 @@ export class GameServer {
         isClimbHeld: false,
         isSprinting: false,
       };
+      if (input.tick) {
+        player.lastExecutedTick = input.tick;
+      }
 
       player.isSprinting = input.isSprinting;
       const speedMult = player.isSprinting ? 1.55 : 1.0;

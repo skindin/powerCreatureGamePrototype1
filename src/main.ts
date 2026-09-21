@@ -502,6 +502,7 @@ function bootstrap(): void {
 
   const setMode = (multiplayer: boolean) => {
     isMultiplayerMode = multiplayer;
+    gameLoop.isMultiplayerMode = multiplayer;
     if (multiplayer) {
       btnSinglePlayer?.classList.remove("active");
       btnMultiplayer?.classList.add("active");
@@ -1138,6 +1139,11 @@ function bootstrap(): void {
     if (!isMultiplayerMode) return null;
     relayClient.updateGhostLerp(dt);
     return relayClient.getLatestGhost();
+  };
+  gameLoop.onPreRender = (deltaSeconds: number) => {
+    if (isMultiplayerMode) {
+      multiplayerClient.updatePlayback(deltaSeconds);
+    }
   };
   gameLoop.onPhysicsTick = (_dt, nowMs) => {
     if (isMultiplayerMode) {
