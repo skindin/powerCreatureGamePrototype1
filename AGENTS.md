@@ -548,6 +548,13 @@ powerCreatureGamePrototype1/
       - Features an animated radar pulse, status indicator, target URL input, and a prominent primary action button: `🎮 Switch Back to Game View (Single Player)`.
       - Seamlessly hides as soon as the client connects and receives the authoritative world state, revealing the live multiplayer arena.
       - Re-appears immediately if the connection drops or is lost, guaranteeing the user is never left looking at an unresponsive arena without an instant escape back to single player.
+    - **Optimistic Throw / Instant Ballistic Flight (`isObjectInOptimisticFlight`)** — Commit `2097f22`:
+      - **Problem**: In multiplayer mode, `GameLoop.ts` skipped local physics integration for all unheld objects (`isMultiplayerMode && !obj.isHeld → continue`), so thrown objects were frozen in the thrower's hands until the next server snapshot arrived (~33–100ms RTT), then snapped/teleported to where they ended up.
+      - **Solution**: Three-part fix that biases smoothness over simultaneous accuracy:
+        1. **`MultiplayerClient.isObjectInOptimisticFlight(objId)`**: Public predicate that returns `true` for the 2500ms window after a throw or drop. Extended TTL from 1500ms → 2500ms to cover worst-case cross-device round-trip + interpolation delay.
+        2. **`GameLoop.isObjectInOptimisticFlight` hook**: Optional callback wired from `main.ts` (`gameLoop.isObjectInOptimisticFlight = (id) => multiplayerClient.isObjectInOptimisticFlight(id)`). Objects in the optimistic-flight window bypass the "skip local physics in multiplayer" gate, running `updatePosition`, wall collision, and TOI resolution locally — so the object arcs through the air immediately.
+        3. **Soft Drift Correction in `updatePlayback`**: For recently-released objects, instead of fully skipping snapshot data, a gentle 8% ease-per-step is applied only when server and client positions diverge > 1.2u. This corrects large discrepancies (e.g. server rejected the throw or had a different release position) without disturbing normal local ballistic momentum.
+
 
 ---
 
