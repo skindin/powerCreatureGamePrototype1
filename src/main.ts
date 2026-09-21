@@ -282,6 +282,9 @@ function bootstrap(): void {
 
   // 7. Setup Authoritative Universal Multiplayer Client & Mode Switching
   const multiplayerClient = new MultiplayerClient(gameLoop);
+  // Wire optimistic-flight predicate: allows GameLoop to run local physics for objects just thrown/dropped
+  // while waiting for server round-trip confirmation. Bias: smoothness over accuracy.
+  gameLoop.isObjectInOptimisticFlight = (objId: string) => multiplayerClient.isObjectInOptimisticFlight(objId);
   const relayClient = new RelayClient("wss://echo.websocket.org");
   relayClient.showGhostClones = false; // Disabled by default per user directive
   let isMultiplayerMode = false;

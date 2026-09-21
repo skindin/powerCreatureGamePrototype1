@@ -236,6 +236,15 @@ export class MultiplayerClient {
     }
   }
 
+  /**
+   * Returns true if the object is in the optimistic-throw / optimistic-drop local simulation window.
+   * Used by GameLoop to allow local physics integration for in-flight objects even in multiplayer mode.
+   */
+  public isObjectInOptimisticFlight(objId: string): boolean {
+    const releaseUntil = this.recentlyReleasedObjects.get(objId);
+    return releaseUntil !== undefined && performance.now() < releaseUntil;
+  }
+
   public handleLocalPlayerThrow(
     localId: string,
     thrownObj: GameObject,
@@ -245,7 +254,8 @@ export class MultiplayerClient {
     targetX?: number,
     targetY?: number
   ): void {
-    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 1500);
+    // 2500ms TTL covers worst-case round-trip (server validates & confirms) plus interpolation delay
+    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 2500);
     this.recentlyPickedUpObjects.delete(thrownObj.id);
     const evt = {
       objectId: thrownObj.id,
@@ -798,6 +808,24 @@ export class MultiplayerClient {
         localObj.velocity.x = o0.vx + (o1.vx - o0.vx) * alpha;
         localObj.velocity.y = o0.vy + (o1.vy - o0.vy) * alpha;
         localObj.verticalVelocity = o0.vz + (o1.vz - o0.vz) * alpha;
+      } else if (isRecentlyReleased) {
+        // Optimistic throw / drop: local ballistic physics is running in GameLoop.
+        // Only apply a gentle drift correction if server and client are far apart (> 1.2u),
+        // to absorb cases where the server had a different release position.
+        // Do NOT snap the position; preserve local momentum (smoothness over accuracy).
+        const serverX = o1.x + (o0.x - o1.x) * (1 - alpha);
+        const serverY = o1.y + (o0.y - o1.y) * (1 - alpha);
+        const driftDist = Math.hypot(serverX - localObj.position.x, serverY - localObj.position.y);
+        if (driftDist > 1.2) {
+          // Soft 8% ease per playback step toward server confirmed position
+          localObj.position.x += (serverX - localObj.position.x) * 0.08;
+          localObj.position.y += (serverY - localObj.position.y) * 0.08;
+        }
+        // Once the server snapshot shows the object unheld, clear the optimistic lock early
+        if (!o1.isHeld && !o0.isHeld) {
+          localObj.isHeld = false;
+          localObj.heldBy = null;
+        }
 
         const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
         if (supWall && localObj.position.z >= supWall.wallHeight - 0.05) {

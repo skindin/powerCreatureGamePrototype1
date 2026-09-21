@@ -53,6 +53,8 @@ export class GameLoop {
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
   public onPreRender?: (deltaSeconds: number) => void;
   public isMultiplayerMode: boolean = false;
+  /** Wired by MultiplayerClient: returns true while an object is in the optimistic throw/drop window */
+  public isObjectInOptimisticFlight?: (objId: string) => boolean;
 
   public remoteCharacters: Set<Character> = new Set();
 
@@ -661,17 +663,26 @@ export class GameLoop {
 
     // 4. Update freebody objects (skip physics integration while manually dragged in Edit Mode)
     // In multiplayer mode, unheld objects are smoothly driven by the authoritative snapshot stream;
-    // only objects held by local characters need local update.
+    // however, objects in the optimistic-flight window (just thrown/dropped by a local player)
+    // MUST run local physics so they fly ballisticly immediately on throw.
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
-      if (this.isMultiplayerMode && !obj.isHeld) continue;
+      if (this.isMultiplayerMode && !obj.isHeld) {
+        // Allow local physics only during the optimistic-flight window
+        if (!this.isObjectInOptimisticFlight || !this.isObjectInOptimisticFlight(obj.id)) {
+          continue;
+        }
+      }
       obj.updatePosition(dt, this.arena);
     }
 
     // 5. Continuous swept TOI rollback: rewinds colliding bodies to exact contact instant
-    // In multiplayer mode, only check local entities (local players and their held items) to prevent walking through walls
+    // In multiplayer mode, only check local entities (local players and their held/optimistic-flight items) to prevent walking through walls
     const activeCollisionEntities = this.isMultiplayerMode
-      ? [...Array.from(this.players.values()).map((p) => p.character), ...this.objects.filter((o) => o.isHeld)]
+      ? [
+          ...Array.from(this.players.values()).map((p) => p.character),
+          ...this.objects.filter((o) => o.isHeld || (this.isObjectInOptimisticFlight && this.isObjectInOptimisticFlight(o.id))),
+        ]
       : allEntities;
 
     ContinuousPhysics.resolveContinuousCollisions(
