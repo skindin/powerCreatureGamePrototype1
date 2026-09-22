@@ -55,6 +55,14 @@ export interface ObjectSnapshot {
   heldBy: string | null;
 }
 
+export interface TimedSnapshot {
+  serverTick: number;
+  timestamp: number;
+  localReceiveTime: number;
+  players: RemotePlayerSnapshot[];
+  objects: ObjectSnapshot[];
+}
+
 export class MultiplayerClient {
   public status: MultiplayerStatus = "disconnected";
   public url: string = "";
@@ -71,6 +79,13 @@ export class MultiplayerClient {
 
   // Remote characters spawned from other players in the universal lobby
   public remoteCharacters: Map<string, Character> = new Map();
+
+  // Timestamp-spaced snapshot playback buffer for jitter-free interpolation
+  public snapshotQueue: TimedSnapshot[] = [];
+  public playbackTime: number = 0;
+  public interpolationDelayMs: number = 75; // ~2.25 server broadcast frames for jitter absorption
+  public isPlaybackInitialized: boolean = false;
+  public lastRenderedServerTick: number = 0;
 
   private socket: WebSocket | null = null;
   private gameLoop: GameLoop | null = null;
@@ -117,6 +132,10 @@ export class MultiplayerClient {
   public connect(customUrl?: string): void {
     this.isIntentionalDisconnect = false;
     this.lastServerTick = 0;
+    this.lastRenderedServerTick = 0;
+    this.snapshotQueue = [];
+    this.isPlaybackInitialized = false;
+    this.playbackTime = 0;
     if (customUrl) {
       this.url = customUrl;
     } else if (!this.url) {
@@ -178,6 +197,10 @@ export class MultiplayerClient {
     }
 
     this.cleanupRemoteCharacters();
+    this.snapshotQueue = [];
+    this.isPlaybackInitialized = false;
+    this.playbackTime = 0;
+    this.lastRenderedServerTick = 0;
     this.status = "disconnected";
     this.notifyStats();
   }
@@ -213,6 +236,15 @@ export class MultiplayerClient {
     }
   }
 
+  /**
+   * Returns true if the object is in the optimistic-throw / optimistic-drop local simulation window.
+   * Used by GameLoop to allow local physics integration for in-flight objects even in multiplayer mode.
+   */
+  public isObjectInOptimisticFlight(objId: string): boolean {
+    const releaseUntil = this.recentlyReleasedObjects.get(objId);
+    return releaseUntil !== undefined && performance.now() < releaseUntil;
+  }
+
   public handleLocalPlayerThrow(
     localId: string,
     thrownObj: GameObject,
@@ -222,7 +254,8 @@ export class MultiplayerClient {
     targetX?: number,
     targetY?: number
   ): void {
-    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 1500);
+    // 2500ms TTL covers worst-case round-trip (server validates & confirms) plus interpolation delay
+    this.recentlyReleasedObjects.set(thrownObj.id, performance.now() + 2500);
     this.recentlyPickedUpObjects.delete(thrownObj.id);
     const evt = {
       objectId: thrownObj.id,
@@ -471,14 +504,13 @@ export class MultiplayerClient {
       if (msg.type === "init_state") {
         this.clientId = msg.clientId;
         this.lastServerTick = msg.serverTick || 0;
+        if (msg.wallMap && this.gameLoop) {
+          const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
+          this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
+        }
+        this.queueSnapshot(msg.serverTick || 1, msg.timestamp || Date.now(), msg.players || [], msg.objects || []);
         if (this.onInitState) {
           this.onInitState(msg);
-        } else {
-          if (msg.wallMap && this.gameLoop) {
-            const allEnts = [...this.gameLoop.allCharacters, ...this.gameLoop.allObjects];
-            this.gameLoop.arena.importWallMapBinaryString(msg.wallMap, allEnts);
-          }
-          this.reconcileWorldState(msg.players || [], msg.objects || []);
         }
         this.notifyStats();
         return;
@@ -493,13 +525,7 @@ export class MultiplayerClient {
       }
 
       if (msg.type === "world_state") {
-        if (typeof msg.serverTick === "number") {
-          if (this.lastServerTick !== 0 && msg.serverTick < this.lastServerTick) {
-            return; // Discard out-of-order older tick
-          }
-          this.lastServerTick = msg.serverTick;
-        }
-        this.reconcileWorldState(msg.players || [], msg.objects || [], msg.timestamp);
+        this.queueSnapshot(msg.serverTick, msg.timestamp, msg.players || [], msg.objects || []);
         return;
       }
 
@@ -521,265 +547,284 @@ export class MultiplayerClient {
     }
   }
 
-  public reconcileWorldState(serverPlayers: RemotePlayerSnapshot[], serverObjects: ObjectSnapshot[], _snapshotTimestamp?: number): void {
-    this.connectedPlayersCount = serverPlayers.length;
+  /**
+   * Queues an incoming server snapshot in strict chronological order.
+   * Discards messages that arrived too late or are older than the current render playback point.
+   */
+  public queueSnapshot(
+    serverTick: number,
+    timestamp: number,
+    players: RemotePlayerSnapshot[],
+    objects: ObjectSnapshot[]
+  ): void {
+    const now = Date.now();
+
+    // 1. Discard messages received too late (> 400ms old)
+    if (timestamp && now - timestamp > 400) {
+      return;
+    }
+
+    // 2. Discard if message is older than what we've already rendered past
+    if (this.lastRenderedServerTick > 0 && typeof serverTick === "number" && serverTick <= this.lastRenderedServerTick) {
+      return;
+    }
+
+    // 3. Discard duplicate tick
+    if (typeof serverTick === "number" && this.snapshotQueue.some((s) => s.serverTick === serverTick)) {
+      return;
+    }
+
+    const snap: TimedSnapshot = {
+      serverTick: serverTick || (this.snapshotQueue.length > 0 ? this.snapshotQueue[this.snapshotQueue.length - 1].serverTick + 1 : 1),
+      timestamp: timestamp || now,
+      localReceiveTime: performance.now(),
+      players,
+      objects,
+    };
+
+    // 4. Keep out-of-order snapshots in strict ascending order of serverTick / timestamp
+    let inserted = false;
+    for (let i = 0; i < this.snapshotQueue.length; i++) {
+      if (snap.serverTick < this.snapshotQueue[i].serverTick) {
+        this.snapshotQueue.splice(i, 0, snap);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      this.snapshotQueue.push(snap);
+    }
+
+    // Cap queue length to 30 snapshots (~1s), discarding oldest excess
+    if (this.snapshotQueue.length > 30) {
+      this.snapshotQueue.shift();
+    }
+
+    this.connectedPlayersCount = players.length;
     this.notifyStats();
 
-    if (!this.gameLoop) return;
-
-    const latencySec = (this.pingMs > 0 ? this.pingMs / 2 : 25) / 1000;
-
-    // 1. Reconcile remote characters (characters controlled by other browser tabs/devices)
-    const activeRemoteIds = new Set<string>();
-
-    for (const sp of serverPlayers) {
-      if (sp.clientId === this.clientId) {
-        // Local player: reconcile with deadzone check to preserve instant local feel (Pillar 3)
-        const localEntry = this.gameLoop.players.get(sp.localId);
-        if (localEntry) {
-          const lChar = localEntry.character;
-          const driftDist = Math.hypot(sp.x - lChar.position.x, sp.y - lChar.position.y);
-          // If local prediction deviated significantly (e.g. unexpected collision with remote player)
-          if (driftDist > 0.45) {
-            // Smoothly snap position towards authoritative server position
-            lChar.position.x += (sp.x - lChar.position.x) * 0.4;
-            lChar.position.y += (sp.y - lChar.position.y) * 0.4;
-          }
-          // Vertical drift check
-          const zDrift = Math.abs(sp.z - lChar.position.z);
-          if (zDrift > 0.6) {
-            lChar.position.z += (sp.z - lChar.position.z) * 0.4;
-          }
-
-          // Authoritative held object sync for local character
-          if (sp.heldObjectId) {
-            const releaseUntil = this.recentlyReleasedObjects.get(sp.heldObjectId);
-            const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
-            if (!isRecentlyReleased) {
-              const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
-              if (heldObj && lChar.heldObject !== heldObj) {
-                lChar.heldObject = heldObj;
-                heldObj.isHeld = true;
-                heldObj.heldBy = lChar;
-              }
-              // Server confirmed pickup
-              this.recentlyPickedUpObjects.delete(sp.heldObjectId);
-            }
-          } else if (lChar.heldObject) {
-            const releaseUntil = this.recentlyReleasedObjects.get(lChar.heldObject.id);
-            const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
-            const pickupUntil = this.recentlyPickedUpObjects.get(lChar.heldObject.id);
-            const isRecentlyPickedUp = pickupUntil !== undefined && performance.now() < pickupUntil;
-            if (!isRecentlyReleased && !isRecentlyPickedUp) {
-              lChar.heldObject.isHeld = false;
-              lChar.heldObject.heldBy = null;
-              lChar.heldObject = null;
-            }
-          }
-        }
-      } else {
-        // Remote player: ensure remote character exists and update with interpolation
-        activeRemoteIds.add(sp.id);
-        const rChar = this.ensureRemoteCharacter(sp);
-        // Smoothly interpolate remote character position & state
-        const lerpFactor = 0.5;
-        rChar.position.x += (sp.x - rChar.position.x) * lerpFactor;
-        rChar.position.y += (sp.y - rChar.position.y) * lerpFactor;
-        rChar.verticalVelocity = sp.vz;
-        if (Math.abs(sp.z - rChar.position.z) > 0.05) {
-          rChar.position.z += (sp.z - rChar.position.z) * 0.6;
-        } else {
-          rChar.position.z = sp.z;
-        }
-        rChar.velocity.x = sp.vx;
-        rChar.velocity.y = sp.vy;
-        rChar.facingAngle = sp.facingAngle;
-        rChar.setSprinting(sp.isSprinting);
-        rChar.isActivelyWalking = sp.isActivelyWalking;
-        rChar.isClimbing = sp.isClimbing;
-        rChar.isAiming = sp.isAiming;
-        rChar.aimTarget = sp.aimTarget;
-
-        // Support wall check for remote character
-        const supWall = this.gameLoop.arena.getSupportingWall(rChar.position.x, rChar.position.y, rChar.colliderRadius);
-        if (supWall && rChar.position.z >= supWall.wallHeight - 0.05) {
-          rChar.supportingSurfaceHeight = supWall.wallHeight;
-          (rChar as any).standingWall = supWall;
-        } else {
-          rChar.supportingSurfaceHeight = 0;
-          (rChar as any).standingWall = null;
-        }
-
-        // Held object sync for remote character
-        if (sp.heldObjectId) {
-          const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
-          if (heldObj) {
-            rChar.heldObject = heldObj;
-            heldObj.isHeld = true;
-            heldObj.heldBy = rChar;
-            const heldPos = rChar.calculateHeldObjectPosition(this.gameLoop.arena);
-            heldObj.position.x = heldPos.x;
-            heldObj.position.y = heldPos.y;
-            heldObj.position.z = heldPos.z;
-            heldObj.velocity.x = rChar.velocity.x;
-            heldObj.velocity.y = rChar.velocity.y;
-            heldObj.verticalVelocity = 0;
-          }
-        } else if (rChar.heldObject) {
-          rChar.heldObject.isHeld = false;
-          rChar.heldObject.heldBy = null;
-          rChar.heldObject = null;
-        }
+    // Ensure remote character entities exist in gameLoop
+    for (const sp of players) {
+      if (sp.clientId !== this.clientId) {
+        this.ensureRemoteCharacter(sp);
       }
     }
 
-    // Remove any remote characters that left the universal lobby
+    // Ensure dynamic objects exist in gameLoop
+    if (this.gameLoop) {
+      for (const so of objects) {
+        let localObj = this.gameLoop.allObjects.find((o) => o.id === so.id);
+        if (!localObj) {
+          localObj = new GameObject({
+            id: so.id,
+            name: so.name,
+            position: { x: so.x, y: so.y, z: so.z },
+            velocity: { x: so.vx, y: so.vy },
+            verticalVelocity: so.vz,
+            mass: so.mass,
+            colliderRadius: so.radius,
+            color: so.color,
+            bounceMod: (so as any).bounceMod ?? 0.3,
+            visualShape: so.shape,
+          });
+          this.gameLoop.objects.push(localObj);
+          this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
+        }
+      }
+    }
+  }
+
+  /**
+   * Advances the playback timeline and smoothly interpolates remote entities between
+   * adjacent snapshots according to their timestamps, prioritizing smoothness over simultaneous accuracy.
+   */
+  public updatePlayback(dtSec: number): void {
+    if (!this.gameLoop || this.snapshotQueue.length === 0) return;
+
+    let dt = dtSec;
+    if (isNaN(dt) || dt < 0) dt = 1 / 60;
+
+    // 1. Initialize playback time if not yet started
+    if (!this.isPlaybackInitialized) {
+      const first = this.snapshotQueue[0];
+      this.playbackTime = first.timestamp - this.interpolationDelayMs;
+      this.isPlaybackInitialized = true;
+    }
+
+    // 2. Adjust playback speed slightly to maintain ideal buffer depth (absorbing network jitter)
+    const newest = this.snapshotQueue[this.snapshotQueue.length - 1];
+    let timeScale = 1.0;
+    if (newest) {
+      const bufferDepth = newest.timestamp - this.playbackTime;
+      if (bufferDepth > 140) {
+        // Buffer growing (burst arrived): gently accelerate playback by 6%
+        timeScale = 1.06;
+      } else if (bufferDepth < 50) {
+        // Buffer starving (network delay): gently decelerate playback by 6% to prevent starving
+        timeScale = 0.94;
+      }
+    }
+
+    this.playbackTime += dt * 1000 * timeScale;
+
+    // 3. Find surrounding snapshots S0 (<= playbackTime) and S1 (> playbackTime)
+    let s0: TimedSnapshot | null = null;
+    let s1: TimedSnapshot | null = null;
+
+    for (let i = 0; i < this.snapshotQueue.length; i++) {
+      if (this.snapshotQueue[i].timestamp <= this.playbackTime) {
+        s0 = this.snapshotQueue[i];
+      } else {
+        s1 = this.snapshotQueue[i];
+        break;
+      }
+    }
+
+    // 4. Calculate interpolation factor alpha
+    let alpha = 1.0;
+    if (s0 && s1) {
+      const span = s1.timestamp - s0.timestamp;
+      alpha = span > 0 ? Math.max(0, Math.min(1, (this.playbackTime - s0.timestamp) / span)) : 1.0;
+    } else if (!s0 && s1) {
+      s0 = s1;
+      alpha = 0;
+      this.playbackTime = s1.timestamp;
+    } else if (s0 && !s1) {
+      // Starvation: playback reached newest snapshot, hold latest state smoothly
+      alpha = 1.0;
+    }
+
+    if (!s0) return;
+
+    const s0Players = new Map<string, RemotePlayerSnapshot>(s0.players.map((p) => [p.id, p]));
+    const s1Players = s1 ? new Map<string, RemotePlayerSnapshot>(s1.players.map((p) => [p.id, p])) : s0Players;
+
+    const s0Objects = new Map<string, ObjectSnapshot>(s0.objects.map((o) => [o.id, o]));
+    const s1Objects = s1 ? new Map<string, ObjectSnapshot>(s1.objects.map((o) => [o.id, o])) : s0Objects;
+
+    // 5. Smoothly interpolate Remote Characters
+    const activeRemoteIds = new Set<string>();
+    for (const [pId, p0] of s0Players) {
+      if (p0.clientId === this.clientId) continue; // Local player predicted locally
+      activeRemoteIds.add(pId);
+      const p1 = s1Players.get(pId) || p0;
+      const rChar = this.ensureRemoteCharacter(p1);
+
+      // Smooth coordinates interpolation
+      rChar.position.x = p0.x + (p1.x - p0.x) * alpha;
+      rChar.position.y = p0.y + (p1.y - p0.y) * alpha;
+      rChar.position.z = p0.z + (p1.z - p0.z) * alpha;
+      rChar.velocity.x = p0.vx + (p1.vx - p0.vx) * alpha;
+      rChar.velocity.y = p0.vy + (p1.vy - p0.vy) * alpha;
+      rChar.verticalVelocity = p0.vz + (p1.vz - p0.vz) * alpha;
+
+      // Shortest angular rotation
+      let dTheta = (p1.facingAngle - p0.facingAngle) % (Math.PI * 2);
+      if (dTheta < -Math.PI) dTheta += Math.PI * 2;
+      if (dTheta > Math.PI) dTheta -= Math.PI * 2;
+      rChar.facingAngle = p0.facingAngle + dTheta * alpha;
+
+      rChar.setSprinting(alpha > 0.5 ? p1.isSprinting : p0.isSprinting);
+      rChar.isActivelyWalking = alpha > 0.5 ? p1.isActivelyWalking : p0.isActivelyWalking;
+      rChar.isClimbing = alpha > 0.5 ? p1.isClimbing : p0.isClimbing;
+      rChar.isAiming = alpha > 0.5 ? p1.isAiming : p0.isAiming;
+      rChar.aimTarget = p1.aimTarget || p0.aimTarget;
+
+      // Wall elevation check for remote character
+      const supWall = this.gameLoop.arena.getSupportingWall(rChar.position.x, rChar.position.y, rChar.colliderRadius);
+      if (supWall && rChar.position.z >= supWall.wallHeight - 0.05) {
+        rChar.supportingSurfaceHeight = supWall.wallHeight;
+        (rChar as any).standingWall = supWall;
+      } else {
+        rChar.supportingSurfaceHeight = 0;
+        (rChar as any).standingWall = null;
+      }
+
+      // Held object sync for remote character
+      const heldObjId = alpha > 0.5 ? p1.heldObjectId : p0.heldObjectId;
+      if (heldObjId) {
+        const heldObj = this.gameLoop.allObjects.find((o) => o.id === heldObjId);
+        if (heldObj) {
+          rChar.heldObject = heldObj;
+          heldObj.isHeld = true;
+          heldObj.heldBy = rChar;
+          const heldPos = rChar.calculateHeldObjectPosition(this.gameLoop.arena);
+          heldObj.position.x = heldPos.x;
+          heldObj.position.y = heldPos.y;
+          heldObj.position.z = heldPos.z;
+          heldObj.velocity.x = rChar.velocity.x;
+          heldObj.velocity.y = rChar.velocity.y;
+          heldObj.verticalVelocity = 0;
+        }
+      } else if (rChar.heldObject) {
+        rChar.heldObject.isHeld = false;
+        rChar.heldObject.heldBy = null;
+        rChar.heldObject = null;
+      }
+    }
+
+    // Remove any remote characters that left
     for (const [rId] of this.remoteCharacters) {
       if (!activeRemoteIds.has(rId)) {
         this.removeRemoteCharacter(rId);
       }
     }
 
-    // 2. Reconcile arena dynamic objects
-    for (const so of serverObjects) {
-      let localObj = this.gameLoop.allObjects.find((o) => o.id === so.id);
-      if (!localObj) {
-        localObj = new GameObject({
-          id: so.id,
-          name: so.name,
-          position: { x: so.x, y: so.y, z: so.z },
-          velocity: { x: so.vx, y: so.vy },
-          verticalVelocity: so.vz,
-          mass: so.mass,
-          colliderRadius: so.radius,
-          color: so.color,
-          bounceMod: (so as any).bounceMod ?? 0.3,
-          visualShape: so.shape,
-        });
-        this.gameLoop.objects.push(localObj);
-        this.gameLoop.arena.syncEntitiesWithWalls([localObj]);
-      }
+    // 6. Smoothly interpolate Dynamic Objects
+    for (const [oId, o0] of s0Objects) {
+      const o1 = s1Objects.get(oId) || o0;
+      const localObj = this.gameLoop.allObjects.find((o) => o.id === oId);
+      if (!localObj) continue;
 
-      // Check if this object was recently thrown, dropped, or picked up locally
       const releaseUntil = this.recentlyReleasedObjects.get(localObj.id);
       const isRecentlyReleased = releaseUntil !== undefined && performance.now() < releaseUntil;
       const pickupUntil = this.recentlyPickedUpObjects.get(localObj.id);
       const isRecentlyPickedUp = pickupUntil !== undefined && performance.now() < pickupUntil;
 
-      // If a remote player intercepted/picked up this object, clear the local release lock
-      const isHeldByAnyLocalPlayer = Array.from(this.gameLoop.players.values()).some(
-        (p) => p.character.id === so.heldBy || (p.character as any).playerId === so.heldBy
+      // If held by local player, let local player position it directly in hands
+      const isHeldByLocalPlayer = Array.from(this.gameLoop.players.values()).some(
+        (p) => p.character.heldObject === localObj || p.character === localObj.heldBy
       );
-      if (isRecentlyReleased && so.isHeld && so.heldBy && !isHeldByAnyLocalPlayer) {
-        this.recentlyReleasedObjects.delete(localObj.id);
+
+      if (isHeldByLocalPlayer && !isRecentlyReleased) {
+        continue;
       }
-      const activeRecentlyReleased = this.recentlyReleasedObjects.has(localObj.id) && performance.now() < (this.recentlyReleasedObjects.get(localObj.id) || 0);
 
-      const localHolder = !activeRecentlyReleased
-        ? Array.from(this.gameLoop.players.values()).find(
-            (p) => p.character.heldObject === localObj || p.character === localObj.heldBy
-          )
-        : null;
+      const isHeldByRemote =
+        (o1.isHeld && o1.heldBy && !isHeldByLocalPlayer) ||
+        (o0.isHeld && o0.heldBy && !isHeldByLocalPlayer);
+      if (isHeldByRemote) {
+        // Position attached via remote player hands above
+        continue;
+      }
 
-      if (localHolder) {
-        // Held by local player on this device
-        localHolder.character.heldObject = localObj;
-        localObj.isHeld = true;
-        localObj.heldBy = localHolder.character;
-        const heldPos = localHolder.character.calculateHeldObjectPosition(this.gameLoop.arena);
-        localObj.position.x = heldPos.x;
-        localObj.position.y = heldPos.y;
-        localObj.position.z = heldPos.z;
-        localObj.velocity.x = localHolder.character.velocity.x;
-        localObj.velocity.y = localHolder.character.velocity.y;
-        localObj.verticalVelocity = 0;
-      } else if (so.isHeld && so.heldBy && !activeRecentlyReleased) {
-        // Held by remote player
-        if (!isRecentlyPickedUp) {
-          localObj.isHeld = true;
-          localObj.position.x = so.x;
-          localObj.position.y = so.y;
-          localObj.position.z = so.z;
-          localObj.velocity.x = so.vx;
-          localObj.velocity.y = so.vy;
-          localObj.verticalVelocity = so.vz;
-        }
-      } else {
-        // Free-standing on ground, wall top, or airborne in ballistic trajectory
+      // Unheld dynamic object: smoothly interpolate coordinates between snapshots
+      if (!isRecentlyReleased && !isRecentlyPickedUp) {
         localObj.isHeld = false;
         localObj.heldBy = null;
-        if (!activeRecentlyReleased && !isRecentlyPickedUp) {
-          const serverSpeed = Math.hypot(so.vx, so.vy, so.vz);
-          const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y, localObj.verticalVelocity);
-
-          if (serverSpeed < 0.05 && localSpeed < 0.1) {
-            // Object is at rest on both client and server:
-            // Settle cleanly to authoritative server position and zero velocities to prevent micro-jitter
-            const dx = so.x - localObj.position.x;
-            const dy = so.y - localObj.position.y;
-            const dz = so.z - localObj.position.z;
-            const driftDist = Math.hypot(dx, dy, dz);
-            if (driftDist > 0.03) {
-              const settleLerp = driftDist > 0.4 ? 0.35 : 0.15;
-              localObj.position.x += dx * settleLerp;
-              localObj.position.y += dy * settleLerp;
-              localObj.position.z += dz * settleLerp;
-            }
-            localObj.velocity.x = 0;
-            localObj.velocity.y = 0;
-            localObj.verticalVelocity = 0;
-          } else {
-            // Object is in motion (rolling, flying ballistic arc, sliding):
-            // Forward-extrapolate the server's snapshot position by elapsed one-way latency
-            const expectedX = so.x + so.vx * latencySec;
-            const expectedY = so.y + so.vy * latencySec;
-            const expectedZ = Math.max(0, so.z + so.vz * latencySec - (so.vz !== 0 ? 0.5 * 30.0 * latencySec * latencySec : 0));
-
-            const dx = expectedX - localObj.position.x;
-            const dy = expectedY - localObj.position.y;
-            const dz = expectedZ - localObj.position.z;
-            const driftDist = Math.hypot(dx, dy, dz);
-
-            if (driftDist <= 0.35) {
-              // Deadzone: local client simulation matches the latency-compensated server position within 0.35u.
-              // NEVER tug the position backwards! Local simulation runs 100% fluidly and monotonically.
-              const velDrift = Math.hypot(so.vx - localObj.velocity.x, so.vy - localObj.velocity.y, so.vz - localObj.verticalVelocity);
-              if (velDrift > 0.6) {
-                localObj.velocity.x += (so.vx - localObj.velocity.x) * 0.08;
-                localObj.velocity.y += (so.vy - localObj.velocity.y) * 0.08;
-                localObj.verticalVelocity += (so.vz - localObj.verticalVelocity) * 0.08;
-              }
-            } else if (driftDist <= 2.0) {
-              // Moderate drift: gently pull toward latency-compensated expected position without jarring reversals
-              const smoothLerp = 0.12;
-              localObj.position.x += dx * smoothLerp;
-              localObj.position.y += dy * smoothLerp;
-              localObj.position.z += dz * smoothLerp;
-              localObj.velocity.x += (so.vx - localObj.velocity.x) * 0.15;
-              localObj.velocity.y += (so.vy - localObj.velocity.y) * 0.15;
-              localObj.verticalVelocity += (so.vz - localObj.verticalVelocity) * 0.15;
-            } else {
-              // Significant desync (> 2.0u): snap strongly to authoritative state
-              const snapLerp = 0.5;
-              localObj.position.x += dx * snapLerp;
-              localObj.position.y += dy * snapLerp;
-              localObj.position.z += dz * snapLerp;
-              localObj.velocity.x = so.vx;
-              localObj.velocity.y = so.vy;
-              localObj.verticalVelocity = so.vz;
-            }
-          }
-        } else if (activeRecentlyReleased && !so.isHeld) {
-          // Server has acknowledged release and is running parallel physics
-          // Softly correct only if significant drift occurs (> 1.5u)
-          const expectedX = so.x + so.vx * latencySec;
-          const expectedY = so.y + so.vy * latencySec;
-          const drift = Math.hypot(expectedX - localObj.position.x, expectedY - localObj.position.y, so.z - localObj.position.z);
-          if (drift > 1.5) {
-            localObj.position.x += (expectedX - localObj.position.x) * 0.15;
-            localObj.position.y += (expectedY - localObj.position.y) * 0.15;
-            localObj.position.z += (so.z - localObj.position.z) * 0.15;
-          }
+        localObj.position.x = o0.x + (o1.x - o0.x) * alpha;
+        localObj.position.y = o0.y + (o1.y - o0.y) * alpha;
+        localObj.position.z = o0.z + (o1.z - o0.z) * alpha;
+        localObj.velocity.x = o0.vx + (o1.vx - o0.vx) * alpha;
+        localObj.velocity.y = o0.vy + (o1.vy - o0.vy) * alpha;
+        localObj.verticalVelocity = o0.vz + (o1.vz - o0.vz) * alpha;
+      } else if (isRecentlyReleased) {
+        // Optimistic throw / drop: local ballistic physics is running in GameLoop.
+        // Only apply a gentle drift correction if server and client are far apart (> 1.2u),
+        // to absorb cases where the server had a different release position.
+        // Do NOT snap the position; preserve local momentum (smoothness over accuracy).
+        const serverX = o1.x + (o0.x - o1.x) * (1 - alpha);
+        const serverY = o1.y + (o0.y - o1.y) * (1 - alpha);
+        const driftDist = Math.hypot(serverX - localObj.position.x, serverY - localObj.position.y);
+        if (driftDist > 1.2) {
+          // Soft 8% ease per playback step toward server confirmed position
+          localObj.position.x += (serverX - localObj.position.x) * 0.08;
+          localObj.position.y += (serverY - localObj.position.y) * 0.08;
+        }
+        // Once the server snapshot shows the object unheld, clear the optimistic lock early
+        if (!o1.isHeld && !o0.isHeld) {
+          localObj.isHeld = false;
+          localObj.heldBy = null;
         }
 
         const supWall = this.gameLoop.arena.getSupportingWall(localObj.position.x, localObj.position.y, localObj.colliderRadius);
@@ -792,6 +837,75 @@ export class MultiplayerClient {
         }
       }
     }
+
+    // 7. Prune older snapshots from queue
+    this.lastRenderedServerTick = s0.serverTick;
+    const s0Idx = this.snapshotQueue.indexOf(s0);
+    if (s0Idx > 0) {
+      this.snapshotQueue.splice(0, s0Idx);
+    }
+
+    // 8. Reconcile Local Player (bias towards smoothness!)
+    // Using the newest server snapshot, gently correct local character drift only if > 0.45u
+    if (newest) {
+      for (const sp of newest.players) {
+        if (sp.clientId === this.clientId) {
+          const localEntry = this.gameLoop.players.get(sp.localId);
+          if (localEntry) {
+            const lChar = localEntry.character;
+            const driftDist = Math.hypot(sp.x - lChar.position.x, sp.y - lChar.position.y);
+            // Deadzone: if within 0.45u, zero correction to preserve crisp, jitter-free local response
+            if (driftDist > 0.45) {
+              // Gentle 10% ease per tick (smoothness over simultaneous accuracy!)
+              lChar.position.x += (sp.x - lChar.position.x) * 0.1;
+              lChar.position.y += (sp.y - lChar.position.y) * 0.1;
+            }
+            const zDrift = Math.abs(sp.z - lChar.position.z);
+            if (zDrift > 0.5) {
+              lChar.position.z += (sp.z - lChar.position.z) * 0.1;
+            }
+
+            // Authoritative held object sync for local character
+            if (sp.heldObjectId) {
+              const releaseUntil = this.recentlyReleasedObjects.get(sp.heldObjectId);
+              const isRel = releaseUntil !== undefined && performance.now() < releaseUntil;
+              if (!isRel) {
+                const heldObj = this.gameLoop.allObjects.find((o) => o.id === sp.heldObjectId);
+                if (heldObj && lChar.heldObject !== heldObj) {
+                  lChar.heldObject = heldObj;
+                  heldObj.isHeld = true;
+                  heldObj.heldBy = lChar;
+                }
+                this.recentlyPickedUpObjects.delete(sp.heldObjectId);
+              }
+            } else if (lChar.heldObject) {
+              const releaseUntil = this.recentlyReleasedObjects.get(lChar.heldObject.id);
+              const isRel = releaseUntil !== undefined && performance.now() < releaseUntil;
+              const pickupUntil = this.recentlyPickedUpObjects.get(lChar.heldObject.id);
+              const isPick = pickupUntil !== undefined && performance.now() < pickupUntil;
+              if (!isRel && !isPick) {
+                lChar.heldObject.isHeld = false;
+                lChar.heldObject.heldBy = null;
+                lChar.heldObject = null;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Backwards-compatible reconciliation method for test harnesses and direct invocations.
+   */
+  public reconcileWorldState(
+    serverPlayers: RemotePlayerSnapshot[],
+    serverObjects: ObjectSnapshot[],
+    snapshotTimestamp?: number
+  ): void {
+    const tick = ++this.lastServerTick;
+    this.queueSnapshot(tick, snapshotTimestamp || Date.now(), serverPlayers, serverObjects);
+    this.updatePlayback(1 / 60);
   }
 
 

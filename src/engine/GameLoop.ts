@@ -51,6 +51,10 @@ export class GameLoop {
 
   public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
+  public onPreRender?: (deltaSeconds: number) => void;
+  public isMultiplayerMode: boolean = false;
+  /** Wired by MultiplayerClient: returns true while an object is in the optimistic throw/drop window */
+  public isObjectInOptimisticFlight?: (objId: string) => boolean;
 
   public remoteCharacters: Set<Character> = new Set();
 
@@ -517,6 +521,10 @@ export class GameLoop {
 
     // Render current frame with active selection highlight & wall tool indicators
     const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
+    // Pre-render hook for smooth snapshot playback interpolation
+    if (this.onPreRender) {
+      this.onPreRender(deltaSeconds);
+    }
     const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
     this.renderer.render(
@@ -637,10 +645,12 @@ export class GameLoop {
       }
     }
 
-    // 3c. Update Remote Players: integrate vertical position, jumping, & surface physics at 60Hz
-    for (const rChar of this.remoteCharacters) {
-      if (input.draggedEntity !== rChar) {
-        rChar.updatePosition(dt, this.arena);
+    // 3c. Update Remote Players: in singleplayer integrate locally; in multiplayer mode their positions are smoothly driven by the snapshot playback stream
+    if (!this.isMultiplayerMode) {
+      for (const rChar of this.remoteCharacters) {
+        if (input.draggedEntity !== rChar) {
+          rChar.updatePosition(dt, this.arena);
+        }
       }
     }
 
@@ -651,15 +661,32 @@ export class GameLoop {
       prevPositions.set(ent, { x: ent.position.x, y: ent.position.y });
     }
 
-    // 4. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
+    // 4. Update freebody objects (skip physics integration while manually dragged in Edit Mode)
+    // In multiplayer mode, unheld objects are smoothly driven by the authoritative snapshot stream;
+    // however, objects in the optimistic-flight window (just thrown/dropped by a local player)
+    // MUST run local physics so they fly ballisticly immediately on throw.
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
+      if (this.isMultiplayerMode && !obj.isHeld) {
+        // Allow local physics only during the optimistic-flight window
+        if (!this.isObjectInOptimisticFlight || !this.isObjectInOptimisticFlight(obj.id)) {
+          continue;
+        }
+      }
       obj.updatePosition(dt, this.arena);
     }
 
     // 5. Continuous swept TOI rollback: rewinds colliding bodies to exact contact instant
+    // In multiplayer mode, only check local entities (local players and their held/optimistic-flight items) to prevent walking through walls
+    const activeCollisionEntities = this.isMultiplayerMode
+      ? [
+          ...Array.from(this.players.values()).map((p) => p.character),
+          ...this.objects.filter((o) => o.isHeld || (this.isObjectInOptimisticFlight && this.isObjectInOptimisticFlight(o.id))),
+        ]
+      : allEntities;
+
     ContinuousPhysics.resolveContinuousCollisions(
-      allEntities,
+      activeCollisionEntities,
       prevPositions,
       this.arena,
       dt
@@ -683,6 +710,13 @@ export class GameLoop {
 
           // Skip if either is currently held in hands or actively dragged in Edit Mode
           if (a.isHeld || b.isHeld || (a as any).heldObject === b || (b as any).heldObject === a || a === input.draggedEntity || b === input.draggedEntity) continue;
+
+          // In multiplayer mode, only resolve collisions involving a local player character to avoid fighting the server simulation
+          if (this.isMultiplayerMode) {
+            const isLocalA = Array.from(this.players.values()).some((p) => p.character === a);
+            const isLocalB = Array.from(this.players.values()).some((p) => p.character === b);
+            if (!isLocalA && !isLocalB) continue;
+          }
 
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;

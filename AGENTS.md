@@ -202,12 +202,15 @@ powerCreatureGamePrototype1/
     - **Client-Side Grab Suppression**: `InputManager.isGrabHeld` and `GameLoop` hold-to-grab are locked to `false` during `throwCommitUntil`, preventing immediate re-grabbing of the departing object upon `mouseup`.
     - **Server-Side Drop & Re-Grab Lockout**: `GameServer.js` records `player.lastThrowTime` and `player.lastThrownObjectId`. For 600ms following a throw, the server explicitly forbids `executeDrop` on the thrown object and ignores `input.heldObjectId === null` triggers that arrive from quick button releases. Server hold-to-grab also ignores `lastThrownObjectId` during this window.
     - **Close-Distance Aim Fallback**: In `ThrowModule.computeLaunchVelocity`, if `dist < 0.1` (cursor clicking directly on character/hands), the trajectory automatically falls back to the character's facing angle at minimum 2.0u range instead of returning `null`, guaranteeing a committed launch even when clicking self.
-  - **Timestamping, Stale Packet Discarding & Latency-Compensated Dead Reckoning**:
-    - **Millisecond Timestamping & Tick Ordering**: Both client inputs and server `world_state` broadcast packets include monotonic timestamps (`Date.now()`) and tick counters (`clientTick`, `serverTick`).
-    - **Stale Packet Discarding**: Client discards out-of-order snapshots (`msg.serverTick < lastServerTick` or `msg.timestamp < lastServerTimestamp`) or snapshots delayed $> 600\text{ms}$. Server discards out-of-order or delayed inputs ($> 500\text{ms}$).
-    - **Forward Latency Compensation (Dead Reckoning)**: Because server snapshots reflect past state (delayed by one-way transit latency $\Delta t \approx \text{RTT} / 2$), moving objects are forward-extrapolated to client time: $\vec{x}_{\text{expected}} = \vec{x}_{\text{server}} + \vec{v}_{\text{server}} \Delta t$.
-    - **Deadzone Tolerance ($0.35\text{u}$)**: When local prediction matches the latency-compensated position within $0.35\text{u}$, position corrections are completely skipped, eliminating backward tugs and oscillation. Moderate drift ($0.35\text{u} < d \le 2.0\text{u}$) blends gently at $12\%$, and stationary objects settle cleanly to zero velocity without micro-jitter.
-  - Carried state, attachments, and ballistic throw velocities ($v_x, v_y, v_z$) are fully synchronized across remote clients.
+  - **Timestamp-Spaced Playback Buffer, Ordering & Late Message Discard (Smoothness Bias)**:
+    - **Out-of-Order Message Preservation**: Both client and server maintain received message queues (`inputQueue` on server, `snapshotQueue` on client) sorted in strict chronological order by `tick` / `timestamp`. Out-of-order packets arriving due to network jitter are inserted into their proper sequential position rather than being dropped or processed out-of-order.
+    - **Late Message Discard**:
+      - Server discards any `player_input` packet older than 350ms (`Date.now() - msg.timestamp > 350`) or whose tick has already been executed (`msg.tick <= player.lastExecutedTick`).
+      - Client discards any `world_state` snapshot older than 400ms (`Date.now() - msg.timestamp > 400`) or whose tick has already been rendered past (`serverTick <= lastRenderedServerTick`).
+    - **Timestamp-Spaced Playback Interpolation**: The client maintains a steady playback timeline offset by a modest buffer (`interpolationDelayMs = 75ms` ~ 2.25 server broadcast frames at 30Hz). On each render frame (`GameLoop.onPreRender`), positions of remote characters and unheld dynamic objects are smoothly interpolated between surrounding snapshots $S_0$ and $S_1$ using $\alpha = (t_{\text{play}} - S_0.t) / (S_1.t - S_0.t)$.
+    - **Buffer Depth Self-Tuning**: If jitter causes the buffer to accumulate ($> 140\text{ms}$), playback time gently accelerates by $6\%$ ($1.06\times$); if network stalls cause starving ($< 50\text{ms}$), playback gently decelerates by $6\%$ ($0.94\times$), eliminating visual stutter or hitching.
+    - **Double-Physics Prevention in Multiplayer**: In Multiplayer Mode (`gameLoop.isMultiplayerMode = true`), `GameLoop` skips local velocity integration on remote characters and unheld objects, letting the authoritative snapshot playback stream drive coordinates with zero fighting. Local player characters maintain 0ms local client prediction, with soft drift correction ($> 0.45\text{u}$ easing at $10\%$ per tick, never jarring).
+    - **Carried & Released State**: Dynamic objects held by local players follow hands directly; thrown objects transition seamlessly from local release window into the smooth snapshot stream.
 
 - **Authoritative Player Joining & Color Sequencing**:
   - The server authoritatively assigns player numbers and theme colors upon connection: Player 1 is always Yellow / Amber Gold (`#f59e0b`), Player 2 is Cyan (`#06b6d4`, matching singleplayer Player 2), Player 3 is Emerald (`#10b981`), etc.
@@ -545,6 +548,13 @@ powerCreatureGamePrototype1/
       - Features an animated radar pulse, status indicator, target URL input, and a prominent primary action button: `🎮 Switch Back to Game View (Single Player)`.
       - Seamlessly hides as soon as the client connects and receives the authoritative world state, revealing the live multiplayer arena.
       - Re-appears immediately if the connection drops or is lost, guaranteeing the user is never left looking at an unresponsive arena without an instant escape back to single player.
+    - **Optimistic Throw / Instant Ballistic Flight (`isObjectInOptimisticFlight`)** — Commit `2097f22`:
+      - **Problem**: In multiplayer mode, `GameLoop.ts` skipped local physics integration for all unheld objects (`isMultiplayerMode && !obj.isHeld → continue`), so thrown objects were frozen in the thrower's hands until the next server snapshot arrived (~33–100ms RTT), then snapped/teleported to where they ended up.
+      - **Solution**: Three-part fix that biases smoothness over simultaneous accuracy:
+        1. **`MultiplayerClient.isObjectInOptimisticFlight(objId)`**: Public predicate that returns `true` for the 2500ms window after a throw or drop. Extended TTL from 1500ms → 2500ms to cover worst-case cross-device round-trip + interpolation delay.
+        2. **`GameLoop.isObjectInOptimisticFlight` hook**: Optional callback wired from `main.ts` (`gameLoop.isObjectInOptimisticFlight = (id) => multiplayerClient.isObjectInOptimisticFlight(id)`). Objects in the optimistic-flight window bypass the "skip local physics in multiplayer" gate, running `updatePosition`, wall collision, and TOI resolution locally — so the object arcs through the air immediately.
+        3. **Soft Drift Correction in `updatePlayback`**: For recently-released objects, instead of fully skipping snapshot data, a gentle 8% ease-per-step is applied only when server and client positions diverge > 1.2u. This corrects large discrepancies (e.g. server rejected the throw or had a different release position) without disturbing normal local ballistic momentum.
+
 
 ---
 
