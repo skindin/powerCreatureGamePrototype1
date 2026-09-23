@@ -12,7 +12,7 @@ export class WallEdgeAssistModule {
   /**
    * Whether to prevent walking off elevated walls when walking on wall tops.
    */
-  public preventWalkOff = true;
+  public preventWalkOff = false;
 
   /**
    * Maximum distance the character is allowed to hang off of elevated walls

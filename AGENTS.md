@@ -296,10 +296,11 @@ powerCreatureGamePrototype1/
     - **Default Calibration**: Configured with `jumpStrength = 11.6` and `maxInitialSpeed = 15.0`. Under standard arena gravity ($g = 30.0$) and default character mass ($1.2\text{kg}$), discrete 60Hz Euler integration yields an apex height of exactly **$1.50\text{ units}$** ($1.498\text{u}$), allowing creatures to clear 1.5 wall-height layers unencumbered.
     - **Encumbered Physics Scaling**: Vertical takeoff velocity scales with combined load ($v_z = \min(\text{maxInitialSpeed}, \text{jumpStrength} / (m_{\text{char}} + m_{\text{held}}))$), reducing jump height realistically when holding rocks, crates, or other creatures.
     - **Input Binding**: Initiated on non-repeat `Spacebar` (keyboard) and button 0 / `A` button (gamepad), while preserving initial device claiming / join triggers when unassigned.
-28. **WallEdgeAssistModule Decoupling & Optional ClimbingModule Detachment**:
+28. **WallEdgeAssistModule Decoupling & Disabled-by-Default Edge Guardrail**:
     - Separated wall platform edge guardrails and clamp states (`preventWalkOff`, `hangDistance`, `isAssistClampArmed`, `hasMovedOntoWall`, mount tracking) out of `ClimbingModule` into an independent `WallEdgeAssistModule.ts`.
-    - **Removed Climbing from Default Character**: Default player characters spawn with `climbingModule = null`, giving them jump and edge guardrail capabilities by default without vertical wall adhesion.
-    - **Decoupled Ledge Protection**: Characters walking on wall tops retain ledge protection (`preventWalkOff = true`) even without climbing abilities attached.
+    - **Removed Climbing from Default Character**: Default player characters spawn with `climbingModule = null`, giving them jump capabilities by default without vertical wall adhesion.
+    - **Disabled by Default**: `WallEdgeAssistModule` initializes with `preventWalkOff = false` by default, allowing creatures on wall tops to freely walk off ledges and dismount without being clamped or held back by edge guardrails.
+    - **Optional Toggle in DevPanel**: Players can re-enable edge assist at any time via the DevPanel "🛡️ Wall Edge Assist" card by toggling "Prevent Walk-Off" to Active.
     - **Optional Addable Behavior**: `ClimbingModule` remains fully supported as an opt-in creature ability; players can re-attach climbing at any time via the DevPanel "➕ Add Behavior" dropdown.
 29. **Directional Jump Impulse When Walking Against Obstacles & Wall Assist**:
     - When walking against a wall obstacle or against the wall edge assist clamp, horizontal velocity is zeroed by the collision/clamp system, which previously resulted in purely vertical jumps with zero horizontal displacement ("no motion").
