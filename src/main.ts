@@ -84,37 +84,120 @@ function bootstrap(): void {
     { capture: true }
   );
 
-  // Mobile & PWA Fullscreen & Landscape Orientation Lock:
-  // Trigger once on initial user gesture ({ once: true }) to prevent spamming requestFullscreen on every touch,
-  // which causes Android's "Swipe down to exit" unmaximize prompt to get stuck permanently.
-  let hasRequestedFullscreen = false;
-  const enterImmersiveFullscreen = () => {
-    if (hasRequestedFullscreen) return;
-    hasRequestedFullscreen = true;
+  // Maximize / Fullscreen Manager & Orientation Lock:
+  const btnMaximize = document.getElementById("btn-maximize-screen");
+  const maximizeIcon = document.getElementById("maximize-btn-icon");
+  const maximizeText = document.getElementById("maximize-btn-text");
+  const mobileBtnMaximize = document.getElementById("mobile-btn-maximize");
+  const mobileMaximizeIcon = document.getElementById("mobile-maximize-icon");
+  const mobileMaximizeText = document.getElementById("mobile-maximize-text");
+  const mobileMaximizeBadge = document.getElementById("mobile-maximize-badge");
 
-    const isMobile = window.matchMedia("(pointer: coarse)").matches;
-    if (!isMobile) return;
+  const isFullscreenActive = (): boolean => {
+    return Boolean(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+  };
 
-    // Android & standard Fullscreen API
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen({ navigationUI: "hide" } as any).catch(() => {});
+  const updateFullscreenUI = () => {
+    const isFs = isFullscreenActive();
+    if (btnMaximize) {
+      if (isFs) {
+        btnMaximize.classList.add("active");
+        if (maximizeIcon) maximizeIcon.textContent = "🗗";
+        if (maximizeText) maximizeText.textContent = "Restore";
+        btnMaximize.title = "Exit Fullscreen (Esc / F11)";
+      } else {
+        btnMaximize.classList.remove("active");
+        if (maximizeIcon) maximizeIcon.textContent = "⛶";
+        if (maximizeText) maximizeText.textContent = "Maximize";
+        btnMaximize.title = "Maximize / Fullscreen (F11)";
+      }
     }
-
-    // iOS Safari / iPhone:
-    // iPhone Safari does not support requestFullscreen. Trigger scroll to collapse Safari address bar
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    if (isIOS) {
-      window.scrollTo(0, 0);
-      setTimeout(() => window.scrollTo(0, 0), 100);
-    }
-
-    if (screen.orientation && (screen.orientation as any).lock) {
-      (screen.orientation as any).lock("landscape").catch(() => {});
+    if (mobileBtnMaximize) {
+      if (isFs) {
+        mobileBtnMaximize.classList.add("active");
+        if (mobileMaximizeIcon) mobileMaximizeIcon.textContent = "🗗";
+        if (mobileMaximizeText) mobileMaximizeText.textContent = "Restore Screen";
+        if (mobileMaximizeBadge) mobileMaximizeBadge.textContent = "Active";
+      } else {
+        mobileBtnMaximize.classList.remove("active");
+        if (mobileMaximizeIcon) mobileMaximizeIcon.textContent = "⛶";
+        if (mobileMaximizeText) mobileMaximizeText.textContent = "Maximize Screen";
+        if (mobileMaximizeBadge) mobileMaximizeBadge.textContent = "Full";
+      }
     }
   };
 
-  window.addEventListener("touchstart", enterImmersiveFullscreen, { passive: true, once: true });
-  window.addEventListener("pointerdown", enterImmersiveFullscreen, { passive: true, once: true });
+  const toggleFullscreen = async () => {
+    const docEl = document.documentElement as any;
+    const isFs = isFullscreenActive();
+
+    if (!isFs) {
+      const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+      if (req) {
+        try {
+          await req.call(docEl, { navigationUI: "hide" });
+        } catch (err) {
+          console.warn("Fullscreen request notice:", err);
+        }
+      }
+
+      // iOS Safari scroll collapse fallback
+      window.scrollTo(0, 0);
+      setTimeout(() => window.scrollTo(0, 0), 100);
+
+      if (screen.orientation && (screen.orientation as any).lock) {
+        (screen.orientation as any).lock("landscape").catch(() => {});
+      }
+    } else {
+      const exit = document.exitFullscreen || (document as any).webkitExitFullscreen || (document as any).mozCancelFullScreen || (document as any).msExitFullscreen;
+      if (exit) {
+        try {
+          await exit.call(document);
+        } catch (err) {
+          console.warn("Fullscreen exit notice:", err);
+        }
+      }
+    }
+    updateFullscreenUI();
+  };
+
+  btnMaximize?.addEventListener("click", () => toggleFullscreen());
+  mobileBtnMaximize?.addEventListener("click", () => toggleFullscreen());
+
+  document.addEventListener("fullscreenchange", updateFullscreenUI);
+  document.addEventListener("webkitfullscreenchange", updateFullscreenUI);
+  document.addEventListener("mozfullscreenchange", updateFullscreenUI);
+  document.addEventListener("MSFullscreenChange", updateFullscreenUI);
+
+  // Auto-maximize on mobile touch devices (debounced by 3s to avoid Android toast spam)
+  let lastAutoFsTime = 0;
+  const tryAutoFullscreen = () => {
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    if (!isMobile) return;
+    const now = Date.now();
+    if (now - lastAutoFsTime < 3000) return;
+    lastAutoFsTime = now;
+
+    if (!isFullscreenActive()) {
+      const docEl = document.documentElement as any;
+      const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
+      if (req) {
+        req.call(docEl, { navigationUI: "hide" }).catch(() => {});
+      }
+      if (screen.orientation && (screen.orientation as any).lock) {
+        (screen.orientation as any).lock("landscape").catch(() => {});
+      }
+      window.scrollTo(0, 0);
+    }
+  };
+
+  window.addEventListener("touchstart", tryAutoFullscreen, { passive: true });
+  updateFullscreenUI();
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
@@ -896,6 +979,11 @@ function bootstrap(): void {
     ) {
       const isOpen = !viewSettingsPanel?.classList.contains("hidden");
       setViewSettingsOpen(!isOpen);
+    }
+
+    if (e.code === "F11") {
+      e.preventDefault();
+      toggleFullscreen();
     }
 
     if (e.code === "Escape") {

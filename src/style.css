@@ -2199,6 +2199,12 @@ input[type="color"] {
   color: #fff;
 }
 
+.mobile-nav-btn.active {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
 .nav-btn-icon {
   font-size: 0.85rem;
 }

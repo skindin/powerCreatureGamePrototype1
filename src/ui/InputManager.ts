@@ -467,12 +467,45 @@ export class InputManager {
       const char = playerEntry ? playerEntry.character : null;
       slot.isActive = char !== null;
 
+      // Helper to test if any button in an array is pressed
+      const isAnyButtonPressed = (indices: number[]): boolean => {
+        return indices.some((idx) => isButtonPressed(idx));
+      };
+      const isAnyButtonPrevPressed = (indices: number[]): boolean => {
+        return indices.some((idx) => isPrevPressed(idx));
+      };
+
+      // Check extended paddle buttons (>= 17, odds = left side, evens = right side)
+      let extendedLeftPaddle = false;
+      let extendedPrevLeftPaddle = false;
+      let extendedRightPaddle = false;
+      let extendedPrevRightPaddle = false;
+      for (let bIdx = 17; bIdx < gp.buttons.length; bIdx++) {
+        if (bIdx % 2 === 1) {
+          // Odd indices = Left side paddles (17, 19, 21, ...)
+          if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
+          if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
+        } else {
+          // Even indices = Right side paddles (18, 20, 22, ...)
+          if (isButtonPressed(bIdx)) extendedRightPaddle = true;
+          if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
+        }
+      }
+
+      // Left Under-Paddle / Sprint buttons: LB (4), L3 (10), X (2), plus extended left paddles (17, 19, ...)
+      const leftPaddleCurrent = isAnyButtonPressed([4, 10, 2]) || extendedLeftPaddle;
+      const leftPaddlePrev = isAnyButtonPrevPressed([4, 10, 2]) || extendedPrevLeftPaddle;
+      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
+
+      // Right Under-Paddle / Jump & Climb buttons: A (0), R3 (11), Y (3), plus extended right paddles (18, 20, ...)
+      const rightPaddleCurrent = isAnyButtonPressed([0, 11, 3]) || extendedRightPaddle;
+      const rightPaddlePrev = isAnyButtonPrevPressed([0, 11, 3]) || extendedPrevRightPaddle;
+      const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
+
       // 1. Controller is connected but its character is NOT currently in the arena:
-      // Pressing A (Xbox button 0 / Cross) adds their character back in!
+      // Pressing A (Xbox button 0 / Cross) or Right Under-Paddle adds their character back in!
       if (!slot.isActive || !char) {
-        const btn0Current = isButtonPressed(0);
-        const btn0JustPressed = btn0Current && !isPrevPressed(0);
-        if (btn0JustPressed) {
+        if (rightPaddleJustPressed) {
           this.onGamepadJoin?.(i);
         }
         slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
@@ -547,24 +580,21 @@ export class InputManager {
       const isLtPressed = isButtonPressed(6, 0.25) || Boolean(gp.mapping !== "standard" && gp.axes && (gp.axes[5] ?? 0) > 0.4);
       slot.isLockHeld = isLtPressed;
 
-      // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
-      const btn0Current = isButtonPressed(0);
-      slot.isClimbHeld = btn0Current;
-      if (btn0Current && !isPrevPressed(0)) {
+      // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
+      slot.isClimbHeld = rightPaddleCurrent;
+      if (rightPaddleJustPressed) {
         char.jump(arena, slot.movementVector);
       }
 
-      // Button 4 (LB / L1) or Button 10 (L3 / Left Stick Click): Sprint
-      const lbCurrent = isButtonPressed(4) || isButtonPressed(10);
-      const lbJustPressed = lbCurrent && !(isPrevPressed(4) || isPrevPressed(10));
+      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle (Button 17/19/2): Sprint
       const isStickMoving = lMag > deadzone;
 
-      if (lbJustPressed) {
+      if (leftPaddleJustPressed) {
         slot.sprintArmed = !slot.sprintArmed;
         char.setSprinting(slot.sprintArmed);
       }
 
-      if (lbCurrent) {
+      if (leftPaddleCurrent) {
         slot.sprintArmed = true;
         char.setSprinting(true);
       }
@@ -575,8 +605,8 @@ export class InputManager {
         }
       } else {
         // Left stick is in neutral deadzone
-        if (slot.wasMoving && !lbCurrent) {
-          // Stick was released after moving, and LB/L3 is not being held
+        if (slot.wasMoving && !leftPaddleCurrent) {
+          // Stick was released after moving, and Left Under-Paddle / LB / L3 is not being held
           slot.sprintArmed = false;
           char.setSprinting(false);
         }

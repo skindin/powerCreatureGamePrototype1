@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-CmtWrjz_.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BzZwXRKv.css">
+    <script type="module" crossorigin src="/assets/index-BIP_ZUI9.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-8AxdaRjk.css">
   </head>
   <body>
     <div id="app-layout">
@@ -65,6 +65,10 @@
           <button id="toggle-sidebar-btn" class="sidebar-toggle-btn active" title="Toggle Inspector Sidebar (I or `)">
             <span class="sidebar-btn-icon">🛠️</span>
             <span class="sidebar-btn-text">Inspector</span>
+          </button>
+          <button id="btn-maximize-screen" class="sidebar-toggle-btn" title="Toggle Maximize / Fullscreen (F11)">
+            <span class="sidebar-btn-icon" id="maximize-btn-icon">⛶</span>
+            <span class="sidebar-btn-text" id="maximize-btn-text">Maximize</span>
           </button>
         </div>
       </header>
@@ -194,6 +198,11 @@
                     <span class="nav-btn-text">Dev Inspector</span>
                     <span class="badge" style="background: rgba(56,189,248,0.2); color: var(--accent-cyan);">Open</span>
                   </button>
+                  <button id="mobile-btn-maximize" class="mobile-nav-btn">
+                    <span class="nav-btn-icon" id="mobile-maximize-icon">⛶</span>
+                    <span class="nav-btn-text" id="mobile-maximize-text">Maximize Screen</span>
+                    <span class="badge" id="mobile-maximize-badge">Full</span>
+                  </button>
                 </div>
               </div>
 
@@ -208,8 +217,8 @@
                     <span class="ctrl-v">Move</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">Space</span> / <span class="key-badge">A</span></span>
-                    <span class="ctrl-v">Jump</span>
+                    <span class="ctrl-k"><span class="key-badge">Space</span> / <span class="key-badge">A</span> / <span class="key-badge">R-Paddle</span></span>
+                    <span class="ctrl-v">Jump / Climb</span>
                   </div>
                   <div class="mobile-ctrl-row">
                     <span class="ctrl-k"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span></span>
@@ -220,7 +229,7 @@
                     <span class="ctrl-v">Lock</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span></span>
+                    <span class="ctrl-k"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> / <span class="key-badge">L-Paddle</span></span>
                     <span class="ctrl-v">Sprint</span>
                   </div>
                   <div class="mobile-ctrl-row">
@@ -557,7 +566,7 @@
               <div class="controls-box-items">
                 <span class="ctrl-item"><span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span> / <span class="key-badge">L-Stick</span> Move</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Space</span> / <span class="key-badge">A</span> Climb</span>
+                <span class="ctrl-item"><span class="key-badge">Space</span> / <span class="key-badge">A</span> / <span class="key-badge">R-Paddle</span> Jump</span>
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span> Throw</span>
                 <span class="ctrl-divider">•</span>
@@ -565,7 +574,7 @@
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item"><span class="key-badge">B</span> Swap</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> Sprint</span>
+                <span class="ctrl-item"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> / <span class="key-badge">L-Paddle</span> Sprint</span>
               </div>
               <div class="controls-box-status">
                 <button class="controller-status-badge" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 0 PLAYERS</button>

@@ -517,7 +517,27 @@ powerCreatureGamePrototype1/
     - **Landing Sightline Alignment**:
       - In `Renderer.ts`, landing marker position on walls sets `finalGroundY = landY`, so `distToCursor` is measured between screen positions. When aiming on a wall within throw distance, the landing marker sits directly on the reticle with zero dashed sightline; when aiming beyond throw distance, the dashed sightline connects cleanly from the wall top landing circle to the cursor reticle.
 
+50. **Maximize / Fullscreen Restoration & Gamepad Under-Paddle Controls (Sprint & Jump/Climb)**:
+    - **Maximize / Fullscreen Restoration**:
+      - Replaced one-time `{ once: true }` / `pointer: coarse`-blocked logic with a unified, cross-platform `toggleFullscreen` manager supporting standard and vendor-prefixed APIs (`requestFullscreen`, `webkitRequestFullscreen`, `mozRequestFullScreen`, `msRequestFullscreen`, and their exit counterparts).
+      - Added dedicated desktop top-bar button (`#btn-maximize-screen`), mobile navigation drawer button (`#mobile-btn-maximize`), and `F11` hotkey support.
+      - UI buttons dynamically reflect active fullscreen state (`⛶ Maximize` vs `🗗 Restore` / `.active`).
+      - Implemented debounced mobile touch auto-fullscreen (3-second cooldown) to ensure smooth re-entry without getting Android's "Swipe down to exit" system toast stuck permanently.
+      - Added iPhone/iOS fallback executing `window.scrollTo(0, 0)` on user gestures to collapse browser chrome in full-bleed viewport mode (`100dvh`).
+    - **Gamepad Under-Paddle Controls**:
+      - **Left Under-Paddle (Sprint)**:
+        - Mapped standard extended paddle button indices (17, 19, and odd indices $\ge 17$), as well as L3 (10), LB (4), and X (2) to sprinting.
+        - Tapping arms sprint (`slot.sprintArmed = true`); holding maintains sprint directly (`isLeftPaddleDown`).
+        - Releasing movement stick automatically disarms sprint.
+      - **Right Under-Paddle (Jump / Climb)**:
+        - Mapped standard extended paddle button indices (18, 20, and even indices $\ge 18$), as well as R3 (11), A (0), and Y (3) to jumping and wall climbing/dismounting (`slot.isClimbHeld = true`).
+        - When standing next to or facing a wall, pressing the right under-paddle climbs or dismounts.
+        - Supports jumping and climbing across all modern paddle controllers (Xbox Elite Series, DualSense Edge, Razer Kishi/Wolverine, GameSir G8, Scuf, 8BitDo Ultimate).
+      - **Gamepad Join with Under-Paddles**:
+        - Devices can now also claim unassigned player slots by pressing the Right Under-Paddle (in addition to Bottom Button / A / Cross).
+
 ---
+
 
 ## 4. Immediate Next Steps
 
