@@ -68,6 +68,16 @@ let cachedBuildStatus: any = null;
 let lastBuildStatusFetch = 0;
 const BUILD_STATUS_CACHE_MS = 10000;
 
+function getCurrentBranch(): string {
+  try {
+    const gitHead = fs.readFileSync(path.resolve(__dirname, '.git/HEAD'), 'utf8').trim();
+    if (gitHead.startsWith('ref: refs/heads/')) {
+      return gitHead.replace('ref: refs/heads/', '');
+    }
+  } catch {}
+  return process.env.RAILWAY_GIT_BRANCH || 'preMultiplayer';
+}
+
 async function getLiveBuildStatus() {
   const now = Date.now();
   if (cachedBuildStatus && (now - lastBuildStatusFetch) < BUILD_STATUS_CACHE_MS) {
@@ -80,7 +90,8 @@ async function getLiveBuildStatus() {
       headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}`;
     }
 
-    const res = await fetch('https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/branch1/status', {
+    const branch = getCurrentBranch();
+    const res = await fetch(`https://api.github.com/repos/skindin/powerCreatureGamePrototype1/commits/${encodeURIComponent(branch)}/status`, {
       headers,
       signal: AbortSignal.timeout(4000),
     });
@@ -96,9 +107,8 @@ async function getLiveBuildStatus() {
     const state = data.state || 'unknown';
     const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
     const targetUrl = primary?.target_url || '';
-    const currentSha = (process.env.RAILWAY_GIT_COMMIT_SHA || '').substring(0, 7);
 
-    const isBuilding = state === 'pending' || (Boolean(sha) && Boolean(currentSha) && !sha.startsWith(currentSha) && state !== 'failure' && state !== 'error');
+    const isBuilding = state === 'pending';
     const isFailed = state === 'failure' || state === 'error';
     const isSuccess = state === 'success';
 

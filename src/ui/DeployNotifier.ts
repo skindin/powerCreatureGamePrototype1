@@ -104,6 +104,19 @@ export class DeployNotifier {
         return;
       }
 
+      // Clear building notification if no longer building
+      if (this.notifiedBuildingCommit) {
+        this.notifiedBuildingCommit = null;
+        const toast = document.getElementById("deploy-toast-notification");
+        if (toast && toast.classList.contains("building")) {
+          toast.remove();
+        }
+        const badge = document.getElementById("header-deploy-badge");
+        if (badge && badge.classList.contains("building")) {
+          badge.remove();
+        }
+      }
+
       // 3. Check if a build has COMPLETED & is LIVE on the server
       const isNewDeployment = String(deployId) !== this.initialDeployId;
       const isNewCommitDeployed = Boolean(build?.isSuccess && build.shortSha && this.initialCommit && !this.initialCommit.startsWith(build.shortSha));
