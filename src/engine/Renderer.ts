@@ -24,7 +24,7 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
 
   public viewSettings: ViewSettings = {
-    verticalVisuals: "bigger",
+    verticalVisuals: "hover",
     visualAltitudeScale: 0.5,
   };
 
@@ -1856,7 +1856,7 @@ export class Renderer {
       const landY = (traj.landPoint.y - landZ * hoverScale) * ppu;
       const groundLandY = traj.landPoint.y * ppu;
       finalHitX = landX;
-      finalGroundY = groundLandY;
+      finalGroundY = landY;
 
       // Vertical altitude connector from ground up to elevated wall top
       if (hoverScale > 0) {
@@ -1871,21 +1871,28 @@ export class Renderer {
         ctx.restore();
       }
 
-      // 1. Mask footprint fill to top of wall squares
-      ctx.save();
-      ctx.beginPath();
-      for (const wall of arena.walls) {
-        const baseX = wall.x * ppu;
-        const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
-        ctx.rect(baseX, topY, wall.width * ppu, wall.height * ppu);
-      }
-      ctx.clip();
+      // 1. Mask footprint fill to top of wall squares (unless landing on an object outside walls)
+      if (traj.targetObject && (!arena.walls.some((w) => traj.landPoint.x >= w.x && traj.landPoint.x <= w.x + w.width && traj.landPoint.y >= w.y && traj.landPoint.y <= w.y + w.height))) {
+        ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+        ctx.beginPath();
+        drawColliderFootprint(landX, landY);
+        ctx.fill();
+      } else {
+        ctx.save();
+        ctx.beginPath();
+        for (const wall of arena.walls) {
+          const baseX = wall.x * ppu;
+          const topY = (wall.y - wall.wallHeight * hoverScale) * ppu;
+          ctx.rect(baseX, topY, wall.width * ppu, wall.height * ppu);
+        }
+        ctx.clip();
 
-      ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
-      ctx.beginPath();
-      drawColliderFootprint(landX, landY);
-      ctx.fill();
-      ctx.restore(); // restores clip
+        ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+        ctx.beginPath();
+        drawColliderFootprint(landX, landY);
+        ctx.fill();
+        ctx.restore(); // restores clip
+      }
 
       // 2. Unmasked outline and central pinpoint
       ctx.save();
@@ -1990,7 +1997,7 @@ export class Renderer {
       }
 
       // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
-      const distToCursor = Math.hypot(aimTarget.x - traj.landPoint.x, aimTarget.y - traj.landPoint.y);
+      const distToCursor = Math.hypot(cursorX - finalHitX, cursorY - finalGroundY) / ppu;
       if (distToCursor > 0.25 && !isLocked) {
         ctx.save();
         ctx.beginPath();

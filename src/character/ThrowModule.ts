@@ -182,6 +182,51 @@ export class ThrowModule {
   }
 
   /**
+   * Helper: tests if (aimX, aimY) in screen space is over a wall's pseudo-3D roof or front face.
+   * If found, maps the screen aim point back to physical 3D world coordinates (physX, physY)
+   * on top of the wall so that rendering at (physX, physY - wallHeight * hoverScale) aligns
+   * EXACTLY with (aimX, aimY) on screen!
+   */
+  public static getWallUnderCursor(
+    aimX: number,
+    aimY: number,
+    arena: Arena,
+    hoverScale = 0
+  ): { wall: Wall; physX: number; physY: number } | null {
+    const hScale = hoverScale > 0 ? hoverScale : 0;
+    // Check foreground walls first (descending Y in arena)
+    const sortedWalls = [...arena.walls].sort((a, b) => b.y - a.y);
+    for (const wall of sortedWalls) {
+      const roofTopY = wall.y - wall.wallHeight * hScale;
+      const roofBottomY = wall.y + wall.height - wall.wallHeight * hScale;
+      const baseBottomY = wall.y + wall.height;
+
+      // Check horizontal bounds with a small margin
+      if (aimX >= wall.x - 0.05 && aimX <= wall.x + wall.width + 0.05) {
+        // 1. Mouse is over the visual roof of the wall:
+        if (aimY >= roofTopY && aimY <= roofBottomY) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, aimY + wall.wallHeight * hScale));
+          return { wall, physX, physY };
+        }
+        // 2. Mouse is over the front face / base:
+        if (aimY > roofBottomY && aimY <= baseBottomY + 0.05) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, wall.y + wall.height - 0.15));
+          return { wall, physX, physY };
+        }
+        // 3. Fallback when hScale is 0 (pure 2D flat mode):
+        if (hScale === 0 && aimY >= wall.y && aimY <= wall.y + wall.height) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, aimY));
+          return { wall, physX, physY };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
@@ -232,12 +277,42 @@ export class ThrowModule {
     let effectiveTargetX = targetX;
     let effectiveTargetY = targetY;
     let isLocked = false;
+    let targetSurfaceHeight = 0;
 
-    // If holding right click (autoLock = true) and cursor overlaps an object, snap 2D coordinates to object center
-    if (autoLock && hoveredEntity) {
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
+    // 1. If clicking or hovering over an object (entity):
+    if (hoveredEntity) {
       effectiveTargetX = hoveredEntity.position.x;
       effectiveTargetY = hoveredEntity.position.y;
-      isLocked = true;
+      if (autoLock) {
+        isLocked = true;
+      }
+      const entZ = Math.max(
+        0,
+        hoveredEntity.position.z ?? 0,
+        hoveredEntity.supportingSurfaceHeight ?? 0,
+        hoveredEntity.standingWall ? arena.wallHeight : 0
+      );
+      const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
+      if (entZ >= arena.wallHeight - 0.05) {
+        targetSurfaceHeight = wallH;
+      } else if (hoveredEntity.supportingSurfaceHeight > 0.05) {
+        targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
+      } else {
+        targetSurfaceHeight = arena.getSupportingSurfaceHeight(effectiveTargetX, effectiveTargetY);
+      }
+    } else {
+      // 2. If mouse is over a wall (including 2.5D visual roof and front face):
+      const wallUnderCursor = ThrowModule.getWallUnderCursor(targetX, targetY, arena, scale);
+      if (wallUnderCursor) {
+        effectiveTargetX = wallUnderCursor.physX;
+        effectiveTargetY = wallUnderCursor.physY;
+        targetSurfaceHeight = wallUnderCursor.wall.wallHeight;
+      } else {
+        // 3. Fallback to open ground:
+        targetSurfaceHeight = arena.getSupportingSurfaceHeight(targetX, targetY);
+      }
     }
 
     const dx = effectiveTargetX - startX;
@@ -252,6 +327,16 @@ export class ThrowModule {
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
 
+    // If aim distance was clamped, verify what surface is beneath finalTarget
+    if (actualDist < dist) {
+      const clampedWall = arena.getSupportingWall(finalTargetX, finalTargetY, colliderRadius > 0 ? colliderRadius : 0.35);
+      if (clampedWall) {
+        targetSurfaceHeight = clampedWall.wallHeight;
+      } else {
+        targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+      }
+    }
+
     // Inertial velocity integration:
     // When moving, the character's velocity vector influences the throw.
     // To land on target, the arm cancels sideways drift while contributing forward throw power,
@@ -264,27 +349,6 @@ export class ThrowModule {
     // Arm velocity available in target direction after countering perpendicular momentum
     const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
     const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
-
-    // Target surface elevation:
-    // If cursor is over an object, calculate the trajectory to hit the top of the layer the object is on.
-    // Otherwise fallback to checking walls at the aim position.
-    let targetSurfaceHeight: number;
-    if (hoveredEntity) {
-      const layer = GameObject.getEntityLayer(hoveredEntity, arena.wallHeight);
-      if (layer <= 1) {
-        // Layer 1 is the Ground Layer. Top of the ground layer surface is 0.0.
-        targetSurfaceHeight = 0.0;
-      } else {
-        // Layer 2+ is Wall / Platform elevation. Top of Layer 2 is wallHeight (1.0u).
-        const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
-        targetSurfaceHeight = (layer - 1) * wallH;
-        if (hoveredEntity.supportingSurfaceHeight > 0.05) {
-          targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
-        }
-      }
-    } else {
-      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
-    }
 
     // Straight-line horizontal flight if zero-G or no vertical velocity module
     if (!hasGravity || !hasVerticalVelocity) {

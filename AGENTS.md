@@ -500,6 +500,22 @@ powerCreatureGamePrototype1/
       - In `src/main.ts`, `enterImmersiveFullscreen` is attached with `{ passive: true, once: true }` and guarded with `hasRequestedFullscreen`. Only fires once on initial user gesture, preventing repeated `requestFullscreen` calls on every touch that caused Android's "Swipe down to exit" system toast to get stuck permanently.
     - **iPhone Viewport Maximize (Bug 8)**:
       - Handled iOS Safari's lack of the Fullscreen API by executing scroll collapse (`window.scrollTo(0, 0)`) on first touch gesture, activating full-bleed `100dvh` viewport fitting.
+49. **Wall Roof & Object Cursor Landing Targeting & Orthographic Mode Default**:
+    - **Default View Mode Set to Orthographic (`"hover"`)**:
+      - Updated default `viewSettings.verticalVisuals` from `"bigger"` (sprite scale mode) to `"hover"` (Hover Above Shadow / orthographic mode without sprite scale) across `Renderer.ts`, `main.ts`, and `index.html`.
+      - Added `pcg_view_default_ortho_v1` local storage migration in `main.ts` to seamlessly upgrade existing browser sessions to orthographic mode.
+    - **Mouse Aim Over Wall Lands at Wall Height on Cursor**:
+      - Added `ThrowModule.getWallUnderCursor(aimX, aimY, arena, hoverScale)`: detects if screen coordinates $(aimX, aimY)$ are over a wall's 2.5D visual roof or front face.
+      - Maps screen aim coordinates on the roof back to physical world coordinates:
+        $physX = \text{aimX}$
+        $physY = \text{aimY} + \text{wall.wallHeight} \times \text{hoverScale}$
+        with $\text{targetSurfaceHeight} = \text{wall.wallHeight}$.
+      - Because physical $physY$ is elevated by $\text{wall.wallHeight} \times \text{hoverScale}$, rendering the landing target at $(physX, physY - \text{wall.wallHeight} \times \text{hoverScale})$ places the landing circle **EXACTLY** under the mouse cursor at $(aimX, aimY)$ on the wall top!
+      - Ascending parabolic launch velocities $(vx, vy, vz)$ are computed so the object lands directly on top of the wall at the cursor's position, supported by `standingWall`.
+    - **Clicking / Aiming at Objects**:
+      - When aiming at or clicking on an object (creature, rock, crate, food), `computeLaunchVelocity` sets $(effectiveTargetX, effectiveTargetY)$ directly to the object's coordinates, and sets `targetSurfaceHeight` to match the object's layer (or standing wall height), ensuring throws land directly on that object or on its layer elevation.
+    - **Landing Sightline Alignment**:
+      - In `Renderer.ts`, landing marker position on walls sets `finalGroundY = landY`, so `distToCursor` is measured between screen positions. When aiming on a wall within throw distance, the landing marker sits directly on the reticle with zero dashed sightline; when aiming beyond throw distance, the dashed sightline connects cleanly from the wall top landing circle to the cursor reticle.
 
 ---
 

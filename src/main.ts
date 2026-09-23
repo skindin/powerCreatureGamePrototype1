@@ -606,10 +606,14 @@ function bootstrap(): void {
     setViewSettingsOpen(false);
   });
 
-  // Apply saved or default vertical visuals mode
+  // Apply saved or default vertical visuals mode (default is orthographic "hover" mode without scale)
   const validModes: VerticalVisualMode[] = ["bigger", "hover", "both"];
-  let savedMode: VerticalVisualMode = "bigger";
+  let savedMode: VerticalVisualMode = "hover";
   try {
+    if (localStorage.getItem("pcg_view_default_ortho_v1") !== "true") {
+      localStorage.setItem("pcg_vertical_visuals", "hover");
+      localStorage.setItem("pcg_view_default_ortho_v1", "true");
+    }
     const stored = localStorage.getItem("pcg_vertical_visuals") as VerticalVisualMode;
     if (stored && validModes.includes(stored)) {
       savedMode = stored;
