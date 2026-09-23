@@ -475,6 +475,10 @@ powerCreatureGamePrototype1/
       - **Locked Object Lockbox & Guide Line**: While holding lock, dedicated amber corner lock brackets `[ ]` and a `[P# LOCKED]` badge appear directly on the targeted closest object, with a dashed amber guide line connecting from your visible cursor to the locked object.
       - As the player moves their cursor, they clearly see their cursor roaming freely while the lockbox snaps to whichever object is closest to the cursor.
       - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
+47. **Top-Bar Responsive Wrapping & Non-Overflowing Navigation**:
+    - `.top-bar` and `.top-bar-right` support `flex-wrap: wrap;` with dynamic `row-gap: 6px;` and `column-gap: 12px;`.
+    - When screen or window width is constrained (e.g. laptop displays, high DPI scaling 125%/150%, or narrow windows), elements wrap onto a clean new line rather than pushing past the screen edge or clipping off the right viewport border.
+    - Updated responsive breakpoint thresholds so `.brand-badge` and `.public-label` hide at $\le 1450\text{px}$, and `.sidebar-btn-text` collapses to icon pills (`👥`, `🐞`, `👁️`, `🛠️`) at $\le 1320\text{px}$, maintaining clean single-line density across standard widescreen displays while wrapping gracefully whenever needed.
 
 ---
 

@@ -59,13 +59,15 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px clamp(10px, 1.5vw, 20px);
+  flex-wrap: wrap;
+  row-gap: 6px;
+  column-gap: 12px;
+  padding: 6px clamp(10px, 1.5vw, 18px);
   background: rgba(15, 23, 42, 0.85);
   border-bottom: 1px solid var(--panel-border);
   backdrop-filter: blur(8px);
   z-index: 30;
   flex-shrink: 0;
-  gap: 10px;
   min-height: 48px;
   width: 100%;
   box-sizing: border-box;
@@ -160,8 +162,11 @@ body {
 .top-bar-right {
   display: flex;
   align-items: center;
-  gap: clamp(6px, 1vw, 12px);
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px clamp(6px, 0.8vw, 10px);
+  row-gap: 6px;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .relay-pill {
@@ -1711,7 +1716,7 @@ input[type="color"] {
    Responsive Scaling & Compact Screen Optimizations
    ========================================================================== */
 
-@media (max-width: 1250px) {
+@media (max-width: 1450px) {
   .brand-badge {
     display: none;
   }
@@ -1720,7 +1725,7 @@ input[type="color"] {
   }
 }
 
-@media (max-width: 1140px) {
+@media (max-width: 1320px) {
   .sidebar-btn-text {
     display: none;
   }
