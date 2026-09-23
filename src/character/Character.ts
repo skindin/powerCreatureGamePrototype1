@@ -239,8 +239,31 @@ export class Character extends GameObject {
       this.jump(arena, movementInput);
     }
 
-    // 3. Update facing orientation using intended movement input or aim
-    this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);
+    // 3. Update facing orientation using intended movement input or aim.
+    // If auto-locking onto a target while holding an object, orient toward the locked target!
+    let lockedTarget: GameObject | null = null;
+    if (this.heldObject && autoLock && aimTargetPos && this.throwModule) {
+      lockedTarget = this.throwModule.findHoveredEntity(
+        aimTargetPos.x,
+        aimTargetPos.y,
+        arena,
+        this,
+        this.heldObject,
+        entities ?? arena.entities,
+        arena.visualAltitudeScale,
+        Infinity
+      );
+    }
+
+    if (lockedTarget) {
+      const dx = lockedTarget.position.x - this.position.x;
+      const dy = lockedTarget.position.y - this.position.y;
+      if (Math.hypot(dx, dy) > 0.05) {
+        this.facingAngle = Math.atan2(dy, dx);
+      }
+    } else {
+      this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);
+    }
 
     // 4. Update held object position if carrying one
     if (this.heldObject) {
@@ -267,6 +290,13 @@ export class Character extends GameObject {
         arena.visualAltitudeScale,
         autoLock
       );
+      if (this.activeTrajectory?.isAutoLocked && this.activeTrajectory.targetObject) {
+        const dx = this.activeTrajectory.targetObject.position.x - this.position.x;
+        const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
+        if (Math.hypot(dx, dy) > 0.05) {
+          this.facingAngle = Math.atan2(dy, dx);
+        }
+      }
     } else {
       this.activeTrajectory = null;
     }

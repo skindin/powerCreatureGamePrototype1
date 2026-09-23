@@ -463,9 +463,11 @@ export class GameLoop {
             }
           }
 
-          // "if the character is controller controlled and they are holding an object, preserve where the cursor was in relation to the character, and when it reappears, place it the same relative position to the character"
-          slot.aimPos.x = visualPos.x + slot.aimOffset.x;
-          slot.aimPos.y = visualPos.y + slot.aimOffset.y;
+          // Preserve world aimPos instead of dragging it with player movement
+          if (slot.aimPos) {
+            slot.aimOffset.x = slot.aimPos.x - visualPos.x;
+            slot.aimOffset.y = slot.aimPos.y - visualPos.y;
+          }
 
           entry.wasCursorVisible = isCursorVisibleNow;
           slot.isCursorVisible = isCursorVisibleNow;

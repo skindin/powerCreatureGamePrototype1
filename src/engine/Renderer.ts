@@ -1431,7 +1431,40 @@ export class Renderer {
       const fz = Math.abs(wz) / wTotal; // Fraction vertical
       // Generous 3D oval opening (at least 35% opening even when rolling horizontally, opening to full circle)
       const b = a * Math.max(0.35, Math.pow(fz, 0.65));
-      const spinSign = wz !== 0 ? Math.sign(wz) : 1;
+
+      // Surface velocity in screen space: (vx_surf = wy, vy_surf = -wx)
+      const vSurfX = wy;
+      const vSurfY = -wx;
+
+      const cosR = Math.cos(rollDirAngle);
+      const sinR = Math.sin(rollDirAngle);
+
+      // Half 1: 0 to Math.PI (local midpoint at ly = +b) -> screen deltaY = +b * cosR
+      // Half 2: Math.PI to 2*Math.PI (local midpoint at ly = -b) -> screen deltaY = -b * cosR
+      // In screen space (y down), the top half has smaller y (negative deltaY).
+      const isHalf1Top = cosR < 0;
+
+      // The top half in screen space is ALWAYS OPAQUE (visible hemisphere facing viewer)
+      // The bottom half in screen space is ALWAYS SEMI-TRANSPARENT (underside)
+      const topStart = isHalf1Top ? 0 : Math.PI;
+      const topEnd = isHalf1Top ? Math.PI : Math.PI * 2;
+      const bottomStart = isHalf1Top ? Math.PI : 0;
+      const bottomEnd = isHalf1Top ? Math.PI * 2 : Math.PI;
+
+      // Tangent vector on the top hemisphere in screen space as theta increases:
+      // At midpoint of top hemisphere, dx_local/dtheta has sign:
+      // When isHalf1Top (theta = PI/2): dx_local/dtheta = -a, dy_local/dtheta = 0
+      // -> screen tangent: (-a*cosR, -a*sinR)
+      // When !isHalf1Top (theta = 3*PI/2): dx_local/dtheta = +a, dy_local/dtheta = 0
+      // -> screen tangent: (+a*cosR, +a*sinR)
+      const tanX = isHalf1Top ? -a * cosR : a * cosR;
+      const tanY = isHalf1Top ? -a * sinR : a * sinR;
+      const dotTan = tanX * vSurfX + tanY * vSurfY;
+
+      // If dotTan >= 0, increasing theta moves forward with roll velocity.
+      // Negative dashOffset advances dashes in direction of increasing theta.
+      const spinSign = dotTan >= 0 ? 1 : -1;
+      const dashOffset = -spinSign * roll.visualPhase * a;
 
       // 1. Upward facing rounded, skewed triangles from player's perspective (hidden if held or zero angular velocity)
       if (showArrows) {
@@ -1443,22 +1476,22 @@ export class Renderer {
       ctx.translate(x, y);
       ctx.rotate(rollDirAngle);
 
-      // The LONG side of the oval across the top of the ball is OPAQUE (visible stripe)
+      // The top hemisphere in screen space is OPAQUE (visible stripe)
       ctx.beginPath();
-      ctx.ellipse(0, 0, a, b, 0, 0, Math.PI);
+      ctx.ellipse(0, 0, a, b, 0, topStart, topEnd);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
       ctx.lineWidth = strokeWidth;
       ctx.setLineDash([dashLen, dashGap]);
-      ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+      ctx.lineDashOffset = dashOffset;
       ctx.stroke();
 
-      // The other LONG side (the underside of the ball) is SEMI-TRANSPARENT
+      // The underside in screen space is SEMI-TRANSPARENT
       ctx.beginPath();
-      ctx.ellipse(0, 0, a, b, 0, Math.PI, Math.PI * 2);
+      ctx.ellipse(0, 0, a, b, 0, bottomStart, bottomEnd);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
       ctx.lineWidth = 1.8;
       ctx.setLineDash([dashLen, dashGap]);
-      ctx.lineDashOffset = -roll.visualPhase * a * spinSign;
+      ctx.lineDashOffset = dashOffset;
       ctx.stroke();
 
       ctx.restore();
@@ -1549,8 +1582,8 @@ export class Renderer {
       const nx = -ty;
       const ny = tx;
 
-      // On 3D oval: upper hemisphere is opaque, underside is semi-transparent
-      const isTopHalf = Math.sin(t) >= 0;
+      // On 3D oval: upper hemisphere (screen top, sy <= centerY) is opaque, underside is semi-transparent
+      const isTopHalf = sy <= centerY;
       const alpha = isUniformAlpha ? 0.90 : (isTopHalf ? 0.90 : 0.32);
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
 

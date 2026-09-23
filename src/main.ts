@@ -64,19 +64,57 @@ function bootstrap(): void {
   }
   fitCanvas();
 
-  // Mobile & PWA Fullscreen & Landscape Orientation Lock
-  // On first touch gesture on mobile touch devices, enter true immersive fullscreen to hide Android status/notification UI and bottom navigation bar
+  // Mobile & Gamepad Browser Back Prevention:
+  // Intercept history popstate and navigation keys (such as LB on mobile controllers or Android back gestures)
+  // so pressing Left Bumper never leaves the game.
+  try {
+    history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", () => {
+      history.pushState(null, "", window.location.href);
+    });
+  } catch {}
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "BrowserBack" || e.key === "GoBack" || (e as any).key === "AndroidBack") {
+        e.preventDefault();
+      }
+    },
+    { capture: true }
+  );
+
+  // Mobile & PWA Fullscreen & Landscape Orientation Lock:
+  // Trigger once on initial user gesture ({ once: true }) to prevent spamming requestFullscreen on every touch,
+  // which causes Android's "Swipe down to exit" unmaximize prompt to get stuck permanently.
+  let hasRequestedFullscreen = false;
   const enterImmersiveFullscreen = () => {
+    if (hasRequestedFullscreen) return;
+    hasRequestedFullscreen = true;
+
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
     if (!isMobile) return;
+
+    // Android & standard Fullscreen API
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen({ navigationUI: "hide" } as any).catch(() => {});
     }
+
+    // iOS Safari / iPhone:
+    // iPhone Safari does not support requestFullscreen. Trigger scroll to collapse Safari address bar
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      window.scrollTo(0, 0);
+      setTimeout(() => window.scrollTo(0, 0), 100);
+    }
+
     if (screen.orientation && (screen.orientation as any).lock) {
       (screen.orientation as any).lock("landscape").catch(() => {});
     }
   };
-  window.addEventListener("touchstart", enterImmersiveFullscreen, { passive: true });
+
+  window.addEventListener("touchstart", enterImmersiveFullscreen, { passive: true, once: true });
+  window.addEventListener("pointerdown", enterImmersiveFullscreen, { passive: true, once: true });
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({

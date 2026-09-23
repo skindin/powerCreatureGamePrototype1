@@ -392,11 +392,11 @@ export class ThrowModule {
     const held = character.heldObject;
     let startX = held.position.x;
     let startY = held.position.y;
-    const startZ = held.position.z;
+    let startZ = held.position.z;
 
     // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is still within ~0.3u of a wall face, pull back to the
-    // character's own position so the arc has room to gain altitude before the wall.
+    // If the clamped start is near an adjacent wall, elevate startZ when throwing
+    // over or onto the wall so the item clears the top without clipping the rim!
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -407,13 +407,10 @@ export class ThrowModule {
         character.position.x,
         character.position.y
       );
+      startX = clamped.x;
+      startY = clamped.y;
       if (clamped.nearWall) {
-        // Start from the character's own safe position instead
-        startX = character.position.x;
-        startY = character.position.y;
-      } else {
-        startX = clamped.x;
-        startY = clamped.y;
+        startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
 
@@ -556,11 +553,11 @@ export class ThrowModule {
     const held = character.heldObject;
     let startX = held.position.x;
     let startY = held.position.y;
-    const startZ = held.position.z;
+    let startZ = held.position.z;
 
     // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is still within ~0.3u of a wall face, pull back to the
-    // character's own position so the arc has room to gain altitude before the wall.
+    // If the clamped start is near an adjacent wall, elevate startZ when throwing
+    // over or onto the wall so the item clears the top without clipping the rim!
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -571,13 +568,10 @@ export class ThrowModule {
         character.position.x,
         character.position.y
       );
+      startX = clamped.x;
+      startY = clamped.y;
       if (clamped.nearWall) {
-        // Start from the character's own safe position instead
-        startX = character.position.x;
-        startY = character.position.y;
-      } else {
-        startX = clamped.x;
-        startY = clamped.y;
+        startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
 
@@ -604,7 +598,7 @@ export class ThrowModule {
     held.velocity.x = launch.vx;
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;
-    held.position.z = held.hasVerticalPosition ? Math.max(0.3, held.position.z) : 0;
+    held.position.z = held.hasVerticalPosition ? Math.max(startZ, held.position.z) : 0;
 
     // If held object is rollable and has friction, impart rolling motion along throw direction
     if (held.hasFriction && held.rollModule && held.rollModule.enabled) {

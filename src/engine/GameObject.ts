@@ -840,7 +840,7 @@ export class GameObject {
                 const apexZ = this.hasGravity && this.hasVerticalVelocity
                   ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
                   : this.position.z;
-                const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
                 this.resolveWallCollision(wall, isAscendingJump);
               }
             }
@@ -893,7 +893,7 @@ export class GameObject {
             const apexZ = this.hasGravity && this.hasVerticalVelocity
               ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
               : this.position.z;
-            const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
             this.resolveWallCollision(wall, isAscendingJump);
           }
         }

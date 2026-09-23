@@ -480,6 +480,26 @@ powerCreatureGamePrototype1/
     - `.top-bar` and `.top-bar-right` support `flex-wrap: wrap;` with dynamic `row-gap: 6px;` and `column-gap: 12px;`.
     - When screen or window width is constrained (e.g. laptop displays, high DPI scaling 125%/150%, or narrow windows), elements wrap onto a clean new line rather than pushing past the screen edge or clipping off the right viewport border.
     - Updated responsive breakpoint thresholds so `.brand-badge` and `.public-label` hide at $\le 1450\text{px}$, and `.sidebar-btn-text` collapses to icon pills (`👥`, `🐞`, `👁️`, `🛠️`) at $\le 1320\text{px}$, maintaining clean single-line density across standard widescreen displays while wrapping gracefully whenever needed.
+48. **Bug Fixes Across Controls, Mobile Browsers, Roll Visuals & Wall Physics**:
+    - **Controller Joystick Following Player (Bug 1)**:
+      - Gamepad virtual aim reticle position (`slot.aimPos`) is stored and managed directly in absolute world arena coordinates (unanchored from character).
+      - Right stick analog deflection moves `slot.aimPos` across the arena in world space. Moving the character with left stick or WASD leaves the crosshair at its exact world coordinates, behaving like a free mouse cursor rather than dragging along like a leash.
+    - **Mobile Gamepad Left Bumper & Browser Back Navigation (Bug 2)**:
+      - Trapped browser `popstate` via `history.pushState` and intercepted navigation key events (`BrowserBack`, `GoBack`) so Left Bumper (LB / button 4) on mobile controllers triggers sprint cleanly without navigating back or exiting the game.
+    - **Auto-Target Inconsistent Activation (Bug 3)**:
+      - Fixed `InputManager.ts:545` where `gp.axes[2]` (Right Stick X-axis) was erroneously checked as Left Trigger on non-standard gamepads. Nudging right stick or stick drift no longer triggers auto-lock. Auto-lock strictly checks Button 6 (or axis 5).
+    - **Wall Trajectory Collision at 0 Speed (Bug 4)**:
+      - When throwing an object over a wall while standing directly adjacent to the wall face (even at 0 speed), `ThrowModule.ts` elevates the launch altitude (`startZ = Math.max(startZ, arena.wallHeight + 0.05)`). Both trajectory calculation and physical throw release above wall height, preventing the object from colliding into the wall face on frame 1.
+      - In `GameObject.ts`, ascending thrown objects whose vertical apex clears the wall are treated as ascending vaults, preserving forward horizontal velocity.
+    - **Auto-Aiming Character Faces Target (Bug 5)**:
+      - In `Character.ts`, when holding an object with auto-lock active, the character's facing orientation (`facingAngle`) points directly toward the locked target entity's position, aligning character, throw trajectory, and eyes with the locked target.
+    - **Roll Visual Oval Top Hemisphere & Dash Direction Inversion (Bug 6)**:
+      - In `Renderer.ts`, roll indicator oval arcs and triangle alphas are determined in screen space (`sy <= centerY`), ensuring the top hemisphere facing the camera is ALWAYS rendered with the opaque stroke and the underside is semi-transparent, regardless of rolling direction.
+      - Dash offset direction is coupled to the physical surface velocity vector $\vec{v}_{\text{surf}} = (\omega_y R, -\omega_x R)$, ensuring dashes always advance forward in the direction of ground roll.
+    - **Android Stuck Unmaximize Toast (Bug 7)**:
+      - In `src/main.ts`, `enterImmersiveFullscreen` is attached with `{ passive: true, once: true }` and guarded with `hasRequestedFullscreen`. Only fires once on initial user gesture, preventing repeated `requestFullscreen` calls on every touch that caused Android's "Swipe down to exit" system toast to get stuck permanently.
+    - **iPhone Viewport Maximize (Bug 8)**:
+      - Handled iOS Safari's lack of the Fullscreen API by executing scroll collapse (`window.scrollTo(0, 0)`) on first touch gesture, activating full-bleed `100dvh` viewport fitting.
 
 ---
 

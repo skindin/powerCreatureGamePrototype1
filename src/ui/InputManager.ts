@@ -502,7 +502,7 @@ export class InputManager {
       }
 
       // Right Joystick for absolute arena aim reticle:
-      // Preserves where the cursor is in relation to the character
+      // Operates like a free-floating mouse cursor in world coordinates (unleashed from character)
       const visualPos = getVisualPosition
         ? getVisualPosition(char)
         : { x: char.position.x, y: char.position.y };
@@ -511,28 +511,29 @@ export class InputManager {
         slot.aimOffset = { x: 0, y: 0 };
       }
       if (!slot.aimPos) {
-        slot.aimPos = { x: 0, y: 0 };
+        slot.aimPos = { x: visualPos.x, y: visualPos.y };
       }
 
       if (!slot.aimOffsetInitialized) {
         const dir = char.facingAngle ?? 0;
+        slot.aimPos = {
+          x: visualPos.x + Math.cos(dir) * 3.5,
+          y: visualPos.y + Math.sin(dir) * 3.5,
+        };
         slot.aimOffset = {
-          x: Math.cos(dir) * 3.5,
-          y: Math.sin(dir) * 3.5,
+          x: slot.aimPos.x - visualPos.x,
+          y: slot.aimPos.y - visualPos.y,
         };
         slot.aimOffsetInitialized = true;
       }
 
       if (rMag > deadzone) {
         const cursorSpeed = 17.0;
-        slot.aimOffset.x += rx * cursorSpeed * dt;
-        slot.aimOffset.y += ry * cursorSpeed * dt;
+        slot.aimPos.x += rx * cursorSpeed * dt;
+        slot.aimPos.y += ry * cursorSpeed * dt;
         slot.lastAimMoveTime = performance.now();
         slot.aimMovedWhileInRange = true;
       }
-
-      slot.aimPos.x = visualPos.x + slot.aimOffset.x;
-      slot.aimPos.y = visualPos.y + slot.aimOffset.y;
 
       const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
       const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
@@ -542,7 +543,8 @@ export class InputManager {
       slot.aimOffset.y = clampedY - visualPos.y;
 
       // Button 6 (LT / L2): Auto-lock aiming
-      const isLtPressed = isButtonPressed(6, 0.15) || Boolean(gp.mapping !== "standard" && gp.axes && ((gp.axes[2] ?? 0) > 0.25 || (gp.axes[5] ?? 0) > 0.25));
+      // Strictly check Button 6 or trigger axis (axes[5] on non-standard pads). Never check axis 2 (which is Right Stick X)!
+      const isLtPressed = isButtonPressed(6, 0.25) || Boolean(gp.mapping !== "standard" && gp.axes && (gp.axes[5] ?? 0) > 0.4);
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS): Jump (and Climbing / Dismounting if climb module attached)
