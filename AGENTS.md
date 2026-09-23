@@ -522,3 +522,4 @@ powerCreatureGamePrototype1/
 > 2. **Check Current Branch & Status**: Work on the active branch (`branch1` unless specified otherwise) and verify `git status`.
 > 3. **Preserve Modularity**: Never couple features directly into the core loop if they belong in composable modules.
 > 4. **Update Memory Before Concluding**: Whenever you introduce architectural changes, implement new features, or alter project direction, update this `AGENTS.md` file so the next agent (or session on another device) has full context.
+> 5. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously. Browser testing consumes significant credits; only use the browser when the user explicitly asks you to do so.
