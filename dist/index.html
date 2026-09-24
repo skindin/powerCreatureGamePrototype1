@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-CS5u5nMa.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Ce5ntcFS.css">
+    <script type="module" crossorigin src="/assets/index-DntHXSqY.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CHeOPriK.css">
   </head>
   <body>
     <div id="app-layout">
@@ -53,6 +53,7 @@
           <button id="toggle-players-btn" class="sidebar-toggle-btn" title="Arena Players & Controllers (P)">
             <span class="sidebar-btn-icon">👥</span>
             <span class="sidebar-btn-text" id="players-badge-text">Players (1)</span>
+            <span class="sidebar-btn-counter" id="players-count-pill">1</span>
           </button>
           <button id="toggle-feedback-btn" class="sidebar-toggle-btn" title="Bugs & Suggestions Log">
             <span class="sidebar-btn-icon">🐞</span>
@@ -564,17 +565,17 @@
             <div class="controls-box" id="game-controls-box">
               <span class="controls-box-label">🎮 Controls</span>
               <div class="controls-box-items">
-                <span class="ctrl-item"><span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span> / <span class="key-badge">L-Stick</span> Move</span>
+                <span class="ctrl-item"><span class="key-badge">WASD</span> Move</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Space</span> / <span class="key-badge">A</span> / <span class="key-badge">R-Paddle</span> Jump</span>
+                <span class="ctrl-item"><span class="key-badge">Space</span> Jump</span>
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span> Throw</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">R-Click</span> / <span class="key-badge">LT</span> Lock</span>
+                <span class="ctrl-item"><span class="key-badge">R-Click</span> Lock</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item"><span class="key-badge">Shift</span> Sprint</span>
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item"><span class="key-badge">B</span> Swap</span>
-                <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> / <span class="key-badge">L-Paddle</span> Sprint</span>
               </div>
               <div class="controls-box-status">
                 <button class="controller-status-badge" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 0 PLAYERS</button>

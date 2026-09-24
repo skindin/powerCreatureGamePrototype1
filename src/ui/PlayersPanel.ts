@@ -107,6 +107,10 @@ export class PlayersPanel {
     if (this.badgeTextElement) {
       this.badgeTextElement.textContent = `Players (${count})`;
     }
+    const countPill = document.getElementById("players-count-pill");
+    if (countPill) {
+      countPill.textContent = count.toString();
+    }
     if (this.quickButton) {
       this.quickButton.textContent = `👥 ${count} PLAYER${count === 1 ? "" : "S"}`;
       this.quickButton.classList.toggle("has-players", count > 0);

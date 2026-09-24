@@ -536,29 +536,23 @@ powerCreatureGamePrototype1/
       - **Gamepad Join with Under-Paddles**:
         - Devices can now also claim unassigned player slots by pressing the Right Under-Paddle (in addition to Bottom Button / A / Cross).
 
-51. **Desktop UI Optimization, Aspect-Ratio & Viewport Expansion**:
-    - **Single-Row Fixed 48px Top Bar (`flex-wrap: nowrap`)**:
-      - Eliminated layout wrapping where `.top-bar` and `.top-bar-right` previously expanded to 2 or 3 staggered rows on 1080p / laptop resolutions ($1366\times 768$ through $1920\times 1080$ at 125% scaling).
-      - Enforced fixed `height: 48px`, `flex-wrap: nowrap`, and `align-items: center` with smooth glassmorphism.
-      - Streamlined `.public-link-widget` to a sleek, compact 32px pill with truncated URL, copy, and QR actions (~200px max width instead of sprawling 440px).
-      - Standardized top bar navigation buttons (`View`, `Inspector`, `Feedback`, `Maximize`, `Players`) to 32px height pills.
-      - Refined progressive enhancement media queries:
-        - $< 1500\text{px}$: Hides redundant "PUBLIC:" text and trims URL width.
-        - $< 1380\text{px}$: Hides brand badge and direct open link.
-        - $< 1260\text{px}$: Gracefully switches button labels to icon badges with tooltips.
-        - $< 1080\text{px}$: Collapses URL button into quick copy/QR widget.
-        - $< 900\text{px}$: Dev sidebar switches to drawer overlay.
-    - **Floating Bottom HUD Controls Overlay**:
-      - Moved `.controls-overlay-bar` from static in-flow flex block to a floating, non-intrusive bottom HUD overlay (`position: absolute; bottom: 12px; z-index: 10; pointer-events: none;`) with interactive pill buttons (`pointer-events: auto`).
-      - Completely reclaimed 45px–80px of previously lost vertical space in `.viewport-container`.
+51. **Desktop UI Optimization, Aspect-Ratio & Smart Overflow Prevention**:
+    - **Smart Single-Row 48px Top Bar Containment**:
+      - Eliminated horizontal and vertical overflow where buttons and widgets were previously pushed off the right edge of the screen on desktop screens and scaled viewports ($1024\text{px}$ through $1600\text{px}$).
+      - Enforced strict containment on `.top-bar` (`max-width: 100vw; overflow: hidden; height: 48px; flex-wrap: nowrap;`).
+      - Made `.top-bar-right` and `.public-link-widget` flex-shrinkable (`flex-shrink: 1; min-width: 0;`) so they adapt fluidly without pushing action buttons off-screen.
+      - Streamlined `.public-link-widget` to a compact ~105px pill, hiding redundant `PUBLIC:` text and `↗` button by default, while preserving instant 1-click clipboard copy on the URL button and QR code modal.
+      - Added `.sidebar-btn-counter` (`#players-count-pill`) inside `#toggle-players-btn` so that on medium and compact desktop screens ($< 1340\text{px}$), the button displays as `👥 1` rather than needing wide text.
+      - Refined progressive breakpoints ($< 1440\text{px}$, $< 1340\text{px}$, $< 1100\text{px}$, $< 850\text{px}$) guaranteeing that from 4K down to 850px, all top bar elements fit with ample margin.
+    - **Smart Floating Bottom HUD Controls Overlay**:
+      - Streamlined controls item text (`WASD Move`, `Space Jump`, `L-Click/RT Throw`, `R-Click Lock`, `Shift Sprint`, `B Swap`), cutting the box width by more than half.
+      - Set `max-width: calc(100% - 24px); flex-wrap: wrap; box-sizing: border-box;` so the HUD can never exceed viewport boundaries or be pushed off-screen, even when the Dev Inspector sidebar is open on smaller monitors.
     - **Game Canvas Viewport Expansion**:
-      - `.canvas-wrapper` now utilizes 100% of available viewport container height (`calc(100vh - 48px)`).
-      - Available rendering height increases by 25% to 30%, which proportionally expands both canvas width and height while maintaining pixel-perfect 20:14 arena aspect ratio.
-      - Removed vertical squishing, eliminating empty letterbox borders and tiny canvas scaling on desktop screens.
-    - **Overlay Multiplayer Relay HUD**:
-      - Positioned `#multiplayer-relay-hud` as a floating top overlay (`position: absolute; top: 10px; z-index: 15;`) so opening multiplayer never displaces or squishes the canvas.
+      - Reclaimed 100% of available viewport container height (`calc(100vh - 48px)`), increasing rendering height by 25%–30% and proportionally expanding canvas width and height at the 20:14 arena ratio.
+      - Floating overlay multiplayer relay HUD prevents canvas displacement when online.
 
 ---
+
 
 
 
