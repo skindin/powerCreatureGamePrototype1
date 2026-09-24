@@ -349,14 +349,19 @@ powerCreatureGamePrototype1/
       - Holding blue box ($1.9\text{ kg}$): raw speed $18.5 / 1.9 = 9.74\text{ u/s} \ge 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
       - Holding bouncy ball or rolling ball ($1.7 - 1.8\text{ kg}$): raw speed $> 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
       - Holding heavy red box ($3.8\text{ kg}$): raw speed $18.5 / 3.8 = 4.87\text{ u/s} < 9.67 \to 4.87\text{ u/s}$ (apex $\sim 0.39\text{ units}$, noticeably encumbered).
-36. **Horizontal Mobile Landscape Optimization & Single Hamburger Menu**:
+36. **Horizontal Mobile Landscape Optimization & Floating Fullscreen Button**:
     - **Clean Screen Directive**: In horizontal phone/mobile mode (`@media (max-height: 560px) and (orientation: landscape), (max-height: 520px), (max-width: 950px) and (max-height: 560px)`), literally all UI is hidden: `.top-bar`, `.controls-overlay-bar`, `#quick-sidebar-tab`, and `#dev-sidebar` are hidden.
     - **Zero Screen Waste**: The canvas fills 100% of the phone viewport (`aspect-ratio: 20 / 14`, `object-fit: contain`), maximizing play area on landscape phones (e.g. 844x390, 896x414, 932x430) with safe area insets.
-    - **Single Floating Hamburger Button (`#mobile-menu-btn`)**: A glassmorphic button in the top right corner (`width: 44px; height: 44px`) that animates into an `✕` when the menu is open.
+    - **Floating Fullscreen Button (`#mobile-fullscreen-btn`)**:
+      - A sleek glassmorphic pill button (`height: 44px`, `top: max(10px, env(safe-area-inset-top))`, `right: max(68px, calc(env(safe-area-inset-right) + 54px))`) positioned directly adjacent to the hamburger button.
+      - **Visible When Not Fullscreen**: Prominently shown on mobile ratios so players can enter fullscreen mode with a single direct tap.
+      - **Hidden When Maximized**: The moment the screen enters fullscreen mode (`isFullscreenActive()`), the button is completely hidden (`display: none !important;`) so it never clutters gameplay. Reappears immediately upon exiting fullscreen.
+      - **Zero Arbitrary Screen Taps**: Completely eliminated the legacy background `window.addEventListener("touchstart", tryAutoFullscreen)` handler which caused browser gesture rejection toasts and forced users to tap random points on the screen.
+    - **Floating Hamburger Button (`#mobile-menu-btn`)**: A glassmorphic button in the top right corner (`width: 44px; height: 44px`) that animates into an `✕` when the menu is open.
     - **Expanded Landscape Menu (`#mobile-expanded-menu`)**: Opens a non-stuffed, 3-column landscape card organizing all existing UI options:
       1. **Game Mode & Public Link**: Single Player vs. Multiplayer pills, persistent nationwide room URL (`https://pcg-arena-teal.loca.lt`), 1-click Copy, Open (`↗`), and `📱 QR` scan modal.
       2. **Vertical Visuals & Wall Elevation**: Radio buttons for Bigger Sprites, Hover Above Shadow, and Both Modes, plus live Wall Isometric Height slider (0.0 to 1.0).
-      3. **Panels & Controls Reference**: 👥 Players & Controllers (with live active count badge), 🛠️ Dev Inspector toggle, and a compact Controls guide (WASD/L-Stick, Space/A, L-Click/RT, Shift/LB, B) with live controller connection badge.
+      3. **Panels & Controls Reference**: 👥 Players & Controllers (with live active count badge), 🐞 Feedback, 🛠️ Dev Inspector toggle, and a compact Controls guide (WASD/L-Stick, Space/A, L-Click/RT, Shift/LB, B) with live controller connection badge.
     - **Modals & Overlays**: Modals (`#players-panel`, `#view-settings-panel`, `#phone-modal`) are centered with `max-height: 92vh` scrollable cards, and `#dev-sidebar` acts as a slide-over panel on mobile.
 37. **Bugs & Suggestions Reporting System (Public Shared Log, Local Time & Chronological Sorting)**:
     - **In-App Submission & Separate Categories**:

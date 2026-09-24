@@ -1883,6 +1883,73 @@ input[type="color"] {
 /* ==========================================================================
    Mobile Landscape & Single Hamburger Menu Optimization
    ========================================================================== */
+.mobile-fullscreen-btn {
+  display: none;
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(68px, calc(env(safe-area-inset-right) + 54px));
+  height: 44px;
+  padding: 0 14px;
+  gap: 7px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65), 0 0 14px rgba(56, 189, 248, 0.25);
+  cursor: pointer;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  color: #f8fafc;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.mobile-fullscreen-btn .fs-icon {
+  font-size: 1.05rem;
+  color: var(--accent-cyan, #38bdf8);
+  line-height: 1;
+}
+
+.mobile-fullscreen-btn .fs-text {
+  color: #f8fafc;
+  line-height: 1;
+}
+
+.mobile-fullscreen-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: var(--accent-cyan, #38bdf8);
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.4);
+  transform: scale(1.04);
+}
+
+.mobile-fullscreen-btn:active {
+  transform: scale(0.96);
+  background: rgba(14, 165, 233, 0.25);
+}
+
+.mobile-fullscreen-btn.hidden,
+#mobile-fullscreen-btn.hidden {
+  display: none !important;
+}
+
+@media (max-width: 540px) {
+  .mobile-fullscreen-btn {
+    width: 44px;
+    padding: 0;
+  }
+  .mobile-fullscreen-btn .fs-text {
+    display: none;
+  }
+}
+
 .mobile-hamburger-btn {
   display: none;
   position: fixed;
@@ -2311,8 +2378,8 @@ input[type="color"] {
   font-weight: 700;
 }
 
-@media (pointer: coarse) and (orientation: landscape) {
-  /* LITERALLY HIDE ALL UI EXCEPT FOR ONE HAMBURGER BUTTON */
+@media (pointer: coarse) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  /* HIDE ALL FIXED DESKTOP UI ON MOBILE RATIO */
   .top-bar {
     display: none !important;
   }
@@ -2326,8 +2393,11 @@ input[type="color"] {
     display: none !important;
   }
 
-  /* Show the one floating hamburger button */
+  /* Show floating buttons on mobile ratio */
   .mobile-hamburger-btn {
+    display: flex !important;
+  }
+  .mobile-fullscreen-btn:not(.hidden) {
     display: flex !important;
   }
 

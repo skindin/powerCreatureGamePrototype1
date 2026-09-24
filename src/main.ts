@@ -92,6 +92,7 @@ function bootstrap(): void {
   const mobileMaximizeIcon = document.getElementById("mobile-maximize-icon");
   const mobileMaximizeText = document.getElementById("mobile-maximize-text");
   const mobileMaximizeBadge = document.getElementById("mobile-maximize-badge");
+  const mobileFloatingFsBtn = document.getElementById("mobile-fullscreen-btn");
 
   const isFullscreenActive = (): boolean => {
     return Boolean(
@@ -130,6 +131,13 @@ function bootstrap(): void {
         if (mobileMaximizeBadge) mobileMaximizeBadge.textContent = "Full";
       }
     }
+    if (mobileFloatingFsBtn) {
+      if (isFs) {
+        mobileFloatingFsBtn.classList.add("hidden");
+      } else {
+        mobileFloatingFsBtn.classList.remove("hidden");
+      }
+    }
   };
 
   const toggleFullscreen = async () => {
@@ -142,7 +150,11 @@ function bootstrap(): void {
         try {
           await req.call(docEl, { navigationUI: "hide" });
         } catch (err) {
-          console.warn("Fullscreen request notice:", err);
+          try {
+            await req.call(docEl);
+          } catch (err2) {
+            console.warn("Fullscreen request notice:", err2);
+          }
         }
       }
 
@@ -168,35 +180,13 @@ function bootstrap(): void {
 
   btnMaximize?.addEventListener("click", () => toggleFullscreen());
   mobileBtnMaximize?.addEventListener("click", () => toggleFullscreen());
+  mobileFloatingFsBtn?.addEventListener("click", () => toggleFullscreen());
 
   document.addEventListener("fullscreenchange", updateFullscreenUI);
   document.addEventListener("webkitfullscreenchange", updateFullscreenUI);
   document.addEventListener("mozfullscreenchange", updateFullscreenUI);
   document.addEventListener("MSFullscreenChange", updateFullscreenUI);
 
-  // Auto-maximize on mobile touch devices (debounced by 3s to avoid Android toast spam)
-  let lastAutoFsTime = 0;
-  const tryAutoFullscreen = () => {
-    const isMobile = window.matchMedia("(pointer: coarse)").matches;
-    if (!isMobile) return;
-    const now = Date.now();
-    if (now - lastAutoFsTime < 3000) return;
-    lastAutoFsTime = now;
-
-    if (!isFullscreenActive()) {
-      const docEl = document.documentElement as any;
-      const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
-      if (req) {
-        req.call(docEl, { navigationUI: "hide" }).catch(() => {});
-      }
-      if (screen.orientation && (screen.orientation as any).lock) {
-        (screen.orientation as any).lock("landscape").catch(() => {});
-      }
-      window.scrollTo(0, 0);
-    }
-  };
-
-  window.addEventListener("touchstart", tryAutoFullscreen, { passive: true });
   updateFullscreenUI();
 
   // 2. Initialize Base Character in unit coordinates
