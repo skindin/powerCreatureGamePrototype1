@@ -493,13 +493,16 @@ export class InputManager {
       };
 
       // Check extended paddle buttons:
-      // Many pro controllers and mobile gamepads report back paddles as buttons >= 16.
-      // - If controller has 17 buttons (indices 0..16), button 16 is Left Paddle (M1/P1).
-      // - If controller has 18 buttons (indices 0..17), button 16 is Left Paddle (M1/P1), button 17 is Right Paddle (M2/P2).
+      // On mobile gamepads (e.g. GameSir G8, Razer, Flydigi), back paddles are explicitly labelled:
+      // - Right Paddle = M1
+      // - Left Paddle = M2
+      // In the Gamepad API:
+      // - If controller has 17 buttons (indices 0..16): Button 16 is M1 (Right Paddle)
+      // - If controller has 18 buttons (indices 0..17): Button 16 is M1 (Right Paddle / Jump), Button 17 is M2 (Left Paddle / Sprint)
       // - If controller has 19+ buttons (indices 0..18+):
-      //   Odd indices (17, 19, 21...) = Left paddles (P1, P3, etc.)
-      //   Even indices (18, 20, 22...) = Right paddles (P2, P4, etc.)
-      //   Button 16 is also checked as Left Paddle.
+      //   Odd indices (17, 19, 21...) = M1 / M3 (Right side paddles)
+      //   Even indices (18, 20, 22...) = M2 / M4 (Left side paddles)
+      //   Button 16 is also M1 if present.
       let extendedLeftPaddle = false;
       let extendedPrevLeftPaddle = false;
       let extendedRightPaddle = false;
@@ -507,26 +510,31 @@ export class InputManager {
 
       const numButtons = gp.buttons.length;
       if (numButtons === 17) {
-        if (isButtonPressed(16)) extendedLeftPaddle = true;
-        if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
+        // Button 16 = M1 (Right Paddle / Jump)
+        if (isButtonPressed(16)) extendedRightPaddle = true;
+        if (isPrevPressed(16)) extendedPrevRightPaddle = true;
       } else if (numButtons === 18) {
-        if (isButtonPressed(16)) extendedLeftPaddle = true;
-        if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
-        if (isButtonPressed(17)) extendedRightPaddle = true;
-        if (isPrevPressed(17)) extendedPrevRightPaddle = true;
+        // Button 16 = M1 (Right Paddle / Jump), Button 17 = M2 (Left Paddle / Sprint)
+        if (isButtonPressed(16)) extendedRightPaddle = true;
+        if (isPrevPressed(16)) extendedPrevRightPaddle = true;
+        if (isButtonPressed(17)) extendedLeftPaddle = true;
+        if (isPrevPressed(17)) extendedPrevLeftPaddle = true;
       } else if (numButtons > 18) {
         for (let bIdx = 16; bIdx < numButtons; bIdx++) {
           if (bIdx === 16) {
-            if (isButtonPressed(16)) extendedLeftPaddle = true;
-            if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
+            // Button 16 on 19+ pads can be M1
+            if (isButtonPressed(16)) extendedRightPaddle = true;
+            if (isPrevPressed(16)) extendedPrevRightPaddle = true;
             continue;
           }
           if (bIdx % 2 === 1) {
-            if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
-            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
-          } else {
+            // 17, 19, 21... = M1 / M3 (Right side paddles -> Jump)
             if (isButtonPressed(bIdx)) extendedRightPaddle = true;
             if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
+          } else {
+            // 18, 20, 22... = M2 / M4 (Left side paddles -> Sprint)
+            if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
           }
         }
       }
@@ -541,16 +549,16 @@ export class InputManager {
         }
       }
 
-      // Left Under-Paddle / Sprint buttons:
-      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended left paddles & axes
+      // Left Under-Paddle (M2) / Sprint buttons:
+      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended M2 paddles & axes
       const leftPaddleButtonIndices = [4, 10, 2, 8, 14, 13, 12];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
-      // Right Under-Paddle / Jump & Climb buttons:
-      // A (0), R3 (11), Y (3), Menu/Start (9), D-pad Right (15), plus extended right paddles & axes
+      // Right Under-Paddle (M1) / Jump & Climb buttons:
+      // A (0), R3 (11), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
       const rightPaddleButtonIndices = [0, 11, 3, 9, 15];
       const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
