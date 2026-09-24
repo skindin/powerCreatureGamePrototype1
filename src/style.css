@@ -811,22 +811,17 @@ body {
 }
 
 .controls-overlay-bar {
-  position: absolute;
-  bottom: 12px;
-  left: 0;
-  right: 0;
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 5px 12px 2px;
   z-index: 10;
-  pointer-events: none;
-  padding: 0 12px;
+  flex-shrink: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 .controls-box {
-  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
@@ -835,10 +830,10 @@ body {
   background: rgba(15, 23, 42, 0.86);
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 999px;
-  padding: 4px 14px;
+  padding: 3px 14px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.12);
   max-width: calc(100% - 24px);
   box-sizing: border-box;
 }
@@ -1851,7 +1846,7 @@ input[type="color"] {
     max-height: 42px;
   }
   .controls-overlay-bar {
-    bottom: 6px;
+    padding: 3px 8px 1px;
   }
   .controls-box {
     padding: 3px 10px;

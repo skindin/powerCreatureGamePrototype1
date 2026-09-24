@@ -544,11 +544,13 @@ powerCreatureGamePrototype1/
       - Streamlined `.public-link-widget` to a compact ~105px pill, hiding redundant `PUBLIC:` text and `↗` button by default, while preserving instant 1-click clipboard copy on the URL button and QR code modal.
       - Added `.sidebar-btn-counter` (`#players-count-pill`) inside `#toggle-players-btn` so that on medium and compact desktop screens ($< 1340\text{px}$), the button displays as `👥 1` rather than needing wide text.
       - Refined progressive breakpoints ($< 1440\text{px}$, $< 1340\text{px}$, $< 1100\text{px}$, $< 850\text{px}$) guaranteeing that from 4K down to 850px, all top bar elements fit with ample margin.
-    - **Smart Floating Bottom HUD Controls Overlay**:
+    - **Streamlined Top Controls Bar (Above Canvas)**:
+      - Positioned the controls bar on top above the canvas in `.viewport-container` as requested.
       - Streamlined controls item text (`WASD Move`, `Space Jump`, `L-Click/RT Throw`, `R-Click Lock`, `Shift Sprint`, `B Swap`), cutting the box width by more than half.
       - Set `max-width: calc(100% - 24px); flex-wrap: wrap; box-sizing: border-box;` so the HUD can never exceed viewport boundaries or be pushed off-screen, even when the Dev Inspector sidebar is open on smaller monitors.
-    - **Game Canvas Viewport Expansion**:
-      - Reclaimed 100% of available viewport container height (`calc(100vh - 48px)`), increasing rendering height by 25%–30% and proportionally expanding canvas width and height at the 20:14 arena ratio.
+    - **Game Canvas Viewport Scaling**:
+      - Because the top bar is strictly fixed at 48px and the top controls bar is only 30px high, the total vertical space consumed above the canvas is only 78px (down by over 100px compared to earlier wrapped layouts).
+      - The canvas retains ample height to scale up generously without squishing or letterboxing.
       - Floating overlay multiplayer relay HUD prevents canvas displacement when online.
 
 ---
