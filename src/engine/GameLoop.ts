@@ -127,6 +127,20 @@ export class GameLoop {
     this.inputManager.onGamepadDisconnected = (slotIndex: number) => {
       this.removeGamepadPlayer(slotIndex);
     };
+
+    this.inputManager.onGamepadSpaceJump = (slotIndex: number) => {
+      const entry = this.players.get(`gamepad-${slotIndex}`);
+      if (entry) {
+        entry.character.jump(this.arena, this.inputManager.gamepadSlots.get(slotIndex)?.movementVector);
+      }
+    };
+
+    this.inputManager.onGamepadShiftSprint = (slotIndex: number) => {
+      const entry = this.players.get(`gamepad-${slotIndex}`);
+      if (entry) {
+        entry.character.setSprinting(!entry.character.isSprinting);
+      }
+    };
   }
 
   private getNextPlayerNumber(): number {

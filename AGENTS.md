@@ -105,9 +105,15 @@ powerCreatureGamePrototype1/
   - **Right Bumper (`RB` / R1, `button[5]`)**:
     - Dedicated throw button when holding an object (never grabs). Throws immediately at the virtual aim cursor.
   - **`B` Button (`button[1]`)**: Pickup & swap (`pickupAndSwap`) — grabs the reachable object closest to the cursor, swaps held object with ground object, or drops if no reachable object.
-  - **Left Bumper (`LB` / L1, `button[4]`)**: Toggles Sprinting on/off.
+  - **Left Bumper (`LB` / L1, `button[4]`) & Left Under-Paddle**: Toggles or holds Sprinting on/off.
+  - **Left Under-Paddle (Sprint Control)**:
+    - Supported inputs: `LB (4)`, `L3 (10)`, `X (2)`, `Select/Back (8)`, `D-pad Left (14)`, `D-pad Down (13)`, `D-pad Up (12)`, extended paddle buttons (`Button 16` on 17/18-btn pads, `Button 17`, `Button 19`, `Button 21` on 19+ pads), axis 4, and remapped `Shift` keys.
+    - Seamlessly supports **Hold-to-Sprint** (holding paddle guarantees sprinting, releasing drops back to walk) and **Tap-to-Sprint** (quick click toggles sprint on, releasing stick or tapping again disengages).
+  - **Right Under-Paddle (Jump & Climb Control)**:
+    - Supported inputs: `A (0)`, `R3 (11)`, `Y (3)`, `Menu/Start (9)`, `D-pad Right (15)`, extended paddle buttons (`Button 17` on 18-btn pads, `Button 18`, `Button 20`, `Button 22` on 19+ pads), axis 4, and remapped `Space` keys.
+    - Immediate jump trigger on press (`char.jump(arena, movementVector)`), with automatic climb / wall-dismount hold (`slot.isClimbHeld = true`) and buffered touchdown bunny hops.
 - **Sprinting Mechanics**:
-  - `Shift + WASD` (or `LB` controller bumper) toggles sprint mode.
+  - `Shift + WASD`, `LB` controller bumper, or Gamepad Left Under-Paddle triggers sprint mode.
   - Increases character speed by **$1.55\times$** and propulsion acceleration by **$1.5\times$** via `WalkingModule.ts`.
   - Releasing directional movement controls automatically resets sprinting to off.
   - Controls bar cleanly displays the `👥 N PLAYERS` roster button and `🎮 GAMEPAD` connection badge (individual player sprinting operates independently without a global status box cluttering the bar).

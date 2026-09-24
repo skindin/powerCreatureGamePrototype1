@@ -24,6 +24,7 @@ export interface GamepadSlotState {
   aimMovedWhileInRange?: boolean;
   aimOffset?: Vector2D;
   isLockHeld?: boolean;
+  leftPaddlePressTime?: number;
 }
 
 export class InputManager {
@@ -123,6 +124,8 @@ export class InputManager {
   public onKeyboardJump?: () => void;
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
+  public onGamepadSpaceJump?: (slotIndex: number) => void;
+  public onGamepadShiftSprint?: (slotIndex: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -158,6 +161,12 @@ export class InputManager {
       // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
       if (e.code === "Space") {
         if (!this.isKeyboardActive) {
+          // If a gamepad player is active in arena, treat Space (e.g. paddle mapped to Space via driver/app) as jumping that gamepad player!
+          const activeGamepadSlot = Array.from(this.gamepadSlots.values()).find((s) => s.connected && s.isActive);
+          if (activeGamepadSlot) {
+            this.onGamepadSpaceJump?.(activeGamepadSlot.index);
+            return;
+          }
           this.onKeyboardJoin?.();
           return;
         } else if (!e.repeat) {
@@ -171,6 +180,13 @@ export class InputManager {
 
       // Shift toggles sprinting on / off (pressing Shift untoggles sprinting)
       if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat) {
+        if (!this.isKeyboardActive) {
+          const activeGamepadSlot = Array.from(this.gamepadSlots.values()).find((s) => s.connected && s.isActive);
+          if (activeGamepadSlot) {
+            this.onGamepadShiftSprint?.(activeGamepadSlot.index);
+            return;
+          }
+        }
         this.isKeyboardSprintActive = !this.isKeyboardSprintActive;
         if (this.isKeyboardSprintActive) {
           this.onToggleSprint?.(true);
@@ -447,6 +463,7 @@ export class InputManager {
           wasMoving: false,
           lastAimMoveTime: 0,
           aimOffset: { x: 3.5, y: 0 },
+          leftPaddlePressTime: 0,
         };
         this.gamepadSlots.set(i, slot);
       } else {
@@ -475,31 +492,68 @@ export class InputManager {
         return indices.some((idx) => isPrevPressed(idx));
       };
 
-      // Check extended paddle buttons (>= 17, odds = left side, evens = right side)
+      // Check extended paddle buttons:
+      // Many pro controllers and mobile gamepads report back paddles as buttons >= 16.
+      // - If controller has 17 buttons (indices 0..16), button 16 is Left Paddle (M1/P1).
+      // - If controller has 18 buttons (indices 0..17), button 16 is Left Paddle (M1/P1), button 17 is Right Paddle (M2/P2).
+      // - If controller has 19+ buttons (indices 0..18+):
+      //   Odd indices (17, 19, 21...) = Left paddles (P1, P3, etc.)
+      //   Even indices (18, 20, 22...) = Right paddles (P2, P4, etc.)
+      //   Button 16 is also checked as Left Paddle.
       let extendedLeftPaddle = false;
       let extendedPrevLeftPaddle = false;
       let extendedRightPaddle = false;
       let extendedPrevRightPaddle = false;
-      for (let bIdx = 17; bIdx < gp.buttons.length; bIdx++) {
-        if (bIdx % 2 === 1) {
-          // Odd indices = Left side paddles (17, 19, 21, ...)
-          if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
-          if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
-        } else {
-          // Even indices = Right side paddles (18, 20, 22, ...)
-          if (isButtonPressed(bIdx)) extendedRightPaddle = true;
-          if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
+
+      const numButtons = gp.buttons.length;
+      if (numButtons === 17) {
+        if (isButtonPressed(16)) extendedLeftPaddle = true;
+        if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
+      } else if (numButtons === 18) {
+        if (isButtonPressed(16)) extendedLeftPaddle = true;
+        if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
+        if (isButtonPressed(17)) extendedRightPaddle = true;
+        if (isPrevPressed(17)) extendedPrevRightPaddle = true;
+      } else if (numButtons > 18) {
+        for (let bIdx = 16; bIdx < numButtons; bIdx++) {
+          if (bIdx === 16) {
+            if (isButtonPressed(16)) extendedLeftPaddle = true;
+            if (isPrevPressed(16)) extendedPrevLeftPaddle = true;
+            continue;
+          }
+          if (bIdx % 2 === 1) {
+            if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
+          } else {
+            if (isButtonPressed(bIdx)) extendedRightPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
+          }
         }
       }
 
-      // Left Under-Paddle / Sprint buttons: LB (4), L3 (10), X (2), plus extended left paddles (17, 19, ...)
-      const leftPaddleCurrent = isAnyButtonPressed([4, 10, 2]) || extendedLeftPaddle;
-      const leftPaddlePrev = isAnyButtonPrevPressed([4, 10, 2]) || extendedPrevLeftPaddle;
-      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
+      // Check extra axes for paddles if available (e.g. axes[4], axes[6])
+      let axisLeftPaddle = false;
+      let axisRightPaddle = false;
+      if (gp.axes && gp.axes.length > 4) {
+        if (gp.axes.length > 5 && Math.abs(gp.axes[4]) > 0.5) {
+          if (gp.axes[4] < -0.5) axisLeftPaddle = true;
+          else if (gp.axes[4] > 0.5) axisRightPaddle = true;
+        }
+      }
 
-      // Right Under-Paddle / Jump & Climb buttons: A (0), R3 (11), Y (3), plus extended right paddles (18, 20, ...)
-      const rightPaddleCurrent = isAnyButtonPressed([0, 11, 3]) || extendedRightPaddle;
-      const rightPaddlePrev = isAnyButtonPrevPressed([0, 11, 3]) || extendedPrevRightPaddle;
+      // Left Under-Paddle / Sprint buttons:
+      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended left paddles & axes
+      const leftPaddleButtonIndices = [4, 10, 2, 8, 14, 13, 12];
+      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
+      const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
+      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
+      const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
+
+      // Right Under-Paddle / Jump & Climb buttons:
+      // A (0), R3 (11), Y (3), Menu/Start (9), D-pad Right (15), plus extended right paddles & axes
+      const rightPaddleButtonIndices = [0, 11, 3, 9, 15];
+      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
+      const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
 
       // 1. Controller is connected but its character is NOT currently in the arena:
@@ -586,27 +640,41 @@ export class InputManager {
         char.jump(arena, slot.movementVector);
       }
 
-      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle (Button 17/19/2): Sprint
+      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint
+      // Supports BOTH Hold-to-Sprint AND Tap-to-Sprint seamlessly!
       const isStickMoving = lMag > deadzone;
 
       if (leftPaddleJustPressed) {
-        slot.sprintArmed = !slot.sprintArmed;
-        char.setSprinting(slot.sprintArmed);
-      }
-
-      if (leftPaddleCurrent) {
+        slot.leftPaddlePressTime = performance.now();
+        // If already sprinting and moving, tapping it again toggles sprint off. Otherwise activate sprint!
+        if (char.isSprinting && isStickMoving) {
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        } else {
+          slot.sprintArmed = true;
+          char.setSprinting(true);
+        }
+      } else if (leftPaddleCurrent) {
+        // Actively holding paddle down guarantees sprinting
         slot.sprintArmed = true;
         char.setSprinting(true);
+      } else if (leftPaddleJustReleased) {
+        const pressDuration = performance.now() - (slot.leftPaddlePressTime ?? 0);
+        if (pressDuration > 220) {
+          // Dedicated hold-to-sprint: releasing the paddle immediately returns to normal walk speed
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
+        // If it was a quick tap (< 220ms), slot.sprintArmed remains true so player continues sprinting while moving stick!
       }
 
       if (isStickMoving) {
-        if (slot.sprintArmed) {
+        if (slot.sprintArmed || leftPaddleCurrent) {
           char.setSprinting(true);
         }
       } else {
-        // Left stick is in neutral deadzone
+        // Left stick is in neutral deadzone: disarm sprint when motion stops (unless paddle is actively held)
         if (slot.wasMoving && !leftPaddleCurrent) {
-          // Stick was released after moving, and Left Under-Paddle / LB / L3 is not being held
           slot.sprintArmed = false;
           char.setSprinting(false);
         }

@@ -24,7 +24,7 @@ const canvas = {
 
 const inputManager = new InputManager(canvas, arena);
 
-// Create mock gamepad with under-paddles (buttons 17 = Left Paddle, 18 = Right Paddle)
+// Create mock gamepad with 24 buttons
 const mockButtons = Array.from({ length: 24 }, () => ({ pressed: false, value: 0 }));
 const mockGamepad = {
   index: 0,
@@ -142,10 +142,64 @@ mockButtons[19].value = 0;
 mockButtons[20].pressed = true;
 mockButtons[20].value = 1.0;
 character.verticalVelocity = 0;
+character.position.z = 0;
 inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
 console.log("Slot isClimbHeld with button 20:", slot.isClimbHeld);
 if (!slot.isClimbHeld) {
   throw new Error("Button 20 (Right Lower Paddle) should trigger isClimbHeld / jump!");
 }
+mockButtons[20].pressed = false;
+mockButtons[20].value = 0;
+
+// 4. Test 18-button layout (where Button 16 is M1/Left Paddle and Button 17 is M2/Right Paddle)
+console.log("Test 4: 18-button layout (Button 16 Left Paddle, Button 17 Right Paddle)");
+const mock18Buttons = Array.from({ length: 18 }, () => ({ pressed: false, value: 0 }));
+mockGamepad.buttons = mock18Buttons;
+
+// Press button 16 (Left Paddle)
+mock18Buttons[16].pressed = true;
+mock18Buttons[16].value = 1.0;
+inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
+console.log("Character isSprinting with 18-btn Button 16:", character.isSprinting);
+if (!character.isSprinting) {
+  throw new Error("Button 16 on 18-button pad should trigger sprinting!");
+}
+mock18Buttons[16].pressed = false;
+mock18Buttons[16].value = 0;
+
+// Press button 17 (Right Paddle)
+mock18Buttons[17].pressed = true;
+mock18Buttons[17].value = 1.0;
+character.verticalVelocity = 0;
+character.position.z = 0;
+inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
+console.log("Slot isClimbHeld with 18-btn Button 17:", slot.isClimbHeld);
+if (!slot.isClimbHeld) {
+  throw new Error("Button 17 on 18-button pad should trigger isClimbHeld / jump!");
+}
+mock18Buttons[17].pressed = false;
+mock18Buttons[17].value = 0;
+
+// 5. Test L3 (Button 10) Sprint and R3 (Button 11) Jump
+console.log("Test 5: L3 (Button 10) sprint and R3 (Button 11) jump");
+mock18Buttons[10].pressed = true;
+mock18Buttons[10].value = 1.0;
+inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
+if (!character.isSprinting) {
+  throw new Error("Button 10 (L3) should trigger sprinting!");
+}
+mock18Buttons[10].pressed = false;
+mock18Buttons[10].value = 0;
+
+mock18Buttons[11].pressed = true;
+mock18Buttons[11].value = 1.0;
+character.verticalVelocity = 0;
+character.position.z = 0;
+inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
+if (!slot.isClimbHeld) {
+  throw new Error("Button 11 (R3) should trigger jump / isClimbHeld!");
+}
+mock18Buttons[11].pressed = false;
+mock18Buttons[11].value = 0;
 
 console.log("SUCCESS! All under-paddle tests passed!");
