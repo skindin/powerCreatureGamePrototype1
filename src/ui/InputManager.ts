@@ -124,8 +124,6 @@ export class InputManager {
   public onKeyboardJump?: () => void;
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
-  public onGamepadSpaceJump?: (slotIndex: number) => void;
-  public onGamepadShiftSprint?: (slotIndex: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -161,12 +159,6 @@ export class InputManager {
       // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
       if (e.code === "Space") {
         if (!this.isKeyboardActive) {
-          // If a gamepad player is active in arena, treat Space (e.g. paddle mapped to Space via driver/app) as jumping that gamepad player!
-          const activeGamepadSlot = Array.from(this.gamepadSlots.values()).find((s) => s.connected && s.isActive);
-          if (activeGamepadSlot) {
-            this.onGamepadSpaceJump?.(activeGamepadSlot.index);
-            return;
-          }
           this.onKeyboardJoin?.();
           return;
         } else if (!e.repeat) {
@@ -180,13 +172,6 @@ export class InputManager {
 
       // Shift toggles sprinting on / off (pressing Shift untoggles sprinting)
       if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat) {
-        if (!this.isKeyboardActive) {
-          const activeGamepadSlot = Array.from(this.gamepadSlots.values()).find((s) => s.connected && s.isActive);
-          if (activeGamepadSlot) {
-            this.onGamepadShiftSprint?.(activeGamepadSlot.index);
-            return;
-          }
-        }
         this.isKeyboardSprintActive = !this.isKeyboardSprintActive;
         if (this.isKeyboardSprintActive) {
           this.onToggleSprint?.(true);
