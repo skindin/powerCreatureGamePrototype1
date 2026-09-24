@@ -624,8 +624,8 @@ export class InputManager {
       slot.aimOffset.y = clampedY - visualPos.y;
 
       // Button 6 (LT / L2): Auto-lock aiming
-      // Strictly check Button 6 or trigger axis (axes[5] on non-standard pads). Never check axis 2 (which is Right Stick X)!
-      const isLtPressed = isButtonPressed(6, 0.25) || Boolean(gp.mapping !== "standard" && gp.axes && (gp.axes[5] ?? 0) > 0.4);
+      // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
+      const isLtPressed = isButtonPressed(6, 0.35);
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
@@ -749,7 +749,7 @@ export class InputManager {
         }
       } else {
         slot.rtHeld = false;
-        const isLockHeld = isButtonPressed(6);
+        const isLockHeld = isButtonPressed(6, 0.35);
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
             char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld

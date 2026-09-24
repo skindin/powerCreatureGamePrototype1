@@ -428,6 +428,12 @@ powerCreatureGamePrototype1/
       - Avoids clamping high-velocity states (e.g. throws, explosions, speed boosts) down to the base ground walking speed ($5.2\text{ u/s}$) while airborne, while still allowing directional steering and braking.
     - **Configurable `airFriction`**:
       - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
+42. **Strict Trajectory Auto-Lock Gating & Controller LT Isolation**:
+    - **Strict Gating Requirement**: The trajectory arc and landing point **NEVER** snap or lock onto any object unless the player is actively holding **Left Trigger (`LT` / Button 6)** on a controller or **Right Mouse Button** on PC.
+    - **Unsnapped Manual Aim by Default**: When `autoLock` is `false`, `ThrowModule.computeLaunchVelocity` completely bypasses entity lock detection (`hoveredEntity = null`, `isAutoLocked = false`, `targetObject = null`), keeping the aim landing point precisely at the cursor coordinates without magnetic pull or target snapping.
+    - **Controller LT Input Sanitization**:
+      - Strictly isolated Left Trigger detection to `isButtonPressed(6, 0.35)`.
+      - Removed generic non-standard gamepad axis checks (`axes[5] > 0.4`), which caused uncalibrated axes or resting analog sensors on mobile controllers (e.g. Backbone Pro, direct-input pads) to falsely trigger auto-lock continuously.
       - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
 42. **Context-Aware Cursor Visibility & Unified Colored Grab Highlight**:
     - **Nearby Grab Without Moving Cursor**:
@@ -470,16 +476,10 @@ powerCreatureGamePrototype1/
       - While moving, sprint does not turn off on its own unless explicitly untoggled with Shift or until all WASD / arrow movement keys are released.
       - Releasing all movement keys automatically turns sprint OFF, so the next movement begins at normal speed until Shift is pressed again.
 46. **Hovered Object Layer Elevation Targeting & Right-Click / Left-Trigger (LT) Hold Auto-Lock**:
-    - **Dual-Projection Object Detection**:
-      - When aiming with a cursor (mouse or controller virtual aim cursor), `ThrowModule.findHoveredEntity` detects if the cursor is hovering over any freebody entity or player character in the arena.
-      - Checks both physical 2D ground footprint distance and pseudo-3D isometric visual projection distance ($y_{\text{visual}} = y - z \times \text{visualAltitudeScale}$) with tolerance ($R + 0.35$).
-      - Excludes the throwing character and the object currently held.
-    - **Layer Surface Height Targeting (Normal Aiming)**:
-      - When Right Click and Left Trigger (`LT`) are **NOT** held, the trajectory's 2D target coordinates $(targetX, targetY)$ freely follow the player's exact cursor position without snapping or locking.
-      - When an object is hovered, trajectory calculation computes `targetSurfaceHeight` to match the top of the layer the object is on:
-        - **Layer 1 (Ground)**: `targetSurfaceHeight = 0.0` (lands flat at ground level even if close to wall boundaries).
-        - **Layer 2+ (Wall Top / Elevated Platform)**: `targetSurfaceHeight = arena.wallHeight` (or `standingWall.wallHeight`, elevating parabolic arc to land on the wall platform at $z = 1.0$).
-      - Allows players complete granular freedom to place throws anywhere around or on the object at that layer's elevation.
+    - **Strict Gating Requirement (Zero Snapping Without LT / RMB)**:
+      - The trajectory arc and landing point **NEVER** snap or lock onto any object unless the player is actively holding **Left Trigger (`LT` / Button 6)** on a controller or **Right Mouse Button** on PC.
+      - When not holding LT or RMB (`autoLock === false`), `ThrowModule.computeLaunchVelocity` completely bypasses entity locking (`hoveredEntity = null`, `isAutoLocked = false`, `targetObject = null`), keeping the landing point precisely at the cursor coordinates without any magnetic pull or target snapping.
+      - **Controller LT Input Sanitization**: Left Trigger detection is strictly isolated to `isButtonPressed(6, 0.35)`. Generic non-standard axes (`axes[5] > 0.4`) were removed to prevent uncalibrated axes or resting analog triggers on mobile pads (e.g. Backbone Pro) from falsely triggering auto-lock.
     - **Hold Auto-Lock (Holding RMB on Mouse or LT / Button 6 on Gamepad)**:
       - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock.
       - **Unclamped Distance (Closest Object Regardless of Range)**: Auto-lock finds the strictly closest entity to the cursor across the entire arena (`lockTolerance = Infinity`), no matter how far away it is.
@@ -487,7 +487,7 @@ powerCreatureGamePrototype1/
       - **Independent Cursor Stays Visible & Active**: The player's aim cursor reticle ALWAYS remains visible at its exact independent position on the screen, with the player's color and sightline. It never disappears or gets hijacked.
       - **Locked Object Lockbox & Guide Line**: While holding lock, dedicated amber corner lock brackets `[ ]` and a `[P# LOCKED]` badge appear directly on the targeted closest object, with a dashed amber guide line connecting from your visible cursor to the locked object.
       - As the player moves their cursor, they clearly see their cursor roaming freely while the lockbox snaps to whichever object is closest to the cursor.
-      - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to free 2D cursor aiming while maintaining layer surface height targeting.
+      - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to 100% free, unsnapped 2D cursor aiming.
 47. **Top-Bar Responsive Wrapping & Non-Overflowing Navigation**:
     - `.top-bar` and `.top-bar-right` support `flex-wrap: wrap;` with dynamic `row-gap: 6px;` and `column-gap: 12px;`.
     - When screen or window width is constrained (e.g. laptop displays, high DPI scaling 125%/150%, or narrow windows), elements wrap onto a clean new line rather than pushing past the screen edge or clipping off the right viewport border.

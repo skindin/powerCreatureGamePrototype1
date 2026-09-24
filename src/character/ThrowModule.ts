@@ -260,20 +260,8 @@ export class ThrowModule {
     targetObject?: GameObject | null;
     isAutoLocked?: boolean;
   } | null {
-    // If autoLock is true (holding Right Click / LT), lock onto the closest object to the cursor, NO MATTER HOW FAR!
-    // If autoLock is false, only detect if the cursor directly overlaps/touches an object (tolerance = 0.35)
-    const lockTolerance = autoLock ? Infinity : 0.35;
-    const hoveredEntity = this.findHoveredEntity(
-      targetX,
-      targetY,
-      arena,
-      thrower,
-      heldObject,
-      candidateEntities,
-      hoverScale,
-      lockTolerance
-    );
-
+    // STRICT RULE: IT SHOULD NOT LOCK THE TRAJECTORY ONTO ANYTHING UNLESS autoLock IS TRUE (holding Left Trigger / Right Click)!
+    let hoveredEntity: GameObject | null = null;
     let effectiveTargetX = targetX;
     let effectiveTargetY = targetY;
     let isLocked = false;
@@ -281,28 +269,41 @@ export class ThrowModule {
 
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    // 1. If clicking or hovering over an object (entity):
-    if (hoveredEntity) {
-      effectiveTargetX = hoveredEntity.position.x;
-      effectiveTargetY = hoveredEntity.position.y;
-      if (autoLock) {
-        isLocked = true;
-      }
-      const entZ = Math.max(
-        0,
-        hoveredEntity.position.z ?? 0,
-        hoveredEntity.supportingSurfaceHeight ?? 0,
-        hoveredEntity.standingWall ? arena.wallHeight : 0
+    // Only search for lock target if autoLock is explicitly active
+    if (autoLock) {
+      hoveredEntity = this.findHoveredEntity(
+        targetX,
+        targetY,
+        arena,
+        thrower,
+        heldObject,
+        candidateEntities,
+        hoverScale,
+        Infinity
       );
-      const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
-      if (entZ >= arena.wallHeight - 0.05) {
-        targetSurfaceHeight = wallH;
-      } else if (hoveredEntity.supportingSurfaceHeight > 0.05) {
-        targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
-      } else {
-        targetSurfaceHeight = arena.getSupportingSurfaceHeight(effectiveTargetX, effectiveTargetY);
+
+      if (hoveredEntity) {
+        effectiveTargetX = hoveredEntity.position.x;
+        effectiveTargetY = hoveredEntity.position.y;
+        isLocked = true;
+        const entZ = Math.max(
+          0,
+          hoveredEntity.position.z ?? 0,
+          hoveredEntity.supportingSurfaceHeight ?? 0,
+          hoveredEntity.standingWall ? arena.wallHeight : 0
+        );
+        const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
+        if (entZ >= arena.wallHeight - 0.05) {
+          targetSurfaceHeight = wallH;
+        } else if (hoveredEntity.supportingSurfaceHeight > 0.05) {
+          targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
+        } else {
+          targetSurfaceHeight = arena.getSupportingSurfaceHeight(effectiveTargetX, effectiveTargetY);
+        }
       }
-    } else {
+    }
+
+    if (!isLocked) {
       // 2. If mouse is over a wall (including 2.5D visual roof and front face):
       const wallUnderCursor = ThrowModule.getWallUnderCursor(targetX, targetY, arena, scale);
       if (wallUnderCursor) {
