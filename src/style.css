@@ -59,16 +59,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  row-gap: 6px;
+  flex-wrap: nowrap;
   column-gap: 12px;
-  padding: 6px clamp(10px, 1.5vw, 18px);
-  background: rgba(15, 23, 42, 0.85);
+  padding: 0 clamp(10px, 1.5vw, 18px);
+  background: rgba(15, 23, 42, 0.92);
   border-bottom: 1px solid var(--panel-border);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 30;
   flex-shrink: 0;
+  height: 48px;
   min-height: 48px;
+  max-height: 48px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -162,11 +164,11 @@ body {
 .top-bar-right {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px clamp(6px, 0.8vw, 10px);
-  row-gap: 6px;
+  flex-wrap: nowrap;
+  gap: 6px;
   justify-content: flex-end;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .relay-pill {
@@ -176,11 +178,13 @@ body {
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 0.78rem;
+  padding: 4px 10px;
+  height: 32px;
+  font-size: 0.76rem;
   font-family: monospace;
   font-weight: 700;
   color: #38bdf8;
+  flex-shrink: 0;
 }
 
 .status-dot {
@@ -206,13 +210,15 @@ body {
 .public-link-widget {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(56, 189, 248, 0.45);
+  border: 1px solid rgba(56, 189, 248, 0.4);
   border-radius: 999px;
-  padding: 3px 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 10px rgba(56, 189, 248, 0.15);
+  padding: 2px 7px;
+  height: 32px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 10px rgba(56, 189, 248, 0.12);
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .public-link-widget:hover {
@@ -221,7 +227,7 @@ body {
 }
 
 .public-label {
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 800;
   color: #38bdf8;
   letter-spacing: 0.05em;
@@ -232,12 +238,16 @@ body {
   background: transparent;
   border: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 600;
   color: #f1f5f9;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
+  max-width: 140px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
@@ -293,22 +303,30 @@ body {
 
 /* Multiplayer Relay HUD */
 .relay-hud-container {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8px 16px 0;
-  z-index: 6;
+  padding: 0 16px;
+  z-index: 15;
+  width: calc(100% - 32px);
+  max-width: 840px;
+  pointer-events: none;
 }
 
 .relay-hud-card {
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 10px;
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
   padding: 10px 18px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 15px rgba(56, 189, 248, 0.12);
   width: 100%;
-  max-width: 840px;
 }
 
 .relay-hud-header {
@@ -785,33 +803,40 @@ body {
 }
 
 .controls-overlay-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 6px 12px 0;
-  z-index: 5;
-  flex-shrink: 0;
+  z-index: 10;
+  pointer-events: none;
+  padding: 0 16px;
   width: 100%;
 }
 
 .controls-box {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: clamp(6px, 1.2vw, 14px);
-  background: rgba(15, 23, 42, 0.85);
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.84);
   border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 8px;
-  padding: 5px clamp(8px, 1.2vw, 14px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  max-width: 98%;
+  border-radius: 999px;
+  padding: 4px 14px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.12);
+  max-width: 96%;
+  white-space: nowrap;
 }
 
 .controls-box-label {
   color: var(--accent-cyan);
-  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  font-size: 0.74rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -824,11 +849,12 @@ body {
 .controls-box-items {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: clamp(6px, 1vw, 12px);
-  font-size: clamp(0.72rem, 0.85vw, 0.82rem);
+  gap: clamp(6px, 0.9vw, 12px);
+  font-size: clamp(0.72rem, 0.8vw, 0.78rem);
   color: var(--text-main);
+  white-space: nowrap;
 }
 
 .ctrl-item {
@@ -882,17 +908,20 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: clamp(6px, 1.2vw, 14px);
+  padding: 12px;
   overflow: hidden;
+  background-color: #070b14;
 }
 
 #game-canvas {
   background: #0f172a;
-  box-shadow: 0 10px 35px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 163, 184, 0.15);
+  box-shadow: 0 12px 40px -6px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(148, 163, 184, 0.18), 0 0 30px rgba(56, 189, 248, 0.05);
   border-radius: var(--radius-md);
   cursor: crosshair;
   display: block;
@@ -902,17 +931,19 @@ body {
 .sidebar-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(30, 41, 59, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  color: var(--text-muted);
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 0.8rem;
+  gap: 5px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+  padding: 0 10px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sidebar-toggle-btn:hover {
@@ -1716,35 +1747,50 @@ input[type="color"] {
    Responsive Scaling & Compact Screen Optimizations
    ========================================================================== */
 
-@media (max-width: 1450px) {
-  .brand-badge {
-    display: none;
-  }
+@media (max-width: 1500px) {
   .public-label {
     display: none;
   }
+  .public-url-btn {
+    max-width: 115px;
+  }
 }
 
-@media (max-width: 1320px) {
-  .sidebar-btn-text {
+@media (max-width: 1380px) {
+  .brand-badge {
     display: none;
   }
-  .sidebar-toggle-btn {
-    padding: 6px 10px;
-    gap: 0;
-  }
-  .top-bar {
-    padding: 6px 12px;
-  }
-  .mode-btn {
-    padding: 5px 10px;
-    font-size: 0.76rem;
+  #btn-open-public-url {
+    display: none;
   }
   .controls-box-label {
     display: none;
   }
+}
+
+@media (max-width: 1260px) {
+  .sidebar-btn-text {
+    display: none;
+  }
+  .sidebar-toggle-btn {
+    padding: 0 8px;
+    gap: 0;
+  }
   .public-url-btn {
-    font-size: 0.72rem;
+    max-width: 90px;
+  }
+  .mode-btn {
+    padding: 4px 10px;
+    font-size: 0.76rem;
+  }
+}
+
+@media (max-width: 1080px) {
+  .public-link-widget {
+    padding: 2px 5px;
+  }
+  .public-url-btn {
+    display: none;
   }
 }
 
@@ -1759,12 +1805,6 @@ input[type="color"] {
   .top-bar-center {
     display: none;
   }
-  .public-url-btn {
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 @media (max-width: 650px) {
@@ -1772,35 +1812,36 @@ input[type="color"] {
     font-size: 0.82rem;
   }
   .top-bar {
-    padding: 4px 8px;
-    min-height: 42px;
+    padding: 0 8px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
   }
   .public-link-widget {
     padding: 2px 4px;
     gap: 3px;
   }
-  #btn-open-public-url {
-    display: none;
-  }
 }
 
 @media (max-height: 760px) {
   .top-bar {
-    min-height: 40px;
-    padding: 4px 10px;
+    height: 42px;
+    min-height: 42px;
+    max-height: 42px;
   }
   .controls-overlay-bar {
-    padding-top: 4px;
+    bottom: 6px;
   }
   .controls-box {
     padding: 3px 10px;
+    font-size: 0.7rem;
   }
   .canvas-wrapper {
-    padding: 4px 8px;
+    padding: 6px;
   }
 }
 
-@media (max-height: 640px) {
+@media (max-height: 560px) {
   .controls-overlay-bar {
     display: none;
   }
