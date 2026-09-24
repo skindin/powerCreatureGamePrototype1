@@ -2378,7 +2378,99 @@ input[type="color"] {
   font-weight: 700;
 }
 
-@media (pointer: coarse) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+/* ==========================================================================
+   Fullscreen Mode & Mobile Landscape Immersive Layout
+   (Zero bars covering the top, zero lighter bars around the game view, edge-to-edge arena canvas)
+   ========================================================================== */
+:fullscreen .top-bar,
+:-webkit-full-screen .top-bar,
+:-moz-full-screen .top-bar,
+:-ms-fullscreen .top-bar,
+html.fullscreen-active .top-bar,
+body.fullscreen-active .top-bar,
+:fullscreen .controls-overlay-bar,
+:-webkit-full-screen .controls-overlay-bar,
+:-moz-full-screen .controls-overlay-bar,
+:-ms-fullscreen .controls-overlay-bar,
+html.fullscreen-active .controls-overlay-bar,
+body.fullscreen-active .controls-overlay-bar,
+:fullscreen #quick-sidebar-tab,
+:-webkit-full-screen #quick-sidebar-tab,
+html.fullscreen-active #quick-sidebar-tab,
+body.fullscreen-active #quick-sidebar-tab,
+:fullscreen .relay-hud-container,
+:-webkit-full-screen .relay-hud-container,
+html.fullscreen-active .relay-hud-container,
+body.fullscreen-active .relay-hud-container {
+  display: none !important;
+}
+
+:fullscreen .mobile-fullscreen-btn,
+:-webkit-full-screen .mobile-fullscreen-btn,
+html.fullscreen-active .mobile-fullscreen-btn,
+body.fullscreen-active .mobile-fullscreen-btn {
+  display: none !important;
+}
+
+:fullscreen .mobile-hamburger-btn,
+:-webkit-full-screen .mobile-hamburger-btn,
+html.fullscreen-active .mobile-hamburger-btn,
+body.fullscreen-active .mobile-hamburger-btn {
+  display: flex !important;
+}
+
+:fullscreen html, :fullscreen body, :fullscreen #app-layout, :fullscreen .app-body,
+:-webkit-full-screen html, :-webkit-full-screen body, :-webkit-full-screen #app-layout, :-webkit-full-screen .app-body,
+html.fullscreen-active, body.fullscreen-active, html.fullscreen-active #app-layout, html.fullscreen-active .app-body,
+html.fullscreen-active .viewport-container, body.fullscreen-active .viewport-container,
+:fullscreen .viewport-container, :-webkit-full-screen .viewport-container {
+  height: 100% !important;
+  height: 100dvh !important;
+  width: 100% !important;
+  width: 100dvw !important;
+  max-height: 100dvh !important;
+  max-width: 100dvw !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #090d16 !important;
+}
+
+:fullscreen .canvas-wrapper,
+:-webkit-full-screen .canvas-wrapper,
+html.fullscreen-active .canvas-wrapper,
+body.fullscreen-active .canvas-wrapper {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  width: 100dvw !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  max-width: 100dvw !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #090d16 !important;
+}
+
+:fullscreen #game-canvas,
+:-webkit-full-screen #game-canvas,
+html.fullscreen-active #game-canvas,
+body.fullscreen-active #game-canvas {
+  max-height: 100dvh !important;
+  max-width: 100dvw !important;
+  aspect-ratio: 20 / 14 !important;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+@media (pointer: coarse) and (orientation: landscape),
+       (max-height: 600px) and (orientation: landscape),
+       (max-width: 1000px) and (max-height: 600px),
+       (max-height: 520px) {
   /* HIDE ALL FIXED DESKTOP UI ON MOBILE RATIO */
   .top-bar {
     display: none !important;

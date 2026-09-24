@@ -350,8 +350,9 @@ powerCreatureGamePrototype1/
       - Holding bouncy ball or rolling ball ($1.7 - 1.8\text{ kg}$): raw speed $> 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
       - Holding heavy red box ($3.8\text{ kg}$): raw speed $18.5 / 3.8 = 4.87\text{ u/s} < 9.67 \to 4.87\text{ u/s}$ (apex $\sim 0.39\text{ units}$, noticeably encumbered).
 36. **Horizontal Mobile Landscape Optimization & Floating Fullscreen Button**:
-    - **Clean Screen Directive**: In horizontal phone/mobile mode (`@media (max-height: 560px) and (orientation: landscape), (max-height: 520px), (max-width: 950px) and (max-height: 560px)`), literally all UI is hidden: `.top-bar`, `.controls-overlay-bar`, `#quick-sidebar-tab`, and `#dev-sidebar` are hidden.
-    - **Zero Screen Waste**: The canvas fills 100% of the phone viewport (`aspect-ratio: 20 / 14`, `object-fit: contain`), maximizing play area on landscape phones (e.g. 844x390, 896x414, 932x430) with safe area insets.
+    - **Clean Screen Directive**: In horizontal phone/mobile mode and whenever fullscreen is active (`:fullscreen`, `html.fullscreen-active`, `@media (orientation: landscape) and (max-height: 600px)`), literally all UI is hidden: `.top-bar`, `.controls-overlay-bar`, `#quick-sidebar-tab`, and `#dev-sidebar` are hidden.
+    - **Zero Screen Waste & Zero Border Artifacts**: The canvas fills 100% of the viewport (`aspect-ratio: 20 / 14`, `object-fit: contain`), removing all wrapper padding (`padding: 0 !important;`), canvas box-shadows, canvas border-radii, and lighter background margins, ensuring the screen is completely black/seamless (`#090d16`).
+    - **Right Joystick Click (R3 / Button 11) Excluded**: Clicking the right joystick does **never** trigger jump, climb, sprint, or grab. Button 11 is strictly excluded from `rightPaddleButtonIndices`.
     - **Floating Fullscreen Button (`#mobile-fullscreen-btn`)**:
       - A sleek glassmorphic pill button (`height: 44px`, `top: max(10px, env(safe-area-inset-top))`, `right: max(68px, calc(env(safe-area-inset-right) + 54px))`) positioned directly adjacent to the hamburger button.
       - **Visible When Not Fullscreen**: Prominently shown on mobile ratios so players can enter fullscreen mode with a single direct tap.

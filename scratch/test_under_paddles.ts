@@ -156,8 +156,8 @@ if (!character.isSprinting) {
 mock18Buttons[17].pressed = false;
 mock18Buttons[17].value = 0;
 
-// 4. Test L3 (Button 10) Sprint and R3 (Button 11) Jump
-console.log("Test 4: L3 (Button 10) sprint and R3 (Button 11) jump");
+// 4. Test L3 (Button 10) Sprint, and verify R3 (Button 11 / right stick click) DOES NOT trigger Jump
+console.log("Test 4: L3 (Button 10) sprint, and verify R3 (Button 11) does NOT trigger jump");
 mock18Buttons[10].pressed = true;
 mock18Buttons[10].value = 1.0;
 inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
@@ -167,14 +167,17 @@ if (!character.isSprinting) {
 mock18Buttons[10].pressed = false;
 mock18Buttons[10].value = 0;
 
+// Clicking right stick (Button 11) must NOT trigger jump or climb
 mock18Buttons[11].pressed = true;
 mock18Buttons[11].value = 1.0;
 character.verticalVelocity = 0;
 character.position.z = 0;
+slot.isClimbHeld = false;
 inputManager.pollGamepadSlots(playersMap, [], arena, [character], getVisualPosition);
-if (!slot.isClimbHeld) {
-  throw new Error("Button 11 (R3) should trigger jump / isClimbHeld!");
+if (slot.isClimbHeld || character.verticalVelocity > 0) {
+  throw new Error("Button 11 (R3 right stick click) should NEVER trigger jump or isClimbHeld!");
 }
+console.log("Verified: Button 11 (R3 right stick click) did NOT trigger jump (Vz:", character.verticalVelocity, "isClimbHeld:", slot.isClimbHeld, ")");
 mock18Buttons[11].pressed = false;
 mock18Buttons[11].value = 0;
 

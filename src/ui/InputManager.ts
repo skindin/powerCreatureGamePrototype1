@@ -543,8 +543,9 @@ export class InputManager {
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
-      // A (0), R3 (11), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
-      const rightPaddleButtonIndices = [0, 11, 3, 9, 15];
+      // A (0), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
+      // NOTE: Button 11 (R3 / right stick click) is explicitly EXCLUDED so clicking the right joystick never triggers climb/jump!
+      const rightPaddleButtonIndices = [0, 3, 9, 15];
       const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;

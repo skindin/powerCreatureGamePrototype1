@@ -105,6 +105,9 @@ function bootstrap(): void {
 
   const updateFullscreenUI = () => {
     const isFs = isFullscreenActive();
+    document.documentElement.classList.toggle("fullscreen-active", isFs);
+    document.body.classList.toggle("fullscreen-active", isFs);
+
     if (btnMaximize) {
       if (isFs) {
         btnMaximize.classList.add("active");
@@ -182,10 +185,16 @@ function bootstrap(): void {
   mobileBtnMaximize?.addEventListener("click", () => toggleFullscreen());
   mobileFloatingFsBtn?.addEventListener("click", () => toggleFullscreen());
 
-  document.addEventListener("fullscreenchange", updateFullscreenUI);
-  document.addEventListener("webkitfullscreenchange", updateFullscreenUI);
-  document.addEventListener("mozfullscreenchange", updateFullscreenUI);
-  document.addEventListener("MSFullscreenChange", updateFullscreenUI);
+  const handleFsChange = () => {
+    updateFullscreenUI();
+    setTimeout(fitCanvas, 50);
+    setTimeout(fitCanvas, 200);
+  };
+
+  document.addEventListener("fullscreenchange", handleFsChange);
+  document.addEventListener("webkitfullscreenchange", handleFsChange);
+  document.addEventListener("mozfullscreenchange", handleFsChange);
+  document.addEventListener("MSFullscreenChange", handleFsChange);
 
   updateFullscreenUI();
 
