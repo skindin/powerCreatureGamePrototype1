@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-CGtSuDso.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DvKPQhMv.css">
+    <script type="module" crossorigin src="/assets/index-FFa6gWYK.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DalnPHPn.css">
   </head>
   <body>
     <div id="app-layout">
@@ -314,6 +314,35 @@
                 <span class="key-badge">A</span>
                 <span>Gamepad: Join / Jump</span>
               </div>
+            </div>
+
+            <!-- Live Controller Diagnostics -->
+            <div id="gamepad-diagnostic-box" class="gamepad-diagnostic-box">
+              <div class="diag-header">
+                <span class="diag-title">🎮 Live Button Tester</span>
+                <span id="diag-active-gamepad-name" class="diag-gamepad-name">No controller detected</span>
+              </div>
+              <div id="diag-buttons-container" class="diag-buttons-container">
+                <span class="diag-hint">Press any button or paddle on your controller to test</span>
+              </div>
+            </div>
+
+            <!-- Backbone Pro Setup Guide -->
+            <div class="backbone-pro-tip">
+              <div class="tip-header">
+                <span class="tip-icon">💡</span>
+                <strong>Backbone Pro M1 & M2 Notice:</strong>
+              </div>
+              <p class="tip-body">
+                On Backbone Pro, rear buttons <strong>M1 (Right)</strong> and <strong>M2 (Left)</strong> are <em>unassigned by default</em> in hardware firmware:
+              </p>
+              <div class="tip-steps">
+                <div>1. Open the <strong>Backbone App</strong> on your phone</div>
+                <div>2. <strong>Settings ⚙️ &gt; Controller &gt; Controller Profiles &gt; Button Assignments</strong></div>
+                <div>3. Map <strong>M1 (Right)</strong> &rarr; <kbd>A</kbd> (Jump)</div>
+                <div>4. Map <strong>M2 (Left)</strong> &rarr; <kbd>LB</kbd> or <kbd>L3</kbd> (Sprint)</div>
+              </div>
+              <p class="tip-sub">Saved directly to controller memory & works immediately!</p>
             </div>
           </div>
         </div>

@@ -10,6 +10,9 @@ export class PlayersPanel {
   private inactiveListElement: HTMLElement | null;
   private badgeTextElement: HTMLElement | null;
   private headerCountElement: HTMLElement | null;
+  private diagGamepadNameElement: HTMLElement | null;
+  private diagButtonsContainer: HTMLElement | null;
+  private rafDiagHandle: number | null = null;
 
   private gameLoop: GameLoop;
   private inputManager: InputManager;
@@ -27,6 +30,8 @@ export class PlayersPanel {
     this.inactiveListElement = document.getElementById("inactive-players-list");
     this.badgeTextElement = document.getElementById("players-badge-text");
     this.headerCountElement = document.getElementById("players-header-count");
+    this.diagGamepadNameElement = document.getElementById("diag-active-gamepad-name");
+    this.diagButtonsContainer = document.getElementById("diag-buttons-container");
 
     this.setupListeners();
     this.updateUI();
@@ -82,6 +87,7 @@ export class PlayersPanel {
     this.panelElement?.classList.remove("hidden");
     this.toggleButton?.classList.add("active");
     this.updateUI();
+    this.startDiagnosticLoop();
   }
 
   public close(): void {
@@ -89,6 +95,68 @@ export class PlayersPanel {
     this.isOpen = false;
     this.panelElement?.classList.add("hidden");
     this.toggleButton?.classList.remove("active");
+    if (this.rafDiagHandle !== null) {
+      cancelAnimationFrame(this.rafDiagHandle);
+      this.rafDiagHandle = null;
+    }
+  }
+
+  private startDiagnosticLoop(): void {
+    if (!this.isOpen) return;
+
+    if (navigator.getGamepads) {
+      const gps = navigator.getGamepads();
+      const firstActive = Array.from(gps).find((g) => g && g.connected);
+      if (firstActive) {
+        if (this.diagGamepadNameElement) {
+          const shortName = firstActive.id.length > 30 ? firstActive.id.slice(0, 30) + "…" : firstActive.id;
+          this.diagGamepadNameElement.textContent = `${shortName} (${firstActive.buttons.length} buttons)`;
+        }
+
+        const pressedIndices: Array<{ index: number; label: string }> = [];
+        firstActive.buttons.forEach((btn, idx) => {
+          const isPressed = typeof btn === "object" ? btn.pressed || btn.value > 0.3 : (btn as unknown as number) > 0.3;
+          if (isPressed) {
+            let label = `Btn ${idx}`;
+            if (idx === 0) label = `Btn 0 (A - Jump)`;
+            else if (idx === 1) label = `Btn 1 (B - Pickup)`;
+            else if (idx === 2) label = `Btn 2 (X - Sprint)`;
+            else if (idx === 3) label = `Btn 3 (Y - Jump)`;
+            else if (idx === 4) label = `Btn 4 (LB - Sprint)`;
+            else if (idx === 5) label = `Btn 5 (RB - Throw)`;
+            else if (idx === 6) label = `Btn 6 (LT - Lock)`;
+            else if (idx === 7) label = `Btn 7 (RT - Grab/Throw)`;
+            else if (idx === 8) label = `Btn 8 (Select)`;
+            else if (idx === 9) label = `Btn 9 (Start)`;
+            else if (idx === 10) label = `Btn 10 (L3 - Sprint)`;
+            else if (idx === 11) label = `Btn 11 (R3 - Jump)`;
+            else if (idx === 16) label = `Btn 16 (M1 Right Jump)`;
+            else if (idx === 17) label = `Btn 17 (M1 Right / M2 Left)`;
+            else if (idx === 18) label = `Btn 18 (M2 Left Sprint)`;
+            pressedIndices.push({ index: idx, label });
+          }
+        });
+
+        if (this.diagButtonsContainer) {
+          if (pressedIndices.length === 0) {
+            this.diagButtonsContainer.innerHTML = `<span class="diag-hint">Press any button or paddle on controller to test</span>`;
+          } else {
+            this.diagButtonsContainer.innerHTML = pressedIndices
+              .map((p) => `<span class="diag-button-pill pressed">${escapeHtml(p.label)}</span>`)
+              .join("");
+          }
+        }
+      } else {
+        if (this.diagGamepadNameElement) {
+          this.diagGamepadNameElement.textContent = "No controller detected";
+        }
+        if (this.diagButtonsContainer) {
+          this.diagButtonsContainer.innerHTML = `<span class="diag-hint">Connect your controller and press any button</span>`;
+        }
+      }
+    }
+
+    this.rafDiagHandle = requestAnimationFrame(() => this.startDiagnosticLoop());
   }
 
   public toggle(): void {
