@@ -181,17 +181,20 @@ export class Renderer {
         const cursorY = cursor.y * ppu;
 
         // Draw colored dotted line from character to their cursor so players instantly know which reticle is theirs
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = cursor.color;
-        ctx.lineWidth = 1.8;
-        ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
-        ctx.shadowBlur = 3;
-        ctx.moveTo(charX, charY);
-        ctx.lineTo(cursorX, cursorY);
-        ctx.stroke();
-        ctx.restore();
+        const distToCharPx = Math.hypot(cursorX - charX, cursorY - charY);
+        if (distToCharPx > 0.5 * ppu) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = cursor.color;
+          ctx.lineWidth = 1.8;
+          ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+          ctx.shadowBlur = 3;
+          ctx.moveTo(charX, charY);
+          ctx.lineTo(cursorX, cursorY);
+          ctx.stroke();
+          ctx.restore();
+        }
 
         // If holding an object, draw projectile trajectory arc; otherwise draw precision aim reticle
         if (cChar.activeTrajectory) {
@@ -1998,7 +2001,8 @@ export class Renderer {
 
       // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
       const distToCursor = Math.hypot(cursorX - finalHitX, cursorY - finalGroundY) / ppu;
-      if (distToCursor > 0.25 && !isLocked) {
+      const isCursorAtChar = character ? (Math.hypot(cursorX - character.position.x * ppu, cursorY - (character.position.y - (character.position.z >= arena.wallHeight - 0.05 ? arena.wallHeight * (arena.visualAltitudeScale ?? 0.5) : 0)) * ppu) / ppu < 0.6) : false;
+      if (distToCursor > 0.25 && !isLocked && !isCursorAtChar) {
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(finalHitX, finalGroundY);

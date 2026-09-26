@@ -25,6 +25,8 @@ export interface GamepadSlotState {
   aimOffset?: Vector2D;
   isLockHeld?: boolean;
   leftPaddlePressTime?: number;
+  hasMovedAimStick?: boolean;
+  wasHoldingObject?: boolean;
 }
 
 export class InputManager {
@@ -58,7 +60,7 @@ export class InputManager {
   public isGamepadAimActive = false;
   public activeInputDevice: "keyboard" | "gamepad" = "keyboard";
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
-  public gamepadAimOffset: Vector2D = { x: 3.5, y: 0 };
+  public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
 
   public get isGrabHeld(): boolean {
     return this.isKeyboardActive && !this.isThrowingPress && this.isMouseDown;
@@ -447,8 +449,10 @@ export class InputManager {
           sprintArmed: false,
           wasMoving: false,
           lastAimMoveTime: 0,
-          aimOffset: { x: 3.5, y: 0 },
+          aimOffset: { x: 0, y: 0 },
           leftPaddlePressTime: 0,
+          hasMovedAimStick: false,
+          wasHoldingObject: false,
         };
         this.gamepadSlots.set(i, slot);
       } else {
@@ -588,6 +592,13 @@ export class InputManager {
         ? getVisualPosition(char)
         : { x: char.position.x, y: char.position.y };
 
+      const isHolding = char.heldObject !== null;
+      if (isHolding && !slot.wasHoldingObject) {
+        // Just picked up an object: reset stick movement flag so aiming trajectory starts forward in moving direction
+        slot.hasMovedAimStick = false;
+      }
+      slot.wasHoldingObject = isHolding;
+
       if (!slot.aimOffset) {
         slot.aimOffset = { x: 0, y: 0 };
       }
@@ -596,22 +607,38 @@ export class InputManager {
       }
 
       if (!slot.aimOffsetInitialized) {
-        const dir = char.facingAngle ?? 0;
         slot.aimPos = {
-          x: visualPos.x + Math.cos(dir) * 3.5,
-          y: visualPos.y + Math.sin(dir) * 3.5,
+          x: visualPos.x,
+          y: visualPos.y,
         };
         slot.aimOffset = {
-          x: slot.aimPos.x - visualPos.x,
-          y: slot.aimPos.y - visualPos.y,
+          x: 0,
+          y: 0,
         };
         slot.aimOffsetInitialized = true;
+        slot.hasMovedAimStick = false;
+      }
+
+      // If the player has NOT moved the right aim stick yet, keep cursor centered at character
+      if (!slot.hasMovedAimStick) {
+        slot.aimPos.x = visualPos.x;
+        slot.aimPos.y = visualPos.y;
+        slot.aimOffset.x = 0;
+        slot.aimOffset.y = 0;
       }
 
       if (rMag > deadzone) {
-        const cursorSpeed = 17.0;
-        slot.aimPos.x += rx * cursorSpeed * dt;
-        slot.aimPos.y += ry * cursorSpeed * dt;
+        if (!slot.hasMovedAimStick) {
+          slot.hasMovedAimStick = true;
+          // Initial deflection: snap cursor in stick direction 3.0 units from character
+          const initialAimDist = 3.0;
+          slot.aimPos.x = visualPos.x + (rx / rMag) * initialAimDist;
+          slot.aimPos.y = visualPos.y + (ry / rMag) * initialAimDist;
+        } else {
+          const cursorSpeed = 17.0;
+          slot.aimPos.x += rx * cursorSpeed * dt;
+          slot.aimPos.y += ry * cursorSpeed * dt;
+        }
         slot.lastAimMoveTime = performance.now();
         slot.aimMovedWhileInRange = true;
       }
@@ -750,15 +777,41 @@ export class InputManager {
       } else {
         slot.rtHeld = false;
         const isLockHeld = isButtonPressed(6, 0.35);
+
+        const forwardDist = 3.0;
+        let throwTargetX = slot.aimPos.x;
+        let throwTargetY = slot.aimPos.y;
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          const velMag = Math.hypot(char.velocity.x, char.velocity.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+          } else if (velMag > 0.1) {
+            dirX = char.velocity.x / velMag;
+            dirY = char.velocity.y / velMag;
+          } else {
+            const facing = char.facingAngle ?? 0;
+            dirX = Math.cos(facing);
+            dirY = Math.sin(facing);
+          }
+          throwTargetX = visualPos.x + dirX * forwardDist;
+          throwTargetY = visualPos.y + dirY * forwardDist;
+        }
+
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
+            char, throwTargetX, throwTargetY, arena, undefined, undefined, isLockHeld
           );
+          slot.hasMovedAimStick = false;
         }
         if (rbJustPressed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, slot.aimPos.x, slot.aimPos.y, arena, undefined, undefined, isLockHeld
+            char, throwTargetX, throwTargetY, arena, undefined, undefined, isLockHeld
           );
+          slot.hasMovedAimStick = false;
         }
       }
 

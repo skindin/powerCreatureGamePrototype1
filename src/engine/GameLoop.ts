@@ -1,6 +1,6 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
-import { GameObject } from "./GameObject.js";
+import { GameObject, Vector2D } from "./GameObject.js";
 import { Renderer } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
@@ -431,13 +431,15 @@ export class GameLoop {
           const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
           if (!slot || !slot.connected) continue;
 
-          // Ensure slot.aimOffset is maintained in relation to the character
-          if (!slot.aimOffset || (Math.abs(slot.aimOffset.x) < 0.1 && Math.abs(slot.aimOffset.y) < 0.1)) {
-            const dir = char.facingAngle ?? 0;
-            slot.aimOffset = {
-              x: Math.cos(dir) * 3.5,
-              y: Math.sin(dir) * 3.5,
-            };
+          if (!slot.aimOffset) {
+            slot.aimOffset = { x: 0, y: 0 };
+          }
+
+          if (!slot.hasMovedAimStick) {
+            slot.aimPos.x = visualPos.x;
+            slot.aimPos.y = visualPos.y;
+            slot.aimOffset.x = 0;
+            slot.aimOffset.y = 0;
           }
 
           if (isHolding) {
@@ -576,11 +578,36 @@ export class GameLoop {
       const cChar = entry.character;
       const isLockHeld = slot.isLockHeld ?? false;
       if (input.draggedEntity !== cChar) {
+        // If player has NOT moved the aim stick yet, trajectory aims a couple units in the direction they were moving
+        let trajectoryAimPos: Vector2D = slot.aimPos;
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          const velMag = Math.hypot(cChar.velocity.x, cChar.velocity.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+          } else if (velMag > 0.1) {
+            dirX = cChar.velocity.x / velMag;
+            dirY = cChar.velocity.y / velMag;
+          } else {
+            const facing = cChar.facingAngle ?? 0;
+            dirX = Math.cos(facing);
+            dirY = Math.sin(facing);
+          }
+          const forwardDist = 3.0; // a couple units in movement direction
+          trajectoryAimPos = {
+            x: cChar.position.x + dirX * forwardDist,
+            y: cChar.position.y + dirY * forwardDist,
+          };
+        }
+
         cChar.updateCharacter(
           dt,
           slot.movementVector,
           true, // Controller virtual aim cursor is always active
-          slot.aimPos,
+          trajectoryAimPos,
           this.arena,
           slot.isClimbHeld,
           this.arena.entities,

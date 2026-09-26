@@ -564,6 +564,21 @@ powerCreatureGamePrototype1/
       - Because the top bar is strictly fixed at 48px and the top controls bar is only 30px high, the total vertical space consumed above the canvas is only 78px (down by over 100px compared to earlier wrapped layouts).
       - The canvas retains ample height to scale up generously without squishing or letterboxing.
       - Floating overlay multiplayer relay HUD prevents canvas displacement when online.
+52. **Controller Aim Cursor Centering & Movement-Direction Trajectory Snapping**:
+    - **Cursor Starts at Character**:
+      - Controller cursor initializes with `slot.aimOffset = { x: 0, y: 0 }` and `slot.aimPos = visualPos`, eliminating the previous 3.5-unit world displacement.
+      - As long as the right aim stick is untouched (`slot.hasMovedAimStick === false`), the cursor smoothly tracks and stays centered directly on the character.
+    - **Trajectory Preview Points in Movement Direction**:
+      - When picking up or carrying an object without touching the right stick, the throw trajectory arc projects 3.0 units ahead in the direction the character is actively moving (or facing angle if stationary).
+      - Running forward with the Left Stick dynamically swings the throw trajectory forward in front of the creature without touching the Right Stick.
+    - **Instant Stick Snap**:
+      - Deflecting the Right Joystick (`rMag > deadzone`) sets `hasMovedAimStick = true`.
+      - On initial deflection, the cursor snaps 3.0 units in the stick's direction `(rx / rMag, ry / rMag) * 3.0`, and the trajectory instantly snaps to the cursor.
+      - Subsequent stick deflection continues moving the cursor smoothly across the arena at $17.0\text{ u/s}$.
+    - **Automatic Reset on Throw & Pickup**:
+      - Throwing or dropping the held object, or picking up a new object, resets `hasMovedAimStick = false` and re-centers the cursor at the character, preparing the next throw forward along movement direction.
+    - **Sightline Refinements**:
+      - Trajectory-to-cursor and character-to-cursor sightlines suppress redundant line rendering when the cursor is at the character's center ($< 0.5\text{ u}$), maintaining visual clarity.
 
 ---
 
