@@ -27,6 +27,7 @@ export interface GamepadSlotState {
   leftPaddlePressTime?: number;
   hasMovedAimStick?: boolean;
   wasHoldingObject?: boolean;
+  lastMovementInputAngle?: number;
 }
 
 export class InputManager {
@@ -64,7 +65,11 @@ export class InputManager {
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
 
   public get isGrabHeld(): boolean {
-    return this.isKeyboardActive && !this.isThrowingPress && this.isMouseDown;
+    return (
+      this.isKeyboardActive &&
+      !this.isThrowingPress &&
+      (this.isMouseDown || this.isEKeyDepressed || this.keysPressed.has("KeyE"))
+    );
   }
 
   public get isUsingGamepad(): boolean {
@@ -422,7 +427,7 @@ export class InputManager {
     objects: GameObject[],
     arena: Arena,
     allCharacters?: Character[],
-    getVisualPosition?: (entity: GameObject) => Vector2D
+    _getVisualPosition?: (entity: GameObject) => Vector2D
   ): void {
     if (!navigator.getGamepads) return;
     const gamepads = navigator.getGamepads();
@@ -595,6 +600,8 @@ export class InputManager {
         const normalizedMag = Math.min(1.0, (lMag - deadzone) / (1.0 - deadzone));
         slot.movementVector.x = (lx / lMag) * normalizedMag;
         slot.movementVector.y = (ly / lMag) * normalizedMag;
+        slot.lastMovementInputAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
+        char.lastMovementInputAngle = slot.lastMovementInputAngle;
       } else {
         slot.movementVector.x = 0;
         slot.movementVector.y = 0;
@@ -602,14 +609,26 @@ export class InputManager {
 
       // Right Joystick for absolute arena aim reticle:
       // Operates like a free-floating mouse cursor in world coordinates (unleashed from character)
-      const visualPos = getVisualPosition
-        ? getVisualPosition(char)
-        : { x: char.position.x, y: char.position.y };
-
       const isHolding = char.heldObject !== null;
       if (isHolding && !slot.wasHoldingObject) {
-        // Just picked up an object: reset stick movement flag so aiming trajectory starts forward in moving direction
-        slot.hasMovedAimStick = false;
+        // Just picked up an object: place cursor directly in front in latest movement input direction
+        if (rMag <= deadzone) {
+          slot.hasMovedAimStick = false;
+        }
+        slot.aimMovedWhileInRange = false;
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        const inputAngle = moveMag > 0.05
+          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
+          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+        slot.lastMovementInputAngle = inputAngle;
+        char.lastMovementInputAngle = inputAngle;
+        char.facingAngle = inputAngle;
+        const forwardDist = 3.0;
+        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
+        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
+        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
+        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
       }
       slot.wasHoldingObject = isHolding;
 
@@ -617,17 +636,22 @@ export class InputManager {
         slot.aimOffset = { x: 0, y: 0 };
       }
       if (!slot.aimPos) {
-        slot.aimPos = { x: visualPos.x, y: visualPos.y };
+        const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+        slot.aimPos = {
+          x: char.position.x + Math.cos(inputAngle) * 3.0,
+          y: char.position.y + Math.sin(inputAngle) * 3.0,
+        };
       }
 
       if (!slot.aimOffsetInitialized) {
+        const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
         slot.aimPos = {
-          x: visualPos.x,
-          y: visualPos.y,
+          x: char.position.x + Math.cos(inputAngle) * 3.0,
+          y: char.position.y + Math.sin(inputAngle) * 3.0,
         };
         slot.aimOffset = {
-          x: 0,
-          y: 0,
+          x: Math.cos(inputAngle) * 3.0,
+          y: Math.sin(inputAngle) * 3.0,
         };
         slot.aimOffsetInitialized = true;
         slot.hasMovedAimStick = false;
@@ -638,63 +662,56 @@ export class InputManager {
         ? [...allCharacters.filter((c) => c !== char), ...objects]
         : objects;
 
-      const hasReachable = !isHolding && Boolean(
-        char.pickupModule &&
-        char.pickupModule.enabled &&
-        grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
-      );
-
       if (isHolding) {
-        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character
+        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character in latest movement input direction
         if (!slot.hasMovedAimStick) {
           let dirX = 1;
           let dirY = 0;
           const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          const velMag = Math.hypot(char.velocity.x, char.velocity.y);
           if (moveMag > 0.05) {
             dirX = slot.movementVector.x / moveMag;
             dirY = slot.movementVector.y / moveMag;
-          } else if (velMag > 0.1) {
-            dirX = char.velocity.x / velMag;
-            dirY = char.velocity.y / velMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            char.lastMovementInputAngle = slot.lastMovementInputAngle;
           } else {
-            const facing = char.facingAngle ?? 0;
-            dirX = Math.cos(facing);
-            dirY = Math.sin(facing);
+            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
           }
           const forwardDist = 3.0;
-          slot.aimPos.x = visualPos.x + dirX * forwardDist;
-          slot.aimPos.y = visualPos.y + dirY * forwardDist;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
           slot.aimOffset.x = dirX * forwardDist;
           slot.aimOffset.y = dirY * forwardDist;
         }
       } else {
-        // Empty-handed:
-        if (!hasReachable) {
-          // Out of range: reset aimMovedWhileInRange and keep cursor at character
-          slot.aimMovedWhileInRange = false;
-          slot.aimPos.x = visualPos.x;
-          slot.aimPos.y = visualPos.y;
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
-        } else if (!slot.aimMovedWhileInRange) {
-          // Around something to grab: start cursor AT character instead of latest offset!
-          slot.aimPos.x = visualPos.x;
-          slot.aimPos.y = visualPos.y;
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
+        // Empty-handed: keep cursor positioned directly in front of the character in latest movement input direction unless right stick moved
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            char.lastMovementInputAngle = slot.lastMovementInputAngle;
+          } else {
+            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
+          }
+          const forwardDist = 3.0;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
         }
       }
 
       if (rMag > deadzone) {
         const cursorSpeed = 17.0;
-        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
-          // Starting to aim around grabbables: start directly at the character!
-          slot.aimPos.x = visualPos.x;
-          slot.aimPos.y = visualPos.y;
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
-        }
         slot.hasMovedAimStick = true;
         slot.aimPos.x += rx * cursorSpeed * dt;
         slot.aimPos.y += ry * cursorSpeed * dt;
@@ -706,8 +723,9 @@ export class InputManager {
       const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
       slot.aimPos.x = clampedX;
       slot.aimPos.y = clampedY;
-      slot.aimOffset.x = clampedX - visualPos.x;
-      slot.aimOffset.y = clampedY - visualPos.y;
+      slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+      slot.aimOffset.x = clampedX - char.position.x;
+      slot.aimOffset.y = clampedY - char.position.y;
 
       // Button 6 (LT / L2): Auto-lock aiming
       // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
@@ -761,9 +779,26 @@ export class InputManager {
       }
       slot.wasMoving = isStickMoving;
 
-      const isCursorVis = slot.isCursorVisible ?? false;
-      const aimX = isCursorVis ? slot.aimPos.x : undefined;
-      const aimY = isCursorVis ? slot.aimPos.y : undefined;
+      const aimX = slot.aimPos.x;
+      const aimY = slot.aimPos.y;
+
+      const onGrabSuccess = () => {
+        slot.hasMovedAimStick = false;
+        slot.aimMovedWhileInRange = false;
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        const inputAngle = moveMag > 0.05
+          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
+          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+        slot.lastMovementInputAngle = inputAngle;
+        char.lastMovementInputAngle = inputAngle;
+        char.facingAngle = inputAngle;
+        const forwardDist = 3.0;
+        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
+        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
+        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
+        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
+      };
 
       // Button 1 (B on Xbox / Circle on PS): Pickup & Swap
       const bCurrent = isButtonPressed(1);
@@ -781,10 +816,11 @@ export class InputManager {
               aimX,
               aimY
             );
-            if (!char.heldObject) {
-              slot.bHeld = true;
-            } else {
+            if (char.heldObject) {
               slot.bHeld = false;
+              onGrabSuccess();
+            } else {
+              slot.bHeld = true;
             }
           }
         } else if (char.heldObject) {
@@ -798,8 +834,7 @@ export class InputManager {
               aimY
             );
             if (swapped) {
-              slot.hasMovedAimStick = false;
-              slot.aimMovedWhileInRange = false;
+              onGrabSuccess();
             }
           }
         }
@@ -836,6 +871,7 @@ export class InputManager {
           if (char.heldObject) {
             slot.rtGrabbed = true;
             slot.rtHeld = false;
+            onGrabSuccess();
           } else {
             slot.rtHeld = true;
           }
@@ -851,20 +887,18 @@ export class InputManager {
           let dirX = 1;
           let dirY = 0;
           const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          const velMag = Math.hypot(char.velocity.x, char.velocity.y);
           if (moveMag > 0.05) {
             dirX = slot.movementVector.x / moveMag;
             dirY = slot.movementVector.y / moveMag;
-          } else if (velMag > 0.1) {
-            dirX = char.velocity.x / velMag;
-            dirY = char.velocity.y / velMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            char.lastMovementInputAngle = slot.lastMovementInputAngle;
           } else {
-            const facing = char.facingAngle ?? 0;
-            dirX = Math.cos(facing);
-            dirY = Math.sin(facing);
+            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
           }
-          throwTargetX = visualPos.x + dirX * forwardDist;
-          throwTargetY = visualPos.y + dirY * forwardDist;
+          throwTargetX = char.position.x + dirX * forwardDist;
+          throwTargetY = char.position.y + dirY * forwardDist;
         }
 
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
@@ -1120,9 +1154,8 @@ export class InputManager {
         const grabbableTargets = getAllCharacters
           ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
           : objects;
-        const isCursorVis = this.isCursorVisible;
-        const aimX = isCursorVis ? clickX : undefined;
-        const aimY = isCursorVis ? clickY : undefined;
+        const aimX = clickX;
+        const aimY = clickY;
         if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
           this.justPickedUp = true;
         }
@@ -1159,9 +1192,8 @@ export class InputManager {
       const grabbableTargets = getAllCharacters
         ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
         : objects;
-      const isCursorVis = this.isCursorVisible;
-      const aimX = isCursorVis ? this.mousePos.x : undefined;
-      const aimY = isCursorVis ? this.mousePos.y : undefined;
+      const aimX = this.actualMousePos.x;
+      const aimY = this.actualMousePos.y;
       activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
     };
 

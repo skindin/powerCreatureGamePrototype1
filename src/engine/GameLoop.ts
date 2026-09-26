@@ -364,7 +364,6 @@ export class GameLoop {
       for (const entry of this.players.values()) {
         const char = entry.character;
         const isHolding = char.heldObject !== null;
-        const visualPos = this.renderer.getVisualPosition(char);
         const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
         const reachable = (char.pickupModule && char.pickupModule.enabled)
           ? others.filter((o) => char.pickupModule!.isObjectInReach(char, o, this.arena.wallHeight))
@@ -408,9 +407,13 @@ export class GameLoop {
           if (hasReachable) {
             const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
             if (reachableGroundObjects.length > 0) {
-              const target = (entry.aimMovedWhileInRange || isHolding)
-                ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachableGroundObjects, this.arena.wallHeight)
-                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+              const target = char.pickupModule!.findTargetObject(
+                char,
+                this.inputManager.actualMousePos.x,
+                this.inputManager.actualMousePos.y,
+                reachableGroundObjects,
+                this.arena.wallHeight
+              );
               if (target) {
                 targetGrabEntities.set(char, target);
               }
@@ -456,71 +459,76 @@ export class GameLoop {
               let dirX = 1;
               let dirY = 0;
               const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-              const velMag = Math.hypot(char.velocity.x, char.velocity.y);
               if (moveMag > 0.05) {
                 dirX = slot.movementVector.x / moveMag;
                 dirY = slot.movementVector.y / moveMag;
-              } else if (velMag > 0.1) {
-                dirX = char.velocity.x / velMag;
-                dirY = char.velocity.y / velMag;
+                slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+                char.lastMovementInputAngle = slot.lastMovementInputAngle;
               } else {
-                const facing = char.facingAngle ?? 0;
-                dirX = Math.cos(facing);
-                dirY = Math.sin(facing);
+                const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+                dirX = Math.cos(inputAngle);
+                dirY = Math.sin(inputAngle);
               }
               const forwardDist = 3.0;
-              slot.aimPos.x = visualPos.x + dirX * forwardDist;
-              slot.aimPos.y = visualPos.y + dirY * forwardDist;
+              slot.aimPos.x = char.position.x + dirX * forwardDist;
+              slot.aimPos.y = char.position.y + dirY * forwardDist;
               slot.aimOffset.x = dirX * forwardDist;
               slot.aimOffset.y = dirY * forwardDist;
             } else {
               // Preserve world aimPos instead of dragging it with player movement
               if (slot.aimPos) {
-                slot.aimOffset.x = slot.aimPos.x - visualPos.x;
-                slot.aimOffset.y = slot.aimPos.y - visualPos.y;
+                slot.aimOffset.x = slot.aimPos.x - char.position.x;
+                slot.aimOffset.y = slot.aimPos.y - char.position.y;
               }
             }
 
             // Holding an object: do not hide cursor at all!
             isCursorVisibleNow = true;
           } else {
-            // Empty-handed: around something to grab or roaming
-            if (!hasReachable) {
-              // Hide cursor once nothing is within range anymore
-              isCursorVisibleNow = false;
-              slot.aimMovedWhileInRange = false;
-              slot.aimPos.x = visualPos.x;
-              slot.aimPos.y = visualPos.y;
-              slot.aimOffset.x = 0;
-              slot.aimOffset.y = 0;
-            } else {
-              // Has reachable items:
-              if (!slot.aimMovedWhileInRange) {
-                // When around something to grab, cursor starts directly at character!
-                slot.aimPos.x = visualPos.x;
-                slot.aimPos.y = visualPos.y;
-                slot.aimOffset.x = 0;
-                slot.aimOffset.y = 0;
-              } else if (slot.aimPos) {
-                slot.aimOffset.x = slot.aimPos.x - visualPos.x;
-                slot.aimOffset.y = slot.aimPos.y - visualPos.y;
-              }
-
-              if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
-                isCursorVisibleNow = true;
+            // Empty-handed: keep cursor positioned directly in front of the character in latest movement input direction unless right stick moved
+            if (!slot.hasMovedAimStick) {
+              let dirX = 1;
+              let dirY = 0;
+              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+              if (moveMag > 0.05) {
+                dirX = slot.movementVector.x / moveMag;
+                dirY = slot.movementVector.y / moveMag;
+                slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+                char.lastMovementInputAngle = slot.lastMovementInputAngle;
               } else {
-                isCursorVisibleNow = false;
+                const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+                dirX = Math.cos(inputAngle);
+                dirY = Math.sin(inputAngle);
+              }
+              const forwardDist = 3.0;
+              slot.aimPos.x = char.position.x + dirX * forwardDist;
+              slot.aimPos.y = char.position.y + dirY * forwardDist;
+              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+              slot.aimOffset.x = dirX * forwardDist;
+              slot.aimOffset.y = dirY * forwardDist;
+            } else {
+              if (slot.aimPos) {
+                slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+                slot.aimOffset.x = slot.aimPos.x - char.position.x;
+                slot.aimOffset.y = slot.aimPos.y - char.position.y;
               }
             }
+
+            // In gamepad mode, virtual aim cursor is always active
+            isCursorVisibleNow = true;
           }
 
           // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
           if (hasReachable) {
             const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
             if (reachableGroundObjects.length > 0) {
-              const target = (slot.aimMovedWhileInRange || isHolding)
-                ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachableGroundObjects, this.arena.wallHeight)
-                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+              const target = char.pickupModule!.findTargetObject(
+                char,
+                slot.aimPos.x,
+                slot.aimPos.y,
+                reachableGroundObjects,
+                this.arena.wallHeight
+              );
               if (target) {
                 targetGrabEntities.set(char, target);
               }
@@ -601,17 +609,14 @@ export class GameLoop {
         let dirX = 1;
         let dirY = 0;
         const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
-        const velMag = Math.hypot(kChar.velocity.x, kChar.velocity.y);
         if (moveMag > 0.05) {
           dirX = input.movementVector.x / moveMag;
           dirY = input.movementVector.y / moveMag;
-        } else if (velMag > 0.1) {
-          dirX = kChar.velocity.x / velMag;
-          dirY = kChar.velocity.y / velMag;
+          kChar.lastMovementInputAngle = Math.atan2(dirY, dirX);
         } else {
-          const facing = kChar.facingAngle ?? 0;
-          dirX = Math.cos(facing);
-          dirY = Math.sin(facing);
+          const inputAngle = kChar.lastMovementInputAngle ?? kChar.facingAngle ?? 0;
+          dirX = Math.cos(inputAngle);
+          dirY = Math.sin(inputAngle);
         }
         aimTarget = {
           x: kChar.position.x + dirX * 3.0,
@@ -639,9 +644,8 @@ export class GameLoop {
       // Continuous hold-to-grab for keyboard mouse:
       if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
         const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...this.objects];
-        const isCursorVis = kEntry?.wasCursorVisible ?? false;
-        const aimX = isCursorVis ? input.mousePos.x : undefined;
-        const aimY = isCursorVis ? input.mousePos.y : undefined;
+        const aimX = input.actualMousePos.x;
+        const aimY = input.actualMousePos.y;
         if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
           input.justPickedUp = true;
         }
@@ -663,17 +667,15 @@ export class GameLoop {
           let dirX = 1;
           let dirY = 0;
           const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          const velMag = Math.hypot(cChar.velocity.x, cChar.velocity.y);
           if (moveMag > 0.05) {
             dirX = slot.movementVector.x / moveMag;
             dirY = slot.movementVector.y / moveMag;
-          } else if (velMag > 0.1) {
-            dirX = cChar.velocity.x / velMag;
-            dirY = cChar.velocity.y / velMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            cChar.lastMovementInputAngle = slot.lastMovementInputAngle;
           } else {
-            const facing = cChar.facingAngle ?? 0;
-            dirX = Math.cos(facing);
-            dirY = Math.sin(facing);
+            const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
           }
           const forwardDist = 3.0; // a couple units in movement direction
           trajectoryAimPos = {

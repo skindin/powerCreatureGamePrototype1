@@ -631,6 +631,18 @@ powerCreatureGamePrototype1/
     - **Clipboard Formatting**:
       - Single-card copying and bulk copying (`Copy Selected`, `Copy All`) include `Proposed Solution: '<text>'` when present, and omit the line entirely when no solution was submitted.
 
+54. **Movement-Input-Only Cursor & Facing Direction & Continuous Hold-to-Grab**:
+    - **Movement-Input-Only Rule (Zero Velocity Dependency)**:
+      - The character's facing orientation and the forward-facing aim cursor placement are strictly derived from the player's intentional movement input (`movementVector` / `movementInput`), **never** from post-collision `velocity` or actual physical displacement after considering obstacles.
+      - When pressing movement controls, `lastMovementInputAngle = Math.atan2(input.y, input.x)` is tracked. When movement controls are released, or when stopped against a wall or obstacle, facing orientation and cursor placement stay anchored along this `lastMovementInputAngle`.
+      - Eliminated all checks against `velMag` or `char.velocity` that previously caused facing and cursor positions to deflect or redirect when brushing against walls or obstacles.
+      - Fixed angle projection to use true physical coordinates `char.position` rather than visual offset `visualPos` (which previously subtracted $z \times \text{hoverScale}$, causing upward/up-right aim distortions).
+    - **Continuous Hold-to-Grab**:
+      - Holding the grab control (`RT` or `B` on gamepad, Left Click or `E` on keyboard) before an object enters pickup range now continuously checks for reachable objects each tick.
+      - The instant any grabbable object enters pickup reach while holding grab, it immediately grabs the object closest to the cursor.
+      - In both gamepad and keyboard modes, target selection always finds the closest reachable ground object to the aim cursor (`actualMousePos` for keyboard, `slot.aimPos` for gamepad).
+      - Upon grabbing an object with a controller, the aim cursor is automatically placed 3.0 units directly in front of the character along their latest movement input direction.
+
 ---
 
 

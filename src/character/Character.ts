@@ -28,6 +28,7 @@ export class Character extends GameObject {
   }
 
   public facingAngle: number; // Angle in radians
+  public lastMovementInputAngle = 0; // Most recent movement input angle in radians
   public heldObject: GameObject | null;
 
   public override isCharacter = true;
@@ -194,7 +195,8 @@ export class Character extends GameObject {
     if (movementInput) {
       const inputMag = Math.hypot(movementInput.x, movementInput.y);
       if (inputMag > 0.05) {
-        this.facingAngle = Math.atan2(movementInput.y, movementInput.x);
+        this.lastMovementInputAngle = Math.atan2(movementInput.y, movementInput.x);
+        this.facingAngle = this.lastMovementInputAngle;
       }
     }
   }
