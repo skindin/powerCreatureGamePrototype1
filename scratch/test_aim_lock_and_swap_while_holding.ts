@@ -13,7 +13,7 @@ const canvas = {} as HTMLCanvasElement;
 const input = new InputManager(canvas, arena);
 
 // Create player character
-const char = new Character({ playerId: "gamepad-0", playerNumber: 1, x: 5, y: 5, color: "#f59e0b" });
+const char = new Character({ playerId: "gamepad-0", playerNumber: 1, x: 4.8, y: 7.0, color: "#f59e0b" });
 char.walkingModule = new WalkingModule();
 char.pickupModule = new PickupModule();
 char.throwModule = new ThrowModule();
@@ -21,19 +21,19 @@ char.throwModule = new ThrowModule();
 const players = new Map<string, { character: Character; isKeyboard: boolean; slotIndex?: number; wasCursorVisible?: boolean; wasHoldingObject?: boolean }>();
 players.set("gamepad-0", { character: char, isKeyboard: false, slotIndex: 0 });
 
-// Target entity 1 (enemy box at (8, 5))
+// Target entity 1 (enemy box at (7.8, 7.0))
 const enemyBox = new GameObject({
   id: "enemy-1",
-  position: { x: 8, y: 5, z: 0 },
+  position: { x: 7.8, y: 7.0, z: 0 },
   mass: 2.0,
   colliderRadius: 0.5,
 });
 arena.entities.push(enemyBox);
 
-// Ground rock at (5.8, 5) (within grab reach of char at (5, 5))
+// Ground rock at (5.6, 7.0) (within grab reach of char at (4.8, 7.0))
 const groundRock = new GameObject({
   id: "ground-rock",
-  position: { x: 5.8, y: 5, z: 0 },
+  position: { x: 5.6, y: 7.0, z: 0 },
   mass: 0.5,
   colliderRadius: 0.25,
 });
@@ -42,7 +42,7 @@ arena.entities.push(groundRock);
 // Held rock currently in hands
 const heldRock = new GameObject({
   id: "held-rock",
-  position: { x: 5, y: 5, z: 0 },
+  position: { x: 4.8, y: 7.0, z: 0 },
   mass: 0.5,
   colliderRadius: 0.25,
 });
@@ -65,7 +65,7 @@ let mockButtons: any[] = Array(18).fill({ pressed: false, value: 0 });
 ];
 
 // Test 1: Holding an object without moving right stick
-// Cursor must stick 3.0 units in front of character (5 + 3 = 8, 5)
+// Cursor must stick 3.0 units in front of character (4.8 + 3 = 7.8, 7.0)
 input.pollGamepadSlots(players, arena.entities, arena);
 const slot0 = input.gamepadSlots.get(0)!;
 slot0.isActive = true;
@@ -76,7 +76,7 @@ console.log(`   char.position: (${char.position.x.toFixed(2)}, ${char.position.y
 console.log(`   slot0.aimPos: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
 console.log(`   slot0.hasMovedAimStick: ${slot0.hasMovedAimStick}`);
 
-if (slot0.hasMovedAimStick === false && Math.abs(slot0.aimPos.x - 8.0) < 0.05) {
+if (slot0.hasMovedAimStick === false && Math.abs(slot0.aimPos.x - 7.8) < 0.05) {
   console.log("   PASS: Cursor sticks 3.0 units in front of character.");
 } else {
   throw new Error(`FAILED: Cursor not sticking 3 units in front! aimPos: ${JSON.stringify(slot0.aimPos)}`);

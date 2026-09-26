@@ -646,6 +646,13 @@ powerCreatureGamePrototype1/
       - The instant any grabbable object enters pickup reach while holding grab, it immediately grabs the object closest to the cursor (or closest to character if not aiming).
       - Upon grabbing an object with a controller, the aim cursor is automatically placed 3.0 units directly in front of the character along their latest movement input direction.
 
+55. **Standard Arena Default Map Layout**:
+    - **Default Arena Preset**:
+      - Updated `Arena.currentPresetId = "standard"` and `Arena.loadWallPreset("standard")` in constructor, making 🏛️ Standard Arena the default layout loaded on page load and reset.
+      - Reordered `Arena.WALL_PRESETS` so `standard` is the primary (first) entry in the presets array and inspector dropdown list.
+      - Updated `Arena.resetDefaultWalls()` to restore Standard Arena.
+      - Player spawn at $(4.8, 7.0)$ and initial freebody objects cleanly inhabit the open courtyard areas of Standard Arena without wall collisions.
+
 ---
 
 

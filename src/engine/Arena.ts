@@ -21,6 +21,21 @@ export interface WallMapPreset {
 export class Arena {
   public static readonly WALL_PRESETS: WallMapPreset[] = [
     {
+      id: "standard",
+      name: "🏛️ Standard Arena",
+      badge: "Balanced",
+      description: "Center dividing wall with an open gateway and two 2×2 cover obstacles.",
+      generate: (cols, rows) => {
+        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+        const midCol = 10;
+        for (let r = 1; r <= 4; r++) grid[r][midCol] = 1;
+        for (let r = 8; r <= 12; r++) grid[r][midCol] = 1;
+        grid[4][4] = 1; grid[5][4] = 1; grid[4][5] = 1; grid[5][5] = 1;
+        grid[7][15] = 1; grid[8][15] = 1; grid[7][16] = 1; grid[8][16] = 1;
+        return grid;
+      },
+    },
+    {
       id: "trenches",
       name: "⛏️ Trench Tunnels",
       badge: "Dense Walls",
@@ -60,21 +75,6 @@ export class Arena {
         // Player spawn point (col 5, row 7) is guaranteed an open trench
         grid[7][5] = 0;
 
-        return grid;
-      },
-    },
-    {
-      id: "standard",
-      name: "🏛️ Standard Arena",
-      badge: "Balanced",
-      description: "Center dividing wall with an open gateway and two 2×2 cover obstacles.",
-      generate: (cols, rows) => {
-        const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
-        const midCol = 10;
-        for (let r = 1; r <= 4; r++) grid[r][midCol] = 1;
-        for (let r = 8; r <= 12; r++) grid[r][midCol] = 1;
-        grid[4][4] = 1; grid[5][4] = 1; grid[4][5] = 1; grid[5][5] = 1;
-        grid[7][15] = 1; grid[8][15] = 1; grid[7][16] = 1; grid[8][16] = 1;
         return grid;
       },
     },
@@ -165,7 +165,7 @@ export class Arena {
 
   public tileGrid: number[][];
   public walls: Wall[] = [];
-  public currentPresetId = "trenches";
+  public currentPresetId = "standard";
 
   /** All active game objects and characters in the arena */
   public entities: GameObject[] = [];
@@ -189,7 +189,7 @@ export class Arena {
       Array.from({ length: this.cols }, () => 0)
     );
 
-    this.loadWallPreset("trenches");
+    this.loadWallPreset("standard");
   }
 
   /**
@@ -310,10 +310,10 @@ export class Arena {
   }
 
   /**
-   * Resets the arena to its default layout (Trench Tunnels)
+   * Resets the arena to its default layout (Standard Arena)
    */
   public resetDefaultWalls(entities?: GameObject[]): void {
-    this.loadWallPreset("trenches", entities);
+    this.loadWallPreset("standard", entities);
   }
 
   /**

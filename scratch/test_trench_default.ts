@@ -14,10 +14,13 @@ console.log("After clearAllWalls, walls:", arena.walls.length);
 arena.resetDefaultWalls();
 console.log("After resetDefaultWalls, preset:", arena.currentPresetId, "walls:", arena.walls.length);
 
-if (arena.currentPresetId !== "trenches") {
-  throw new Error("FAIL: Default preset is not trenches!");
+if (arena.currentPresetId !== "standard") {
+  throw new Error(`FAIL: Default preset is ${arena.currentPresetId}, expected standard!`);
+}
+if (Arena.WALL_PRESETS[0].id !== "standard") {
+  throw new Error(`FAIL: First preset in WALL_PRESETS is ${Arena.WALL_PRESETS[0].id}, expected standard!`);
 }
 if (arena.hasWall(playerSpawnCol, playerSpawnRow)) {
   throw new Error("FAIL: Player spawn tile is obstructed by a wall!");
 }
-console.log("PASS: Trench map is default and player spawn is clear! 🎉");
+console.log("PASS: Standard Arena map is default and player spawn is clear! 🎉");
