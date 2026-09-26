@@ -111,7 +111,7 @@ if (char.activeTrajectory && char.activeTrajectory.landPoint.x > char.position.x
 }
 
 // Test 3: Player moves Right Stick Upwards (axes[2] = 0, axes[3] = -1)
-// Should snap trajectory to cursor and set hasMovedAimStick = true
+// Cursor should be unhidden, START directly at character and move outward in stick direction
 mockAxes = [1, 0, 0, -1]; // Left stick right, Right stick up (-Y)
 input.pollGamepadSlots(players, arena.entities, arena);
 
@@ -119,10 +119,12 @@ console.log("\nTest 3: Moving right stick to aim");
 console.log(`   slot0.hasMovedAimStick: ${slot0.hasMovedAimStick}`);
 console.log(`   slot0.aimPos: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
 
-if (slot0.hasMovedAimStick === true && slot0.aimPos.y < char.position.y - 2.5) {
-  console.log("   PASS: Cursor snapped in stick direction (~3 units up) and hasMovedAimStick is true.");
+// Verify cursor started directly at character and moved in -Y direction by 1 tick (17 * dt = ~0.28 u)
+const distFromChar = Math.hypot(slot0.aimPos.x - char.position.x, slot0.aimPos.y - char.position.y);
+if (slot0.hasMovedAimStick === true && distFromChar < 0.6 && slot0.aimPos.y < char.position.y) {
+  console.log("   PASS: Cursor started directly at character once unhidden and moved in stick direction!");
 } else {
-  throw new Error("FAILED: Cursor did not snap in stick direction!");
+  throw new Error(`FAILED: Cursor did not start at character once unhidden! dist: ${distFromChar}`);
 }
 
 // Update character with current slot0.aimPos
@@ -138,13 +140,15 @@ char.updateCharacter(
 );
 
 console.log(`   activeTrajectory landing: (${char.activeTrajectory?.landPoint.x.toFixed(2)}, ${char.activeTrajectory?.landPoint.y.toFixed(2)})`);
-if (char.activeTrajectory && char.activeTrajectory.landPoint.y < char.position.y - 2.5) {
+if (char.activeTrajectory && char.activeTrajectory.landPoint.y < char.position.y) {
   console.log("   PASS: Trajectory snapped to the cursor position!");
 } else {
   throw new Error("FAILED: Trajectory did not snap to cursor!");
 }
 
-// Test 4: Throw object via RT (Button 7)
+// Test 4: Throw object via RT (Button 7) while aiming at (10, 4)
+slot0.aimPos = { x: 10, y: 4 };
+mockButtons = Array(18).fill(null).map(() => ({ pressed: false, value: 0 }));
 mockButtons[7] = { pressed: true, value: 1.0 };
 input.pollGamepadSlots(players, arena.entities, arena);
 

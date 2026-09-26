@@ -172,6 +172,19 @@ export class Renderer {
 
     // 10. Trajectory Lines, Aim Cursors, and Colored Dotted Sightlines to Cursors
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    // First: render active trajectories for any character holding an object
+    for (const char of characters) {
+      if (char.activeTrajectory) {
+        // Is this character's cursor currently unhidden and visible?
+        const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
+          ? activeAimCursorsOrIsGamepad.find((c) => c.character === char)
+          : null;
+        const cursorTarget = cursor ? { x: cursor.x, y: cursor.y } : null;
+        this.drawTrajectory(char.activeTrajectory, ppu, arena, cursorTarget, char);
+      }
+    }
+
+    // Second: render aim cursors & player-colored dotted sightlines (only for unhidden cursors)
     if (Array.isArray(activeAimCursorsOrIsGamepad)) {
       for (const cursor of activeAimCursorsOrIsGamepad) {
         const cChar = cursor.character;
@@ -196,10 +209,8 @@ export class Renderer {
           ctx.restore();
         }
 
-        // If holding an object, draw projectile trajectory arc; otherwise draw precision aim reticle
-        if (cChar.activeTrajectory) {
-          this.drawTrajectory(cChar.activeTrajectory, ppu, arena, { x: cursor.x, y: cursor.y }, cChar);
-        } else {
+        // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
+        if (!cChar.activeTrajectory) {
           this.drawAimReticle(cursorX, cursorY, cursor.color, `P${cursor.playerNumber}`);
         }
       }

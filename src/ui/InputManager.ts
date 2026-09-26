@@ -628,14 +628,13 @@ export class InputManager {
       }
 
       if (rMag > deadzone) {
+        const cursorSpeed = 17.0;
         if (!slot.hasMovedAimStick) {
           slot.hasMovedAimStick = true;
-          // Initial deflection: snap cursor in stick direction 3.0 units from character
-          const initialAimDist = 3.0;
-          slot.aimPos.x = visualPos.x + (rx / rMag) * initialAimDist;
-          slot.aimPos.y = visualPos.y + (ry / rMag) * initialAimDist;
+          // Start directly at character once unhidden and move in stick direction
+          slot.aimPos.x = visualPos.x + rx * cursorSpeed * dt;
+          slot.aimPos.y = visualPos.y + ry * cursorSpeed * dt;
         } else {
-          const cursorSpeed = 17.0;
           slot.aimPos.x += rx * cursorSpeed * dt;
           slot.aimPos.y += ry * cursorSpeed * dt;
         }
@@ -803,7 +802,7 @@ export class InputManager {
 
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, throwTargetX, throwTargetY, arena, undefined, undefined, isLockHeld
+            char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
           );
           slot.hasMovedAimStick = false;
         }

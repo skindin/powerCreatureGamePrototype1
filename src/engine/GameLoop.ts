@@ -18,6 +18,8 @@ export interface PlayerEntry {
   wasCursorVisible?: boolean;
   aimMovedWhileInRange?: boolean;
   lastCheckedMouseMoveTime?: number;
+  hasMovedAim?: boolean;
+  wasHoldingObject?: boolean;
 }
 
 export const PLAYER_COLORS = [
@@ -375,22 +377,29 @@ export class GameLoop {
           const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
           entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
 
+          if (isHolding && !entry.wasHoldingObject) {
+            entry.hasMovedAim = false;
+          }
+          entry.wasHoldingObject = isHolding;
+
+          if (mouseMoved) {
+            entry.hasMovedAim = true;
+            entry.aimMovedWhileInRange = true;
+          }
+
           if (isHolding) {
-            // Holding an object: always show cursor and throw trajectory
-            isCursorVisibleNow = true;
-            // "if the character is being controlled by mouse and they grab something, instantly place the game cursor at the mouse cursor."
-            this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-            this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+            // Holding an object: cursor is ONLY visible if player has moved it!
+            isCursorVisibleNow = Boolean(entry.hasMovedAim);
+            if (isCursorVisibleNow) {
+              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+            }
           } else if (!hasReachable) {
             // Hide cursor once nothing is within range anymore
             isCursorVisibleNow = false;
             entry.aimMovedWhileInRange = false;
           } else {
             // Has reachable items: select target reachable object
-            if (mouseMoved) {
-              entry.aimMovedWhileInRange = true;
-            }
-
             const target = entry.aimMovedWhileInRange
               ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachable, this.arena.wallHeight)
               : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
@@ -398,12 +407,10 @@ export class GameLoop {
               targetGrabEntities.set(char, target);
             }
 
-            if (entry.aimMovedWhileInRange) {
-              isCursorVisibleNow = true;
+            isCursorVisibleNow = Boolean(entry.aimMovedWhileInRange && entry.hasMovedAim);
+            if (isCursorVisibleNow) {
               this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
               this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
-            } else {
-              isCursorVisibleNow = false;
             }
           }
 
@@ -443,8 +450,8 @@ export class GameLoop {
           }
 
           if (isHolding) {
-            // Holding an object: always show cursor and throw trajectory
-            isCursorVisibleNow = true;
+            // Holding an object: cursor is ONLY visible if player has moved it!
+            isCursorVisibleNow = Boolean(slot.hasMovedAimStick);
           } else if (!hasReachable) {
             // Hide cursor once nothing is within range anymore
             isCursorVisibleNow = false;
@@ -458,7 +465,7 @@ export class GameLoop {
               targetGrabEntities.set(char, target);
             }
 
-            if (slot.aimMovedWhileInRange) {
+            if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
               isCursorVisibleNow = true;
             } else {
               isCursorVisibleNow = false;
@@ -538,7 +545,30 @@ export class GameLoop {
         kChar.setSprinting(input.isKeyboardSprintActive);
       }
       const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
-      const aimTarget = isMouseAiming ? input.mousePos : null;
+      let aimTarget = isMouseAiming ? input.mousePos : null;
+
+      // If holding an object and player has not moved mouse yet, trajectory aims forward in movement direction
+      if (kChar.heldObject && !kEntry.hasMovedAim) {
+        let dirX = 1;
+        let dirY = 0;
+        const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
+        const velMag = Math.hypot(kChar.velocity.x, kChar.velocity.y);
+        if (moveMag > 0.05) {
+          dirX = input.movementVector.x / moveMag;
+          dirY = input.movementVector.y / moveMag;
+        } else if (velMag > 0.1) {
+          dirX = kChar.velocity.x / velMag;
+          dirY = kChar.velocity.y / velMag;
+        } else {
+          const facing = kChar.facingAngle ?? 0;
+          dirX = Math.cos(facing);
+          dirY = Math.sin(facing);
+        }
+        aimTarget = {
+          x: kChar.position.x + dirX * 3.0,
+          y: kChar.position.y + dirY * 3.0,
+        };
+      }
 
       const autoLock = input.isRightMouseDown;
       if (input.draggedEntity !== kChar) {
