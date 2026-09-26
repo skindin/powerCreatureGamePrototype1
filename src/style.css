@@ -973,6 +973,11 @@ body {
   display: block;
 }
 
+#game-canvas.pointer-locked,
+body.pointer-locked #game-canvas {
+  cursor: none !important;
+}
+
 /* Sidebar Toggle in Top Bar */
 .sidebar-toggle-btn {
   display: flex;

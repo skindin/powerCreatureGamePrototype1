@@ -227,6 +227,11 @@ export class DevPanel {
 
   public setMode(editMode: boolean): void {
     this.isEditMode = editMode;
+    if (this.isEditMode && typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
     if (this.modePlayBtn && this.modeEditBtn) {
       if (this.isEditMode) {
         this.modePlayBtn.classList.remove("active-play");

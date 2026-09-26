@@ -653,6 +653,19 @@ powerCreatureGamePrototype1/
       - Updated `Arena.resetDefaultWalls()` to restore Standard Arena.
       - Player spawn at $(4.8, 7.0)$ and initial freebody objects cleanly inhabit the open courtyard areas of Standard Arena without wall collisions.
 
+56. **Player-Colored Trajectory Dots, Cursor PX Text Removal & Pointer Lock Raw Mouse Input**:
+    - **Player-Colored Trajectory Dots**:
+      - Trajectory arc dots and straight shadow trajectory dots in `Renderer.ts:drawTrajectory` dynamically inherit the holding character's assigned player theme color (`character.playerColor`), instead of hardcoded white.
+      - Converts hex color to RGBA, rendering Layer 1 ground dots as opaque (`alpha = 0.95`) and Layer 2 elevated dots as transparent (`alpha = 0.38`).
+    - **Removal of PX Text Labels Above Cursors**:
+      - Completely removed the `"P1"`, `"P2"` text label badges that were previously rendered above and next to the aim cursors in `Renderer.ts:drawAimReticle`.
+      - Also removed player number from auto-lock badges, rendering a crisp `[LOCKED]` bracket on the locked target entity.
+    - **Pointer Lock, Hidden Mouse & Raw Mouse Input**:
+      - Clicking on the game view canvas in Play Mode requests Pointer Lock (`canvas.requestPointerLock({ unadjustedMovement: true })`), locking the cursor and hiding the browser OS mouse.
+      - Added CSS `.pointer-locked` rule enforcing `cursor: none !important;` on `#game-canvas`.
+      - While pointer-locked, raw mouse movement deltas (`e.movementX`, `e.movementY`) scaled by canvas-to-arena unit ratios are accumulated smoothly into `actualMousePos` and `mousePos`, confined within arena bounds.
+      - Entering Edit Mode (or pressing `Escape`) immediately exits pointer lock (`document.exitPointerLock()`), restoring the normal mouse pointer for level editing and dev inspector controls.
+
 ---
 
 

@@ -51,6 +51,41 @@ export class InputManager {
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
 
+  // Pointer lock state (for hidden mouse cursor and raw mouse input)
+  public isPointerLocked = false;
+  private ignoreNextPointerLockDelta = false;
+  public devPanel?: DevPanel;
+
+  public requestPointerLock(): void {
+    if (typeof document === "undefined" || !this.canvas) return;
+    if (this.devPanel?.isEditMode) return;
+    try {
+      if ((this.canvas as any).requestPointerLock) {
+        const promise = (this.canvas as any).requestPointerLock({ unadjustedMovement: true });
+        if (promise && typeof promise.catch === "function") {
+          promise.catch(() => {
+            try {
+              this.canvas.requestPointerLock();
+            } catch {}
+          });
+        }
+      }
+    } catch {
+      try {
+        this.canvas.requestPointerLock();
+      } catch {}
+    }
+  }
+
+  public exitPointerLock(): void {
+    if (typeof document === "undefined") return;
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
+  }
+
   public isThrowingPress = false;
 
   // Gamepad controller slots (multi-gamepad support)
@@ -176,6 +211,10 @@ export class InputManager {
         }
       }
 
+      if (e.code === "Escape") {
+        this.exitPointerLock();
+      }
+
       this.activeInputDevice = "keyboard";
       this.keysPressed.add(e.code);
       this.updateMovementVector();
@@ -250,9 +289,31 @@ export class InputManager {
       }
     });
 
+    document.addEventListener("pointerlockchange", () => {
+      this.isPointerLocked = (document.pointerLockElement === this.canvas);
+      if (this.isPointerLocked) {
+        this.ignoreNextPointerLockDelta = true;
+      }
+      if (typeof document !== "undefined") {
+        document.body.classList.toggle("pointer-locked", this.isPointerLocked);
+        this.canvas.classList.toggle("pointer-locked", this.isPointerLocked);
+      }
+    });
+
     this.canvas.addEventListener("mousedown", (e) => {
       this.activeInputDevice = "keyboard";
       this.lastMouseMoveTime = performance.now();
+
+      // On-demand join if keyboard player is not yet active
+      if (!this.isKeyboardActive) {
+        this.onKeyboardJoin?.();
+      }
+
+      // Request pointer lock when clicking on the game view during Play Mode
+      if (!this.isPointerLocked && !this.devPanel?.isEditMode) {
+        this.requestPointerLock();
+      }
+
       this.updateMousePos(e);
       if (e.button === 2) {
         this.isRightMouseDown = true;
@@ -357,6 +418,29 @@ export class InputManager {
   }
 
   private updateMousePos(e: MouseEvent): void {
+    if (this.isPointerLocked) {
+      if (this.ignoreNextPointerLockDelta) {
+        this.ignoreNextPointerLockDelta = false;
+        return;
+      }
+      if (e.movementX === 0 && e.movementY === 0) {
+        return;
+      }
+      const rect = this.canvas.getBoundingClientRect();
+      const unitsPerPixelX = this.arena.width / Math.max(1, rect.width);
+      const unitsPerPixelY = this.arena.height / Math.max(1, rect.height);
+      const dx = (e.movementX || 0) * unitsPerPixelX;
+      const dy = (e.movementY || 0) * unitsPerPixelY;
+
+      const newX = Math.max(0.05, Math.min(this.arena.width - 0.05, this.actualMousePos.x + dx));
+      const newY = Math.max(0.05, Math.min(this.arena.height - 0.05, this.actualMousePos.y + dy));
+      this.actualMousePos.x = newX;
+      this.actualMousePos.y = newY;
+      this.mousePos.x = newX;
+      this.mousePos.y = newY;
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / rect.width)));
     const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / rect.height)));
@@ -971,6 +1055,7 @@ export class InputManager {
     devPanel?: DevPanel,
     getAllCharacters?: () => Character[]
   ): void {
+    this.devPanel = devPanel;
     if (devPanel) {
       this.selectedCanvasEntity = devPanel.selectedEntity;
     }

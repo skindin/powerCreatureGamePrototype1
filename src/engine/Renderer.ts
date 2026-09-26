@@ -211,7 +211,7 @@ export class Renderer {
 
         // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
         if (!cChar.activeTrajectory) {
-          this.drawAimReticle(cursorX, cursorY, cursor.color, `P${cursor.playerNumber}`);
+          this.drawAimReticle(cursorX, cursorY, cursor.color);
         }
       }
     } else {
@@ -222,7 +222,7 @@ export class Renderer {
         if (character.activeTrajectory) {
           this.drawTrajectory(character.activeTrajectory, ppu, arena, activeAimCursor, character);
         } else if (isUsingGamepad && activeAimCursor) {
-          this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor, `P${character.playerNumber}`);
+          this.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
         }
       }
     }
@@ -1646,6 +1646,27 @@ export class Renderer {
     const baseRadius = Math.max(2.2, 0.048 * ppu);
     const layer2Threshold = arena.wallHeight - 0.05;
 
+    const playerHex = character?.playerColor || character?.color || "#ffffff";
+    let rgb = { r: 255, g: 255, b: 255 };
+    if (playerHex.startsWith("#")) {
+      const hex = playerHex.slice(1);
+      if (hex.length === 6) {
+        rgb = {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+        };
+      } else if (hex.length === 3) {
+        rgb = {
+          r: parseInt(hex[0] + hex[0], 16),
+          g: parseInt(hex[1] + hex[1], 16),
+          b: parseInt(hex[2] + hex[2], 16),
+        };
+      }
+    }
+    const colorOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
+    const colorTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.38)`;
+
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
@@ -1708,7 +1729,7 @@ export class Renderer {
           if (distToEnd < landRadiusPx * 0.75) continue;
 
           // Transparent when at or above wall height, opaque when below wall height
-          ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+          ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
           ctx.beginPath();
           ctx.arc(dotX, dotY, baseRadius, 0, Math.PI * 2);
           ctx.fill();
@@ -1754,7 +1775,7 @@ export class Renderer {
         if (isFirstDot) {
           if (dist3DSinceLast >= base3DSpacing * 0.5) {
             const isLayer2 = curZ >= layer2Threshold;
-            ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+            ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
             ctx.beginPath();
             ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
             ctx.fill();
@@ -1783,7 +1804,7 @@ export class Renderer {
           const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
           if (distToLandPx > landRadiusPx * 0.8) {
             const isLayer2 = curZ >= layer2Threshold;
-            ctx.fillStyle = isLayer2 ? "rgba(255, 255, 255, 0.38)" : "rgba(255, 255, 255, 0.95)";
+            ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
             ctx.beginPath();
             ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
             ctx.fill();
@@ -1997,7 +2018,7 @@ export class Renderer {
         ctx.fillStyle = "#f59e0b";
         ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
         ctx.shadowBlur = 4;
-        const tag = character ? `P${character.playerNumber} LOCKED` : "LOCKED";
+        const tag = "LOCKED";
         ctx.fillText(`[${tag}]`, objVisualX - 22, objVisualY - bsz - 4);
 
         // Thin lock sightline connecting cursor to locked object
@@ -2027,7 +2048,7 @@ export class Renderer {
       }
 
       // ALWAYS draw the player's aim reticle at the exact cursor position!
-      this.drawAimReticle(cursorX, cursorY, character?.playerColor, character ? `P${character.playerNumber}` : undefined, false);
+      this.drawAimReticle(cursorX, cursorY, character?.playerColor, false);
     }
 
     ctx.restore();
@@ -2036,7 +2057,7 @@ export class Renderer {
   /**
    * Draws a precision aim reticle / crosshair at the cursor position
    */
-  public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", label?: string, isLocked = false): void {
+  public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", isLocked = false): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
@@ -2101,16 +2122,6 @@ export class Renderer {
     ctx.arc(screenX, screenY, isLocked ? 2.5 : 2.0, 0, Math.PI * 2);
     ctx.fillStyle = isLocked ? "#f59e0b" : color;
     ctx.fill();
-
-    // Player label tag if provided (e.g. "P1", "P2")
-    if (label) {
-      ctx.font = "bold 11px monospace";
-      ctx.fillStyle = isLocked ? "#f59e0b" : "#ffffff";
-      ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
-      ctx.shadowBlur = 3;
-      const text = isLocked ? `${label} [LOCKED]` : label;
-      ctx.fillText(text, screenX + (isLocked ? 16 : 11), screenY - 5);
-    }
 
     ctx.restore();
   }
