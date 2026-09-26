@@ -193,9 +193,10 @@ powerCreatureGamePrototype1/
    - **Islands of Influence**: Resting/sleeping arena objects ($v \approx 0$) are excluded from resimulation. Only active players and the objects they currently touch, hold, or throw form an active island.
    - **Time Dilation Clock Sync**: The server adjusts client physics speed ($0.99\times$ to $1.01\times$) to maintain a stable ~2-frame input buffer without client hitching.
    - **Decoupled Visual Smoothing**: Physical coordinates snap immediately on rollback correction; renderer interpolates visual offsets across 3–5 frames so corrections are imperceptible.
-5. **Desktop / Laptop Development Workflow**:
-   - The primary code repository is hosted on GitHub: `https://github.com/skindin/powerCreatureGamePrototype1.git` on branch `branch1`.
+5. **Desktop / Laptop Development Workflow & Mandatory Git Push**:
+   - The primary code repository is hosted on GitHub: `https://github.com/skindin/powerCreatureGamePrototype1.git` (active branch `preMultiplayer` / `branch1`).
    - Work is synced across desktop and laptop via Git commits and pulls.
+   - **MANDATORY AUTO-PUSH RULE**: Whenever an agent commits code, the agent **MUST ALWAYS** immediately push the commit to remote (`git push origin <active_branch>`). Never leave local commits unpushed.
 6. **Dynamic UI Scaling & Aspect-Ratio Preservation**:
    - Application layout uses a full-width header (`.top-bar` at `100vw`, `z-index: 30`) and a flex column container (`#app-layout`).
    - `.app-body` wraps `.viewport-container` and `#dev-sidebar`, so the inspector panel docks *below* the top bar and never covers header buttons.
