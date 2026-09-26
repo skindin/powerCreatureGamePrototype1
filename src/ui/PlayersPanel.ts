@@ -119,9 +119,9 @@ export class PlayersPanel {
           if (isPressed) {
             let label = `Btn ${idx}`;
             if (idx === 0) label = `Btn 0 (A - Jump)`;
-            else if (idx === 1) label = `Btn 1 (B - Pickup)`;
+            else if (idx === 1) label = `Btn 1 (B - Pickup / Swap)`;
             else if (idx === 2) label = `Btn 2 (X - Sprint)`;
-            else if (idx === 3) label = `Btn 3 (Y - Jump)`;
+            else if (idx === 3) label = `Btn 3 (Y - Drop)`;
             else if (idx === 4) label = `Btn 4 (LB - Sprint)`;
             else if (idx === 5) label = `Btn 5 (RB - Throw)`;
             else if (idx === 6) label = `Btn 6 (LT - Lock)`;

@@ -34,6 +34,7 @@ export class InputManager {
   private arena: Arena;
   private keysPressed: Set<string> = new Set();
   private isEKeyDepressed = false;
+  private isQKeyDepressed = false;
   public isKeyboardSprintActive = false;
   
   // Keyboard player active state (true when keyboard & mouse character is in arena)
@@ -118,6 +119,8 @@ export class InputManager {
   public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
+  public onKeyboardPickup?: () => void;
+  public onKeyboardDrop?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
   public onToggleSprint?: (active?: boolean) => void;
   public onStopKeyboardSprint?: () => void;
@@ -182,14 +185,21 @@ export class InputManager {
         }
       }
 
+      if (e.code === "KeyQ") {
+        // Q key drops currently held item
+        if (e.repeat || this.isQKeyDepressed) return;
+        this.isQKeyDepressed = true;
+
+        this.onKeyboardDrop?.();
+      }
+
       if (e.code === "KeyE") {
-        // Must release E key first before pressing it again to pick up or drop
+        // E key picks up ground item or swaps held item with targeted ground item
         if (e.repeat || this.isEKeyDepressed) return;
         this.isEKeyDepressed = true;
 
-        if (this.onDropAttempt) {
-          this.onDropAttempt();
-        }
+        this.onKeyboardPickup?.();
+        this.onDropAttempt?.();
       }
     });
 
@@ -201,6 +211,10 @@ export class InputManager {
 
       this.keysPressed.delete(e.code);
       this.updateMovementVector();
+
+      if (e.code === "KeyQ") {
+        this.isQKeyDepressed = false;
+      }
 
       if (e.code === "KeyE") {
         this.isEKeyDepressed = false;
@@ -214,6 +228,7 @@ export class InputManager {
     });
 
     window.addEventListener("blur", () => {
+      this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
       this.keysPressed.clear();
       this.isKeyboardSprintActive = false;
@@ -549,7 +564,7 @@ export class InputManager {
       // Right Under-Paddle (M1) / Jump & Climb buttons:
       // A (0), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
       // NOTE: Button 11 (R3 / right stick click) is explicitly EXCLUDED so clicking the right joystick never triggers climb/jump!
-      const rightPaddleButtonIndices = [0, 3, 9, 15];
+      const rightPaddleButtonIndices = [0, 9, 15];
       const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
@@ -776,17 +791,25 @@ export class InputManager {
         } else if (char.heldObject) {
           slot.bHeld = false;
           if (!isPrevPressed(1) && char.pickupModule) {
-            char.pickupModule.pickupAndSwap(
+            const swapped = char.pickupModule.pickupAndSwap(
               char,
               grabbableTargets,
               arena.wallHeight,
               aimX,
               aimY
             );
-            slot.hasMovedAimStick = false;
-            slot.aimMovedWhileInRange = false;
+            if (swapped) {
+              slot.hasMovedAimStick = false;
+              slot.aimMovedWhileInRange = false;
+            }
           }
         }
+      }
+
+      // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item
+      const yCurrent = isButtonPressed(3);
+      if (yCurrent && !isPrevPressed(3) && char.heldObject && char.pickupModule) {
+        char.pickupModule.drop(char);
       }
 
       // Button 7 (RT / R2) & Button 5 (RB / R1): Grab & Throw
@@ -1119,9 +1142,18 @@ export class InputManager {
       // If clicked empty space, keep the last focused entity in devPanel!
     };
 
-    this.onDropAttempt = () => {
+    this.onKeyboardDrop = () => {
       if (!this.isKeyboardActive) return;
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null) || character;
+      if (!activeChar || !activeChar.pickupModule) return;
+      if (activeChar.heldObject) {
+        activeChar.pickupModule.drop(activeChar);
+      }
+    };
+
+    this.onKeyboardPickup = () => {
+      if (!this.isKeyboardActive) return;
+      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null) || character;
       if (!activeChar || !activeChar.pickupModule) return;
       const grabbableTargets = getAllCharacters
         ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
@@ -1131,5 +1163,7 @@ export class InputManager {
       const aimY = isCursorVis ? this.mousePos.y : undefined;
       activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
     };
+
+    this.onDropAttempt = this.onKeyboardPickup;
   }
 }
