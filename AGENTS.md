@@ -83,8 +83,8 @@ powerCreatureGamePrototype1/
     - Ground objects within pickup reach of a character holding an object are fully detected as in-reach (isWithinPickupRange).
     - The closest reachable ground object to the aim cursor (or in front of character if aim has not moved) is actively targeted (isTargetGrab), rendering with that player's vibrant theme color outline and a solid glowing grab ring with P1 GRAB / GRAB badge.
     - Other reachable ground objects render with reach outline and dashed reach ring.
-    - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items.
-    - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item and selecting a ground item, pickup controls double as drop controls to swap items (dropping current and picking up new).
+    - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items. If empty-handed, drop controls double as pickup controls to pick up ground items.
+    - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, pickup controls double as drop controls: if a ground item is selected, it swaps items (dropping current and picking up new); if no ground item is in range, it drops the held item.
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 
@@ -110,8 +110,8 @@ powerCreatureGamePrototype1/
     - **Holding an object**: Throws the held object toward the cursor. A release-lock (`rtGrabbed`) requires the player to release the trigger after grabbing before a throw can be initiated, preventing accidental immediate throws upon pickup.
   - **Right Bumper (`RB` / R1, `button[5]`)**:
     - Dedicated throw button when holding an object (never grabs). Throws immediately at the virtual aim cursor.
-  - **`B` Button (`button[1]`)**: Pickup & Swap (`pickupAndSwap`) — grabs reachable object closest to cursor. If holding an item and selecting a ground item, doubles as drop control to swap (drops held item and grabs ground item; does not drop if no ground item selected).
-  - **`Y` Button (`button[3]`)**: Dedicated Drop button — immediately drops the held item onto the ground without swapping or throwing.
+  - **`B` Button (`button[1]`)**: Pickup & Swap (`pickupAndSwap`) — grabs reachable object closest to cursor. If holding an item and selecting a ground item, doubles as drop control to swap; if holding an item and none in range, drops the held item.
+  - **`Y` Button (`button[3]`)**: Dedicated Drop button — immediately drops the held item onto the ground; doubles as pickup control when empty-handed.
   - **Left Bumper (`LB` / L1, `button[4]`) & Left Under-Paddle (M2)**: Toggles or holds Sprinting on/off.
   - **Left Under-Paddle (M2 — Sprint Control)**:
     - Supported inputs: `LB (4)`, `L3 (10)`, `X (2)`, `Select/Back (8)`, `D-pad Left (14)`, `D-pad Down (13)`, `D-pad Up (12)`, extended M2 paddle buttons (`Button 17` on 18-btn pads, `Button 18`, `Button 20`, `Button 22` on 19+ pads), axis 4, and remapped `Shift` keys.

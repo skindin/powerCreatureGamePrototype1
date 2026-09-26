@@ -189,8 +189,9 @@ export class PickupModule {
         this.drop(character);
         return this.pickup(character, bestTarget);
       } else {
-        // No item on ground selected/in reach: do not drop with pickup controls!
-        return false;
+        // Holding an item but none within range to pick up: pickup controls double as drop controls!
+        this.drop(character);
+        return true;
       }
     } else {
       if (bestTarget) {
