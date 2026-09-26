@@ -39,38 +39,28 @@ input.pollGamepadSlots(players, arena.entities, arena);
 const slot0 = input.gamepadSlots.get(0)!;
 slot0.isActive = true;
 
-// Test 1: Move left (axes[0] = -1, axes[1] = 0)
-console.log("\nTest 1: Moving left (inputVector.x = -1)");
+// Test 1: Empty-handed with nothing to grab: cursor is at character and NOT visible, does NOT follow in front
+console.log("\nTest 1: Empty-handed with nothing to grab");
 mockAxes = [-1, 0, 0, 0];
 input.pollGamepadSlots(players, arena.entities, arena);
 
 console.log(`   movementVector: (${slot0.movementVector.x.toFixed(2)}, ${slot0.movementVector.y.toFixed(2)})`);
 console.log(`   lastMovementInputAngle: ${slot0.lastMovementInputAngle?.toFixed(3)} rad (${((slot0.lastMovementInputAngle ?? 0) * 180 / Math.PI).toFixed(1)} deg)`);
+console.log(`   slot0.aimPos: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
 if (Math.abs((slot0.lastMovementInputAngle ?? 0) - Math.PI) < 0.01) {
   console.log("   PASS: Angle is strictly Math.PI (180 deg) to the left.");
 } else {
   throw new Error(`FAIL: Expected Math.PI, got ${slot0.lastMovementInputAngle}`);
 }
-
-// Test 2: Stop moving while facing an obstacle where velocity might be zero or distorted
-console.log("\nTest 2: Stick released to neutral after moving left");
-mockAxes = [0, 0, 0, 0];
-// Pretend character has arbitrary non-zero velocity or zero velocity due to wall
-char.velocity.x = 0;
-char.velocity.y = 2.5; // Suppose collision pushed them along wall
-input.pollGamepadSlots(players, arena.entities, arena);
-
-console.log(`   char.velocity: (${char.velocity.x.toFixed(2)}, ${char.velocity.y.toFixed(2)})`);
-console.log(`   slot0.aimPos: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
-// Should be 3 units to the LEFT (x = 5 - 3 = 2, y = 5) based on movement input, NOT y-velocity!
-if (Math.abs(slot0.aimPos.x - 2.0) < 0.05 && Math.abs(slot0.aimPos.y - 5.0) < 0.05) {
-  console.log("   PASS: Cursor sticks 3 units to the left based strictly on latest movement input, completely ignoring velocity!");
+// When empty-handed and nothing to grab, cursor stays at character, NOT 3 units in front
+if (Math.abs(slot0.aimPos.x - char.position.x) < 0.05 && Math.abs(slot0.aimPos.y - char.position.y) < 0.05) {
+  console.log("   PASS: Cursor is at character position, NOT following in front when empty-handed.");
 } else {
-  throw new Error(`FAIL: Cursor position (${slot0.aimPos.x}, ${slot0.aimPos.y}) does not match expected (2.0, 5.0)`);
+  throw new Error(`FAIL: Cursor was at (${slot0.aimPos.x}, ${slot0.aimPos.y}) instead of character position (${char.position.x}, ${char.position.y})`);
 }
 
-// Test 3: Pickup an item while holding RT before entering range (Continuous hold-to-grab)
-console.log("\nTest 3: Continuous hold-to-grab (holding RT before entering range)");
+// Test 2: Pickup an item while holding RT before entering range (Continuous hold-to-grab)
+console.log("\nTest 2: Continuous hold-to-grab (holding RT before entering range)");
 const rock = new GameObject({
   id: "test-rock",
   position: { x: 3.5, y: 5, z: 0 }, // Out of reach initially from (5, 5)
@@ -79,7 +69,8 @@ const rock = new GameObject({
 });
 arena.entities.push(rock);
 
-// Press and hold RT
+// Press and hold RT while out of reach
+mockAxes = [0, 0, 0, 0];
 mockButtons[7] = { pressed: true, value: 1.0 };
 input.pollGamepadSlots(players, arena.entities, arena);
 console.log(`   Initial RT press (out of reach): char.heldObject = ${char.heldObject?.id ?? "none"}`);
@@ -99,14 +90,27 @@ if (char.heldObject === rock) {
   throw new Error("FAIL: Did not grab rock when entering range while holding RT!");
 }
 
-// Test 4: Cursor position after grab
-console.log("\nTest 4: Cursor placement upon grabbing");
+// Test 3: Holding item: cursor is now placed directly in front (to the left, Math.PI) based on latest movement input angle
+console.log("\nTest 3: Cursor placement upon grabbing while holding item");
 console.log(`   slot0.aimPos after grab: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
-// Char is at (4.2, 5), facing left (PI), so cursor should be at (4.2 - 3 = 1.2, 5.0)
+// Char is at (4.2, 5), last movement angle is Math.PI, so cursor is at (4.2 - 3.0 = 1.2, 5.0)
 if (Math.abs(slot0.aimPos.x - 1.2) < 0.05 && Math.abs(slot0.aimPos.y - 5.0) < 0.05) {
   console.log("   PASS: Cursor placed directly in front (to the left) in latest movement input direction!");
 } else {
   throw new Error(`FAIL: Expected (1.2, 5.0), got (${slot0.aimPos.x}, ${slot0.aimPos.y})`);
+}
+
+// Test 4: Moving while holding item without moving right aim stick: cursor follows in front along movement direction
+console.log("\nTest 4: Moving while holding item (axes[1] = 1, moving down)");
+mockAxes = [0, 1, 0, 0];
+char.position.y = 6.0;
+input.pollGamepadSlots(players, arena.entities, arena);
+console.log(`   slot0.aimPos while moving down: (${slot0.aimPos.x.toFixed(2)}, ${slot0.aimPos.y.toFixed(2)})`);
+// Downwards input means angle is PI/2, cursor should follow 3 units down from char at (4.2, 6.0): (4.2, 9.0)
+if (Math.abs(slot0.aimPos.x - 4.2) < 0.05 && Math.abs(slot0.aimPos.y - 9.0) < 0.05) {
+  console.log("   PASS: Cursor follows in front of character while holding item!");
+} else {
+  throw new Error(`FAIL: Expected (4.2, 9.0), got (${slot0.aimPos.x}, ${slot0.aimPos.y})`);
 }
 
 console.log("\nAll tests passed successfully!");

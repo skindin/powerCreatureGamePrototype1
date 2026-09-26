@@ -407,13 +407,9 @@ export class GameLoop {
           if (hasReachable) {
             const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
             if (reachableGroundObjects.length > 0) {
-              const target = char.pickupModule!.findTargetObject(
-                char,
-                this.inputManager.actualMousePos.x,
-                this.inputManager.actualMousePos.y,
-                reachableGroundObjects,
-                this.arena.wallHeight
-              );
+              const target = (entry.aimMovedWhileInRange || isHolding)
+                ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachableGroundObjects, this.arena.wallHeight)
+                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
               if (target) {
                 targetGrabEntities.set(char, target);
               }
@@ -485,50 +481,46 @@ export class GameLoop {
             // Holding an object: do not hide cursor at all!
             isCursorVisibleNow = true;
           } else {
-            // Empty-handed: keep cursor positioned directly in front of the character in latest movement input direction unless right stick moved
-            if (!slot.hasMovedAimStick) {
-              let dirX = 1;
-              let dirY = 0;
-              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-              if (moveMag > 0.05) {
-                dirX = slot.movementVector.x / moveMag;
-                dirY = slot.movementVector.y / moveMag;
-                slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-                char.lastMovementInputAngle = slot.lastMovementInputAngle;
-              } else {
-                const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-                dirX = Math.cos(inputAngle);
-                dirY = Math.sin(inputAngle);
-              }
-              const forwardDist = 3.0;
-              slot.aimPos.x = char.position.x + dirX * forwardDist;
-              slot.aimPos.y = char.position.y + dirY * forwardDist;
+            // Empty-handed: around something to grab or roaming
+            if (!hasReachable) {
+              // Hide cursor once nothing is within range anymore
+              isCursorVisibleNow = false;
+              slot.aimMovedWhileInRange = false;
+              slot.aimPos.x = char.position.x;
+              slot.aimPos.y = char.position.y;
               slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-              slot.aimOffset.x = dirX * forwardDist;
-              slot.aimOffset.y = dirY * forwardDist;
+              slot.aimOffset.x = 0;
+              slot.aimOffset.y = 0;
             } else {
-              if (slot.aimPos) {
+              // Has reachable items:
+              if (!slot.aimMovedWhileInRange) {
+                // When around something to grab, cursor starts directly at character!
+                slot.aimPos.x = char.position.x;
+                slot.aimPos.y = char.position.y;
+                slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+                slot.aimOffset.x = 0;
+                slot.aimOffset.y = 0;
+              } else if (slot.aimPos) {
                 slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
                 slot.aimOffset.x = slot.aimPos.x - char.position.x;
                 slot.aimOffset.y = slot.aimPos.y - char.position.y;
               }
-            }
 
-            // In gamepad mode, virtual aim cursor is always active
-            isCursorVisibleNow = true;
+              if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
+                isCursorVisibleNow = true;
+              } else {
+                isCursorVisibleNow = false;
+              }
+            }
           }
 
           // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
           if (hasReachable) {
             const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
             if (reachableGroundObjects.length > 0) {
-              const target = char.pickupModule!.findTargetObject(
-                char,
-                slot.aimPos.x,
-                slot.aimPos.y,
-                reachableGroundObjects,
-                this.arena.wallHeight
-              );
+              const target = (slot.aimMovedWhileInRange || isHolding)
+                ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachableGroundObjects, this.arena.wallHeight)
+                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
               if (target) {
                 targetGrabEntities.set(char, target);
               }

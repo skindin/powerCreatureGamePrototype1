@@ -636,22 +636,17 @@ export class InputManager {
         slot.aimOffset = { x: 0, y: 0 };
       }
       if (!slot.aimPos) {
-        const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-        slot.aimPos = {
-          x: char.position.x + Math.cos(inputAngle) * 3.0,
-          y: char.position.y + Math.sin(inputAngle) * 3.0,
-        };
+        slot.aimPos = { x: char.position.x, y: char.position.y };
       }
 
       if (!slot.aimOffsetInitialized) {
-        const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
         slot.aimPos = {
-          x: char.position.x + Math.cos(inputAngle) * 3.0,
-          y: char.position.y + Math.sin(inputAngle) * 3.0,
+          x: char.position.x,
+          y: char.position.y,
         };
         slot.aimOffset = {
-          x: Math.cos(inputAngle) * 3.0,
-          y: Math.sin(inputAngle) * 3.0,
+          x: 0,
+          y: 0,
         };
         slot.aimOffsetInitialized = true;
         slot.hasMovedAimStick = false;
@@ -661,6 +656,12 @@ export class InputManager {
       const grabbableTargets = allCharacters
         ? [...allCharacters.filter((c) => c !== char), ...objects]
         : objects;
+
+      const hasReachable = !isHolding && Boolean(
+        char.pickupModule &&
+        char.pickupModule.enabled &&
+        grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
+      );
 
       if (isHolding) {
         // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character in latest movement input direction
@@ -686,32 +687,35 @@ export class InputManager {
           slot.aimOffset.y = dirY * forwardDist;
         }
       } else {
-        // Empty-handed: keep cursor positioned directly in front of the character in latest movement input direction unless right stick moved
-        if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            char.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
-          }
-          const forwardDist = 3.0;
-          slot.aimPos.x = char.position.x + dirX * forwardDist;
-          slot.aimPos.y = char.position.y + dirY * forwardDist;
+        // Empty-handed:
+        if (!hasReachable) {
+          // Out of range: reset aimMovedWhileInRange and keep cursor at character
+          slot.aimMovedWhileInRange = false;
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = dirX * forwardDist;
-          slot.aimOffset.y = dirY * forwardDist;
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        } else if (!slot.aimMovedWhileInRange) {
+          // Around something to grab: start cursor AT character instead of latest offset!
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
         }
       }
 
       if (rMag > deadzone) {
         const cursorSpeed = 17.0;
+        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
+          // Starting to aim around grabbables: start directly at the character!
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        }
         slot.hasMovedAimStick = true;
         slot.aimPos.x += rx * cursorSpeed * dt;
         slot.aimPos.y += ry * cursorSpeed * dt;
@@ -779,8 +783,9 @@ export class InputManager {
       }
       slot.wasMoving = isStickMoving;
 
-      const aimX = slot.aimPos.x;
-      const aimY = slot.aimPos.y;
+      const isCursorVis = slot.isCursorVisible ?? false;
+      const aimX = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.x : undefined;
+      const aimY = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.y : undefined;
 
       const onGrabSuccess = () => {
         slot.hasMovedAimStick = false;

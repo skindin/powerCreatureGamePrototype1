@@ -637,10 +637,13 @@ powerCreatureGamePrototype1/
       - When pressing movement controls, `lastMovementInputAngle = Math.atan2(input.y, input.x)` is tracked. When movement controls are released, or when stopped against a wall or obstacle, facing orientation and cursor placement stay anchored along this `lastMovementInputAngle`.
       - Eliminated all checks against `velMag` or `char.velocity` that previously caused facing and cursor positions to deflect or redirect when brushing against walls or obstacles.
       - Fixed angle projection to use true physical coordinates `char.position` rather than visual offset `visualPos` (which previously subtracted $z \times \text{hoverScale}$, causing upward/up-right aim distortions).
+    - **Cursor Visibility and Following Rules**:
+      - **Empty-Handed With Nothing Reachable**: The cursor is **NOT visible** (`isCursorVisible = false`), and does **NOT follow** in front of the player (stays parked at character position).
+      - **Empty-Handed Around Grabbables**: Cursor starts at character position and only becomes visible if the player actively uses the aim stick to target items (`slot.aimMovedWhileInRange && slot.hasMovedAimStick`).
+      - **Holding an Object**: The cursor is **visible**. If the player has NOT used the right aim stick since picking up the object (`!slot.hasMovedAimStick`), the cursor follows directly in front along the character's latest movement input direction. Once the right aim stick is moved, the cursor stays locked at its world coordinates in the arena.
     - **Continuous Hold-to-Grab**:
-      - Holding the grab control (`RT` or `B` on gamepad, Left Click or `E` on keyboard) before an object enters pickup range now continuously checks for reachable objects each tick.
-      - The instant any grabbable object enters pickup reach while holding grab, it immediately grabs the object closest to the cursor.
-      - In both gamepad and keyboard modes, target selection always finds the closest reachable ground object to the aim cursor (`actualMousePos` for keyboard, `slot.aimPos` for gamepad).
+      - Holding the grab control (`RT` or `B` on gamepad, Left Click or `E` on keyboard) before an object enters pickup range continuously checks for reachable objects each tick.
+      - The instant any grabbable object enters pickup reach while holding grab, it immediately grabs the object closest to the cursor (or closest to character if not aiming).
       - Upon grabbing an object with a controller, the aim cursor is automatically placed 3.0 units directly in front of the character along their latest movement input direction.
 
 ---
