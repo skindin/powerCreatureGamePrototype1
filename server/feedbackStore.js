@@ -35,13 +35,14 @@ export function getAllFeedback() {
 /**
  * Adds a new bug or suggestion.
  */
-export function createFeedback({ type, description, author }) {
+export function createFeedback({ type, description, proposedSolution, author }) {
   ensureDataDir();
   const items = getAllFeedback();
   const newItem = {
     id: 'fb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
     type: type === 'bug' ? 'bug' : 'suggestion',
     description: (description || '').trim(),
+    proposedSolution: (proposedSolution || '').trim() || '',
     author: (author || '').trim() || 'Anonymous Creature',
     completed: false,
     createdAt: new Date().toISOString(),

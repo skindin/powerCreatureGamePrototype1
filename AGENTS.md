@@ -617,6 +617,19 @@ powerCreatureGamePrototype1/
     - **Automatic Reset on Throw, Drop, or Holding Something Again**:
       - Throwing or dropping the held object, or picking up an object (`!wasHolding && isHolding`), cleanly resets `hasMovedAimStick = false` and `aimMovedWhileInRange = false`.
       - Upon holding an object again, the cursor immediately returns to sticking in front of the character and following their movement until the right joystick is used again.
+53. **Bugs & Suggestions: Optional Proposed Solution Field & Strict Description Requirement**:
+    - **Form Architecture & Input Gating**:
+      - Added dedicated `#feedback-form-solution` textarea ("Proposed Solution (Optional)") to the Feedback & Bug submission modal (`index.html`).
+      - The primary feedback text field (`#feedback-form-desc`) strictly remains `required` (enforced via both HTML5 form validation and JS whitespace `.trim()` checking in `FeedbackPanel.ts`).
+      - The proposed solution field is completely optional; users can submit suggestions and bug reports without a proposed solution.
+    - **Store & Server Handling**:
+      - `server/feedbackStore.js`: Updated `createFeedback` to accept and sanitize `proposedSolution: (proposedSolution || '').trim() || ''`.
+      - Both the Vite dev server middleware and production Node server (`server.js`) seamlessly persist the optional field into `data/feedback.json`.
+    - **Card Rendering & Display Rules**:
+      - When viewing cards in the Feedback log (`FeedbackPanel.ts`), if a post does not have a proposed solution (empty or blank), the proposed solution element is completely omitted from the DOM — leaving the card clean with no blank space or empty label.
+      - If a proposed solution is present, it renders inside a distinct styled container (`.feedback-item-solution`) with a highlighted `.solution-label` ("💡 PROPOSED SOLUTION:") and formatted text block (`.solution-text`).
+    - **Clipboard Formatting**:
+      - Single-card copying and bulk copying (`Copy Selected`, `Copy All`) include `Proposed Solution: '<text>'` when present, and omit the line entirely when no solution was submitted.
 
 ---
 

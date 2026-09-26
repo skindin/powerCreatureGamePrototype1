@@ -2,6 +2,7 @@ export interface FeedbackItem {
   id: string;
   type: 'bug' | 'suggestion';
   description: string;
+  proposedSolution?: string;
   author: string;
   completed: boolean;
   createdAt: string;
@@ -23,6 +24,7 @@ export class FeedbackPanel {
   private selectType: HTMLSelectElement | null;
   private inputAuthor: HTMLInputElement | null;
   private textareaDesc: HTMLTextAreaElement | null;
+  private textareaSolution: HTMLTextAreaElement | null;
   private formMsgElement: HTMLElement | null;
 
   // Bulk copy & selection elements
@@ -65,6 +67,7 @@ export class FeedbackPanel {
     this.selectType = document.getElementById('feedback-form-type') as HTMLSelectElement | null;
     this.inputAuthor = document.getElementById('feedback-form-author') as HTMLInputElement | null;
     this.textareaDesc = document.getElementById('feedback-form-desc') as HTMLTextAreaElement | null;
+    this.textareaSolution = document.getElementById('feedback-form-solution') as HTMLTextAreaElement | null;
     this.formMsgElement = document.getElementById('feedback-form-msg');
 
     this.btnSelectAll = document.getElementById('btn-feedback-select-all') as HTMLInputElement | null;
@@ -244,6 +247,7 @@ export class FeedbackPanel {
 
     const type = this.selectType?.value === 'bug' ? 'bug' : 'suggestion';
     const author = this.inputAuthor?.value.trim() || 'Anonymous Creature';
+    const proposedSolution = this.textareaSolution?.value.trim() || '';
 
     const submitBtn = document.getElementById('btn-submit-feedback') as HTMLButtonElement | null;
     if (submitBtn) submitBtn.disabled = true;
@@ -252,11 +256,12 @@ export class FeedbackPanel {
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, description: desc, author }),
+        body: JSON.stringify({ type, description: desc, proposedSolution, author }),
       });
 
       if (res.ok) {
         this.textareaDesc.value = '';
+        if (this.textareaSolution) this.textareaSolution.value = '';
         if (this.selectType) this.selectType.value = 'suggestion'; // Keep suggestion as default
         this.showFormMsg('Report submitted successfully! Visible to everyone in the log.', false);
         await this.fetchFeedback();
@@ -352,7 +357,11 @@ export class FeedbackPanel {
    */
   public formatEntryForClipboard(item: FeedbackItem): string {
     const label = item.type === 'bug' ? 'Bug' : 'Suggestion';
-    return `${label} : '${item.description}'`;
+    let text = `${label} : '${item.description}'`;
+    if (item.proposedSolution && item.proposedSolution.trim()) {
+      text += `\nProposed Solution: '${item.proposedSolution.trim()}'`;
+    }
+    return text;
   }
 
   /**
@@ -568,6 +577,17 @@ export class FeedbackPanel {
     const escapedDesc = this.escapeHtml(item.description);
     const escapedAuthor = this.escapeHtml(item.author || 'Anonymous Creature');
 
+    const hasSolution = Boolean(item.proposedSolution && item.proposedSolution.trim());
+    const escapedSolution = hasSolution ? this.escapeHtml(item.proposedSolution!.trim()) : '';
+    const solutionHtml = hasSolution
+      ? `
+        <div class="feedback-item-solution">
+          <span class="solution-label">💡 Proposed Solution:</span>
+          <p class="solution-text">${escapedSolution}</p>
+        </div>
+      `
+      : '';
+
     return `
       <div class="feedback-item-card ${typeClass} ${completedClass} ${selectedClass}" data-id="${item.id}">
         <div class="feedback-checkbox-wrapper">
@@ -581,6 +601,7 @@ export class FeedbackPanel {
         </div>
         <div class="feedback-item-content">
           <p class="feedback-item-desc">${escapedDesc}</p>
+          ${solutionHtml}
           <div class="feedback-item-meta">
             <span class="meta-author">👤 ${escapedAuthor}</span>
             <span class="meta-time" title="Submitted at local time">🕒 ${localTime}</span>
