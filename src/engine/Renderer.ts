@@ -170,8 +170,7 @@ export class Renderer {
       }
     }
 
-    // 10. Trajectory Lines, Aim Cursors, and Colored Dotted Sightlines to Cursors
-    const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
+    // 10. Trajectory Lines and Aim Cursors
     // First: render active trajectories for any character holding an object
     for (const char of characters) {
       if (char.activeTrajectory) {
@@ -184,30 +183,12 @@ export class Renderer {
       }
     }
 
-    // Second: render aim cursors & player-colored dotted sightlines (only for unhidden cursors)
+    // Second: render aim cursors (only for unhidden cursors)
     if (Array.isArray(activeAimCursorsOrIsGamepad)) {
       for (const cursor of activeAimCursorsOrIsGamepad) {
         const cChar = cursor.character;
-        const charX = cChar.position.x * ppu;
-        const charY = (cChar.position.y - cChar.position.z * hoverScale) * ppu;
         const cursorX = cursor.x * ppu;
         const cursorY = cursor.y * ppu;
-
-        // Draw colored dotted line from character to their cursor so players instantly know which reticle is theirs
-        const distToCharPx = Math.hypot(cursorX - charX, cursorY - charY);
-        if (distToCharPx > 0.5 * ppu) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.setLineDash([4, 4]);
-          ctx.strokeStyle = cursor.color;
-          ctx.lineWidth = 1.8;
-          ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
-          ctx.shadowBlur = 3;
-          ctx.moveTo(charX, charY);
-          ctx.lineTo(cursorX, cursorY);
-          ctx.stroke();
-          ctx.restore();
-        }
 
         // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
         if (!cChar.activeTrajectory) {

@@ -653,14 +653,17 @@ powerCreatureGamePrototype1/
       - Updated `Arena.resetDefaultWalls()` to restore Standard Arena.
       - Player spawn at $(4.8, 7.0)$ and initial freebody objects cleanly inhabit the open courtyard areas of Standard Arena without wall collisions.
 
-56. **Player-Colored Trajectory Dots, Cursor PX Text Removal & Pointer Lock Raw Mouse Input**:
+56. **Player-Colored Trajectory Dots, Cursor PX Text Removal, Always-Visible Keyboard Cursor & Pointer Lock Raw Mouse Input**:
     - **Player-Colored Trajectory Dots (Curved Flight Arc Only)**:
       - Trajectory arc dots in `Renderer.ts:drawTrajectory` dynamically inherit the holding character's assigned player theme color (`character.playerColor`), instead of hardcoded white.
       - Converts hex color to RGBA, rendering Layer 1 ground dots as opaque (`alpha = 0.95`) and Layer 2 elevated dots as transparent (`alpha = 0.38`).
       - Completely removed the secondary straight shadow dotted lines along the ground, leaving strictly the clean curved parabolic 3D flight trajectory.
-    - **Removal of PX Text Labels Above Cursors**:
+    - **Removal of PX Text Labels Above Cursors & Straight Dotted Sightlines**:
       - Completely removed the `"P1"`, `"P2"` text label badges that were previously rendered above and next to the aim cursors in `Renderer.ts:drawAimReticle`.
+      - Removed straight dotted guide lines connecting character centers to cursors, leaving a clean independent cursor reticle.
       - Also removed player number from auto-lock badges, rendering a crisp `[LOCKED]` bracket on the locked target entity.
+    - **Keyboard Cursor Always Visible**:
+      - When playing with keyboard and mouse, the in-game aim reticle cursor is now **always visible** across the arena (`isCursorVisibleNow = true`), allowing continuous orientation and seamless pickup targeting even when empty-handed.
     - **Pointer Lock, Hidden Mouse & Raw Mouse Input**:
       - Clicking on the game view canvas in Play Mode requests Pointer Lock (`canvas.requestPointerLock({ unadjustedMovement: true })`), locking the cursor and hiding the browser OS mouse.
       - Added CSS `.pointer-locked` rule enforcing `cursor: none !important;` on `#game-canvas`.

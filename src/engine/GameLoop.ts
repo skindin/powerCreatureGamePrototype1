@@ -386,56 +386,40 @@ export class GameLoop {
             entry.aimMovedWhileInRange = true;
           }
 
-          if (isHolding) {
-            // Holding an object to throw: do not hide cursor at all!
-            isCursorVisibleNow = true;
-            this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-            this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
-          } else if (!hasReachable) {
-            // Hide cursor once nothing is within range anymore
-            isCursorVisibleNow = false;
-            entry.aimMovedWhileInRange = false;
-          } else {
-            isCursorVisibleNow = Boolean(entry.aimMovedWhileInRange && entry.hasMovedAim);
-            if (isCursorVisibleNow) {
-              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
-            }
-          }
+          // Keyboard cursor is always visible
+          isCursorVisibleNow = true;
+          this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+          this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
 
           // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
           if (hasReachable) {
             const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
             if (reachableGroundObjects.length > 0) {
-              const target = (entry.aimMovedWhileInRange || isHolding)
-                ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachableGroundObjects, this.arena.wallHeight)
-                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+              const target = char.pickupModule!.findTargetObject(
+                char,
+                this.inputManager.actualMousePos.x,
+                this.inputManager.actualMousePos.y,
+                reachableGroundObjects,
+                this.arena.wallHeight
+              );
               if (target) {
                 targetGrabEntities.set(char, target);
               }
             }
           }
 
-          if (isCursorVisibleNow && !entry.wasCursorVisible) {
-            if (isHolding || entry.aimMovedWhileInRange) {
-              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
-            }
-          }
-          entry.wasCursorVisible = isCursorVisibleNow;
-          this.inputManager.isCursorVisible = isCursorVisibleNow;
+          entry.wasCursorVisible = true;
+          this.inputManager.isCursorVisible = true;
 
           const aimPos = this.inputManager.mousePos;
-          if (isCursorVisibleNow) {
-            activeAimCursors.push({
-              x: aimPos.x,
-              y: aimPos.y,
-              color: char.playerColor,
-              playerNumber: char.playerNumber,
-              character: char,
-              isGamepad: false,
-            });
-          }
+          activeAimCursors.push({
+            x: aimPos.x,
+            y: aimPos.y,
+            color: char.playerColor,
+            playerNumber: char.playerNumber,
+            character: char,
+            isGamepad: false,
+          });
         } else if (entry.slotIndex !== undefined) {
           const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
           if (!slot || !slot.connected) continue;
