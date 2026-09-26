@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-Cdsdo74X.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DxGKV_LL.css">
+    <script type="module" crossorigin src="/assets/index-CtaA8kPC.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BeQxdkIc.css">
   </head>
   <body>
     <div id="app-layout">
@@ -74,6 +74,13 @@
         </div>
       </header>
 
+      <!-- Floating Mobile Quick Reload Button (shown when update is live) -->
+      <button id="mobile-reload-float-btn" class="mobile-reload-btn hidden" aria-label="Game Update Live - Tap to Reload" title="Game Update Live - Tap to Reload">
+        <span class="reload-dot"></span>
+        <span class="reload-icon">🔄</span>
+        <span class="reload-text">Update Live</span>
+      </button>
+
       <!-- Floating Fullscreen Button (Mobile Ratio & Small Screens) -->
       <button id="mobile-fullscreen-btn" class="mobile-fullscreen-btn" aria-label="Enter Fullscreen" title="Maximize Fullscreen">
         <span class="fs-icon">⛶</span>
@@ -98,6 +105,10 @@
               <span class="brand-badge">Phase 1.1 Sandbox</span>
             </div>
             <div class="mobile-menu-header-actions">
+              <div id="mobile-deploy-badge" class="header-deploy-badge live hidden" title="Update Live - Tap to Reload">
+                <span class="deploy-dot live"></span>
+                <span class="deploy-text">Update Live</span>
+              </div>
               <div id="mobile-relay-status" class="relay-pill hidden">
                 <span class="status-dot"></span>
                 <span id="mobile-ping-display">-- ms</span>
@@ -109,6 +120,26 @@
           <div class="mobile-menu-body">
             <!-- Column 1: Game Mode & Public Nationwide Link -->
             <div class="mobile-menu-col">
+              <!-- Dynamic Mobile Update Card (Visible when update live, building or crashed) -->
+              <div id="mobile-menu-update-card" class="mobile-menu-section mobile-update-card hidden">
+                <div class="section-title-row" style="justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="section-icon" id="mobile-update-icon">✨</span>
+                    <h3 id="mobile-update-title" style="color: #4ade80;">Update Live</h3>
+                  </div>
+                  <span id="mobile-update-commit-badge" class="badge" style="background: rgba(34,197,94,0.2); color: #4ade80;">vLatest</span>
+                </div>
+                <p id="mobile-update-desc" class="section-desc" style="color: #cbd5e1; font-size: 0.74rem;">A new version is ready. Reload whenever you are ready!</p>
+                <div class="mobile-update-actions" style="display: flex; gap: 8px; margin-top: 2px;">
+                  <button id="mobile-btn-menu-reload" class="btn-deploy-action reload" style="flex: 1; justify-content: center; min-height: 38px; display: inline-flex;">
+                    🔄 Reload Game Now
+                  </button>
+                  <a id="mobile-link-menu-logs" href="#" target="_blank" rel="noopener noreferrer" class="btn-deploy-action view-logs hidden" style="flex: 1; justify-content: center; min-height: 38px; text-decoration: none;">
+                    ↗ View Logs
+                  </a>
+                </div>
+              </div>
+
               <div class="mobile-menu-section">
                 <div class="section-title-row">
                   <span class="section-icon">🎮</span>

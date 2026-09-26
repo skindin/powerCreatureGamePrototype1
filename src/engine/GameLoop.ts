@@ -388,29 +388,32 @@ export class GameLoop {
           }
 
           if (isHolding) {
-            // Holding an object: cursor is ONLY visible if player has moved it!
-            isCursorVisibleNow = Boolean(entry.hasMovedAim);
-            if (isCursorVisibleNow) {
-              this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-              this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
-            }
+            // Holding an object to throw: do not hide cursor at all!
+            isCursorVisibleNow = true;
+            this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+            this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
           } else if (!hasReachable) {
             // Hide cursor once nothing is within range anymore
             isCursorVisibleNow = false;
             entry.aimMovedWhileInRange = false;
           } else {
-            // Has reachable items: select target reachable object
-            const target = entry.aimMovedWhileInRange
-              ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachable, this.arena.wallHeight)
-              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
-            if (target) {
-              targetGrabEntities.set(char, target);
-            }
-
             isCursorVisibleNow = Boolean(entry.aimMovedWhileInRange && entry.hasMovedAim);
             if (isCursorVisibleNow) {
               this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
               this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+            }
+          }
+
+          // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
+          if (hasReachable) {
+            const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
+            if (reachableGroundObjects.length > 0) {
+              const target = (entry.aimMovedWhileInRange || isHolding)
+                ? char.pickupModule!.findTargetObject(char, this.inputManager.actualMousePos.x, this.inputManager.actualMousePos.y, reachableGroundObjects, this.arena.wallHeight)
+                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+              if (target) {
+                targetGrabEntities.set(char, target);
+              }
             }
           }
 
@@ -438,44 +441,90 @@ export class GameLoop {
           const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
           if (!slot || !slot.connected) continue;
 
+          if (isHolding && !entry.wasHoldingObject) {
+            slot.hasMovedAimStick = false;
+          }
+          entry.wasHoldingObject = isHolding;
+          slot.wasHoldingObject = isHolding;
+
           if (!slot.aimOffset) {
             slot.aimOffset = { x: 0, y: 0 };
           }
 
-          if (!slot.hasMovedAimStick) {
-            slot.aimPos.x = visualPos.x;
-            slot.aimPos.y = visualPos.y;
-            slot.aimOffset.x = 0;
-            slot.aimOffset.y = 0;
-          }
-
           if (isHolding) {
-            // Holding an object: cursor is ONLY visible if player has moved it!
-            isCursorVisibleNow = Boolean(slot.hasMovedAimStick);
-          } else if (!hasReachable) {
-            // Hide cursor once nothing is within range anymore
-            isCursorVisibleNow = false;
-            slot.aimMovedWhileInRange = false;
-          } else {
-            // Has reachable items: select target reachable object
-            const target = slot.aimMovedWhileInRange
-              ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachable, this.arena.wallHeight)
-              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachable, this.arena.wallHeight);
-            if (target) {
-              targetGrabEntities.set(char, target);
+            if (!slot.hasMovedAimStick) {
+              let dirX = 1;
+              let dirY = 0;
+              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+              const velMag = Math.hypot(char.velocity.x, char.velocity.y);
+              if (moveMag > 0.05) {
+                dirX = slot.movementVector.x / moveMag;
+                dirY = slot.movementVector.y / moveMag;
+              } else if (velMag > 0.1) {
+                dirX = char.velocity.x / velMag;
+                dirY = char.velocity.y / velMag;
+              } else {
+                const facing = char.facingAngle ?? 0;
+                dirX = Math.cos(facing);
+                dirY = Math.sin(facing);
+              }
+              const forwardDist = 3.0;
+              slot.aimPos.x = visualPos.x + dirX * forwardDist;
+              slot.aimPos.y = visualPos.y + dirY * forwardDist;
+              slot.aimOffset.x = dirX * forwardDist;
+              slot.aimOffset.y = dirY * forwardDist;
+            } else {
+              // Preserve world aimPos instead of dragging it with player movement
+              if (slot.aimPos) {
+                slot.aimOffset.x = slot.aimPos.x - visualPos.x;
+                slot.aimOffset.y = slot.aimPos.y - visualPos.y;
+              }
             }
 
-            if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
-              isCursorVisibleNow = true;
-            } else {
+            // Holding an object: do not hide cursor at all!
+            isCursorVisibleNow = true;
+          } else {
+            // Empty-handed: around something to grab or roaming
+            if (!hasReachable) {
+              // Hide cursor once nothing is within range anymore
               isCursorVisibleNow = false;
+              slot.aimMovedWhileInRange = false;
+              slot.aimPos.x = visualPos.x;
+              slot.aimPos.y = visualPos.y;
+              slot.aimOffset.x = 0;
+              slot.aimOffset.y = 0;
+            } else {
+              // Has reachable items:
+              if (!slot.aimMovedWhileInRange) {
+                // When around something to grab, cursor starts directly at character!
+                slot.aimPos.x = visualPos.x;
+                slot.aimPos.y = visualPos.y;
+                slot.aimOffset.x = 0;
+                slot.aimOffset.y = 0;
+              } else if (slot.aimPos) {
+                slot.aimOffset.x = slot.aimPos.x - visualPos.x;
+                slot.aimOffset.y = slot.aimPos.y - visualPos.y;
+              }
+
+              if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
+                isCursorVisibleNow = true;
+              } else {
+                isCursorVisibleNow = false;
+              }
             }
           }
 
-          // Preserve world aimPos instead of dragging it with player movement
-          if (slot.aimPos) {
-            slot.aimOffset.x = slot.aimPos.x - visualPos.x;
-            slot.aimOffset.y = slot.aimPos.y - visualPos.y;
+          // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
+          if (hasReachable) {
+            const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
+            if (reachableGroundObjects.length > 0) {
+              const target = (slot.aimMovedWhileInRange || isHolding)
+                ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachableGroundObjects, this.arena.wallHeight)
+                : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+              if (target) {
+                targetGrabEntities.set(char, target);
+              }
+            }
           }
 
           entry.wasCursorVisible = isCursorVisibleNow;

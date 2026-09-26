@@ -53,6 +53,21 @@ export class DeployNotifier {
         this.checkDeployment(false);
       }
     });
+
+    // Keep toast notification mounted in active fullscreen element or layout container
+    const handleFsChange = () => {
+      const toast = document.getElementById("deploy-toast-notification");
+      if (toast) {
+        const mount = this.getToastMountContainer();
+        if (toast.parentElement !== mount) {
+          mount.appendChild(toast);
+        }
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    document.addEventListener("mozfullscreenchange", handleFsChange);
+    document.addEventListener("MSFullscreenChange", handleFsChange);
   }
 
   public stop(): void {
@@ -60,6 +75,50 @@ export class DeployNotifier {
       clearInterval(this.checkIntervalTimer);
       this.checkIntervalTimer = null;
     }
+  }
+
+  /**
+   * Helper to ensure notifications mount into the active fullscreen root or app layout,
+   * guaranteeing visibility in and out of native browser fullscreen mode.
+   */
+  private getToastMountContainer(): HTMLElement {
+    return (
+      (document.fullscreenElement as HTMLElement) ||
+      document.getElementById("app-layout") ||
+      document.body
+    );
+  }
+
+  /**
+   * Centralized reload handler with button feedback and service worker sync.
+   */
+  public static triggerReload(): void {
+    try {
+      // Visual feedback across all reload buttons
+      const reloadBtns = document.querySelectorAll<HTMLElement>(
+        "#btn-deploy-reload, #mobile-btn-menu-reload, #mobile-reload-float-btn, #mobile-deploy-badge, #header-deploy-badge"
+      );
+      reloadBtns.forEach((btn) => {
+        const textSpan = btn.querySelector(".reload-text") || btn.querySelector(".deploy-text");
+        if (textSpan) {
+          textSpan.textContent = "Reloading...";
+        } else if (btn.tagName === "BUTTON") {
+          btn.textContent = "⏳ Reloading...";
+        }
+        btn.style.pointerEvents = "none";
+        btn.style.opacity = "0.75";
+      });
+
+      // Signal service worker if installed
+      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" });
+      }
+    } catch {}
+
+    // Reload cleanly
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
   }
 
   private async checkDeployment(isInitial = false): Promise<void> {
@@ -114,6 +173,9 @@ export class DeployNotifier {
         const badge = document.getElementById("header-deploy-badge");
         if (badge && badge.classList.contains("building")) {
           badge.remove();
+        }
+        if (!this.notifiedLiveCommit && !this.notifiedCrashedCommit) {
+          this.updateMobileUI("none");
         }
       }
 
@@ -253,6 +315,160 @@ export class DeployNotifier {
     badge.parentNode?.replaceChild(newBadge, badge);
   }
 
+  // --- Mobile Display & Menu Synchronization ---
+
+  private updateMobileUI(
+    state: "building" | "crashed" | "live" | "none",
+    commit?: string,
+    description?: string,
+    targetUrl?: string
+  ): void {
+    // 1. Mobile Floating Quick Reload Button (top left)
+    const mobileReloadFloatBtn = document.getElementById("mobile-reload-float-btn");
+    if (mobileReloadFloatBtn) {
+      if (state === "live") {
+        mobileReloadFloatBtn.classList.remove("hidden");
+        const textSpan = mobileReloadFloatBtn.querySelector(".reload-text");
+        if (textSpan) {
+          textSpan.textContent = commit ? `Update (${commit})` : "Update Live";
+        }
+        mobileReloadFloatBtn.title = `Game update deployed${commit ? ` (${commit})` : ''}! Tap to reload now.`;
+        mobileReloadFloatBtn.onclick = () => {
+          DeployNotifier.triggerReload();
+        };
+      } else {
+        mobileReloadFloatBtn.classList.add("hidden");
+        mobileReloadFloatBtn.onclick = null;
+      }
+    }
+
+    // 2. Mobile Hamburger Button Notification Dot
+    const mobileMenuBtn = document.getElementById("mobile-menu-btn");
+    if (mobileMenuBtn) {
+      if (state === "live") {
+        mobileMenuBtn.classList.add("has-update");
+      } else {
+        mobileMenuBtn.classList.remove("has-update");
+      }
+    }
+
+    // 3. Mobile Menu Header Badge
+    const mobileDeployBadge = document.getElementById("mobile-deploy-badge");
+    if (mobileDeployBadge) {
+      if (state === "none") {
+        mobileDeployBadge.classList.add("hidden");
+        mobileDeployBadge.onclick = null;
+      } else {
+        mobileDeployBadge.className = `header-deploy-badge ${state}`;
+        const dot = mobileDeployBadge.querySelector(".deploy-dot");
+        if (dot) dot.className = `deploy-dot ${state}`;
+        const text = mobileDeployBadge.querySelector(".deploy-text");
+        if (text) {
+          if (state === "live") text.textContent = commit ? `Update (${commit})` : "Update Live";
+          else if (state === "building") text.textContent = commit ? `Deploying (${commit})` : "Deploying...";
+          else if (state === "crashed") text.textContent = commit ? `Crashed (${commit})` : "Build Crashed";
+        }
+        mobileDeployBadge.classList.remove("hidden");
+        if (state === "live") {
+          mobileDeployBadge.title = "Update Live! Tap to reload now.";
+          mobileDeployBadge.onclick = () => DeployNotifier.triggerReload();
+        } else if (targetUrl) {
+          mobileDeployBadge.title = "Click to inspect Railway build status.";
+          mobileDeployBadge.onclick = () => window.open(targetUrl, "_blank", "noopener,noreferrer");
+        } else {
+          mobileDeployBadge.onclick = null;
+        }
+      }
+    }
+
+    // 4. Mobile Menu Update Card
+    const mobileUpdateCard = document.getElementById("mobile-menu-update-card");
+    if (mobileUpdateCard) {
+      if (state === "none") {
+        mobileUpdateCard.classList.add("hidden");
+      } else {
+        mobileUpdateCard.classList.remove("hidden");
+        const icon = document.getElementById("mobile-update-icon");
+        const title = document.getElementById("mobile-update-title");
+        const commitBadge = document.getElementById("mobile-update-commit-badge");
+        const desc = document.getElementById("mobile-update-desc");
+        const reloadBtn = document.getElementById("mobile-btn-menu-reload");
+        const logsLink = document.getElementById("mobile-link-menu-logs") as HTMLAnchorElement | null;
+
+        if (state === "live") {
+          if (icon) icon.textContent = "✨";
+          if (title) {
+            title.textContent = "Update Live";
+            title.style.color = "#4ade80";
+          }
+          if (commitBadge) {
+            commitBadge.textContent = commit ? `commit ${commit}` : "vLatest";
+            commitBadge.style.background = "rgba(34, 197, 94, 0.2)";
+            commitBadge.style.color = "#4ade80";
+          }
+          if (desc) {
+            desc.textContent = "A new version of Power Creature Game was redeployed! Tap reload whenever you're ready.";
+          }
+          if (reloadBtn) {
+            reloadBtn.classList.remove("hidden");
+            reloadBtn.onclick = () => DeployNotifier.triggerReload();
+          }
+          if (logsLink) logsLink.classList.add("hidden");
+        } else if (state === "building") {
+          if (icon) icon.textContent = "🔨";
+          if (title) {
+            title.textContent = "Deploying Update...";
+            title.style.color = "#fbbf24";
+          }
+          if (commitBadge) {
+            commitBadge.textContent = commit ? `commit ${commit}` : "building";
+            commitBadge.style.background = "rgba(245, 158, 11, 0.2)";
+            commitBadge.style.color = "#fbbf24";
+          }
+          if (desc) {
+            desc.textContent = description || `Building & preparing commit ${commit || "latest"} on Railway.`;
+          }
+          if (reloadBtn) reloadBtn.classList.add("hidden");
+          if (logsLink) {
+            if (targetUrl) {
+              logsLink.href = targetUrl;
+              logsLink.className = "btn-deploy-action view-logs";
+              logsLink.textContent = "↗ View Logs";
+              logsLink.classList.remove("hidden");
+            } else {
+              logsLink.classList.add("hidden");
+            }
+          }
+        } else if (state === "crashed") {
+          if (icon) icon.textContent = "🚨";
+          if (title) {
+            title.textContent = "Railway Build Crashed";
+            title.style.color = "#f87171";
+          }
+          if (commitBadge) {
+            commitBadge.textContent = commit ? `commit ${commit}` : "error";
+            commitBadge.style.background = "rgba(239, 68, 68, 0.2)";
+            commitBadge.style.color = "#f87171";
+          }
+          if (desc) {
+            desc.textContent = description || `Railway build failed for commit ${commit || "latest"}.`;
+          }
+          if (reloadBtn) reloadBtn.classList.add("hidden");
+          if (logsLink) {
+            if (targetUrl) {
+              logsLink.href = targetUrl;
+              logsLink.className = "btn-deploy-action view-logs danger";
+              logsLink.textContent = "🔍 Error Logs";
+              logsLink.classList.remove("hidden");
+            } else {
+              logsLink.classList.add("hidden");
+            }
+          }
+        }
+      }
+    }
+  }
+
   // --- Notifications ---
 
   /**
@@ -261,7 +477,7 @@ export class DeployNotifier {
   private showBuildingNotification(commit: string, description?: string, targetUrl?: string): void {
     this.playBuildingChime();
 
-    // 1. Header Badge: Amber building status
+    // 1. Header Badge: Amber building status (Desktop top bar)
     this.updateHeaderBadge(
       "building",
       `
@@ -276,7 +492,10 @@ export class DeployNotifier {
       }
     );
 
-    // 2. Floating Toast Notification
+    // 2. Synchronize Mobile Menu Card & Header Badge
+    this.updateMobileUI("building", commit, description, targetUrl);
+
+    // 3. Floating Toast Notification
     let toast = document.getElementById("deploy-toast-notification");
     if (toast) toast.remove();
 
@@ -297,7 +516,7 @@ export class DeployNotifier {
       </div>
     `;
 
-    document.body.appendChild(toast);
+    this.getToastMountContainer().appendChild(toast);
 
     document.getElementById("btn-deploy-dismiss")?.addEventListener("click", () => {
       toast?.classList.add("closing");
@@ -306,7 +525,7 @@ export class DeployNotifier {
 
     // Auto-fade toast after 10 seconds (badge stays until deployment state finishes)
     setTimeout(() => {
-      if (toast && document.body.contains(toast)) {
+      if (toast && toast.parentElement) {
         toast.classList.add("closing");
         setTimeout(() => toast?.remove(), 300);
       }
@@ -319,7 +538,7 @@ export class DeployNotifier {
   private showCrashedNotification(commit: string, description?: string, targetUrl?: string): void {
     this.playCrashChime();
 
-    // 1. Header Badge: Red alert status
+    // 1. Header Badge: Red alert status (Desktop top bar)
     this.updateHeaderBadge(
       "crashed",
       `
@@ -334,7 +553,10 @@ export class DeployNotifier {
       }
     );
 
-    // 2. Floating Toast Notification
+    // 2. Synchronize Mobile Menu Card & Header Badge
+    this.updateMobileUI("crashed", commit, description, targetUrl);
+
+    // 3. Floating Toast Notification
     let toast = document.getElementById("deploy-toast-notification");
     if (toast) toast.remove();
 
@@ -355,7 +577,7 @@ export class DeployNotifier {
       </div>
     `;
 
-    document.body.appendChild(toast);
+    this.getToastMountContainer().appendChild(toast);
 
     document.getElementById("btn-deploy-dismiss")?.addEventListener("click", () => {
       toast?.classList.add("closing");
@@ -364,7 +586,7 @@ export class DeployNotifier {
 
     // Toast stays up for 25 seconds for error visibility
     setTimeout(() => {
-      if (toast && document.body.contains(toast)) {
+      if (toast && toast.parentElement) {
         toast.classList.add("closing");
         setTimeout(() => toast?.remove(), 300);
       }
@@ -377,20 +599,23 @@ export class DeployNotifier {
   private showLiveNotification(commit: string): void {
     this.playLiveChime();
 
-    // 1. Header Badge: Green/cyan live update status
+    // 1. Header Badge: Green/cyan live update status (Desktop top bar)
     this.updateHeaderBadge(
       "live",
       `
         <span class="deploy-dot live"></span>
         <span class="deploy-text">Update Live${commit ? ` (${commit})` : ''}</span>
       `,
-      `A new version of Power Creature Game was redeployed on Railway! Click if you want to reload.`,
+      `A new version of Power Creature Game was redeployed on Railway! Click to reload.`,
       () => {
-        window.location.reload();
+        DeployNotifier.triggerReload();
       }
     );
 
-    // 2. Floating Toast Notification
+    // 2. Synchronize Mobile Floating Button, Menu Card, and Hamburger Indicator
+    this.updateMobileUI("live", commit);
+
+    // 3. Floating Toast Notification
     let toast = document.getElementById("deploy-toast-notification");
     if (toast) toast.remove();
 
@@ -402,19 +627,19 @@ export class DeployNotifier {
         <span class="deploy-toast-icon">✨</span>
         <div class="deploy-toast-body">
           <div class="deploy-toast-title">Railway Update Live</div>
-          <div class="deploy-toast-desc">New version redeployed${commit ? ` (commit <code>${commit}</code>)` : ''}. You can reload whenever you're ready!</div>
+          <div class="deploy-toast-desc">New version redeployed${commit ? ` (commit <code>${commit}</code>)` : ''}. Reload whenever you're ready!</div>
         </div>
         <div class="deploy-toast-actions">
-          <button id="btn-deploy-reload" class="btn-deploy-action reload">Reload</button>
+          <button id="btn-deploy-reload" class="btn-deploy-action reload" title="Reload to get latest version">🔄 Reload</button>
           <button id="btn-deploy-dismiss" class="btn-deploy-action dismiss" title="Dismiss">✕</button>
         </div>
       </div>
     `;
 
-    document.body.appendChild(toast);
+    this.getToastMountContainer().appendChild(toast);
 
     document.getElementById("btn-deploy-reload")?.addEventListener("click", () => {
-      window.location.reload();
+      DeployNotifier.triggerReload();
     });
 
     document.getElementById("btn-deploy-dismiss")?.addEventListener("click", () => {
@@ -422,13 +647,13 @@ export class DeployNotifier {
       setTimeout(() => toast?.remove(), 300);
     });
 
-    // Auto-fade after 14 seconds
+    // Auto-fade after 25 seconds (floating button and mobile menu remain active)
     setTimeout(() => {
-      if (toast && document.body.contains(toast)) {
+      if (toast && toast.parentElement) {
         toast.classList.add("closing");
         setTimeout(() => toast?.remove(), 300);
       }
-    }, 14000);
+    }, 25000);
   }
 
   private escapeHtml(str: string): string {

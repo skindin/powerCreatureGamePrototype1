@@ -61,6 +61,7 @@ export class PickupModule {
     let shortestDist = Infinity;
 
     for (const obj of objects) {
+      if (obj === character.heldObject || obj.isHeld) continue;
       if (!this.isObjectInReach(character, obj, wallHeight)) continue;
 
       // Distance from object to mouse/aim position: pick the one closest to the cursor within maxSelectDistance

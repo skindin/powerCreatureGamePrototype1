@@ -619,25 +619,71 @@ export class InputManager {
         slot.hasMovedAimStick = false;
       }
 
-      // If the player has NOT moved the right aim stick yet, keep cursor centered at character
-      if (!slot.hasMovedAimStick) {
-        slot.aimPos.x = visualPos.x;
-        slot.aimPos.y = visualPos.y;
-        slot.aimOffset.x = 0;
-        slot.aimOffset.y = 0;
+      // Grabbable target candidates include freebody objects and other characters
+      const grabbableTargets = allCharacters
+        ? [...allCharacters.filter((c) => c !== char), ...objects]
+        : objects;
+
+      const hasReachable = !isHolding && Boolean(
+        char.pickupModule &&
+        char.pickupModule.enabled &&
+        grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
+      );
+
+      if (isHolding) {
+        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          const velMag = Math.hypot(char.velocity.x, char.velocity.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+          } else if (velMag > 0.1) {
+            dirX = char.velocity.x / velMag;
+            dirY = char.velocity.y / velMag;
+          } else {
+            const facing = char.facingAngle ?? 0;
+            dirX = Math.cos(facing);
+            dirY = Math.sin(facing);
+          }
+          const forwardDist = 3.0;
+          slot.aimPos.x = visualPos.x + dirX * forwardDist;
+          slot.aimPos.y = visualPos.y + dirY * forwardDist;
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
+        }
+      } else {
+        // Empty-handed:
+        if (!hasReachable) {
+          // Out of range: reset aimMovedWhileInRange and keep cursor at character
+          slot.aimMovedWhileInRange = false;
+          slot.aimPos.x = visualPos.x;
+          slot.aimPos.y = visualPos.y;
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        } else if (!slot.aimMovedWhileInRange) {
+          // Around something to grab: start cursor AT character instead of latest offset!
+          slot.aimPos.x = visualPos.x;
+          slot.aimPos.y = visualPos.y;
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        }
       }
 
       if (rMag > deadzone) {
         const cursorSpeed = 17.0;
-        if (!slot.hasMovedAimStick) {
-          slot.hasMovedAimStick = true;
-          // Start directly at character once unhidden and move in stick direction
-          slot.aimPos.x = visualPos.x + rx * cursorSpeed * dt;
-          slot.aimPos.y = visualPos.y + ry * cursorSpeed * dt;
-        } else {
-          slot.aimPos.x += rx * cursorSpeed * dt;
-          slot.aimPos.y += ry * cursorSpeed * dt;
+        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
+          // Starting to aim around grabbables: start directly at the character!
+          slot.aimPos.x = visualPos.x;
+          slot.aimPos.y = visualPos.y;
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
         }
+        slot.hasMovedAimStick = true;
+        slot.aimPos.x += rx * cursorSpeed * dt;
+        slot.aimPos.y += ry * cursorSpeed * dt;
         slot.lastAimMoveTime = performance.now();
         slot.aimMovedWhileInRange = true;
       }
@@ -651,7 +697,7 @@ export class InputManager {
 
       // Button 6 (LT / L2): Auto-lock aiming
       // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
-      const isLtPressed = isButtonPressed(6, 0.35);
+      const isLtPressed = isButtonPressed(6, 0.2);
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
@@ -701,11 +747,6 @@ export class InputManager {
       }
       slot.wasMoving = isStickMoving;
 
-      // Grabbable target candidates include freebody objects and other characters
-      const grabbableTargets = allCharacters
-        ? [...allCharacters.filter((c) => c !== char), ...objects]
-        : objects;
-
       const isCursorVis = slot.isCursorVisible ?? false;
       const aimX = isCursorVis ? slot.aimPos.x : undefined;
       const aimY = isCursorVis ? slot.aimPos.y : undefined;
@@ -742,6 +783,8 @@ export class InputManager {
               aimX,
               aimY
             );
+            slot.hasMovedAimStick = false;
+            slot.aimMovedWhileInRange = false;
           }
         }
       }
@@ -805,12 +848,14 @@ export class InputManager {
             char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
           );
           slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
         }
         if (rbJustPressed && char.throwModule) {
           char.throwModule.throwHeldObject(
-            char, throwTargetX, throwTargetY, arena, undefined, undefined, isLockHeld
+            char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
           );
           slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
         }
       }
 
@@ -1077,18 +1122,14 @@ export class InputManager {
     this.onDropAttempt = () => {
       if (!this.isKeyboardActive) return;
       const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
-      if (!activeChar) return;
-      if (activeChar.heldObject && activeChar.pickupModule) {
-        activeChar.pickupModule.drop(activeChar);
-      } else if (!activeChar.heldObject && activeChar.pickupModule) {
-        const grabbableTargets = getAllCharacters
-          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
-          : objects;
-        const isCursorVis = this.isCursorVisible;
-        const aimX = isCursorVis ? (this.gamepadConnected ? this.gamepadAimPos.x : this.mousePos.x) : undefined;
-        const aimY = isCursorVis ? (this.gamepadConnected ? this.gamepadAimPos.y : this.mousePos.y) : undefined;
-        activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
-      }
+      if (!activeChar || !activeChar.pickupModule) return;
+      const grabbableTargets = getAllCharacters
+        ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
+        : objects;
+      const isCursorVis = this.isCursorVisible;
+      const aimX = isCursorVis ? this.mousePos.x : undefined;
+      const aimY = isCursorVis ? this.mousePos.y : undefined;
+      activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
     };
   }
 }

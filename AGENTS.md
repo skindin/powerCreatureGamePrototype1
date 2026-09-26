@@ -171,6 +171,13 @@ powerCreatureGamePrototype1/
     - Accessible directly in the browser top-bar (`#btn-phone-connect`, `#toggle-view-settings-btn`), in the desktop app top bar (`👁 View`), and in the Inspector panel (`👁️ View`).
     - View Settings panel is elevated to `z-index: 50` and remains open during live gameplay so players can test visual options live without click-outside closing.
 
+- **Mobile Display & Fullscreen Update Notification & Reload Architecture**:
+  - **Bottom-Centered Toast on Mobile**: On mobile landscape and touch viewports (`bottom: max(14px, env(safe-area-inset-bottom)); top: auto`), the toast notification is positioned at the bottom center. This completely prevents overlap with top-right floating buttons (`.mobile-fullscreen-btn`, `.mobile-hamburger-btn`) and respects camera notches / home indicators.
+  - **Native Fullscreen Top-Layer Resilience**: `DeployNotifier.getToastMountContainer()` dynamically mounts toasts into `document.fullscreenElement || document.getElementById("app-layout") || document.body`. Automatic listeners on `fullscreenchange` reparent open toasts if fullscreen is entered or exited during live gameplay, preventing native top-layer occlusion.
+  - **Persistent Floating Quick Reload Button (`#mobile-reload-float-btn`)**: Fixed at top-left (`left: max(14px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); height: 44px;`) on mobile ratio in and out of fullscreen whenever an update is live. Even if the user dismisses the toast to clear the screen during a round, the glowing `🔄 Update Live` button remains readily available.
+  - **Mobile Menu Integration (`#mobile-expanded-menu`)**: Mobile menu header displays `#mobile-deploy-badge` and Column 1 displays `#mobile-menu-update-card` with status info and a full-width "Reload Game Now" button. The floating hamburger button displays a pulsing green indicator dot (`.has-update`).
+  - **Touch Target Ergonomics & Feedback**: `#btn-deploy-reload` and dismiss buttons feature $\ge 40\text{px}$ touch targets, `touch-action: manipulation`, and instant visual feedback ("⏳ Reloading...").
+
 ---
 
 ## 3. Key Architectural Decisions
@@ -564,17 +571,31 @@ powerCreatureGamePrototype1/
       - Because the top bar is strictly fixed at 48px and the top controls bar is only 30px high, the total vertical space consumed above the canvas is only 78px (down by over 100px compared to earlier wrapped layouts).
       - The canvas retains ample height to scale up generously without squishing or letterboxing.
       - Floating overlay multiplayer relay HUD prevents canvas displacement when online.
-52. **Controller Aim Cursor Centering, Hidden Until Moved & Movement-Direction Trajectory**:
-    - **Cursor Hidden Until Moved**:
-      - Both in controller mode and keyboard/mouse mode, the aim cursor crosshair is **completely hidden** until the player actively moves it (`hasMovedAimStick` / `hasMovedAim`).
-      - When picking up or carrying an object without touching the aim controls, the throw trajectory arc is clearly projected forward along the movement direction, while the crosshair reticle itself remains hidden until moved.
-    - **Cursor Starts at Character Once Unhidden**:
-      - In controller mode, when the right stick is deflected to unhide the cursor, the cursor starts **directly at the character** (`visualPos.x, visualPos.y`) and glides smoothly outward in the stick deflection direction at $17.0\text{ u/s}$ (no artificial 3.0-unit jumping).
-      - The trajectory snaps from the movement vector directly to the cursor the instant the stick is moved.
-    - **Automatic Reset on Throw & Pickup**:
-      - Throwing or dropping the held object, or picking up a new object, resets `hasMovedAimStick = false` and re-hides the cursor at the character, preparing the next throw forward along movement direction.
-    - **Independent Trajectory Rendering**:
-      - `Renderer.ts` decouples trajectory line rendering from cursor visibility, ensuring the parabolic arc and landing footprint render even when the aim reticle is hidden.
+52. **Controller Aim Cursor Dynamic Forward Follow, Seamless Stick Decoupling & Reset Rules**:
+    - **Cursor Sticks in Front of Character Until Right Joystick Input**:
+      - While holding an object, the aim cursor is visible and **sticks directly to the position in front of the character** ($3.0\text{ units}$ in facing/movement direction).
+      - As the player moves around and turns with the left joystick, the cursor dynamically follows in front of the character across the arena.
+    - **Seamless Right Joystick Transition & Decoupling**:
+      - The moment the player deflects the right joystick (`rMag > deadzone`), `hasMovedAimStick` becomes `true`.
+      - The cursor begins moving seamlessly from the exact position where it was following in front of the character (no artificial snapping or jumping).
+      - From this moment onward, the cursor **no longer follows the character**. It stays put at its world coordinates in the arena unless further right joystick input is provided.
+      - The player can run and maneuver around with the left stick while the cursor and throw target remain locked at that world coordinate.
+    - **Cursor Around Grabbables Starts Directly at Character**:
+      - When empty-handed and around something to grab (`hasReachable`), the cursor starts directly at the character (`visualPos.x, visualPos.y`, offset $0, 0$) instead of retaining any previous offset.
+      - Deflecting the right joystick to target a grabbable item begins moving the cursor directly from the character outward towards the item.
+      - Moving out of reach of grabbable objects resets `aimMovedWhileInRange = false` so approaching another grabbable always begins from the character.
+    - **Continuous Cursor Visibility While Holding**:
+      - When holding an object to throw, the cursor is **never hidden** in both keyboard and controller modes.
+    - **Aim Lock While Holding Before Joystick Input**:
+      - If the player holds the aim lock control (`LT` on controller, Right Mouse on keyboard) while holding an object but hasn't yet moved the right joystick, the system automatically locks onto the target entity closest to the cursor.
+      - The character faces the locked target, dedicated lock brackets render around the target, and throw trajectories land directly on it.
+    - **Ground Item Selection & Pickup/Swap With E / B**:
+      - In both controller and keyboard modes, whenever there is an object on the ground within range of the character to grab, the system always selects the closest reachable ground object to the cursor (`targetGrabEntities`).
+      - This applies even when the character is already holding an item, drawing the grab target ring around the ground item.
+      - Pressing `E` on keyboard or `B` on controller drops the currently held item and immediately grabs the selected ground item (or simply drops if no other item is in reach), since trigger controls are dedicated to throwing while holding.
+    - **Automatic Reset on Throw, Drop, or Holding Something Again**:
+      - Throwing or dropping the held object, or picking up an object (`!wasHolding && isHolding`), cleanly resets `hasMovedAimStick = false` and `aimMovedWhileInRange = false`.
+      - Upon holding an object again, the cursor immediately returns to sticking in front of the character and following their movement until the right joystick is used again.
 
 ---
 
