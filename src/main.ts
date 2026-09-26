@@ -857,6 +857,37 @@ function bootstrap(): void {
     }
   };
 
+  // Full Controls & Mechanics Modal Logic
+  const btnControlsGuide = document.getElementById("btn-controls-guide");
+  const controlsModal = document.getElementById("controls-modal");
+  const btnCloseControlsModal = document.getElementById("btn-close-controls-modal");
+
+  const setControlsModalOpen = (open: boolean) => {
+    if (!controlsModal) return;
+    if (open) {
+      controlsModal.classList.remove("hidden");
+      btnControlsGuide?.classList.add("active");
+    } else {
+      controlsModal.classList.add("hidden");
+      btnControlsGuide?.classList.remove("active");
+    }
+  };
+
+  btnControlsGuide?.addEventListener("click", () => {
+    const isOpen = !controlsModal?.classList.contains("hidden");
+    setControlsModalOpen(!isOpen);
+  });
+
+  btnCloseControlsModal?.addEventListener("click", () => {
+    setControlsModalOpen(false);
+  });
+
+  controlsModal?.addEventListener("click", (e) => {
+    if (e.target === controlsModal) {
+      setControlsModalOpen(false);
+    }
+  });
+
   // Public Worldwide Link Widget Handlers
   const persistentWorldwideUrl = "https://pcg-arena-teal.loca.lt";
   const btnPublicUrlDisplay = document.getElementById("btn-public-url-display") as HTMLButtonElement | null;
@@ -990,6 +1021,16 @@ function bootstrap(): void {
       setViewSettingsOpen(false);
       setPhoneModalOpen(false);
       feedbackPanel.close();
+      setControlsModalOpen(false);
+    }
+
+    if (e.code === "KeyH") {
+      const isInput = (e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA";
+      if (!isInput) {
+        e.preventDefault();
+        const isOpen = !controlsModal?.classList.contains("hidden");
+        setControlsModalOpen(!isOpen);
+      }
     }
   });
 

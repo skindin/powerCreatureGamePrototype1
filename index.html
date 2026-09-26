@@ -250,28 +250,36 @@
                 </div>
                 <div class="mobile-controls-list">
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">WASD</span> / <span class="key-badge">L-Stick</span></span>
-                    <span class="ctrl-v">Move</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">WASD</span> / <span class="key-badge pad-badge">L-Stick</span></span>
+                    <span class="ctrl-v">Move Character</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">Space</span> / <span class="key-badge">A</span> / <span class="key-badge">R-Paddle</span></span>
-                    <span class="ctrl-v">Jump / Climb</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Mouse</span> / <span class="key-badge pad-badge">R-Stick</span></span>
+                    <span class="ctrl-v">Aim Reticle / Throw Arc</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span></span>
-                    <span class="ctrl-v">Throw</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Space</span> / <span class="key-badge pad-badge">A</span> / <span class="key-badge pad-badge">R-Paddle</span></span>
+                    <span class="ctrl-v">Jump / Scale Wall / Dismount</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">R-Click</span> / <span class="key-badge">LT</span></span>
-                    <span class="ctrl-v">Lock</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">E</span> / <span class="key-badge pad-badge">B</span></span>
+                    <span class="ctrl-v">Pick Up / Swap with Target</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">Shift</span> / <span class="key-badge">LB</span> / <span class="key-badge">L-Paddle</span></span>
-                    <span class="ctrl-v">Sprint</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Q</span> / <span class="key-badge pad-badge">Y</span></span>
+                    <span class="ctrl-v">Drop Item (Pick Up if Empty)</span>
                   </div>
                   <div class="mobile-ctrl-row">
-                    <span class="ctrl-k"><span class="key-badge">B</span></span>
-                    <span class="ctrl-v">Swap</span>
+                    <span class="ctrl-k"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> / <span class="key-badge pad-badge">RB</span></span>
+                    <span class="ctrl-v">Throw Item / Grab Target</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">R-Click</span> / <span class="key-badge pad-badge">LT</span></span>
+                    <span class="ctrl-v">Lock Aim</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Shift</span> / <span class="key-badge pad-badge">LB</span> / <span class="key-badge pad-badge">L-Paddle</span></span>
+                    <span class="ctrl-v">Sprint (1.55x Speed)</span>
                   </div>
                 </div>
                 <div id="mobile-gamepad-status" class="mobile-gamepad-badge hidden">
@@ -494,6 +502,105 @@
           </div>
         </div>
       </div>
+
+      <!-- Full Controls & Mechanics Modal -->
+      <div id="controls-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card controls-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">🎮</span>
+              <span>Full Controls & Mechanics Guide</span>
+            </div>
+            <button id="btn-close-controls-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+
+          <div class="controls-modal-body">
+            <div class="controls-guide-grid">
+              <!-- Keyboard & Mouse Column -->
+              <div class="controls-guide-col">
+                <h4 class="guide-col-title"><span class="key-badge kb-badge">⌨️</span> Keyboard & Mouse</h4>
+                <div class="guide-rows">
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">WASD</span></span>
+                    <div class="guide-desc"><strong>Move Character</strong><span>8-directional ground navigation</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Mouse</span></span>
+                    <div class="guide-desc"><strong>Aim Cursor</strong><span>Directs throw arc, target highlight & facing direction</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Space</span></span>
+                    <div class="guide-desc"><strong>Jump / Climb</strong><span>Jump, scale walls, or steer toward ground to dismount</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">E</span></span>
+                    <div class="guide-desc"><strong>Pick Up / Swap</strong><span>Grabs target; if holding, swaps with targeted ground item</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Q</span></span>
+                    <div class="guide-desc"><strong>Drop Item</strong><span>Drops held item; doubles as pick up if empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">L-Click</span></span>
+                    <div class="guide-desc"><strong>Throw / Grab</strong><span>Throws held item; grabs reachable object if empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">R-Click</span></span>
+                    <div class="guide-desc"><strong>Lock Aim</strong><span>Snaps aim cursor directly to closest reachable target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Shift</span></span>
+                    <div class="guide-desc"><strong>Sprint</strong><span>1.55x speed boost; auto-resets when releasing movement</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gamepad / Controller Column -->
+              <div class="controls-guide-col">
+                <h4 class="guide-col-title"><span class="key-badge pad-badge">🎮</span> Controller / Gamepad</h4>
+                <div class="guide-rows">
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LS</span></span>
+                    <div class="guide-desc"><strong>Left Joystick</strong><span>Analog 360° proportional character movement</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">RS</span></span>
+                    <div class="guide-desc"><strong>Virtual Aim Cursor</strong><span>Free-floating cursor across arena; guides throw target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">A</span> / <span class="key-badge pad-badge">M1</span></span>
+                    <div class="guide-desc"><strong>Jump / Climb</strong><span>Jump, scale walls, or dismount into arena (Right Paddle M1)</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">B</span></span>
+                    <div class="guide-desc"><strong>Pick Up / Swap</strong><span>Grabs target; if holding, swaps with targeted ground item</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">Y</span></span>
+                    <div class="guide-desc"><strong>Drop Item</strong><span>Drops held item; doubles as pick up if empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">RT</span> / <span class="key-badge pad-badge">RB</span></span>
+                    <div class="guide-desc"><strong>Throw / Grab</strong><span>RT throws held item (or grabs); RB is dedicated instant throw</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LT</span></span>
+                    <div class="guide-desc"><strong>Lock Aim</strong><span>Snaps aim reticle directly to closest reachable target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LB</span> / <span class="key-badge pad-badge">M2</span></span>
+                    <div class="guide-desc"><strong>Sprint</strong><span>Hold or tap bumper / paddle (M2) for 1.55x sprint speed</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls-guide-footer-tip">
+              💡 <strong>Pro-Tip:</strong> While holding an object, your creature dynamically aims toward your cursor and highlights reachable ground items in your player color. Press <strong>E</strong> (Keyboard) or <strong>B</strong> (Gamepad) to instantly swap items!
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="view-settings-panel" class="view-settings-panel hidden">
         <div class="view-settings-card">
           <div class="view-settings-header">
@@ -628,19 +735,27 @@
           <!-- Controls Box above game view -->
           <div class="controls-overlay-bar">
             <div class="controls-box" id="game-controls-box">
-              <span class="controls-box-label">🎮 Controls</span>
+              <button class="controls-box-label" id="btn-controls-guide" title="Click to view Full Controls & Mechanics Guide (H)">
+                <span class="ctrl-label-icon">🎮</span>
+                <span>Controls</span>
+                <span class="ctrl-help-icon">ℹ️</span>
+              </button>
               <div class="controls-box-items">
-                <span class="ctrl-item"><span class="key-badge">WASD</span> Move</span>
+                <span class="ctrl-item" title="Move: WASD keys or Gamepad Left Joystick (LS)"><span class="key-badge kb-badge">WASD</span> / <span class="key-badge pad-badge">LS</span> Move</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Space</span> Jump</span>
+                <span class="ctrl-item" title="Aim: Mouse cursor or Gamepad Right Joystick (RS)"><span class="key-badge kb-badge">Mouse</span> / <span class="key-badge pad-badge">RS</span> Aim</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">L-Click</span> / <span class="key-badge">RT</span> Throw</span>
+                <span class="ctrl-item" title="Jump / Climb: Space key or Gamepad A button (or Right Paddle M1)"><span class="key-badge kb-badge">Space</span> / <span class="key-badge pad-badge">A</span> Jump</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">R-Click</span> Lock</span>
+                <span class="ctrl-item" title="Pick Up / Swap: E key or Gamepad B button. Pick up reachable items; when holding, swaps with targeted ground item (or drops if none in range)"><span class="key-badge kb-badge">E</span> / <span class="key-badge pad-badge">B</span> Pick/Swap</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">Shift</span> Sprint</span>
+                <span class="ctrl-item" title="Drop: Q key or Gamepad Y button. Drops held item; doubles as pick up if empty-handed"><span class="key-badge kb-badge">Q</span> / <span class="key-badge pad-badge">Y</span> Drop</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item"><span class="key-badge">B</span> Swap</span>
+                <span class="ctrl-item" title="Throw / Quick Grab: Left Click, Gamepad Right Trigger (RT), or Right Bumper (RB). Throws held item or grabs target when empty-handed"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> Throw</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Aim Lock: Right Click or Gamepad Left Trigger (LT) locks aim reticle onto target"><span class="key-badge kb-badge">R-Click</span> / <span class="key-badge pad-badge">LT</span> Lock</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Sprint: Shift key, Gamepad Left Bumper (LB), or Left Paddle M2 (1.55x speed)"><span class="key-badge kb-badge">Shift</span> / <span class="key-badge pad-badge">LB</span> Sprint</span>
               </div>
               <div class="controls-box-status">
                 <button class="controller-status-badge" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 0 PLAYERS</button>

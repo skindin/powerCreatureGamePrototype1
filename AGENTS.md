@@ -125,6 +125,19 @@ powerCreatureGamePrototype1/
   - Releasing directional movement controls automatically resets sprinting to off.
   - Controls bar cleanly displays the `👥 N PLAYERS` roster button and `🎮 GAMEPAD` connection badge (individual player sprinting operates independently without a global status box cluttering the bar).
   - Gamepad connection displays live `🎮 GAMEPAD` status badge.
+- **Comprehensive Multi-Device Controls Display & Interactive Guide**:
+  - The in-game controls overlay bar (`#game-controls-box`) displays **ALL 8 controls** explicitly for both input devices side-by-side with color-coded keycaps:
+    - **Move**: `WASD` (Keyboard, crisp white `.kb-badge`) / `LS` (Gamepad, glowing cyan `.pad-badge`)
+    - **Aim**: `Mouse` / `RS`
+    - **Jump / Climb**: `Space` / `A` (and Right Paddle M1)
+    - **Pick Up / Swap**: `E` / `B` (grabs ground item; when holding, swaps with targeted item)
+    - **Drop**: `Q` / `Y` (drops held item; doubles as pickup if empty-handed)
+    - **Throw / Grab**: `L-Click` / `RT` / `RB` (throws held item; grabs target when empty-handed)
+    - **Aim Lock**: `R-Click` / `LT` (snaps aim reticle to closest reachable target)
+    - **Sprint**: `Shift` / `LB` (and Left Paddle M2, 1.55x speed)
+  - **Full Controls & Mechanics Modal (`#controls-modal`)**: Clickable directly via `🎮 Controls ℹ️` (`#btn-controls-guide`), hotkey `H`, or Escape to close. Displays side-by-side keyboard and gamepad mechanics cards with detailed tips.
+  - **Mobile Menu Parity**: The mobile landscape menu (`.mobile-controls-list`) mirrors the complete 8-row control table.
+  - **Responsive Wrapping**: `.controls-box-items` uses responsive flex-wrap and fluid typography (`clamp`) to eliminate clipping across all screen sizes and viewport aspect ratios.
 
 ### Dynamic Multi-Player, Controllers Panel & Colored Sightlines (Phase 1.1 Expansion — Fully Functional)
 - **Multi-Gamepad & Multi-Character Support**:
