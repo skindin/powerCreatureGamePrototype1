@@ -79,6 +79,11 @@ powerCreatureGamePrototype1/
   - Players can pick up nearby items (`E` key or Left Click).
   - Ballistic parabolic trajectory calculation previews throw arcs, showing clearance over walls. When holding an object with mouse and keyboard, the creature continuously faces the mouse cursor and projects the ballistic trajectory toward the mouse.
   - Carrying heavy objects scales throw speed and distance according to creature strength vs. object weight.
+  - **Ground Object Highlight & Targeting While Holding (Keyboard & Controller)**:
+    - Ground objects within pickup reach of a character holding an object are fully detected as in-reach (isWithinPickupRange).
+    - The closest reachable ground object to the aim cursor (or in front of character if aim has not moved) is actively targeted (isTargetGrab), rendering with that player's vibrant theme color outline and a solid glowing grab ring with P1 GRAB / GRAB badge.
+    - Other reachable ground objects render with reach outline and dashed reach ring.
+    - Players can press E (Keyboard) or B (Gamepad) to drop their held object and immediately grab the highlighted ground item (swap).
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 

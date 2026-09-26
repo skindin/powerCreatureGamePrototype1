@@ -1098,17 +1098,17 @@ export class Renderer {
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;
 
-    // Check if close enough for any player character to pick up, strictly respecting layer-dependent reach
+    // Check if close enough for any player character to pick up, strictly respecting layer-dependent reach.
+    // Characters holding an object can also reach ground objects for swap or pickup!
     const charactersInReach = allCharacters.filter(
       (c) =>
         !c.isHeld &&
-        !c.heldObject &&
+        c.heldObject !== obj &&
         c.pickupModule !== null &&
         c.pickupModule.enabled &&
         !obj.isHeld &&
         (c.pickupModule?.isObjectInReach(c, obj, arena.wallHeight) ?? false)
     );
-    const isWithinPickupRange = charactersInReach.length > 0;
 
     // Determine which players are currently targeting this object
     const targetingChars: Character[] = [];
@@ -1124,6 +1124,7 @@ export class Renderer {
       }
     }
     const isTargetGrab = targetingChars.length > 0;
+    const isWithinPickupRange = charactersInReach.length > 0 || isTargetGrab;
 
     // Objects on walls must be transparent when they get bigger and aren't hovering over a shadow,
     // so players can see what is underneath them; held objects are also transparent.
@@ -1233,8 +1234,8 @@ export class Renderer {
         ctx.fillText(badgeText, x, y - grabRadius - 6);
       } else {
         // In physical reach of a player, but not actively targeted: subtle dashed ring
-        const reachColor = charactersInReach[0]?.playerColor
-          ? `${charactersInReach[0].playerColor}99`
+        const reachColor = (charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)
+          ? `${(charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)}99`
           : "rgba(56, 189, 248, 0.45)";
         ctx.strokeStyle = reachColor;
         ctx.lineWidth = 1.8;
@@ -1271,13 +1272,12 @@ export class Renderer {
       (c) =>
         c !== char &&
         !c.isHeld &&
-        !c.heldObject &&
+        c.heldObject !== char &&
         c.pickupModule !== null &&
         c.pickupModule.enabled &&
         !char.isHeld &&
         (c.pickupModule?.isObjectInReach(c, char, arena.wallHeight) ?? false)
     );
-    const isWithinPickupRange = charactersInReach.length > 0;
 
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
@@ -1292,6 +1292,7 @@ export class Renderer {
       }
     }
     const isTargetGrab = targetingChars.length > 0;
+    const isWithinPickupRange = charactersInReach.length > 0 || isTargetGrab;
 
     // Characters on walls must be transparent when they get bigger and aren't hovering over a shadow,
     // so players can see what is underneath them; held characters are also transparent.
@@ -1364,8 +1365,8 @@ export class Renderer {
             : "GRAB";
         ctx.fillText(badgeText, x, y + grabRadius + 14);
       } else {
-        const reachColor = charactersInReach[0]?.playerColor
-          ? `${charactersInReach[0].playerColor}99`
+        const reachColor = (charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)
+          ? `${(charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)}99`
           : "rgba(56, 189, 248, 0.45)";
         ctx.strokeStyle = reachColor;
         ctx.lineWidth = 1.8;
