@@ -163,9 +163,9 @@ arena.entities.push(kGround);
 input.mousePos = { x: 12.7, y: 7 };
 input.isKeyboardActive = true;
 
-// Simulate onDropAttempt (pressing E key)
+// Simulate onKeyboardPickup (pressing E key)
 input.handleInteractions(kChar, arena, arena.entities, undefined, () => [char, kChar]);
-input.onDropAttempt!();
+input.onKeyboardPickup!();
 
 console.log("\nTest 5: Pressing E on keyboard while holding to drop & grab ground item");
 console.log(`   kChar.heldObject: ${kChar.heldObject?.id}`);

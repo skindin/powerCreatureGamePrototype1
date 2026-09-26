@@ -83,8 +83,8 @@ powerCreatureGamePrototype1/
     - Ground objects within pickup reach of a character holding an object are fully detected as in-reach (isWithinPickupRange).
     - The closest reachable ground object to the aim cursor (or in front of character if aim has not moved) is actively targeted (isTargetGrab), rendering with that player's vibrant theme color outline and a solid glowing grab ring with P1 GRAB / GRAB badge.
     - Other reachable ground objects render with reach outline and dashed reach ring.
-    - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items. If empty-handed, drop controls double as pickup controls to pick up ground items.
-    - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, pickup controls double as drop controls: if a ground item is selected, it swaps items (dropping current and picking up new); if no ground item is in range, it drops the held item.
+    - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items onto the ground.
+    - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, if a ground item is targeted in reach, it swaps items (dropping current and picking up new). If no ground item is in range, the held item is retained.
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 
@@ -131,7 +131,7 @@ powerCreatureGamePrototype1/
     - **Aim**: `Mouse` / `RS`
     - **Jump / Climb**: `Space` / `A` (and Right Paddle M1)
     - **Pick Up / Swap**: `E` / `B` (grabs ground item; when holding, swaps with targeted item)
-    - **Drop**: `Q` / `Y` (drops held item; doubles as pickup if empty-handed)
+    - **Drop**: `Q` / `Y` (drops held item onto the ground)
     - **Throw / Grab**: `L-Click` / `RT` / `RB` (throws held item; grabs target when empty-handed)
     - **Aim Lock**: `R-Click` / `LT` (snaps aim reticle to closest reachable target)
     - **Sprint**: `Shift` / `LB` (and Left Paddle M2, 1.55x speed)

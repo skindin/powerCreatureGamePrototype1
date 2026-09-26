@@ -188,11 +188,8 @@ export class PickupModule {
         // Swap: drop old, pick up new!
         this.drop(character);
         return this.pickup(character, bestTarget);
-      } else {
-        // Holding an item but none within range to pick up: pickup controls double as drop controls!
-        this.drop(character);
-        return true;
       }
+      return false;
     } else {
       if (bestTarget) {
         return this.pickup(character, bestTarget);

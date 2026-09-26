@@ -199,7 +199,6 @@ export class InputManager {
         this.isEKeyDepressed = true;
 
         this.onKeyboardPickup?.();
-        this.onDropAttempt?.();
       }
     });
 
@@ -806,19 +805,11 @@ export class InputManager {
         }
       }
 
-      // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item (doubles as pickup when empty-handed)
+      // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item
       const yCurrent = isButtonPressed(3);
       if (yCurrent && !isPrevPressed(3) && char.pickupModule) {
         if (char.heldObject) {
           char.pickupModule.drop(char);
-        } else {
-          char.pickupModule.pickupAndSwap(
-            char,
-            grabbableTargets,
-            arena.wallHeight,
-            aimX,
-            aimY
-          );
         }
       }
 
@@ -1158,15 +1149,6 @@ export class InputManager {
       if (!activeChar || !activeChar.pickupModule) return;
       if (activeChar.heldObject) {
         activeChar.pickupModule.drop(activeChar);
-      } else {
-        // Empty-handed: drop controls double as pickup controls!
-        const grabbableTargets = getAllCharacters
-          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
-          : objects;
-        const isCursorVis = this.isCursorVisible;
-        const aimX = isCursorVis ? this.mousePos.x : undefined;
-        const aimY = isCursorVis ? this.mousePos.y : undefined;
-        activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
       }
     };
 
