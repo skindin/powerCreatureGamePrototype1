@@ -669,6 +669,11 @@ powerCreatureGamePrototype1/
       - Added CSS `.pointer-locked` rule enforcing `cursor: none !important;` on `#game-canvas`.
       - While pointer-locked, raw mouse movement deltas (`e.movementX`, `e.movementY`) scaled by canvas-to-arena unit ratios are accumulated smoothly into `actualMousePos` and `mousePos`, confined within arena bounds.
       - Entering Edit Mode (or pressing `Escape`) immediately exits pointer lock (`document.exitPointerLock()`), restoring the normal mouse pointer for level editing and dev inspector controls.
+    - **Escape Key Control Suspension & Game View Refocus**:
+      - Pressing `Escape` (or losing pointer lock outside Edit Mode) immediately sets `inputManager.isKeyboardSuspended = true`, releases pointer lock, clears all active keyboard keys, and zeroes out the character's movement vector and velocity.
+      - While suspended, keyboard keys (WASD, Space, Shift, E, Q), mouse movement, and clicks outside the canvas are strictly ignored—the character remains completely stationary and does not jump, aim, throw, or pick up objects. The in-game reticle is hidden while suspended.
+      - Clicking back on the game view canvas (`this.canvas`) clears the suspension (`isKeyboardSuspended = false`), requests pointer lock again, and consumes the refocus click so it never triggers an accidental throw or grab.
+      - Controller/gamepad players remain fully operational and unaffected by Escape.
 
 ---
 

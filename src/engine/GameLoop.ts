@@ -372,7 +372,11 @@ export class GameLoop {
         let isCursorVisibleNow = false;
 
         if (entry.isKeyboard) {
-          if (!this.inputManager.isKeyboardActive) continue;
+          if (!this.inputManager.isKeyboardActive || this.inputManager.isKeyboardSuspended) {
+            entry.wasCursorVisible = false;
+            this.inputManager.isCursorVisible = false;
+            continue;
+          }
           const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
           entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
 
@@ -574,56 +578,62 @@ export class GameLoop {
     const kEntry = this.players.get("keyboard");
     if (kEntry && input.isKeyboardActive) {
       const kChar = kEntry.character;
-      if (kChar.isSprinting !== input.isKeyboardSprintActive) {
-        kChar.setSprinting(input.isKeyboardSprintActive);
-      }
-      const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
-      let aimTarget = isMouseAiming ? input.mousePos : null;
-
-      // If holding an object and player has not moved mouse yet, trajectory aims forward in movement direction
-      if (kChar.heldObject && !kEntry.hasMovedAim) {
-        let dirX = 1;
-        let dirY = 0;
-        const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
-        if (moveMag > 0.05) {
-          dirX = input.movementVector.x / moveMag;
-          dirY = input.movementVector.y / moveMag;
-          kChar.lastMovementInputAngle = Math.atan2(dirY, dirX);
-        } else {
-          const inputAngle = kChar.lastMovementInputAngle ?? kChar.facingAngle ?? 0;
-          dirX = Math.cos(inputAngle);
-          dirY = Math.sin(inputAngle);
-        }
-        aimTarget = {
-          x: kChar.position.x + dirX * 3.0,
-          y: kChar.position.y + dirY * 3.0,
-        };
-      }
-
-      const autoLock = input.isRightMouseDown;
-      if (input.draggedEntity !== kChar) {
-        kChar.updateCharacter(
-          dt,
-          input.movementVector,
-          isMouseAiming,
-          aimTarget,
-          this.arena,
-          input.isKeyboardJumpHeld,
-          this.arena.entities,
-          autoLock
-        );
-      } else {
+      if (input.isKeyboardSuspended) {
         kChar.velocity.x = 0;
         kChar.velocity.y = 0;
-      }
+        kChar.activeTrajectory = null;
+      } else {
+        if (kChar.isSprinting !== input.isKeyboardSprintActive) {
+          kChar.setSprinting(input.isKeyboardSprintActive);
+        }
+        const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
+        let aimTarget = isMouseAiming ? input.mousePos : null;
 
-      // Continuous hold-to-grab for keyboard mouse:
-      if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
-        const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...this.objects];
-        const aimX = input.actualMousePos.x;
-        const aimY = input.actualMousePos.y;
-        if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
-          input.justPickedUp = true;
+        // If holding an object and player has not moved mouse yet, trajectory aims forward in movement direction
+        if (kChar.heldObject && !kEntry.hasMovedAim) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = input.movementVector.x / moveMag;
+            dirY = input.movementVector.y / moveMag;
+            kChar.lastMovementInputAngle = Math.atan2(dirY, dirX);
+          } else {
+            const inputAngle = kChar.lastMovementInputAngle ?? kChar.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
+          }
+          aimTarget = {
+            x: kChar.position.x + dirX * 3.0,
+            y: kChar.position.y + dirY * 3.0,
+          };
+        }
+
+        const autoLock = input.isRightMouseDown;
+        if (input.draggedEntity !== kChar) {
+          kChar.updateCharacter(
+            dt,
+            input.movementVector,
+            isMouseAiming,
+            aimTarget,
+            this.arena,
+            input.isKeyboardJumpHeld,
+            this.arena.entities,
+            autoLock
+          );
+        } else {
+          kChar.velocity.x = 0;
+          kChar.velocity.y = 0;
+        }
+
+        // Continuous hold-to-grab for keyboard mouse:
+        if (!this.devPanel.isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
+          const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...this.objects];
+          const aimX = input.actualMousePos.x;
+          const aimY = input.actualMousePos.y;
+          if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
+            input.justPickedUp = true;
+          }
         }
       }
     }

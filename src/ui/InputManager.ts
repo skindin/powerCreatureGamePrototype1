@@ -56,6 +56,10 @@ export class InputManager {
   private ignoreNextPointerLockDelta = false;
   public devPanel?: DevPanel;
 
+  // Whether keyboard and mouse input to the character is suspended (e.g. after pressing Escape)
+  // until the user clicks the game view again
+  public isKeyboardSuspended = false;
+
   public requestPointerLock(): void {
     if (typeof document === "undefined" || !this.canvas) return;
     if (this.devPanel?.isEditMode) return;
@@ -102,6 +106,7 @@ export class InputManager {
   public get isGrabHeld(): boolean {
     return (
       this.isKeyboardActive &&
+      !this.isKeyboardSuspended &&
       !this.isThrowingPress &&
       (this.isMouseDown || this.isEKeyDepressed || this.keysPressed.has("KeyE"))
     );
@@ -212,7 +217,21 @@ export class InputManager {
       }
 
       if (e.code === "Escape") {
+        this.isKeyboardSuspended = true;
+        this.keysPressed.clear();
+        this.isQKeyDepressed = false;
+        this.isEKeyDepressed = false;
+        this.isKeyboardSprintActive = false;
+        this.isMouseDown = false;
+        this.isRightMouseDown = false;
+        this.updateMovementVector();
         this.exitPointerLock();
+        return;
+      }
+
+      // If suspended from Escape, ignore all game key inputs until user clicks the game view again
+      if (this.isKeyboardSuspended) {
+        return;
       }
 
       this.activeInputDevice = "keyboard";
@@ -253,6 +272,12 @@ export class InputManager {
       }
 
       this.keysPressed.delete(e.code);
+
+      if (this.isKeyboardSuspended) {
+        this.updateMovementVector();
+        return;
+      }
+
       this.updateMovementVector();
 
       if (e.code === "KeyQ") {
@@ -271,6 +296,7 @@ export class InputManager {
     });
 
     window.addEventListener("blur", () => {
+      this.isKeyboardSuspended = true;
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
       this.keysPressed.clear();
@@ -282,6 +308,9 @@ export class InputManager {
     // Track mouse position globally so the aim cursor NEVER goes stale when the
     // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
     window.addEventListener("mousemove", (e) => {
+      if (this.isKeyboardSuspended) {
+        return;
+      }
       this.lastMouseMoveTime = performance.now();
       this.updateMousePos(e);
       if (this.onMouseMove) {
@@ -293,6 +322,16 @@ export class InputManager {
       this.isPointerLocked = (document.pointerLockElement === this.canvas);
       if (this.isPointerLocked) {
         this.ignoreNextPointerLockDelta = true;
+      } else if (!this.devPanel?.isEditMode) {
+        // When pointer lock is lost (e.g. via Escape), suspend keyboard and mouse control
+        this.isKeyboardSuspended = true;
+        this.keysPressed.clear();
+        this.isQKeyDepressed = false;
+        this.isEKeyDepressed = false;
+        this.isKeyboardSprintActive = false;
+        this.isMouseDown = false;
+        this.isRightMouseDown = false;
+        this.updateMovementVector();
       }
       if (typeof document !== "undefined") {
         document.body.classList.toggle("pointer-locked", this.isPointerLocked);
@@ -309,12 +348,22 @@ export class InputManager {
         this.onKeyboardJoin?.();
       }
 
+      // Resume keyboard/mouse control when clicking on the game view
+      const wasSuspended = this.isKeyboardSuspended;
+      this.isKeyboardSuspended = false;
+
       // Request pointer lock when clicking on the game view during Play Mode
       if (!this.isPointerLocked && !this.devPanel?.isEditMode) {
         this.requestPointerLock();
       }
 
       this.updateMousePos(e);
+
+      // If we just clicked to refocus/unpause the game view from Escape, don't trigger an accidental throw or grab
+      if (wasSuspended) {
+        return;
+      }
+
       if (e.button === 2) {
         this.isRightMouseDown = true;
         if (this.onRightMouseDown) {
@@ -336,6 +385,9 @@ export class InputManager {
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // Prevent browser context menu
+      if (this.isKeyboardSuspended) {
+        return;
+      }
       this.updateMousePos(e);
       if (this.onRightClick) {
         this.onRightClick(this.mousePos.x, this.mousePos.y);
@@ -351,6 +403,7 @@ export class InputManager {
       this.isMouseDown = false;
       this.justPickedUp = false;
       this.isThrowingPress = false;
+      if (this.isKeyboardSuspended) return;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
