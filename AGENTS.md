@@ -685,6 +685,10 @@ powerCreatureGamePrototype1/
       - Introduced `maxThrowHeight` property on `ThrowModule` (default `5.0` units, tunable from `1.0` to `15.0` via a dedicated inspector slider in `DevPanel.ts`), scaled by creature strength (`effectiveMaxHeight = maxThrowHeight * character.strength`).
       - Trajectory target elevation is safely clamped to `startZ + effectiveMaxHeight`, preventing unbounded throws into the stratosphere while ensuring clean reaching capability for high-altitude objects.
       - In `Renderer.ts`, airborne target landing footprints are protected from false clipping against lower wall tops, rendering clean elevated target indicators at the object's true altitude.
+    - **Keyboard & Mouse Direct Cursor Aim on Pickup**:
+      - For keyboard and mouse controls, `aimTarget` is always explicitly `inputManager.mousePos` at all times without exception.
+      - Removed the forward-movement direction aim override on pickup (`hasMovedAim`), which was only meant for centering gamepad analog joysticks.
+      - When picking up an object with mouse and keyboard, the trajectory and character facing direction immediately point directly to the mouse cursor position on screen with zero ambiguity.
 
 ---
 

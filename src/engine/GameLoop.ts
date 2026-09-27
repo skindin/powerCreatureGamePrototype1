@@ -18,7 +18,6 @@ export interface PlayerEntry {
   wasCursorVisible?: boolean;
   aimMovedWhileInRange?: boolean;
   lastCheckedMouseMoveTime?: number;
-  hasMovedAim?: boolean;
   wasHoldingObject?: boolean;
 }
 
@@ -380,13 +379,9 @@ export class GameLoop {
           const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
           entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
 
-          if (isHolding && !entry.wasHoldingObject) {
-            entry.hasMovedAim = false;
-          }
           entry.wasHoldingObject = isHolding;
 
           if (mouseMoved) {
-            entry.hasMovedAim = true;
             entry.aimMovedWhileInRange = true;
           }
 
@@ -587,27 +582,7 @@ export class GameLoop {
           kChar.setSprinting(input.isKeyboardSprintActive);
         }
         const isMouseAiming = !this.devPanel.isEditMode && (input.isMouseDown || kChar.heldObject !== null);
-        let aimTarget = isMouseAiming ? input.mousePos : null;
-
-        // If holding an object and player has not moved mouse yet, trajectory aims forward in movement direction
-        if (kChar.heldObject && !kEntry.hasMovedAim) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = input.movementVector.x / moveMag;
-            dirY = input.movementVector.y / moveMag;
-            kChar.lastMovementInputAngle = Math.atan2(dirY, dirX);
-          } else {
-            const inputAngle = kChar.lastMovementInputAngle ?? kChar.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
-          }
-          aimTarget = {
-            x: kChar.position.x + dirX * 3.0,
-            y: kChar.position.y + dirY * 3.0,
-          };
-        }
+        const aimTarget = isMouseAiming ? input.mousePos : null;
 
         const autoLock = input.isRightMouseDown;
         if (input.draggedEntity !== kChar) {
