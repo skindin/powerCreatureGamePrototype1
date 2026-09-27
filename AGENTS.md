@@ -674,6 +674,11 @@ powerCreatureGamePrototype1/
       - While suspended, keyboard keys (WASD, Space, Shift, E, Q), mouse movement, and clicks outside the canvas are strictly ignored—the character remains completely stationary and does not jump, aim, throw, or pick up objects. The in-game reticle is hidden while suspended.
       - Clicking back on the game view canvas (`this.canvas`) clears the suspension (`isKeyboardSuspended = false`), requests pointer lock again, and consumes the refocus click so it never triggers an accidental throw or grab.
       - Controller/gamepad players remain fully operational and unaffected by Escape.
+    - **Auto-Lock Sightline, Brackets & Reticle Player Color Synchronization**:
+      - The dashed sightline connecting the aim cursor to the auto-locked target now renders dynamically using the locking player's assigned color (`rgba(r, g, b, 0.65)`), rather than hardcoded amber gold (`#f59e0b`).
+      - The 4-corner targeting brackets and `[LOCKED]` label rendered over the locked target entity now dynamically use the locking player's color (`playerHex`).
+      - The precision aim reticle (`drawAimReticle`) retains the player's theme color when auto-locked (`isLocked = true`), keeping visual identity coherent across Player 1, Player 2, etc.
+      - The dashed sightline from clamped landing point to cursor when aiming beyond throw distance is also tinted in the player's color.
 
 ---
 

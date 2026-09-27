@@ -1903,7 +1903,7 @@ export class Renderer {
         const blen = Math.min(8, bsz * 0.45);
 
         ctx.save();
-        ctx.strokeStyle = "#f59e0b";
+        ctx.strokeStyle = playerHex;
         ctx.lineWidth = 2.4;
         ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
         ctx.shadowBlur = 5;
@@ -1930,7 +1930,7 @@ export class Renderer {
 
         // Lock Label above target
         ctx.font = "bold 11px monospace";
-        ctx.fillStyle = "#f59e0b";
+        ctx.fillStyle = playerHex;
         ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
         ctx.shadowBlur = 4;
         const tag = "LOCKED";
@@ -1940,7 +1940,7 @@ export class Renderer {
         ctx.beginPath();
         ctx.moveTo(cursorX, cursorY);
         ctx.lineTo(objVisualX, objVisualY);
-        ctx.strokeStyle = "rgba(245, 158, 11, 0.55)";
+        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.65)`;
         ctx.lineWidth = 1.4;
         ctx.setLineDash([3, 4]);
         ctx.stroke();
@@ -1955,7 +1955,7 @@ export class Renderer {
         ctx.beginPath();
         ctx.moveTo(finalHitX, finalGroundY);
         ctx.lineTo(cursorX, cursorY);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.45)`;
         ctx.lineWidth = 1.4;
         ctx.setLineDash([3, 4]);
         ctx.stroke();
@@ -1963,7 +1963,7 @@ export class Renderer {
       }
 
       // ALWAYS draw the player's aim reticle at the exact cursor position!
-      this.drawAimReticle(cursorX, cursorY, character?.playerColor, false);
+      this.drawAimReticle(cursorX, cursorY, playerHex, isLocked);
     }
 
     ctx.restore();
@@ -1982,7 +1982,7 @@ export class Renderer {
     const reticleRadius = isLocked ? 10 : 8;
     ctx.beginPath();
     ctx.arc(screenX, screenY, reticleRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = isLocked ? "#f59e0b" : color;
+    ctx.strokeStyle = color;
     ctx.lineWidth = isLocked ? 2.4 : 1.8;
     ctx.stroke();
 
@@ -2002,7 +2002,7 @@ export class Renderer {
     // Right
     ctx.moveTo(screenX + tickInner, screenY);
     ctx.lineTo(screenX + tickOuter, screenY);
-    ctx.strokeStyle = isLocked ? "#f59e0b" : color;
+    ctx.strokeStyle = color;
     ctx.lineWidth = isLocked ? 2.4 : 1.8;
     ctx.stroke();
 
@@ -2010,7 +2010,7 @@ export class Renderer {
     if (isLocked) {
       const bsz = 14;
       const blen = 5;
-      ctx.strokeStyle = "#f59e0b";
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2.0;
       ctx.beginPath();
       // Top-Left
@@ -2035,7 +2035,7 @@ export class Renderer {
     // Center pinpoint dot
     ctx.beginPath();
     ctx.arc(screenX, screenY, isLocked ? 2.5 : 2.0, 0, Math.PI * 2);
-    ctx.fillStyle = isLocked ? "#f59e0b" : color;
+    ctx.fillStyle = color;
     ctx.fill();
 
     ctx.restore();
