@@ -1713,7 +1713,7 @@ export class Renderer {
 
         if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
           // Don't draw dot on top of the landing target
-          const landZ = traj.isLandingOnWallTop ? arena.wallHeight : 0;
+          const landZ = traj.landPoint.z ?? (traj.isLandingOnWallTop ? arena.wallHeight : 0);
           const targetScreenY = (traj.landPoint.y - landZ * hoverScale) * ppu;
           const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - targetScreenY);
           const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
@@ -1822,8 +1822,8 @@ export class Renderer {
         ctx.restore();
       }
 
-      // 1. Mask footprint fill to top of wall squares (unless landing on an object outside walls)
-      if (traj.targetObject && (!arena.walls.some((w) => traj.landPoint.x >= w.x && traj.landPoint.x <= w.x + w.width && traj.landPoint.y >= w.y && traj.landPoint.y <= w.y + w.height))) {
+      // 1. Mask footprint fill to top of wall squares (unless landing on an airborne entity or outside walls)
+      if (traj.targetObject || landZ > arena.wallHeight + 0.05 || (!arena.walls.some((w) => traj.landPoint.x >= w.x && traj.landPoint.x <= w.x + w.width && traj.landPoint.y >= w.y && traj.landPoint.y <= w.y + w.height))) {
         ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
         ctx.beginPath();
         drawColliderFootprint(landX, landY);

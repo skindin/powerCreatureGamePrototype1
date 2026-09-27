@@ -35,6 +35,7 @@ export class ThrowModule {
   // Tunable throw physics in wall-based units
   public baseThrowForce = 7.6; // Base throw power in u/s
   public maxThrowAimDistance = 13.0; // Max throw aim distance in units (~13 wall tiles)
+  public maxThrowHeight = 5.0; // Max throw height reach in units above release point (~5 wall heights)
 
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
@@ -286,20 +287,14 @@ export class ThrowModule {
         effectiveTargetX = hoveredEntity.position.x;
         effectiveTargetY = hoveredEntity.position.y;
         isLocked = true;
+        // Consider the actual physical altitude of the target object (e.g. airborne, climbing, or elevated)
         const entZ = Math.max(
           0,
           hoveredEntity.position.z ?? 0,
           hoveredEntity.supportingSurfaceHeight ?? 0,
-          hoveredEntity.standingWall ? arena.wallHeight : 0
+          hoveredEntity.standingWall ? (hoveredEntity.standingWall.wallHeight ?? arena.wallHeight) : 0
         );
-        const wallH = hoveredEntity.standingWall?.wallHeight ?? arena.wallHeight;
-        if (entZ >= arena.wallHeight - 0.05) {
-          targetSurfaceHeight = wallH;
-        } else if (hoveredEntity.supportingSurfaceHeight > 0.05) {
-          targetSurfaceHeight = hoveredEntity.supportingSurfaceHeight;
-        } else {
-          targetSurfaceHeight = arena.getSupportingSurfaceHeight(effectiveTargetX, effectiveTargetY);
-        }
+        targetSurfaceHeight = entZ;
       }
     }
 
@@ -316,6 +311,13 @@ export class ThrowModule {
       }
     }
 
+    // Limit how high the player can throw objects (effective max vertical target height above release)
+    const effectiveMaxHeight = this.maxThrowHeight * (thrower?.strength ?? 1.0);
+    const maxAllowedTargetZ = startZ + effectiveMaxHeight;
+    if (targetSurfaceHeight > maxAllowedTargetZ) {
+      targetSurfaceHeight = maxAllowedTargetZ;
+    }
+
     const dx = effectiveTargetX - startX;
     const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
@@ -330,11 +332,16 @@ export class ThrowModule {
 
     // If aim distance was clamped, verify what surface is beneath finalTarget
     if (actualDist < dist) {
-      const clampedWall = arena.getSupportingWall(finalTargetX, finalTargetY, colliderRadius > 0 ? colliderRadius : 0.35);
-      if (clampedWall) {
-        targetSurfaceHeight = clampedWall.wallHeight;
+      if (isLocked) {
+        // Proportionally scale target height along the clamped ray toward the locked target
+        targetSurfaceHeight = startZ + (targetSurfaceHeight - startZ) * (actualDist / dist);
       } else {
-        targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+        const clampedWall = arena.getSupportingWall(finalTargetX, finalTargetY, colliderRadius > 0 ? colliderRadius : 0.35);
+        if (clampedWall) {
+          targetSurfaceHeight = clampedWall.wallHeight;
+        } else {
+          targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+        }
       }
     }
 

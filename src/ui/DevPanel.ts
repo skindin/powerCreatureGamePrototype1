@@ -704,6 +704,7 @@ export class DevPanel {
       }
       if (char.throwModule) {
         this.setSliderVal("slide-throw-force", "val-throw-force", char.throwModule.baseThrowForce, 1);
+        this.setSliderVal("slide-throw-max-height", "val-throw-max-height", char.throwModule.maxThrowHeight, 1);
       }
       if (char.jumpModule) {
         this.setSliderVal("slide-jump-strength", "val-jump-strength", char.jumpModule.jumpStrength, 1);
@@ -1021,6 +1022,13 @@ export class DevPanel {
                 <span id="val-throw-force">${(char.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
               </div>
               <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${char.throwModule?.baseThrowForce ?? 7.6}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Throw Height (u)</span>
+                <span id="val-throw-max-height">${(char.throwModule?.maxThrowHeight ?? 5.0).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-throw-max-height" min="1.0" max="15.0" step="0.5" value="${char.throwModule?.maxThrowHeight ?? 5.0}">
             </div>
           </div>
         `;
@@ -1448,6 +1456,9 @@ export class DevPanel {
 
       this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
         if (char.throwModule) char.throwModule.baseThrowForce = val;
+      }, 1);
+      this.setupSlider("slide-throw-max-height", "val-throw-max-height", (val) => {
+        if (char.throwModule) char.throwModule.maxThrowHeight = val;
       }, 1);
 
       // Jump Ability

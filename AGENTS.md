@@ -679,6 +679,12 @@ powerCreatureGamePrototype1/
       - The 4-corner targeting brackets and `[LOCKED]` label rendered over the locked target entity now dynamically use the locking player's color (`playerHex`).
       - The precision aim reticle (`drawAimReticle`) retains the player's theme color when auto-locked (`isLocked = true`), keeping visual identity coherent across Player 1, Player 2, etc.
       - The dashed sightline from clamped landing point to cursor when aiming beyond throw distance is also tinted in the player's color.
+    - **Auto-Aim 3D Target Height Consideration & Max Throw Height Limit**:
+      - Auto-aim now dynamically considers the full 3D physical altitude (`hoveredEntity.position.z`) of airborne, jumping, flying, or elevated targets rather than clamping target surface height to standard wall height (`1.0`) or ground (`0.0`).
+      - As high-up target objects move through the air or across the arena, the trajectory real-time preview continuously tracks their current 3D position and calculates the exact vertical launch velocity ($v_z$) required to reach their altitude.
+      - Introduced `maxThrowHeight` property on `ThrowModule` (default `5.0` units, tunable from `1.0` to `15.0` via a dedicated inspector slider in `DevPanel.ts`), scaled by creature strength (`effectiveMaxHeight = maxThrowHeight * character.strength`).
+      - Trajectory target elevation is safely clamped to `startZ + effectiveMaxHeight`, preventing unbounded throws into the stratosphere while ensuring clean reaching capability for high-altitude objects.
+      - In `Renderer.ts`, airborne target landing footprints are protected from false clipping against lower wall tops, rendering clean elevated target indicators at the object's true altitude.
 
 ---
 
