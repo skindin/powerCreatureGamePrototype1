@@ -60,6 +60,7 @@ powerCreatureGamePrototype1/
 │   │   ├── Arena.ts       # Grid-based arena with wall heights and tile queries
 │   │   ├── GameLoop.ts    # 60Hz fixed timestep simulation loop, collision resolver
 │   │   ├── GameObject.ts  # Universal freebody entity (mass, colliders, altitude)
+│   │   ├── PlayerManager.ts # Multiplayer slots, join/drop lifecycle, input dispatch & cursors
 │   │   ├── Renderer.ts    # Canvas 2D coordinator, altitude projection, ghost clones
 │   │   ├── rendering/     # Modular rendering passes
 │   │   │   ├── README.md

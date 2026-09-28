@@ -1,0 +1,596 @@
+import { Arena } from "./Arena.js";
+import { Character } from "../character/Character.js";
+import { GameObject, Vector2D } from "./GameObject.js";
+import { InputManager } from "../ui/InputManager.js";
+import { ActiveAimCursor } from "./Renderer.js";
+
+export interface PlayerEntry {
+  id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
+  name: string;
+  playerNumber: number; // 1, 2, 3, 4
+  color: string;
+  isKeyboard: boolean;
+  slotIndex?: number;
+  character: Character;
+  wasCursorVisible?: boolean;
+  aimMovedWhileInRange?: boolean;
+  lastCheckedMouseMoveTime?: number;
+  wasHoldingObject?: boolean;
+}
+
+export const PLAYER_COLORS = [
+  "#f59e0b", // P1: Amber Gold
+  "#06b6d4", // P2: Cyan
+  "#10b981", // P3: Emerald
+  "#a855f7", // P4: Violet
+  "#f43f5e", // P5: Rose
+  "#3b82f6", // P6: Blue
+];
+
+/**
+ * PlayerManager
+ *
+ * Dedicated manager for multiplayer slots, joining/dropping devices (Keyboard & Gamepads),
+ * player character lifecycle, movement input dispatch, and cursor aim tracking.
+ */
+export class PlayerManager {
+  private arena: Arena;
+  private inputManager: InputManager;
+
+  public players: Map<string, PlayerEntry> = new Map();
+  public onPlayersChanged?: () => void;
+  public baseCharacter: Character;
+
+  constructor(options: {
+    arena: Arena;
+    inputManager: InputManager;
+    character?: Character;
+  }) {
+    this.arena = options.arena;
+    this.inputManager = options.inputManager;
+
+    // Base character that exists in the arena waiting for a device to claim it
+    this.baseCharacter = options.character || new Character({
+      name: "Player 1",
+      color: PLAYER_COLORS[0],
+      x: 4.8,
+      y: 7.0,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+      playerNumber: 1,
+    });
+    this.baseCharacter.playerId = ""; // Unassigned
+    this.baseCharacter.playerNumber = 1;
+    this.baseCharacter.playerColor = PLAYER_COLORS[0];
+    this.baseCharacter.color = PLAYER_COLORS[0];
+    this.baseCharacter.name = "Player 1";
+    this.inputManager.isKeyboardActive = false;
+    this.arena.syncEntitiesWithWalls([this.baseCharacter]);
+
+    // Hook input manager on-demand join & disconnect callbacks
+    this.inputManager.onKeyboardJoin = () => {
+      this.spawnKeyboardPlayer();
+    };
+
+    this.inputManager.onKeyboardJump = () => {
+      const kChar = this.players.get("keyboard")?.character;
+      if (kChar) {
+        kChar.jump(this.arena, this.inputManager.movementVector);
+      }
+    };
+
+    this.inputManager.onGamepadJoin = (slotIndex: number) => {
+      const slot = this.inputManager.gamepadSlots.get(slotIndex);
+      this.spawnGamepadPlayer(slotIndex, slot?.id);
+    };
+
+    this.inputManager.onGamepadDisconnected = (slotIndex: number) => {
+      this.removeGamepadPlayer(slotIndex);
+    };
+  }
+
+  public get allCharacters(): Character[] {
+    const activeChars = Array.from(this.players.values()).map((p) => p.character);
+    if (activeChars.length === 0) {
+      return [this.baseCharacter];
+    }
+    return activeChars;
+  }
+
+  public get primaryCharacter(): Character {
+    const k = this.players.get("keyboard");
+    if (k) return k.character;
+    const first = this.players.values().next().value;
+    if (first) return first.character;
+    return this.baseCharacter;
+  }
+
+  public getNextPlayerNumber(): number {
+    const used = new Set<number>();
+    for (const p of this.players.values()) {
+      used.add(p.playerNumber);
+    }
+    for (let num = 1; num <= 8; num++) {
+      if (!used.has(num)) return num;
+    }
+    return this.players.size + 1;
+  }
+
+  public spawnKeyboardPlayer(): Character {
+    const current = this.players.get("keyboard");
+    if (current) return current.character;
+
+    // Check if baseCharacter is currently unassigned (no player device controlling it)
+    const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
+    let char: Character;
+
+    if (isBaseUnassigned) {
+      char = this.baseCharacter;
+      char.playerId = "keyboard";
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
+      char.color = PLAYER_COLORS[0];
+      char.name = "Player 1";
+    } else {
+      const playerNum = this.getNextPlayerNumber();
+      const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      char = new Character({
+        x: 4.8,
+        y: 7.0,
+        color,
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: "keyboard",
+        playerNumber: playerNum,
+        name: `Player ${playerNum}`,
+      });
+      this.arena.syncEntitiesWithWalls([char]);
+    }
+
+    this.inputManager.isKeyboardActive = true;
+    this.players.set("keyboard", {
+      id: "keyboard",
+      name: "Keyboard & Mouse",
+      playerNumber: char.playerNumber,
+      color: char.playerColor,
+      isKeyboard: true,
+      character: char,
+    });
+
+    this.onPlayersChanged?.();
+    return char;
+  }
+
+  public removeKeyboardPlayer(): void {
+    const entry = this.players.get("keyboard");
+    if (!entry) return;
+
+    entry.character.cleanupBeforeRemoval();
+    entry.character.velocity.x = 0;
+    entry.character.velocity.y = 0;
+
+    const isLastPlayer = this.players.size <= 1;
+    if (isLastPlayer) {
+      // Don't delete the character! Just remove the keyboard connection
+      entry.character.playerId = "";
+      this.baseCharacter = entry.character;
+    } else {
+      if (entry.character === this.baseCharacter) {
+        const other = Array.from(this.players.values()).find((p) => p.id !== "keyboard");
+        if (other) {
+          this.baseCharacter = other.character;
+        }
+      }
+    }
+
+    this.players.delete("keyboard");
+    this.inputManager.isKeyboardActive = false;
+    this.onPlayersChanged?.();
+  }
+
+  public spawnGamepadPlayer(slotIndex: number, gamepadName?: string): Character {
+    const key = `gamepad-${slotIndex}`;
+    const existing = this.players.get(key);
+    if (existing) return existing.character;
+
+    const cleanName = gamepadName
+      ? (gamepadName.length > 28 ? gamepadName.slice(0, 28) + "…" : gamepadName)
+      : `Controller #${slotIndex + 1}`;
+
+    const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
+    let char: Character;
+
+    if (isBaseUnassigned) {
+      char = this.baseCharacter;
+      char.playerId = key;
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
+      char.color = PLAYER_COLORS[0];
+      char.name = "Player 1";
+    } else {
+      const playerNum = this.getNextPlayerNumber();
+      const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      char = new Character({
+        x: 4.8 + (slotIndex + 1) * 1.2,
+        y: 7.0,
+        color,
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: key,
+        playerNumber: playerNum,
+        name: `Player ${playerNum}`,
+      });
+      this.arena.syncEntitiesWithWalls([char]);
+    }
+
+    this.players.set(key, {
+      id: key,
+      name: cleanName,
+      playerNumber: char.playerNumber,
+      color: char.playerColor,
+      isKeyboard: false,
+      slotIndex,
+      character: char,
+    });
+
+    const slot = this.inputManager.gamepadSlots.get(slotIndex);
+    if (slot) {
+      slot.isActive = true;
+      slot.aimOffsetInitialized = false;
+    }
+
+    this.onPlayersChanged?.();
+    return char;
+  }
+
+  public removeGamepadPlayer(slotIndex: number): void {
+    const key = `gamepad-${slotIndex}`;
+    const entry = this.players.get(key);
+    if (!entry) return;
+
+    entry.character.cleanupBeforeRemoval();
+    entry.character.velocity.x = 0;
+    entry.character.velocity.y = 0;
+
+    const isLastPlayer = this.players.size <= 1;
+    if (isLastPlayer) {
+      // Don't delete the character! Just remove the gamepad connection
+      entry.character.playerId = "";
+      this.baseCharacter = entry.character;
+    } else {
+      if (entry.character === this.baseCharacter) {
+        const other = Array.from(this.players.values()).find((p) => p.id !== key);
+        if (other) {
+          this.baseCharacter = other.character;
+        }
+      }
+    }
+
+    this.players.delete(key);
+
+    const slot = this.inputManager.gamepadSlots.get(slotIndex);
+    if (slot) {
+      slot.isActive = false;
+    }
+
+    this.onPlayersChanged?.();
+  }
+
+  public removePlayer(playerId: string): void {
+    if (playerId === "keyboard") {
+      this.removeKeyboardPlayer();
+    } else if (playerId.startsWith("gamepad-")) {
+      const idx = parseInt(playerId.replace("gamepad-", ""), 10);
+      if (!isNaN(idx)) {
+        this.removeGamepadPlayer(idx);
+      }
+    }
+  }
+
+  /**
+   * Updates character physics and input integration for all active players
+   */
+  public updatePlayers(
+    dt: number,
+    objects: GameObject[],
+    isEditMode: boolean
+  ): void {
+    const input = this.inputManager;
+
+    // 1. Update Keyboard Player (if active in arena)
+    const kEntry = this.players.get("keyboard");
+    if (kEntry && input.isKeyboardActive) {
+      const kChar = kEntry.character;
+      if (input.isKeyboardSuspended) {
+        kChar.velocity.x = 0;
+        kChar.velocity.y = 0;
+        kChar.activeTrajectory = null;
+      } else {
+        if (kChar.isSprinting !== input.isKeyboardSprintActive) {
+          kChar.setSprinting(input.isKeyboardSprintActive);
+        }
+        const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
+        const aimTarget = isMouseAiming ? input.mousePos : null;
+
+        const autoLock = input.isRightMouseDown;
+        if (input.draggedEntity !== kChar) {
+          kChar.updateCharacter(
+            dt,
+            input.movementVector,
+            isMouseAiming,
+            aimTarget,
+            this.arena,
+            input.isKeyboardJumpHeld,
+            this.arena.entities,
+            autoLock
+          );
+        } else {
+          kChar.velocity.x = 0;
+          kChar.velocity.y = 0;
+        }
+
+        // Continuous hold-to-grab for keyboard mouse:
+        if (!isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
+          const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
+          const aimX = input.actualMousePos.x;
+          const aimY = input.actualMousePos.y;
+          if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
+            input.justPickedUp = true;
+          }
+        }
+      }
+    }
+
+    // 2. Update Gamepad Players
+    for (const entry of this.players.values()) {
+      if (entry.isKeyboard || entry.slotIndex === undefined) continue;
+      const slot = input.gamepadSlots.get(entry.slotIndex);
+      if (!slot || !slot.connected) continue;
+
+      const cChar = entry.character;
+      const isLockHeld = slot.isLockHeld ?? false;
+      if (input.draggedEntity !== cChar) {
+        // If player has NOT moved the aim stick yet, trajectory aims a couple units in the direction they were moving
+        let trajectoryAimPos: Vector2D = slot.aimPos;
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            cChar.lastMovementInputAngle = slot.lastMovementInputAngle;
+          } else {
+            const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
+          }
+          const forwardDist = 3.0; // a couple units in movement direction
+          trajectoryAimPos = {
+            x: cChar.position.x + dirX * forwardDist,
+            y: cChar.position.y + dirY * forwardDist,
+          };
+        }
+
+        cChar.updateCharacter(
+          dt,
+          slot.movementVector,
+          true, // Controller virtual aim cursor is always active
+          trajectoryAimPos,
+          this.arena,
+          slot.isClimbHeld,
+          this.arena.entities,
+          Boolean(isLockHeld)
+        );
+      } else {
+        cChar.velocity.x = 0;
+        cChar.velocity.y = 0;
+      }
+    }
+
+    // 3. When no player device is currently connected, update baseCharacter so it settles naturally
+    if (this.players.size === 0) {
+      if (input.draggedEntity !== this.baseCharacter) {
+        this.baseCharacter.updateCharacter(
+          dt,
+          { x: 0, y: 0 },
+          false,
+          null,
+          this.arena,
+          false,
+          this.arena.entities
+        );
+      }
+    }
+  }
+
+  /**
+   * Calculates cursor visibility and target grab entities for all active players
+   */
+  public computeAimCursorsAndGrabTargets(
+    objects: GameObject[],
+    isEditMode: boolean
+  ): {
+    targetGrabEntities: Map<Character, GameObject | null>;
+    activeAimCursors: ActiveAimCursor[];
+  } {
+    const targetGrabEntities = new Map<Character, GameObject | null>();
+    const activeAimCursors: ActiveAimCursor[] = [];
+
+    if (isEditMode) {
+      return { targetGrabEntities, activeAimCursors };
+    }
+
+    for (const entry of this.players.values()) {
+      const char = entry.character;
+      const isHolding = char.heldObject !== null;
+      const others = [...this.allCharacters.filter((c) => c !== char), ...objects];
+      const reachable = (char.pickupModule && char.pickupModule.enabled)
+        ? others.filter((o) => char.pickupModule!.isObjectInReach(char, o, this.arena.wallHeight))
+        : [];
+      const hasReachable = reachable.length > 0;
+      let isCursorVisibleNow = false;
+
+      if (entry.isKeyboard) {
+        if (!this.inputManager.isKeyboardActive || this.inputManager.isKeyboardSuspended) {
+          entry.wasCursorVisible = false;
+          this.inputManager.isCursorVisible = false;
+          continue;
+        }
+        const mouseMoved = (this.inputManager.lastMouseMoveTime > (entry.lastCheckedMouseMoveTime ?? 0));
+        entry.lastCheckedMouseMoveTime = this.inputManager.lastMouseMoveTime;
+
+        entry.wasHoldingObject = isHolding;
+
+        if (mouseMoved) {
+          entry.aimMovedWhileInRange = true;
+        }
+
+        // Keyboard cursor is always visible
+        isCursorVisibleNow = true;
+        this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+        this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+
+        // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
+        if (hasReachable) {
+          const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
+          if (reachableGroundObjects.length > 0) {
+            const target = char.pickupModule!.findTargetObject(
+              char,
+              this.inputManager.actualMousePos.x,
+              this.inputManager.actualMousePos.y,
+              reachableGroundObjects,
+              this.arena.wallHeight
+            );
+            if (target) {
+              targetGrabEntities.set(char, target);
+            }
+          }
+        }
+
+        entry.wasCursorVisible = true;
+        this.inputManager.isCursorVisible = true;
+
+        const aimPos = this.inputManager.mousePos;
+        activeAimCursors.push({
+          x: aimPos.x,
+          y: aimPos.y,
+          color: char.playerColor,
+          playerNumber: char.playerNumber,
+          character: char,
+          isGamepad: false,
+        });
+      } else if (entry.slotIndex !== undefined) {
+        const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+        if (!slot || !slot.connected) continue;
+
+        if (isHolding && !entry.wasHoldingObject) {
+          slot.hasMovedAimStick = false;
+        }
+        entry.wasHoldingObject = isHolding;
+        slot.wasHoldingObject = isHolding;
+
+        if (!slot.aimOffset) {
+          slot.aimOffset = { x: 0, y: 0 };
+        }
+
+        if (isHolding) {
+          if (!slot.hasMovedAimStick) {
+            let dirX = 1;
+            let dirY = 0;
+            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+            if (moveMag > 0.05) {
+              dirX = slot.movementVector.x / moveMag;
+              dirY = slot.movementVector.y / moveMag;
+              slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+              char.lastMovementInputAngle = slot.lastMovementInputAngle;
+            } else {
+              const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+              dirX = Math.cos(inputAngle);
+              dirY = Math.sin(inputAngle);
+            }
+            const forwardDist = 3.0;
+            slot.aimPos.x = char.position.x + dirX * forwardDist;
+            slot.aimPos.y = char.position.y + dirY * forwardDist;
+            slot.aimOffset.x = dirX * forwardDist;
+            slot.aimOffset.y = dirY * forwardDist;
+          } else {
+            // Preserve world aimPos instead of dragging it with player movement
+            if (slot.aimPos) {
+              slot.aimOffset.x = slot.aimPos.x - char.position.x;
+              slot.aimOffset.y = slot.aimPos.y - char.position.y;
+            }
+          }
+
+          // Holding an object: do not hide cursor at all!
+          isCursorVisibleNow = true;
+        } else {
+          // Empty-handed: around something to grab or roaming
+          if (!hasReachable) {
+            // Hide cursor once nothing is within range anymore
+            isCursorVisibleNow = false;
+            slot.aimMovedWhileInRange = false;
+            slot.aimPos.x = char.position.x;
+            slot.aimPos.y = char.position.y;
+            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+            slot.aimOffset.x = 0;
+            slot.aimOffset.y = 0;
+          } else {
+            // Has reachable items:
+            if (!slot.aimMovedWhileInRange) {
+              // When around something to grab, cursor starts directly at character!
+              slot.aimPos.x = char.position.x;
+              slot.aimPos.y = char.position.y;
+              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+              slot.aimOffset.x = 0;
+              slot.aimOffset.y = 0;
+            } else if (slot.aimPos) {
+              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+              slot.aimOffset.x = slot.aimPos.x - char.position.x;
+              slot.aimOffset.y = slot.aimPos.y - char.position.y;
+            }
+
+            if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
+              isCursorVisibleNow = true;
+            } else {
+              isCursorVisibleNow = false;
+            }
+          }
+        }
+
+        // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
+        if (hasReachable) {
+          const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
+          if (reachableGroundObjects.length > 0) {
+            const target = (slot.aimMovedWhileInRange || isHolding)
+              ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachableGroundObjects, this.arena.wallHeight)
+              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+            if (target) {
+              targetGrabEntities.set(char, target);
+            }
+          }
+        }
+
+        entry.wasCursorVisible = isCursorVisibleNow;
+        slot.isCursorVisible = isCursorVisibleNow;
+
+        if (isCursorVisibleNow) {
+          activeAimCursors.push({
+            x: slot.aimPos.x,
+            y: slot.aimPos.y,
+            color: char.playerColor,
+            playerNumber: char.playerNumber,
+            character: char,
+            isGamepad: true,
+          });
+        }
+      }
+    }
+
+    return { targetGrabEntities, activeAimCursors };
+  }
+}
