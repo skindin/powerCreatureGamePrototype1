@@ -46,6 +46,7 @@ powerCreatureGamePrototype1/
 ├── DESIGN_DOC.md          # Living Master Design Document
 ├── PHASE_ONE.md           # Phase 1 properties & milestone notes
 ├── PHYSICS_NETWORKING_PLAN.md # Living Phase 1.2 Physics Networking Plan (editable by user)
+├── MULTIPLAYER_PHASES.txt # Living editable multiplayer roadmap & phase checklist
 ├── AGENTS.md              # Shared agent memory across sessions & devices (this file)
 ├── index.html             # Main entry HTML, top bar, HUD overlays, canvas
 ├── package.json           # Dependencies and scripts (dev, build, preview, start)
