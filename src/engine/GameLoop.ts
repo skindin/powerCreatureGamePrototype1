@@ -5,9 +5,12 @@ import { Renderer } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
+import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
+import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 
-export type { PlayerEntry };
+export type { PlayerEntry, CollisionMode, WorldSnapshot };
 export { PLAYER_COLORS };
+
 
 export class GameLoop {
   private arena: Arena;
@@ -52,9 +55,28 @@ export class GameLoop {
   public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
 
+  public currentTick = 0;
+  public timeDilation = 1.0;
+  public isPhysicsPaused = false;
+  public globalCollisionMode: CollisionMode = "dynamic";
+  public lastSnapshot: WorldSnapshot | null = null;
+
   public get isPaused(): boolean {
-    return false;
+    return this.isPhysicsPaused;
   }
+  public set isPaused(val: boolean) {
+    this.isPhysicsPaused = val;
+  }
+
+  public stepSingleTick(): void {
+    this.updatePhysics(this.fixedDt);
+    if (this.onPhysicsTick) {
+      this.onPhysicsTick(this.fixedDt, performance.now());
+    }
+    this.renderFrame(this.fixedDt);
+    this.devPanel.updateInspector();
+  }
+
 
   constructor(options: {
     arena: Arena;
@@ -112,35 +134,12 @@ export class GameLoop {
     this.isRunning = false;
   }
 
-  private tick(currentTime: number): void {
-    if (!this.isRunning) return;
-
-    let deltaSeconds = (currentTime - this.lastTime) / 1000;
-    this.lastTime = currentTime;
-
-    // Prevent spiral of death on tab unfocus
-    if (deltaSeconds > 0.2) {
-      deltaSeconds = 0.2;
-    }
-
-    this.accumulator += deltaSeconds;
-
-    // Fixed timestep simulation updates
-    while (this.accumulator >= this.fixedDt) {
-      this.updatePhysics(this.fixedDt);
-      if (this.onPhysicsTick) {
-        this.onPhysicsTick(this.fixedDt, currentTime);
-      }
-      this.accumulator -= this.fixedDt;
-    }
-
-    // Determine target grab entities and active aim cursors for all players
+  private renderFrame(deltaSeconds: number): void {
     const { targetGrabEntities, activeAimCursors } = this.playerManager.computeAimCursorsAndGrabTargets(
       this.objects,
       this.devPanel.isEditMode
     );
 
-    // Render current frame with active selection highlight & wall tool indicators
     const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
     const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
@@ -159,14 +158,40 @@ export class GameLoop {
       undefined,
       false
     );
+  }
 
-    // Update live inspector
+  private tick(currentTime: number): void {
+    if (!this.isRunning) return;
+
+    let deltaSeconds = (currentTime - this.lastTime) / 1000;
+    this.lastTime = currentTime;
+
+    // Prevent spiral of death on tab unfocus
+    if (deltaSeconds > 0.2) {
+      deltaSeconds = 0.2;
+    }
+
+    if (!this.isPhysicsPaused) {
+      this.accumulator += deltaSeconds * this.timeDilation;
+
+      // Fixed timestep simulation updates
+      while (this.accumulator >= this.fixedDt) {
+        this.updatePhysics(this.fixedDt);
+        if (this.onPhysicsTick) {
+          this.onPhysicsTick(this.fixedDt, currentTime);
+        }
+        this.accumulator -= this.fixedDt;
+      }
+    }
+
+    this.renderFrame(deltaSeconds);
     this.devPanel.updateInspector();
 
     requestAnimationFrame((t) => this.tick(t));
   }
 
   private updatePhysics(dt: number): void {
+    this.currentTick++;
     const input = this.inputManager;
 
     // Synchronize active entities and visual altitude scale on arena
@@ -184,17 +209,40 @@ export class GameLoop {
     // 2. Update players (keyboard, gamepads, or idle baseCharacter)
     this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
 
-    // 4. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
+    // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
       obj.updatePosition(dt, this.arena);
     }
 
-    // 5. Resolve freebody-to-freebody circle collisions across all characters and objects
-    this.resolveFreebodyCollisions();
+    // 4. Resolve collisions across all characters and objects via CollisionResolver
+    CollisionResolver.resolveEntityCollisions(
+      [...this.allCharacters, ...this.objects],
+      this.arena,
+      dt,
+      input.draggedEntity,
+      this.globalCollisionMode
+    );
+
+    // 5. Capture deterministic state snapshot for history, reconciliation, and networking
+    this.lastSnapshot = SnapshotManager.capture(
+      this.currentTick,
+      this.allCharacters,
+      this.objects
+    );
   }
 
-  private resolveFreebodyCollisions(): void {
+  public resolveFreebodyCollisions(dt: number = this.fixedDt): void {
+    CollisionResolver.resolveEntityCollisions(
+      [...this.allCharacters, ...this.objects],
+      this.arena,
+      dt,
+      this.inputManager.draggedEntity,
+      this.globalCollisionMode
+    );
+  }
+
+  public legacyResolveFreebodyCollisions(): void {
     const all = [...this.allCharacters, ...this.objects];
     const input = this.inputManager;
 

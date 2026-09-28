@@ -69,6 +69,9 @@ powerCreatureGamePrototype1/
 │   │   ├── rendering/     # Modular rendering passes
 │   │   │   ├── README.md
 │   │   │   └── TrajectoryRenderer.ts # Ballistic arcs, landing markers, lock brackets, aim reticles
+│   │   ├── physics/       # Deterministic simulation & collision resolution
+│   │   │   ├── CollisionResolver.ts # Discrete TOI rollback, Continuous Swept CCD, Dynamic Adaptive
+│   │   │   └── Snapshot.ts # Deterministic physical state snapshots, restoration & divergence
 │   │   ├── ColliderModule.ts
 │   │   ├── FrictionModule.ts
 │   │   ├── BounceModule.ts
@@ -113,7 +116,28 @@ powerCreatureGamePrototype1/
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 
+### Deterministic Physics, TOI Contact Rollback & Swept CCD (Phase 1.2.1 — Fully Functional)
+- **Modular Collision Resolver (`src/engine/physics/CollisionResolver.ts`)**:
+  - Encapsulates entity-to-entity and entity-to-wall contact resolution outside monolithic loops.
+  - **Discrete TOI Rollback (`discrete_toi`)**: When overlapping bodies are detected after position updates, rewinds along their relative velocity path to the exact fraction of the tick $\alpha \in [0, 1]$ where tangent contact occurred ($(r_A + r_B)$). Applies physical bounce impulses (normal restitution) and tangential sliding friction with roll spin coupling, then advances the remaining $(1 - \alpha) \cdot dt$.
+  - **Continuous Swept CCD (`continuous_swept`)**: Quadratic swept circle-vs-circle and swept circle-vs-wall collision tests. Computes earliest contact time $t_{\text{hit}} \in [0, dt]$ before entities penetrate or tunnel.
+  - **Dynamic Adaptive Policy (`dynamic`)**: Automatically checks the CFL/tunneling ratio $\frac{|\vec{v}| \cdot dt}{r}$. If displacement exceeds the collider's threshold ratio (`ccdThresholdRatio`, default $0.50\times$ radius), the body automatically promotes itself to Continuous Swept; otherwise, it operates as Discrete TOI.
+  - **Pairwise Continuous Supersession**: If two bodies collide and either body is Continuous, the pair is resolved via Continuous Swept detection.
+  - **Preserved Physical Invariants**: Strict two-tier altitude gating ($z < \text{wallHeight}$ vs. $z \ge \text{wallHeight}$), Massless vs. Massive closing velocity inheritance without slowing massive objects unless pinned, and roll angular velocity coupling.
+- **Deterministic Physical State Snapshots (`src/engine/physics/Snapshot.ts`)**:
+  - `SnapshotManager.capture(tick, characters, objects)` captures serializable world state with 4-decimal precision coordinates, velocities, holding pointers, and climbing flags.
+  - `SnapshotManager.apply(snapshot, characters, objects)` deterministically restores physical transforms and connections.
+  - `SnapshotManager.hasDivergence(a, b, posThreshold, velThreshold)` compares snapshots with deadzone tolerances for prediction reconciliation.
+- **Interactive Dev Tools & Visual Diagnostics (`DevPanel.ts` & `Renderer.ts`)**:
+  - Live **Global Collision Mode Dropdown**: Dynamic Adaptive, Discrete TOI, Continuous Swept, and Legacy Naive Overlap.
+  - **Dynamic CCD Threshold Slider**: Configurable from $0.10\times$ to $2.00\times$ radius.
+  - **Selected Entity Collision Mode**: Inspect and override collision policy per entity (`dynamic`, `discrete`, `continuous`).
+  - **Test Cannon Spawner**: `🚀 Launch High-Speed Ball (40 u/s)` instantly tests tunneling against walls in real time.
+  - **Physics Simulation Controls**: `⏸️ Pause Sim` and `⏭️ Step 1 Tick (1/60s)` for frame-by-frame impact inspection.
+  - **Canvas Visual Diagnostics**: Cyan swept capsule path for active CCD objects, green/cyan contact point pips, contact normal vectors, and live `[CCD]` / `[TOI]` status badges.
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
+
 - **Standard Gamepad API Polling**:
   - Polled deterministically each physics tick (`pollGamepad()`) in `InputManager.ts` & `GameLoop.ts`.
   - **Left Joystick (`axes[0]`, `axes[1]`)**: Smooth proportional analog character movement with $0.18$ radial deadzone. Movement direction **never** aims the throwing arc.

@@ -358,6 +358,10 @@ function bootstrap(): void {
     devPanel,
   });
   (window as any).gameLoop = gameLoop;
+
+  devPanel.getGameLoop = () => gameLoop;
+  devPanel.getRenderer = () => renderer;
+
   (window as any).character = character;
 
   // 6b. Initialize Players & Controllers Panel

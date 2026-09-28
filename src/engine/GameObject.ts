@@ -30,6 +30,11 @@ export class GameObject {
   public isCharacter = false;
   public isClimbing = false;
   public visualShape: "circle" | "box" = "circle";
+  public collisionMode: "discrete" | "continuous" | "dynamic" = "dynamic";
+  public lastCollisionType: "none" | "discrete_toi" | "continuous_swept" | "naive" = "none";
+  public lastContactPoint: { x: number; y: number } | null = null;
+  public lastContactNormal: { x: number; y: number } | null = null;
+  public isSweptActive: boolean = false;
 
   // Modular behavior components
   public colliderModule: ColliderModule | null = null;
@@ -48,6 +53,7 @@ export class GameObject {
     verticalVelocity?: number;
     color?: string;
     visualShape?: "circle" | "box";
+    collisionMode?: "discrete" | "continuous" | "dynamic";
     colliderModule?: ColliderModule | null;
     massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
@@ -67,6 +73,7 @@ export class GameObject {
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Entity";
+    this.collisionMode = options.collisionMode ?? "dynamic";
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,
@@ -132,6 +139,22 @@ export class GameObject {
 
   public get hasCollider(): boolean {
     return Boolean(this.colliderModule && this.colliderModule.enabled);
+  }
+
+  /**
+   * Evaluates whether this body acts as 'discrete' or 'continuous' on the current tick.
+   * If collisionMode is 'dynamic', tests if movement distance (v * dt) exceeds ccdThresholdRatio * radius.
+   */
+  public getEffectiveCollisionMode(dt: number = 1 / 60): "discrete" | "continuous" {
+    if (this.collisionMode === "continuous") return "continuous";
+    if (this.collisionMode === "discrete") return "discrete";
+    // "dynamic" mode: evaluate velocity vs. collider radius
+    if (!this.hasCollider || !this.colliderModule?.canSweep) return "discrete";
+    const speed = Math.hypot(this.velocity.x, this.velocity.y);
+    const r = Math.max(0.01, this.colliderRadius);
+    const displacement = speed * dt;
+    const threshold = this.colliderModule.ccdThresholdRatio ?? 0.5;
+    return (displacement / r) >= threshold ? "continuous" : "discrete";
   }
 
   public get colliderRadius(): number {

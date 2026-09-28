@@ -52,6 +52,9 @@ export class DevPanel {
   public isEditMode: boolean = false;
   public editTool: "entities" | "walls" = "entities";
   public onSelectionChange?: (entity: GameObject | null) => void;
+  public getGameLoop?: () => any;
+  public getRenderer?: () => any;
+
 
   // Preserved Creator State
   public creatorState: CreatorPreset = {
@@ -418,7 +421,85 @@ export class DevPanel {
           <div id="dev-inspector" class="inspector-grid"></div>
         </div>
 
+        <!-- ⚡ Physics & Collision Simulation (Phase A) -->
+        <div class="dev-section" style="border: 1px solid rgba(6, 182, 212, 0.3); background: rgba(6, 182, 212, 0.04);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3 style="margin: 0; color: #38bdf8;">⚡ Physics & Collisions</h3>
+            <span id="badge-sim-tick" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.4);">
+              Tick 0 (60Hz)
+            </span>
+          </div>
+          <p class="section-desc">Test Discrete TOI Rollback vs. Continuous Swept CCD vs. Legacy Naive Overlap.</p>
+
+          <!-- Simulation Play / Pause / Step -->
+          <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+            <button id="btn-sim-pause" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600;">
+              ⏸️ Pause Sim
+            </button>
+            <button id="btn-sim-step" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+              ⏭️ Step 1 Tick
+            </button>
+          </div>
+
+          <!-- Global Collision Mode -->
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">Global Collision Solver</label>
+            <select id="select-global-collision-mode" class="dev-select">
+              <option value="dynamic" selected>⚡ Dynamic Adaptive (CCD on Fast, TOI on Slow)</option>
+              <option value="discrete">⏪ Discrete TOI Rollback (Sub-Tick Rewind)</option>
+              <option value="continuous">🔍 Continuous Swept (Always CCD)</option>
+              <option value="naive">⚠️ Naive Push-Out (Legacy Baseline)</option>
+            </select>
+          </div>
+
+          <!-- Dynamic CCD Threshold Ratio Slider -->
+          <div class="slider-group" id="group-ccd-threshold" style="margin-bottom: 10px;">
+            <div class="slider-label">
+              <span>Dynamic CCD Threshold Ratio</span>
+              <span id="val-ccd-threshold">0.50×</span>
+            </div>
+            <input type="range" id="slide-ccd-threshold" min="0.10" max="2.00" step="0.05" value="0.50">
+            <span style="font-size: 0.70rem; color: #94a3b8; display: block; margin-top: 2px;">
+              Triggers Continuous Swept when displacement per tick exceeds (Ratio × Radius).
+            </span>
+          </div>
+
+          <!-- Selected Entity Collision Policy -->
+          <div style="margin-bottom: 10px; padding: 8px; background: rgba(15, 23, 42, 0.6); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 0.76rem; font-weight: 600; color: #e2e8f0;">Target Entity Mode</span>
+              <span id="badge-entity-effective-mode" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; font-size: 0.68rem;">
+                Discrete
+              </span>
+            </div>
+            <select id="select-entity-collision-mode" class="dev-select">
+              <option value="dynamic" selected>Dynamic (Follows Velocity)</option>
+              <option value="discrete">Force Discrete</option>
+              <option value="continuous">Force Continuous Swept</option>
+            </select>
+          </div>
+
+          <!-- Test Cannon / Projectile Launcher -->
+          <div style="margin-bottom: 10px;">
+            <button id="btn-launch-fast-ball" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
+              🚀 Launch High-Speed Ball (40 u/s)
+            </button>
+            <span style="font-size: 0.70rem; color: #94a3b8; display: block; margin-top: 4px;">
+              Fires a small ball at 40 u/s toward walls to test tunneling vs. clean bouncing in real-time.
+            </span>
+          </div>
+
+          <!-- Collision Visuals Toggle -->
+          <div class="toggle-row" style="margin-top: 6px;">
+            <label style="font-size: 0.78rem;">Show CCD / TOI Visuals</label>
+            <button id="toggle-collision-visuals" class="btn-toggle active">
+              ON
+            </button>
+          </div>
+        </div>
+
         <!-- 🧩 Modular Capabilities & Physical Behaviors -->
+
         <div class="dev-section">
           <h3>🧩 Physical Behaviors</h3>
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
@@ -686,6 +767,15 @@ export class DevPanel {
     if (e.rollModule) {
       this.setSliderVal("slide-entity-roll-resist", "val-entity-roll-resist", e.rollModule.rollResistance, 2);
     }
+
+    // Sync Collision Mode & CCD Threshold
+    const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+    if (selectEntityCollision) {
+      selectEntityCollision.value = e.collisionMode ?? "dynamic";
+    }
+    const ccdThreshold = e.colliderModule?.ccdThresholdRatio ?? 0.5;
+    this.setSliderVal("slide-ccd-threshold", "val-ccd-threshold", ccdThreshold, 2);
+
 
     // Character abilities sliders
     if (isChar && char) {
@@ -1661,7 +1751,80 @@ export class DevPanel {
       }
     });
 
+    // 6b. Simulation & Collision Solver Controls (Phase A)
+    const btnSimPause = this.container.querySelector("#btn-sim-pause") as HTMLButtonElement | null;
+    const btnSimStep = this.container.querySelector("#btn-sim-step") as HTMLButtonElement | null;
+    const selectGlobalCollision = this.container.querySelector("#select-global-collision-mode") as HTMLSelectElement | null;
+    const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+    const btnLaunchFastBall = this.container.querySelector("#btn-launch-fast-ball") as HTMLButtonElement | null;
+    const toggleCollisionVisuals = this.container.querySelector("#toggle-collision-visuals") as HTMLButtonElement | null;
+
+    btnSimPause?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.isPhysicsPaused = !loop.isPhysicsPaused;
+      if (btnSimPause) {
+        btnSimPause.textContent = loop.isPhysicsPaused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
+        btnSimPause.style.color = loop.isPhysicsPaused ? "#10b981" : "#f1f5f9";
+      }
+    });
+
+    btnSimStep?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.stepSingleTick();
+    });
+
+    selectGlobalCollision?.addEventListener("change", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.globalCollisionMode = selectGlobalCollision.value as any;
+      this.updateInspector();
+    });
+
+    this.setupSlider("slide-ccd-threshold", "val-ccd-threshold", (val) => {
+      if (this.selectedEntity?.colliderModule) {
+        this.selectedEntity.colliderModule.ccdThresholdRatio = val;
+      }
+    }, 2);
+
+    selectEntityCollision?.addEventListener("change", () => {
+      if (this.selectedEntity) {
+        this.selectedEntity.collisionMode = selectEntityCollision.value as any;
+        this.updateInspector();
+      }
+    });
+
+    btnLaunchFastBall?.addEventListener("click", () => {
+      // Spawn a small projectile moving fast (40 u/s) to test tunneling vs clean collision
+      const cannonBall = new GameObject({
+        name: "Test Cannonball",
+        position: { x: 2.0, y: 7.0, z: 0.1 },
+        velocity: { x: 40.0, y: 0.0 },
+        visualShape: "circle",
+        color: "#f59e0b",
+        colliderRadius: 0.14,
+        mass: 0.5,
+        bounceMod: 0.85,
+        collisionMode: "dynamic",
+        hasGravity: false,
+        hasVerticalPosition: true,
+      });
+      this.onSpawnObject(cannonBall);
+    });
+
+    toggleCollisionVisuals?.addEventListener("click", () => {
+      const rend = this.getRenderer?.();
+      if (!rend) return;
+      rend.showCollisionDebug = !rend.showCollisionDebug;
+      if (toggleCollisionVisuals) {
+        toggleCollisionVisuals.textContent = rend.showCollisionDebug ? "ON" : "OFF";
+        toggleCollisionVisuals.classList.toggle("active", rend.showCollisionDebug);
+      }
+    });
+
     // 7. World Physics Sliders
+
     this.setupSlider("slide-gravity", "val-gravity", (val) => {
       this.arena.gravity = val;
     }, 1);
@@ -1947,10 +2110,35 @@ export class DevPanel {
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
+    // Update Simulation Tick & Active Mode Badges
+    const loop = this.getGameLoop?.();
+    const simTickBadge = this.container.querySelector("#badge-sim-tick");
+    if (simTickBadge) {
+      const modeLabel = loop ? String(loop.globalCollisionMode).toUpperCase() : "DYNAMIC";
+      const tickNum = loop ? loop.currentTick : 0;
+      const isPaused = loop ? loop.isPhysicsPaused : false;
+      simTickBadge.textContent = isPaused ? `⏸️ PAUSED (Tick ${tickNum})` : `Tick ${tickNum} (${modeLabel})`;
+    }
+    const entityModeBadge = this.container.querySelector("#badge-entity-effective-mode") as HTMLElement | null;
+    if (entityModeBadge && e) {
+      const eff = e.getEffectiveCollisionMode(1 / 60);
+      entityModeBadge.textContent = eff === "continuous" ? "Continuous Swept" : "Discrete TOI";
+      entityModeBadge.style.color = eff === "continuous" ? "#06b6d4" : "#10b981";
+      entityModeBadge.style.background = eff === "continuous" ? "rgba(6, 182, 212, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+
     this.inspectorEl.innerHTML = `
       <div class="inspect-item">
         <span class="inspect-k">Selected</span>
         <span class="inspect-v highlight-held">${e.name}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Collision Mode</span>
+        <span class="inspect-v ${e.getEffectiveCollisionMode(1/60) === 'continuous' ? 'highlight-z' : ''}">${e.collisionMode.toUpperCase()} (${e.getEffectiveCollisionMode(1/60) === 'continuous' ? 'CCD' : 'TOI'})</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Last Collision</span>
+        <span class="inspect-v ${e.lastCollisionType !== 'none' ? 'highlight-held' : ''}">${e.lastCollisionType === 'continuous_swept' ? 'Swept CCD' : (e.lastCollisionType === 'discrete_toi' ? 'Discrete TOI' : (e.lastCollisionType === 'naive' ? 'Naive Push' : 'None'))}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Position (X, Y)</span>
@@ -1960,6 +2148,7 @@ export class DevPanel {
         <span class="inspect-k">Height (Z)</span>
         <span class="inspect-v ${e.isAboveGround ? 'highlight-z' : ''}">${e.position.z.toFixed(2)} u</span>
       </div>
+
       <div class="inspect-item">
         <span class="inspect-k">Surface</span>
         <span class="inspect-v ${e.supportingSurfaceHeight > 0.05 && e.isRestingOnSurface ? 'highlight-held' : ''}">${e.isRestingOnSurface ? (e.supportingSurfaceHeight > 0.05 ? `Wall Top (${e.supportingSurfaceHeight.toFixed(1)}u)` : "Ground (0.0u)") : `Airborne (${e.verticalVelocity.toFixed(1)}u/s)`}</span>

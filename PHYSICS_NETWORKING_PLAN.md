@@ -175,11 +175,16 @@ In an arena with 50+ freebodies (rocks, food, crates, dummies), rolling back the
   - Real-time RTT telemetry HUD (current, min, max, avg ping, packet counters).
   - Semi-transparent Ghost Clones (`👻 ECHO (X ms)`) demonstrating internet latency live on canvas.
 
-- [ ] **Phase 1.2.1: Deterministic Physics & TOI Contact Rollback**
-  - Continuous swept collision test for circle-to-circle and circle-to-wall contacts.
-  - Sub-tick contact rewind before applying bounce and surface friction impulses.
-  - Maintain massless vs. massive closing velocity inheritance rule.
-  - Automated headless simulation test verifying 100% determinism locally across repeated runs.
+- [x] **Phase 1.2.1: Deterministic Physics, TOI Contact Rollback & Swept CCD (Completed)**
+  - `CollisionResolver.ts`: Modular pairwise solver supporting `Discrete TOI Rollback`, `Continuous Swept (CCD)`, `Dynamic Adaptive`, and `Naive Overlap`.
+  - Continuous supersedes Discrete rule for pairwise resolution.
+  - Sub-tick contact rewind to tangent contact point before applying bounce restitution and surface friction impulses.
+  - Quadratic swept circle-vs-circle and swept circle-vs-wall collision tests.
+  - Preserved Massless vs. Massive momentum transfer and rotational angular coupling.
+  - `Snapshot.ts`: `SnapshotManager` for serializing, restoring, and evaluating snapshot divergence across simulation ticks.
+  - Interactive DevPanel tools: global mode switcher, CCD threshold slider, test cannon spawner (`🚀 Fire High-Speed Ball`), simulation pause (`⏸️`) & single-tick stepping (`⏭️`), and canvas swept path visuals.
+  - Automated headless simulation test in `scratch/test_phase_a_collisions.ts` verifying 100% determinism.
+
 
 - [ ] **Phase 1.2.2: State Snapshot & Circular History Ring Buffer**
   - Define serializable `StateSnapshot` (positions $x, y, z$, velocities $vx, vy, vz$, angular velocities, holding connections, climbing state).

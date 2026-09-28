@@ -28,6 +28,8 @@ export class Renderer {
     verticalVisuals: "hover",
     visualAltitudeScale: 0.5,
   };
+  public showCollisionDebug = true;
+
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -230,11 +232,90 @@ export class Renderer {
       this.drawCharacterNameTag(char, arena, ppu);
     }
 
+    // 12b. Collision Mode & Contact Diagnostics Overlay
+    if (this.showCollisionDebug) {
+      this.drawCollisionDebug(allRenderables, ppu);
+    }
+
     // 13. Simulation Paused Overlay (when all players are removed)
     if (isPaused) {
       this.drawPausedOverlay(ctx);
     }
   }
+
+  /**
+   * Renders visual indicators for continuous swept trajectories, contact points, and solver types.
+   */
+  private drawCollisionDebug(entities: GameObject[], ppu: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+
+    for (const entity of entities) {
+      if (!entity.hasCollider) continue;
+      const r = entity.colliderRadius * ppu;
+      const sx = entity.position.x * ppu;
+      const sy = (entity.position.y - entity.position.z * this.getHoverScale()) * ppu;
+
+      // Draw swept trajectory capsule when continuous mode is active and moving
+      if (entity.isSweptActive) {
+        const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+        if (speed > 0.1) {
+          const vx = (entity.velocity.x * (1 / 60)) * ppu;
+          const vy = (entity.velocity.y * (1 / 60)) * ppu;
+
+          ctx.strokeStyle = "rgba(6, 182, 212, 0.75)"; // Cyan
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(sx - vx, sy - vy);
+          ctx.lineTo(sx, sy);
+          ctx.stroke();
+
+          // Swept head outline
+          ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Draw contact point and normal if collision occurred recently
+      if (entity.lastContactPoint && entity.lastCollisionType !== "none") {
+        const px = entity.lastContactPoint.x * ppu;
+        const py = entity.lastContactPoint.y * ppu;
+
+        // Contact pip
+        ctx.fillStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Contact normal arrow
+        if (entity.lastContactNormal) {
+          const nx = entity.lastContactNormal.x * 16;
+          const ny = entity.lastContactNormal.y * 16;
+          ctx.strokeStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + nx, py + ny);
+          ctx.stroke();
+        }
+
+        // Mini badge
+        ctx.font = "bold 9px sans-serif";
+        ctx.fillStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
+        ctx.fillText(
+          entity.lastCollisionType === "continuous_swept" ? "CCD" : "TOI",
+          sx - 10,
+          sy - r - 6
+        );
+      }
+    }
+
+    ctx.restore();
+  }
+
 
   /**
    * Draws a clean glassmorphic banner when all players have departed and simulation is paused.
