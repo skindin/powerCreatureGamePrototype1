@@ -6,6 +6,23 @@
 
 ---
 
+## 🔒 Sealed & Read-Only Files ("Complete" Modules)
+> **CRITICAL AGENT CONSTRAINT**:  
+> The following files have been audited, fully verified, and deemed feature-complete.  
+> Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless the USER explicitly names the file and gives an direct instruction to modify it:
+>
+> 1. `src/engine/MassModule.ts` — Mass, inertia, inverse mass calculations.
+> 2. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
+> 3. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
+> 4. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
+> 5. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
+> 6. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
+> 7. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
+>
+> If a new feature requires interacting with these systems, interact strictly through their existing public APIs. Do not modify the source files.
+
+---
+
 ## 1. Project Overview & Tech Stack
 
 ### High-Level Concept
