@@ -73,6 +73,7 @@ powerCreatureGamePrototype1/
 │   │   │   ├── CollisionResolver.ts # Discrete TOI rollback, Continuous Swept CCD, Dynamic Adaptive
 │   │   │   └── Snapshot.ts # Deterministic physical state snapshots, restoration & divergence
 │   │   ├── ColliderModule.ts
+│   │   ├── RigidbodyModule.ts # Linear velocity, vertical velocity, motion integration & collision mode
 │   │   ├── FrictionModule.ts
 │   │   ├── BounceModule.ts
 │   │   ├── GravityModule.ts
@@ -100,7 +101,14 @@ powerCreatureGamePrototype1/
 - **Wall Climbing & Dismounting**:
   - Space key climbs walls or dismounts.
   - Dismounting only occurs when the player actively steers/pushes towards open ground.
-- **Universal Freebodies**:
+- **Universal Freebodies & Modular Rigidbody (`src/engine/RigidbodyModule.ts`)**:
+  - Entities encapsulate dynamic physical motion through the isolated `RigidbodyModule` behavior (`velocity: Vector2D`, `hasVerticalVelocity: boolean`, `verticalVelocity: number`, `collisionMode`).
+  - **Static Body vs. Dynamic Body**: Entities without a Rigidbody (`hasRigidbody === false`) act as immovable scenery / static colliders that do not integrate velocity or gravity.
+  - **Vertical Velocity Dependency Architecture**:
+    - `VerticalPositionModule` represents *spatial 3D altitude ($z$ coordinate)*.
+    - `RigidbodyModule` represents *kinematic dynamics (linear velocity $\vec{v}_{xy}$, vertical velocity $v_z$, collision mode)*.
+    - `hasVerticalVelocity` strictly evaluates `Boolean(this.hasRigidbody && this.rigidbodyModule.hasVerticalVelocity && this.hasVerticalPosition)`. If an entity has no vertical position behavior, vertical velocity is physically impossible and automatically disabled.
+    - In `DevPanel.ts`, the vertical velocity toggle and slider live directly on the **Rigidbody** behavior card with reactive dependency warnings when Vertical Position is detached.
   - Every dynamic object (and creature) has mass, collider radius, bounce restitution, and friction.
   - **Massless vs. Massive Rule**: Massless objects absorb separation and inherit closing velocity from massive objects without dampening massive objects, unless pinned against a wall.
 - **Grabbing, Carrying & Throwing**:

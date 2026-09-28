@@ -6,6 +6,7 @@ import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
 import { VerticalPositionModule } from "./VerticalPositionModule.js";
+import { RigidbodyModule } from "./RigidbodyModule.js";
 
 export interface Vector2D {
   x: number;
@@ -22,7 +23,6 @@ export class GameObject {
   public id: string;
   public name: string;
   public position: Vector3D;
-  public velocity: Vector2D;
   public color: string;
   public isHeld: boolean;
   public heldBy: GameObject | null;
@@ -30,13 +30,15 @@ export class GameObject {
   public isCharacter = false;
   public isClimbing = false;
   public visualShape: "circle" | "box" = "circle";
-  public collisionMode: "discrete" | "continuous" | "dynamic" = "dynamic";
   public lastCollisionType: "none" | "discrete_toi" | "continuous_swept" | "naive" = "none";
   public lastContactPoint: { x: number; y: number } | null = null;
   public lastContactNormal: { x: number; y: number } | null = null;
   public isSweptActive: boolean = false;
 
+  private _staticVelocity: Vector2D = { x: 0, y: 0 };
+
   // Modular behavior components
+  public rigidbodyModule: RigidbodyModule | null = null;
   public colliderModule: ColliderModule | null = null;
   public massModule: MassModule | null = null;
   public frictionModule: FrictionModule | null = null;
@@ -54,6 +56,8 @@ export class GameObject {
     color?: string;
     visualShape?: "circle" | "box";
     collisionMode?: "discrete" | "continuous" | "dynamic";
+    rigidbodyModule?: RigidbodyModule | null;
+    hasRigidbody?: boolean;
     colliderModule?: ColliderModule | null;
     massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
@@ -73,20 +77,27 @@ export class GameObject {
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Entity";
-    this.collisionMode = options.collisionMode ?? "dynamic";
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,
       z: options.position?.z ?? 0,
     };
-    this.velocity = {
-      x: options.velocity?.x ?? 0,
-      y: options.velocity?.y ?? 0,
-    };
     this.color = options.color ?? "#94a3b8";
     this.isHeld = false;
     this.heldBy = null;
     this.visualShape = options.visualShape ?? "circle";
+
+    // Initialize Rigidbody Module
+    this.rigidbodyModule = options.rigidbodyModule !== undefined
+      ? options.rigidbodyModule
+      : (options.hasRigidbody === false
+          ? null
+          : new RigidbodyModule({
+              velocity: options.velocity ? { x: options.velocity.x ?? 0, y: options.velocity.y ?? 0 } : undefined,
+              hasVerticalVelocity: options.hasVerticalVelocity !== false,
+              verticalVelocity: options.verticalVelocity ?? 0,
+              collisionMode: options.collisionMode ?? "dynamic",
+            }));
 
     // Initialize modules
     this.colliderModule = options.colliderModule !== undefined
@@ -136,6 +147,35 @@ export class GameObject {
   }
 
   // --- Convenience Getters & Setters ---
+
+  public get hasRigidbody(): boolean {
+    return Boolean(this.rigidbodyModule && this.rigidbodyModule.enabled);
+  }
+
+  public get velocity(): Vector2D {
+    if (this.hasRigidbody && this.rigidbodyModule) {
+      return this.rigidbodyModule.velocity;
+    }
+    return this._staticVelocity;
+  }
+
+  public set velocity(val: Vector2D) {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.velocity = { x: val.x, y: val.y };
+    } else {
+      this._staticVelocity = { x: val.x, y: val.y };
+    }
+  }
+
+  public get collisionMode(): "discrete" | "continuous" | "dynamic" {
+    return this.hasRigidbody && this.rigidbodyModule ? this.rigidbodyModule.collisionMode : "discrete";
+  }
+
+  public set collisionMode(val: "discrete" | "continuous" | "dynamic") {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.collisionMode = val;
+    }
+  }
 
   public get hasCollider(): boolean {
     return Boolean(this.colliderModule && this.colliderModule.enabled);
@@ -241,16 +281,31 @@ export class GameObject {
     return Boolean(this.verticalPositionModule && this.verticalPositionModule.enabled);
   }
 
+  /**
+   * Vertical velocity is physically dynamic, so it lives on RigidbodyModule,
+   * but strictly requires VerticalPositionModule (spatial altitude z-axis).
+   * Without VerticalPositionModule, vertical velocity cannot exist.
+   */
   public get hasVerticalVelocity(): boolean {
-    return Boolean(this.hasVerticalPosition && this.verticalPositionModule?.hasVerticalVelocity);
+    return Boolean(
+      this.hasRigidbody &&
+      this.rigidbodyModule?.hasVerticalVelocity &&
+      this.hasVerticalPosition
+    );
   }
 
   public get verticalVelocity(): number {
-    return this.hasVerticalVelocity && this.verticalPositionModule ? this.verticalPositionModule.verticalVelocity : 0;
+    if (this.hasVerticalVelocity && this.rigidbodyModule) {
+      return this.rigidbodyModule.verticalVelocity;
+    }
+    return 0;
   }
 
   public set verticalVelocity(val: number) {
-    if (this.hasVerticalVelocity && this.verticalPositionModule) {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.verticalVelocity = val;
+    }
+    if (this.verticalPositionModule) {
       this.verticalPositionModule.verticalVelocity = val;
     }
   }
@@ -318,6 +373,11 @@ export class GameObject {
   public updatePosition(dt: number, arena: Arena): void {
     if (this.isHeld) {
       // Position is governed by holder
+      return;
+    }
+
+    if (!this.hasRigidbody) {
+      // Static entity without rigidbody dynamics: does not integrate velocity or motion
       return;
     }
 

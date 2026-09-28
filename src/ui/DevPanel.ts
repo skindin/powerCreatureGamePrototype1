@@ -15,11 +15,13 @@ import { FrictionModule } from "../engine/FrictionModule.js";
 import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
+import { RigidbodyModule } from "../engine/RigidbodyModule.js";
 
 export interface CreatorPreset {
   name: string;
   visualShape: "box" | "circle";
   color: string;
+  hasRigidbody: boolean;
   hasCollider: boolean;
   colliderRadius: number;
   hasMass: boolean;
@@ -61,6 +63,7 @@ export class DevPanel {
     name: "Custom Box",
     visualShape: "box",
     color: "#38bdf8",
+    hasRigidbody: true,
     hasCollider: true,
     colliderRadius: 0.30,
     hasMass: true,
@@ -85,6 +88,7 @@ export class DevPanel {
       name: "Light Blue Box",
       visualShape: "box",
       color: "#38bdf8",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.26,
       hasMass: true,
@@ -106,6 +110,7 @@ export class DevPanel {
       name: "Heavy Red Box",
       visualShape: "box",
       color: "#f87171",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.40,
       hasMass: true,
@@ -127,6 +132,7 @@ export class DevPanel {
       name: "Super Bouncy Ball",
       visualShape: "circle",
       color: "#4ade80",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.24,
       hasMass: true,
@@ -148,6 +154,7 @@ export class DevPanel {
       name: "Rolling Ball",
       visualShape: "circle",
       color: "#a855f7",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.28,
       hasMass: true,
@@ -169,6 +176,7 @@ export class DevPanel {
       name: "Ghost Box (No Collider)",
       visualShape: "box",
       color: "#94a3b8",
+      hasRigidbody: false,
       hasCollider: false,
       colliderRadius: 0.30,
       hasMass: false,
@@ -564,6 +572,25 @@ export class DevPanel {
             </div>
 
             <div class="toggle-row">
+              <label>Rigidbody</label>
+              <button id="creator-toggle-rigidbody" class="btn-toggle ${this.creatorState.hasRigidbody ? 'active' : ''}">
+                ${this.creatorState.hasRigidbody ? 'Attached' : 'Detached'}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-rigidbody" style="display: ${this.creatorState.hasRigidbody ? 'block' : 'none'};">
+              <div class="toggle-subrow" style="display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
+                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'active' : ''}" ${!this.creatorState.hasVerticalPosition ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                  ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <div id="creator-warn-rb-vert-pos" class="module-dep-warning" style="display: ${!this.creatorState.hasVerticalPosition ? 'block' : 'none'}; margin-top: 4px;">
+                ⚠️ Requires Vertical Position behavior
+              </div>
+            </div>
+
+            <div class="toggle-row">
               <label>Collider</label>
               <button id="creator-toggle-collider" class="btn-toggle ${this.creatorState.hasCollider ? 'active' : ''}">
                 ${this.creatorState.hasCollider ? 'Attached' : 'Detached'}
@@ -645,13 +672,6 @@ export class DevPanel {
                 <span id="val-creator-elevation">${this.creatorState.elevation.toFixed(2)}</span>
               </div>
               <input type="range" id="slide-creator-elevation" min="0.0" max="4.0" step="0.05" value="${this.creatorState.elevation}">
-
-              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
-                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
-                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity ? 'active' : ''}">
-                  ${this.creatorState.hasVerticalVelocity ? 'Enabled' : 'Disabled'}
-                </button>
-              </div>
             </div>
 
             <div class="toggle-row">
@@ -773,6 +793,15 @@ export class DevPanel {
     if (selectEntityCollision) {
       selectEntityCollision.value = e.collisionMode ?? "dynamic";
     }
+    const selectRbCollision = this.container.querySelector("#select-rb-collision-mode") as HTMLSelectElement | null;
+    if (selectRbCollision) {
+      selectRbCollision.value = e.collisionMode ?? "dynamic";
+    }
+    const badgeRb = this.container.querySelector("#badge-rb-collision-mode");
+    if (badgeRb) badgeRb.textContent = (e.collisionMode ?? "dynamic").toUpperCase();
+    const velLabel = this.container.querySelector("#val-entity-linear-vel");
+    if (velLabel) velLabel.textContent = `(${e.velocity.x.toFixed(2)}, ${e.velocity.y.toFixed(2)}) u/s`;
+
     const ccdThreshold = e.colliderModule?.ccdThresholdRatio ?? 0.5;
     this.setSliderVal("slide-ccd-threshold", "val-ccd-threshold", ccdThreshold, 2);
 
@@ -832,6 +861,7 @@ export class DevPanel {
     const char = isChar ? (e as Character) : null;
 
     // Check which modules are currently attached
+    const hasRigidbody = Boolean(e.rigidbodyModule && e.rigidbodyModule.enabled);
     const hasCollider = Boolean(e.colliderModule && e.colliderModule.enabled);
     const hasMass = Boolean(e.massModule && e.massModule.enabled);
     const hasFriction = Boolean(e.frictionModule && e.frictionModule.enabled);
@@ -851,7 +881,51 @@ export class DevPanel {
     let html = "";
     let attachedCount = 0;
 
-    // 1. Collider Module
+    // 1. Rigidbody Module
+    if (hasRigidbody) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="rigidbody">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>⚙️ Rigidbody</label>
+            <button class="btn-remove-module" data-module-id="rigidbody" title="Remove Rigidbody behavior">✕ Remove</button>
+          </div>
+          <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 8px 0; display: flex; justify-content: space-between;">
+            <span>Linear Velocity (vx, vy):</span>
+            <span id="val-entity-linear-vel" style="font-family: monospace; color: #cbd5e1;">(${e.velocity.x.toFixed(2)}, ${e.velocity.y.toFixed(2)}) u/s</span>
+          </div>
+          <div class="slider-group" style="margin-bottom: 8px;">
+            <div class="slider-label">
+              <span>Collision Mode</span>
+              <span id="badge-rb-collision-mode" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.68rem;">${e.collisionMode.toUpperCase()}</span>
+            </div>
+            <select id="select-rb-collision-mode" class="dev-select" style="width: 100%;">
+              <option value="dynamic" ${e.collisionMode === 'dynamic' ? 'selected' : ''}>Dynamic (Follows Velocity)</option>
+              <option value="discrete" ${e.collisionMode === 'discrete' ? 'selected' : ''}>Force Discrete</option>
+              <option value="continuous" ${e.collisionMode === 'continuous' ? 'selected' : ''}>Force Continuous Swept</option>
+            </select>
+          </div>
+          <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
+            <button id="toggle-mod-vert-vel" class="btn-toggle ${e.hasVerticalVelocity && hasVertPos ? 'active' : ''}" ${!hasVertPos ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+              ${e.hasVerticalVelocity && hasVertPos ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+          ${!hasVertPos ? `<div class="module-dep-warning" style="margin-top: 4px;">⚠️ Requires Vertical Position behavior</div>` : ''}
+          <div id="group-mod-vert-vel" style="display: ${e.hasVerticalVelocity && hasVertPos ? 'block' : 'none'}; margin-top: 6px;">
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Vertical Velocity (u/s)</span>
+                <span id="val-entity-vert-vel">${e.verticalVelocity.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${e.verticalVelocity}">
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Collider Module
     if (hasCollider) {
       attachedCount++;
       html += `
@@ -871,7 +945,7 @@ export class DevPanel {
       `;
     }
 
-    // 2. Mass Module
+    // 3. Mass Module
     if (hasMass) {
       attachedCount++;
       html += `
@@ -891,7 +965,7 @@ export class DevPanel {
       `;
     }
 
-    // 3. Friction Module
+    // 4. Friction Module
     if (hasFriction) {
       attachedCount++;
       html += `
@@ -919,7 +993,7 @@ export class DevPanel {
       `;
     }
 
-    // 4. Bounciness Module
+    // 5. Bounciness Module
     if (hasBounce) {
       attachedCount++;
       html += `
@@ -947,7 +1021,7 @@ export class DevPanel {
       `;
     }
 
-    // 5. Vertical Position Module
+    // 6. Vertical Position Module
     if (hasVertPos) {
       attachedCount++;
       html += `
@@ -963,26 +1037,11 @@ export class DevPanel {
             </div>
             <input type="range" id="slide-entity-elevation" min="0.0" max="4.0" step="0.05" value="${e.position.z}">
           </div>
-          <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
-            <button id="toggle-mod-vert-vel" class="btn-toggle ${e.hasVerticalVelocity ? 'active' : ''}">
-              ${e.hasVerticalVelocity ? 'Enabled' : 'Disabled'}
-            </button>
-          </div>
-          <div id="group-mod-vert-vel" style="display: ${e.hasVerticalVelocity ? 'block' : 'none'}; margin-top: 6px;">
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Vertical Velocity (u/s)</span>
-                <span id="val-entity-vert-vel">${e.verticalVelocity.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${e.verticalVelocity}">
-            </div>
-          </div>
         </div>
       `;
     }
 
-    // 6. Gravity Module
+    // 7. Gravity Module
     if (hasGravity) {
       attachedCount++;
       html += `
@@ -1231,11 +1290,12 @@ export class DevPanel {
     }
 
     const allModules: ModuleInfo[] = [
+      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, vertical velocity, motion integration & collision mode", isAttached: hasRigidbody },
       { id: "collider", name: "Collider", icon: "🛡️", description: "Solid physical bounds & collision with walls and entities", isAttached: hasCollider },
       { id: "mass", name: "Mass", icon: "⚖️", description: "Physical mass, weight, inertia, and momentum transfer", isAttached: hasMass },
       { id: "friction", name: "Friction", icon: "🛝", description: "Ground friction, stopping resistance, and deceleration", isAttached: hasFriction },
       { id: "bounce", name: "Bounciness", icon: "🏀", description: "Elastic restitution on collisions and impacts", isAttached: hasBounce },
-      { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and vertical velocity", isAttached: hasVertPos },
+      { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPos },
       { id: "gravity", name: "Gravity", icon: "🪐", description: "Downward gravitational acceleration toward ground", isAttached: hasGravity },
       { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRoll },
     ];
@@ -1301,6 +1361,9 @@ export class DevPanel {
   private removeModuleFromSelectedEntity(modId: string): void {
     const e = this.selectedEntity;
     switch (modId) {
+      case "rigidbody":
+        e.rigidbodyModule = null;
+        break;
       case "collider":
         e.colliderModule = null;
         break;
@@ -1379,6 +1442,15 @@ export class DevPanel {
   private addModuleToSelectedEntity(modId: string): void {
     const e = this.selectedEntity;
     switch (modId) {
+      case "rigidbody":
+        e.rigidbodyModule = new RigidbodyModule({
+          velocity: { x: 0, y: 0 },
+          hasVerticalVelocity: true,
+          verticalVelocity: 0,
+          collisionMode: "dynamic",
+          enabled: true,
+        });
+        break;
       case "collider":
         e.colliderModule = new ColliderModule({ radius: 0.32 });
         break;
@@ -1452,6 +1524,37 @@ export class DevPanel {
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
+    // Rigidbody
+    const selectRbCollision = this.container.querySelector("#select-rb-collision-mode") as HTMLSelectElement | null;
+    selectRbCollision?.addEventListener("change", () => {
+      e.collisionMode = selectRbCollision.value as "discrete" | "continuous" | "dynamic";
+      const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+      if (selectEntityCollision) selectEntityCollision.value = e.collisionMode;
+      const badge = this.container.querySelector("#badge-rb-collision-mode");
+      if (badge) badge.textContent = e.collisionMode.toUpperCase();
+      this.updateInspector();
+    });
+
+    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
+    btnVertVel?.addEventListener("click", () => {
+      if (!e.hasVerticalPosition) return;
+      if (e.rigidbodyModule) {
+        e.rigidbodyModule.hasVerticalVelocity = !e.rigidbodyModule.hasVerticalVelocity;
+        if (!e.rigidbodyModule.hasVerticalVelocity) {
+          e.verticalVelocity = 0;
+        }
+      }
+      if (e.verticalPositionModule) {
+        e.verticalPositionModule.hasVerticalVelocity = Boolean(e.rigidbodyModule?.hasVerticalVelocity);
+      }
+      this.renderEntityModules();
+      this.updateInspector();
+    });
+
+    this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
+      e.verticalVelocity = val;
+    }, 2);
+
     // Collider
     this.setupSlider("slide-entity-radius", "val-entity-radius", (val) => {
       e.colliderRadius = val;
@@ -1492,22 +1595,6 @@ export class DevPanel {
       e.position.z = val;
       this.syncEntitySliders();
       this.updateInspector();
-    }, 2);
-
-    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
-    btnVertVel?.addEventListener("click", () => {
-      if (e.verticalPositionModule) {
-        e.verticalPositionModule.hasVerticalVelocity = !e.verticalPositionModule.hasVerticalVelocity;
-        if (!e.verticalPositionModule.hasVerticalVelocity) {
-          e.verticalVelocity = 0;
-        }
-      }
-      this.renderEntityModules();
-      this.updateInspector();
-    });
-
-    this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
-      e.verticalVelocity = val;
     }, 2);
 
     // Roll
@@ -1614,6 +1701,30 @@ export class DevPanel {
     if (colorInput) colorInput.value = s.color;
     if (colorLabel) colorLabel.textContent = s.color;
 
+    // Rigidbody
+    const rbBtn = this.container.querySelector("#creator-toggle-rigidbody") as HTMLButtonElement;
+    const rbGrp = this.container.querySelector("#grp-creator-rigidbody") as HTMLElement;
+    if (rbBtn) {
+      rbBtn.textContent = s.hasRigidbody ? "Attached" : "Detached";
+      rbBtn.classList.toggle("active", s.hasRigidbody);
+    }
+    if (rbGrp) rbGrp.style.display = s.hasRigidbody ? "block" : "none";
+
+    // Vertical Velocity toggle (depends on Vertical Position)
+    const vertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
+    const warnRbVertPos = this.container.querySelector("#creator-warn-rb-vert-pos") as HTMLElement;
+    if (vertVelBtn) {
+      const isEnabled = s.hasVerticalVelocity && s.hasVerticalPosition;
+      vertVelBtn.textContent = isEnabled ? "Enabled" : "Disabled";
+      vertVelBtn.classList.toggle("active", isEnabled);
+      vertVelBtn.disabled = !s.hasVerticalPosition;
+      vertVelBtn.style.opacity = !s.hasVerticalPosition ? "0.5" : "1";
+      vertVelBtn.style.cursor = !s.hasVerticalPosition ? "not-allowed" : "pointer";
+    }
+    if (warnRbVertPos) {
+      warnRbVertPos.style.display = !s.hasVerticalPosition ? "block" : "none";
+    }
+
     // Collider
     const colBtn = this.container.querySelector("#creator-toggle-collider") as HTMLButtonElement;
     const colGrp = this.container.querySelector("#grp-creator-radius") as HTMLElement;
@@ -1659,13 +1770,6 @@ export class DevPanel {
     }
     if (vertPosGrp) vertPosGrp.style.display = s.hasVerticalPosition ? "block" : "none";
     this.setSliderVal("slide-creator-elevation", "val-creator-elevation", s.elevation, 2);
-
-    // Vertical Velocity toggle
-    const vertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
-    if (vertVelBtn) {
-      vertVelBtn.textContent = s.hasVerticalVelocity ? "Enabled" : "Disabled";
-      vertVelBtn.classList.toggle("active", s.hasVerticalVelocity);
-    }
 
     // Gravity
     const gravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
@@ -1914,6 +2018,12 @@ export class DevPanel {
       if (colorLabel) colorLabel.textContent = colorInput.value;
     });
 
+    const creatorRbBtn = this.container.querySelector("#creator-toggle-rigidbody") as HTMLButtonElement;
+    creatorRbBtn?.addEventListener("click", () => {
+      this.creatorState.hasRigidbody = !this.creatorState.hasRigidbody;
+      this.syncCreatorInputs();
+    });
+
     const creatorColBtn = this.container.querySelector("#creator-toggle-collider") as HTMLButtonElement;
     creatorColBtn?.addEventListener("click", () => {
       this.creatorState.hasCollider = !this.creatorState.hasCollider;
@@ -1969,6 +2079,7 @@ export class DevPanel {
 
     const creatorVertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
     creatorVertVelBtn?.addEventListener("click", () => {
+      if (!this.creatorState.hasVerticalPosition) return;
       this.creatorState.hasVerticalVelocity = !this.creatorState.hasVerticalVelocity;
       this.syncCreatorInputs();
     });
@@ -2017,6 +2128,13 @@ export class DevPanel {
       position: { x: spawnX, y: spawnY, z: s.hasVerticalPosition ? s.elevation : 0 },
       visualShape: s.visualShape,
       color: s.color,
+      hasRigidbody: s.hasRigidbody,
+      rigidbodyModule: s.hasRigidbody ? new RigidbodyModule({
+        velocity: { x: 0, y: 0 },
+        hasVerticalVelocity: s.hasVerticalVelocity,
+        verticalVelocity: 0,
+        collisionMode: "dynamic",
+      }) : null,
       colliderModule: s.hasCollider ? new ColliderModule({ radius: s.colliderRadius }) : null,
       massModule: s.hasMass ? new MassModule({ mass: s.mass }) : null,
       frictionModule: s.hasFriction ? new FrictionModule({ staticFrictionMod: s.staticFrictionMod, dynamicFrictionMod: s.dynamicFrictionMod }) : null,
@@ -2046,6 +2164,14 @@ export class DevPanel {
       position: { x: spawnX, y: spawnY, z: orig.position.z },
       visualShape: orig.visualShape,
       color: orig.color,
+      hasRigidbody: orig.hasRigidbody,
+      rigidbodyModule: orig.rigidbodyModule ? new RigidbodyModule({
+        velocity: { x: orig.velocity.x, y: orig.velocity.y },
+        hasVerticalVelocity: orig.rigidbodyModule.hasVerticalVelocity,
+        verticalVelocity: orig.verticalVelocity,
+        collisionMode: orig.collisionMode,
+        enabled: orig.rigidbodyModule.enabled,
+      }) : null,
       colliderModule: orig.colliderModule ? new ColliderModule({ radius: orig.colliderModule.radius, enabled: orig.colliderModule.enabled }) : null,
       massModule: orig.massModule ? new MassModule({ mass: orig.massModule.mass, enabled: orig.massModule.enabled }) : null,
       frictionModule: orig.frictionModule ? new FrictionModule({ staticFrictionMod: orig.frictionModule.staticFrictionMod, dynamicFrictionMod: orig.frictionModule.dynamicFrictionMod, enabled: orig.frictionModule.enabled }) : null,
@@ -2158,6 +2284,10 @@ export class DevPanel {
         <span class="inspect-v">${speed} u/s</span>
       </div>
       <div class="inspect-item">
+        <span class="inspect-k">Rigidbody</span>
+        <span class="inspect-v ${e.hasRigidbody ? '' : 'highlight-held'}">${e.hasRigidbody ? `Dynamic (${e.collisionMode})` : 'Static Body'}</span>
+      </div>
+      <div class="inspect-item">
         <span class="inspect-k">Collider</span>
         <span class="inspect-v ${e.hasCollider ? '' : 'highlight-held'}">${e.hasCollider ? `Radius ${e.colliderRadius.toFixed(2)}u` : 'Detached (Passes through)'}</span>
       </div>
@@ -2179,7 +2309,7 @@ export class DevPanel {
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Vertical Velocity</span>
-        <span class="inspect-v ${e.hasVerticalVelocity ? '' : 'highlight-held'}">${e.hasVerticalVelocity ? `${e.verticalVelocity.toFixed(2)} u/s` : 'Disabled (0 u/s)'}</span>
+        <span class="inspect-v ${e.hasVerticalVelocity ? '' : 'highlight-held'}">${e.hasVerticalVelocity ? `${e.verticalVelocity.toFixed(2)} u/s` : (!e.hasVerticalPosition ? 'Requires Vert Pos' : 'Disabled (0 u/s)')}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Gravity</span>
