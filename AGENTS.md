@@ -72,7 +72,8 @@ powerCreatureGamePrototype1/
 │   │   │   └── TrajectoryRenderer.ts # Ballistic arcs, landing markers, lock brackets, aim reticles
 │   │   ├── physics/       # Deterministic simulation & collision resolution
 │   │   │   ├── CollisionResolver.ts # Discrete TOI rollback, Continuous Swept CCD, Dynamic Adaptive
-│   │   │   └── Snapshot.ts # Deterministic physical state snapshots, restoration & divergence
+│   │   │   ├── Snapshot.ts # Deterministic physical state snapshots, restoration & divergence
+│   │   │   └── StateHistoryBuffer.ts # Circular ring buffer for history, dynamic capacity, input packets
 │   │   ├── ColliderModule.ts
 │   │   ├── RigidbodyModule.ts # Linear velocity, vertical velocity, motion integration & collision mode
 │   │   ├── FrictionModule.ts
@@ -149,6 +150,32 @@ powerCreatureGamePrototype1/
     - **Forward Swept Capsule Lookahead**: Active continuous entities (`isSweptActive`) moving at speed render a glowing cyan forward swept volume (capsule) with tangent rails, leading circle cap, translucent fill, and center ray arrow.
     - **Entity Mode Rings & Badges**: Active entities render floating `[CCD]` (cyan) and `[TOI]` (emerald) pill badges and collider status rings.
     - **Corner Solver Diagnostics HUD**: Compact glassmorphic HUD card in bottom-right corner displaying current solver mode, active sweeping bodies count, and most recent collision event time.
+
+### Client History Buffer & Deterministic Rollback Replay (Phase 2 — Fully Functional)
+- **State History Circular Ring Buffer (`src/engine/physics/StateHistoryBuffer.ts`)**:
+  - High-performance, zero-garbage circular ring buffer indexing by `tick % capacity`.
+  - Default capacity: **60 ticks (1.0 second)**, protecting frame rate while fully accommodating any broadband internet latency.
+  - Hard rollback clamp of **30 ticks (~500ms)**: prevents CPU starvation by guaranteeing re-simulation never exceeds 30 ticks within a single 16.6ms render frame.
+  - **Live Dynamic Capacity Resizing (`setCapacity`)**: Supports dynamic resizing on the fly (15 to 120 ticks) from UI sliders without resetting or losing recent historical frames.
+  - Stores paired `WorldSnapshot` and `Map<string, PlayerInputPacket>` per frame.
+- **Enhanced Deterministic Snapshot Engine (`src/engine/physics/Snapshot.ts`)**:
+  - Exact 64-bit IEEE float retention for local history buffer (eliminates quantization drift during local re-simulation).
+  - Captures and restores `facingAngle`, `isSprinting`, `standingWallId`, and 3D angular velocities (`angX`, `angY`, `angZ`) for roll modules.
+  - Deterministically reconstructs two-way `heldBy` and `heldObject` relationships upon restore.
+  - `hasDivergence` computes `maxDeltaPos` and `maxDeltaVel` with deadzone tolerance.
+- **Input Capture & Replay Dispatch (`src/engine/PlayerManager.ts`)**:
+  - `capturePlayerInputs()` extracts movement vectors, sprint state, climb/jump, grab, drop, throw, and virtual aim cursor positions each tick.
+  - `applyPlayerInputs()` deterministically reapplies recorded input packets during historical re-simulation.
+- **Rollback & Re-simulation Verification Harness (`src/engine/GameLoop.ts`)**:
+  - `simulateRollbackTest(ticksBack)`: rewinds world state to tick $T - N$, steps physics and recorded player inputs forward to present tick $T$, and verifies $0.0000\text{u}$ bit-level divergence against the ground-truth present state.
+  - `injectPerturbationTest(ticksBack)`: injects a past velocity perturbation at tick $T - N$ and re-simulates forward to demonstrate client-side prediction reconciliation when past state is corrected.
+- **Live Interactive DevPanel Controls & HUD Integration (`DevPanel.ts` & `Renderer.ts`)**:
+  - **History Buffer & Rollback Replay Card**: Real-time tick count and duration badge (`#badge-buffer-status`), buffer capacity slider (15 to 120 ticks), rollback depth slider (5 to 60 ticks), and interactive test buttons:
+    - `⏪ Rollback & Verify Replay`
+    - `🔀 Inject Past Desync & Re-simulate`
+  - **Diagnostics HUD**: Bottom-right canvas HUD card displays real-time `State Buffer: N/M (X.Xs)`.
+- **Headless Test Suite**:
+  - `scratch/test_phase_2_history_rollback.ts`: 100% passed (ring buffer lifecycle, dynamic resizing, 30-tick rollback replay with 0.0000u divergence, and past perturbation divergence verification).
 
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 

@@ -15,6 +15,12 @@ export interface EntitySnapshot {
   heldById: string | null;
   isClimbing: boolean;
   isCharacter: boolean;
+  facingAngle?: number;
+  isSprinting?: boolean;
+  standingWallId?: string | null;
+  angX?: number;
+  angY?: number;
+  angZ?: number;
 }
 
 export interface WorldSnapshot {
@@ -26,23 +32,42 @@ export interface WorldSnapshot {
 export class SnapshotManager {
   /**
    * Captures the physical state of all entities at the given simulation tick.
+   * If quantize is true, numbers are rounded to 4 decimals for network packets;
+   * otherwise, exact 64-bit IEEE floats are retained for local rollback determinism.
    */
-  public static capture(tick: number, characters: Character[], objects: GameObject[]): WorldSnapshot {
+  public static capture(
+    tick: number,
+    characters: Character[],
+    objects: GameObject[],
+    quantize: boolean = false
+  ): WorldSnapshot {
     const all = [...characters, ...objects];
-    const entities: EntitySnapshot[] = all.map((e) => ({
-      id: e.id,
-      name: e.name,
-      x: Number(e.position.x.toFixed(4)),
-      y: Number(e.position.y.toFixed(4)),
-      z: Number(e.position.z.toFixed(4)),
-      vx: Number(e.velocity.x.toFixed(4)),
-      vy: Number(e.velocity.y.toFixed(4)),
-      vz: Number(e.verticalVelocity.toFixed(4)),
-      isHeld: e.isHeld,
-      heldById: e.heldBy ? e.heldBy.id : null,
-      isClimbing: e.isClimbing,
-      isCharacter: e.isCharacter,
-    }));
+    const entities: EntitySnapshot[] = all.map((e) => {
+      const isChar = e.isCharacter;
+      const char = isChar ? (e as any) : null;
+      const roll = e.rollModule;
+
+      return {
+        id: e.id,
+        name: e.name,
+        x: quantize ? Number(e.position.x.toFixed(4)) : e.position.x,
+        y: quantize ? Number(e.position.y.toFixed(4)) : e.position.y,
+        z: quantize ? Number(e.position.z.toFixed(4)) : e.position.z,
+        vx: quantize ? Number(e.velocity.x.toFixed(4)) : e.velocity.x,
+        vy: quantize ? Number(e.velocity.y.toFixed(4)) : e.velocity.y,
+        vz: quantize ? Number(e.verticalVelocity.toFixed(4)) : e.verticalVelocity,
+        isHeld: e.isHeld,
+        heldById: e.heldBy ? e.heldBy.id : null,
+        isClimbing: e.isClimbing,
+        isCharacter: isChar,
+        facingAngle: char ? char.facingAngle : undefined,
+        isSprinting: char ? char.isSprinting : undefined,
+        standingWallId: e.standingWall ? e.standingWall.id : null,
+        angX: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.x.toFixed(4)) : roll.angularVelocity.x) : undefined,
+        angY: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.y.toFixed(4)) : roll.angularVelocity.y) : undefined,
+        angZ: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.z.toFixed(4)) : roll.angularVelocity.z) : undefined,
+      };
+    });
 
     return {
       tick,
@@ -56,8 +81,13 @@ export class SnapshotManager {
    */
   public static apply(snapshot: WorldSnapshot, characters: Character[], objects: GameObject[]): void {
     const allMap = new Map<string, GameObject>();
-    for (const c of characters) allMap.set(c.id, c);
-    for (const o of objects) allMap.set(o.id, o);
+    for (const c of characters) {
+      allMap.set(c.id, c);
+      c.heldObject = null; // Reset heldObject before re-binding
+    }
+    for (const o of objects) {
+      allMap.set(o.id, o);
+    }
 
     for (const snap of snapshot.entities) {
       const entity = allMap.get(snap.id);
@@ -72,8 +102,24 @@ export class SnapshotManager {
       entity.isHeld = snap.isHeld;
       entity.isClimbing = snap.isClimbing;
 
+      if (snap.isCharacter && entity.isCharacter) {
+        const char = entity as any;
+        if (snap.facingAngle !== undefined) char.facingAngle = snap.facingAngle;
+        if (snap.isSprinting !== undefined) char.isSprinting = snap.isSprinting;
+      }
+
+      if (entity.rollModule && entity.rollModule.enabled && snap.angX !== undefined) {
+        entity.rollModule.angularVelocity.x = snap.angX;
+        entity.rollModule.angularVelocity.y = snap.angY ?? 0;
+        entity.rollModule.angularVelocity.z = snap.angZ ?? 0;
+      }
+
       if (snap.heldById) {
-        entity.heldBy = allMap.get(snap.heldById) ?? null;
+        const holder = allMap.get(snap.heldById);
+        entity.heldBy = holder ?? null;
+        if (holder && (holder as any).heldObject !== undefined) {
+          (holder as any).heldObject = entity;
+        }
       } else {
         entity.heldBy = null;
       }
@@ -81,15 +127,18 @@ export class SnapshotManager {
   }
 
   /**
-   * Compares two snapshots and returns true if any entity diverged beyond the deadzone threshold.
+   * Compares two snapshots and evaluates divergence.
    */
   public static hasDivergence(
     a: WorldSnapshot,
     b: WorldSnapshot,
     posThreshold: number = 0.05,
     velThreshold: number = 0.1
-  ): { diverged: boolean; entityId?: string; deltaPos?: number } {
+  ): { diverged: boolean; entityId?: string; deltaPos?: number; maxDeltaPos: number; maxDeltaVel: number } {
     const mapB = new Map(b.entities.map((e) => [e.id, e]));
+    let maxDeltaPos = 0;
+    let maxDeltaVel = 0;
+    let divergedEntityId: string | undefined;
 
     for (const entA of a.entities) {
       const entB = mapB.get(entA.id);
@@ -98,30 +147,26 @@ export class SnapshotManager {
       const dx = entA.x - entB.x;
       const dy = entA.y - entB.y;
       const dz = entA.z - entB.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-
-      if (distSq > posThreshold * posThreshold) {
-        return {
-          diverged: true,
-          entityId: entA.id,
-          deltaPos: Math.sqrt(distSq),
-        };
-      }
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > maxDeltaPos) maxDeltaPos = dist;
 
       const dvx = entA.vx - entB.vx;
       const dvy = entA.vy - entB.vy;
       const dvz = entA.vz - entB.vz;
-      const velDiffSq = dvx * dvx + dvy * dvy + dvz * dvz;
+      const velDiff = Math.hypot(dvx, dvy, dvz);
+      if (velDiff > maxDeltaVel) maxDeltaVel = velDiff;
 
-      if (velDiffSq > velThreshold * velThreshold) {
-        return {
-          diverged: true,
-          entityId: entA.id,
-          deltaPos: Math.sqrt(velDiffSq),
-        };
+      if (!divergedEntityId && (dist > posThreshold || velDiff > velThreshold)) {
+        divergedEntityId = entA.id;
       }
     }
 
-    return { diverged: false };
+    return {
+      diverged: divergedEntityId !== undefined,
+      entityId: divergedEntityId,
+      deltaPos: maxDeltaPos,
+      maxDeltaPos,
+      maxDeltaVel,
+    };
   }
 }

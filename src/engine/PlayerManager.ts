@@ -1,8 +1,9 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
-import { GameObject, Vector2D } from "./GameObject.js";
+import { GameObject } from "./GameObject.js";
 import { InputManager } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
+import { PlayerInputPacket } from "./physics/StateHistoryBuffer.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -291,108 +292,120 @@ export class PlayerManager {
   }
 
   /**
-   * Updates character physics and input integration for all active players
+   * Captures the input packets for all active players in the arena on the current tick.
    */
-  public updatePlayers(
-    dt: number,
-    objects: GameObject[],
-    isEditMode: boolean
-  ): void {
+  public capturePlayerInputs(isEditMode: boolean): Map<string, PlayerInputPacket> {
+    const map = new Map<string, PlayerInputPacket>();
     const input = this.inputManager;
 
-    // 1. Update Keyboard Player (if active in arena)
+    // 1. Keyboard
     const kEntry = this.players.get("keyboard");
-    if (kEntry && input.isKeyboardActive) {
+    if (kEntry && input.isKeyboardActive && !input.isKeyboardSuspended) {
       const kChar = kEntry.character;
-      if (input.isKeyboardSuspended) {
-        kChar.velocity.x = 0;
-        kChar.velocity.y = 0;
-        kChar.activeTrajectory = null;
-      } else {
-        if (kChar.isSprinting !== input.isKeyboardSprintActive) {
-          kChar.setSprinting(input.isKeyboardSprintActive);
-        }
-        const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
-        const aimTarget = isMouseAiming ? input.mousePos : null;
-
-        const autoLock = input.isRightMouseDown;
-        if (input.draggedEntity !== kChar) {
-          kChar.updateCharacter(
-            dt,
-            input.movementVector,
-            isMouseAiming,
-            aimTarget,
-            this.arena,
-            input.isKeyboardJumpHeld,
-            this.arena.entities,
-            autoLock
-          );
-        } else {
-          kChar.velocity.x = 0;
-          kChar.velocity.y = 0;
-        }
-
-        // Continuous hold-to-grab for keyboard mouse:
-        if (!isEditMode && input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
-          const otherEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
-          const aimX = input.actualMousePos.x;
-          const aimY = input.actualMousePos.y;
-          if (kChar.pickupModule.pickupAndSwap(kChar, otherEntities, this.arena.wallHeight, aimX, aimY)) {
-            input.justPickedUp = true;
-          }
-        }
-      }
+      const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
+      map.set("keyboard", {
+        playerId: "keyboard",
+        moveX: input.movementVector.x,
+        moveY: input.movementVector.y,
+        isSprinting: input.isKeyboardSprintActive,
+        isJumpHeld: input.isKeyboardJumpHeld,
+        isGrabHeld: input.isGrabHeld,
+        aimX: input.actualMousePos.x,
+        aimY: input.actualMousePos.y,
+        isAiming: isMouseAiming,
+        isLockHeld: input.isRightMouseDown,
+      });
     }
 
-    // 2. Update Gamepad Players
+    // 2. Gamepads
     for (const entry of this.players.values()) {
       if (entry.isKeyboard || entry.slotIndex === undefined) continue;
       const slot = input.gamepadSlots.get(entry.slotIndex);
       if (!slot || !slot.connected) continue;
 
       const cChar = entry.character;
-      const isLockHeld = slot.isLockHeld ?? false;
-      if (input.draggedEntity !== cChar) {
-        // If player has NOT moved the aim stick yet, trajectory aims a couple units in the direction they were moving
-        let trajectoryAimPos: Vector2D = slot.aimPos;
-        if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            cChar.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
-          }
-          const forwardDist = 3.0; // a couple units in movement direction
-          trajectoryAimPos = {
-            x: cChar.position.x + dirX * forwardDist,
-            y: cChar.position.y + dirY * forwardDist,
-          };
-        }
+      let aimX = slot.aimPos.x;
+      let aimY = slot.aimPos.y;
 
-        cChar.updateCharacter(
-          dt,
-          slot.movementVector,
-          true, // Controller virtual aim cursor is always active
-          trajectoryAimPos,
-          this.arena,
-          slot.isClimbHeld,
-          this.arena.entities,
-          Boolean(isLockHeld)
-        );
-      } else {
-        cChar.velocity.x = 0;
-        cChar.velocity.y = 0;
+      if (!slot.hasMovedAimStick) {
+        let dirX = 1;
+        let dirY = 0;
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        if (moveMag > 0.05) {
+          dirX = slot.movementVector.x / moveMag;
+          dirY = slot.movementVector.y / moveMag;
+        } else {
+          const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
+          dirX = Math.cos(inputAngle);
+          dirY = Math.sin(inputAngle);
+        }
+        aimX = cChar.position.x + dirX * 3.0;
+        aimY = cChar.position.y + dirY * 3.0;
+      }
+
+      map.set(entry.id, {
+        playerId: entry.id,
+        moveX: slot.movementVector.x,
+        moveY: slot.movementVector.y,
+        isSprinting: cChar.isSprinting ?? false,
+        isJumpHeld: slot.isClimbHeld ?? false,
+        isGrabHeld: (slot.rtHeld || slot.bHeld) ?? false,
+        aimX,
+        aimY,
+        isAiming: true,
+        isLockHeld: slot.isLockHeld ?? false,
+      });
+    }
+
+    return map;
+  }
+
+  /**
+   * Applies player input packets to characters deterministically.
+   */
+  public applyPlayerInputs(
+    inputs: Map<string, PlayerInputPacket>,
+    dt: number,
+    objects: GameObject[],
+    isEditMode: boolean
+  ): void {
+    const input = this.inputManager;
+
+    for (const [playerId, pkt] of inputs) {
+      const entry = this.players.get(playerId);
+      if (!entry) continue;
+      const char = entry.character;
+      if (input.draggedEntity === char) {
+        char.velocity.x = 0;
+        char.velocity.y = 0;
+        continue;
+      }
+
+      if (char.isSprinting !== pkt.isSprinting) {
+        char.setSprinting(pkt.isSprinting);
+      }
+
+      const aimTarget = pkt.aimX !== undefined && pkt.aimY !== undefined ? { x: pkt.aimX, y: pkt.aimY } : null;
+
+      char.updateCharacter(
+        dt,
+        { x: pkt.moveX, y: pkt.moveY },
+        pkt.isAiming,
+        aimTarget,
+        this.arena,
+        pkt.isJumpHeld,
+        this.arena.entities,
+        pkt.isLockHeld
+      );
+
+      // Continuous hold-to-grab
+      if (!isEditMode && pkt.isGrabHeld && !char.heldObject && char.pickupModule && aimTarget) {
+        const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+        char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
       }
     }
 
-    // 3. When no player device is currently connected, update baseCharacter so it settles naturally
+    // When no player device is connected, update baseCharacter so it settles naturally
     if (this.players.size === 0) {
       if (input.draggedEntity !== this.baseCharacter) {
         this.baseCharacter.updateCharacter(
@@ -406,6 +419,19 @@ export class PlayerManager {
         );
       }
     }
+  }
+
+  /**
+   * Updates character physics and input integration for all active players
+   */
+  public updatePlayers(
+    dt: number,
+    objects: GameObject[],
+    isEditMode: boolean
+  ): Map<string, PlayerInputPacket> {
+    const inputs = this.capturePlayerInputs(isEditMode);
+    this.applyPlayerInputs(inputs, dt, objects, isEditMode);
+    return inputs;
   }
 
   /**

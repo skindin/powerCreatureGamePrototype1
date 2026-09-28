@@ -30,6 +30,7 @@ export class Renderer {
   };
   public showCollisionDebug = true;
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
+  public historyBufferStatus?: { count: number; capacity: number };
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -511,8 +512,9 @@ export class Renderer {
     }
 
     // 4. Canvas Bottom-Right Collision Diagnostics HUD
+    const hasBuffer = !!this.historyBufferStatus;
     const cardW = 208;
-    const cardH = 68;
+    const cardH = hasBuffer ? 82 : 68;
     const cardX = ctx.canvas.width - cardW - 16;
     const cardY = ctx.canvas.height - cardH - 16;
 
@@ -565,6 +567,17 @@ export class Renderer {
     } else {
       ctx.fillStyle = "#64748b";
       ctx.fillText("None (ready)", cardX + 78, cardY + 58);
+    }
+
+    // State History Buffer status
+    if (this.historyBufferStatus) {
+      ctx.font = "9px Inter, system-ui, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText("State Buffer:", cardX + 12, cardY + 71);
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      const secs = (this.historyBufferStatus.count / 60).toFixed(1);
+      ctx.fillText(`${this.historyBufferStatus.count}/${this.historyBufferStatus.capacity} (${secs}s)`, cardX + 78, cardY + 71);
     }
 
     ctx.restore();

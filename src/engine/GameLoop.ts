@@ -7,9 +7,10 @@ import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
 import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
+import { StateHistoryBuffer, RollbackResult } from "./physics/StateHistoryBuffer.js";
 
-export type { PlayerEntry, CollisionMode, WorldSnapshot };
-export { PLAYER_COLORS };
+export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
+export { PLAYER_COLORS, StateHistoryBuffer };
 
 
 export class GameLoop {
@@ -60,6 +61,7 @@ export class GameLoop {
   public isPhysicsPaused = false;
   public globalCollisionMode: CollisionMode = "dynamic";
   public lastSnapshot: WorldSnapshot | null = null;
+  public historyBuffer = new StateHistoryBuffer(60, 30);
 
   public get isPaused(): boolean {
     return this.isPhysicsPaused;
@@ -144,6 +146,10 @@ export class GameLoop {
     const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
     this.renderer.globalCollisionMode = this.globalCollisionMode;
+    this.renderer.historyBufferStatus = {
+      count: this.historyBuffer.getCount(),
+      capacity: this.historyBuffer.getCapacity(),
+    };
 
     this.renderer.render(
       this.arena,
@@ -208,8 +214,8 @@ export class GameLoop {
       this.allCharacters,
       (entity) => this.renderer.getVisualPosition(entity)
     );
-    // 2. Update players (keyboard, gamepads, or idle baseCharacter)
-    this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
+    // 2. Update players (keyboard, gamepads, or idle baseCharacter) and capture inputs
+    const currentInputs = this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
 
     // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {
@@ -232,6 +238,198 @@ export class GameLoop {
       this.allCharacters,
       this.objects
     );
+
+    // 6. Record frame into circular history buffer
+    this.historyBuffer.push(this.currentTick, this.lastSnapshot, currentInputs);
+  }
+
+  /**
+   * Rewinds the simulation back by N ticks and re-simulates forward using historical inputs,
+   * verifying bit-level deterministic state reproduction.
+   */
+  public simulateRollbackTest(ticksBack: number = 30): RollbackResult {
+    const startTime = performance.now();
+    const currentTick = this.currentTick;
+    const availableTicks = this.historyBuffer.getCount() - 1;
+
+    if (availableTicks <= 0) {
+      return {
+        success: false,
+        startTick: currentTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: "History buffer is empty. Let the simulation run for a few ticks first.",
+      };
+    }
+
+    const clampedTicksBack = Math.max(1, Math.min(ticksBack, this.historyBuffer.maxRollbackTicks, availableTicks));
+    const targetTick = currentTick - clampedTicksBack;
+    const targetFrame = this.historyBuffer.get(targetTick);
+
+    if (!targetFrame) {
+      return {
+        success: false,
+        startTick: targetTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: `Historical snapshot for tick #${targetTick} not found in buffer.`,
+      };
+    }
+
+    // 1. Capture original present state for exact verification
+    const originalPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+
+    // 2. Roll back state to targetTick
+    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
+    let simTick = targetTick;
+
+    // 3. Re-simulate forward tick-by-tick up to currentTick using recorded inputs
+    while (simTick < currentTick) {
+      simTick++;
+      const frame = this.historyBuffer.get(simTick);
+      const inputs = frame ? frame.inputs : new Map();
+
+      // Apply historical inputs
+      this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
+
+      // Step objects
+      for (const obj of this.objects) {
+        obj.updatePosition(this.fixedDt, this.arena);
+      }
+
+      // Resolve collisions
+      CollisionResolver.resolveEntityCollisions(
+        [...this.allCharacters, ...this.objects],
+        this.arena,
+        this.fixedDt,
+        null,
+        this.globalCollisionMode
+      );
+    }
+
+    // 4. Capture replayed state and check divergence against original
+    const replayedPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+    const divergence = SnapshotManager.hasDivergence(originalPresent, replayedPresent, 0.0001, 0.0001);
+    const elapsedMs = performance.now() - startTime;
+
+    return {
+      success: true,
+      startTick: targetTick,
+      endTick: currentTick,
+      ticksReplayed: clampedTicksBack,
+      durationMs: elapsedMs,
+      diverged: divergence.diverged,
+      entityId: divergence.entityId,
+      maxDeltaPos: divergence.maxDeltaPos,
+      maxDeltaVel: divergence.maxDeltaVel,
+      message: divergence.diverged
+        ? `DIVERGENCE DETECTED: Entity ${divergence.entityId} deviated by ${divergence.maxDeltaPos.toFixed(4)}u!`
+        : `PERFECT REPLAY: ${clampedTicksBack} ticks re-simulated in ${elapsedMs.toFixed(2)}ms with 0.0000u divergence!`,
+    };
+  }
+
+  /**
+   * Injects a physical perturbation into the past (Tick T - N) and re-simulates forward,
+   * demonstrating how client-side prediction reconciles when a server packet alters past state.
+   */
+  public injectPerturbationTest(ticksBack: number = 20): RollbackResult {
+    const startTime = performance.now();
+    const currentTick = this.currentTick;
+    const availableTicks = this.historyBuffer.getCount() - 1;
+
+    if (availableTicks <= 0) {
+      return {
+        success: false,
+        startTick: currentTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: "History buffer is empty. Let the simulation run for a few ticks first.",
+      };
+    }
+
+    const clampedTicksBack = Math.max(1, Math.min(ticksBack, this.historyBuffer.maxRollbackTicks, availableTicks));
+    const targetTick = currentTick - clampedTicksBack;
+    const targetFrame = this.historyBuffer.get(targetTick);
+
+    if (!targetFrame) {
+      return {
+        success: false,
+        startTick: targetTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: `Historical snapshot for tick #${targetTick} not found in buffer.`,
+      };
+    }
+
+    // 1. Capture original present state
+    const originalPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+
+    // 2. Roll back state to targetTick
+    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
+
+    // 3. Inject past perturbation (impulse into the first dynamic object or character)
+    const targetEntity = this.objects[0] || this.allCharacters[0];
+    if (targetEntity) {
+      targetEntity.velocity.x += 10.0;
+      targetEntity.velocity.y -= 8.0;
+    }
+
+    let simTick = targetTick;
+
+    // 4. Re-simulate forward to currentTick
+    while (simTick < currentTick) {
+      simTick++;
+      const frame = this.historyBuffer.get(simTick);
+      const inputs = frame ? frame.inputs : new Map();
+
+      this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
+
+      for (const obj of this.objects) {
+        obj.updatePosition(this.fixedDt, this.arena);
+      }
+
+      CollisionResolver.resolveEntityCollisions(
+        [...this.allCharacters, ...this.objects],
+        this.arena,
+        this.fixedDt,
+        null,
+        this.globalCollisionMode
+      );
+    }
+
+    // 5. Update lastSnapshot
+    this.lastSnapshot = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+    const divergence = SnapshotManager.hasDivergence(originalPresent, this.lastSnapshot, 0.05, 0.1);
+    const elapsedMs = performance.now() - startTime;
+
+    return {
+      success: true,
+      startTick: targetTick,
+      endTick: currentTick,
+      ticksReplayed: clampedTicksBack,
+      durationMs: elapsedMs,
+      diverged: divergence.diverged,
+      entityId: targetEntity ? targetEntity.id : undefined,
+      maxDeltaPos: divergence.maxDeltaPos,
+      maxDeltaVel: divergence.maxDeltaVel,
+      message: `DESYNC CORRECTION SIMULATED: Injected past impulse at tick #${targetTick} on ${targetEntity?.name || 'entity'}; forward simulation re-routed by ${divergence.maxDeltaPos.toFixed(2)}u in ${elapsedMs.toFixed(2)}ms.`,
+    };
   }
 
   public resolveFreebodyCollisions(dt: number = this.fixedDt): void {

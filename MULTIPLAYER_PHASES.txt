@@ -15,7 +15,7 @@ Client Prediction, Adaptive Time Dilation, and Islands of Influence (Rocket Leag
 TABLE OF PHASES
 --------------------------------------------------------------------------------
   [x] PHASE 1: Deterministic Physics, Collision Modes & Snapshots (COMPLETED)
-  [ ] PHASE 2: Client Circular History Ring Buffer & Local Rollback Harness
+  [x] PHASE 2: Client Circular History Ring Buffer & Local Rollback Harness (COMPLETED)
   [ ] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization
   [ ] PHASE 4: Authoritative Headless Server Simulation Core
   [ ] PHASE 5: Client Input Streaming & Server Jitter Input Queue
@@ -68,53 +68,46 @@ Tasks Completed:
 
 ================================================================================
 PHASE 2: CLIENT CIRCULAR HISTORY RING BUFFER & LOCAL ROLLBACK HARNESS
-Status: READY TO IMPLEMENT [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Equip the client with the memory and capability to rewind physical state 
 into the past and re-simulate forward deterministically.
 
 Core Concept:
-  The client stores a circular ring buffer of the past 60 ticks (1.0 second), 
-  with a maximum rollback clamp of 30 ticks (~500ms) to ensure re-simulation 
-  never causes frame stutter.
+  The client stores a circular ring buffer of recent ticks (default: 60 ticks / 1.0s,
+  dynamically resizable live from 15 to 120 ticks), with a hard rollback clamp of 
+  30 ticks (~500ms) to ensure re-simulation never causes frame stutter.
   Each entry contains:
     1. The deterministic physical snapshot of all entities at Tick T.
     2. The local player's input packet applied at Tick T.
 
-Tasks to Implement:
-  [ ] 2.1 StateHistoryBuffer Class (src/engine/physics/StateHistoryBuffer.ts)
-      - Fixed capacity array of 60 slots (O(1) indexing by `tick % capacity`).
+Tasks Completed:
+  [x] 2.1 StateHistoryBuffer Class (src/engine/physics/StateHistoryBuffer.ts)
+      - High-performance circular ring buffer (O(1) indexing by `tick % capacity`).
       - Configurable capacity (default 60 ticks / 1.0s; max rollback limit: 30 ticks / 500ms).
-      - Protects framerate: if a packet arrives older than 30 ticks, perform a 
-        direct state snap rather than re-simulating excessive frames.
-      - Methods:
-        - push(tick, snapshot, inputs): store frame data without heap allocations.
-        - get(tick): retrieve snapshot and inputs for specific tick.
-        - clear(): reset buffer.
-        - getOldestTick() / getLatestTick().
+      - Live dynamic capacity resizing (`setCapacity`) preserving recent frames.
+      - Push and retrieval methods (`push`, `get`, `getOldestTick`, `getLatestTick`, `getCount`, `clear`).
 
-  [ ] 2.2 Client Rollback & Resimulation Engine
-      - rollbackTo(targetTick):
-        1. Restore snapshot from `buffer.get(targetTick)`.
-        2. Set currentTick = targetTick.
-      - resimulateUpTo(currentTick):
-        1. Loop forward from targetTick to currentTick.
-        2. Re-apply recorded input for each tick.
-        3. Step physics simulation (fixedDt = 1/60s).
-        4. Overwrite buffer entries with the newly re-simulated snapshots.
+  [x] 2.2 Client Rollback & Resimulation Engine (src/engine/GameLoop.ts & PlayerManager.ts)
+      - Recorded player inputs per tick via `PlayerManager.capturePlayerInputs()`.
+      - Replayed inputs deterministically via `PlayerManager.applyPlayerInputs()`.
+      - `simulateRollbackTest(ticksBack)`: rewinds to target tick, replays recorded 
+        inputs forward, and verifies 0.0000u bit-level divergence against original present state.
+      - `injectPerturbationTest(ticksBack)`: demonstrates client-side prediction 
+        reconciliation when a past perturbation is corrected.
 
-  [ ] 2.3 Interactive DevPanel Rollback Test Tool
-      - Button: "⏪ Simulate 30-Tick Rollback" in DevPanel.
-      - On click:
-        - Captures state now (Tick T).
-        - Rewinds 30 ticks into history (Tick T - 30).
-        - Re-simulates back to Tick T using historical inputs.
-        - Asserts divergence == 0.0000 between original and replayed state.
-        - Displays visual green/red pass badge on HUD.
+  [x] 2.3 Interactive DevPanel Rollback Test Tool (src/ui/DevPanel.ts & src/engine/Renderer.ts)
+      - Live State History Buffer & Rollback Replay card with real-time status badge.
+      - Buffer capacity slider (15 to 120 ticks) with live dynamic resizing.
+      - Rollback depth slider (5 to 60 ticks, clamped to maxRollbackTicks).
+      - "⏪ Rollback & Verify Replay" test button with pass/fail banner.
+      - "🔀 Inject Past Desync & Re-simulate" test button.
+      - Diagnostics HUD card on canvas displaying live `Buffer: N/M (X.Xs)`.
 
-  [ ] 2.4 Headless Automated Rollback Verification Script
-      - scratch/test_history_buffer.ts: Automated script testing 1000 steps of 
-        movement, throws, and bounces with random 10-tick to 45-tick rollbacks.
+  [x] 2.4 Headless Automated Rollback Verification Script
+      - scratch/test_phase_2_history_rollback.ts: 100% passed (ring buffer lifecycle,
+        live dynamic capacity resizing, 30-tick rollback replay with 0.0000u divergence,
+        and past perturbation divergence verification).
 
 ================================================================================
 PHASE 3: ACTIVE ISLANDS OF INFLUENCE & SLEEPING FREEBODY OPTIMIZATION

@@ -506,6 +506,55 @@ export class DevPanel {
           </div>
         </div>
 
+        <!-- ⏪ Phase 2: State History & Deterministic Rollback -->
+        <div class="dev-section" id="section-history-rollback">
+          <h3>⏪ History Buffer & Rollback Replay</h3>
+          <p class="section-desc">Test local deterministic rewind, input replay, and desync reconciliation (Phase 2).</p>
+
+          <!-- Live Buffer Telemetry Badge -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 6px 10px; background: rgba(15, 23, 42, 0.65); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <span style="font-size: 0.74rem; color: #94a3b8;">Buffered Memory:</span>
+            <span id="badge-buffer-status" class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; font-weight: 600; font-size: 0.74rem;">
+              60/60 ticks (1.00s)
+            </span>
+          </div>
+
+          <!-- Buffer Capacity Slider (Dynamic live resizing) -->
+          <div class="slider-group" id="group-buffer-capacity" style="margin-bottom: 8px;">
+            <div class="slider-label">
+              <span>Buffer Capacity</span>
+              <span id="val-buffer-capacity">60 ticks (1.0s)</span>
+            </div>
+            <input type="range" id="slide-buffer-capacity" min="15" max="120" step="5" value="60">
+            <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 2px;">
+              Dynamic ring buffer size (15 to 120 ticks, 0.25s to 2.0s).
+            </span>
+          </div>
+
+          <!-- Rollback Replay Depth Slider -->
+          <div class="slider-group" id="group-rollback-depth" style="margin-bottom: 10px;">
+            <div class="slider-label">
+              <span>Test Rollback Depth</span>
+              <span id="val-rollback-depth">30 ticks (0.50s)</span>
+            </div>
+            <input type="range" id="slide-rollback-depth" min="5" max="60" step="5" value="30">
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
+            <button id="btn-test-rollback" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 600; background: rgba(16, 185, 129, 0.08);">
+              ⏪ Rollback & Verify Replay
+            </button>
+            <button id="btn-test-desync" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
+              🔀 Inject Past Desync & Re-simulate
+            </button>
+          </div>
+
+          <!-- Rollback Result Banner -->
+          <div id="banner-rollback-result" style="display: none; padding: 8px 10px; border-radius: 6px; font-size: 0.72rem; line-height: 1.4; margin-top: 4px; border: 1px solid transparent;">
+          </div>
+        </div>
+
         <!-- 🧩 Modular Capabilities & Physical Behaviors -->
 
         <div class="dev-section">
@@ -1927,6 +1976,64 @@ export class DevPanel {
       }
     });
 
+    // 6c. History Buffer & Rollback Replay Controls (Phase 2)
+    const btnTestRollback = this.container.querySelector("#btn-test-rollback") as HTMLButtonElement | null;
+    const btnTestDesync = this.container.querySelector("#btn-test-desync") as HTMLButtonElement | null;
+    const bannerRollbackResult = this.container.querySelector("#banner-rollback-result") as HTMLElement | null;
+
+    let rollbackDepthTicks = 30;
+
+    this.setupSlider("slide-buffer-capacity", "val-buffer-capacity", (val) => {
+      const loop = this.getGameLoop?.();
+      if (loop) {
+        loop.historyBuffer.setCapacity(val);
+        const valEl = this.container.querySelector("#val-buffer-capacity");
+        if (valEl) valEl.textContent = `${val} ticks (${(val / 60).toFixed(1)}s)`;
+        this.updateInspector();
+      }
+    }, 0);
+
+    this.setupSlider("slide-rollback-depth", "val-rollback-depth", (val) => {
+      rollbackDepthTicks = Math.round(val);
+      const valEl = this.container.querySelector("#val-rollback-depth");
+      if (valEl) valEl.textContent = `${rollbackDepthTicks} ticks (${(rollbackDepthTicks / 60).toFixed(2)}s)`;
+    }, 0);
+
+    btnTestRollback?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const res = loop.simulateRollbackTest(rollbackDepthTicks);
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        if (res.diverged) {
+          bannerRollbackResult.style.background = "rgba(239, 68, 68, 0.2)";
+          bannerRollbackResult.style.borderColor = "rgba(239, 68, 68, 0.5)";
+          bannerRollbackResult.style.color = "#f87171";
+          bannerRollbackResult.innerHTML = `<strong>❌ REPLAY DIVERGED:</strong> ${res.message}`;
+        } else {
+          bannerRollbackResult.style.background = "rgba(16, 185, 129, 0.2)";
+          bannerRollbackResult.style.borderColor = "rgba(16, 185, 129, 0.5)";
+          bannerRollbackResult.style.color = "#34d399";
+          bannerRollbackResult.innerHTML = `<strong>✅ PERFECT REPLAY:</strong> ${res.ticksReplayed} ticks replayed in ${res.durationMs.toFixed(2)}ms (0.0000u divergence)`;
+        }
+      }
+      this.updateInspector();
+    });
+
+    btnTestDesync?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const res = loop.injectPerturbationTest(rollbackDepthTicks);
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        bannerRollbackResult.style.background = "rgba(245, 158, 11, 0.2)";
+        bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
+        bannerRollbackResult.style.color = "#fbbf24";
+        bannerRollbackResult.innerHTML = `<strong>🔀 DESYNC RECONCILIATION:</strong> Injected past impulse at tick #${res.startTick}; re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.`;
+      }
+      this.updateInspector();
+    });
+
     // 7. World Physics Sliders
 
     this.setupSlider("slide-gravity", "val-gravity", (val) => {
@@ -2251,6 +2358,13 @@ export class DevPanel {
       entityModeBadge.textContent = eff === "continuous" ? "Continuous Swept" : "Discrete TOI";
       entityModeBadge.style.color = eff === "continuous" ? "#06b6d4" : "#10b981";
       entityModeBadge.style.background = eff === "continuous" ? "rgba(6, 182, 212, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+    const bufferBadge = this.container.querySelector("#badge-buffer-status") as HTMLElement | null;
+    if (bufferBadge && loop) {
+      const count = loop.historyBuffer.getCount();
+      const cap = loop.historyBuffer.getCapacity();
+      const secs = (count / 60).toFixed(2);
+      bufferBadge.textContent = `${count}/${cap} ticks (${secs}s)`;
     }
 
     this.inspectorEl.innerHTML = `
