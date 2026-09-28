@@ -29,6 +29,7 @@ export class Renderer {
     visualAltitudeScale: 0.5,
   };
   public showCollisionDebug = true;
+  public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -244,73 +245,326 @@ export class Renderer {
   }
 
   /**
-   * Renders visual indicators for continuous swept trajectories, contact points, and solver types.
+   * Renders visual indicators for continuous swept trajectories, contact points, normal arrows, and solver diagnostics.
    */
   private drawCollisionDebug(entities: GameObject[], ppu: number): void {
     const ctx = this.ctx;
+    const now = performance.now();
     ctx.save();
+
+    let ccdActiveCount = 0;
+    let mostRecentContact: {
+      type: "continuous_swept" | "discrete_toi" | "naive";
+      elapsed: number;
+      name: string;
+    } | null = null;
 
     for (const entity of entities) {
       if (!entity.hasCollider) continue;
+      if (entity.isSweptActive) ccdActiveCount++;
+
       const r = entity.colliderRadius * ppu;
       const sx = entity.position.x * ppu;
       const sy = (entity.position.y - entity.position.z * this.getHoverScale()) * ppu;
+      const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
 
-      // Draw swept trajectory capsule when continuous mode is active and moving
+      // Track most recent contact for the corner HUD
+      if (entity.lastCollisionTime > 0 && now - entity.lastCollisionTime < 1200 && entity.lastCollisionType !== "none") {
+        const elapsed = now - entity.lastCollisionTime;
+        if (!mostRecentContact || elapsed < mostRecentContact.elapsed) {
+          mostRecentContact = {
+            type: entity.lastCollisionType,
+            elapsed,
+            name: entity.name || "Entity",
+          };
+        }
+      }
+
+      // 1. Continuous Swept CCD Visuals
       if (entity.isSweptActive) {
-        const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+        // Glowing cyan aura ring around collider
+        ctx.strokeStyle = "rgba(6, 182, 212, 0.65)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Mini [CCD] floating badge above entity
+        const badgeY = sy - r - 10;
+        ctx.font = "bold 9px Inter, system-ui, sans-serif";
+        const badgeW = 26;
+        const badgeH = 13;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.beginPath();
+        ctx.roundRect(sx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 3);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(6, 182, 212, 0.85)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = "#06b6d4";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("CCD", sx, badgeY + 0.5);
+
+        // Forward Swept Volume (Capsule) when moving
+        if (speed > 0.05) {
+          // Lookahead ticks: minimum 3 ticks (50ms) to extend clearly past the collider circle
+          const lookaheadTicks = Math.max(3.0, Math.min(8.0, 36 / Math.max(1, (speed * ppu) / 60)));
+          const forwardDx = entity.velocity.x * (lookaheadTicks / 60) * ppu;
+          const forwardDy = entity.velocity.y * (lookaheadTicks / 60) * ppu;
+          const forwardDist = Math.hypot(forwardDx, forwardDy);
+
+          if (forwardDist > 1) {
+            const ux = forwardDx / forwardDist;
+            const uy = forwardDy / forwardDist;
+            const nx = -uy;
+            const ny = ux;
+
+            // Semi-transparent swept volume fill
+            ctx.fillStyle = "rgba(6, 182, 212, 0.15)";
+            ctx.beginPath();
+            ctx.arc(sx, sy, r, Math.atan2(ny, nx) + Math.PI / 2, Math.atan2(ny, nx) + (3 * Math.PI) / 2, false);
+            ctx.lineTo(sx + forwardDx + nx * r, sy + forwardDy + ny * r);
+            ctx.arc(sx + forwardDx, sy + forwardDy, r, Math.atan2(ny, nx) - Math.PI / 2, Math.atan2(ny, nx) + Math.PI / 2, false);
+            ctx.lineTo(sx - nx * r, sy - ny * r);
+            ctx.closePath();
+            ctx.fill();
+
+            // Side rails
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.65)";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(sx + nx * r, sy + ny * r);
+            ctx.lineTo(sx + forwardDx + nx * r, sy + forwardDy + ny * r);
+            ctx.moveTo(sx - nx * r, sy - ny * r);
+            ctx.lineTo(sx + forwardDx - nx * r, sy + forwardDy - ny * r);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Leading cap outline
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.85)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(sx + forwardDx, sy + forwardDy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Center trajectory ray
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.9)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + forwardDx, sy + forwardDy);
+            ctx.stroke();
+
+            // Trajectory arrowhead
+            const headLen = 6;
+            ctx.fillStyle = "#06b6d4";
+            ctx.beginPath();
+            ctx.moveTo(sx + forwardDx, sy + forwardDy);
+            ctx.lineTo(
+              sx + forwardDx - headLen * ux + headLen * 0.45 * nx,
+              sy + forwardDy - headLen * uy + headLen * 0.45 * ny
+            );
+            ctx.lineTo(
+              sx + forwardDx - headLen * ux - headLen * 0.45 * nx,
+              sy + forwardDy - headLen * uy - headLen * 0.45 * ny
+            );
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      } else {
+        // 2. Discrete TOI Visuals
+        // Subtle emerald aura ring
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.35)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Mini [TOI] floating badge above entity
+        const badgeY = sy - r - 10;
+        ctx.font = "bold 9px Inter, system-ui, sans-serif";
+        const badgeW = 24;
+        const badgeH = 13;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.beginPath();
+        ctx.roundRect(sx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 3);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.8)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = "#10b981";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("TOI", sx, badgeY + 0.5);
+
+        // Discrete step velocity trail
         if (speed > 0.1) {
-          const vx = (entity.velocity.x * (1 / 60)) * ppu;
-          const vy = (entity.velocity.y * (1 / 60)) * ppu;
-
-          ctx.strokeStyle = "rgba(6, 182, 212, 0.75)"; // Cyan
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.moveTo(sx - vx, sy - vy);
-          ctx.lineTo(sx, sy);
-          ctx.stroke();
-
-          // Swept head outline
-          ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
+          const stepDx = entity.velocity.x * (1 / 60) * ppu;
+          const stepDy = entity.velocity.y * (1 / 60) * ppu;
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.75)";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + stepDx * 3, sy + stepDy * 3);
           ctx.stroke();
         }
       }
 
-      // Draw contact point and normal if collision occurred recently
-      if (entity.lastContactPoint && entity.lastCollisionType !== "none") {
+      // 3. Contact Point & Normal Visuals with Smooth 1.2s Decay
+      if (entity.lastContactPoint && entity.lastCollisionType !== "none" && now - entity.lastCollisionTime < 1200) {
+        const elapsed = now - entity.lastCollisionTime;
+        const decay = Math.max(0, 1 - elapsed / 1200);
+        const isCCD = entity.lastCollisionType === "continuous_swept";
+        const isNaive = entity.lastCollisionType === "naive";
+        const mainColor = isCCD ? "#06b6d4" : (isNaive ? "#f59e0b" : "#10b981");
+        const mainColorRgba = isCCD ? "6, 182, 212" : (isNaive ? "245, 158, 11" : "16, 185, 129");
+
         const px = entity.lastContactPoint.x * ppu;
         const py = entity.lastContactPoint.y * ppu;
 
-        // Contact pip
-        ctx.fillStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
+        // Expanding shockwave ripple ring
+        const rippleRadius = 4 + 20 * (1 - decay);
+        ctx.strokeStyle = `rgba(${mainColorRgba}, ${decay * 0.8})`;
+        ctx.lineWidth = Math.max(1, 2.5 * decay);
         ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(px, py, rippleRadius, 0, Math.PI * 2);
+        ctx.stroke();
 
-        // Contact normal arrow
+        // Glowing contact pip
+        const pipRadius = 3 + 2.5 * decay;
+        ctx.shadowColor = mainColor;
+        ctx.shadowBlur = 8 * decay;
+        ctx.fillStyle = mainColor;
+        ctx.beginPath();
+        ctx.arc(px, py, pipRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Contact normal arrow with sharp arrowhead
         if (entity.lastContactNormal) {
-          const nx = entity.lastContactNormal.x * 16;
-          const ny = entity.lastContactNormal.y * 16;
-          ctx.strokeStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
-          ctx.lineWidth = 2;
+          const arrowLen = 30 * Math.min(1, decay * 1.5);
+          const nx = entity.lastContactNormal.x;
+          const ny = entity.lastContactNormal.y;
+          const tipX = px + nx * arrowLen;
+          const tipY = py + ny * arrowLen;
+
+          ctx.strokeStyle = `rgba(${mainColorRgba}, ${Math.min(1, decay * 1.3)})`;
+          ctx.lineWidth = 2.5;
           ctx.beginPath();
           ctx.moveTo(px, py);
-          ctx.lineTo(px + nx, py + ny);
+          ctx.lineTo(tipX, tipY);
           ctx.stroke();
+
+          // Triangular arrowhead
+          const hLen = 7;
+          const perpX = -ny;
+          const perpY = nx;
+          ctx.fillStyle = mainColor;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(
+            tipX - hLen * nx + hLen * 0.45 * perpX,
+            tipY - hLen * ny + hLen * 0.45 * perpY
+          );
+          ctx.lineTo(
+            tipX - hLen * nx - hLen * 0.45 * perpX,
+            tipY - hLen * ny - hLen * 0.45 * perpY
+          );
+          ctx.closePath();
+          ctx.fill();
         }
 
-        // Mini badge
-        ctx.font = "bold 9px sans-serif";
-        ctx.fillStyle = entity.lastCollisionType === "continuous_swept" ? "#06b6d4" : "#10b981";
-        ctx.fillText(
-          entity.lastCollisionType === "continuous_swept" ? "CCD" : "TOI",
-          sx - 10,
-          sy - r - 6
-        );
+        // Floating impact banner
+        const bannerText = isCCD ? "⚡ CCD IMPACT" : (isNaive ? "⚡ NAIVE PUSH" : "⚡ TOI CONTACT");
+        ctx.font = "bold 9.5px Inter, system-ui, sans-serif";
+        const textWidth = ctx.measureText(bannerText).width;
+        const bannerW = textWidth + 12;
+        const bannerH = 16;
+        const bannerX = px;
+        const bannerY = py - 18 - 8 * (1 - decay);
+
+        ctx.fillStyle = `rgba(15, 23, 42, ${0.9 * decay})`;
+        ctx.beginPath();
+        ctx.roundRect(bannerX - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 4);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${mainColorRgba}, ${decay})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = `rgba(${mainColorRgba}, ${decay})`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(bannerText, bannerX, bannerY);
+
+        // Body impact flash ring
+        ctx.strokeStyle = `rgba(${mainColorRgba}, ${decay * 0.65})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 2 + 5 * (1 - decay), 0, Math.PI * 2);
+        ctx.stroke();
       }
+    }
+
+    // 4. Canvas Bottom-Right Collision Diagnostics HUD
+    const cardW = 208;
+    const cardH = 68;
+    const cardX = ctx.canvas.width - cardW - 16;
+    const cardY = ctx.canvas.height - cardH - 16;
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, cardW, cardH, 6);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // HUD Header with status pip
+    ctx.fillStyle = "#06b6d4";
+    ctx.beginPath();
+    ctx.arc(cardX + 12, cardY + 14, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = "bold 9.5px Inter, system-ui, sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText("COLLISION DIAGNOSTICS", cardX + 22, cardY + 14);
+
+    // Global Mode line
+    const modeUpper = String(this.globalCollisionMode).toUpperCase();
+    ctx.font = "9px Inter, system-ui, sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("Solver Mode:", cardX + 12, cardY + 31);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "bold 9px Inter, system-ui, sans-serif";
+    ctx.fillText(modeUpper === "DYNAMIC" ? "DYNAMIC ADAPTIVE" : modeUpper, cardX + 78, cardY + 31);
+
+    // Sweeping CCD & Recent Impact
+    ctx.font = "9px Inter, system-ui, sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("CCD Active:", cardX + 12, cardY + 45);
+    ctx.fillStyle = ccdActiveCount > 0 ? "#06b6d4" : "#94a3b8";
+    ctx.font = "bold 9px Inter, system-ui, sans-serif";
+    ctx.fillText(`${ccdActiveCount} sweeping`, cardX + 78, cardY + 45);
+
+    ctx.font = "9px Inter, system-ui, sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("Last Impact:", cardX + 12, cardY + 58);
+    if (mostRecentContact) {
+      const typeLabel = mostRecentContact.type === "continuous_swept" ? "CCD" : (mostRecentContact.type === "naive" ? "NAIVE" : "TOI");
+      const typeColor = mostRecentContact.type === "continuous_swept" ? "#06b6d4" : (mostRecentContact.type === "naive" ? "#f59e0b" : "#10b981");
+      ctx.fillStyle = typeColor;
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      ctx.fillText(`${typeLabel} (${(mostRecentContact.elapsed / 1000).toFixed(1)}s ago)`, cardX + 78, cardY + 58);
+    } else {
+      ctx.fillStyle = "#64748b";
+      ctx.fillText("None (ready)", cardX + 78, cardY + 58);
     }
 
     ctx.restore();

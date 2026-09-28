@@ -24,11 +24,14 @@ export class CollisionResolver {
   ): void {
     const count = entities.length;
 
-    // Reset single-frame collision diagnostics
+    // Update continuous swept status and expire diagnostics older than 1.2s
+    const now = performance.now();
     for (let i = 0; i < count; i++) {
       const e = entities[i];
-      e.isSweptActive = e.getEffectiveCollisionMode(dt) === "continuous";
-      e.lastCollisionType = "none";
+      e.isSweptActive = globalMode === "continuous" || (globalMode !== "naive" && globalMode !== "discrete" && e.getEffectiveCollisionMode(dt) === "continuous");
+      if (e.lastCollisionTime > 0 && now - e.lastCollisionTime > 1200) {
+        e.lastCollisionType = "none";
+      }
     }
 
     if (globalMode === "naive") {
@@ -311,9 +314,11 @@ export class CollisionResolver {
     entity.position.x += entity.velocity.x * remDt;
     entity.position.y += entity.velocity.y * remDt;
 
+    const nowWall = performance.now();
     entity.lastCollisionType = mode === "continuous" ? "continuous_swept" : "discrete_toi";
     entity.lastContactPoint = { x: cx, y: cy };
     entity.lastContactNormal = { x: normX, y: normY };
+    entity.lastCollisionTime = nowWall;
 
     return true;
   }
@@ -337,6 +342,7 @@ export class CollisionResolver {
     const isMasslessB = !b.hasMass;
 
     // Contact metadata
+    const now = performance.now();
     const midX = (a.position.x + b.position.x) * 0.5;
     const midY = (a.position.y + b.position.y) * 0.5;
     a.lastContactPoint = { x: midX, y: midY };
@@ -345,6 +351,8 @@ export class CollisionResolver {
     b.lastContactNormal = { x: normX, y: normY };
     a.lastCollisionType = collisionType;
     b.lastCollisionType = collisionType;
+    a.lastCollisionTime = now;
+    b.lastCollisionTime = now;
 
     // Case 1: Both objects are massless (50/50 impulse)
     if (isMasslessA && isMasslessB) {
@@ -458,8 +466,17 @@ export class CollisionResolver {
             const relVy = b.velocity.y - a.velocity.y;
             const velAlongNormal = relVx * normX + relVy * normY;
 
+            const nowNaive = performance.now();
             a.lastCollisionType = "naive";
             b.lastCollisionType = "naive";
+            a.lastCollisionTime = nowNaive;
+            b.lastCollisionTime = nowNaive;
+            const midX = (a.position.x + b.position.x) * 0.5;
+            const midY = (a.position.y + b.position.y) * 0.5;
+            a.lastContactPoint = { x: midX, y: midY };
+            b.lastContactPoint = { x: midX, y: midY };
+            a.lastContactNormal = { x: -normX, y: -normY };
+            b.lastContactNormal = { x: normX, y: normY };
 
             const isMasslessA = !a.hasMass;
             const isMasslessB = !b.hasMass;

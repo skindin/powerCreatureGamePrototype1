@@ -143,6 +143,8 @@ export class GameLoop {
     const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
     const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
+    this.renderer.globalCollisionMode = this.globalCollisionMode;
+
     this.renderer.render(
       this.arena,
       this.allCharacters,

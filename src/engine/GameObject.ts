@@ -34,6 +34,7 @@ export class GameObject {
   public lastContactPoint: { x: number; y: number } | null = null;
   public lastContactNormal: { x: number; y: number } | null = null;
   public isSweptActive: boolean = false;
+  public lastCollisionTime: number = 0;
 
   private _staticVelocity: Vector2D = { x: 0, y: 0 };
 
@@ -380,6 +381,8 @@ export class GameObject {
       // Static entity without rigidbody dynamics: does not integrate velocity or motion
       return;
     }
+
+    this.isSweptActive = this.getEffectiveCollisionMode(dt) === "continuous";
 
     // If thrown, track when it has exited thrower's reach or settled on a surface
     if (this.lastThrower) {
@@ -944,17 +947,33 @@ export class GameObject {
 
       if (this.position.x < minX) {
         this.position.x = minX;
+        this.lastContactPoint = { x: 0, y: this.position.y };
+        this.lastContactNormal = { x: 1, y: 0 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(1, 0, bRestitution);
       } else if (this.position.x > maxX) {
         this.position.x = maxX;
+        this.lastContactPoint = { x: arena.width, y: this.position.y };
+        this.lastContactNormal = { x: -1, y: 0 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(-1, 0, bRestitution);
       }
 
       if (this.position.y < minY) {
         this.position.y = minY;
+        this.lastContactPoint = { x: this.position.x, y: 0 };
+        this.lastContactNormal = { x: 0, y: 1 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, 1, bRestitution);
       } else if (this.position.y > maxY) {
         this.position.y = maxY;
+        this.lastContactPoint = { x: this.position.x, y: arena.height };
+        this.lastContactNormal = { x: 0, y: -1 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, -1, bRestitution);
       }
 
@@ -1149,6 +1168,12 @@ export class GameObject {
 
       this.position.x += normalX * overlap;
       this.position.y += normalY * overlap;
+
+      // Record contact diagnostics for wall impacts
+      this.lastContactPoint = { x: closestX, y: closestY };
+      this.lastContactNormal = { x: normalX, y: normalY };
+      this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+      this.lastCollisionTime = performance.now();
 
       // When ascending in a jump that can reach or clear the wall top, do not destroy
       // horizontal velocity into the wall so the character can smoothly vault onto the wall platform!
