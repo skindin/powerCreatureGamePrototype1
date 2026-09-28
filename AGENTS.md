@@ -20,6 +20,10 @@
 > 7. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
 >
 > If a new feature requires interacting with these systems, interact strictly through their existing public APIs. Do not modify the source files.
+>
+> **Enforcement Mechanics**:
+> - **OS-Level Lock**: Marked with Windows file system `attrib +r` (IsReadOnly = True). Any write attempt triggers an immediate OS `Access is denied` / `EPERM` error.
+> - **Git Pre-Commit Hook**: Enforced via `.githooks/pre-commit`. Any commit attempting to stage these files will be aborted automatically.
 
 ---
 
