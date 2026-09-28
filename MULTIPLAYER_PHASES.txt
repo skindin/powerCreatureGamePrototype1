@@ -74,14 +74,19 @@ Goal: Equip the client with the memory and capability to rewind physical state
 into the past and re-simulate forward deterministically.
 
 Core Concept:
-  The client stores a circular ring buffer of the past 120 ticks (2.0 seconds).
+  The client stores a circular ring buffer of the past 60 ticks (1.0 second), 
+  with a maximum rollback clamp of 30 ticks (~500ms) to ensure re-simulation 
+  never causes frame stutter.
   Each entry contains:
     1. The deterministic physical snapshot of all entities at Tick T.
     2. The local player's input packet applied at Tick T.
 
 Tasks to Implement:
   [ ] 2.1 StateHistoryBuffer Class (src/engine/physics/StateHistoryBuffer.ts)
-      - Fixed capacity array of 120 slots (O(1) indexing by `tick % 120`).
+      - Fixed capacity array of 60 slots (O(1) indexing by `tick % capacity`).
+      - Configurable capacity (default 60 ticks / 1.0s; max rollback limit: 30 ticks / 500ms).
+      - Protects framerate: if a packet arrives older than 30 ticks, perform a 
+        direct state snap rather than re-simulating excessive frames.
       - Methods:
         - push(tick, snapshot, inputs): store frame data without heap allocations.
         - get(tick): retrieve snapshot and inputs for specific tick.

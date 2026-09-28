@@ -188,7 +188,7 @@ In an arena with 50+ freebodies (rocks, food, crates, dummies), rolling back the
 
 - [ ] **Phase 1.2.2: State Snapshot & Circular History Ring Buffer**
   - Define serializable `StateSnapshot` (positions $x, y, z$, velocities $vx, vy, vz$, angular velocities, holding connections, climbing state).
-  - 120-tick circular buffer in client simulation loop.
+  - 60-tick circular buffer in client simulation loop (1.0s history, with 30-tick / 500ms max rollback clamp to protect framerate).
   - Add DevPanel "Simulate Rollback" debugging button (rewind 30 ticks locally, change input, verify fast-forward replay).
 
 - [ ] **Phase 1.2.3: Active Islands of Influence Graph**
