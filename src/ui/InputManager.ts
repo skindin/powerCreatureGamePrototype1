@@ -51,9 +51,8 @@ export class InputManager {
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
 
-  // Pointer lock state (for hidden mouse cursor and raw mouse input)
+  // Pointer lock state (disabled: free and visible cursor)
   public isPointerLocked = false;
-  private ignoreNextPointerLockDelta = false;
   public devPanel?: DevPanel;
 
   // Whether keyboard and mouse input to the character is suspended (e.g. after pressing Escape)
@@ -61,32 +60,19 @@ export class InputManager {
   public isKeyboardSuspended = false;
 
   public requestPointerLock(): void {
-    if (typeof document === "undefined" || !this.canvas) return;
-    if (this.devPanel?.isEditMode) return;
-    try {
-      if ((this.canvas as any).requestPointerLock) {
-        const promise = (this.canvas as any).requestPointerLock({ unadjustedMovement: true });
-        if (promise && typeof promise.catch === "function") {
-          promise.catch(() => {
-            try {
-              this.canvas.requestPointerLock();
-            } catch {}
-          });
-        }
-      }
-    } catch {
-      try {
-        this.canvas.requestPointerLock();
-      } catch {}
-    }
+    // Disabled: keep cursor free and visible at all times
   }
 
   public exitPointerLock(): void {
-    if (typeof document === "undefined") return;
-    if (document.pointerLockElement) {
+    if (typeof document !== "undefined" && document.pointerLockElement) {
       try {
         document.exitPointerLock();
       } catch {}
+    }
+    this.isPointerLocked = false;
+    if (typeof document !== "undefined") {
+      document.body.classList.remove("pointer-locked");
+      this.canvas.classList.remove("pointer-locked");
     }
   }
 
@@ -319,23 +305,10 @@ export class InputManager {
     });
 
     document.addEventListener("pointerlockchange", () => {
-      this.isPointerLocked = (document.pointerLockElement === this.canvas);
-      if (this.isPointerLocked) {
-        this.ignoreNextPointerLockDelta = true;
-      } else if (!this.devPanel?.isEditMode) {
-        // When pointer lock is lost (e.g. via Escape), suspend keyboard and mouse control
-        this.isKeyboardSuspended = true;
-        this.keysPressed.clear();
-        this.isQKeyDepressed = false;
-        this.isEKeyDepressed = false;
-        this.isKeyboardSprintActive = false;
-        this.isMouseDown = false;
-        this.isRightMouseDown = false;
-        this.updateMovementVector();
-      }
+      this.isPointerLocked = false;
       if (typeof document !== "undefined") {
-        document.body.classList.toggle("pointer-locked", this.isPointerLocked);
-        this.canvas.classList.toggle("pointer-locked", this.isPointerLocked);
+        document.body.classList.remove("pointer-locked");
+        this.canvas.classList.remove("pointer-locked");
       }
     });
 
@@ -351,11 +324,6 @@ export class InputManager {
       // Resume keyboard/mouse control when clicking on the game view
       const wasSuspended = this.isKeyboardSuspended;
       this.isKeyboardSuspended = false;
-
-      // Request pointer lock when clicking on the game view during Play Mode
-      if (!this.isPointerLocked && !this.devPanel?.isEditMode) {
-        this.requestPointerLock();
-      }
 
       this.updateMousePos(e);
 
@@ -471,32 +439,9 @@ export class InputManager {
   }
 
   private updateMousePos(e: MouseEvent): void {
-    if (this.isPointerLocked) {
-      if (this.ignoreNextPointerLockDelta) {
-        this.ignoreNextPointerLockDelta = false;
-        return;
-      }
-      if (e.movementX === 0 && e.movementY === 0) {
-        return;
-      }
-      const rect = this.canvas.getBoundingClientRect();
-      const unitsPerPixelX = this.arena.width / Math.max(1, rect.width);
-      const unitsPerPixelY = this.arena.height / Math.max(1, rect.height);
-      const dx = (e.movementX || 0) * unitsPerPixelX;
-      const dy = (e.movementY || 0) * unitsPerPixelY;
-
-      const newX = Math.max(0.05, Math.min(this.arena.width - 0.05, this.actualMousePos.x + dx));
-      const newY = Math.max(0.05, Math.min(this.arena.height - 0.05, this.actualMousePos.y + dy));
-      this.actualMousePos.x = newX;
-      this.actualMousePos.y = newY;
-      this.mousePos.x = newX;
-      this.mousePos.y = newY;
-      return;
-    }
-
     const rect = this.canvas.getBoundingClientRect();
-    const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / rect.width)));
-    const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / rect.height)));
+    const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
+    const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
     this.actualMousePos.x = mx;
     this.actualMousePos.y = my;
     this.mousePos.x = mx;
