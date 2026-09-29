@@ -126,6 +126,20 @@ export class StateHistoryBuffer {
     return null;
   }
 
+  /**
+   * Updates/rewrites the physical snapshot for an existing historical frame (used during reconciliation).
+   */
+  public updateSnapshot(tick: number, snapshot: WorldSnapshot): boolean {
+    if (tick < this.oldestTick || tick > this.latestTick) return false;
+    const idx = tick % this.capacity;
+    const frame = this.buffer[idx];
+    if (frame && frame.tick === tick) {
+      frame.snapshot = snapshot;
+      return true;
+    }
+    return false;
+  }
+
   public getOldestTick(): number {
     return this.oldestTick;
   }

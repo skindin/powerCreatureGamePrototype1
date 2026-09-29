@@ -499,7 +499,13 @@ export class GameLoop {
 
     let simTick = targetTick;
 
-    // 4. Re-simulate forward to currentTick
+    // Update targetTick snapshot with the newly perturbed state
+    this.historyBuffer.updateSnapshot(
+      targetTick,
+      SnapshotManager.capture(targetTick, this.allCharacters, this.objects)
+    );
+
+    // 4. Re-simulate forward to currentTick, rewriting each historical frame along the way
     while (simTick < currentTick) {
       simTick++;
       const frame = this.historyBuffer.get(simTick);
@@ -518,6 +524,10 @@ export class GameLoop {
         null,
         this.globalCollisionMode
       );
+
+      // Overwrite the historical snapshot in the ring buffer with the newly simulated reality
+      const stepSnapshot = SnapshotManager.capture(simTick, this.allCharacters, this.objects);
+      this.historyBuffer.updateSnapshot(simTick, stepSnapshot);
 
       reconciledPath.push({
         x: targetEntity.position.x,

@@ -159,6 +159,7 @@ powerCreatureGamePrototype1/
   - Hard rollback clamp of **30 ticks (~500ms)**: prevents CPU starvation by guaranteeing re-simulation never exceeds 30 ticks within a single 16.6ms render frame.
   - **Live Dynamic Capacity Resizing (`setCapacity`)**: Supports dynamic resizing on the fly (15 to 120 ticks) from UI sliders without resetting or losing recent historical frames.
   - Stores paired `WorldSnapshot` and `Map<string, PlayerInputPacket>` per frame.
+  - **Historical Snapshot Rewriting on Reconciliation (`updateSnapshot`)**: When client prediction reconciles a past perturbation/correction at tick $T - N$, each intermediate frame from $T - N$ to $T$ in the circular buffer is actively rewritten with the re-simulated reality. The live buffer trail instantly snaps to the corrected timeline.
 - **Enhanced Deterministic Snapshot Engine (`src/engine/physics/Snapshot.ts`)**:
   - Exact 64-bit IEEE float retention for local history buffer (eliminates quantization drift during local re-simulation).
   - Captures and restores `facingAngle`, `isSprinting`, `standingWallId`, and 3D angular velocities (`angX`, `angY`, `angZ`) for roll modules.
