@@ -56,6 +56,7 @@ export class DevPanel {
   public onSelectionChange?: (entity: GameObject | null) => void;
   public getGameLoop?: () => any;
   public getRenderer?: () => any;
+  public rollbackDepthTicks: number = 30;
 
 
   // Preserved Creator State
@@ -532,12 +533,20 @@ export class DevPanel {
           </div>
 
           <!-- Rollback Replay Depth Slider -->
-          <div class="slider-group" id="group-rollback-depth" style="margin-bottom: 10px;">
+          <div class="slider-group" id="group-rollback-depth" style="margin-bottom: 8px;">
             <div class="slider-label">
               <span>Test Rollback Depth</span>
               <span id="val-rollback-depth">30 ticks (0.50s)</span>
             </div>
             <input type="range" id="slide-rollback-depth" min="5" max="60" step="5" value="30">
+          </div>
+
+          <!-- Live Buffer Trail Toggle -->
+          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 8px;">
+            <label style="font-size: 0.78rem;">Show Live Buffer Trail</label>
+            <button id="toggle-buffer-trail" class="btn-toggle active">
+              ON
+            </button>
           </div>
 
           <!-- Action Buttons -->
@@ -1997,8 +2006,6 @@ export class DevPanel {
     const btnTestDesync = this.container.querySelector("#btn-test-desync") as HTMLButtonElement | null;
     const bannerRollbackResult = this.container.querySelector("#banner-rollback-result") as HTMLElement | null;
 
-    let rollbackDepthTicks = 30;
-
     this.setupSlider("slide-buffer-capacity", "val-buffer-capacity", (val) => {
       const loop = this.getGameLoop?.();
       if (loop) {
@@ -2010,15 +2017,31 @@ export class DevPanel {
     }, 0);
 
     this.setupSlider("slide-rollback-depth", "val-rollback-depth", (val) => {
-      rollbackDepthTicks = Math.round(val);
+      this.rollbackDepthTicks = Math.round(val);
       const valEl = this.container.querySelector("#val-rollback-depth");
-      if (valEl) valEl.textContent = `${rollbackDepthTicks} ticks (${(rollbackDepthTicks / 60).toFixed(2)}s)`;
+      if (valEl) valEl.textContent = `${this.rollbackDepthTicks} ticks (${(this.rollbackDepthTicks / 60).toFixed(2)}s)`;
     }, 0);
+
+    const toggleBufferTrail = this.container.querySelector("#toggle-buffer-trail") as HTMLButtonElement | null;
+    if (toggleBufferTrail) {
+      const rend = this.getRenderer?.();
+      const isShow = rend ? rend.showBufferTrail : true;
+      toggleBufferTrail.textContent = isShow ? "ON" : "OFF";
+      toggleBufferTrail.classList.toggle("active", isShow);
+
+      toggleBufferTrail.addEventListener("click", () => {
+        const r = this.getRenderer?.();
+        if (!r) return;
+        r.showBufferTrail = !r.showBufferTrail;
+        toggleBufferTrail.textContent = r.showBufferTrail ? "ON" : "OFF";
+        toggleBufferTrail.classList.toggle("active", r.showBufferTrail);
+      });
+    }
 
     btnTestRollback?.addEventListener("click", () => {
       const loop = this.getGameLoop?.();
       if (!loop) return;
-      const res = loop.simulateRollbackTest(rollbackDepthTicks);
+      const res = loop.simulateRollbackTest(this.rollbackDepthTicks);
       if (bannerRollbackResult) {
         bannerRollbackResult.style.display = "block";
         if (res.diverged) {
@@ -2039,7 +2062,7 @@ export class DevPanel {
     btnTestDesync?.addEventListener("click", () => {
       const loop = this.getGameLoop?.();
       if (!loop) return;
-      const res = loop.injectPerturbationTest(rollbackDepthTicks, this.selectedEntity);
+      const res = loop.injectPerturbationTest(this.rollbackDepthTicks, this.selectedEntity);
       if (bannerRollbackResult) {
         bannerRollbackResult.style.display = "block";
         bannerRollbackResult.style.background = "rgba(245, 158, 11, 0.2)";

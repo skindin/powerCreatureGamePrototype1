@@ -151,6 +151,43 @@ export class GameLoop {
       capacity: this.historyBuffer.getCapacity(),
     };
 
+    // Update live continuous buffer trail diagnostics for selected entity (or player)
+    if (this.renderer.showBufferTrail) {
+      const targetEntity = this.devPanel?.selectedEntity || this.allCharacters[0];
+      if (targetEntity) {
+        const targetId = targetEntity.id;
+        const allFrames = this.historyBuffer.getAllFrames();
+        const trailPoints: RollbackPathPoint[] = [];
+        for (const f of allFrames) {
+          const snap = f.snapshot.entities.find((e) => e.id === targetId);
+          if (snap) {
+            trailPoints.push({ x: snap.x, y: snap.y, z: snap.z, tick: f.tick });
+          }
+        }
+        trailPoints.push({
+          x: targetEntity.position.x,
+          y: targetEntity.position.y,
+          z: targetEntity.position.z,
+          tick: this.currentTick,
+        });
+
+        const depth = this.devPanel?.rollbackDepthTicks ?? 30;
+        const targetDepthTick = Math.max(this.historyBuffer.getOldestTick(), this.currentTick - depth);
+
+        this.renderer.liveBufferTrail = {
+          enabled: true,
+          points: trailPoints,
+          targetDepthTick,
+          radius: targetEntity.colliderRadius,
+          entityName: targetEntity.name,
+        };
+      } else {
+        this.renderer.liveBufferTrail = null;
+      }
+    } else {
+      this.renderer.liveBufferTrail = null;
+    }
+
     this.renderer.render(
       this.arena,
       this.allCharacters,

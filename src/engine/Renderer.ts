@@ -41,6 +41,14 @@ export interface RollbackVisualData {
   deltaPos: number;
 }
 
+export interface LiveBufferTrailData {
+  enabled: boolean;
+  points: RollbackPathPoint[];
+  targetDepthTick: number;
+  radius: number;
+  entityName: string;
+}
+
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private trajectoryRenderer: TrajectoryRenderer;
@@ -53,6 +61,8 @@ export class Renderer {
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
   public historyBufferStatus?: { count: number; capacity: number };
   public rollbackDiagnostics: RollbackVisualData | null = null;
+  public showBufferTrail = true;
+  public liveBufferTrail: LiveBufferTrailData | null = null;
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -263,6 +273,9 @@ export class Renderer {
 
     // 12c. Rollback & Reconciliation Ghost Trails
     this.drawRollbackDiagnostics(ppu);
+
+    // 12d. Live State History Buffer Continuous Trail & Target Marker
+    this.drawLiveBufferTrail(ppu);
 
     // 13. Simulation Paused Overlay (when all players are removed)
     if (isPaused) {
@@ -737,6 +750,132 @@ export class Renderer {
       ctx.fillStyle = `rgba(${mainRgb}, ${alpha})`;
       ctx.textAlign = "center";
       ctx.fillText(badgeText, newEnd.x, newEnd.y + Math.max(8, diag.radius * ppu) + 14);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders the connected historical trajectory of the entity sitting in the live buffer.
+   * Shows all buffered points connected together, with a prominent target pin at (T - depth).
+   */
+  private drawLiveBufferTrail(ppu: number): void {
+    if (!this.showBufferTrail || !this.liveBufferTrail) return;
+    const { points, targetDepthTick, radius } = this.liveBufferTrail;
+    if (points.length < 2) return;
+
+    const ctx = this.ctx;
+    const hoverScale = this.getHoverScale();
+    const toScreen = (pt: { x: number; y: number; z: number }) => ({
+      x: pt.x * ppu,
+      y: (pt.y - pt.z * hoverScale) * ppu,
+    });
+
+    ctx.save();
+
+    // 1. Draw glowing connected ribbon through all buffered frames
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Fading gradient: oldest frames are more translucent, newest are brighter
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = toScreen(points[i]);
+      const p1 = toScreen(points[i + 1]);
+      const progress = i / (points.length - 1); // 0 (oldest) -> 1 (newest)
+      const alpha = 0.22 + 0.65 * progress;
+
+      ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+
+    // 2. Waypoint pips every 5 frames along the buffer ribbon
+    for (let i = 0; i < points.length; i += 5) {
+      const pt = toScreen(points[i]);
+      const progress = i / (points.length - 1);
+      ctx.fillStyle = `rgba(56, 189, 248, ${0.35 + 0.55 * progress})`;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3. Highlight the exact Rollback / Desync Target Frame (Tick T - depth)
+    let targetPt = points.find((p) => p.tick === targetDepthTick);
+    if (!targetPt && points.length > 0) {
+      let minDiff = Infinity;
+      for (const p of points) {
+        const diff = Math.abs(p.tick - targetDepthTick);
+        if (diff < minDiff) {
+          minDiff = diff;
+          targetPt = p;
+        }
+      }
+    }
+
+    if (targetPt) {
+      const tp = toScreen(targetPt);
+
+      // Pulsing amber double ring
+      const timeMs = performance.now();
+      const pulse = Math.sin(timeMs * 0.007) * 2.0;
+      const targetRadius = Math.max(8, radius * ppu) + pulse;
+
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, targetRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, targetRadius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Precision crosshairs
+      ctx.strokeStyle = "#f59e0b";
+      ctx.beginPath();
+      ctx.moveTo(tp.x - targetRadius - 4, tp.y);
+      ctx.lineTo(tp.x + targetRadius + 4, tp.y);
+      ctx.moveTo(tp.x, tp.y - targetRadius - 4);
+      ctx.lineTo(tp.x, tp.y + targetRadius + 4);
+      ctx.stroke();
+
+      // Floating Pin Badge: "📍 PAST TARGET (Tick #T-N)"
+      const badgeY = tp.y - targetRadius - 13;
+      const badgeText = `📍 PAST TARGET (Tick #${targetPt.tick})`;
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      const tw = ctx.measureText(badgeText).width;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      ctx.beginPath();
+      ctx.roundRect(tp.x - tw / 2 - 6, badgeY - 7, tw + 12, 16, 4);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = "#fbbf24";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(badgeText, tp.x, badgeY + 1);
+    }
+
+    // 4. Oldest Point in Buffer Marker
+    if (points.length > 5) {
+      const op = toScreen(points[0]);
+      ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
+      ctx.beginPath();
+      ctx.arc(op.x, op.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = "8px Inter, system-ui, sans-serif";
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "center";
+      ctx.fillText(`Buffer Oldest (T#${points[0].tick})`, op.x, op.y + 11);
     }
 
     ctx.restore();

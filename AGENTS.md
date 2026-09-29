@@ -174,6 +174,10 @@ powerCreatureGamePrototype1/
   - **History Buffer & Rollback Replay Card**: Real-time tick count and duration badge (`#badge-buffer-status`), buffer capacity slider (15 to 120 ticks), rollback depth slider (5 to 60 ticks), and interactive test buttons:
     - `⏪ Rollback & Verify Replay`: Rewinds world state $N$ ticks, replays historical player inputs, and confirms 100% bit-level reproducibility ($0.0000\text{u}$ drift). Renders a cyan replay ghost trail on canvas.
     - `💥 Simulate Past Tackle & Reconcile`: Simulates an external tackle hitting the selected entity $N$ ticks in the past and reconciling forward. Renders side-by-side **Ghost Trails** (dashed red path for old prediction, yellow impact shockwave at $T - N$, and solid emerald path for reconciled timeline with offset label).
+  - **Live Continuous Buffer Trail & Past Target Marker (`Renderer.ts`)**:
+    - Connects all historical points currently sitting in the live buffer into a continuous glowing ribbon behind the active entity, with waypoint pips every 5 frames.
+    - Features a real-time pulsing amber **`📍 PAST TARGET (Tick #T-N)`** double-ring marker and crosshair pinned to the exact tick index from the rollback slider, showing where past events will occur before the user clicks.
+    - Toggleable live via the **"Show Live Buffer Trail"** switch in the DevPanel.
   - **Diagnostics HUD**: Bottom-right canvas HUD card displays real-time `State Buffer: N/M (X.Xs)`.
 - **Headless Test Suite**:
   - `scratch/test_phase_2_history_rollback.ts`: 100% passed (ring buffer lifecycle, dynamic resizing, 30-tick rollback replay with 0.0000u divergence, and past perturbation divergence verification).
