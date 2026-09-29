@@ -1,7 +1,7 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
-import { Renderer } from "./Renderer.js";
+import { Renderer, RollbackPathPoint } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
@@ -291,6 +291,14 @@ export class GameLoop {
     SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
     let simTick = targetTick;
 
+    const targetEntity = this.devPanel?.selectedEntity || this.allCharacters[0];
+    const replayedPath: RollbackPathPoint[] = [{
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: targetTick,
+    }];
+
     // 3. Re-simulate forward tick-by-tick up to currentTick using recorded inputs
     while (simTick < currentTick) {
       simTick++;
@@ -313,12 +321,33 @@ export class GameLoop {
         null,
         this.globalCollisionMode
       );
+
+      replayedPath.push({
+        x: targetEntity.position.x,
+        y: targetEntity.position.y,
+        z: targetEntity.position.z,
+        tick: simTick,
+      });
     }
 
     // 4. Capture replayed state and check divergence against original
     const replayedPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
     const divergence = SnapshotManager.hasDivergence(originalPresent, replayedPresent, 0.0001, 0.0001);
     const elapsedMs = performance.now() - startTime;
+
+    // Display replayed ghost trace on canvas
+    this.renderer.rollbackDiagnostics = {
+      type: "pure_replay",
+      targetName: targetEntity.name,
+      startTick: targetTick,
+      endTick: currentTick,
+      timestamp: performance.now(),
+      durationMs: 3500,
+      radius: targetEntity.colliderRadius,
+      originalPath: replayedPath,
+      reconciledPath: replayedPath,
+      deltaPos: divergence.maxDeltaPos,
+    };
 
     return {
       success: true,
@@ -380,16 +409,38 @@ export class GameLoop {
     // 1. Capture original present state
     const originalPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
 
-    // 2. Roll back state to targetTick
-    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
-
-    // 3. Inject past perturbation (impulse into the selected entity, held object, or first dynamic body)
+    // Identify target entity to apply the simulated tackle to
     let candidate: GameObject | null | undefined = targetOverride || this.devPanel?.selectedEntity;
     if (candidate && !candidate.hasRigidbody) {
       candidate = null;
     }
     const targetEntity = candidate || this.objects.find(o => o.hasRigidbody) || this.allCharacters[0];
-    if (targetEntity && targetEntity.hasRigidbody) {
+    const targetId = targetEntity.id;
+
+    // Capture the original predicted path from the history buffer for comparison
+    const originalPath: RollbackPathPoint[] = [];
+    for (let t = targetTick; t <= currentTick; t++) {
+      const f = this.historyBuffer.get(t);
+      if (f) {
+        const entSnap = f.snapshot.entities.find(e => e.id === targetId);
+        if (entSnap) {
+          originalPath.push({ x: entSnap.x, y: entSnap.y, z: entSnap.z, tick: t });
+        }
+      }
+    }
+    originalPath.push({
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: currentTick,
+    });
+
+    // 2. Roll back state to targetTick
+    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
+    const impactPos = { x: targetEntity.position.x, y: targetEntity.position.y, z: targetEntity.position.z };
+
+    // 3. Inject past tackle impulse (simulating an external hit or collision from another player)
+    if (targetEntity.hasRigidbody) {
       const speed = Math.hypot(targetEntity.velocity.x, targetEntity.velocity.y);
       if (speed > 1.0) {
         const perpX = -targetEntity.velocity.y / speed;
@@ -401,6 +452,13 @@ export class GameLoop {
         targetEntity.velocity.y -= 10.0;
       }
     }
+
+    const reconciledPath: RollbackPathPoint[] = [{
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: targetTick,
+    }];
 
     let simTick = targetTick;
 
@@ -423,12 +481,34 @@ export class GameLoop {
         null,
         this.globalCollisionMode
       );
+
+      reconciledPath.push({
+        x: targetEntity.position.x,
+        y: targetEntity.position.y,
+        z: targetEntity.position.z,
+        tick: simTick,
+      });
     }
 
     // 5. Update lastSnapshot
     this.lastSnapshot = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
     const divergence = SnapshotManager.hasDivergence(originalPresent, this.lastSnapshot, 0.05, 0.1);
     const elapsedMs = performance.now() - startTime;
+
+    // Trigger ghost visual diagnostics showing old vs. new path
+    this.renderer.rollbackDiagnostics = {
+      type: "desync_tackle",
+      targetName: targetEntity.name,
+      startTick: targetTick,
+      endTick: currentTick,
+      timestamp: performance.now(),
+      durationMs: 4500, // 4.5 seconds of smooth visibility
+      radius: targetEntity.colliderRadius,
+      originalPath,
+      reconciledPath,
+      impactPos,
+      deltaPos: divergence.maxDeltaPos,
+    };
 
     return {
       success: true,
@@ -440,7 +520,7 @@ export class GameLoop {
       entityId: targetEntity ? targetEntity.id : undefined,
       maxDeltaPos: divergence.maxDeltaPos,
       maxDeltaVel: divergence.maxDeltaVel,
-      message: `DESYNC CORRECTION SIMULATED: Injected past impulse at tick #${targetTick} on ${targetEntity?.name || 'entity'}; forward simulation re-routed by ${divergence.maxDeltaPos.toFixed(2)}u in ${elapsedMs.toFixed(2)}ms.`,
+      message: `PAST TACKLE RECONCILED: Injected tackle impulse at tick #${targetTick} on ${targetEntity?.name || 'entity'}; forward timeline re-routed by ${divergence.maxDeltaPos.toFixed(2)}u in ${elapsedMs.toFixed(2)}ms.`,
     };
   }
 

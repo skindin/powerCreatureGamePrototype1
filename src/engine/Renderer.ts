@@ -20,6 +20,27 @@ export interface ActiveAimCursor {
   isGamepad: boolean;
 }
 
+export interface RollbackPathPoint {
+  x: number;
+  y: number;
+  z: number;
+  tick: number;
+}
+
+export interface RollbackVisualData {
+  type: "desync_tackle" | "pure_replay";
+  targetName: string;
+  startTick: number;
+  endTick: number;
+  timestamp: number;
+  durationMs: number;
+  radius: number;
+  originalPath: RollbackPathPoint[];
+  reconciledPath: RollbackPathPoint[];
+  impactPos?: { x: number; y: number; z: number };
+  deltaPos: number;
+}
+
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private trajectoryRenderer: TrajectoryRenderer;
@@ -31,6 +52,7 @@ export class Renderer {
   public showCollisionDebug = false;
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
   public historyBufferStatus?: { count: number; capacity: number };
+  public rollbackDiagnostics: RollbackVisualData | null = null;
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -238,6 +260,9 @@ export class Renderer {
     if (this.showCollisionDebug) {
       this.drawCollisionDebug(allRenderables, ppu);
     }
+
+    // 12c. Rollback & Reconciliation Ghost Trails
+    this.drawRollbackDiagnostics(ppu);
 
     // 13. Simulation Paused Overlay (when all players are removed)
     if (isPaused) {
@@ -578,6 +603,140 @@ export class Renderer {
       ctx.font = "bold 9px Inter, system-ui, sans-serif";
       const secs = (this.historyBufferStatus.count / 60).toFixed(1);
       ctx.fillText(`${this.historyBufferStatus.count}/${this.historyBufferStatus.capacity} (${secs}s)`, cardX + 78, cardY + 71);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders the ghost trajectories showing the past prediction vs. the reconciled simulation timeline.
+   */
+  private drawRollbackDiagnostics(ppu: number): void {
+    const diag = this.rollbackDiagnostics;
+    if (!diag) return;
+
+    const now = performance.now();
+    const elapsed = now - diag.timestamp;
+    if (elapsed > diag.durationMs) {
+      this.rollbackDiagnostics = null;
+      return;
+    }
+
+    const decay = 1.0 - (elapsed / diag.durationMs);
+    const alpha = Math.max(0, Math.min(1, decay * 1.25));
+    const ctx = this.ctx;
+    const hoverScale = this.getHoverScale();
+
+    ctx.save();
+
+    const toScreen = (pt: { x: number; y: number; z: number }) => ({
+      x: pt.x * ppu,
+      y: (pt.y - pt.z * hoverScale) * ppu,
+    });
+
+    // 1. Draw Original Prediction Path (Faded Red/Amber)
+    if (diag.type === "desync_tackle" && diag.originalPath.length > 1) {
+      ctx.strokeStyle = `rgba(244, 63, 94, ${alpha * 0.75})`;
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      for (let i = 0; i < diag.originalPath.length; i++) {
+        const pt = toScreen(diag.originalPath[i]);
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Waypoint pips along the old path
+      ctx.fillStyle = `rgba(244, 63, 94, ${alpha * 0.6})`;
+      for (let i = 0; i < diag.originalPath.length; i += 4) {
+        const pt = toScreen(diag.originalPath[i]);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Old present ghost ring
+      const oldEnd = toScreen(diag.originalPath[diag.originalPath.length - 1]);
+      ctx.strokeStyle = `rgba(244, 63, 94, ${alpha * 0.85})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(oldEnd.x, oldEnd.y, Math.max(8, diag.radius * ppu), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Pill badge above old end
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      ctx.fillStyle = `rgba(244, 63, 94, ${alpha * 0.9})`;
+      ctx.textAlign = "center";
+      ctx.fillText("Old Predicted Path", oldEnd.x, oldEnd.y - Math.max(8, diag.radius * ppu) - 8);
+    }
+
+    // 2. If Past Tackle: Draw Impact marker at startTick
+    if (diag.impactPos) {
+      const imp = toScreen(diag.impactPos);
+
+      // Expanding yellow pulse ring
+      const pulseSize = 6 + 14 * (1 - decay);
+      ctx.strokeStyle = `rgba(251, 191, 36, ${alpha * 0.85})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(imp.x, imp.y, pulseSize, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Impact center star / pip
+      ctx.fillStyle = `rgba(251, 191, 36, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(imp.x, imp.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Floating impact badge
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      ctx.fillStyle = `rgba(251, 191, 36, ${alpha})`;
+      ctx.textAlign = "center";
+      ctx.fillText(`⚡ PAST TACKLE (Tick #${diag.startTick})`, imp.x, imp.y - 12);
+    }
+
+    // 3. Draw New Reconciled Path (Vibrant Emerald / Cyan)
+    if (diag.reconciledPath.length > 1) {
+      const mainRgb = diag.type === "pure_replay" ? "6, 182, 212" : "16, 185, 129";
+      ctx.strokeStyle = `rgba(${mainRgb}, ${alpha * 0.95})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let i = 0; i < diag.reconciledPath.length; i++) {
+        const pt = toScreen(diag.reconciledPath[i]);
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+
+      // Waypoint pips along the re-simulated path
+      ctx.fillStyle = `rgba(${mainRgb}, ${alpha * 0.9})`;
+      for (let i = 0; i < diag.reconciledPath.length; i += 4) {
+        const pt = toScreen(diag.reconciledPath[i]);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Reconciled present ring
+      const newEnd = toScreen(diag.reconciledPath[diag.reconciledPath.length - 1]);
+      ctx.strokeStyle = `rgba(${mainRgb}, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(newEnd.x, newEnd.y, Math.max(8, diag.radius * ppu), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Present badge
+      const badgeText = diag.type === "pure_replay"
+        ? `✅ DETERMINISTIC REPLAY (${diag.endTick - diag.startTick} ticks, 0.0000u drift)`
+        : `✅ Reconciled Position (Δ ${diag.deltaPos.toFixed(2)}u)`;
+      ctx.font = "bold 9.5px Inter, system-ui, sans-serif";
+      ctx.fillStyle = `rgba(${mainRgb}, ${alpha})`;
+      ctx.textAlign = "center";
+      ctx.fillText(badgeText, newEnd.x, newEnd.y + Math.max(8, diag.radius * ppu) + 14);
     }
 
     ctx.restore();

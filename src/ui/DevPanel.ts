@@ -553,10 +553,10 @@ export class DevPanel {
 
             <div>
               <button id="btn-test-desync" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
-                🔀 Inject Past Desync & Re-simulate
+                💥 Simulate Past Tackle & Reconcile
               </button>
               <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
-                Simulates an authoritative server correction on the selected entity N ticks in the past and reconciles forward. Click any creature or item in the arena to target it!
+                Simulates an external tackle hitting the selected entity N ticks in the past. Renders the old predicted path (red) vs. re-simulated reconciled path (green) on canvas!
               </span>
             </div>
           </div>
@@ -2045,7 +2045,7 @@ export class DevPanel {
         bannerRollbackResult.style.background = "rgba(245, 158, 11, 0.2)";
         bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
         bannerRollbackResult.style.color = "#fbbf24";
-        bannerRollbackResult.innerHTML = `<strong>🔀 DESYNC RECONCILIATION:</strong> Injected past impulse at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>; re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.`;
+        bannerRollbackResult.innerHTML = `<strong>💥 PAST TACKLE RECONCILED:</strong> Simulated tackle at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>. Re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Canvas shows: Red dashed path = Old prediction | Green solid path = Reconciled timeline.</span>`;
       }
       this.updateInspector();
     });

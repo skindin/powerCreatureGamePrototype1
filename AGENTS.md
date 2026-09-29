@@ -172,8 +172,8 @@ powerCreatureGamePrototype1/
   - `injectPerturbationTest(ticksBack)`: injects a past velocity perturbation at tick $T - N$ and re-simulates forward to demonstrate client-side prediction reconciliation when past state is corrected.
 - **Live Interactive DevPanel Controls & HUD Integration (`DevPanel.ts` & `Renderer.ts`)**:
   - **History Buffer & Rollback Replay Card**: Real-time tick count and duration badge (`#badge-buffer-status`), buffer capacity slider (15 to 120 ticks), rollback depth slider (5 to 60 ticks), and interactive test buttons:
-    - `⏪ Rollback & Verify Replay`
-    - `🔀 Inject Past Desync & Re-simulate`
+    - `⏪ Rollback & Verify Replay`: Rewinds world state $N$ ticks, replays historical player inputs, and confirms 100% bit-level reproducibility ($0.0000\text{u}$ drift). Renders a cyan replay ghost trail on canvas.
+    - `💥 Simulate Past Tackle & Reconcile`: Simulates an external tackle hitting the selected entity $N$ ticks in the past and reconciling forward. Renders side-by-side **Ghost Trails** (dashed red path for old prediction, yellow impact shockwave at $T - N$, and solid emerald path for reconciled timeline with offset label).
   - **Diagnostics HUD**: Bottom-right canvas HUD card displays real-time `State Buffer: N/M (X.Xs)`.
 - **Headless Test Suite**:
   - `scratch/test_phase_2_history_rollback.ts`: 100% passed (ring buffer lifecycle, dynamic resizing, 30-tick rollback replay with 0.0000u divergence, and past perturbation divergence verification).
