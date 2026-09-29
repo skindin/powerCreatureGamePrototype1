@@ -500,8 +500,8 @@ export class DevPanel {
           <!-- Collision Visuals Toggle -->
           <div class="toggle-row" style="margin-top: 6px;">
             <label style="font-size: 0.78rem;">Show CCD / TOI Visuals</label>
-            <button id="toggle-collision-visuals" class="btn-toggle active">
-              ON
+            <button id="toggle-collision-visuals" class="btn-toggle">
+              OFF
             </button>
           </div>
         </div>
@@ -1966,15 +1966,20 @@ export class DevPanel {
       this.onSpawnObject(cannonBall);
     });
 
-    toggleCollisionVisuals?.addEventListener("click", () => {
+    if (toggleCollisionVisuals) {
       const rend = this.getRenderer?.();
-      if (!rend) return;
-      rend.showCollisionDebug = !rend.showCollisionDebug;
-      if (toggleCollisionVisuals) {
-        toggleCollisionVisuals.textContent = rend.showCollisionDebug ? "ON" : "OFF";
-        toggleCollisionVisuals.classList.toggle("active", rend.showCollisionDebug);
-      }
-    });
+      const isShow = rend ? rend.showCollisionDebug : false;
+      toggleCollisionVisuals.textContent = isShow ? "ON" : "OFF";
+      toggleCollisionVisuals.classList.toggle("active", isShow);
+
+      toggleCollisionVisuals.addEventListener("click", () => {
+        const r = this.getRenderer?.();
+        if (!r) return;
+        r.showCollisionDebug = !r.showCollisionDebug;
+        toggleCollisionVisuals.textContent = r.showCollisionDebug ? "ON" : "OFF";
+        toggleCollisionVisuals.classList.toggle("active", r.showCollisionDebug);
+      });
+    }
 
     // 6c. History Buffer & Rollback Replay Controls (Phase 2)
     const btnTestRollback = this.container.querySelector("#btn-test-rollback") as HTMLButtonElement | null;

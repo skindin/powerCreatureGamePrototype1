@@ -28,7 +28,7 @@ export class Renderer {
     verticalVisuals: "hover",
     visualAltitudeScale: 0.5,
   };
-  public showCollisionDebug = true;
+  public showCollisionDebug = false;
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
   public historyBufferStatus?: { count: number; capacity: number };
 

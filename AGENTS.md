@@ -144,12 +144,13 @@ powerCreatureGamePrototype1/
   - **Selected Entity Collision Mode**: Inspect and override collision policy per entity (`dynamic`, `discrete`, `continuous`).
   - **Test Cannon Spawner**: `🚀 Launch High-Speed Ball (40 u/s)` instantly tests tunneling against walls in real time.
   - **Physics Simulation Controls**: `⏸️ Pause Sim` and `⏭️ Step 1 Tick (1/60s)` for frame-by-frame impact inspection.
-  - **Canvas Visual Diagnostics & Persistent Decay**:
+  - **Canvas Visual Diagnostics & Persistent Decay (Toggleable, Default: OFF)**:
+    - **Toggle Button**: "Show CCD / TOI Visuals" button in DevPanel toggles all collision overlays and HUD on/off dynamically (defaults to OFF for clean gameplay).
     - **1.2-Second Contact Persistence**: Contact points, expanding shockwave rings, 30px normal vector arrows with triangular arrowheads, and floating banners (`⚡ CCD IMPACT` / `⚡ TOI CONTACT` / `⚡ NAIVE PUSH`) smoothly decay and fade over 1.2s ($1200\text{ms}$) instead of wiping out on the next 16.6ms tick.
     - **Entity-to-Wall & Boundary Diagnostics**: Both arena wall impacts and outer boundary impacts record contact point, normal, collision mode, and timestamp.
     - **Forward Swept Capsule Lookahead**: Active continuous entities (`isSweptActive`) moving at speed render a glowing cyan forward swept volume (capsule) with tangent rails, leading circle cap, translucent fill, and center ray arrow.
     - **Entity Mode Rings & Badges**: Active entities render floating `[CCD]` (cyan) and `[TOI]` (emerald) pill badges and collider status rings.
-    - **Corner Solver Diagnostics HUD**: Compact glassmorphic HUD card in bottom-right corner displaying current solver mode, active sweeping bodies count, and most recent collision event time.
+    - **Corner Solver Diagnostics HUD**: Compact glassmorphic HUD card in bottom-right corner displaying current solver mode, active sweeping bodies count, most recent collision event time, and buffer status.
 
 ### Client History Buffer & Deterministic Rollback Replay (Phase 2 — Fully Functional)
 - **State History Circular Ring Buffer (`src/engine/physics/StateHistoryBuffer.ts`)**:
