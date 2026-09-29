@@ -818,30 +818,20 @@ export class Renderer {
     if (targetPt) {
       const tp = toScreen(targetPt);
 
-      // Pulsing amber double ring
-      const timeMs = performance.now();
-      const pulse = Math.sin(timeMs * 0.007) * 2.0;
-      const targetRadius = Math.max(8, radius * ppu) + pulse;
+      // Clean, static target indicator ring (no pulsing shrink/grow, no crosshairs)
+      const targetRadius = Math.max(8, radius * ppu);
 
+      // Soft amber ground glow
+      ctx.fillStyle = "rgba(245, 158, 11, 0.15)";
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, targetRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Clean solid amber ring
       ctx.strokeStyle = "#f59e0b";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(tp.x, tp.y, targetRadius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(tp.x, tp.y, targetRadius + 4, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Precision crosshairs
-      ctx.strokeStyle = "#f59e0b";
-      ctx.beginPath();
-      ctx.moveTo(tp.x - targetRadius - 4, tp.y);
-      ctx.lineTo(tp.x + targetRadius + 4, tp.y);
-      ctx.moveTo(tp.x, tp.y - targetRadius - 4);
-      ctx.lineTo(tp.x, tp.y + targetRadius + 4);
       ctx.stroke();
 
       // Floating Pin Badge: "📍 PAST TARGET (Tick #T-N)"

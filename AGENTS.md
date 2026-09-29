@@ -177,7 +177,7 @@ powerCreatureGamePrototype1/
     - `💥 Simulate Past Tackle & Reconcile`: Simulates an external tackle hitting the selected entity $N$ ticks in the past and reconciling forward. Renders side-by-side **Ghost Trails** (dashed red path for old prediction, yellow impact shockwave at $T - N$, and solid emerald path for reconciled timeline with offset label).
   - **Live Continuous Buffer Trail & Past Target Marker (`Renderer.ts`)**:
     - Connects all historical points currently sitting in the live buffer into a continuous glowing ribbon behind the active entity, with waypoint pips every 5 frames.
-    - Features a real-time pulsing amber **`📍 PAST TARGET (Tick #T-N)`** double-ring marker and crosshair pinned to the exact tick index from the rollback slider, showing where past events will occur before the user clicks.
+    - Features a clean, static amber **`📍 PAST TARGET (Tick #T-N)`** circular marker pinned to the exact tick index from the rollback slider, showing where past events will occur before the user clicks (clean static ring with subtle amber fill, no pulsing or crosshairs).
     - Toggleable live via the **"Show Live Buffer Trail"** switch in the DevPanel.
   - **Diagnostics HUD**: Bottom-right canvas HUD card displays real-time `State Buffer: N/M (X.Xs)`.
 - **Headless Test Suite**:
