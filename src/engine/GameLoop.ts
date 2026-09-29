@@ -340,7 +340,7 @@ export class GameLoop {
    * Injects a physical perturbation into the past (Tick T - N) and re-simulates forward,
    * demonstrating how client-side prediction reconciles when a server packet alters past state.
    */
-  public injectPerturbationTest(ticksBack: number = 20): RollbackResult {
+  public injectPerturbationTest(ticksBack: number = 20, targetOverride?: GameObject | null): RollbackResult {
     const startTime = performance.now();
     const currentTick = this.currentTick;
     const availableTicks = this.historyBuffer.getCount() - 1;
@@ -383,11 +383,23 @@ export class GameLoop {
     // 2. Roll back state to targetTick
     SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
 
-    // 3. Inject past perturbation (impulse into the first dynamic object or character)
-    const targetEntity = this.objects[0] || this.allCharacters[0];
-    if (targetEntity) {
-      targetEntity.velocity.x += 10.0;
-      targetEntity.velocity.y -= 8.0;
+    // 3. Inject past perturbation (impulse into the selected entity, held object, or first dynamic body)
+    let candidate: GameObject | null | undefined = targetOverride || this.devPanel?.selectedEntity;
+    if (candidate && !candidate.hasRigidbody) {
+      candidate = null;
+    }
+    const targetEntity = candidate || this.objects.find(o => o.hasRigidbody) || this.allCharacters[0];
+    if (targetEntity && targetEntity.hasRigidbody) {
+      const speed = Math.hypot(targetEntity.velocity.x, targetEntity.velocity.y);
+      if (speed > 1.0) {
+        const perpX = -targetEntity.velocity.y / speed;
+        const perpY = targetEntity.velocity.x / speed;
+        targetEntity.velocity.x += perpX * 12.0;
+        targetEntity.velocity.y += perpY * 12.0;
+      } else {
+        targetEntity.velocity.x += 12.0;
+        targetEntity.velocity.y -= 10.0;
+      }
     }
 
     let simTick = targetTick;

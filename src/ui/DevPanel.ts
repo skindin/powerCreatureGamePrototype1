@@ -541,13 +541,24 @@ export class DevPanel {
           </div>
 
           <!-- Action Buttons -->
-          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
-            <button id="btn-test-rollback" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 600; background: rgba(16, 185, 129, 0.08);">
-              ⏪ Rollback & Verify Replay
-            </button>
-            <button id="btn-test-desync" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
-              🔀 Inject Past Desync & Re-simulate
-            </button>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+            <div>
+              <button id="btn-test-rollback" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 600; background: rgba(16, 185, 129, 0.08);">
+                ⏪ Rollback & Verify Replay
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Rewinds world state N ticks, replays recorded inputs forward, and verifies 0.0000u bit-level precision. (Tip: Run, jump, or throw an item, click ⏸️ Pause Sim, then test rollback).
+              </span>
+            </div>
+
+            <div>
+              <button id="btn-test-desync" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
+                🔀 Inject Past Desync & Re-simulate
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Simulates an authoritative server correction on the selected entity N ticks in the past and reconciles forward. Click any creature or item in the arena to target it!
+              </span>
+            </div>
           </div>
 
           <!-- Rollback Result Banner -->
@@ -2028,13 +2039,13 @@ export class DevPanel {
     btnTestDesync?.addEventListener("click", () => {
       const loop = this.getGameLoop?.();
       if (!loop) return;
-      const res = loop.injectPerturbationTest(rollbackDepthTicks);
+      const res = loop.injectPerturbationTest(rollbackDepthTicks, this.selectedEntity);
       if (bannerRollbackResult) {
         bannerRollbackResult.style.display = "block";
         bannerRollbackResult.style.background = "rgba(245, 158, 11, 0.2)";
         bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
         bannerRollbackResult.style.color = "#fbbf24";
-        bannerRollbackResult.innerHTML = `<strong>🔀 DESYNC RECONCILIATION:</strong> Injected past impulse at tick #${res.startTick}; re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.`;
+        bannerRollbackResult.innerHTML = `<strong>🔀 DESYNC RECONCILIATION:</strong> Injected past impulse at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>; re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.`;
       }
       this.updateInspector();
     });
