@@ -1842,7 +1842,7 @@ export class Renderer {
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (posX - vx) * ppu;
+    const groundX = (obj.position.x - vx) * ppu;
     const wallTopScreenY = (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
