@@ -9,11 +9,9 @@ import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 import { StateHistoryBuffer, RollbackResult, PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
-import { PredictionReconciliation, ReconciliationResult } from "./physics/PredictionReconciliation.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
-import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 
-export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
+export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager };
 
 
@@ -434,38 +432,6 @@ export class GameLoop {
     }
 
     this.maxObjectDrift = maxDrift;
-  }
-
-  /**
-   * Phase 8: Reconciles incoming authoritative world snapshot against local prediction history.
-   * If predicted transforms match within error deadzones, confirms prediction and prunes older history.
-   * If divergence occurred, rolls back, reapplies server correction, fast-forwards physics re-simulation,
-   * and sets render smoothing dampeners to eliminate visual popping.
-   */
-  public reconcileWorldSnapshot(snapshot: AuthoritativeWorldSnapshot): ReconciliationResult {
-    const result = PredictionReconciliation.reconcile(
-      snapshot,
-      this.historyBuffer,
-      this.currentTick,
-      this.allCharacters,
-      this.objects,
-      this.arena,
-      this.playerManager,
-      this.islandManager,
-      this.fixedDt,
-      this.globalCollisionMode,
-      this.devPanel?.isEditMode ?? false
-    );
-
-    if (this.renderer) {
-      this.renderer.reconciliationStatus = {
-        totalReconciliations: PredictionReconciliation.totalReconciliations,
-        totalSuccesses: PredictionReconciliation.totalSuccesses,
-        lastResult: result,
-      };
-    }
-
-    return result;
   }
 
   /**

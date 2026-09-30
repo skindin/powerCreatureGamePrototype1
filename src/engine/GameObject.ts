@@ -40,21 +40,6 @@ export class GameObject {
   public isSleeping: boolean = false;
   public sleepTimer: number = 0; // Number of consecutive ticks with near-zero kinetic energy
 
-  // Phase 8: Client Prediction Reconciliation & Visual Smoothing Dampener
-  public visualOffset: Vector2D = { x: 0, y: 0 };
-
-  /**
-   * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
-   * Eliminates visual popping when physical prediction reconciles.
-   */
-  public decayVisualOffset(factor: number = 0.70): void {
-    if (this.visualOffset.x === 0 && this.visualOffset.y === 0) return;
-    this.visualOffset.x *= factor;
-    this.visualOffset.y *= factor;
-    if (Math.abs(this.visualOffset.x) < 0.001) this.visualOffset.x = 0;
-    if (Math.abs(this.visualOffset.y) < 0.001) this.visualOffset.y = 0;
-  }
-
   /**
    * Immediately wakes up a sleeping body.
    */

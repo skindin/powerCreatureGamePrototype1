@@ -97,7 +97,6 @@ export class Character extends GameObject {
   public activeTrajectory: TrajectoryCalculation | null;
 
   constructor(options: {
-    id?: string;
     x?: number;
     y?: number;
     color?: string;
@@ -110,7 +109,6 @@ export class Character extends GameObject {
   } = {}) {
     const initialColor = options.color ?? "#f59e0b";
     super({
-      id: options.id,
       name: options.name ?? `Player ${options.playerNumber ?? 1}`,
       position: { x: options.x ?? 5.0, y: options.y ?? 7.0, z: 0 },
       mass: options.mass ?? 1.2,

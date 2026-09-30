@@ -22,7 +22,7 @@ TABLE OF PHASES
   [x] PHASE 5: Client Input Streaming & Server Jitter Input Queue (COMPLETED)
   [x] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control) (COMPLETED)
   [x] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression (COMPLETED)
-  [x] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener (COMPLETED)
+  [ ] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener
   [ ] PHASE 9: Remote Player Entity Interpolation & Flight Handoff
   [ ] PHASE 10: Multiplayer Room UI, Matchmaking & Network Diagnostics HUD
 
@@ -360,14 +360,14 @@ Tasks Completed:
 
 ================================================================================
 PHASE 8: CLIENT PREDICTION RECONCILIATION & VISUAL SMOOTHING DAMPENER
-Status: COMPLETED [x]
+Status: PLANNED [ ]
 ================================================================================
 Goal: When server snapshots arrive, verify client prediction. If predicted 
 state matches within deadzone tolerance, do nothing. If divergence occurred, 
 snap physics and smoothly damp visual offset.
 
-Tasks Completed:
-  [x] 8.1 Snapshot Comparison & Error Deadzones
+Tasks to Implement:
+  [ ] 8.1 Snapshot Comparison & Error Deadzones
       - When server snapshot for Tick T arrives:
         1. Look up client's historical snapshot at Tick T in StateHistoryBuffer.
         2. Compare positions: deltaPos = |serverPos - predictedPos|.
@@ -376,15 +376,15 @@ Tasks Completed:
         - If deltaPos < 0.05 units (~1.8px) and deltaVel < 0.10:
           PREDICTION SUCCESS. Discard history older than Tick T. No action needed.
 
-  [x] 8.2 Misprediction Correction (Rollback & Fast-Forward)
+  [ ] 8.2 Misprediction Correction (Rollback & Fast-Forward)
       - If deltaPos or deltaVel exceeds deadzone (e.g. wall bounce angle mispredicted, 
         or an unexpected collision occurred):
-        1. Set visual offset: `visualOffset = postPos - prePos` (ensuring drawPos = postPos - visualOffset = prePos, 0 visual pop).
+        1. Set visual offset: `visualOffset = predictedPos - serverPos`.
         2. Snap physical entity state to Server State at Tick T.
         3. Re-simulate physics forward from Tick T+1 to currentTick using recorded inputs.
         4. Overwrite history buffer for ticks T+1..currentTick.
 
-  [x] 8.3 Render Smoothing Dampener (Eliminates Visual Popping)
+  [ ] 8.3 Render Smoothing Dampener (Eliminates Visual Popping)
       - During rendering:
         `drawX = entity.position.x - visualOffset.x;`
         `drawY = entity.position.y - visualOffset.y;`
@@ -393,7 +393,6 @@ Tasks Completed:
         `visualOffset.y *= 0.70;`
       - Result: Physics hitboxes snap instantaneously and remain 100% accurate, 
         while the visible sprite glides smoothly without jitter or teleportation.
-      - Headless Test Suite (scratch/test_phase_8_prediction_reconciliation.ts) passes 18/18 tests (100%).
 
 ================================================================================
 PHASE 9: REMOTE PLAYER ENTITY INTERPOLATION & FLIGHT HANDOFF

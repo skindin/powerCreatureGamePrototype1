@@ -349,29 +349,6 @@ powerCreatureGamePrototype1/
 - **Automated Headless Test Suite**:
   - `scratch/test_phase_7_authoritative_snapshots.ts`: 100% passed (38/38 assertions covering schema quantization, 30Hz/60Hz broadcast pacing, delta compression, sleeping entity omission & wakeup, client delta merging, and client ACK feedback tracking).
 
-### Client Prediction Reconciliation & Visual Smoothing Dampener (Phase 8 — Fully Functional)
-- **Modular Prediction Reconciliation (`src/engine/physics/PredictionReconciliation.ts`)**:
-  - **Snapshot Comparison & Error Deadzones (Task 8.1)**:
-    - Compares incoming authoritative server snapshot at tick $T$ with client's historical snapshot at tick $T$ in `StateHistoryBuffer`.
-    - Tolerances: Position deadzone $0.05\text{ units}$ (~1.8px), velocity deadzone $0.10\text{ u/s}$.
-    - If differences remain within deadzones, marks prediction as successful (`success_within_deadzone`) and prunes history older than tick $T$ without re-simulation.
-  - **Misprediction Correction & Fast-Forward Re-simulation (Task 8.2)**:
-    - When divergence exceeds deadzones (e.g. past obstacle contact, external hit, or wall deflection), captures current pre-reconciliation present positions for visual continuity.
-    - Snaps physical world state to authoritative server snapshot at tick $T$.
-    - Re-simulates physics forward from $T + 1$ to `currentTick` using recorded historical player inputs (`playerManager.applyPlayerInputs`).
-    - Actively rewrites historical frames in `historyBuffer` with the re-simulated reality.
-  - **Render Smoothing Dampener (Task 8.3)**:
-    - Sets entity `visualOffset = postPos - prePos` on diverged bodies, guaranteeing `drawPos = postPos - visualOffset = prePos` on the correction frame (**0.0000u visual pop**).
-    - During each render frame, decays `visualOffset` smoothly toward zero at $0.70\times$ per frame (~50–80ms glide).
-    - Physical hitboxes snap instantaneously and remain 100% accurate, while the visible sprite glides smoothly without jitter or teleportation.
-- **Renderer Integration (`src/engine/Renderer.ts`)**:
-  - `getVisualPosition`, character drawing, freebody object drawing, ground shadows, and collider outlines subtract `visualOffset` so sprites and shadows stay locked together.
-  - Automatically decays visual offsets across all active entities in `Renderer.render()`.
-- **Interactive DevPanel Diagnostics (`src/ui/DevPanel.ts`)**:
-  - "🛡️ Test Server Correction & Visual Dampener (Phase 8)" button injects historical misprediction, performs rollback and re-simulation, and visually demonstrates smooth decay dampening on canvas.
-- **Automated Headless Test Suite**:
-  - `scratch/test_phase_8_prediction_reconciliation.ts`: 100% passed (18/18 assertions covering deadzones, misprediction detection, rollback re-simulation, zero visual pop render dampener, and multi-frame decay).
-
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:
