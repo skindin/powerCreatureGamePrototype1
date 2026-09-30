@@ -457,7 +457,12 @@ powerCreatureGamePrototype1/
   - **Canvas Picking (`InputManager.ts`)**: `findEntityAt` dynamically queries `getAllCharacters()`, allowing left-click dragging in Edit Mode and right-click inspection in Play & Edit Modes for any player character.
   - **Entity Selector Dropdown (`DevPanel.ts`)**: Lists every active character by name and mass (`⭐ Player 1 (1.2kg)`, `⭐ Player 2 (1.2kg)`). Auto-refreshes when players join or leave.
   - **Polymorphic Ability Slider Binding**: Selecting any `Character` activates character abilities (Walking, Strength, Pickup, Throw, Climbing). Sliders inspect and directly mutate the selected character's modules without affecting other characters.
-  - **Safe Selection Fallback**: Removing a player character safely updates dropdown options and falls back to the primary character if the removed character was currently selected.
+- **Remote Client Throw Trajectory & Destination Marker Isolation (Phase 9.10 — Fully Functional)**:
+  - Ballistic throw trajectory dots, landing destination footprint previews, wall collision markers, and precision aim reticles are strictly private to the local client aiming the throw.
+  - In `Renderer.ts:renderArenaScene`, characters are evaluated against `localHeroCharacter` and `remoteOverrides`.
+  - In split-screen viewports (`renderSplitScreen`), each viewport ONLY renders the trajectory and aim reticle of its assigned local character (`pv.character`). Other players' trajectories and landing markers are completely hidden.
+  - In single-screen multiplayer, remote characters (`char !== localHeroCharacter` or `remoteOverrides.has(char.playerId)`) are filtered out from trajectory and reticle rendering passes.
+  - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
 
 ### Mobile Landscape & PWA (Installable Game — Fully Functional)
 - **Mobile Landscape Layout**:

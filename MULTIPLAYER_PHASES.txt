@@ -463,6 +463,13 @@ Tasks Completed:
       - Authoritative server simulation (`ServerGameSimulation.ts`) synchronizes held freebodies to hands and serializes `isHeld: true`, `heldBy`, and relative hand coordinates.
       - Verified 100% via `scratch/test_held_object_relative_rendering.ts`.
 
+  [x] 9.10 Remote Client Throw Trajectory & Destination Marker Isolation
+      - Filtered ballistic trajectory dots, wall impact markers, landing destination footprint previews, and aim reticles in `Renderer.ts:renderArenaScene`.
+      - In split-screen viewports, each client screen ONLY renders its own controlling character's throw trajectory, destination marker, and aim reticle.
+      - In single-screen multiplayer, remote characters (`remoteOverrides.has(char.playerId)` or `char !== localHeroCharacter`) are strictly excluded from trajectory and reticle rendering.
+      - Trajectory lines, impact markers, and destination footprints are completely private to the local client aiming the throw.
+      - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]

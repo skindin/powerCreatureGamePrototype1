@@ -321,6 +321,26 @@ export class GameLoop {
       // Revert to full-canvas mouse coordinate mapping
       this.inputManager.setKeyboardViewport(null);
 
+      const localHeroChar = this.playerManager.players.get("keyboard")?.character || this.allCharacters[0] || null;
+
+      // Sample remote player interpolated states for single-screen multiplayer if any
+      const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
+      const now = performance.now();
+      const rttMs = ghostData?.rttMs ?? 0;
+      for (const pe of this.playerManager.players.values()) {
+        if (localHeroChar && pe.character === localHeroChar) continue;
+        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now, rttMs);
+        if (interp) {
+          remoteOverrides.set(pe.character.playerId, {
+            x: interp.x,
+            y: interp.y,
+            z: interp.z,
+            facingAngle: interp.facingAngle,
+            isClimbing: interp.isClimbing,
+          });
+        }
+      }
+
       this.renderer.render(
         this.arena,
         this.allCharacters,
@@ -334,7 +354,9 @@ export class GameLoop {
         ghostData,
         activeAimCursors,
         undefined,
-        false
+        false,
+        localHeroChar,
+        remoteOverrides
       );
     }
   }

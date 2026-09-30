@@ -125,7 +125,9 @@ export class Renderer {
     ghostSnapshot?: GhostSnapshot | null,
     activeAimCursorsOrIsGamepad: boolean | ActiveAimCursor[] = false,
     legacyGamepadAimPos?: Vector2D | null,
-    isPaused = false
+    isPaused = false,
+    localHeroCharacter?: Character | null,
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
   ): void {
     const ctx = this.ctx;
     const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
@@ -135,6 +137,8 @@ export class Renderer {
     const characters: Character[] = Array.isArray(characterInput)
       ? characterInput
       : (characterInput ? [characterInput] : []);
+
+    const hero = localHeroCharacter !== undefined ? localHeroCharacter : (characters[0] || null);
 
     this.renderArenaScene(
       arena,
@@ -150,7 +154,9 @@ export class Renderer {
       ghostSnapshot,
       activeAimCursorsOrIsGamepad,
       legacyGamepadAimPos,
-      isPaused
+      isPaused,
+      hero,
+      remoteOverrides
     );
   }
 
@@ -473,6 +479,12 @@ export class Renderer {
       // 10. Trajectory Lines and Aim Cursors
       // First: render active trajectories for any character holding an object
       for (const char of characters) {
+        // Do NOT show throw trajectory and destination marker to a remote client / other screen
+        const isRemote = localHeroCharacter
+          ? char !== localHeroCharacter
+          : Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
+        if (isRemote) continue;
+
         if (char.activeTrajectory) {
           // Is this character's cursor currently unhidden and visible?
           const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
@@ -483,10 +495,15 @@ export class Renderer {
         }
       }
 
-      // Second: render aim cursors (only for unhidden cursors)
+      // Second: render aim cursors (only for unhidden cursors belonging to the local client)
       if (Array.isArray(activeAimCursorsOrIsGamepad)) {
         for (const cursor of activeAimCursorsOrIsGamepad) {
           const cChar = cursor.character;
+          const isRemote = localHeroCharacter
+            ? cChar !== localHeroCharacter
+            : Boolean(remoteOverrides && remoteOverrides.has(cChar.playerId));
+          if (isRemote) continue;
+
           const cursorX = cursor.x * ppu;
           const cursorY = cursor.y * ppu;
 
@@ -499,11 +516,16 @@ export class Renderer {
         // Legacy singleplayer fallback
         const isUsingGamepad = activeAimCursorsOrIsGamepad;
         if (character) {
-          const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
-          if (character.activeTrajectory) {
-            this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
-          } else if (isUsingGamepad && activeAimCursor) {
-            this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
+          const isRemote = localHeroCharacter
+            ? character !== localHeroCharacter
+            : Boolean(remoteOverrides && remoteOverrides.has(character.playerId));
+          if (!isRemote) {
+            const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
+            if (character.activeTrajectory) {
+              this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
+            } else if (isUsingGamepad && activeAimCursor) {
+              this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
+            }
           }
         }
       }
