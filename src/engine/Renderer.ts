@@ -66,6 +66,11 @@ export class Renderer {
   public liveBufferTrail: LiveBufferTrailData | null = null;
   public timeDilation: number = 1.0;
   public clockSyncStatus?: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null;
+  public reconciliationStatus?: {
+    totalReconciliations: number;
+    totalSuccesses: number;
+    lastResult?: import("./physics/PredictionReconciliation.js").ReconciliationResult | null;
+  } | null;
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -88,9 +93,11 @@ export class Renderer {
 
   public getVisualPosition(entity: GameObject): { x: number; y: number } {
     const hoverScale = this.getHoverScale();
+    const vx = entity.visualOffset ? entity.visualOffset.x : 0;
+    const vy = entity.visualOffset ? entity.visualOffset.y : 0;
     return {
-      x: entity.position.x,
-      y: entity.position.y - entity.position.z * hoverScale,
+      x: entity.position.x - vx,
+      y: entity.position.y - vy - entity.position.z * hoverScale,
     };
   }
 
@@ -124,6 +131,12 @@ export class Renderer {
 
     // 2. Entities sorting
     const allRenderables = [...characters, ...objects];
+
+    // Phase 8: Decay visual smoothing offset dampeners smoothly toward zero (0.70x / frame)
+    for (const entity of allRenderables) {
+      entity.decayVisualOffset(0.70);
+    }
+
     allRenderables.sort((a, b) => {
       // Objects held by a character render ON TOP of that character at all times!
       if (a.isHeld && a.heldBy === b) return 1;
@@ -1483,8 +1496,10 @@ export class Renderer {
     if (!useHover || hoverScale <= 0) return;
 
     const ctx = this.ctx;
-    const groundX = obj.position.x * ppu;
-    const groundY = obj.position.y * ppu;
+    const vx = obj.visualOffset ? obj.visualOffset.x : 0;
+    const vy = obj.visualOffset ? obj.visualOffset.y : 0;
+    const groundX = (obj.position.x - vx) * ppu;
+    const groundY = (obj.position.y - vy) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
@@ -1518,8 +1533,10 @@ export class Renderer {
     if (!isAboveWall) return;
 
     const ctx = this.ctx;
-    const groundX = obj.position.x * ppu;
-    const wallTopScreenY = (obj.position.y - arena.wallHeight * hoverScale) * ppu;
+    const vx = obj.visualOffset ? obj.visualOffset.x : 0;
+    const vy = obj.visualOffset ? obj.visualOffset.y : 0;
+    const groundX = (obj.position.x - vx) * ppu;
+    const wallTopScreenY = (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     const constructShadowPath = () => {
@@ -1575,10 +1592,12 @@ export class Renderer {
     const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
 
     const ctx = this.ctx;
-    const groundX = obj.position.x * ppu;
+    const vx = obj.visualOffset ? obj.visualOffset.x : 0;
+    const vy = obj.visualOffset ? obj.visualOffset.y : 0;
+    const groundX = (obj.position.x - vx) * ppu;
     const outlineY = isAboveWall
-      ? (obj.position.y - arena.wallHeight * hoverScale) * ppu
-      : obj.position.y * ppu;
+      ? (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu
+      : (obj.position.y - vy) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
@@ -1672,8 +1691,10 @@ export class Renderer {
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
 
-    const x = char.position.x * ppu;
-    const y = (char.position.y - char.position.z * hoverScale) * ppu;
+    const vx = char.visualOffset ? char.visualOffset.x : 0;
+    const vy = char.visualOffset ? char.visualOffset.y : 0;
+    const x = (char.position.x - vx) * ppu;
+    const y = (char.position.y - vy - char.position.z * hoverScale) * ppu;
     const r = char.colliderRadius * ppu * altitudeScale;
 
     ctx.save();
@@ -1743,8 +1764,10 @@ export class Renderer {
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-    const x = obj.position.x * ppu;
-    const y = (obj.position.y - obj.position.z * hoverScale) * ppu;
+    const vx = obj.visualOffset ? obj.visualOffset.x : 0;
+    const vy = obj.visualOffset ? obj.visualOffset.y : 0;
+    const x = (obj.position.x - vx) * ppu;
+    const y = (obj.position.y - vy - obj.position.z * hoverScale) * ppu;
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(obj.position.z, arena.wallHeight) : 1.0;
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const realRadius = visualRadius * ppu;
@@ -1925,8 +1948,10 @@ export class Renderer {
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-    const x = char.position.x * ppu;
-    const y = (char.position.y - char.position.z * hoverScale) * ppu;
+    const vx = char.visualOffset ? char.visualOffset.x : 0;
+    const vy = char.visualOffset ? char.visualOffset.y : 0;
+    const x = (char.position.x - vx) * ppu;
+    const y = (char.position.y - vy - char.position.z * hoverScale) * ppu;
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 

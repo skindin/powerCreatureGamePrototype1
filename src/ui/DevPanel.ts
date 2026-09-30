@@ -568,6 +568,15 @@ export class DevPanel {
                 Simulates an external tackle hitting the selected entity N ticks in the past. Renders the old predicted path (red) vs. re-simulated reconciled path (green) on canvas!
               </span>
             </div>
+
+            <div>
+              <button id="btn-test-phase8-reconcile" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); font-weight: 600; background: rgba(56, 189, 248, 0.08);">
+                🛡️ Test Server Correction & Visual Dampener (Phase 8)
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Injects an authoritative server correction at tick N in the past. Snaps physics, re-simulates forward, and applies visual smoothing dampener (0.70x decay) eliminating visual popping!
+              </span>
+            </div>
           </div>
 
           <!-- Rollback Result Banner -->
@@ -2069,6 +2078,65 @@ export class DevPanel {
         bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
         bannerRollbackResult.style.color = "#fbbf24";
         bannerRollbackResult.innerHTML = `<strong>💥 PAST TACKLE RECONCILED:</strong> Simulated tackle at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>. Re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Canvas shows: Red dashed path = Old prediction | Green solid path = Reconciled timeline.</span>`;
+      }
+      this.updateInspector();
+    });
+
+    const btnTestPhase8 = this.container.querySelector("#btn-test-phase8-reconcile") as HTMLButtonElement | null;
+    btnTestPhase8?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const count = loop.historyBuffer.getCount();
+      if (count < 5) return;
+      const targetTick = Math.max(loop.historyBuffer.getOldestTick(), loop.currentTick - Math.min(this.rollbackDepthTicks, 15));
+      const frame = loop.historyBuffer.get(targetTick);
+      if (!frame) return;
+
+      const targetEntity = this.selectedEntity || loop.primaryCharacter || loop.objects[0];
+      if (!targetEntity) return;
+
+      const serverEntities = frame.snapshot.entities.map((e: any) => {
+        if (e.id === targetEntity.id) {
+          return {
+            id: e.id,
+            x: Number((e.x + 0.35).toFixed(3)),
+            y: Number((e.y - 0.25).toFixed(3)),
+            z: Number(e.z.toFixed(3)),
+            vx: Number(e.vx.toFixed(2)),
+            vy: Number(e.vy.toFixed(2)),
+            vz: Number(e.vz.toFixed(2)),
+            heldBy: e.heldById ?? null,
+            isClimbing: e.isClimbing,
+          };
+        }
+        return {
+          id: e.id,
+          x: Number(e.x.toFixed(3)),
+          y: Number(e.y.toFixed(3)),
+          z: Number(e.z.toFixed(3)),
+          vx: Number(e.vx.toFixed(2)),
+          vy: Number(e.vy.toFixed(2)),
+          vz: Number(e.vz.toFixed(2)),
+          heldBy: e.heldById ?? null,
+          isClimbing: e.isClimbing,
+        };
+      });
+
+      const res = loop.reconcileWorldSnapshot({
+        type: "world_snapshot",
+        tick: targetTick,
+        serverTime: performance.now(),
+        lastProcessedInputTick: {},
+        entities: serverEntities,
+        isDelta: false,
+      });
+
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        bannerRollbackResult.style.background = "rgba(56, 189, 248, 0.2)";
+        bannerRollbackResult.style.borderColor = "rgba(56, 189, 248, 0.5)";
+        bannerRollbackResult.style.color = "#38bdf8";
+        bannerRollbackResult.innerHTML = `<strong>🛡️ PHASE 8 RECONCILIATION:</strong> Server correction at tick #${res.tick} on <em>${targetEntity.name}</em> (drift: ${res.maxDeltaPos.toFixed(3)}u). Fast-forwarded ${res.ticksReplayed} ticks in ${res.durationMs.toFixed(2)}ms. Visual offset dampener active: [${targetEntity.visualOffset.x.toFixed(2)}, ${targetEntity.visualOffset.y.toFixed(2)}] gliding smoothly to zero!`;
       }
       this.updateInspector();
     });
