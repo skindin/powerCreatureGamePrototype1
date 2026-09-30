@@ -452,12 +452,14 @@ export class PlayerManager {
       }
 
       // Dedicated Throw (RT / RB / Left Click)
-      if (pkt.isThrow && char.heldObject && char.throwModule && aimTarget) {
+      if (pkt.isThrow && char.heldObject && char.throwModule) {
         const thrownObj = char.heldObject;
+        const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 3);
+        const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 3);
         char.throwModule.throwHeldObject(
           char,
-          aimTarget.x,
-          aimTarget.y,
+          throwAimX,
+          throwAimY,
           this.arena,
           undefined,
           undefined,
@@ -470,8 +472,8 @@ export class PlayerManager {
           timestamp: performance.now(),
           playerId: char.playerId || "keyboard",
           targetObjectId: thrownObj.id,
-          aimX: aimTarget.x,
-          aimY: aimTarget.y,
+          aimX: throwAimX,
+          aimY: throwAimY,
           isLockHeld: pkt.isLockHeld,
         };
         this.onReliableActionDispatched?.(action);

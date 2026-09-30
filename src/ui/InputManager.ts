@@ -970,42 +970,14 @@ export class InputManager {
         }
       } else {
         slot.rtHeld = false;
-        const isLockHeld = isButtonPressed(6, 0.35);
-
-        const forwardDist = 3.0;
-        let throwTargetX = slot.aimPos.x;
-        let throwTargetY = slot.aimPos.y;
-        if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            char.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
-          }
-          throwTargetX = char.position.x + dirX * forwardDist;
-          throwTargetY = char.position.y + dirY * forwardDist;
-        }
 
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           slot.isThrowRequested = true;
-          char.throwModule.throwHeldObject(
-            char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
-          );
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
         }
         if (rbJustPressed && char.throwModule) {
           slot.isThrowRequested = true;
-          char.throwModule.throwHeldObject(
-            char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
-          );
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
         }
@@ -1238,9 +1210,7 @@ export class InputManager {
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
-        const autoLock = this.isRightMouseDown;
         this.isKeyboardThrowRequested = true;
-        activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena, undefined, undefined, autoLock);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
       }

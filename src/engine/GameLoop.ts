@@ -327,6 +327,23 @@ export class GameLoop {
       // 2. If dragged by user mouse, user drag governs
       if (this.inputManager?.draggedEntity === localObj) continue;
 
+      // 3. Client-Side Prediction for Thrown / Dropped / Released Objects:
+      // If the server still reports the object as held (sObj.isHeld === true), but the client
+      // has already thrown or dropped it locally (!localObj.isHeld):
+      // The server is simply trailing by the network round-trip and hasn't processed the release yet.
+      // Do NOT drag the in-flight object back into the player's hands or kill its velocity!
+      if (sObj.isHeld && !localObj.isHeld) {
+        continue;
+      }
+
+      // 4. Ballistic In-Flight Prediction:
+      // While a thrown object is in ballistic flight (airborne, has lastThrower), the client assumes
+      // its simulated flight physics are 100% correct until the object lands or the server approves/diverges.
+      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      if (localObj.lastThrower && isAirborne) {
+        continue;
+      }
+
       // 3. Check physical distance to authoritative server position
       const dx = sObj.x - localObj.position.x;
       const dy = sObj.y - localObj.position.y;

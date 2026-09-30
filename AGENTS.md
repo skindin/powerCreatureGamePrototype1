@@ -243,6 +243,8 @@ powerCreatureGamePrototype1/
     - Automatically synchronizes client freebody objects (`this.objects`) to the authoritative server simulation snapshot on each physics frame.
     - **Hierarchy Lock**: Objects actively held by a local player are skipped to keep them locked to the player's hands without visual jitter.
     - **Editor Drag Bypass**: Objects dragged by user mouse in Edit Mode are not overridden.
+    - **Lagging Server Held-State Immunity**: If the server still reports an object as held (`sObj.isHeld === true`) after the client has already thrown or released it locally (`!localObj.isHeld`), the sync ignores the lagging snapshot, preventing the object from being yanked backward into the player's hands.
+    - **Ballistic In-Flight Prediction**: While an object is airborne from a throw (`localObj.lastThrower` is active and object is airborne), the client assumes its simulated ballistic trajectory is 100% correct, eliminating mid-air freezes, velocity damping, or jitter.
     - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
     - **Speed-Aware Jitter Tolerance & Convergence**: Uses a $0.02\text{u}$ deadzone to filter micro-flutter while smoothly converging discrepancies at $25-30\%$ blend rate without dragging moving objects backwards.
     - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.

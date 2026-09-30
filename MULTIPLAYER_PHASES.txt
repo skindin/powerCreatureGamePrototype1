@@ -230,6 +230,18 @@ Tasks Completed:
       - Ghost Clones Sync Lock: "🤖 SERVER SIM" ghost character stays tightly locked to player coordinates 
         at all times without wandering off or drifting across arena walls.
       - Headless test suite (scratch/test_character_and_object_position_sync.ts) passes 100%.
+  [x] 4.6 Ballistic Throw Prediction & In-Flight Flight Preservation (Pre-Phase 8 Groundwork)
+      - Client-Side Throw Prediction: When an item is thrown, client immediately assumes simulated ballistic 
+        flight physics are correct without mid-air dampening, freeze, or jitter.
+      - Lagging Server Held-State Immunity: GameLoop.syncAuthoritativeObjects ignores lagging snapshots where 
+        the server still reports sObj.isHeld === true when the client has already thrown or released it locally.
+      - In-Flight Airborne Exemption: While localObj.lastThrower is set and the item is airborne, client throw 
+        physics run smoothly to completion without being yanked backward into player hands.
+      - Deterministic Dispatch Fix: InputManager delegates throw execution to PlayerManager.applyPlayerInputs 
+        on the fixed physics tick, guaranteeing the reliable throw command is always dispatched to the server.
+      - Server Authoritative Simulation: Server receives the reliable throw action, launches the object with 
+        the exact same ballistic trajectory, and simulates flight independently.
+      - Headless test suite (scratch/test_throw_client_prediction_and_flight.ts) passes 100%.
 
 ================================================================================
 PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE
