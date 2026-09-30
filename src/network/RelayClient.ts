@@ -54,6 +54,8 @@ export interface RelayStats {
   serverMode: "physics_sim" | "echo_snapshot";
   serverTick: number;
   unackedActionsCount: number;
+  serverJitterDepth?: number;
+  serverJitterStarvations?: number;
 }
 
 export class RelayClient {
@@ -337,6 +339,7 @@ export class RelayClient {
   }
 
   public getStats(): RelayStats {
+    const jitterStats = this.serverSimulation.getJitterStats("keyboard") || this.serverSimulation.getAllJitterStats()[0];
     return {
       status: this.status,
       url: this.url,
@@ -350,6 +353,8 @@ export class RelayClient {
       serverMode: this.serverMode,
       serverTick: this.serverSimulation.currentTick,
       unackedActionsCount: this.unacknowledgedActions.size,
+      serverJitterDepth: jitterStats ? jitterStats.currentDepth : 0,
+      serverJitterStarvations: jitterStats ? jitterStats.starvations : 0,
     };
   }
 

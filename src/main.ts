@@ -505,7 +505,8 @@ function bootstrap(): void {
     }
 
     if (packetCounts) {
-      packetCounts.textContent = `Sent: ${stats.packetsSent} | Echoed: ${stats.packetsReceived}`;
+      const jitterText = stats.serverMode === "physics_sim" ? ` | Jitter: ${stats.serverJitterDepth ?? 0}f` : "";
+      packetCounts.textContent = `Sent: ${stats.packetsSent} | Echoed: ${stats.packetsReceived}${jitterText}`;
     }
   };
 

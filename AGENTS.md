@@ -276,6 +276,31 @@ powerCreatureGamePrototype1/
   - `scratch/test_phase_4_server_simulation.ts`: 100% passed (Headless arena init with 17 walls, jump gravity and solid ground touchdown $z = 0.000$, contested grab arbitration with strength winner, and 60Hz standalone `GameServer` loop lifecycle).
   - `scratch/test_explicit_grab_and_object_sync.ts`: 100% passed (Null target grab rejection, explicit target grab selection, smooth convergence lerping, and resting sleep coordinate snapping).
 
+### Client Input Streaming & Server Jitter Input Queue (Phase 5 — Fully Functional)
+- **Reliable Action Messages, Retransmission Outbox & Delivery Confirmation (Phase 5.1)**:
+  - Critical discrete one-shot actions (`pickup`, `drop`, `throw`) are designated as reliable commands (`ReliableActionCommand`) requiring explicit delivery confirmation.
+  - Sender retransmission outbox (`unacknowledgedActions`) retransmits all pending actions with every outgoing packet until acknowledged.
+  - Recipient idempotent execution tracks `processedActionIds` to acknowledge duplicates without re-executing.
+  - Delivery confirmation (`ackActionIds`) echoed back to purge delivered actions from sender outbox.
+- **Server Jitter Buffer & Priority Input Queue (`src/server/ServerJitterBuffer.ts`) (Phase 5.2)**:
+  - **Modular Architecture (`ServerJitterBufferManager` & `PlayerJitterQueue`)**:
+    - Manages dedicated per-player priority queues sorted strictly ascending by simulation tick.
+    - Absorbs WAN network packet jitter, handles out-of-order packet delivery, deduplicates retransmitted packets, and provides steady inputs at 60Hz.
+  - **Target Depth (2 Ticks / ~33.3ms)**:
+    - Maintains a tight, steady 2-tick target depth on the server simulation, keeping server input latency tightly bound to 1–2 ticks.
+  - **Out-of-Order Packet Insertion & Deduplication**:
+    - Out-of-order packets arriving over the network are inserted into their exact sorted tick position.
+    - Stale packets (`tick <= lastConsumedTick`) and duplicate packets are safely rejected.
+  - **Starvation Handling & Neutral Safe Packet**:
+    - When the jitter queue is empty (packets in transit across WAN), consumption returns a safe neutral input packet with zero movement velocity (`moveX: 0, moveY: 0`) and all action buttons false, preventing runaway ghost overshoot while preserving last known aim coordinates.
+  - **Burst Backlog Drainage**:
+    - When WAN jitter bursts deliver a backlog (> 4 ticks), intermediate excess inputs are drained and returned as `drainedPackets`, allowing `ServerGameSimulation` to fast-forward character movement and aim so the server never falls perpetually behind.
+  - **Telemetry & Cruise Control Diagnostics (`JitterBufferStats`)**:
+    - Exposes `currentDepth`, `targetDepth: 2`, `oldestTick`, `newestTick`, `lastConsumedTick`, `starvations`, `overflows`, `duplicates`, and `burstDrains` via `getStats()` to feed Phase 6 adaptive clock synchronization (cruise control).
+    - Integrated with `RelayStats` and the Multiplayer HUD (`Jitter: Nf`).
+  - **Automated Headless Test Suite**:
+    - `scratch/test_phase_5_2_jitter_buffer.ts`: 100% passed (38/38 assertions covering out-of-order sorting, deduplication, stale rejection, burst drainage, starvation neutral packets, capacity overflow, and ServerGameSimulation integration).
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:

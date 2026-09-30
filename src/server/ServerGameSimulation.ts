@@ -7,6 +7,7 @@ import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
+import { ServerJitterBufferManager, JitterBufferStats } from "./ServerJitterBuffer.js";
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -14,6 +15,7 @@ export interface ServerSimConfig {
   wallHeight?: number;
   collisionMode?: "dynamic" | "discrete" | "continuous" | "naive";
   fixedDt?: number;
+  jitterTargetDepth?: number;
 }
 
 export interface ContestedGrabResult {
@@ -39,9 +41,8 @@ export class ServerGameSimulation {
   public fixedDt: number = 1 / 60;
   public collisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
 
-  // Per-player input jitter queue
-  private inputQueues: Map<string, PlayerInputPacket[]> = new Map();
-  private lastKnownInputs: Map<string, PlayerInputPacket> = new Map();
+  // Per-player input jitter buffer (Phase 5.2)
+  public jitterBuffer: ServerJitterBufferManager;
 
   // Contested grab arbitration audit log
   public contestedGrabEvents: ContestedGrabResult[] = [];
@@ -58,6 +59,10 @@ export class ServerGameSimulation {
     this.islandManager = new IslandManager();
     if (config?.collisionMode) this.collisionMode = config.collisionMode;
     if (config?.fixedDt) this.fixedDt = config.fixedDt;
+    this.jitterBuffer = new ServerJitterBufferManager({
+      targetDepth: config?.jitterTargetDepth ?? 2,
+      maxCapacity: 60,
+    });
   }
 
   public get allCharacters(): Character[] {
@@ -144,6 +149,7 @@ export class ServerGameSimulation {
     }
 
     this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
+    this.jitterBuffer.clear();
   }
 
   /**
@@ -216,29 +222,28 @@ export class ServerGameSimulation {
     ];
 
     this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
+    this.jitterBuffer.clear();
   }
 
   /**
    * Enqueues an incoming input packet from a player into the server jitter buffer.
    */
-  public queueInput(packet: PlayerInputPacket): void {
-    const pId = packet.playerId;
-    let queue = this.inputQueues.get(pId);
-    if (!queue) {
-      queue = [];
-      this.inputQueues.set(pId, queue);
-    }
-    // De-duplicate if tick number is present
-    if (packet.tick !== undefined) {
-      if (queue.some((p) => p.tick === packet.tick)) {
-        return;
-      }
-    }
-    queue.push(packet);
-    // Cap buffer depth to prevent runaway queues under severe network stall
-    if (queue.length > 60) {
-      queue.shift();
-    }
+  public queueInput(packet: PlayerInputPacket): boolean {
+    return this.jitterBuffer.push(packet);
+  }
+
+  /**
+   * Retrieves telemetry stats for a player's jitter buffer.
+   */
+  public getJitterStats(playerId: string): JitterBufferStats | null {
+    return this.jitterBuffer.getStats(playerId);
+  }
+
+  /**
+   * Retrieves telemetry stats for all active jitter buffers.
+   */
+  public getAllJitterStats(): JitterBufferStats[] {
+    return this.jitterBuffer.getAllStats();
   }
 
   /**
@@ -509,11 +514,11 @@ export class ServerGameSimulation {
     const grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[] = [];
 
     for (const [pId, char] of this.characters) {
-      // Drain jitter burst backlog if queue has backed up (> 2 inputs)
-      // to keep server input latency tightly locked to 1-2 ticks
-      const queue = this.inputQueues.get(pId);
-      while (queue && queue.length > 2) {
-        const catchupPkt = queue.shift()!;
+      // Consume input from the server jitter buffer (Phase 5.2)
+      const { packet: pkt, drainedPackets } = this.jitterBuffer.consume(pId, this.currentTick);
+
+      // Fast-forward movement / aim from drained burst packets so state stays synchronized with client stream
+      for (const catchupPkt of drainedPackets) {
         char.updateCharacter(
           dt,
           { x: catchupPkt.moveX, y: catchupPkt.moveY },
@@ -524,26 +529,6 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
-      }
-
-      let pkt = this.inputQueues.get(pId)?.shift();
-      if (pkt) {
-        this.lastKnownInputs.set(pId, pkt);
-      } else {
-        // Queue is momentarily starved (inputs still traversing WAN relay).
-        // Zero movement to prevent runaway ghost overshoot while waiting for packets!
-        pkt = {
-          playerId: pId,
-          moveX: 0,
-          moveY: 0,
-          isSprinting: false,
-          isJumpHeld: false,
-          isGrabHeld: false,
-          isDrop: false,
-          isThrow: false,
-          isAiming: false,
-          isLockHeld: false,
-        };
       }
 
       if (pkt) {

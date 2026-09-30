@@ -19,7 +19,7 @@ TABLE OF PHASES
   [x] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization (COMPLETED)
   [x] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness (COMPLETED)
   [x] PHASE 4: Authoritative Headless Server Simulation Core (COMPLETED)
-  [ ] PHASE 5: Client Input Streaming & Server Jitter Input Queue
+  [x] PHASE 5: Client Input Streaming & Server Jitter Input Queue (COMPLETED)
   [ ] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control)
   [ ] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression
   [ ] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener
@@ -245,8 +245,8 @@ Tasks Completed:
 
 ================================================================================
 PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE
-Status: IN PROGRESS [/]
-================================================================================
+Status: COMPLETED [x]
+===============================================================================
 Goal: Stream player inputs from client to server reliably, retransmitting critical 
 one-shot action commands until acknowledged, and buffer continuous inputs on the 
 server to absorb network packet jitter without starvation.
@@ -264,11 +264,19 @@ Tasks Completed & Planned:
         commands from the sender's retransmission queue.
       - Headless Test Suite (scratch/test_reliable_action_retransmission.ts) passes 100%.
 
-  [ ] 5.2 Server Jitter Buffer (Per-Player Queue)
-      - Target depth: 2 ticks of input (~33.3ms buffer).
-      - Server holds inputs in a priority queue sorted by tick number.
-      - Each tick, the server pops the input corresponding to current simulation tick.
-      - Missing Input Handling: If buffer starves, repeat last known input (or zero input).
+  [x] 5.2 Server Jitter Buffer (Per-Player Queue) (src/server/ServerJitterBuffer.ts & ServerGameSimulation.ts)
+      - Target Depth: 2 ticks of input (~33.3ms buffer) to absorb WAN packet jitter.
+      - Priority Queue: Inputs held in PlayerJitterQueue sorted strictly ascending by simulation tick.
+      - Out-of-Order & Deduplication: Out-of-order packets correctly inserted into sorted positions;
+        duplicate and stale packets (tick <= lastConsumedTick) safely rejected.
+      - Each Tick Consumption: Server simulation consumes input corresponding to current simulation tick.
+      - Starvation Handling: When queue is empty, returns safe neutral input packet (zero movement velocity
+        and all action buttons false to prevent runaway ghost overshoot), while preserving last known aim coordinates.
+      - Burst Drainage: When WAN jitter delivers a backlog burst (> 4 ticks), intermediate excess inputs
+        are drained and fast-forwarded to keep server input latency tightly locked to 1-2 ticks without lagging.
+      - Telemetry Metrics: Exposes currentDepth, targetDepth (2), oldestTick, newestTick, starvations,
+        overflows, duplicates, and burstDrains via getStats() for Phase 6 adaptive cruise control.
+      - Headless Test Suite (scratch/test_phase_5_2_jitter_buffer.ts) passes 38/38 tests (100%).
 
 ================================================================================
 PHASE 6: ADAPTIVE CLOCK SYNCHRONIZATION & TIME DILATION (CRUISE CONTROL)
