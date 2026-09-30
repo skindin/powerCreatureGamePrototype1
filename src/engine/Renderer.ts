@@ -68,6 +68,7 @@ export class Renderer {
     visualAltitudeScale: 0.5,
   };
   public showCollisionDebug = false;
+  public showGhostClones = true;
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
   public historyBufferStatus?: { count: number; capacity: number };
   public islandStats?: { totalIslands: number; activeIslands: number; sleepingCount: number; totalEntities: number };
@@ -518,7 +519,7 @@ export class Renderer {
       }
 
       // Ghost Clones (Echoed states from 3rd-party relay server)
-      if (ghostSnapshot) {
+      if (this.showGhostClones && ghostSnapshot) {
         this.drawGhostClones(ghostSnapshot, ppu, arena);
       }
 

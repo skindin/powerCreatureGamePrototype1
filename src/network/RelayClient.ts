@@ -389,7 +389,6 @@ export class RelayClient {
   }
 
   public getLatestGhost(): GhostSnapshot | null {
-    if (!this.showGhostClones) return null;
     return this.lerpGhosts ? (this.currentGhostSnapshot ?? this.latestGhostSnapshot) : this.latestGhostSnapshot;
   }
 

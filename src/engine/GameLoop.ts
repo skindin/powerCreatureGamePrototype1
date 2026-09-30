@@ -59,6 +59,8 @@ export class GameLoop {
   private readonly fixedDt = 1 / 60; // 60Hz fixed simulation timestep
 
   public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
+  public getShowGhostClones?: () => boolean;
+  public showGhostClones = true;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
   public onReliableAction?: (action: ReliableActionCommand) => void;
 
@@ -179,6 +181,7 @@ export class GameLoop {
     const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
 
     this.renderer.globalCollisionMode = this.globalCollisionMode;
+    this.renderer.showGhostClones = this.getShowGhostClones ? this.getShowGhostClones() : this.showGhostClones;
     this.renderer.historyBufferStatus = {
       count: this.historyBuffer.getCount(),
       capacity: this.historyBuffer.getCapacity(),

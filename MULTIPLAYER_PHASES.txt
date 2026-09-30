@@ -429,6 +429,12 @@ Tasks Completed:
       - Preserved slot.hasMovedAimStick until after throw execution has completed.
       - Fixed object heldBy network serialization in RelayClient.ts to use playerId (e.g. "player-2" / "gamepad-0") ensuring authoritative server identifies the holding player correctly.
 
+  [x] 9.5 Ghost Visual Toggle Decoupled from Authoritative State Pipeline
+      - Decoupled `RelayClient.getLatestGhost()` from the `showGhostClones` visual flag so the network/server state snapshot is never withheld.
+      - Migrated visual suppression directly into `Renderer.ts:drawGhostClones` (`renderer.showGhostClones`).
+      - Server snapshots continue streaming uninterrupted to `RemoteEntityInterpolator`, `syncAuthoritativeObjects`, and clock synchronization even when visual ghosts are toggled OFF.
+      - Guaranteed continuous position synchronization between split-screen client viewpoints regardless of ghost clone visibility.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]

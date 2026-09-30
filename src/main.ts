@@ -601,6 +601,7 @@ function bootstrap(): void {
 
   relayToggleGhostsBtn?.addEventListener("click", () => {
     relayClient.showGhostClones = !relayClient.showGhostClones;
+    gameLoop.showGhostClones = relayClient.showGhostClones;
     if (relayClient.showGhostClones) {
       relayToggleGhostsBtn.textContent = "👻 Ghosts: ON";
       relayToggleGhostsBtn.className = "btn-ghost-toggle active";
@@ -1297,6 +1298,8 @@ function bootstrap(): void {
     relayClient.updateGhostLerp(dt);
     return relayClient.getLatestGhost();
   };
+  gameLoop.getShowGhostClones = () => relayClient.showGhostClones;
+  gameLoop.showGhostClones = relayClient.showGhostClones;
   gameLoop.onReliableAction = (action) => {
     if (isMultiplayerMode) {
       relayClient.queueReliableAction(action);

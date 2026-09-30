@@ -1007,6 +1007,15 @@ powerCreatureGamePrototype1/
     - **Automated Verification**:
       - Created `scratch/test_player2_throw_direction.ts` verifying that Player 2 holding a freebody launches it precisely along the right-stick reticle vector.
 
+59. **Decoupling Ghost Visual Visibility from Authoritative Server State Pipeline**:
+    - **Root Cause**: `RelayClient.getLatestGhost()` was previously gated on `if (!this.showGhostClones) return null;`. Turning off the visual ghost setting stopped all snapshot delivery to `GameLoop`, starving `RemoteEntityInterpolator`, `syncAuthoritativeObjects`, and clock synchronization. In split-screen mode, this caused each player's remote avatar to freeze in place from the other client's perspective.
+    - **Decoupled Architecture**:
+      - `RelayClient.getLatestGhost()` unconditionally returns the latest server simulation snapshot so physical interpolation, clock sync, and object sync never lose data.
+      - Visual suppression is handled strictly at the rendering layer in `Renderer.ts:drawGhostClones` via `renderer.showGhostClones`.
+      - `GameLoop` and `main.ts` propagate `showGhostClones` reactively to the renderer without choking the underlying data stream.
+    - **Automated Verification**:
+      - `scratch/test_ghost_toggle_sync.ts` verifies that when `showGhostClones` is false, `getLatestGhost()` continues providing snapshots, `RemoteEntityInterpolator` computes leading forward-predicted positions for remote players, and simulation sync remains 100% active.
+
 ---
 
 
