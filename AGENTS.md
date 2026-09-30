@@ -273,6 +273,12 @@ powerCreatureGamePrototype1/
     - Stacked directly on top of client prediction to give instant visual feedback of server authority vs. client prediction.
   - **Server Physics Diagnostics HUD**:
     - Multiplayer HUD displays `Tick: #N (Live 60Hz)` reflecting authoritative server simulation ticks.
+  - **Relay HUD Viewport Controls (Minimize, Close & Reopen Without Disconnecting)**:
+    - **Minimize / Collapse Button (`➖` / `➕`)**: Collapses `#multiplayer-relay-hud` into a compact single-line 36px header bar (`.relay-hud-card.collapsed`), keeping tick, connection status, RTT, resync, connect, and expand buttons while hiding all bulky settings and inputs.
+    - **Close Button (`✕`)**: Completely hides `#multiplayer-relay-hud` from the viewport while keeping the WebSocket relay connection and server simulation running uninterrupted in the background.
+    - **Top Bar Reopen Pill (`#relay-status-pill`)**: The top bar status pill (`🟢 57 ms [M]`) remains visible in multiplayer mode; clicking it toggles the Relay HUD open, collapsed, or closed at any time.
+    - **Hotkey `M` & `Escape`**: Pressing `M` toggles the Relay HUD (open -> collapse -> close -> open) during active gameplay. Pressing `Escape` closes the overlay if open.
+    - **Mobile Menu Quick Access**: Added "Relay Settings" button in the mobile landscape menu to open or expand the Relay HUD on touch devices.
 - **Automated Headless Test Suite**:
   - `scratch/test_phase_4_server_simulation.ts`: 100% passed (Headless arena init with 17 walls, jump gravity and solid ground touchdown $z = 0.000$, contested grab arbitration with strength winner, and 60Hz standalone `GameServer` loop lifecycle).
   - `scratch/test_explicit_grab_and_object_sync.ts`: 100% passed (Null target grab rejection, explicit target grab selection, smooth convergence lerping, and resting sleep coordinate snapping).

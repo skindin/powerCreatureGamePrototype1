@@ -422,6 +422,44 @@ function bootstrap(): void {
   const rate60Btn = document.getElementById("rate-60hz-btn");
   const relayToggleServerModeBtn = document.getElementById("relay-toggle-server-mode-btn") as HTMLButtonElement | null;
   const serverPhysicsStats = document.getElementById("server-physics-stats");
+  const btnMinimizeRelayHud = document.getElementById("btn-minimize-relay-hud") as HTMLButtonElement | null;
+  const btnCloseRelayHud = document.getElementById("btn-close-relay-hud") as HTMLButtonElement | null;
+  const relayHudCard = relayHud?.querySelector(".relay-hud-card") as HTMLElement | null;
+
+  const toggleRelayHudMinimize = (forceState?: boolean) => {
+    if (!relayHudCard) return;
+    const shouldCollapse = forceState !== undefined ? forceState : !relayHudCard.classList.contains("collapsed");
+    relayHudCard.classList.toggle("collapsed", shouldCollapse);
+    if (btnMinimizeRelayHud) {
+      btnMinimizeRelayHud.textContent = shouldCollapse ? "➕" : "➖";
+      btnMinimizeRelayHud.title = shouldCollapse ? "Expand Relay Settings (M)" : "Minimize Relay Settings (M)";
+    }
+  };
+
+  const toggleRelayHudVisibility = (forceOpen?: boolean) => {
+    if (!relayHud) return;
+    const isHidden = relayHud.classList.contains("hidden");
+    const nextHidden = forceOpen !== undefined ? !forceOpen : !isHidden;
+    relayHud.classList.toggle("hidden", nextHidden);
+  };
+
+  btnMinimizeRelayHud?.addEventListener("click", () => {
+    toggleRelayHudMinimize();
+  });
+
+  btnCloseRelayHud?.addEventListener("click", () => {
+    toggleRelayHudVisibility(false);
+  });
+
+  relayStatusPill?.addEventListener("click", () => {
+    if (relayHud?.classList.contains("hidden")) {
+      toggleRelayHudVisibility(true);
+    } else if (relayHudCard?.classList.contains("collapsed")) {
+      toggleRelayHudMinimize(false);
+    } else {
+      toggleRelayHudVisibility(false);
+    }
+  });
 
   const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
   const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
@@ -1085,12 +1123,33 @@ function bootstrap(): void {
       toggleFullscreen();
     }
 
+    if (
+      e.code === "KeyM" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
+    ) {
+      if (isMultiplayerMode) {
+        if (relayHud?.classList.contains("hidden")) {
+          toggleRelayHudVisibility(true);
+        } else if (!relayHudCard?.classList.contains("collapsed")) {
+          toggleRelayHudMinimize(true);
+        } else {
+          toggleRelayHudVisibility(false);
+        }
+      }
+    }
+
     if (e.code === "Escape") {
       setMobileMenuOpen(false);
       setViewSettingsOpen(false);
       setPhoneModalOpen(false);
       feedbackPanel.close();
       setControlsModalOpen(false);
+      if (relayHud && !relayHud.classList.contains("hidden")) {
+        toggleRelayHudVisibility(false);
+      }
     }
 
     if (e.code === "KeyH") {
@@ -1161,6 +1220,17 @@ function bootstrap(): void {
     setMobileMenuOpen(false);
     const isCollapsed = devContainer.classList.contains("collapsed");
     setSidebarOpen(isCollapsed);
+  });
+
+  const mobileBtnRelayHud = document.getElementById("mobile-btn-relay-hud");
+  mobileBtnRelayHud?.addEventListener("click", () => {
+    setMobileMenuOpen(false);
+    if (!isMultiplayerMode) {
+      setMode(true);
+    } else {
+      toggleRelayHudVisibility(true);
+      toggleRelayHudMinimize(false);
+    }
   });
 
   // Keep mobile players badge up to date on player changes

@@ -465,6 +465,55 @@ body {
   background: rgba(56, 189, 248, 0.35);
 }
 
+.btn-relay-tool {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-relay-tool:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.btn-relay-tool.close:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.relay-hud-card.collapsed .relay-hud-header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.relay-hud-card.collapsed .relay-hud-body {
+  display: none !important;
+}
+
+#relay-status-pill {
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+#relay-status-pill:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.15);
+  transform: translateY(-1px);
+}
+
 .relay-hud-body {
   display: flex;
   align-items: center;

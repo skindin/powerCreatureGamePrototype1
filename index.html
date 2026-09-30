@@ -37,9 +37,10 @@
         </div>
 
         <div class="top-bar-right">
-          <div id="relay-status-pill" class="relay-pill hidden">
+          <div id="relay-status-pill" class="relay-pill hidden" title="Toggle Multiplayer Relay Settings overlay (Hotkey: M)" role="button" tabindex="0">
             <span class="status-dot"></span>
             <span id="relay-ping-display">-- ms</span>
+            <span class="relay-pill-key" style="font-size: 9px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-left: 2px; color: #94a3b8;">M</span>
           </div>
           <div class="public-link-widget" id="public-link-widget" title="Live nationwide public URL">
             <span class="status-dot" id="public-status-dot"></span>
@@ -239,6 +240,11 @@
                     <span class="nav-btn-icon" id="mobile-maximize-icon">⛶</span>
                     <span class="nav-btn-text" id="mobile-maximize-text">Maximize Screen</span>
                     <span class="badge" id="mobile-maximize-badge">Full</span>
+                  </button>
+                  <button id="mobile-btn-relay-hud" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🛰️</span>
+                    <span class="nav-btn-text">Relay Settings</span>
+                    <span class="badge" id="mobile-relay-hud-badge">HUD</span>
                   </button>
                 </div>
               </div>
@@ -686,6 +692,8 @@
                   <button id="relay-resync-world-btn" class="btn-preset" title="Re-synchronize authoritative server world transforms with current client positions" style="height: 24px; padding: 2px 8px; font-size: 11px;">🔄 Resync</button>
                   <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
                   <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
+                  <button id="btn-minimize-relay-hud" class="btn-relay-tool" title="Minimize / Collapse Relay Settings (M)" aria-label="Minimize Relay Settings">➖</button>
+                  <button id="btn-close-relay-hud" class="btn-relay-tool close" title="Hide Relay Card (keeps connection active in background, click pill in top bar to reopen)" aria-label="Hide Relay Settings">✕</button>
                 </div>
               </div>
 
