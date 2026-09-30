@@ -19,6 +19,7 @@ export interface CompressedEntityState {
   angZ?: number;
   heldBy: string | null;
   isClimbing: boolean;
+  facingAngle?: number;
   isSleeping?: boolean;
 }
 
@@ -114,6 +115,7 @@ export class AuthoritativeSnapshotManager {
       angZ: roll ? Number(roll.angularVelocity.z.toFixed(2)) : undefined,
       heldBy: heldByStr,
       isClimbing: isChar ? (entity as Character).isClimbing : false,
+      facingAngle: isChar ? Number((entity as Character).facingAngle.toFixed(4)) : undefined,
       isSleeping,
     };
   }
@@ -167,9 +169,11 @@ export class AuthoritativeSnapshotManager {
           const isVelSame = Math.abs(ent.vx - prev.vx) < 0.01 && Math.abs(ent.vy - prev.vy) < 0.01 && Math.abs(ent.vz - prev.vz) < 0.01;
           const isHeldSame = ent.heldBy === prev.heldBy;
           const isClimbSame = ent.isClimbing === prev.isClimbing;
+          const isAngleSame = ent.facingAngle === prev.facingAngle ||
+            (ent.facingAngle !== undefined && prev.facingAngle !== undefined && Math.abs(ent.facingAngle - prev.facingAngle) < 0.01);
           const isSleepingSame = ent.isSleeping === prev.isSleeping;
 
-          if (isPosSame && isVelSame && isHeldSame && isClimbSame && isSleepingSame) {
+          if (isPosSame && isVelSame && isAngleSame && isHeldSame && isClimbSame && isSleepingSame) {
             this.totalEntitiesOmittedByDelta++;
             continue;
           }

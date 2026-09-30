@@ -161,10 +161,9 @@ export class RemoteEntityInterpolator {
       smooth.vy += (s.vy - smooth.vy) * blend;
       smooth.vz += (s.vz - smooth.vz) * blend;
 
-      // Smooth facing angle
-      const speed = Math.hypot(s.vx, s.vy);
-      const targetAngle = speed > 0.1 ? Math.atan2(s.vy, s.vx) : s.facingAngle;
-      smooth.facingAngle = this.lerpAngle(smooth.facingAngle, targetAngle, Math.min(1.0, dt * 15));
+      // Explicit facing angle sent by remote player and server: NEVER infer from velocity
+      const targetAngle = s.facingAngle;
+      smooth.facingAngle = this.lerpAngle(smooth.facingAngle, targetAngle, Math.min(1.0, dt * 25));
     }
 
     return {
@@ -193,7 +192,9 @@ export class RemoteEntityInterpolator {
    * Helper to interpolate between two angles (in radians) along the shortest arc.
    */
   private lerpAngle(a: number, b: number, t: number): number {
-    const diff = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+    let diff = (b - a) % (Math.PI * 2);
+    if (diff < -Math.PI) diff += Math.PI * 2;
+    if (diff > Math.PI) diff -= Math.PI * 2;
     return a + diff * t;
   }
 }

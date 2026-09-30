@@ -36,6 +36,7 @@ export interface PlayerInputPacket {
   aimY?: number;
   isAiming: boolean;
   isLockHeld: boolean;
+  facingAngle?: number;
   reliableActions?: ReliableActionCommand[];
   lastReceivedServerTick?: number;
 }

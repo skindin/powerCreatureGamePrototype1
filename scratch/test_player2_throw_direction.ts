@@ -96,8 +96,15 @@ const expectedRatio = (-3.0) / (-4.0); // 0.75
 const actualRatio = rock.velocity.y / rock.velocity.x;
 assert(Math.abs(actualRatio - expectedRatio) < 0.1, `Trajectory ratio ${actualRatio} should be close to ${expectedRatio}`);
 
-// Note: Once the throw executes on this tick, updateCharacter runs with movement (1, 0), so empty-handed character faces movement direction
-console.log(`Character facing angle after tick: ${p2Char.facingAngle}`);
+// On the tick the throw executes, character faces the throw aim direction
+console.log(`Character facing angle on throw tick: ${p2Char.facingAngle}`);
+const expectedThrowAngle = Math.atan2(-3, -4);
+assert(Math.abs(p2Char.facingAngle - expectedThrowAngle) < 0.05, `Character should face throw direction (${expectedThrowAngle}), got ${p2Char.facingAngle}`);
+
+// On the subsequent tick when empty-handed and moving right (1, 0), character faces movement direction (0 rad)
+const nextInputs = playerManager.capturePlayerInputs(false, [rock]);
+playerManager.applyPlayerInputs(nextInputs, 1 / 60, [rock], false);
+console.log(`Character facing angle on subsequent move tick: ${p2Char.facingAngle}`);
 assert(p2Char.facingAngle === 0, `Character facing angle ${p2Char.facingAngle} should face movement direction (0 rad) after empty-handed move`);
 
 console.log("✅ All Player 2 throw direction tests passed!");

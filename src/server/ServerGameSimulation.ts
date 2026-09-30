@@ -441,6 +441,9 @@ export class ServerGameSimulation {
     if (clientChar.isClimbing !== undefined) {
       sChar.isClimbing = clientChar.isClimbing;
     }
+    if (clientChar.facingAngle !== undefined) {
+      sChar.facingAngle = clientChar.facingAngle;
+    }
     if (clientChar.color) {
       sChar.color = clientChar.color;
       sChar.playerColor = clientChar.color;
@@ -626,6 +629,9 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
+        if (catchupPkt.facingAngle !== undefined) {
+          char.facingAngle = catchupPkt.facingAngle;
+        }
       }
 
       if (pkt) {
@@ -698,6 +704,11 @@ export class ServerGameSimulation {
           this.arena.entities,
           pkt.isLockHeld
         );
+
+        // Explicitly enforce facing angle sent by client packet
+        if (pkt.facingAngle !== undefined) {
+          char.facingAngle = pkt.facingAngle;
+        }
       } else {
         // Neutral step for empty-handed player
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
@@ -784,6 +795,7 @@ export class ServerGameSimulation {
       color: primaryChar ? primaryChar.color : "#f59e0b",
       isClimbing: primaryChar ? primaryChar.isClimbing : false,
       isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
+      facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0,
     };
 
     const ghostObjects: GhostEntityState[] = this.objects.map((obj) => ({
@@ -801,7 +813,7 @@ export class ServerGameSimulation {
       color: obj.color,
       shape: obj.visualShape,
       isHeld: obj.isHeld,
-      heldBy: obj.heldBy ? (obj.heldBy === primaryChar ? "player" : obj.heldBy.id) : null,
+      heldBy: obj.heldBy ? ((obj.heldBy as Character).playerId || (obj.heldBy === primaryChar ? "player" : obj.heldBy.id)) : null,
       isAboveWalls: obj.isAboveWalls,
       angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
       angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
@@ -824,6 +836,7 @@ export class ServerGameSimulation {
       color: c.color,
       isClimbing: c.isClimbing,
       isAboveWalls: c.isAboveWalls,
+      facingAngle: Number(c.facingAngle.toFixed(4)),
     }));
 
     return {

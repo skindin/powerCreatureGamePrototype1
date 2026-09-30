@@ -249,7 +249,7 @@ export class GameLoop {
           vx: gc.vx,
           vy: gc.vy,
           vz: gc.vz || 0,
-          facingAngle: 0,
+          facingAngle: gc.facingAngle ?? 0,
           isClimbing: gc.isClimbing,
           isAboveWalls: gc.isAboveWalls,
           isGrounded: gc.isGrounded,

@@ -1016,6 +1016,22 @@ powerCreatureGamePrototype1/
     - **Automated Verification**:
       - `scratch/test_ghost_toggle_sync.ts` verifies that when `showGhostClones` is false, `getLatestGhost()` continues providing snapshots, `RemoteEntityInterpolator` computes leading forward-predicted positions for remote players, and simulation sync remains 100% active.
 
+60. **Explicit Remote Player Facing Angle Pipeline & Aim Retention**:
+    - **Root Causes**:
+      1. `GameLoop.ts` previously fed `facingAngle: 0` (hardcoded right) into `RemoteEntityInterpolator` samples instead of reading the real angle from the server snapshot.
+      2. `RemoteEntityInterpolator.ts` ignored the player's explicit facing angle while walking (`speed > 0.1`) and forced `targetAngle = Math.atan2(vy, vx)` (movement direction), overriding aim orientation while carrying objects.
+      3. When stopping (`speed <= 0.1`), `RemoteEntityInterpolator` fell back to `s.facingAngle` which was hardcoded `0`, causing remote players to snap facing right.
+      4. `PlayerInputPacket` and network telemetry did not transmit `facingAngle` explicitly from client to server.
+    - **End-to-End Explicit Pipeline**:
+      - `PlayerInputPacket`: added `facingAngle?: number` populated directly by `PlayerManager.ts` (facing aim when holding, facing move when walking, preserving last angle when stopped).
+      - `RelayClient.ts`: serialized `facingAngle` in `GhostEntityState` and `sendInput` packet payloads.
+      - `ServerGameSimulation.ts`: synchronized `sChar.facingAngle` in `syncCharacterFromPacket`, preserved it during `step()` input consumption and catchup bursts, and serialized it into `GhostEntityState.facingAngle`.
+      - `ServerJitterBuffer.ts`: preserved `lastKnownInput?.facingAngle` during starvation ticks to prevent abrupt snapping.
+      - `GameLoop.ts`: passes `gc.facingAngle ?? 0` into `RemoteEntityInterpolator` samples.
+      - `RemoteEntityInterpolator.ts`: uses `targetAngle = s.facingAngle` unconditionally, never inferring orientation from velocity. Robust `lerpAngle` calculates shortest arc diff.
+    - **Automated Verification**:
+      - `scratch/test_remote_facing_angle.ts`: verified 100% (remote player walking East while aiming North faces North `[-1.5708 rad]`, and when stopping completely preserves West `[3.1416 rad]` without snapping right).
+
 ---
 
 

@@ -435,6 +435,14 @@ Tasks Completed:
       - Server snapshots continue streaming uninterrupted to `RemoteEntityInterpolator`, `syncAuthoritativeObjects`, and clock synchronization even when visual ghosts are toggled OFF.
       - Guaranteed continuous position synchronization between split-screen client viewpoints regardless of ghost clone visibility.
 
+  [x] 9.6 Explicit Remote Player Facing Angle Pipeline & Aim Retention
+      - Added explicit `facingAngle` to `PlayerInputPacket` captured directly from character aiming/movement.
+      - Streamed `facingAngle` across network telemetry, input queue, and authoritative server simulation (`ServerGameSimulation.ts`).
+      - Serialized `facingAngle` into authoritative ghost snapshots (`GhostEntityState.facingAngle`).
+      - Updated `GameLoop.ts` to pass `gc.facingAngle` into `RemoteEntityInterpolator` samples instead of hardcoded 0.
+      - Removed velocity-inferred facing angles from `RemoteEntityInterpolator.ts`; remote players explicitly track `s.facingAngle`.
+      - Resolved right-facing snap on stop (previously 0 rad) and ensured players holding items face where they aim regardless of movement direction.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]

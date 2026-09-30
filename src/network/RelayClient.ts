@@ -22,6 +22,7 @@ export interface GhostEntityState {
   heldBy?: string | null;
   isAboveWalls?: boolean;
   isClimbing?: boolean;
+  facingAngle?: number;
   angX?: number;
   angY?: number;
   angZ?: number;
@@ -487,6 +488,7 @@ export class RelayClient {
         color: primaryChar.color,
         isClimbing: primaryChar.isClimbing,
         isAboveWalls: primaryChar.isAboveWalls,
+        facingAngle: Number(primaryChar.facingAngle.toFixed(4)),
       } : undefined,
       characters: characters.map((c) => ({
         id: c.playerId || "player",
@@ -503,6 +505,7 @@ export class RelayClient {
         color: c.playerColor || c.color,
         isClimbing: c.isClimbing,
         isAboveWalls: c.isAboveWalls,
+        facingAngle: Number(c.facingAngle.toFixed(4)),
       })),
       objects: objects.map((obj) => ({
         id: obj.id,

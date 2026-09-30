@@ -197,6 +197,7 @@ export class PlayerJitterQueue {
       // Retain last known aim coordinates so player orientation doesn't snap abruptly
       aimX: this.lastKnownInput?.aimX,
       aimY: this.lastKnownInput?.aimY,
+      facingAngle: this.lastKnownInput?.facingAngle,
     };
 
     return {

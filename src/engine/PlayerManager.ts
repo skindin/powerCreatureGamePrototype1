@@ -326,6 +326,20 @@ export class PlayerManager {
         }
       }
 
+      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      if (kChar.heldObject) {
+        const aimDx = input.actualMousePos.x - kChar.position.x;
+        const aimDy = input.actualMousePos.y - kChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else {
+        const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
+        if (moveMag > 0.05) {
+          kChar.facingAngle = Math.atan2(input.movementVector.y, input.movementVector.x);
+        }
+      }
+
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
@@ -340,6 +354,7 @@ export class PlayerManager {
         aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
+        facingAngle: kChar.facingAngle,
       });
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
@@ -387,6 +402,20 @@ export class PlayerManager {
         }
       }
 
+      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      if (cChar.heldObject) {
+        const aimDx = aimX - cChar.position.x;
+        const aimDy = aimY - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else {
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        if (moveMag > 0.05) {
+          cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
+        }
+      }
+
       map.set(entry.id, {
         playerId: entry.id,
         moveX: slot.movementVector.x,
@@ -401,6 +430,7 @@ export class PlayerManager {
         aimY,
         isAiming: true,
         isLockHeld: slot.isLockHeld ?? false,
+        facingAngle: cChar.facingAngle,
       });
       slot.isDropRequested = false;
       slot.isThrowRequested = false;
@@ -512,6 +542,10 @@ export class PlayerManager {
         this.arena.entities,
         pkt.isLockHeld
       );
+
+      if (pkt.facingAngle !== undefined) {
+        char.facingAngle = pkt.facingAngle;
+      }
 
       // Explicit grab target resolution
       if (!isEditMode && pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
