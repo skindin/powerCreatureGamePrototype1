@@ -7,7 +7,7 @@ import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
 import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
-import { StateHistoryBuffer, RollbackResult } from "./physics/StateHistoryBuffer.js";
+import { StateHistoryBuffer, RollbackResult, PlayerInputPacket } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
@@ -62,6 +62,7 @@ export class GameLoop {
   public isPhysicsPaused = false;
   public globalCollisionMode: CollisionMode = "dynamic";
   public lastSnapshot: WorldSnapshot | null = null;
+  public lastInputs = new Map<string, PlayerInputPacket>();
   public historyBuffer = new StateHistoryBuffer(60, 30);
   public islandManager = new IslandManager();
 
@@ -256,6 +257,7 @@ export class GameLoop {
     );
     // 2. Update players (keyboard, gamepads, or idle baseCharacter) and capture inputs
     const currentInputs = this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
+    this.lastInputs = currentInputs;
 
     // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {

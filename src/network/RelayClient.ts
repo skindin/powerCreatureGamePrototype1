@@ -1,5 +1,8 @@
 import { Character } from "../character/Character.js";
 import { GameObject } from "../engine/GameObject.js";
+import { Arena } from "../engine/Arena.js";
+import { PlayerInputPacket } from "../engine/physics/StateHistoryBuffer.js";
+import { ServerGameSimulation } from "../server/ServerGameSimulation.js";
 
 export interface GhostEntityState {
   id: string;
@@ -28,6 +31,7 @@ export interface GhostSnapshot {
   rttMs: number;
   character: GhostEntityState;
   objects: GhostEntityState[];
+  source?: "physics_sim" | "echo";
 }
 
 export type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -42,6 +46,8 @@ export interface RelayStats {
   maxRttMs: number;
   avgRttMs: number;
   sendRateHz: number;
+  serverMode: "physics_sim" | "echo_snapshot";
+  serverTick: number;
 }
 
 export class RelayClient {
@@ -51,6 +57,8 @@ export class RelayClient {
   public showGhostClones: boolean = true;
   public lerpGhosts: boolean = true;
   public ghostLerpRatePercent: number = 35.0; // percent of delta distance to move per frame at 60 FPS (100% = instant snap)
+  public serverMode: "physics_sim" | "echo_snapshot" = "physics_sim"; // Phase 4: Authoritative Server Physics Sim vs Raw Positional Echo
+  public serverSimulation: ServerGameSimulation = new ServerGameSimulation();
 
   private socket: WebSocket | null = null;
   private seq: number = 0;
@@ -259,6 +267,10 @@ export class RelayClient {
     return this.lerpGhosts ? (this.currentGhostSnapshot ?? this.latestGhostSnapshot) : this.latestGhostSnapshot;
   }
 
+  public syncServerWorld(arena: Arena, characters: Character[], objects: GameObject[]): void {
+    this.serverSimulation.initializeFromWorld(arena, characters, objects);
+  }
+
   public getStats(): RelayStats {
     return {
       status: this.status,
@@ -270,14 +282,22 @@ export class RelayClient {
       maxRttMs: this.maxRttMs,
       avgRttMs: this.packetsReceived > 0 ? this.totalRttMs / this.packetsReceived : 0,
       sendRateHz: this.sendRateHz,
+      serverMode: this.serverMode,
+      serverTick: this.serverSimulation.currentTick,
     };
   }
 
   /**
-   * Called on every game loop tick. If enough time has passed based on sendRateHz,
-   * sends current state to the 3rd party relay server.
+   * Streams player input packets and current local world state to the network relay.
+   * Feeds the authoritative server physics simulation loopback or remote server.
    */
-  public update(character: Character, objects: GameObject[], nowMs: number): void {
+  public sendInput(
+    inputs: Map<string, PlayerInputPacket>,
+    tick: number,
+    character: Character,
+    objects: GameObject[],
+    nowMs: number
+  ): void {
     if (this.status !== "connected" || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
       return;
     }
@@ -288,12 +308,17 @@ export class RelayClient {
     }
     this.lastSendTime = nowMs;
 
+    const inputList: PlayerInputPacket[] = Array.from(inputs.values());
+
     const packet = {
-      type: "pc_state_sync",
+      type: "pc_player_input",
       seq: ++this.seq,
       sentAt: performance.now(),
+      tick,
+      inputs: inputList,
+      // Fallback state sync for visual echo or dual validation
       character: {
-        id: "player",
+        id: character.playerId || "player",
         x: Number(character.position.x.toFixed(3)),
         y: Number(character.position.y.toFixed(3)),
         z: Number(character.position.z.toFixed(3)),
@@ -336,6 +361,24 @@ export class RelayClient {
     }
   }
 
+  /**
+   * Called on every game loop tick. Delegates to sendInput.
+   */
+  public update(character: Character, objects: GameObject[], nowMs: number): void {
+    const dummyInputs = new Map<string, PlayerInputPacket>();
+    dummyInputs.set(character.playerId || "keyboard", {
+      playerId: character.playerId || "keyboard",
+      moveX: character.velocity.x !== 0 ? Math.sign(character.velocity.x) : 0,
+      moveY: character.velocity.y !== 0 ? Math.sign(character.velocity.y) : 0,
+      isSprinting: character.isSprinting,
+      isJumpHeld: character.isClimbing,
+      isGrabHeld: false,
+      isAiming: false,
+      isLockHeld: false,
+    });
+    this.sendInput(dummyInputs, this.seq, character, objects, nowMs);
+  }
+
   private handleMessage(data: string | Blob): void {
     if (typeof data !== "string") return;
 
@@ -344,31 +387,87 @@ export class RelayClient {
 
     try {
       const parsed = JSON.parse(data);
-      if (parsed.type !== "pc_state_sync" || typeof parsed.sentAt !== "number") {
-        return;
-      }
 
-      const receivedAt = performance.now();
-      const rttMs = Math.max(0, receivedAt - parsed.sentAt);
+      if (parsed.type === "pc_player_input") {
+        if (typeof parsed.sentAt !== "number") return;
+        const receivedAt = performance.now();
+        const rttMs = Math.max(0, receivedAt - parsed.sentAt);
 
-      this.packetsReceived++;
-      this.lastRttMs = rttMs;
-      if (rttMs < this.minRttMs) this.minRttMs = rttMs;
-      if (rttMs > this.maxRttMs) this.maxRttMs = rttMs;
-      this.totalRttMs += rttMs;
+        this.packetsReceived++;
+        this.lastRttMs = rttMs;
+        if (rttMs < this.minRttMs) this.minRttMs = rttMs;
+        if (rttMs > this.maxRttMs) this.maxRttMs = rttMs;
+        this.totalRttMs += rttMs;
 
-      this.latestGhostSnapshot = {
-        seq: parsed.seq,
-        sentAt: parsed.sentAt,
-        receivedAt,
-        rttMs,
-        character: parsed.character,
-        objects: parsed.objects || [],
-      };
+        if (this.serverMode === "physics_sim") {
+          // Authoritative Server Physics Simulation (Phase 4):
+          // Enqueue incoming player inputs and advance the server physics simulation!
+          if (Array.isArray(parsed.inputs)) {
+            for (const inp of parsed.inputs) {
+              this.serverSimulation.queueInput(inp);
+            }
+          }
+          this.serverSimulation.step(1 / 60);
 
-      this.notifyStats();
-      if (this.onSnapshotReceived) {
-        this.onSnapshotReceived(this.latestGhostSnapshot);
+          // Get the authoritative physical state directly from the server simulation
+          const simSnap = this.serverSimulation.getGhostSnapshot(rttMs);
+          simSnap.source = "physics_sim";
+          this.latestGhostSnapshot = simSnap;
+        } else {
+          // Fallback positional echo
+          this.latestGhostSnapshot = {
+            seq: parsed.seq,
+            sentAt: parsed.sentAt,
+            receivedAt,
+            rttMs,
+            character: parsed.character,
+            objects: parsed.objects || [],
+            source: "echo",
+          };
+        }
+
+        this.notifyStats();
+        if (this.onSnapshotReceived && this.latestGhostSnapshot) {
+          this.onSnapshotReceived(this.latestGhostSnapshot);
+        }
+      } else if (parsed.type === "pc_state_sync") {
+        if (typeof parsed.sentAt !== "number") return;
+        const receivedAt = performance.now();
+        const rttMs = Math.max(0, receivedAt - parsed.sentAt);
+
+        this.packetsReceived++;
+        this.lastRttMs = rttMs;
+        if (rttMs < this.minRttMs) this.minRttMs = rttMs;
+        if (rttMs > this.maxRttMs) this.maxRttMs = rttMs;
+        this.totalRttMs += rttMs;
+
+        this.latestGhostSnapshot = {
+          seq: parsed.seq,
+          sentAt: parsed.sentAt,
+          receivedAt,
+          rttMs,
+          character: parsed.character,
+          objects: parsed.objects || [],
+          source: "echo",
+        };
+
+        this.notifyStats();
+        if (this.onSnapshotReceived && this.latestGhostSnapshot) {
+          this.onSnapshotReceived(this.latestGhostSnapshot);
+        }
+      } else if (parsed.type === "pc_server_snapshot") {
+        // Direct broadcast from standalone Node.js GameServer
+        const receivedAt = performance.now();
+        this.packetsReceived++;
+        this.latestGhostSnapshot = {
+          ...parsed.snapshot,
+          receivedAt,
+          source: "physics_sim",
+        };
+        this.notifyStats();
+        if (this.onSnapshotReceived && this.latestGhostSnapshot) {
+          this.onSnapshotReceived(this.latestGhostSnapshot);
+        }
       }
     } catch (e) {
       // Ignored malformed payload

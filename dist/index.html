@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-XlM3u_aW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DEBD5zA1.css">
+    <script type="module" crossorigin src="/assets/index-KAXjEEa-.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B9wq35Lf.css">
   </head>
   <body>
     <div id="app-layout">
@@ -683,12 +683,17 @@
                   <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
                 </div>
                 <div class="relay-hud-actions">
+                  <button id="relay-toggle-server-mode-btn" class="btn-server-mode-toggle active" title="Toggle between Authoritative Physics Sim and Positional Echo">🤖 Sim: Physics</button>
                   <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
                   <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
                 </div>
               </div>
 
               <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Server Physics</span>
+                  <span class="stat-value" id="server-physics-stats">Tick: #0 (Live 60Hz)</span>
+                </div>
                 <div class="relay-stat-item">
                   <span class="stat-label">Public Game Room</span>
                   <div class="url-input-wrapper">

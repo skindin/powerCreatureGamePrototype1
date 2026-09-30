@@ -1013,7 +1013,8 @@ export class Renderer {
       ctx.font = "bold 9px monospace";
       ctx.fillStyle = "#e0f2fe";
       ctx.textAlign = "center";
-      ctx.fillText(`👻 ECHO (${Math.round(ghostSnapshot.rttMs)}ms)`, px, py - r - 6);
+      const badgePrefix = ghostSnapshot.source === "physics_sim" ? "🤖 SERVER SIM" : "👻 ECHO";
+      ctx.fillText(`${badgePrefix} (${Math.round(ghostSnapshot.rttMs)}ms)`, px, py - r - 6);
       ctx.restore();
     }
 

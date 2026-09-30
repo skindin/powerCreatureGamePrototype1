@@ -84,6 +84,9 @@ powerCreatureGamePrototype1/
 │   │   └── VerticalPositionModule.ts
 │   ├── network/           # Networking and telemetry
 │   │   └── RelayClient.ts # WebSocket relay client, RTT latency tracking, ghost snapshots
+│   ├── server/            # Authoritative server simulation core (Phase 4)
+│   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world, contested grab arbiter
+│   │   └── GameServer.ts  # Standalone Node.js 60Hz tick runner with hrtime drift correction
 │   └── ui/                # User interface and developer tools
 │       ├── DevPanel.ts    # Collapsible live inspector, variable sliders, wall tools
 │       └── InputManager.ts # Keyboard, mouse, drag-and-drop, touch controls
@@ -203,6 +206,41 @@ powerCreatureGamePrototype1/
   - Bottom-right Diagnostics HUD card displays live `Islands/Sleep: N active, M asleep`.
 - **Headless Test Suite**:
   - `scratch/test_phase_3_islands_sleeping.ts`: 100% passed (resting sleep accumulation, collision wake-up, island partitioning, and selective island snapshot restoration).
+
+### Authoritative Server Physics Simulation & Input Relay Loopback (Phase 3.5 & Phase 4 — Fully Functional)
+- **Headless Server Simulation Core (`src/server/ServerGameSimulation.ts`)**:
+  - Encapsulates an authoritative, fully headless physics world running at fixed 60Hz timestep (`fixedDt = 1 / 60`).
+  - Instances identical deterministic `Arena`, `Character` map, freebody `GameObject`s, `CollisionResolver`, and `IslandManager`.
+  - **Zero DOM / Canvas Dependencies**: Completely decoupled from browser window, document, and canvas APIs, allowing it to run either in-tab or as a standalone Node.js server.
+  - Replicates exact arena tile geometry, wall elevations, and physical entities.
+  - Maintains per-player input queues (`inputQueues: Map<string, PlayerInputPacket[]>`) that buffer client inputs received over the network to absorb jitter.
+  - When input queue is starved, applies safe neutral inputs (stops movement, releases jump/grab/throw) to prevent characters from getting stuck in re-jumping loops.
+  - **Phase 4.3 Authoritative Grab & Contest Arbiter**:
+    - Validates reach and line-of-sight before granting an object grab.
+    - Resolves simultaneous multi-player grabs on the exact same freebody on the exact same tick via strict deterministic tiebreakers:
+      1. **Creature Strength** (`char.strength`): Stronger creature wins.
+      2. **3D Euclidean Proximity**: Closer creature to object center wins.
+      3. **Deterministic ID Priority**: Tiebreak fallback.
+    - Grants object to the winning player, cancels the loser's grab, and records the resolution in `contestedGrabEvents` audit queue.
+  - Produces authoritative `MultiplayerGhostSnapshot` with real vertical position $z$, vertical velocity $v_z$, resting flags, and true ground contact.
+- **Standalone Node.js Game Server Loop (`src/server/GameServer.ts`)**:
+  - 60Hz tick runner using high-resolution `process.hrtime.bigint()` drift compensation to eliminate timing drift across frames.
+  - Broadcasts authoritative state to connected clients with serialization and delta tracking.
+- **Client Input Streaming & Real Internet Relay Loopback (`src/network/RelayClient.ts` & `src/engine/GameLoop.ts`)**:
+  - `GameLoop.ts` captures player input packets on each physics tick (`onPhysicsTick`) and streams `pc_player_input` packets over the WebSocket relay.
+  - Packets traverse a real remote WebSocket relay (`wss://echo.websocket.org` or `wss://ws.postman-echo.com/raw`), subjecting inputs to actual broadband internet round-trip latency (RTT) and jitter.
+  - Returned input packets feed directly into the authoritative `ServerGameSimulation`, which advances physics and publishes the authoritative world snapshot.
+- **Dual Visual Modes & UI Controls (`DevPanel.ts`, `Renderer.ts`, `index.html`)**:
+  - **Server Simulation Toggle (`#relay-toggle-server-mode-btn`)**:
+    - `🤖 Sim: Physics`: True authoritative server physics simulation driven by looped-back input packets. Ghost clone renders true physical altitude, jumps, bounces, and solid ground contacts.
+    - `📡 Sim: Pos Echo`: Legacy coordinate mirroring directly from echoed client position packets.
+  - **Authoritative Server Ghost Display**:
+    - Renders with glowing `[SERVER SIM (XXms)]` pill badge (cyan/emerald theme) displaying real-time RTT latency.
+    - Stacked directly on top of client prediction to give instant visual feedback of server authority vs. client prediction.
+  - **Server Physics Diagnostics HUD**:
+    - Multiplayer HUD displays `Tick: #N (Live 60Hz)` reflecting authoritative server simulation ticks.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_4_server_simulation.ts`: 100% passed (Headless arena init with 17 walls, jump gravity and solid ground touchdown $z = 0.000$, contested grab arbitration with strength winner, and 60Hz standalone `GameServer` loop lifecycle).
 
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 

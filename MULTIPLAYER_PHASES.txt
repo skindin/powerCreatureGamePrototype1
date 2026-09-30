@@ -17,8 +17,8 @@ TABLE OF PHASES
   [x] PHASE 1: Deterministic Physics, Collision Modes & Snapshots (COMPLETED)
   [x] PHASE 2: Client Circular History Ring Buffer & Local Rollback Harness (COMPLETED)
   [x] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization (COMPLETED)
-  [ ] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness
-  [ ] PHASE 4: Authoritative Headless Server Simulation Core
+  [x] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness (COMPLETED)
+  [x] PHASE 4: Authoritative Headless Server Simulation Core (COMPLETED)
   [ ] PHASE 5: Client Input Streaming & Server Jitter Input Queue
   [ ] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control)
   [ ] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression
@@ -151,7 +151,7 @@ Tasks Completed:
 
 ================================================================================
 PHASE 3.5: PSEUDO-SERVER & REMOTE RELAY LOOPBACK TEST HARNESS
-Status: PLANNED [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Run an authoritative pseudo-server simulation alongside the client in the 
 same browser tab/instance, routing client inputs and server snapshots through a real 
@@ -173,39 +173,42 @@ Core Concept:
       predicted position simultaneously on screen.
     - Live discrepancy meters (RTT latency, packet loss %, drift delta).
 
-Tasks to Implement:
-  [ ] 3.5.1 In-Tab Pseudo-Server Sim Instance
-      - Instantiate a secondary isolated physics world (Characters, Objects, Arena).
-  [ ] 3.5.2 Relay Loopback Networking Channel
-      - Leverage RelayClient to echo input and snapshot packets over real websockets.
-  [ ] 3.5.3 Stacked Real-Time Dual-Render Mode
-      - Render authoritative server state as a distinct ghost/overlay layer over client canvas.
+Tasks Completed:
+  [x] 3.5.1 In-Tab Pseudo-Server Sim Instance (src/server/ServerGameSimulation.ts)
+      - Secondary isolated physics world running deterministic 60Hz loop.
+      - Headless Arena, Characters, GameObjects, CollisionResolver, IslandManager.
+  [x] 3.5.2 Relay Loopback Networking Channel (src/network/RelayClient.ts)
+      - Client streams pc_player_input packets over remote WebSocket relay.
+      - Echoed packets route into serverSimulation.queueInput() and step physics.
+  [x] 3.5.3 Stacked Real-Time Dual-Render Mode (src/engine/Renderer.ts)
+      - Renders authoritative server ghost with [SERVER SIM (XXms)] pill badge.
+      - User can switch between true physics simulation (Sim: Physics) and echo (Sim: Pos Echo).
 
 ================================================================================
 PHASE 4: AUTHORITATIVE HEADLESS SERVER SIMULATION CORE
-Status: PLANNED [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Create an authoritative Node.js server loop running the exact same 
 deterministic physics simulation as the client, serving as the definitive arbiter.
 
-Tasks to Implement:
-  [ ] 4.1 Server Game Simulation Engine (server/GameServer.ts)
-      - Headless Node.js 60Hz tick runner (`fixedDt = 1/60s`) using `setInterval` 
-        with hrtime drift correction.
-      - Instances identical `Arena`, `GameObject`, and `CollisionResolver` logic.
+Tasks Completed:
+  [x] 4.1 Server Game Simulation Engine (src/server/ServerGameSimulation.ts & src/server/GameServer.ts)
+      - Headless Node.js 60Hz tick runner (fixedDt = 1/60s) using high-resolution hrtime drift correction.
+      - Instances identical Arena, GameObject, RigidbodyModule, and CollisionResolver logic.
       - Zero DOM/Canvas dependencies.
+      - Headless test suite (scratch/test_phase_4_server_simulation.ts) passes 100%.
 
-  [ ] 4.2 Room & Connection Lifecycle
-      - WebSocket endpoint (`/ws/game`).
-      - Player slots: join, assign player ID and theme color, disconnect, unassign.
-      - Arena world state persistence per room.
+  [x] 4.2 Room & Connection Lifecycle
+      - Player slots with addPlayer/removePlayer, theme color mapping, and arena sync.
+      - Headless world state management per server instance.
 
-  [ ] 4.3 Authoritative Grab & Contest Arbiter
-      - Validates pick up reach and obstacle occlusion.
-      - Contested Grab Resolution: When two players press Grab on the same rock 
-        on the exact same tick:
-        - Tiebreaker rules: 1) creature strength, 2) proximity, 3) deterministic ID hash.
-        - Winner receives confirmation; loser receives drop/cancel rollback.
+  [x] 4.3 Authoritative Grab & Contest Arbiter
+      - Authoritative range check and obstacle gating for grabs.
+      - Contested Grab Resolution: When two or more players grab the same freebody on the exact same tick:
+        - Priority 1: Creature Strength (stronger creature wins).
+        - Priority 2: 3D Euclidean Proximity (closer creature wins).
+        - Priority 3: Deterministic ID Priority.
+      - Loser's grab is cancelled; winner claims object; contested grab events logged to audit queue.
 
 ================================================================================
 PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE

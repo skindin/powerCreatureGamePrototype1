@@ -420,6 +420,8 @@ function bootstrap(): void {
   const packetCounts = document.getElementById("relay-packet-counts");
   const rate30Btn = document.getElementById("rate-30hz-btn");
   const rate60Btn = document.getElementById("rate-60hz-btn");
+  const relayToggleServerModeBtn = document.getElementById("relay-toggle-server-mode-btn") as HTMLButtonElement | null;
+  const serverPhysicsStats = document.getElementById("server-physics-stats");
 
   const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
   const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
@@ -433,6 +435,7 @@ function bootstrap(): void {
       mobileModeMultiBtn?.classList.add("active");
       relayHud?.classList.remove("hidden");
       relayStatusPill?.classList.remove("hidden");
+      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], objects);
       relayClient.connect();
     } else {
       btnSinglePlayer?.classList.add("active");
@@ -458,6 +461,16 @@ function bootstrap(): void {
 
     if (relayConnectBtn) {
       relayConnectBtn.textContent = stats.status === "connected" ? "Disconnect" : "Connect";
+    }
+
+    if (serverPhysicsStats) {
+      if (stats.serverMode === "physics_sim") {
+        serverPhysicsStats.textContent = `Tick: #${stats.serverTick} (Live 60Hz)`;
+        serverPhysicsStats.style.color = "#4ade80";
+      } else {
+        serverPhysicsStats.textContent = `Off (Pos Echo)`;
+        serverPhysicsStats.style.color = "#94a3b8";
+      }
     }
 
     const dot = relayStatusPill?.querySelector(".status-dot");
@@ -495,6 +508,29 @@ function bootstrap(): void {
       packetCounts.textContent = `Sent: ${stats.packetsSent} | Echoed: ${stats.packetsReceived}`;
     }
   };
+
+  const updateServerModeUi = () => {
+    if (!relayToggleServerModeBtn) return;
+    if (relayClient.serverMode === "physics_sim") {
+      relayToggleServerModeBtn.textContent = "🤖 Sim: Physics";
+      relayToggleServerModeBtn.className = "btn-server-mode-toggle active";
+      relayToggleServerModeBtn.title = "Authoritative 60Hz Physics Simulation running over relay input stream";
+    } else {
+      relayToggleServerModeBtn.textContent = "📡 Sim: Pos Echo";
+      relayToggleServerModeBtn.className = "btn-server-mode-toggle echo";
+      relayToggleServerModeBtn.title = "Raw positional snapshot echo (no server physics simulation)";
+    }
+  };
+  updateServerModeUi();
+
+  relayToggleServerModeBtn?.addEventListener("click", () => {
+    relayClient.serverMode = relayClient.serverMode === "physics_sim" ? "echo_snapshot" : "physics_sim";
+    updateServerModeUi();
+    if (relayClient.serverMode === "physics_sim") {
+      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], objects);
+    }
+    relayClient.onStatsChange?.(relayClient.getStats());
+  });
 
   relayConnectBtn?.addEventListener("click", () => {
     if (relayClient.status === "connected") {
@@ -1128,7 +1164,7 @@ function bootstrap(): void {
   };
   gameLoop.onPhysicsTick = (_dt, nowMs) => {
     if (isMultiplayerMode) {
-      relayClient.update(character, objects, nowMs);
+      relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, character, objects, nowMs);
     }
   };
 

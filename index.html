@@ -682,12 +682,17 @@
                   <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
                 </div>
                 <div class="relay-hud-actions">
+                  <button id="relay-toggle-server-mode-btn" class="btn-server-mode-toggle active" title="Toggle between Authoritative Physics Sim and Positional Echo">🤖 Sim: Physics</button>
                   <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
                   <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
                 </div>
               </div>
 
               <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Server Physics</span>
+                  <span class="stat-value" id="server-physics-stats">Tick: #0 (Live 60Hz)</span>
+                </div>
                 <div class="relay-stat-item">
                   <span class="stat-label">Public Game Room</span>
                   <div class="url-input-wrapper">
