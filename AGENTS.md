@@ -1036,6 +1036,19 @@ powerCreatureGamePrototype1/
     - **Grab UI Viewport Filtering**: In `Renderer.ts:drawFreebodyObject` and `drawCharacter`, `charactersInReach` and `targetingChars` are filtered against `localHeroCharacter`. In split-screen mode, grab targeting rings (`P1 GRAB`, reach outlines) only render for the client assigned to that viewport, hiding grab UI for remote characters.
     - **Remote Nametag Colors**: In `Renderer.ts:drawCharacterNameTag`, removed the hardcoded sky blue `#38bdf8` override so that remote player nametag badges preserve their assigned character theme color (`char.playerColor || char.color`).
 
+62. **Classical Snapshot Interpolation (Zero Overshoot & Zero Bobbing)**:
+    - **Motivation**: Forward extrapolation projected remote entities ahead by latency lead time. When a remote character stopped, network latency delayed the stop packet, causing the local client to overshoot past the stop coordinate before snapping/bobbing back when the stop packet arrived.
+    - **Architecture (`src/engine/physics/RemoteEntityInterpolator.ts`)**:
+      - Implemented classical **Snapshot Interpolation** using a configurable delay buffer (`interpDelayMs = 60`, default 60ms).
+      - Renders remote entities at $T_{\text{render}} = \text{nowMs} - \text{interpDelayMs}$, interpolating smoothly between two verified surrounding snapshots $S_0$ and $S_1$ ($S_0.\text{timestamp} \le T_{\text{render}} \le S_1.\text{timestamp}$).
+      - When a remote player stops, $S_1$ has $v=0$ at $X_{\text{stop}}$. As interpolation progress $\alpha \to 1.0$, the entity smoothly decelerates directly onto $X_{\text{stop}}$ and halts dead on $X_{\text{stop}}$. Overshoot is mathematically $0.0000\text{u}$, completely eliminating any reverse bobbing or rubberbanding.
+      - **Shortest Arc Angular Lerp**: Lerps `facingAngle` along shortest angular path across $\pm \pi$ boundaries.
+      - **Teleport Guard**: Jumps $>8.0\text{u}$ snap immediately without lerp-stretching.
+      - **Packet Stall Guard**: If packets stall and $T_{\text{render}} > \text{newest}.\text{timestamp}$, applies bounded extrapolation along velocity up to $100\text{ms}$; if stopped ($v=0$), position remains perfectly stationary.
+      - **Extrapolation Mode Option**: Preserved `mode = "interpolation" | "extrapolation"` for testing comparison.
+    - **Automated Verification**:
+      - `scratch/test_snapshot_interpolation.ts`: verified $0.0000\text{u}$ overshoot, strictly monotonic progression when stopping (no bobbing back), shortest-arc angles, and teleport snap. All passed 100%.
+
 ---
 
 

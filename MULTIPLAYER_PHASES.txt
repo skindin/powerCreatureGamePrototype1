@@ -447,6 +447,15 @@ Tasks Completed:
       - Filtered pickup reach highlights and grab targeting rings in `Renderer.ts` (`drawFreebodyObject`, `drawCharacter`) to strictly match the viewport's local client character (`localHeroCharacter`). Remote characters never trigger grab UI on screens not assigned to them.
       - Fixed remote nametag colors in `drawCharacterNameTag` to preserve the character's true player theme color (Amber for P1, Cyan for P2, Emerald for P3, etc.) instead of hardcoding sky blue.
 
+  [x] 9.8 Classical Snapshot Interpolation Engine (Zero Overshoot & Zero Bobbing)
+      - Upgraded `RemoteEntityInterpolator.ts` to implement classical Snapshot Interpolation with a configurable 60ms delay buffer (`interpDelayMs = 60`).
+      - Samples remote entities between verified historical snapshots S0 and S1 at T_render = nowMs - interpDelayMs.
+      - Eliminates extrapolation overshoot when remote players stop: as S1 arrives at rest (vx=0, vy=0), interpolation monotonically converges to the stop coordinate without EVER overshooting (0.0000u overshoot) and without any reverse bobbing or rubberbanding.
+      - Shortest-arc angular interpolation across [-PI, PI] boundary.
+      - Teleport / respawn distance guard (>8u) snaps immediately without lerp distortion.
+      - Backward-compatible extrapolation mode preserved (`mode = "interpolation" | "extrapolation"`).
+      - Verified 100% via headless suite `scratch/test_snapshot_interpolation.ts`.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]

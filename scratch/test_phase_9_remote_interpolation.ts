@@ -78,6 +78,7 @@ function runTests() {
   // -------------------------------------------------------------
   console.log("\n--- Test 2: Remote Avatar LEADS the Server Ghost While Moving ---");
   const interpolator = new RemoteEntityInterpolator();
+  interpolator.mode = "extrapolation";
   interpolator.defaultLeadTimeMs = 100; // 100ms lead time
 
   const now = 2000;
