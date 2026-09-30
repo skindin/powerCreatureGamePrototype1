@@ -162,6 +162,16 @@ export class StateHistoryBuffer {
     return false;
   }
 
+  /**
+   * Prunes historical frames older than the specified tick (used after prediction confirmation).
+   */
+  public pruneOlderThan(tick: number): void {
+    if (this.oldestTick === -1) return;
+    if (tick > this.oldestTick && tick <= this.latestTick) {
+      this.oldestTick = tick;
+    }
+  }
+
   public getOldestTick(): number {
     return this.oldestTick;
   }

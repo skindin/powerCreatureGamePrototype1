@@ -568,6 +568,15 @@ export class DevPanel {
                 Simulates an external tackle hitting the selected entity N ticks in the past. Renders the old predicted path (red) vs. re-simulated reconciled path (green) on canvas!
               </span>
             </div>
+
+            <div>
+              <button id="btn-test-phase8-reconcile" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); font-weight: 600; background: rgba(56, 189, 248, 0.08);">
+                🔄 Test Prediction Reconciliation (Phase 8)
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Simulates receiving an authoritative server snapshot with a past perturbation. Rewinds local player, fast-forwards with recorded inputs, and sets visual dampeners (0.000u pop).
+              </span>
+            </div>
           </div>
 
           <!-- Rollback Result Banner -->
@@ -2069,6 +2078,57 @@ export class DevPanel {
         bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
         bannerRollbackResult.style.color = "#fbbf24";
         bannerRollbackResult.innerHTML = `<strong>💥 PAST TACKLE RECONCILED:</strong> Simulated tackle at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>. Re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Canvas shows: Red dashed path = Old prediction | Green solid path = Reconciled timeline.</span>`;
+      }
+      this.updateInspector();
+    });
+
+    const btnTestPhase8 = this.container.querySelector("#btn-test-phase8-reconcile") as HTMLButtonElement | null;
+    btnTestPhase8?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const char = loop.primaryCharacter;
+      if (!char) return;
+
+      const currentTick = loop.currentTick;
+      const depth = Math.min(this.rollbackDepthTicks, loop.historyBuffer.getCount() - 1);
+      const targetTick = Math.max(loop.historyBuffer.getOldestTick(), currentTick - depth);
+      const targetFrame = loop.historyBuffer.get(targetTick);
+      if (!targetFrame) return;
+
+      const cEnt = targetFrame.snapshot.entities.find((e: any) => e.id === char.id);
+      if (!cEnt) return;
+
+      // Construct a simulated authoritative server snapshot at targetTick with a 0.75u perturbation
+      const fakeServerSnapshot = {
+        tick: targetTick,
+        timestamp: performance.now(),
+        lastProcessedInputTick: { [char.playerId || "keyboard"]: targetTick },
+        entities: [
+          {
+            id: char.id,
+            name: char.name,
+            x: cEnt.x + 0.75, // Server authoritatively nudged player by +0.75u in x
+            y: cEnt.y + 0.40,
+            z: cEnt.z,
+            vx: cEnt.vx + 2.0,
+            vy: cEnt.vy,
+            vz: cEnt.vz,
+            isHeld: false,
+            heldBy: null,
+            isClimbing: false,
+            isSleeping: false,
+          },
+        ],
+      };
+
+      const res = loop.reconcileWorldSnapshot(fakeServerSnapshot as any);
+
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        bannerRollbackResult.style.background = "rgba(56, 189, 248, 0.2)";
+        bannerRollbackResult.style.borderColor = "rgba(56, 189, 248, 0.5)";
+        bannerRollbackResult.style.color = "#38bdf8";
+        bannerRollbackResult.innerHTML = `<strong>🔄 PREDICTION RECONCILED:</strong> Corrected divergence at tick #${res.tick} (${res.maxDeltaPos.toFixed(2)}u offset). Replayed ${res.ticksReplayed} ticks forward in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Visual smoothing offset applied (${char.visualOffset.x.toFixed(2)}u, ${char.visualOffset.y.toFixed(2)}u) — 0.000u pop on screen gliding smoothly to zero!</span>`;
       }
       this.updateInspector();
     });

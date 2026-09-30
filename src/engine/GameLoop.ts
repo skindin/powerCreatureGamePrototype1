@@ -9,10 +9,12 @@ import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 import { StateHistoryBuffer, RollbackResult, PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
+import { PredictionReconciliation, ReconciliationResult } from "./physics/PredictionReconciliation.js";
+import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
 
-export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
-export { PLAYER_COLORS, StateHistoryBuffer, IslandManager };
+export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
+export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
 
 
 export class GameLoop {
@@ -432,6 +434,29 @@ export class GameLoop {
     }
 
     this.maxObjectDrift = maxDrift;
+  }
+
+  /**
+   * Phase 8: Reconciles an authoritative world snapshot against client-side prediction history.
+   * Compares the snapshot with the client frame at serverSnapshot.lastProcessedInputTick[playerId].
+   * If within deadzones (pos < 0.05u, vel < 0.15u/s), confirms prediction without re-simulating.
+   * If diverged, rewinds local player, re-simulates to present, and applies visual smoothing dampeners.
+   */
+  public reconcileWorldSnapshot(snapshot: AuthoritativeWorldSnapshot): ReconciliationResult {
+    const localPlayerId = this.primaryCharacter?.playerId || "keyboard";
+    return PredictionReconciliation.reconcile(
+      snapshot,
+      this.historyBuffer,
+      this.currentTick,
+      localPlayerId,
+      this.allCharacters,
+      this.objects,
+      this.arena,
+      this.playerManager,
+      this.fixedDt,
+      this.globalCollisionMode,
+      this.devPanel.isEditMode
+    );
   }
 
   /**

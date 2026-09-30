@@ -1187,6 +1187,11 @@ function bootstrap(): void {
   relayClient.onClockSync = (sync) => {
     gameLoop.applyClockSync(sync);
   };
+  relayClient.onWorldSnapshotReceived = (snapshot) => {
+    if (isMultiplayerMode && gameLoop) {
+      gameLoop.reconcileWorldSnapshot(snapshot);
+    }
+  };
   gameLoop.onPhysicsTick = (dt, nowMs) => {
     if (isMultiplayerMode) {
       // 1. Advance the independent authoritative server physics simulation by dt at full 60Hz

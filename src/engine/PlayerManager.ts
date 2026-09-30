@@ -416,7 +416,8 @@ export class PlayerManager {
     inputs: Map<string, PlayerInputPacket>,
     dt: number,
     objects: GameObject[],
-    isEditMode: boolean
+    isEditMode: boolean,
+    isReplay = false
   ): void {
     const input = this.inputManager;
 
@@ -440,15 +441,17 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
-        const action: ReliableActionCommand = {
-          actionId: `act-${char.playerId || "keyboard"}-drop-${++this.actionSeq}-${Date.now()}`,
-          type: "drop",
-          tick: pkt.tick ?? 0,
-          timestamp: performance.now(),
-          playerId: char.playerId || "keyboard",
-          targetObjectId: droppedObj.id,
-        };
-        this.onReliableActionDispatched?.(action);
+        if (!isReplay) {
+          const action: ReliableActionCommand = {
+            actionId: `act-${char.playerId || "keyboard"}-drop-${++this.actionSeq}-${Date.now()}`,
+            type: "drop",
+            tick: pkt.tick ?? 0,
+            timestamp: performance.now(),
+            playerId: char.playerId || "keyboard",
+            targetObjectId: droppedObj.id,
+          };
+          this.onReliableActionDispatched?.(action);
+        }
       }
 
       // Dedicated Throw (RT / RB / Left Click)
@@ -476,7 +479,9 @@ export class PlayerManager {
           aimY: throwAimY,
           isLockHeld: pkt.isLockHeld,
         };
-        this.onReliableActionDispatched?.(action);
+        if (!isReplay) {
+          this.onReliableActionDispatched?.(action);
+        }
       }
 
       char.updateCharacter(
@@ -498,7 +503,7 @@ export class PlayerManager {
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
               const pickedUp = char.pickupModule.pickup(char, targetObj);
-              if (pickedUp) {
+              if (pickedUp && !isReplay) {
                 const action: ReliableActionCommand = {
                   actionId: `act-${char.playerId || "keyboard"}-pickup-${++this.actionSeq}-${Date.now()}`,
                   type: "pickup",

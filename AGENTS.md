@@ -349,6 +349,27 @@ powerCreatureGamePrototype1/
 - **Automated Headless Test Suite**:
   - `scratch/test_phase_7_authoritative_snapshots.ts`: 100% passed (38/38 assertions covering schema quantization, 30Hz/60Hz broadcast pacing, delta compression, sleeping entity omission & wakeup, client delta merging, and client ACK feedback tracking).
 
+### Client Prediction Reconciliation & Visual Smoothing Dampener (Phase 8 — Fully Functional)
+- **Modular Prediction Reconciliation (`src/engine/physics/PredictionReconciliation.ts`)**:
+  - **Snapshot Comparison & Acknowledged Input Matching (Task 8.1)**:
+    - Instead of erroneously comparing against the server's delayed world clock tick, snapshots are matched against the client's historical prediction at the exact input tick acknowledged by the server: `clientTick = serverSnapshot.lastProcessedInputTick[localPlayerId]`.
+    - Compares position ($|\vec{p}_{\text{server}} - \vec{p}_{\text{client}}|$) and linear velocity ($|\vec{v}_{\text{server}} - \vec{v}_{\text{client}}|$) with deadzones ($0.05\text{u}$ pos $\approx 1.8\text{px}$, $0.15\text{u/s}$ vel).
+    - When within deadzones: Evaluates to `success_within_deadzone`, prunes history older than `clientTick`, and performs **0 rollbacks**, resulting in completely jitter-free 60fps local gameplay.
+  - **Single Local Character Misprediction Correction (Task 8.2)**:
+    - When divergence exceeds deadzones (e.g. server-side collision or authoritative displacement):
+      1. Sets initial visual offset dampener: $\vec{v}_{\text{offset}} = \vec{p}_{\text{post}} - \vec{p}_{\text{pre}}$, so rendered position $\vec{p}_{\text{draw}} = \vec{p}_{\text{post}} - \vec{v}_{\text{offset}} = \vec{p}_{\text{pre}}$ (**$0.000\text{u}$ visual pop**).
+      2. Snaps the local player character to the server state at `clientTick`.
+      3. Fast-forwards physics re-simulation to `currentTick` using recorded player inputs with `isReplay = true` (preventing duplicate network command emissions).
+      4. Overwrites intermediate frames in `historyBuffer` with deterministic re-simulated reality.
+      5. Freebody objects remain cleanly managed by `syncAuthoritativeObjects` (which protects in-flight ballistic trajectories and resting sleep snaps) without disruptive entity rewind loops.
+  - **Render Smoothing Dampener (Task 8.3)**:
+    - In `GameObject.ts` & `Renderer.ts`: `visualOffset` ($x, y$) offsets sprite rendering, outlines, and shadows without modifying physical collision hitboxes.
+    - Decays smoothly by $0.70\times$ per render frame, gliding smoothly from the pre-correction display position to the true physical hitbox over ~3–5 frames (~50–80ms).
+  - **DevPanel Integration**:
+    - "🔄 Test Prediction Reconciliation (Phase 8)" button in the History Buffer section injects an authoritative perturbation at the selected rollback depth tick, rewinds local player, reconciles forward, and demonstrates 0-pop visual offset dampening.
+  - **Automated Headless Test Suite**:
+    - `scratch/test_phase_8_prediction_reconciliation.ts`: 100% passed (prediction success within deadzones, misprediction detection & rollback, 0.000000u zero-pop visual dampening, and multi-frame visual offset decay).
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:
