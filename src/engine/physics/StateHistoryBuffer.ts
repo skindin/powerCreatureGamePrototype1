@@ -37,6 +37,7 @@ export interface PlayerInputPacket {
   isAiming: boolean;
   isLockHeld: boolean;
   reliableActions?: ReliableActionCommand[];
+  lastReceivedServerTick?: number;
 }
 
 /**

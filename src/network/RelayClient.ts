@@ -29,6 +29,11 @@ export interface GhostEntityState {
 }
 
 import { ClockSyncPacket } from "../server/ServerJitterBuffer.js";
+import {
+  AuthoritativeWorldSnapshot,
+  CompressedEntityState,
+  AuthoritativeSnapshotManager,
+} from "../server/AuthoritativeSnapshotManager.js";
 
 export interface GhostSnapshot {
   seq: number;
@@ -40,6 +45,7 @@ export interface GhostSnapshot {
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
   clockSync?: ClockSyncPacket;
+  worldSnapshot?: AuthoritativeWorldSnapshot;
 }
 
 export type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -108,9 +114,12 @@ export class RelayClient {
   public onStatsChange?: (stats: RelayStats) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onClockSync?: (sync: ClockSyncPacket) => void;
+  public onWorldSnapshotReceived?: (snapshot: AuthoritativeWorldSnapshot) => void;
   public latestClockSync: ClockSyncPacket | null = null;
+  public latestReceivedServerTick: number = 0;
+  public accumulatedServerEntities: Map<string, CompressedEntityState> = new Map();
 
-  constructor(url: string = "wss://echo.websocket.org") {
+  constructor(url: string = "wss://ws.postman-echo.com/raw") {
     this.url = url;
   }
 
@@ -378,9 +387,9 @@ export class RelayClient {
     objects: GameObject[],
     nowMs: number
   ): void {
-    // Record current tick's input so no frames are dropped under reduced send rates or jitter
+    // Record current tick's input with client ACK feedback (Phase 7.3)
     for (const inp of inputs.values()) {
-      this.pendingInputsToSend.push({ ...inp, tick });
+      this.pendingInputsToSend.push({ ...inp, tick, lastReceivedServerTick: this.latestReceivedServerTick });
     }
 
     if (this.status !== "connected" || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
@@ -398,7 +407,7 @@ export class RelayClient {
 
     const inputList: PlayerInputPacket[] = this.pendingInputsToSend.length > 0
       ? [...this.pendingInputsToSend]
-      : Array.from(inputs.values()).map((inp) => ({ ...inp, tick }));
+      : Array.from(inputs.values()).map((inp) => ({ ...inp, tick, lastReceivedServerTick: this.latestReceivedServerTick }));
     this.pendingInputsToSend = [];
 
     const packet = {
@@ -406,6 +415,7 @@ export class RelayClient {
       seq: ++this.seq,
       sentAt: performance.now(),
       tick,
+      lastReceivedServerTick: this.latestReceivedServerTick,
       inputs: inputList,
       // Retransmit all unacknowledged reliable actions with every packet until acknowledged
       reliableActions: Array.from(this.unacknowledgedActions.values()),
@@ -534,6 +544,12 @@ export class RelayClient {
             this.latestClockSync = parsed.clockSync;
             this.onClockSync?.(parsed.clockSync);
           }
+
+          // Phase 7: Authoritative World Snapshot Generation & Client ACK Feedback
+          const worldSnap = this.serverSimulation.getAuthoritativeWorldSnapshot();
+          this.latestReceivedServerTick = worldSnap.tick;
+          AuthoritativeSnapshotManager.mergeSnapshot(this.accumulatedServerEntities, worldSnap);
+          this.onWorldSnapshotReceived?.(worldSnap);
           // Note: Physics simulation advances on its continuous 60Hz physics clock via stepServerPhysics(),
           // NOT per arriving network packet!
         } else {
@@ -578,18 +594,29 @@ export class RelayClient {
         if (this.onSnapshotReceived && this.latestGhostSnapshot) {
           this.onSnapshotReceived(this.latestGhostSnapshot);
         }
-      } else if (parsed.type === "pc_server_snapshot") {
-        // Direct broadcast from standalone Node.js GameServer
+      } else if (parsed.type === "pc_server_snapshot" || parsed.type === "world_snapshot") {
+        // Direct broadcast from standalone Node.js GameServer or Authoritative Snapshot Broadcast (Phase 7)
         const receivedAt = performance.now();
         this.packetsReceived++;
-        this.latestGhostSnapshot = {
-          ...parsed.snapshot,
-          receivedAt,
-          source: "physics_sim",
-        };
-        this.notifyStats();
-        if (this.onSnapshotReceived && this.latestGhostSnapshot) {
-          this.onSnapshotReceived(this.latestGhostSnapshot);
+        if (parsed.worldSnapshot) {
+          this.latestReceivedServerTick = parsed.worldSnapshot.tick;
+          AuthoritativeSnapshotManager.mergeSnapshot(this.accumulatedServerEntities, parsed.worldSnapshot);
+          this.onWorldSnapshotReceived?.(parsed.worldSnapshot);
+        } else if (parsed.type === "world_snapshot") {
+          this.latestReceivedServerTick = parsed.tick;
+          AuthoritativeSnapshotManager.mergeSnapshot(this.accumulatedServerEntities, parsed);
+          this.onWorldSnapshotReceived?.(parsed);
+        }
+        if (parsed.snapshot) {
+          this.latestGhostSnapshot = {
+            ...parsed.snapshot,
+            receivedAt,
+            source: "physics_sim",
+          };
+          this.notifyStats();
+          if (this.onSnapshotReceived && this.latestGhostSnapshot) {
+            this.onSnapshotReceived(this.latestGhostSnapshot);
+          }
         }
       }
     } catch (e) {

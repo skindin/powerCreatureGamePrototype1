@@ -8,6 +8,10 @@ import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/Stat
 import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
+import {
+  AuthoritativeSnapshotManager,
+  AuthoritativeWorldSnapshot,
+} from "./AuthoritativeSnapshotManager.js";
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -16,6 +20,8 @@ export interface ServerSimConfig {
   collisionMode?: "dynamic" | "discrete" | "continuous" | "naive";
   fixedDt?: number;
   jitterTargetDepth?: number;
+  broadcastRateHz?: 30 | 60;
+  deltaCompression?: boolean;
 }
 
 export interface ContestedGrabResult {
@@ -48,6 +54,10 @@ export class ServerGameSimulation {
   public latestClockSync: Map<string, ClockSyncPacket> = new Map();
   public clockSyncCheckInterval: number = 10; // Check every 10 ticks (6.1)
 
+  // Authoritative Snapshot Broadcast & Delta Compression (Phase 7)
+  public snapshotManager: AuthoritativeSnapshotManager;
+  public clientAckedTicks: Map<string, number> = new Map(); // Client confirmed server ticks (7.3)
+
   // Contested grab arbitration audit log
   public contestedGrabEvents: ContestedGrabResult[] = [];
 
@@ -66,6 +76,10 @@ export class ServerGameSimulation {
     this.jitterBuffer = new ServerJitterBufferManager({
       targetDepth: config?.jitterTargetDepth ?? 2,
       maxCapacity: 60,
+    });
+    this.snapshotManager = new AuthoritativeSnapshotManager({
+      broadcastRateHz: config?.broadcastRateHz ?? 60,
+      deltaCompression: config?.deltaCompression ?? true,
     });
   }
 
@@ -231,9 +245,23 @@ export class ServerGameSimulation {
 
   /**
    * Enqueues an incoming input packet from a player into the server jitter buffer.
+   * Also tracks client acknowledged server ticks (Phase 7.3).
    */
   public queueInput(packet: PlayerInputPacket): boolean {
+    if (packet.lastReceivedServerTick !== undefined) {
+      const cur = this.clientAckedTicks.get(packet.playerId) ?? 0;
+      if (packet.lastReceivedServerTick > cur) {
+        this.clientAckedTicks.set(packet.playerId, packet.lastReceivedServerTick);
+      }
+    }
     return this.jitterBuffer.push(packet);
+  }
+
+  /**
+   * Retrieves the highest server tick confirmed acknowledged by a client (Phase 7.3).
+   */
+  public getClientAckedTick(playerId: string): number {
+    return this.clientAckedTicks.get(playerId) ?? 0;
   }
 
   /**
@@ -662,6 +690,32 @@ export class ServerGameSimulation {
 
     // 7. Capture authoritative world snapshot
     return SnapshotManager.capture(this.currentTick, this.allCharacters, this.objects, false);
+  }
+
+  /**
+   * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast (Phase 7).
+   */
+  public getAuthoritativeWorldSnapshot(forceKeyframe: boolean = false): AuthoritativeWorldSnapshot {
+    const lastProcessedInputTick: { [playerId: string]: number } = {};
+    for (const [pId] of this.characters) {
+      const stats = this.jitterBuffer.getStats(pId);
+      if (stats && stats.lastConsumedTick !== null) {
+        lastProcessedInputTick[pId] = stats.lastConsumedTick;
+      }
+    }
+    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
+    const targetPId = primaryChar ? primaryChar.playerId : "keyboard";
+    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard") || undefined;
+
+    return this.snapshotManager.createSnapshot(
+      this.currentTick,
+      this.allCharacters,
+      this.objects,
+      lastProcessedInputTick,
+      this.getRecentAckedActionIds(),
+      clockSync,
+      forceKeyframe
+    );
   }
 
   /**

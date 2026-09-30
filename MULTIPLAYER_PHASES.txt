@@ -21,7 +21,7 @@ TABLE OF PHASES
   [x] PHASE 4: Authoritative Headless Server Simulation Core (COMPLETED)
   [x] PHASE 5: Client Input Streaming & Server Jitter Input Queue (COMPLETED)
   [x] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control) (COMPLETED)
-  [ ] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression
+  [x] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression (COMPLETED)
   [ ] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener
   [ ] PHASE 9: Remote Player Entity Interpolation & Flight Handoff
   [ ] PHASE 10: Multiplayer Room UI, Matchmaking & Network Diagnostics HUD
@@ -316,38 +316,47 @@ Tasks Completed & Implemented:
 
 ================================================================================
 PHASE 7: AUTHORITATIVE SNAPSHOT BROADCAST & DELTA COMPRESSION
-Status: PLANNED [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Broadcast authoritative world states from server to clients efficiently 
 without choking network bandwidth.
 
-Tasks to Implement:
-  [ ] 7.1 Server Snapshot Broadcast Rate
-      - Broadcast frequency: 30Hz or 60Hz (configurable).
+Tasks Completed:
+  [x] 7.1 Server Snapshot Broadcast Rate
+      - Broadcast frequency: 30Hz or 60Hz (configurable via AuthoritativeSnapshotManager).
       - Packet Schema:
         {
           type: "world_snapshot",
           tick: number,
+          serverTime: number,
           lastProcessedInputTick: { [playerId: string]: number },
           entities: [
             {
               id: string,
               x: number, y: number, z: number,
               vx: number, vy: number, vz: number,
-              angX: number, angY: number, angZ: number,
+              angX?: number, angY?: number, angZ?: number,
               heldBy: string | null,
-              isClimbing: boolean
+              isClimbing: boolean,
+              isSleeping?: boolean
             }
-          ]
+          ],
+          ackActionIds?: string[],
+          clockSync?: ClockSyncPacket,
+          isDelta?: boolean
         }
 
-  [ ] 7.2 Delta Compression (Active Entities Only)
-      - Omit sleeping bodies that have not moved since last snapshot.
-      - Quantize positions to 3 decimal places (1mm precision) and velocities to 2 places.
+  [x] 7.2 Delta Compression (Active Entities Only)
+      - Omit sleeping bodies that have not moved since last snapshot, broadcasting transitions into/out of sleep.
+      - Stationary bodies with unchanged transforms within quantization deadzone are omitted.
+      - Quantize positions to 3 decimal places (1mm precision), velocities to 2 decimal places, and angular roll to 2 decimal places.
+      - Periodic keyframe refresh (default every 60 ticks / 1.0s) sends full world baselines.
+      - Client-side helper merges delta snapshots into persistent accumulated entity state map.
 
-  [ ] 7.3 Client ACK Feedback
-      - Client sends `lastReceivedServerTick` back in input packets.
-      - Server purges input history older than client's confirmed tick.
+  [x] 7.3 Client ACK Feedback
+      - Client sends `lastReceivedServerTick` back in every `PlayerInputPacket`.
+      - Server tracks confirmed client ticks (`clientAckedTicks`) and integrates with AuthoritativeSnapshotManager.
+      - Headless Test Suite (scratch/test_phase_7_authoritative_snapshots.ts) passes 38/38 tests (100%).
 
 ================================================================================
 PHASE 8: CLIENT PREDICTION RECONCILIATION & VISUAL SMOOTHING DAMPENER

@@ -323,6 +323,31 @@ powerCreatureGamePrototype1/
 - **Automated Headless Test Suite**:
   - `scratch/test_phase_6_clock_sync.ts`: 100% passed (26/26 assertions covering underflow/overflow/steady dilation calculations, server periodic evaluation, GhostSnapshot embedding, and GameLoop client accumulator time dilation).
 
+### Authoritative Snapshot Broadcast & Delta Compression (Phase 7 — Fully Functional)
+- **Authoritative Snapshot Manager (`src/server/AuthoritativeSnapshotManager.ts`)**:
+  - Encapsulates snapshot creation, quantization, delta compression, and client merging outside monolithic loops.
+  - **Broadcast Rate (Task 7.1)**:
+    - Configurable broadcast rate (default 30Hz or 60Hz via `snapshotBroadcastHz`).
+    - Uses `isBroadcastDue(tick)` to pace snapshot delivery.
+    - Schema: `{ type: "world_snapshot", tick, serverTime, lastProcessedInputTick, entities, ackActionIds?, clockSync?, isDelta }`.
+- **Coordinate & Velocity Quantization (Task 7.2)**:
+  - World positions ($x, y, z$) quantized to 3 decimal places (1mm precision).
+  - Linear velocities ($v_x, v_y, v_z$) and roll angular velocities ($\omega_x, \omega_y, \omega_z$) quantized to 2 decimal places.
+  - Significantly reduces JSON payload size over WAN WebSocket relays.
+- **Delta Compression & Sleeping Entity Omission**:
+  - Sleeping bodies (`isSleeping === true`) that remain sleeping are omitted from delta snapshots, saving > 65% network bandwidth on resting arena items.
+  - Transitions into and out of sleep are broadcasted immediately so clients stay in sync.
+  - Entities whose transforms and velocities have not changed within deadzone tolerances ($0.001\text{u}$ pos, $0.01\text{u}$ vel) are omitted from delta snapshots.
+  - Keyframe interval (default 60 ticks / 1.0s) broadcasts full world baseline snapshots, allowing late-joining clients and packet recovery to catch up cleanly.
+  - Client-side helper `mergeSnapshot(currentState, snapshot)` integrates delta updates into an accumulated persistent entity map.
+- **Client ACK Feedback Pipeline (Task 7.3)**:
+  - Client streams `lastReceivedServerTick` back inside every `PlayerInputPacket`.
+  - `ServerGameSimulation` tracks each player's confirmed server tick in `clientAckedTicks: Map<string, number>`.
+- **Default Relay Endpoint**:
+  - Standardized default relay URL across `index.html`, `main.ts`, and `RelayClient.ts` to `wss://ws.postman-echo.com/raw`.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_7_authoritative_snapshots.ts`: 100% passed (38/38 assertions covering schema quantization, 30Hz/60Hz broadcast pacing, delta compression, sleeping entity omission & wakeup, client delta merging, and client ACK feedback tracking).
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:

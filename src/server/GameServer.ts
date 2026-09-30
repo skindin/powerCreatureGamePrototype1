@@ -1,6 +1,7 @@
 import { ServerGameSimulation, ServerSimConfig } from "./ServerGameSimulation.js";
 import { PlayerInputPacket } from "../engine/physics/StateHistoryBuffer.js";
 import { GhostSnapshot } from "../network/RelayClient.js";
+import { AuthoritativeWorldSnapshot } from "./AuthoritativeSnapshotManager.js";
 
 export interface ConnectedClient {
   id: string;
@@ -24,7 +25,7 @@ export class GameServer {
   private accumulator: number = 0;
   private readonly fixedDt: number = 1 / 60; // 16.6667ms
 
-  public onSnapshotBroadcast?: (snapshot: GhostSnapshot) => void;
+  public onSnapshotBroadcast?: (snapshot: GhostSnapshot, worldSnapshot?: AuthoritativeWorldSnapshot) => void;
 
   constructor(config?: ServerSimConfig) {
     this.simulation = new ServerGameSimulation(config);
@@ -77,9 +78,12 @@ export class GameServer {
       this.simulation.step(this.fixedDt);
       this.accumulator -= this.fixedDt;
 
-      // Broadcast authoritative state every tick
-      const snapshot = this.simulation.getGhostSnapshot(0);
-      this.broadcastSnapshot(snapshot);
+      // Broadcast authoritative state if broadcast is due (30Hz or 60Hz, Phase 7.1)
+      if (this.simulation.snapshotManager.isBroadcastDue(this.simulation.currentTick)) {
+        const worldSnapshot = this.simulation.getAuthoritativeWorldSnapshot();
+        const snapshot = this.simulation.getGhostSnapshot(0);
+        this.broadcastSnapshot(snapshot, worldSnapshot);
+      }
     }
   }
 
@@ -93,15 +97,16 @@ export class GameServer {
   /**
    * Broadcasts the authoritative snapshot to all connected clients.
    */
-  public broadcastSnapshot(snapshot: GhostSnapshot): void {
+  public broadcastSnapshot(snapshot: GhostSnapshot, worldSnapshot?: AuthoritativeWorldSnapshot): void {
     if (this.onSnapshotBroadcast) {
-      this.onSnapshotBroadcast(snapshot);
+      this.onSnapshotBroadcast(snapshot, worldSnapshot);
     }
 
     if (this.clients.size === 0) return;
     const payload = JSON.stringify({
       type: "pc_server_snapshot",
       snapshot,
+      worldSnapshot,
     });
 
     for (const client of this.clients.values()) {

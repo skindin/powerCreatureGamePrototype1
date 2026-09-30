@@ -401,7 +401,7 @@ function bootstrap(): void {
   };
 
   // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching
-  const relayClient = new RelayClient("wss://echo.websocket.org");
+  const relayClient = new RelayClient("wss://ws.postman-echo.com/raw");
   let isMultiplayerMode = false;
 
   const btnSinglePlayer = document.getElementById("mode-singleplayer-btn");
