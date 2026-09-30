@@ -27,8 +27,8 @@
 
         <div class="top-bar-center">
           <div class="mode-pill-group">
-            <button id="mode-singleplayer-btn" class="mode-btn active" title="Local single player simulation">
-              <span>👤 Single Player</span>
+            <button id="mode-singleplayer-btn" class="mode-btn active" title="Local multi-controller / single-machine simulation">
+              <span>🏠 Local Game</span>
             </button>
             <button id="mode-multiplayer-btn" class="mode-btn" title="Multiplayer relay test with ghost echo">
               <span>🌐 Multiplayer (Relay Test)</span>
@@ -147,7 +147,7 @@
                 </div>
                 <div class="mobile-mode-switcher">
                   <button id="mobile-mode-single-btn" class="mobile-mode-btn active">
-                    <span>👤 Single Player</span>
+                    <span>🏠 Local Game</span>
                   </button>
                   <button id="mobile-mode-multi-btn" class="mobile-mode-btn">
                     <span>🌐 Multiplayer</span>
@@ -690,6 +690,7 @@
                 <div class="relay-hud-actions">
                   <button id="relay-toggle-server-mode-btn" class="btn-server-mode-toggle active" title="Toggle between Authoritative Physics Sim and Positional Echo">🤖 Sim: Physics</button>
                   <button id="relay-resync-world-btn" class="btn-preset" title="Re-synchronize authoritative server world transforms with current client positions" style="height: 24px; padding: 2px 8px; font-size: 11px;">🔄 Resync</button>
+                  <button id="relay-toggle-split-sims-btn" class="btn-split-toggle off" title="Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)">👥 Split Sims: OFF</button>
                   <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
                   <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
                   <button id="btn-minimize-relay-hud" class="btn-relay-tool" title="Minimize / Collapse Relay Settings (M)" aria-label="Minimize Relay Settings">➖</button>
@@ -744,6 +745,12 @@
                       <input id="relay-lerp-rate-input" class="relay-number-input" type="number" step="any" min="0" max="100" value="35.0" />
                       <span class="lerp-unit-label">% / frame</span>
                     </div>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Split Client Sims</span>
+                  <div class="split-sim-control-group">
+                    <button id="relay-toggle-split-sims-body-btn" class="btn-split-toggle off" title="Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)">👥 Split Sims: OFF</button>
                   </div>
                 </div>
               </div>

@@ -466,6 +466,9 @@ function bootstrap(): void {
 
   const setMode = (multiplayer: boolean) => {
     isMultiplayerMode = multiplayer;
+    if (gameLoop) {
+      gameLoop.isMultiplayerMode = multiplayer;
+    }
     if (multiplayer) {
       btnSinglePlayer?.classList.remove("active");
       btnMultiplayer?.classList.add("active");
@@ -675,6 +678,47 @@ function bootstrap(): void {
 
   relayLerpRateInput?.addEventListener("input", handleRateChange);
   relayLerpRateInput?.addEventListener("change", handleRateChange);
+
+  // Setup Split Client Sims Toggle (Phase 9 side-by-side view)
+  const relayToggleSplitSimsBtn = document.getElementById("relay-toggle-split-sims-btn") as HTMLButtonElement | null;
+  const relayToggleSplitSimsBodyBtn = document.getElementById("relay-toggle-split-sims-body-btn") as HTMLButtonElement | null;
+
+  try {
+    const savedSplit = localStorage.getItem("pcg_split_client_sims");
+    if (savedSplit !== null && gameLoop) {
+      gameLoop.splitClientSimsEnabled = savedSplit === "true";
+    }
+  } catch {}
+
+  const updateSplitSimsUi = () => {
+    const enabled = gameLoop?.splitClientSimsEnabled ?? false;
+    const btns = [relayToggleSplitSimsBtn, relayToggleSplitSimsBodyBtn];
+    for (const b of btns) {
+      if (!b) continue;
+      if (enabled) {
+        b.textContent = "👥 Split Sims: ON";
+        b.className = "btn-split-toggle active";
+        b.title = "Separate client prediction sims & side-by-side split screen active (requires 2+ players in multiplayer)";
+      } else {
+        b.textContent = "👥 Split Sims: OFF";
+        b.className = "btn-split-toggle off";
+        b.title = "Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)";
+      }
+    }
+  };
+  updateSplitSimsUi();
+
+  const handleToggleSplitSims = () => {
+    if (!gameLoop) return;
+    gameLoop.splitClientSimsEnabled = !gameLoop.splitClientSimsEnabled;
+    updateSplitSimsUi();
+    try {
+      localStorage.setItem("pcg_split_client_sims", gameLoop.splitClientSimsEnabled ? "true" : "false");
+    } catch {}
+  };
+
+  relayToggleSplitSimsBtn?.addEventListener("click", handleToggleSplitSims);
+  relayToggleSplitSimsBodyBtn?.addEventListener("click", handleToggleSplitSims);
 
   relayUrlInput?.addEventListener("change", () => {
     relayClient.url = relayUrlInput.value.trim();

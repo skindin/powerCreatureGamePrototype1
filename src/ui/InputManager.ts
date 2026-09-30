@@ -32,9 +32,20 @@ export interface GamepadSlotState {
   isDropRequested?: boolean;
 }
 
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export class InputManager {
   private canvas: HTMLCanvasElement;
   private arena: Arena;
+  public keyboardViewport: CanvasViewport | null = null;
   private keysPressed: Set<string> = new Set();
   private isEKeyDepressed = false;
   private isQKeyDepressed = false;
@@ -442,24 +453,52 @@ export class InputManager {
     });
   }
 
+  public setKeyboardViewport(vp: CanvasViewport | null): void {
+    this.keyboardViewport = vp;
+  }
+
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
-    const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
-    this.actualMousePos.x = mx;
-    this.actualMousePos.y = my;
-    this.mousePos.x = mx;
-    this.mousePos.y = my;
+    if (this.keyboardViewport) {
+      const vp = this.keyboardViewport;
+      const canvasPixelX = (e.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
+      const canvasPixelY = (e.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
+      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
+      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    } else {
+      const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
+      const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    }
   }
 
   private updateTouchPos(touch: Touch): void {
     const rect = this.canvas.getBoundingClientRect();
-    const mx = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / rect.width)));
-    const my = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / rect.height)));
-    this.actualMousePos.x = mx;
-    this.actualMousePos.y = my;
-    this.mousePos.x = mx;
-    this.mousePos.y = my;
+    if (this.keyboardViewport) {
+      const vp = this.keyboardViewport;
+      const canvasPixelX = (touch.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
+      const canvasPixelY = (touch.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
+      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
+      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    } else {
+      const mx = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
+      const my = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    }
   }
 
   /**

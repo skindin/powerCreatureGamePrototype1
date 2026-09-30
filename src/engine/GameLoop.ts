@@ -1,7 +1,7 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
-import { Renderer, RollbackPathPoint } from "./Renderer.js";
+import { Renderer, RollbackPathPoint, SplitScreenPlayerView } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
@@ -10,6 +10,7 @@ import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 import { StateHistoryBuffer, RollbackResult, PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
 import { PredictionReconciliation, ReconciliationResult } from "./physics/PredictionReconciliation.js";
+import { RemoteEntityInterpolator, RemoteEntitySample } from "./physics/RemoteEntityInterpolator.js";
 import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
 
@@ -72,6 +73,13 @@ export class GameLoop {
   public lastInputs = new Map<string, PlayerInputPacket>();
   public historyBuffer = new StateHistoryBuffer(60, 30);
   public islandManager = new IslandManager();
+  public interpolator = new RemoteEntityInterpolator();
+  public splitClientSimsEnabled = false;
+  public isMultiplayerMode = false;
+
+  public get isSplitScreen(): boolean {
+    return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
+  }
 
   public get isPaused(): boolean {
     return this.isPhysicsPaused;
@@ -221,21 +229,110 @@ export class GameLoop {
       this.renderer.liveBufferTrail = null;
     }
 
-    this.renderer.render(
-      this.arena,
-      this.allCharacters,
-      this.objects,
-      this.inputManager.selectedCanvasEntity,
-      this.devPanel.isEditMode,
-      this.inputManager.hoverEntity,
-      targetGrabEntities,
-      isWallEditor,
-      this.inputManager.hoverWallTile,
-      ghostData,
-      activeAimCursors,
-      undefined,
-      false
-    );
+    // Feed incoming server state to the Phase 9 RemoteEntityInterpolator
+    if (ghostData) {
+      const now = performance.now();
+      const samples: RemoteEntitySample[] = [];
+      const ghostChars = (ghostData.characters && ghostData.characters.length > 0)
+        ? ghostData.characters
+        : (ghostData.character ? [ghostData.character] : []);
+
+      for (const gc of ghostChars) {
+        samples.push({
+          id: gc.id,
+          x: gc.x,
+          y: gc.y,
+          z: gc.z,
+          vx: gc.vx,
+          vy: gc.vy,
+          vz: gc.vz || 0,
+          facingAngle: 0,
+          isClimbing: gc.isClimbing,
+          isAboveWalls: gc.isAboveWalls,
+          isGrounded: gc.isGrounded,
+          surfaceZ: gc.surfaceZ,
+          heldObjectId: gc.isHeld ? "held" : null,
+          heldBy: gc.heldBy,
+          color: gc.color,
+          radius: gc.radius,
+        });
+      }
+      this.interpolator.pushSnapshot(ghostData.seq, samples, now);
+    }
+
+    if (this.isSplitScreen) {
+      const activeEntries = Array.from(this.playerManager.players.values())
+        .sort((a, b) => a.playerNumber - b.playerNumber);
+
+      const playerViews: SplitScreenPlayerView[] = activeEntries.map((pe) => {
+        const cursor = Array.isArray(activeAimCursors)
+          ? activeAimCursors.find((c) => c.character === pe.character)
+          : null;
+        return {
+          playerNumber: pe.playerNumber,
+          playerName: pe.name,
+          playerColor: pe.color,
+          isKeyboard: pe.isKeyboard,
+          character: pe.character,
+          activeAimCursor: cursor,
+        };
+      });
+
+      // Sample remote player interpolated states
+      const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
+      const now = performance.now();
+      for (const pe of activeEntries) {
+        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now);
+        if (interp) {
+          remoteOverrides.set(pe.character.playerId, {
+            x: interp.x,
+            y: interp.y,
+            z: interp.z,
+            facingAngle: interp.facingAngle,
+            isClimbing: interp.isClimbing,
+          });
+        }
+      }
+
+      const viewports = this.renderer.renderSplitScreen(
+        this.arena,
+        playerViews,
+        this.objects,
+        ghostData,
+        remoteOverrides,
+        targetGrabEntities,
+        this.devPanel.isEditMode,
+        this.inputManager.hoverEntity,
+        this.inputManager.selectedCanvasEntity
+      );
+
+      // Route keyboard/mouse coordinates to whichever screen the keyboard player is on
+      const kbIndex = playerViews.findIndex((pv) => pv.isKeyboard);
+      if (kbIndex !== -1 && viewports[kbIndex]) {
+        this.inputManager.setKeyboardViewport(viewports[kbIndex]);
+      } else {
+        this.inputManager.setKeyboardViewport(null);
+      }
+    } else {
+      // Revert to full-canvas mouse coordinate mapping
+      this.inputManager.setKeyboardViewport(null);
+
+      this.renderer.render(
+        this.arena,
+        this.allCharacters,
+        this.objects,
+        this.inputManager.selectedCanvasEntity,
+        this.devPanel.isEditMode,
+        this.inputManager.hoverEntity,
+        targetGrabEntities,
+        isWallEditor,
+        this.inputManager.hoverWallTile,
+        ghostData,
+        activeAimCursors,
+        undefined,
+        false
+      );
+    }
   }
 
   private tick(currentTime: number): void {

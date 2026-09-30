@@ -766,12 +766,30 @@ export class ServerGameSimulation {
       isSleeping: obj.isSleeping,
     }));
 
+    const ghostCharacters: GhostEntityState[] = this.allCharacters.map((c) => ({
+      id: c.playerId || c.id || "player",
+      name: c.name,
+      x: Number(c.position.x.toFixed(3)),
+      y: Number(c.position.y.toFixed(3)),
+      z: Number(c.position.z.toFixed(3)),
+      vx: Number(c.velocity.x.toFixed(3)),
+      vy: Number(c.velocity.y.toFixed(3)),
+      vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
+      surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
+      isGrounded: c.isRestingOnSurface || c.position.z <= 0.005,
+      radius: c.colliderRadius,
+      color: c.color,
+      isClimbing: c.isClimbing,
+      isAboveWalls: c.isAboveWalls,
+    }));
+
     return {
       seq: this.currentTick,
       sentAt: performance.now(),
       receivedAt: performance.now(),
       rttMs,
       character: ghostChar,
+      characters: ghostCharacters,
       objects: ghostObjects,
       ackActionIds: this.getRecentAckedActionIds(),
       clockSync,

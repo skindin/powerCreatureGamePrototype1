@@ -41,6 +41,7 @@ export interface GhostSnapshot {
   receivedAt: number;
   rttMs: number;
   character: GhostEntityState;
+  characters?: GhostEntityState[];
   objects: GhostEntityState[];
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
@@ -147,6 +148,7 @@ export class RelayClient {
     this.currentGhostSnapshot = {
       ...simSnap,
       character: { ...simSnap.character },
+      characters: simSnap.characters ? simSnap.characters.map((c) => ({ ...c })) : (simSnap.character ? [{ ...simSnap.character }] : []),
       objects: simSnap.objects ? simSnap.objects.map((o) => ({ ...o })) : [],
     };
   }

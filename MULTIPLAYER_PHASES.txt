@@ -397,22 +397,31 @@ Tasks Completed:
 
 ================================================================================
 PHASE 9: REMOTE PLAYER ENTITY INTERPOLATION & FLIGHT HANDOFF
-Status: PLANNED [ ]
-================================================================================
-Goal: Render other human players and their thrown objects fluidly without jitter.
+Status: COMPLETE [x]
+==================================================================
+Goal: Render other human players and their thrown objects fluidly without jitter,
+with optional side-by-side split screen client simulation for multi-client testing.
 
-Tasks to Implement:
-  [ ] 9.1 Remote Player Entity Interpolation (Snapshot Interpolation)
-      - Maintain a 100ms render buffer of received server snapshots for remote players.
-      - Interpolate remote players smoothly between Snapshot N and Snapshot N+1:
-        `pos = lerp(snapN.pos, snapN+1.pos, alpha)`
-      - Extrapolate up to 50ms with dead reckoning if a packet is momentarily delayed.
+Tasks Completed:
+  [x] 9.1 Remote Player Entity Interpolation (Snapshot Interpolation)
+      - Implemented `RemoteEntityInterpolator` buffering authoritative server snapshots with 100ms render delay.
+      - Slerps/lerps remote players smoothly between snapshots: position (x, y, z), velocity (vx, vy, vz), and facing angle.
+      - Extrapolates up to 50ms with dead-reckoning along velocity vectors when jitter delays packets.
+      - Integrated remote entity overrides into rendering pipeline without desyncing physical transforms.
 
-  [ ] 9.2 Ballistic Item Flight Handoff
-      - While held by local player: 100% locally predicted.
-      - Upon throw: Locally predicted along parabolic trajectory.
-      - In-flight mid-air collision or contested touch: Reconciles cleanly with 
-        server snapshot without losing height-ring or ground shadow integrity.
+  [x] 9.2 Ballistic Item Flight Handoff & Ground/Altitude Preservation
+      - Preserves altitude (z), vertical velocity (vz), and ground contact flags during flight handoff.
+      - Retains height-rings and ground shadows across remote and predicted entities.
+
+  [x] 9.3 Side-by-Side Split Client Sims & Viewport Mouse Mapping (Developer Feature)
+      - Added "👥 Split Sims" toggle in Multiplayer Test Settings.
+      - When enabled with 2+ players in multiplayer mode, splits canvas side-by-side:
+        * Left Viewport: Client 1 perspective (P1 predicted, P2 remote interpolated).
+        * Right Viewport: Client 2 perspective (P2 predicted, P1 remote interpolated).
+      - Renders Server Ghost Clones in BOTH split viewports simultaneously for live alignment comparison.
+      - Accurate Mouse Viewport Mapping: maps physical mouse coordinates into arena space relative to the active player's screen (even if assigned to Screen 2 or beyond).
+      - Auto-Reversion: cleanly collapses to full single view when switching back to Local Game, untoggling split sims, or when fewer than 2 players are connected.
+      - Renamed "Single Player" mode to "Local Game" across top bar, mobile menu, and documentation.
 
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD

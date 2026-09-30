@@ -449,6 +449,29 @@ body {
   color: var(--text-muted);
 }
 
+.btn-split-toggle {
+  background: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.45);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-split-toggle:hover {
+  background: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+}
+
+.btn-split-toggle.off {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+}
+
 .btn-relay-connect {
   background: rgba(56, 189, 248, 0.2);
   color: #38bdf8;

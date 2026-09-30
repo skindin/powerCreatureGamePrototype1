@@ -974,6 +974,25 @@ powerCreatureGamePrototype1/
       - Removed the forward-movement direction aim override on pickup (`hasMovedAim`), which was only meant for centering gamepad analog joysticks.
       - When picking up an object with mouse and keyboard, the trajectory and character facing direction immediately point directly to the mouse cursor position on screen with zero ambiguity.
 
+57. **Phase 9: Remote Player Entity Interpolation, Flight Handoff & Side-by-Side Split Client Sims**:
+    - **Remote Entity Interpolator (`src/engine/physics/RemoteEntityInterpolator.ts`)**:
+      - Maintains a 100ms render buffer of authoritative server snapshots for remote player avatars.
+      - Smoothly lerps positions $(x, y, z)$, velocities $(v_x, v_y, v_z)$, and slerps facing angle.
+      - Extrapolates up to 50ms with velocity dead-reckoning during momentary network jitter or packet delay.
+      - Preserves altitude $(z)$, vertical velocity ($v_z$), and ground contact flags during ballistic flight handoff.
+    - **Side-by-Side Split Client Sims Mode (`splitClientSimsEnabled`)**:
+      - Toggle button in Multiplayer Test Settings (`👥 Split Sims: ON / OFF`), persisted in `localStorage`.
+      - When enabled with $\ge 2$ players in multiplayer mode, splits canvas side-by-side:
+        * Left Viewport: Client 1 perspective (P1 locally predicted, P2 remote interpolated).
+        * Right Viewport: Client 2 perspective (P2 locally predicted, P1 remote interpolated).
+      - Renders Server Ghost Clones in **both** split screens simultaneously for real-time alignment comparison.
+      - Cleanly auto-reverts to full single view when switching back to Local Game, untoggling split sims, or having $< 2$ players.
+    - **Independent Viewport Mouse Coordinate Mapping (`CanvasViewport`)**:
+      - `InputManager` tracks `keyboardViewport: CanvasViewport | null`.
+      - When the Keyboard & Mouse player is assigned to any viewport (Screen 1, Screen 2, etc.), physical mouse coordinates map through `(canvasPixel - vp.offsetX) / vp.scale` into arena coordinates $[0 \dots 20, 0 \dots 14]$ without canvas-wide offsets.
+    - **UI Renaming**:
+      - Renamed "Single Player" mode to **"Local Game"** across top bar, mobile menu, and documentation.
+
 ---
 
 

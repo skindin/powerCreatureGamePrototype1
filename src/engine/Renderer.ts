@@ -3,6 +3,7 @@ import { GameObject, Vector2D } from "./GameObject.js";
 import { Character } from "../character/Character.js";
 import { GhostSnapshot } from "../network/RelayClient.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
+import type { CanvasViewport } from "../ui/InputManager.js";
 
 export type VerticalVisualMode = "bigger" | "hover" | "both";
 
@@ -18,6 +19,15 @@ export interface ActiveAimCursor {
   playerNumber: number;
   character: Character;
   isGamepad: boolean;
+}
+
+export interface SplitScreenPlayerView {
+  playerNumber: number;
+  playerName: string;
+  playerColor: string;
+  isKeyboard: boolean;
+  character: Character;
+  activeAimCursor?: ActiveAimCursor | null;
 }
 
 export interface RollbackPathPoint {
@@ -124,178 +134,424 @@ export class Renderer {
     const characters: Character[] = Array.isArray(characterInput)
       ? characterInput
       : (characterInput ? [characterInput] : []);
-    const character = characters[0] || null;
 
-    // 1. Floor Grid / Surface in Units
-    this.drawFloorGrid(arena, ppu);
+    this.renderArenaScene(
+      arena,
+      characters,
+      objects,
+      ppu,
+      selectedEntity,
+      isEditMode,
+      hoverEntity,
+      targetGrabEntities,
+      isWallEditor,
+      hoverWallTile,
+      ghostSnapshot,
+      activeAimCursorsOrIsGamepad,
+      legacyGamepadAimPos,
+      isPaused
+    );
+  }
 
-    // 2. Entities sorting
-    const allRenderables = [...characters, ...objects];
+  /**
+   * Phase 9: Side-by-Side Split Screen Renderer for Multi-Client Simulation Test
+   * Renders an isolated client view for each local player simultaneously side-by-side on the canvas.
+   * Both viewports render the Server Ghost Clones for real-time comparison.
+   * Returns CanvasViewport[] for precise mouse coordinate transformation across any split screen index.
+   */
+  public renderSplitScreen(
+    arena: Arena,
+    playerViews: SplitScreenPlayerView[],
+    objects: GameObject[],
+    ghostSnapshot?: GhostSnapshot | null,
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>,
+    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>,
+    isEditMode = false,
+    hoverEntity?: GameObject | null,
+    selectedEntity?: GameObject | null
+  ): CanvasViewport[] {
+    const ctx = this.ctx;
+    const canvasW = ctx.canvas.width;
+    const canvasH = ctx.canvas.height;
+    ctx.clearRect(0, 0, canvasW, canvasH);
 
-    // Phase 8: Decay visual smoothing offset dampeners smoothly toward zero (0.70x / frame)
-    for (const entity of allRenderables) {
-      entity.decayVisualOffset(0.70);
+    // Deep slate background
+    ctx.fillStyle = "#090d16";
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    const count = Math.max(2, playerViews.length);
+    const vpW = canvasW / count;
+    const vpH = canvasH;
+
+    // Determine scale to fit arena in each viewport with comfortable padding
+    const horizPadding = 24;
+    const topMargin = 44; // Space for the client header badge
+    const bottomMargin = 16;
+    const availW = vpW - horizPadding;
+    const availH = vpH - topMargin - bottomMargin;
+    const scale = Math.min(availW / arena.width, availH / arena.height);
+
+    const viewports: CanvasViewport[] = [];
+    const allCharacters = playerViews.map((pv) => pv.character);
+
+    for (let i = 0; i < playerViews.length; i++) {
+      const pv = playerViews[i];
+      const vpX = i * vpW;
+      const vpY = 0;
+
+      const arenaPxW = arena.width * scale;
+      const arenaPxH = arena.height * scale;
+      const offsetX = vpX + (vpW - arenaPxW) / 2;
+      const offsetY = topMargin + (availH - arenaPxH) / 2;
+
+      viewports.push({
+        x: vpX,
+        y: vpY,
+        width: vpW,
+        height: vpH,
+        scale,
+        offsetX,
+        offsetY,
+      });
+
+      // 1. Clip and Render Arena
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(vpX, vpY, vpW, vpH);
+      ctx.clip();
+
+      // Subtle viewport background scrim
+      ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+      ctx.fillRect(vpX, vpY, vpW, vpH);
+
+      // Translate context to center the arena within this split view
+      ctx.translate(offsetX, offsetY);
+
+      // Only pass aim cursor relevant for this client view
+      const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
+
+      this.renderArenaScene(
+        arena,
+        allCharacters,
+        objects,
+        scale,
+        selectedEntity,
+        isEditMode,
+        hoverEntity,
+        targetGrabEntities,
+        false,
+        null,
+        ghostSnapshot,
+        activeAimCursors,
+        null,
+        false,
+        pv.character,
+        remoteOverrides
+      );
+
+      ctx.restore();
+
+      // 2. Viewport Header Overlay
+      ctx.save();
+      const badgeW = vpW - 24;
+      const badgeH = 28;
+      const badgeX = vpX + 12;
+      const badgeY = 8;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+      ctx.beginPath();
+      ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+      ctx.fill();
+
+      ctx.strokeStyle = `${pv.playerColor}88`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // Left Title: Icon + CLIENT 1 / 2 + Name
+      const icon = pv.isKeyboard ? "⌨️" : "🎮";
+      ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillStyle = pv.playerColor;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${icon} CLIENT ${pv.playerNumber}: ${pv.playerName} View`, badgeX + 10, badgeY + badgeH / 2);
+
+      // Right Pill: Telemetry Status
+      ctx.font = "9px monospace";
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "right";
+      const latencyStr = ghostSnapshot ? `${Math.round(ghostSnapshot.rttMs)}ms` : "--ms";
+      ctx.fillText(`0ms Prediction • Server RTT: ${latencyStr}`, badgeX + badgeW - 10, badgeY + badgeH / 2);
+
+      ctx.restore();
     }
 
-    allRenderables.sort((a, b) => {
-      // Objects held by a character render ON TOP of that character at all times!
-      if (a.isHeld && a.heldBy === b) return 1;
-      if (b.isHeld && b.heldBy === a) return -1;
+    // 3. Central Vertical Divider Line between viewports
+    ctx.save();
+    for (let i = 1; i < count; i++) {
+      const divX = i * vpW;
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(divX, 0);
+      ctx.lineTo(divX, canvasH);
+      ctx.stroke();
+
+      // Small central badge at bottom
+      const cBadgeW = 140;
+      const cBadgeH = 20;
+      const cBadgeX = divX - cBadgeW / 2;
+      const cBadgeY = canvasH - 26;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+      ctx.beginPath();
+      ctx.roundRect(cBadgeX, cBadgeY, cBadgeW, cBadgeH, 999);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = "bold 9px monospace";
+      ctx.fillStyle = "#38bdf8";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("⚡ DUAL CLIENT SIMS", divX, cBadgeY + cBadgeH / 2);
+    }
+    ctx.restore();
+
+    return viewports;
+  }
+
+  /**
+   * Internal common scene renderer. Renders the arena, entities, shadows, walls, aim trajectories, and ghosts.
+   */
+  public renderArenaScene(
+    arena: Arena,
+    characters: Character[],
+    objects: GameObject[],
+    ppu: number,
+    selectedEntity?: GameObject | null,
+    isEditMode = false,
+    hoverEntity?: GameObject | null,
+    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>,
+    isWallEditor = false,
+    hoverWallTile?: { col: number; row: number } | null,
+    ghostSnapshot?: GhostSnapshot | null,
+    activeAimCursorsOrIsGamepad: boolean | ActiveAimCursor[] = false,
+    legacyGamepadAimPos?: Vector2D | null,
+    isPaused = false,
+    localHeroCharacter?: Character | null,
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
+  ): void {
+    const ctx = this.ctx;
+    const character = localHeroCharacter || characters[0] || null;
+
+    // Apply remote player state overrides if present, saving original transforms
+    const savedTransforms: { char: Character; x: number; y: number; z: number; angle: number; climb: boolean }[] = [];
+    if (remoteOverrides) {
       for (const char of characters) {
-        if (char.heldObject === a && b === char) return 1;
-        if (char.heldObject === b && a === char) return -1;
-      }
-
-      // Primary: Objects at higher virtual position (height z) ALWAYS render on top
-      if (Math.abs(a.position.z - b.position.z) > 0.001) {
-        return a.position.z - b.position.z;
-      }
-      // Secondary: Objects with higher virtual y velocity render on top if at same elevation
-      if (Math.abs(a.verticalVelocity - b.verticalVelocity) > 0.001) {
-        return a.verticalVelocity - b.verticalVelocity;
-      }
-      // Tertiary: Higher y (closer to foreground) renders on top
-      return a.position.y - b.position.y;
-    });
-
-    const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
-
-    // 2. Ground Shadows (Rendered BELOW all wall squares including sides and tops)
-    // Only the shadow fill is covered!
-    for (const entity of allRenderables) {
-      this.drawObjectGroundShadowFill(entity, arena, ppu);
-    }
-
-    // 3. Wall Bases (squares representing the sides / front faces at ground level)
-    this.drawWallBases(arena, ppu);
-
-    // 3b. Wall Tile Preview (When in Wall Editor sub-mode)
-    if (isWallEditor && hoverWallTile) {
-      this.drawWallEditorHover(arena, hoverWallTile, ppu);
-    }
-
-    // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight).
-    const groundRenderables = allRenderables.filter(e => {
-      if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return false;
-      return e.position.z < arena.wallHeight - 0.05;
-    });
-    const elevatedRenderables = allRenderables.filter(e => {
-      if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return true;
-      return e.position.z >= arena.wallHeight - 0.05;
-    });
-
-    // 4. Ground Entities (z < wallHeight)
-    // Rendered before wall tops so top of wall renders OVER ground objects!
-    for (const entity of groundRenderables) {
-      if (entity instanceof Character) {
-        this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
-      } else {
-        this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
+        if (localHeroCharacter && char === localHeroCharacter) continue;
+        const ovr = remoteOverrides.get(char.playerId);
+        if (ovr) {
+          savedTransforms.push({
+            char,
+            x: char.position.x,
+            y: char.position.y,
+            z: char.position.z,
+            angle: char.facingAngle,
+            climb: char.isClimbing,
+          });
+          char.position.x = ovr.x;
+          char.position.y = ovr.y;
+          char.position.z = ovr.z;
+          if (ovr.facingAngle !== undefined) char.facingAngle = ovr.facingAngle;
+          if (ovr.isClimbing !== undefined) char.isClimbing = ovr.isClimbing;
+        }
       }
     }
 
-    // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
-    this.drawWallTops(arena, ppu, allRenderables);
+    try {
+      // 1. Floor Grid / Surface in Units
+      this.drawFloorGrid(arena, ppu);
 
-    // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
-    for (const entity of allRenderables) {
-      this.drawObjectWallTopShadowFill(entity, arena, ppu);
-    }
+      // 2. Entities sorting
+      const allRenderables = [...characters, ...objects];
 
-    // 7. Elevated Entities (z >= wallHeight)
-    // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
-    for (const entity of elevatedRenderables) {
-      if (entity instanceof Character) {
-        this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
-      } else {
-        this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
-      }
-    }
-
-    // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
-    for (const entity of allRenderables) {
-      this.drawObjectColliderPositionOutline(entity, arena, ppu);
-    }
-
-    // 9. Vertical connector lines for elevated entities (renders OVER objects and character!)
-    if (useHover) {
+      // Phase 8: Decay visual smoothing offset dampeners smoothly toward zero (0.70x / frame)
       for (const entity of allRenderables) {
-        this.drawVerticalConnectorLine(entity, arena, ppu);
+        entity.decayVisualOffset(0.70);
       }
-    }
 
-    // 10. Trajectory Lines and Aim Cursors
-    // First: render active trajectories for any character holding an object
-    for (const char of characters) {
-      if (char.activeTrajectory) {
-        // Is this character's cursor currently unhidden and visible?
-        const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
-          ? activeAimCursorsOrIsGamepad.find((c) => c.character === char)
-          : null;
-        const cursorTarget = cursor ? { x: cursor.x, y: cursor.y } : null;
-        this.trajectoryRenderer.drawTrajectory(char.activeTrajectory, ppu, arena, this.viewSettings, cursorTarget, char);
+      allRenderables.sort((a, b) => {
+        // Objects held by a character render ON TOP of that character at all times!
+        if (a.isHeld && a.heldBy === b) return 1;
+        if (b.isHeld && b.heldBy === a) return -1;
+        for (const char of characters) {
+          if (char.heldObject === a && b === char) return 1;
+          if (char.heldObject === b && a === char) return -1;
+        }
+
+        // Primary: Objects at higher virtual position (height z) ALWAYS render on top
+        if (Math.abs(a.position.z - b.position.z) > 0.001) {
+          return a.position.z - b.position.z;
+        }
+        // Secondary: Objects with higher virtual y velocity render on top if at same elevation
+        if (Math.abs(a.verticalVelocity - b.verticalVelocity) > 0.001) {
+          return a.verticalVelocity - b.verticalVelocity;
+        }
+        // Tertiary: Higher y (closer to foreground) renders on top
+        return a.position.y - b.position.y;
+      });
+
+      const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
+
+      // 2. Ground Shadows (Rendered BELOW all wall squares including sides and tops)
+      // Only the shadow fill is covered!
+      for (const entity of allRenderables) {
+        this.drawObjectGroundShadowFill(entity, arena, ppu);
       }
-    }
 
-    // Second: render aim cursors (only for unhidden cursors)
-    if (Array.isArray(activeAimCursorsOrIsGamepad)) {
-      for (const cursor of activeAimCursorsOrIsGamepad) {
-        const cChar = cursor.character;
-        const cursorX = cursor.x * ppu;
-        const cursorY = cursor.y * ppu;
+      // 3. Wall Bases (squares representing the sides / front faces at ground level)
+      this.drawWallBases(arena, ppu);
 
-        // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
-        if (!cChar.activeTrajectory) {
-          this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, cursor.color);
+      // 3b. Wall Tile Preview (When in Wall Editor sub-mode)
+      if (isWallEditor && hoverWallTile) {
+        this.drawWallEditorHover(arena, hoverWallTile, ppu);
+      }
+
+      // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight).
+      const groundRenderables = allRenderables.filter(e => {
+        if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return false;
+        return e.position.z < arena.wallHeight - 0.05;
+      });
+      const elevatedRenderables = allRenderables.filter(e => {
+        if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return true;
+        return e.position.z >= arena.wallHeight - 0.05;
+      });
+
+      // 4. Ground Entities (z < wallHeight)
+      // Rendered before wall tops so top of wall renders OVER ground objects!
+      for (const entity of groundRenderables) {
+        if (entity instanceof Character) {
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
+        } else {
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
         }
       }
-    } else {
-      // Legacy singleplayer fallback
-      const isUsingGamepad = activeAimCursorsOrIsGamepad;
-      if (character) {
-        const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
-        if (character.activeTrajectory) {
-          this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
-        } else if (isUsingGamepad && activeAimCursor) {
-          this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
+
+      // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
+      this.drawWallTops(arena, ppu, allRenderables);
+
+      // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
+      for (const entity of allRenderables) {
+        this.drawObjectWallTopShadowFill(entity, arena, ppu);
+      }
+
+      // 7. Elevated Entities (z >= wallHeight)
+      // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
+      for (const entity of elevatedRenderables) {
+        if (entity instanceof Character) {
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
+        } else {
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
         }
       }
-    }
 
-    // Selection & Hover Gizmos (Only active and visible during Edit Mode)
-    if (isEditMode) {
-      if (hoverEntity && hoverEntity !== selectedEntity) {
-        this.drawHoverGizmo(hoverEntity, ppu);
+      // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
+      for (const entity of allRenderables) {
+        this.drawObjectColliderPositionOutline(entity, arena, ppu);
       }
-      if (selectedEntity) {
-        this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
+
+      // 9. Vertical connector lines for elevated entities (renders OVER objects and character!)
+      if (useHover) {
+        for (const entity of allRenderables) {
+          this.drawVerticalConnectorLine(entity, arena, ppu);
+        }
       }
-    }
 
-    // Ghost Clones (Echoed states from 3rd-party relay server)
-    if (ghostSnapshot) {
-      this.drawGhostClones(ghostSnapshot, ppu, arena);
-    }
+      // 10. Trajectory Lines and Aim Cursors
+      // First: render active trajectories for any character holding an object
+      for (const char of characters) {
+        if (char.activeTrajectory) {
+          // Is this character's cursor currently unhidden and visible?
+          const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
+            ? activeAimCursorsOrIsGamepad.find((c) => c.character === char)
+            : null;
+          const cursorTarget = cursor ? { x: cursor.x, y: cursor.y } : null;
+          this.trajectoryRenderer.drawTrajectory(char.activeTrajectory, ppu, arena, this.viewSettings, cursorTarget, char);
+        }
+      }
 
-    // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
-    for (const char of characters) {
-      this.drawCharacterNameTag(char, arena, ppu);
-    }
+      // Second: render aim cursors (only for unhidden cursors)
+      if (Array.isArray(activeAimCursorsOrIsGamepad)) {
+        for (const cursor of activeAimCursorsOrIsGamepad) {
+          const cChar = cursor.character;
+          const cursorX = cursor.x * ppu;
+          const cursorY = cursor.y * ppu;
 
-    // 12b. Collision Mode & Contact Diagnostics Overlay
-    if (this.showCollisionDebug) {
-      this.drawCollisionDebug(allRenderables, ppu);
-    }
+          // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
+          if (!cChar.activeTrajectory) {
+            this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, cursor.color);
+          }
+        }
+      } else {
+        // Legacy singleplayer fallback
+        const isUsingGamepad = activeAimCursorsOrIsGamepad;
+        if (character) {
+          const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
+          if (character.activeTrajectory) {
+            this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
+          } else if (isUsingGamepad && activeAimCursor) {
+            this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
+          }
+        }
+      }
 
-    // 12c. Rollback & Reconciliation Ghost Trails
-    this.drawRollbackDiagnostics(ppu);
+      // Selection & Hover Gizmos (Only active and visible during Edit Mode)
+      if (isEditMode) {
+        if (hoverEntity && hoverEntity !== selectedEntity) {
+          this.drawHoverGizmo(hoverEntity, ppu);
+        }
+        if (selectedEntity) {
+          this.drawSelectionGizmo(selectedEntity, isEditMode, ppu);
+        }
+      }
 
-    // 12d. Live State History Buffer Continuous Trail & Target Marker
-    this.drawLiveBufferTrail(ppu);
+      // Ghost Clones (Echoed states from 3rd-party relay server)
+      if (ghostSnapshot) {
+        this.drawGhostClones(ghostSnapshot, ppu, arena);
+      }
 
-    // 13. Simulation Paused Overlay (when all players are removed)
-    if (isPaused) {
-      this.drawPausedOverlay(ctx);
+      // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
+      for (const char of characters) {
+        const isRemote = Boolean(char !== localHeroCharacter && remoteOverrides?.has(char.playerId));
+        this.drawCharacterNameTag(char, arena, ppu, isRemote);
+      }
+
+      // 12b. Collision Mode & Contact Diagnostics Overlay
+      if (this.showCollisionDebug) {
+        this.drawCollisionDebug(allRenderables, ppu);
+      }
+
+      // 12c. Rollback & Reconciliation Ghost Trails
+      this.drawRollbackDiagnostics(ppu);
+
+      // 12d. Live State History Buffer Continuous Trail & Target Marker
+      this.drawLiveBufferTrail(ppu);
+
+      // 13. Simulation Paused Overlay (when all players are removed)
+      if (isPaused) {
+        this.drawPausedOverlay(ctx);
+      }
+    } finally {
+      // Deterministically restore original character transforms
+      for (const st of savedTransforms) {
+        st.char.position.x = st.x;
+        st.char.position.y = st.y;
+        st.char.position.z = st.z;
+        st.char.facingAngle = st.angle;
+        st.char.isClimbing = st.climb;
+      }
     }
   }
 
@@ -991,13 +1247,17 @@ export class Renderer {
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
-    // 1. Draw Ghost Character
-    const gChar = ghostSnapshot.character;
-    if (gChar) {
+    // 1. Draw Ghost Characters (supports multiple server avatars simultaneously)
+    const ghostChars = (ghostSnapshot.characters && ghostSnapshot.characters.length > 0)
+      ? ghostSnapshot.characters
+      : (ghostSnapshot.character ? [ghostSnapshot.character] : []);
+
+    for (const gChar of ghostChars) {
       const charScale = useBigger ? Renderer.getAltitudeScale(gChar.z, arena.wallHeight) : 1.0;
       const px = gChar.x * ppu;
       const py = (gChar.y - gChar.z * hoverScale) * ppu;
       const r = gChar.radius * ppu * charScale;
+      const ghostColor = gChar.color || "#38bdf8";
 
       // Ghost ground shadow (drawn when elevated above ground level)
       if (gChar.z > 0.01) {
@@ -1008,7 +1268,7 @@ export class Renderer {
           ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
           ctx.fill();
         }
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
+        ctx.strokeStyle = `${ghostColor}88`;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
@@ -1018,7 +1278,7 @@ export class Renderer {
           const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
           ctx.beginPath();
           ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu * wallAltScale, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
+          ctx.strokeStyle = `${ghostColor}55`;
           ctx.lineWidth = 1.2;
           ctx.setLineDash([2, 4]);
           ctx.stroke();
@@ -1032,7 +1292,7 @@ export class Renderer {
       ctx.globalAlpha = isOnLayer2 ? 0.35 : 0.55;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = "#38bdf8"; // Spectral Cyan
+      ctx.fillStyle = ghostColor;
       ctx.fill();
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
@@ -1044,8 +1304,9 @@ export class Renderer {
       ctx.font = "bold 9px monospace";
       ctx.fillStyle = "#e0f2fe";
       ctx.textAlign = "center";
-      const badgePrefix = ghostSnapshot.source === "physics_sim" ? "🤖 SERVER SIM" : "👻 ECHO";
-      ctx.fillText(`${badgePrefix} (${Math.round(ghostSnapshot.rttMs)}ms)`, px, py - r - 6);
+      const nameTag = gChar.name ? `${gChar.name} ` : "";
+      const badgePrefix = ghostSnapshot.source === "physics_sim" ? "🤖 SERVER" : "👻 ECHO";
+      ctx.fillText(`${badgePrefix} ${nameTag}(${Math.round(ghostSnapshot.rttMs)}ms)`, px, py - r - 6);
       ctx.restore();
     }
 
@@ -1684,7 +1945,7 @@ export class Renderer {
    * Draws the floating player name tag (P1, P2 … or "Press Space / A") for a character.
    * Called in a dedicated final render pass so tags always appear above walls and all entities.
    */
-  private drawCharacterNameTag(char: Character, arena: Arena, ppu: number): void {
+  private drawCharacterNameTag(char: Character, arena: Arena, ppu: number, isRemote: boolean = false): void {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
@@ -1702,11 +1963,11 @@ export class Renderer {
     ctx.textBaseline = "middle";
 
     if (char.playerId) {
-      const badgeText = `P${char.playerNumber}`;
-      ctx.font = "bold 11px monospace";
+      const badgeText = isRemote ? `P${char.playerNumber} [REMOTE]` : `P${char.playerNumber}`;
+      ctx.font = isRemote ? "bold 9px monospace" : "bold 11px monospace";
       const textWidth = ctx.measureText(badgeText).width;
       const pillW = textWidth + 8;
-      const pillH = 14;
+      const pillH = isRemote ? 13 : 14;
       const pillX = x - pillW / 2;
       const pillY = y - r - 15;
 
@@ -1715,11 +1976,12 @@ export class Renderer {
       ctx.roundRect(pillX, pillY, pillW, pillH, 4);
       ctx.fill();
 
-      ctx.strokeStyle = char.playerColor || char.color;
+      const tagColor = isRemote ? "#38bdf8" : (char.playerColor || char.color);
+      ctx.strokeStyle = tagColor;
       ctx.lineWidth = 1.4;
       ctx.stroke();
 
-      ctx.fillStyle = char.playerColor || char.color;
+      ctx.fillStyle = tagColor;
       ctx.fillText(badgeText, x, pillY + pillH / 2);
     } else {
       const badgeText = "Press Space / A";
