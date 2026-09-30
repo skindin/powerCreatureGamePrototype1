@@ -1285,6 +1285,10 @@ function bootstrap(): void {
       const count = gameLoop.players.size;
       mobilePlayersBadge.textContent = `${count} Active`;
     }
+    // Synchronize authoritative server simulation with all players whenever players join or leave
+    if (isMultiplayerMode && gameLoop) {
+      relayClient.syncServerWorld(arena, gameLoop.allCharacters, gameLoop.objects);
+    }
   };
 
   // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
@@ -1312,8 +1316,7 @@ function bootstrap(): void {
       relayClient.stepServerPhysics(dt);
 
       // 2. Stream client input packets and world telemetry across the WAN relay loopback
-      const primaryChar = gameLoop.primaryCharacter || character;
-      relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, primaryChar, gameLoop.objects, nowMs);
+      relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, gameLoop.allCharacters, gameLoop.objects, nowMs);
     }
   };
 

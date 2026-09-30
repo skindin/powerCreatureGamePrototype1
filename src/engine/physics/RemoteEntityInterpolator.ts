@@ -47,19 +47,36 @@ export interface InterpolatedEntityResult {
   isExtrapolated: boolean;
 }
 
+interface SmoothedEntityState {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  facingAngle: number;
+  lastTime: number;
+}
+
 /**
- * Phase 9: Remote Player Entity Interpolation (Snapshot Interpolation)
+ * Phase 9: Remote Player Entity Forward Prediction & Interpolation
  *
- * Buffers incoming authoritative server snapshots over a ~100ms render window
- * and interpolates remote player avatars smoothly between snapshots N and N+1.
- * If a network packet is momentarily delayed, dead-reckons (extrapolates)
- * up to 50ms using physical velocity to prevent visual stuttering.
+ * Each client sim predicts where remote players actually are on their machines,
+ * projecting forward from the latest authoritative server snapshot along their
+ * velocity vectors by the round-trip latency + jitter lead time.
+ *
+ * This guarantees:
+ * 1. A remote player always LEADS their server ghost clone while in motion,
+ *    just like a local player leads their own server ghost.
+ * 2. Visual motion is smoothly blended frame-to-frame without stutter or snapping.
+ * 3. At rest (vx=0, vy=0), the predicted remote avatar smoothly settles onto the server ghost.
  */
 export class RemoteEntityInterpolator {
   private buffer: RemoteSnapshotPacket[] = [];
-  public interpolationDelayMs: number = 100; // 100ms standard render buffer delay
-  public maxExtrapolationMs: number = 50;     // Up to 50ms dead reckoning
+  public defaultLeadTimeMs: number = 90;     // Base forward prediction lead time (~90ms)
+  public maxLeadTimeMs: number = 250;        // Max prediction clamp during network latency spikes
   public maxBufferSize: number = 30;         // Keep last 30 snapshots (~500ms at 60Hz)
+  private smoothedStates: Map<string, SmoothedEntityState> = new Map();
 
   /**
    * Pushes a new snapshot into the interpolation buffer.
@@ -90,106 +107,85 @@ export class RemoteEntityInterpolator {
   }
 
   /**
-   * Computes the smoothly interpolated state for a given entity at current time.
+   * Computes the forward-predicted state for a remote entity.
+   * Predicts where the remote client thinks their player is right now,
+   * projecting forward from the server snapshot so the entity LEADS the server ghost.
    */
   public getInterpolatedState(
     entityId: string,
-    nowMs: number = performance.now()
+    nowMs: number = performance.now(),
+    rttMs: number = 0
   ): InterpolatedEntityResult | null {
     if (this.buffer.length === 0) return null;
 
-    const renderTime = nowMs - this.interpolationDelayMs;
-
-    // 1. Only one snapshot available
-    if (this.buffer.length === 1) {
-      const snap = this.buffer[0];
-      const e = snap.entities.get(entityId);
-      if (!e) return null;
-      return this.sampleToResult(e, false);
-    }
-
-    // 2. Target renderTime is older than our oldest buffered snapshot
-    const oldest = this.buffer[0];
-    if (renderTime <= oldest.timestamp) {
-      const e = oldest.entities.get(entityId);
-      if (!e) return null;
-      return this.sampleToResult(e, false);
-    }
-
-    // 3. Target renderTime is ahead of our newest snapshot (network jitter / latency spike)
+    // Get the newest authoritative snapshot from the server
     const newest = this.buffer[this.buffer.length - 1];
-    if (renderTime >= newest.timestamp) {
-      const e = newest.entities.get(entityId);
-      if (!e) return null;
+    const s = newest.entities.get(entityId);
+    if (!s) return null;
 
-      // Dead-reckon extrapolation up to maxExtrapolationMs
-      const extraMs = Math.min(this.maxExtrapolationMs, renderTime - newest.timestamp);
-      const dtSec = extraMs / 1000;
+    // Calculate lead time: how far ahead the remote client is relative to the server snapshot.
+    // The remote client's input traveled to server (RTT/2) + server processing + snapshot to client (RTT/2)
+    // + time elapsed since snapshot arrived locally.
+    const latencyLeadSec = Math.max(this.defaultLeadTimeMs / 1000, (rttMs > 0 ? rttMs / 1000 : this.defaultLeadTimeMs / 1000));
+    const elapsedSinceSnapshotSec = Math.max(0, (nowMs - newest.timestamp) / 1000);
+    const totalLeadSec = Math.min(this.maxLeadTimeMs / 1000, latencyLeadSec + elapsedSinceSnapshotSec);
 
-      return {
-        id: e.id,
-        x: e.x + e.vx * dtSec,
-        y: e.y + e.vy * dtSec,
-        z: Math.max(0, e.z + e.vz * dtSec),
-        vx: e.vx,
-        vy: e.vy,
-        vz: e.vz,
-        facingAngle: e.facingAngle,
-        isClimbing: e.isClimbing ?? false,
-        isAboveWalls: e.isAboveWalls ?? false,
-        isGrounded: e.isGrounded ?? (e.z <= 0.01),
-        surfaceZ: e.surfaceZ ?? 0,
-        heldObjectId: e.heldObjectId ?? null,
-        heldBy: e.heldBy ?? null,
-        angX: e.angX,
-        angY: e.angY,
-        angZ: e.angZ,
-        isExtrapolated: true,
+    // Target forward-predicted physical coordinates
+    const targetX = s.x + s.vx * totalLeadSec;
+    const targetY = s.y + s.vy * totalLeadSec;
+    const targetZ = Math.max(s.surfaceZ ?? 0, s.z + s.vz * totalLeadSec);
+
+    let smooth = this.smoothedStates.get(entityId);
+    if (!smooth) {
+      smooth = {
+        x: targetX,
+        y: targetY,
+        z: targetZ,
+        vx: s.vx,
+        vy: s.vy,
+        vz: s.vz,
+        facingAngle: s.facingAngle,
+        lastTime: nowMs,
       };
+      this.smoothedStates.set(entityId, smooth);
+    } else {
+      const dt = Math.max(0.001, Math.min(0.1, (nowMs - smooth.lastTime) / 1000));
+      smooth.lastTime = nowMs;
+
+      // Exponential smoothing filter to prevent high-frequency visual jitter (glides at ~20x / s)
+      const blend = Math.min(1.0, dt * 20);
+      smooth.x += (targetX - smooth.x) * blend;
+      smooth.y += (targetY - smooth.y) * blend;
+      smooth.z += (targetZ - smooth.z) * blend;
+      smooth.vx += (s.vx - smooth.vx) * blend;
+      smooth.vy += (s.vy - smooth.vy) * blend;
+      smooth.vz += (s.vz - smooth.vz) * blend;
+
+      // Smooth facing angle
+      const speed = Math.hypot(s.vx, s.vy);
+      const targetAngle = speed > 0.1 ? Math.atan2(s.vy, s.vx) : s.facingAngle;
+      smooth.facingAngle = this.lerpAngle(smooth.facingAngle, targetAngle, Math.min(1.0, dt * 15));
     }
-
-    // 4. Interpolate between two surrounding snapshots: A (prior) and B (posterior)
-    let snapA: RemoteSnapshotPacket = this.buffer[0];
-    let snapB: RemoteSnapshotPacket = this.buffer[this.buffer.length - 1];
-
-    for (let i = 0; i < this.buffer.length - 1; i++) {
-      if (this.buffer[i].timestamp <= renderTime && this.buffer[i + 1].timestamp >= renderTime) {
-        snapA = this.buffer[i];
-        snapB = this.buffer[i + 1];
-        break;
-      }
-    }
-
-    const eA = snapA.entities.get(entityId);
-    const eB = snapB.entities.get(entityId);
-
-    if (!eA && !eB) return null;
-    if (!eA && eB) return this.sampleToResult(eB, false);
-    if (eA && !eB) return this.sampleToResult(eA, false);
-
-    // Both samples present: calculate interpolation factor alpha [0, 1]
-    const timeSpan = Math.max(0.0001, snapB.timestamp - snapA.timestamp);
-    const alpha = Math.max(0, Math.min(1, (renderTime - snapA.timestamp) / timeSpan));
 
     return {
-      id: entityId,
-      x: eA!.x + (eB!.x - eA!.x) * alpha,
-      y: eA!.y + (eB!.y - eA!.y) * alpha,
-      z: Math.max(0, eA!.z + (eB!.z - eA!.z) * alpha),
-      vx: eA!.vx + (eB!.vx - eA!.vx) * alpha,
-      vy: eA!.vy + (eB!.vy - eA!.vy) * alpha,
-      vz: eA!.vz + (eB!.vz - eA!.vz) * alpha,
-      facingAngle: this.lerpAngle(eA!.facingAngle, eB!.facingAngle, alpha),
-      isClimbing: alpha >= 0.5 ? (eB!.isClimbing ?? false) : (eA!.isClimbing ?? false),
-      isAboveWalls: alpha >= 0.5 ? (eB!.isAboveWalls ?? false) : (eA!.isAboveWalls ?? false),
-      isGrounded: alpha >= 0.5 ? (eB!.isGrounded ?? false) : (eA!.isGrounded ?? false),
-      surfaceZ: (eA!.surfaceZ ?? 0) + ((eB!.surfaceZ ?? 0) - (eA!.surfaceZ ?? 0)) * alpha,
-      heldObjectId: alpha >= 0.5 ? (eB!.heldObjectId ?? null) : (eA!.heldObjectId ?? null),
-      heldBy: alpha >= 0.5 ? (eB!.heldBy ?? null) : (eA!.heldBy ?? null),
-      angX: eA!.angX !== undefined && eB!.angX !== undefined ? eA!.angX + (eB!.angX - eA!.angX) * alpha : undefined,
-      angY: eA!.angY !== undefined && eB!.angY !== undefined ? eA!.angY + (eB!.angY - eA!.angY) * alpha : undefined,
-      angZ: eA!.angZ !== undefined && eB!.angZ !== undefined ? eA!.angZ + (eB!.angZ - eA!.angZ) * alpha : undefined,
-      isExtrapolated: false,
+      id: s.id,
+      x: smooth.x,
+      y: smooth.y,
+      z: smooth.z,
+      vx: smooth.vx,
+      vy: smooth.vy,
+      vz: smooth.vz,
+      facingAngle: smooth.facingAngle,
+      isClimbing: s.isClimbing ?? false,
+      isAboveWalls: s.isAboveWalls ?? false,
+      isGrounded: s.isGrounded ?? (smooth.z <= (s.surfaceZ ?? 0) + 0.02),
+      surfaceZ: s.surfaceZ ?? 0,
+      heldObjectId: s.heldObjectId ?? null,
+      heldBy: s.heldBy ?? null,
+      angX: s.angX,
+      angY: s.angY,
+      angZ: s.angZ,
+      isExtrapolated: true,
     };
   }
 
@@ -199,32 +195,5 @@ export class RemoteEntityInterpolator {
   private lerpAngle(a: number, b: number, t: number): number {
     const diff = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
     return a + diff * t;
-  }
-
-  private sampleToResult(s: RemoteEntitySample, isExtrapolated: boolean): InterpolatedEntityResult {
-    return {
-      id: s.id,
-      x: s.x,
-      y: s.y,
-      z: s.z,
-      vx: s.vx,
-      vy: s.vy,
-      vz: s.vz,
-      facingAngle: s.facingAngle,
-      isClimbing: s.isClimbing ?? false,
-      isAboveWalls: s.isAboveWalls ?? false,
-      isGrounded: s.isGrounded ?? (s.z <= 0.01),
-      surfaceZ: s.surfaceZ ?? 0,
-      heldObjectId: s.heldObjectId ?? null,
-      heldBy: s.heldBy ?? null,
-      angX: s.angX,
-      angY: s.angY,
-      angZ: s.angZ,
-      isExtrapolated,
-    };
-  }
-
-  public clear(): void {
-    this.buffer = [];
   }
 }

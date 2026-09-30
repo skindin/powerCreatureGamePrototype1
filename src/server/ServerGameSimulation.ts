@@ -254,6 +254,18 @@ export class ServerGameSimulation {
         this.clientAckedTicks.set(packet.playerId, packet.lastReceivedServerTick);
       }
     }
+    if (packet.playerId && !this.characters.has(packet.playerId)) {
+      const pNum = this.characters.size + 1;
+      const newChar = new Character({
+        x: this.arena.width / 2,
+        y: this.arena.height / 2,
+        playerId: packet.playerId,
+        playerNumber: pNum,
+        name: `Player ${pNum}`,
+      });
+      this.characters.set(packet.playerId, newChar);
+      this.arena.entities = [...this.allCharacters, ...this.objects];
+    }
     return this.jitterBuffer.push(packet);
   }
 
@@ -365,16 +377,43 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Synchronizes all authoritative server characters from client telemetry packets.
+   */
+  public syncCharactersFromPacket(clientChars: GhostEntityState[]): void {
+    if (!Array.isArray(clientChars) || clientChars.length === 0) return;
+    for (const c of clientChars) {
+      this.syncCharacterFromPacket(c);
+    }
+  }
+
+  /**
    * Synchronizes the authoritative server character from client telemetry packets.
    * Updates velocity and coordinates directly so the server player ghost stays locked to the client.
+   * If a character is not yet registered on the server, dynamically instantiates it.
    */
   public syncCharacterFromPacket(clientChar: GhostEntityState): void {
     if (!clientChar) return;
 
-    const sChar = (clientChar.id && this.characters.get(clientChar.id)) ||
-                  this.characters.get("keyboard") ||
-                  this.allCharacters[0];
-    if (!sChar) return;
+    const charId = clientChar.id || "keyboard";
+    let sChar = this.characters.get(charId);
+
+    if (!sChar) {
+      // Dynamically instantiate and register the new player character on the server
+      const pNum = this.characters.size + 1;
+      sChar = new Character({
+        x: clientChar.x,
+        y: clientChar.y,
+        color: clientChar.color || "#38bdf8",
+        colliderRadius: clientChar.radius || 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: charId,
+        playerNumber: pNum,
+        name: clientChar.name || `Player ${pNum}`,
+      });
+      this.characters.set(charId, sChar);
+      this.arena.entities = [...this.allCharacters, ...this.objects];
+    }
 
     // 1. Synchronize Linear and Vertical Velocity
     sChar.velocity.x = clientChar.vx;
@@ -401,6 +440,10 @@ export class ServerGameSimulation {
     }
     if (clientChar.isClimbing !== undefined) {
       sChar.isClimbing = clientChar.isClimbing;
+    }
+    if (clientChar.color) {
+      sChar.color = clientChar.color;
+      sChar.playerColor = clientChar.color;
     }
   }
 

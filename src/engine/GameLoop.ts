@@ -281,8 +281,9 @@ export class GameLoop {
       // Sample remote player interpolated states
       const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
       const now = performance.now();
+      const rttMs = ghostData?.rttMs ?? 0;
       for (const pe of activeEntries) {
-        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now);
+        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now, rttMs);
         if (interp) {
           remoteOverrides.set(pe.character.playerId, {
             x: interp.x,

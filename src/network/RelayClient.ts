@@ -233,6 +233,7 @@ export class RelayClient {
       this.currentGhostSnapshot = {
         ...this.latestGhostSnapshot,
         character: { ...this.latestGhostSnapshot.character },
+        characters: this.latestGhostSnapshot.characters ? this.latestGhostSnapshot.characters.map(c => ({ ...c })) : (this.latestGhostSnapshot.character ? [{ ...this.latestGhostSnapshot.character }] : []),
         objects: this.latestGhostSnapshot.objects ? this.latestGhostSnapshot.objects.map(o => ({ ...o })) : [],
       };
       return;
@@ -287,6 +288,54 @@ export class RelayClient {
         cCur.shape = cTar.shape;
         cCur.isAboveWalls = cTar.isAboveWalls;
         cCur.isClimbing = cTar.isClimbing;
+      }
+    }
+
+    // 1b. Lerp All Characters (Multiplayer)
+    if (target.characters) {
+      if (!cur.characters) {
+        cur.characters = target.characters.map((c) => ({ ...c }));
+      } else {
+        const updatedChars: GhostEntityState[] = [];
+        for (const cTar of target.characters) {
+          const existing = cur.characters.find((c) => c.id === cTar.id);
+          if (existing) {
+            existing.x += (cTar.x - existing.x) * moveFrac;
+            existing.y += (cTar.y - existing.y) * moveFrac;
+
+            const tarSurface = cTar.surfaceZ ?? 0;
+            const isTarGrounded = Boolean(cTar.isGrounded || cTar.z <= tarSurface + 0.015);
+
+            if (isTarGrounded) {
+              if (existing.z <= tarSurface + 0.22 || existing.z < cTar.z + 0.05) {
+                existing.z = tarSurface;
+              } else {
+                existing.z += (tarSurface - existing.z) * Math.min(1.0, moveFrac * 1.8);
+              }
+            } else {
+              existing.z += (cTar.z - existing.z) * moveFrac;
+              if (Math.abs(existing.z - cTar.z) < 0.005) {
+                existing.z = cTar.z;
+              }
+            }
+
+            existing.vx = cTar.vx;
+            existing.vy = cTar.vy;
+            existing.vz = cTar.vz;
+            existing.surfaceZ = cTar.surfaceZ;
+            existing.isGrounded = cTar.isGrounded;
+            existing.radius = cTar.radius;
+            existing.color = cTar.color;
+            existing.isHeld = cTar.isHeld;
+            existing.shape = cTar.shape;
+            existing.isAboveWalls = cTar.isAboveWalls;
+            existing.isClimbing = cTar.isClimbing;
+            updatedChars.push(existing);
+          } else {
+            updatedChars.push({ ...cTar });
+          }
+        }
+        cur.characters = updatedChars;
       }
     }
 
@@ -385,10 +434,13 @@ export class RelayClient {
   public sendInput(
     inputs: Map<string, PlayerInputPacket>,
     tick: number,
-    character: Character,
+    charactersOrCharacter: Character[] | Character,
     objects: GameObject[],
     nowMs: number
   ): void {
+    const characters = Array.isArray(charactersOrCharacter) ? charactersOrCharacter : [charactersOrCharacter];
+    const primaryChar = characters[0];
+
     // Record current tick's input with client ACK feedback (Phase 7.3)
     for (const inp of inputs.values()) {
       this.pendingInputsToSend.push({ ...inp, tick, lastReceivedServerTick: this.latestReceivedServerTick });
@@ -422,21 +474,37 @@ export class RelayClient {
       // Retransmit all unacknowledged reliable actions with every packet until acknowledged
       reliableActions: Array.from(this.unacknowledgedActions.values()),
       // Fallback state sync for visual echo or dual validation
-      character: {
-        id: character.playerId || "player",
-        x: Number(character.position.x.toFixed(3)),
-        y: Number(character.position.y.toFixed(3)),
-        z: Number(character.position.z.toFixed(3)),
-        vx: Number(character.velocity.x.toFixed(3)),
-        vy: Number(character.velocity.y.toFixed(3)),
-        vz: Number((character.hasVerticalVelocity ? character.verticalVelocity : 0).toFixed(3)),
-        surfaceZ: Number((character.supportingSurfaceHeight ?? 0).toFixed(3)),
-        isGrounded: character.isRestingOnSurface || character.position.z <= 0.005,
-        radius: character.colliderRadius,
-        color: character.color,
-        isClimbing: character.isClimbing,
-        isAboveWalls: character.isAboveWalls,
-      },
+      character: primaryChar ? {
+        id: primaryChar.playerId || "player",
+        x: Number(primaryChar.position.x.toFixed(3)),
+        y: Number(primaryChar.position.y.toFixed(3)),
+        z: Number(primaryChar.position.z.toFixed(3)),
+        vx: Number(primaryChar.velocity.x.toFixed(3)),
+        vy: Number(primaryChar.velocity.y.toFixed(3)),
+        vz: Number((primaryChar.hasVerticalVelocity ? primaryChar.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: primaryChar.isRestingOnSurface || primaryChar.position.z <= 0.005,
+        radius: primaryChar.colliderRadius,
+        color: primaryChar.color,
+        isClimbing: primaryChar.isClimbing,
+        isAboveWalls: primaryChar.isAboveWalls,
+      } : undefined,
+      characters: characters.map((c) => ({
+        id: c.playerId || "player",
+        name: c.name,
+        x: Number(c.position.x.toFixed(3)),
+        y: Number(c.position.y.toFixed(3)),
+        z: Number(c.position.z.toFixed(3)),
+        vx: Number(c.velocity.x.toFixed(3)),
+        vy: Number(c.velocity.y.toFixed(3)),
+        vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: c.isRestingOnSurface || c.position.z <= 0.005,
+        radius: c.colliderRadius,
+        color: c.playerColor || c.color,
+        isClimbing: c.isClimbing,
+        isAboveWalls: c.isAboveWalls,
+      })),
       objects: objects.map((obj) => ({
         id: obj.id,
         name: obj.name,
@@ -452,7 +520,7 @@ export class RelayClient {
         color: obj.color,
         shape: obj.visualShape,
         isHeld: obj.isHeld,
-        heldBy: obj.heldBy ? (obj.heldBy === character ? "player" : obj.heldBy.id) : null,
+        heldBy: obj.heldBy ? (obj.heldBy === primaryChar ? "player" : obj.heldBy.id) : null,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
@@ -528,7 +596,9 @@ export class RelayClient {
           }
           // Synchronize character: update position AND velocity from client telemetry packet
           // so server player ghost stays tightly locked to player position
-          if (parsed.character) {
+          if (Array.isArray(parsed.characters) && parsed.characters.length > 0) {
+            this.serverSimulation.syncCharactersFromPacket(parsed.characters);
+          } else if (parsed.character) {
             this.serverSimulation.syncCharacterFromPacket(parsed.character);
           }
           // Synchronize freebody objects: update positions AND velocities from client packet
@@ -562,6 +632,7 @@ export class RelayClient {
             receivedAt,
             rttMs,
             character: parsed.character,
+            characters: parsed.characters || (parsed.character ? [parsed.character] : []),
             objects: parsed.objects || [],
             source: "echo",
           };

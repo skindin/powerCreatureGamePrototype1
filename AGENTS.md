@@ -974,19 +974,22 @@ powerCreatureGamePrototype1/
       - Removed the forward-movement direction aim override on pickup (`hasMovedAim`), which was only meant for centering gamepad analog joysticks.
       - When picking up an object with mouse and keyboard, the trajectory and character facing direction immediately point directly to the mouse cursor position on screen with zero ambiguity.
 
-57. **Phase 9: Remote Player Entity Interpolation, Flight Handoff & Side-by-Side Split Client Sims**:
-    - **Remote Entity Interpolator (`src/engine/physics/RemoteEntityInterpolator.ts`)**:
-      - Maintains a 100ms render buffer of authoritative server snapshots for remote player avatars.
-      - Smoothly lerps positions $(x, y, z)$, velocities $(v_x, v_y, v_z)$, and slerps facing angle.
-      - Extrapolates up to 50ms with velocity dead-reckoning during momentary network jitter or packet delay.
-      - Preserves altitude $(z)$, vertical velocity ($v_z$), and ground contact flags during ballistic flight handoff.
-    - **Side-by-Side Split Client Sims Mode (`splitClientSimsEnabled`)**:
-      - Toggle button in Multiplayer Test Settings (`👥 Split Sims: ON / OFF`), persisted in `localStorage`.
-      - When enabled with $\ge 2$ players in multiplayer mode, splits canvas side-by-side:
-        * Left Viewport: Client 1 perspective (P1 locally predicted, P2 remote interpolated).
-        * Right Viewport: Client 2 perspective (P2 locally predicted, P1 remote interpolated).
-      - Renders Server Ghost Clones in **both** split screens simultaneously for real-time alignment comparison.
-      - Cleanly auto-reverts to full single view when switching back to Local Game, untoggling split sims, or having $< 2$ players.
+57. **Phase 9: Remote Player Entity Forward Prediction, Flight Handoff & Split-Screen Client Sims**:
+    - **Multi-Player Server Awareness & Dynamic Registration (`ServerGameSimulation.ts` & `RelayClient.ts`)**:
+      - `ServerGameSimulation` fully manages all connected player avatars (`this.characters: Map<string, Character>`), dynamically registering new players via `syncCharactersFromPacket` and `queueInput` without overwriting Player 1.
+      - `RelayClient.sendInput` streams inputs and physical telemetry for `gameLoop.allCharacters` simultaneously.
+      - `getGhostSnapshot()` outputs authoritative physical transforms for all player avatars in `characters: GhostEntityState[]`.
+      - Whenever players join or leave in `PlayerManager`, `relayClient.syncServerWorld` resyncs all characters on the server world.
+    - **Forward Predictive Leading Remote Avatars (`RemoteEntityInterpolator.ts`)**:
+      - Instead of lagging behind in the past, each client sim predicts where the remote player is on their own machine, projecting forward along their velocity vectors: $\vec{x}_{\text{pred}} = \vec{x}_{\text{server}} + \vec{v} \cdot t_{\text{lead}}$.
+      - In motion, a remote player's visual avatar **always LEADS their server ghost clone**, exactly like a local player leads their own server ghost.
+      - Exponential smoothing filter glides coordinates at ~20x/s to prevent visual jitter.
+      - When a remote player stops ($\vec{v} \to 0$), their avatar smoothly and cleanly settles onto the server ghost position at rest.
+    - **Truly Decoupled Split-Screen Client Predictions**:
+      - Left Viewport (Screen 1): Player 1 is local (immediate input response, leads server ghost). Player 2 is remote (derived from server snapshot forward-predicted, leads server ghost).
+      - Right Viewport (Screen 2): Player 2 is local (immediate input response, leads server ghost). Player 1 is remote (derived from server snapshot forward-predicted, leads server ghost).
+      - Zero instantaneous cross-screen position bleeding: remote players only update via real network round-trip from the authoritative server simulation.
+      - Both viewports display the server ghost clones of all active players simultaneously for real-time validation.
     - **Independent Viewport Mouse Coordinate Mapping (`CanvasViewport`)**:
       - `InputManager` tracks `keyboardViewport: CanvasViewport | null`.
       - When the Keyboard & Mouse player is assigned to any viewport (Screen 1, Screen 2, etc.), physical mouse coordinates map through `(canvasPixel - vp.offsetX) / vp.scale` into arena coordinates $[0 \dots 20, 0 \dots 14]$ without canvas-wide offsets.
