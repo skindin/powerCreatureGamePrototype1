@@ -363,13 +363,14 @@ export class GameLoop {
         continue;
       }
 
-      // 6. Deadzone: < 5mm does not require adjustment (prevents micro-flutter)
-      if (dist < 0.005) {
+      // 6. Deadzone & micro-flutter filter:
+      if (dist < 0.02) {
         continue;
       }
 
-      // 7. Smart Smooth Convergence (Exponential blend ~12% per frame at 60Hz)
-      const blend = 0.12;
+      // 7. Smart Smooth Convergence
+      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+      const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
       localObj.position.z += dz * blend;

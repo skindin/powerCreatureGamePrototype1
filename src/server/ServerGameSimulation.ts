@@ -300,12 +300,12 @@ export class ServerGameSimulation {
       const dz = cObj.z - sObj.position.z;
       const dist = Math.hypot(dx, dy, dz);
 
-      if (dist > 1.5) {
+      if (dist > 0.4) {
         sObj.position.x = cObj.x;
         sObj.position.y = cObj.y;
         sObj.position.z = cObj.z;
       } else if (dist > 0.005) {
-        const blend = 0.35;
+        const blend = 0.50;
         sObj.position.x += dx * blend;
         sObj.position.y += dy * blend;
         sObj.position.z += dz * blend;
@@ -317,6 +317,61 @@ export class ServerGameSimulation {
         sObj.rollModule.angularVelocity.y = cObj.angY;
         sObj.rollModule.angularVelocity.z = cObj.angZ;
       }
+    }
+  }
+
+  /**
+   * Synchronizes the authoritative server character from client telemetry packets.
+   * Updates velocity and smoothly reconciles physical coordinates (with instant snap on large divergence)
+   * so the server player ghost stays tightly synchronized with the client player.
+   */
+  public syncCharacterFromPacket(clientChar: GhostEntityState): void {
+    if (!clientChar) return;
+
+    const sChar = (clientChar.id && this.characters.get(clientChar.id)) ||
+                  this.characters.get("keyboard") ||
+                  this.allCharacters[0];
+    if (!sChar) return;
+
+    // 1. Synchronize Linear and Vertical Velocity
+    sChar.velocity.x = clientChar.vx;
+    sChar.velocity.y = clientChar.vy;
+    if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
+      sChar.verticalVelocity = clientChar.vz;
+    }
+
+    // 2. Synchronize Physical Coordinates
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dz = clientChar.z - sChar.position.z;
+    const dist = Math.hypot(dx, dy, dz);
+
+    if (dist > 0.4) {
+      // Diverged significantly: snap coordinates directly
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (dist > 0.005) {
+      // Smooth rapid convergence (50% blend per packet)
+      const blend = 0.50;
+      sChar.position.x += dx * blend;
+      sChar.position.y += dy * blend;
+      sChar.position.z += dz * blend;
+    }
+
+    // 3. Synchronize Surface & Elevation States
+    if (clientChar.surfaceZ !== undefined) {
+      sChar.supportingSurfaceHeight = clientChar.surfaceZ;
+    }
+    if (clientChar.isGrounded) {
+      const surfaceZ = clientChar.surfaceZ ?? 0;
+      if (sChar.position.z <= surfaceZ + 0.1) {
+        sChar.position.z = surfaceZ;
+        sChar.verticalVelocity = 0;
+      }
+    }
+    if (clientChar.isClimbing !== undefined) {
+      sChar.isClimbing = clientChar.isClimbing;
     }
   }
 
@@ -484,16 +539,41 @@ export class ServerGameSimulation {
     const grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[] = [];
 
     for (const [pId, char] of this.characters) {
+      // Drain jitter burst backlog if queue has backed up (> 2 inputs)
+      // to keep server input latency tightly locked to 1-2 ticks
+      const queue = this.inputQueues.get(pId);
+      while (queue && queue.length > 2) {
+        const catchupPkt = queue.shift()!;
+        char.updateCharacter(
+          dt,
+          { x: catchupPkt.moveX, y: catchupPkt.moveY },
+          catchupPkt.isAiming,
+          catchupPkt.aimX !== undefined && catchupPkt.aimY !== undefined ? { x: catchupPkt.aimX, y: catchupPkt.aimY } : null,
+          this.arena,
+          catchupPkt.isJumpHeld,
+          this.arena.entities,
+          catchupPkt.isLockHeld
+        );
+      }
+
       let pkt = this.inputQueues.get(pId)?.shift();
       if (pkt) {
         this.lastKnownInputs.set(pId, pkt);
       } else {
         // Queue is momentarily starved (inputs still traversing WAN relay).
-        // Maintain directional steering across brief jitter, but release button presses!
-        const last = this.lastKnownInputs.get(pId);
-        pkt = last
-          ? { ...last, isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false }
-          : undefined;
+        // Zero movement to prevent runaway ghost overshoot while waiting for packets!
+        pkt = {
+          playerId: pId,
+          moveX: 0,
+          moveY: 0,
+          isSprinting: false,
+          isJumpHeld: false,
+          isGrabHeld: false,
+          isDrop: false,
+          isThrow: false,
+          isAiming: false,
+          isLockHeld: false,
+        };
       }
 
       if (pkt) {

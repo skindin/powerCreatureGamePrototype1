@@ -500,6 +500,11 @@ export class RelayClient {
             const newlyAcked = this.serverSimulation.processReliableActions(parsed.reliableActions);
             this.acknowledgeActions(newlyAcked);
           }
+          // Synchronize character: update position AND velocity from client telemetry packet
+          // so server player ghost stays tightly locked to player position
+          if (parsed.character) {
+            this.serverSimulation.syncCharacterFromPacket(parsed.character);
+          }
           // Synchronize freebody objects: update positions AND velocities from client packet
           // so server physics advances with the latest physical momentum!
           if (Array.isArray(parsed.objects)) {

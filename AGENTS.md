@@ -232,13 +232,20 @@ powerCreatureGamePrototype1/
   - If the client player has no object within reach, `grabTargetObjectId` is `null`.
   - Both client and authoritative server strictly validate `grabTargetObjectId`. The server ghost **never** picks up a random nearby object just because the ghost happens to be standing next to it while the client player is elsewhere.
   - Server validates reach with a network latency grace factor ($1.35\times$ reach) to prevent false-negative drops under WAN ping.
-- **Smart Authoritative Object Synchronization (`GameLoop.syncAuthoritativeObjects`)**:
-  - Automatically synchronizes client freebody objects (`this.objects`) to the authoritative server simulation snapshot on each physics frame.
-  - **Hierarchy Lock**: Objects actively held by a local player are skipped to keep them locked to the player's hands without visual jitter.
-  - **Editor Drag Bypass**: Objects dragged by user mouse in Edit Mode are not overridden.
-  - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
-  - **Continuous Exponential Convergence**: For moving, bouncing, or rolling objects, applies smooth exponential position and velocity blending ($\alpha = 0.12$) to pull client objects into alignment with server ground truth without visual snapping.
-  - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.
+- **Full Character & Freebody Position / Velocity Synchronization (Phase 4.5 — Fully Functional)**:
+  - **Server-Side Character Telemetry Synchronization (`ServerGameSimulation.syncCharacterFromPacket`)**:
+    - When client telemetry packets return over the network, `syncCharacterFromPacket` updates the server character's linear velocity ($v_x, v_y$), vertical velocity ($v_z$), climbing state, and elevation coordinates.
+    - Large divergences ($> 0.4\text{ units}$) snap directly to client coordinates. Small discrepancies converge smoothly at a $50\%$ blend rate per packet, keeping the "🤖 SERVER SIM" ghost character locked within millimeters of the client character.
+  - **Input Backlog Drainage & Zero-Steering Starvation Protection**:
+    - When WAN jitter bursts deliver multiple queued input packets at once (`queue.length > 2`), the server instantly processes the extra packets in catch-up steps, keeping input latency tightly bound to 1-2 ticks.
+    - When the input queue is empty during packet transit, steering input is zeroed (`moveX: 0, moveY: 0`) rather than held indefinitely, eliminating runaway ghost overshoot while waiting for packets.
+  - **Smart Authoritative Object Synchronization (`GameLoop.syncAuthoritativeObjects`)**:
+    - Automatically synchronizes client freebody objects (`this.objects`) to the authoritative server simulation snapshot on each physics frame.
+    - **Hierarchy Lock**: Objects actively held by a local player are skipped to keep them locked to the player's hands without visual jitter.
+    - **Editor Drag Bypass**: Objects dragged by user mouse in Edit Mode are not overridden.
+    - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
+    - **Speed-Aware Jitter Tolerance & Convergence**: Uses a $0.02\text{u}$ deadzone to filter micro-flutter while smoothly converging discrepancies at $25-30\%$ blend rate without dragging moving objects backwards.
+    - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.
 - **Reliable Action Messages, Retransmission Outbox & Delivery Confirmation (Phase 5.1 — Fully Functional)**:
   - **High-Priority Command Classification**: Critical discrete one-shot actions (`pickup`, `drop`, `throw`) are designated as reliable commands (`ReliableActionCommand`) requiring explicit delivery confirmation.
   - **Sender Retransmission Outbox (`unacknowledgedActions`)**: When the client dispatches a pickup, drop, or throw, it generates a globally unique command ID (`actionId`) and places it into an unacknowledged outbox. Every outgoing packet continuously retransmits all pending actions until acknowledged.
