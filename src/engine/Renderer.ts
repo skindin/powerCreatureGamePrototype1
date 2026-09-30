@@ -62,7 +62,7 @@ export class Renderer {
   public historyBufferStatus?: { count: number; capacity: number };
   public islandStats?: { totalIslands: number; activeIslands: number; sleepingCount: number; totalEntities: number };
   public rollbackDiagnostics: RollbackVisualData | null = null;
-  public showBufferTrail = true;
+  public showBufferTrail = false;
   public liveBufferTrail: LiveBufferTrailData | null = null;
 
 

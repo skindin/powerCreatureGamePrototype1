@@ -544,8 +544,8 @@ export class DevPanel {
           <!-- Live Buffer Trail Toggle -->
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 8px;">
             <label style="font-size: 0.78rem;">Show Live Buffer Trail</label>
-            <button id="toggle-buffer-trail" class="btn-toggle active">
-              ON
+            <button id="toggle-buffer-trail" class="btn-toggle">
+              OFF
             </button>
           </div>
 
@@ -2025,7 +2025,7 @@ export class DevPanel {
     const toggleBufferTrail = this.container.querySelector("#toggle-buffer-trail") as HTMLButtonElement | null;
     if (toggleBufferTrail) {
       const rend = this.getRenderer?.();
-      const isShow = rend ? rend.showBufferTrail : true;
+      const isShow = rend ? rend.showBufferTrail : false;
       toggleBufferTrail.textContent = isShow ? "ON" : "OFF";
       toggleBufferTrail.classList.toggle("active", isShow);
 
