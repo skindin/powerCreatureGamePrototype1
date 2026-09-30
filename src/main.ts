@@ -505,7 +505,11 @@ function bootstrap(): void {
     }
 
     if (packetCounts) {
-      const jitterText = stats.serverMode === "physics_sim" ? ` | Jitter: ${stats.serverJitterDepth ?? 0}f` : "";
+      let jitterText = "";
+      if (stats.serverMode === "physics_sim") {
+        const dilText = stats.serverClockSync ? ` (${stats.serverClockSync.dilationFactor.toFixed(3)}x)` : "";
+        jitterText = ` | Jitter: ${stats.serverJitterDepth ?? 0}f${dilText}`;
+      }
       packetCounts.textContent = `Sent: ${stats.packetsSent} | Echoed: ${stats.packetsReceived}${jitterText}`;
     }
   };
@@ -1179,6 +1183,9 @@ function bootstrap(): void {
     if (isMultiplayerMode) {
       relayClient.queueReliableAction(action);
     }
+  };
+  relayClient.onClockSync = (sync) => {
+    gameLoop.applyClockSync(sync);
   };
   gameLoop.onPhysicsTick = (dt, nowMs) => {
     if (isMultiplayerMode) {

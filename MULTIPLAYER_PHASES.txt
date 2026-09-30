@@ -20,7 +20,7 @@ TABLE OF PHASES
   [x] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness (COMPLETED)
   [x] PHASE 4: Authoritative Headless Server Simulation Core (COMPLETED)
   [x] PHASE 5: Client Input Streaming & Server Jitter Input Queue (COMPLETED)
-  [ ] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control)
+  [x] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control) (COMPLETED)
   [ ] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression
   [ ] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener
   [ ] PHASE 9: Remote Player Entity Interpolation & Flight Handoff
@@ -280,33 +280,39 @@ Tasks Completed & Planned:
 
 ================================================================================
 PHASE 6: ADAPTIVE CLOCK SYNCHRONIZATION & TIME DILATION (CRUISE CONTROL)
-Status: PLANNED [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Maintain a steady 2-tick input buffer on the server by gently speeding up 
 or slowing down the client's physics tick rate without hard pauses or stutter.
 
-Tasks to Implement:
-  [ ] 6.1 Server Buffer Depth Measurement
-      - Every 10 ticks, the server checks the queue depth for each player.
-      - Target: 2 frames.
-      - Underflow (< 1 frame): Client is running too slow or packets arriving late.
-      - Overflow (> 3 frames): Client is running ahead of server.
+Tasks Completed & Implemented:
+  [x] 6.1 Server Buffer Depth Measurement (src/server/ServerGameSimulation.ts & ServerJitterBuffer.ts)
+      - Every 10 ticks, the server checks the jitter queue depth for each player.
+      - Target: 2 frames (~33.3ms buffer).
+      - Underflow (< 1 frame): Client is running too slow or packets arriving late; flags speedup.
+      - Overflow (> 3 frames): Client is running ahead of server; flags slowdown.
+      - Steady (1 to 3 frames): Healthy cruise buffer maintained.
 
-  [ ] 6.2 Time Dilation Feedback Packet
-      - Server sends clock command:
+  [x] 6.2 Time Dilation Feedback Packet (src/server/ServerJitterBuffer.ts & ServerGameSimulation.ts)
+      - Server sends clock command ClockSyncPacket with snapshot broadcasts:
         {
           type: "clock_sync",
           serverTick: number,
           targetQueueDepth: 2,
           currentQueueDepth: number,
-          dilationFactor: number  // e.g., 1.01 (speed up 1%) or 0.99 (slow down 1%)
+          dilationFactor: number  // e.g., 1.015 (speed up 1.5%) or 0.985 (slow down 1.5%)
         }
+      - Strict clamping within [0.980, 1.020] (imperceptible to human eye, keeps physics deterministic).
 
-  [ ] 6.3 Client Adaptive Accumulator
+  [x] 6.3 Client Adaptive Accumulator (src/engine/GameLoop.ts & src/engine/Renderer.ts)
       - In `GameLoop.ts`:
+        Smoothly steers current timeDilation toward targetTimeDilation (lerp rate 0.08 per frame).
         `this.accumulator += deltaSeconds * this.timeDilation;`
       - Clamped range: 0.98x to 1.02x (imperceptible to human eye, keeps audio smooth).
-      - Returns to 1.00x once the server buffer stabilizes at 2 frames.
+      - Automatically returns to 1.000x once the server buffer stabilizes at 2 frames.
+      - Visual Diagnostics: Displayed in Canvas Diagnostics HUD as `Cruise Control: 1.000x (2f)`
+        and in top-bar telemetry as `Jitter: 2f (1.000x)`.
+      - Headless Test Suite (scratch/test_phase_6_clock_sync.ts) passes 26/26 tests (100%).
 
 ================================================================================
 PHASE 7: AUTHORITATIVE SNAPSHOT BROADCAST & DELTA COMPRESSION

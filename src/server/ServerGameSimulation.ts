@@ -7,7 +7,7 @@ import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
-import { ServerJitterBufferManager, JitterBufferStats } from "./ServerJitterBuffer.js";
+import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -43,6 +43,10 @@ export class ServerGameSimulation {
 
   // Per-player input jitter buffer (Phase 5.2)
   public jitterBuffer: ServerJitterBufferManager;
+
+  // Adaptive Clock Sync & Time Dilation (Phase 6)
+  public latestClockSync: Map<string, ClockSyncPacket> = new Map();
+  public clockSyncCheckInterval: number = 10; // Check every 10 ticks (6.1)
 
   // Contested grab arbitration audit log
   public contestedGrabEvents: ContestedGrabResult[] = [];
@@ -244,6 +248,28 @@ export class ServerGameSimulation {
    */
   public getAllJitterStats(): JitterBufferStats[] {
     return this.jitterBuffer.getAllStats();
+  }
+
+  /**
+   * Evaluates jitter buffer depths and computes adaptive clock sync packets for all players (Phase 6).
+   */
+  public evaluateClockSync(): void {
+    for (const [pId] of this.characters) {
+      const syncPacket = this.jitterBuffer.evaluateClockSync(pId, this.currentTick);
+      this.latestClockSync.set(pId, syncPacket);
+    }
+    // Fallback for default keyboard player if not explicitly in characters map
+    if (!this.characters.has("keyboard")) {
+      const syncPacket = this.jitterBuffer.evaluateClockSync("keyboard", this.currentTick);
+      this.latestClockSync.set("keyboard", syncPacket);
+    }
+  }
+
+  /**
+   * Retrieves the latest ClockSyncPacket for a player.
+   */
+  public getLatestClockSync(playerId: string): ClockSyncPacket | null {
+    return this.latestClockSync.get(playerId) ?? null;
   }
 
   /**
@@ -629,6 +655,11 @@ export class ServerGameSimulation {
     // 6. Update physical islands of influence & sleeping bodies
     this.islandManager.updateIslands(this.allCharacters, this.objects, this.currentTick, this.arena);
 
+    // 6b. Phase 6.1: Periodic Server Buffer Depth Measurement & Clock Sync Evaluation
+    if (this.currentTick % this.clockSyncCheckInterval === 0) {
+      this.evaluateClockSync();
+    }
+
     // 7. Capture authoritative world snapshot
     return SnapshotManager.capture(this.currentTick, this.allCharacters, this.objects, false);
   }
@@ -637,8 +668,10 @@ export class ServerGameSimulation {
    * Produces a GhostSnapshot suitable for rendering or network broadcast.
    * Directly reflects the true physical state of the authoritative simulation.
    */
-  public getGhostSnapshot(rttMs: number = 0): GhostSnapshot {
+  public getGhostSnapshot(rttMs: number = 0, forPlayerId?: string): GhostSnapshot {
     const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
+    const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
+    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard");
 
     const ghostChar: GhostEntityState = {
       id: primaryChar ? primaryChar.playerId : "player",
@@ -687,6 +720,7 @@ export class ServerGameSimulation {
       character: ghostChar,
       objects: ghostObjects,
       ackActionIds: this.getRecentAckedActionIds(),
+      clockSync,
     };
   }
 }

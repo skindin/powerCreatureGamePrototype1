@@ -301,6 +301,28 @@ powerCreatureGamePrototype1/
   - **Automated Headless Test Suite**:
     - `scratch/test_phase_5_2_jitter_buffer.ts`: 100% passed (38/38 assertions covering out-of-order sorting, deduplication, stale rejection, burst drainage, starvation neutral packets, capacity overflow, and ServerGameSimulation integration).
 
+### Adaptive Clock Synchronization & Time Dilation (Phase 6 — Fully Functional)
+- **Server Jitter Buffer Depth Measurement (Task 6.1)**:
+  - Every 10 ticks (`clockSyncCheckInterval`), `ServerGameSimulation.evaluateClockSync()` checks the queue depth for each player against the target depth of 2 frames (~33.3ms buffer).
+  - Underflow (< 1 frame): Indicates client is running slow or WAN packets are delayed; calculates speedup factor (e.g. 1.015x).
+  - Overflow (> 3 frames): Indicates client is running ahead of server; calculates slowdown factor (e.g. 0.990x or 0.985x).
+  - Steady (1 to 3 frames): Healthy cruise buffer maintained (1.000x).
+- **Time Dilation Feedback Packets (`ClockSyncPacket`) (Task 6.2)**:
+  - Sent with authoritative snapshot broadcasts:
+    `{ type: "clock_sync", serverTick, targetQueueDepth: 2, currentQueueDepth, dilationFactor, playerId }`.
+  - Factors are strictly clamped within `[0.980, 1.020]` (a +/-2% maximum envelope that is completely imperceptible to human eye and preserves audio pitch).
+- **Client Adaptive Accumulator & Smooth Steering (Task 6.3)**:
+  - In `GameLoop.ts`:
+    - `applyClockSync(sync)` receives the feedback command and clamps target dilation.
+    - `this.accumulator += deltaSeconds * this.timeDilation;`
+    - Each frame, `timeDilation` smoothly steers toward `targetTimeDilation` at a rate of 0.08 per frame, preventing discrete step jumps or audio clicks.
+    - Once the server jitter buffer stabilizes at 2 frames, the dilation factor gently returns to 1.000x.
+- **Diagnostics HUD & Telemetry Integration**:
+  - Rendered in bottom-right Canvas Diagnostics HUD as `Cruise Control: 1.000x (2f)`.
+  - Top bar packet counts show real-time cruise status: `Jitter: 2f (1.000x)`.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_6_clock_sync.ts`: 100% passed (26/26 assertions covering underflow/overflow/steady dilation calculations, server periodic evaluation, GhostSnapshot embedding, and GameLoop client accumulator time dilation).
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:

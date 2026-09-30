@@ -64,6 +64,8 @@ export class Renderer {
   public rollbackDiagnostics: RollbackVisualData | null = null;
   public showBufferTrail = false;
   public liveBufferTrail: LiveBufferTrailData | null = null;
+  public timeDilation: number = 1.0;
+  public clockSyncStatus?: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null;
 
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -553,8 +555,9 @@ export class Renderer {
     // 4. Canvas Bottom-Right Collision Diagnostics HUD
     const hasBuffer = !!this.historyBufferStatus;
     const hasIslands = !!this.islandStats;
+    const hasClockSync = !!this.clockSyncStatus;
     const cardW = 208;
-    const cardH = (hasBuffer ? 82 : 68) + (hasIslands ? 14 : 0);
+    const cardH = (hasBuffer ? 82 : 68) + (hasIslands ? 14 : 0) + (hasClockSync ? 14 : 0);
     const cardX = ctx.canvas.width - cardW - 16;
     const cardY = ctx.canvas.height - cardH - 16;
 
@@ -630,6 +633,21 @@ export class Renderer {
       ctx.font = "bold 9px Inter, system-ui, sans-serif";
       const secs = (this.historyBufferStatus.count / 60).toFixed(1);
       ctx.fillText(`${this.historyBufferStatus.count}/${this.historyBufferStatus.capacity} (${secs}s)`, cardX + 78, bufferLineY);
+    }
+
+    // Phase 6 Cruise Control Time Dilation status
+    if (this.clockSyncStatus) {
+      let clockLineY = cardY + 71;
+      if (hasIslands) clockLineY += 13;
+      if (hasBuffer) clockLineY += 13;
+      ctx.font = "9px Inter, system-ui, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText("Cruise Control:", cardX + 12, clockLineY);
+      const factor = this.clockSyncStatus.dilationFactor;
+      const factorColor = factor > 1.001 ? "#38bdf8" : (factor < 0.999 ? "#f59e0b" : "#10b981");
+      ctx.fillStyle = factorColor;
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      ctx.fillText(`${factor.toFixed(3)}x (${this.clockSyncStatus.currentQueueDepth}f)`, cardX + 78, clockLineY);
     }
 
     ctx.restore();

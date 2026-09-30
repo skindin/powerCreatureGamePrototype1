@@ -28,6 +28,8 @@ export interface GhostEntityState {
   isSleeping?: boolean;
 }
 
+import { ClockSyncPacket } from "../server/ServerJitterBuffer.js";
+
 export interface GhostSnapshot {
   seq: number;
   sentAt: number;
@@ -37,6 +39,7 @@ export interface GhostSnapshot {
   objects: GhostEntityState[];
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
+  clockSync?: ClockSyncPacket;
 }
 
 export type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -56,6 +59,8 @@ export interface RelayStats {
   unackedActionsCount: number;
   serverJitterDepth?: number;
   serverJitterStarvations?: number;
+  serverClockSync?: ClockSyncPacket;
+  timeDilation?: number;
 }
 
 export class RelayClient {
@@ -102,6 +107,8 @@ export class RelayClient {
 
   public onStatsChange?: (stats: RelayStats) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
+  public onClockSync?: (sync: ClockSyncPacket) => void;
+  public latestClockSync: ClockSyncPacket | null = null;
 
   constructor(url: string = "wss://echo.websocket.org") {
     this.url = url;
@@ -340,6 +347,7 @@ export class RelayClient {
 
   public getStats(): RelayStats {
     const jitterStats = this.serverSimulation.getJitterStats("keyboard") || this.serverSimulation.getAllJitterStats()[0];
+    const clockSync = this.latestClockSync || this.serverSimulation.getLatestClockSync("keyboard") || undefined;
     return {
       status: this.status,
       url: this.url,
@@ -355,6 +363,7 @@ export class RelayClient {
       unackedActionsCount: this.unacknowledgedActions.size,
       serverJitterDepth: jitterStats ? jitterStats.currentDepth : 0,
       serverJitterStarvations: jitterStats ? jitterStats.starvations : 0,
+      serverClockSync: clockSync,
     };
   }
 
@@ -514,6 +523,16 @@ export class RelayClient {
           // so server physics advances with the latest physical momentum!
           if (Array.isArray(parsed.objects)) {
             this.serverSimulation.syncObjectsFromPacket(parsed.objects);
+          }
+
+          // Phase 6: Clock Sync Feedback from authoritative server
+          const simClockSync = this.serverSimulation.getLatestClockSync("keyboard");
+          if (simClockSync) {
+            this.latestClockSync = simClockSync;
+            this.onClockSync?.(simClockSync);
+          } else if (parsed.clockSync) {
+            this.latestClockSync = parsed.clockSync;
+            this.onClockSync?.(parsed.clockSync);
           }
           // Note: Physics simulation advances on its continuous 60Hz physics clock via stepServerPhysics(),
           // NOT per arriving network packet!

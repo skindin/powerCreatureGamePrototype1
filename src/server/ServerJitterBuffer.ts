@@ -1,6 +1,19 @@
 import { PlayerInputPacket } from "../engine/physics/StateHistoryBuffer.js";
 
 /**
+ * Feedback command sent from the authoritative server to synchronize the client's clock (Phase 6).
+ * Tells the client accumulator to gently dilate by +/-1% to maintain a steady 2-frame server jitter buffer.
+ */
+export interface ClockSyncPacket {
+  type: "clock_sync";
+  serverTick: number;
+  targetQueueDepth: number; // 2
+  currentQueueDepth: number;
+  dilationFactor: number;   // e.g. 1.015 (speed up) or 0.985 (slow down)
+  playerId?: string;
+}
+
+/**
  * Diagnostics & telemetry metrics for a player's server jitter buffer.
  */
 export interface JitterBufferStats {
@@ -232,6 +245,23 @@ export class PlayerJitterQueue {
       consumedCount: this.consumedCount,
     };
   }
+
+  /**
+   * Computes the adaptive time dilation factor to maintain steady target depth (Phase 6).
+   * - Underflow (< 1 frame): 1.015 (speed up 1.5% to avoid starvation)
+   * - Overflow (> 3 frames): 0.990 or 0.985 (slow down 1.0% to 1.5% to drain backlog)
+   * - Steady (1 to 3 frames): 1.000 (steady cruise speed)
+   * Clamped strictly between [0.98, 1.02].
+   */
+  public computeDilationFactor(): number {
+    const depth = this.queue.length;
+    if (depth < 1) {
+      return 1.015;
+    } else if (depth > 3) {
+      return depth >= 5 ? 0.985 : 0.990;
+    }
+    return 1.000;
+  }
 }
 
 /**
@@ -269,6 +299,22 @@ export class ServerJitterBufferManager {
    */
   public consume(playerId: string, serverTick?: number): JitterConsumeResult {
     return this.getQueue(playerId).consume(serverTick);
+  }
+
+  /**
+   * Evaluates the clock sync packet for a player at the current server tick (Phase 6).
+   */
+  public evaluateClockSync(playerId: string, serverTick: number): ClockSyncPacket {
+    const queue = this.getQueue(playerId);
+    const dilation = queue.computeDilationFactor();
+    return {
+      type: "clock_sync",
+      serverTick,
+      targetQueueDepth: queue.targetDepth,
+      currentQueueDepth: queue.length,
+      dilationFactor: dilation,
+      playerId,
+    };
   }
 
   /**

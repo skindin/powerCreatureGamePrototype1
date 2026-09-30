@@ -61,6 +61,9 @@ export class GameLoop {
 
   public currentTick = 0;
   public timeDilation = 1.0;
+  public targetTimeDilation = 1.0;
+  public timeDilationLerpRate = 0.08;
+  public latestClockSync: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null = null;
   public isPhysicsPaused = false;
   public globalCollisionMode: CollisionMode = "dynamic";
   public lastSnapshot: WorldSnapshot | null = null;
@@ -82,6 +85,17 @@ export class GameLoop {
     }
     this.renderFrame(this.fixedDt);
     this.devPanel.updateInspector();
+  }
+
+  /**
+   * Applies an adaptive clock synchronization packet from the server (Phase 6.3).
+   * Gently dilates client accumulator by +/-1% to maintain 2 frames on server buffer.
+   */
+  public applyClockSync(sync: import("../server/ServerJitterBuffer.js").ClockSyncPacket): void {
+    this.latestClockSync = sync;
+    // Strictly clamp within [0.98, 1.02] (imperceptible to human eye)
+    const clamped = Math.max(0.98, Math.min(1.02, sync.dilationFactor));
+    this.targetTimeDilation = clamped;
   }
 
 
@@ -160,6 +174,13 @@ export class GameLoop {
       capacity: this.historyBuffer.getCapacity(),
     };
     this.renderer.islandStats = this.islandManager.getStats();
+    this.renderer.timeDilation = this.timeDilation;
+    this.renderer.clockSyncStatus = this.latestClockSync;
+
+    // Apply clock sync feedback from server if present
+    if (ghostData?.clockSync) {
+      this.applyClockSync(ghostData.clockSync);
+    }
 
     // Update live continuous buffer trail diagnostics for selected entity (or player)
     if (this.renderer.showBufferTrail) {
@@ -227,6 +248,13 @@ export class GameLoop {
     }
 
     if (!this.isPhysicsPaused) {
+      // Phase 6.3: Smoothly steer timeDilation toward targetTimeDilation
+      if (Math.abs(this.timeDilation - this.targetTimeDilation) > 0.0001) {
+        this.timeDilation += (this.targetTimeDilation - this.timeDilation) * this.timeDilationLerpRate;
+      } else {
+        this.timeDilation = this.targetTimeDilation;
+      }
+
       this.accumulator += deltaSeconds * this.timeDilation;
 
       // Fixed timestep simulation updates
