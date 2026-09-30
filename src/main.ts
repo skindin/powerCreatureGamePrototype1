@@ -529,8 +529,19 @@ function bootstrap(): void {
     if (savedRate !== null) {
       const parsed = parseFloat(savedRate);
       if (!isNaN(parsed) && parsed >= 0) {
-        relayClient.ghostLerpRatePercent = parsed;
+        // Migration: If user previously had 2000%/s or old default 100%/s
+        if (parsed >= 1000) {
+          // 2000 %/s converted to ~33.3 %/frame
+          relayClient.ghostLerpRatePercent = Math.round((parsed / 60) * 10) / 10;
+        } else if (parsed === 100) {
+          // Old default was 100 %/s which was 1.6 %/frame; modernize to 35%
+          relayClient.ghostLerpRatePercent = 35.0;
+        } else {
+          relayClient.ghostLerpRatePercent = Math.min(100.0, parsed);
+        }
       }
+    } else {
+      relayClient.ghostLerpRatePercent = 35.0;
     }
   } catch {}
 
@@ -563,9 +574,10 @@ function bootstrap(): void {
     if (!relayLerpRateInput) return;
     const val = parseFloat(relayLerpRateInput.value);
     if (!isNaN(val) && val >= 0) {
-      relayClient.ghostLerpRatePercent = val;
+      const clamped = Math.min(100.0, val);
+      relayClient.ghostLerpRatePercent = clamped;
       try {
-        localStorage.setItem("pcg_ghost_lerp_rate", val.toString());
+        localStorage.setItem("pcg_ghost_lerp_rate", clamped.toString());
       } catch {}
     }
   };

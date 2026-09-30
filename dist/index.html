@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-BcxcfSBg.js"></script>
+    <script type="module" crossorigin src="/assets/index-XlM3u_aW.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DEBD5zA1.css">
   </head>
   <body>
@@ -727,9 +727,9 @@
                   <span class="stat-label">Ghost Lerp</span>
                   <div class="lerp-control-group">
                     <button id="relay-toggle-lerp-btn" class="btn-lerp-toggle active" title="Toggle Ghost Interpolation Smoothing">⚡ Lerp: ON</button>
-                    <div class="lerp-input-wrapper" title="Percent of delta distance to move per second">
-                      <input id="relay-lerp-rate-input" class="relay-number-input" type="number" step="any" min="0" value="100.0" />
-                      <span class="lerp-unit-label">% / s</span>
+                    <div class="lerp-input-wrapper" title="Percent of distance to move per frame at 60 FPS (100% = instant snap)">
+                      <input id="relay-lerp-rate-input" class="relay-number-input" type="number" step="any" min="0" max="100" value="35.0" />
+                      <span class="lerp-unit-label">% / frame</span>
                     </div>
                   </div>
                 </div>

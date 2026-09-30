@@ -9,6 +9,9 @@ export interface GhostEntityState {
   z: number;
   vx: number;
   vy: number;
+  vz?: number;
+  surfaceZ?: number;
+  isGrounded?: boolean;
   radius: number;
   color?: string;
   shape?: "circle" | "box";
@@ -47,7 +50,7 @@ export class RelayClient {
   public sendRateHz: number = 30; // 30 updates per second
   public showGhostClones: boolean = true;
   public lerpGhosts: boolean = true;
-  public ghostLerpRatePercent: number = 100.0; // percent of delta distance to move per second
+  public ghostLerpRatePercent: number = 35.0; // percent of delta distance to move per frame at 60 FPS (100% = instant snap)
 
   private socket: WebSocket | null = null;
   private seq: number = 0;
@@ -121,7 +124,9 @@ export class RelayClient {
 
   /**
    * Updates the ghost interpolation state towards the latest received snapshot.
-   * Moves by (ghostLerpRatePercent / 100) * dt of the delta distance per second.
+   * Interpolates at ghostLerpRatePercent % per frame (normalized to 60 FPS).
+   * 100% snaps instantly each frame with zero delay.
+   * Enforces solid ground/surface contact when target lands.
    */
   public updateGhostLerp(dt: number): void {
     if (!this.latestGhostSnapshot) {
@@ -134,8 +139,10 @@ export class RelayClient {
       return;
     }
 
-    // Fraction of delta distance to move this frame: (rate / 100) * dt
-    const moveFrac = Math.min(1.0, Math.max(0.0, (this.ghostLerpRatePercent / 100) * dt));
+    // Normalized frame factor: 1.0 at 60 FPS (dt = 1/60s)
+    const dt60 = Math.min(3.0, Math.max(0.05, dt * 60));
+    const rateFrac = Math.min(1.0, Math.max(0.0, this.ghostLerpRatePercent / 100));
+    const moveFrac = rateFrac >= 1.0 ? 1.0 : (1.0 - Math.pow(1.0 - rateFrac, dt60));
 
     if (!this.currentGhostSnapshot) {
       this.currentGhostSnapshot = {
@@ -163,9 +170,32 @@ export class RelayClient {
         const cCur = cur.character;
         cCur.x += (cTar.x - cCur.x) * moveFrac;
         cCur.y += (cTar.y - cCur.y) * moveFrac;
-        cCur.z += (cTar.z - cCur.z) * moveFrac;
+
+        // Ground & surface contact enforcement
+        const tarSurface = cTar.surfaceZ ?? 0;
+        const isTarGrounded = Boolean(cTar.isGrounded || cTar.z <= tarSurface + 0.015);
+
+        if (isTarGrounded) {
+          // Target is in contact with ground or wall surface!
+          // Snap directly if within touchdown range (0.22u) or lower to eliminate hover gap
+          if (cCur.z <= tarSurface + 0.22 || cCur.z < cTar.z + 0.05) {
+            cCur.z = tarSurface;
+          } else {
+            cCur.z += (tarSurface - cCur.z) * Math.min(1.0, moveFrac * 1.8);
+          }
+        } else {
+          // Airborne
+          cCur.z += (cTar.z - cCur.z) * moveFrac;
+          if (Math.abs(cCur.z - cTar.z) < 0.005) {
+            cCur.z = cTar.z;
+          }
+        }
+
         cCur.vx = cTar.vx;
         cCur.vy = cTar.vy;
+        cCur.vz = cTar.vz;
+        cCur.surfaceZ = cTar.surfaceZ;
+        cCur.isGrounded = cTar.isGrounded;
         cCur.radius = cTar.radius;
         cCur.color = cTar.color;
         cCur.isHeld = cTar.isHeld;
@@ -186,9 +216,28 @@ export class RelayClient {
           if (existing) {
             existing.x += (oTar.x - existing.x) * moveFrac;
             existing.y += (oTar.y - existing.y) * moveFrac;
-            existing.z += (oTar.z - existing.z) * moveFrac;
+
+            const tarSurface = oTar.surfaceZ ?? 0;
+            const isTarGrounded = Boolean(oTar.isGrounded || oTar.z <= tarSurface + 0.015);
+
+            if (isTarGrounded) {
+              if (existing.z <= tarSurface + 0.22 || existing.z < oTar.z + 0.05) {
+                existing.z = tarSurface;
+              } else {
+                existing.z += (tarSurface - existing.z) * Math.min(1.0, moveFrac * 1.8);
+              }
+            } else {
+              existing.z += (oTar.z - existing.z) * moveFrac;
+              if (Math.abs(existing.z - oTar.z) < 0.005) {
+                existing.z = oTar.z;
+              }
+            }
+
             existing.vx = oTar.vx;
             existing.vy = oTar.vy;
+            existing.vz = oTar.vz;
+            existing.surfaceZ = oTar.surfaceZ;
+            existing.isGrounded = oTar.isGrounded;
             existing.radius = oTar.radius;
             existing.color = oTar.color;
             existing.isHeld = oTar.isHeld;
@@ -250,6 +299,9 @@ export class RelayClient {
         z: Number(character.position.z.toFixed(3)),
         vx: Number(character.velocity.x.toFixed(3)),
         vy: Number(character.velocity.y.toFixed(3)),
+        vz: Number((character.hasVerticalVelocity ? character.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((character.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: character.isRestingOnSurface || character.position.z <= 0.005,
         radius: character.colliderRadius,
         color: character.color,
         isClimbing: character.isClimbing,
@@ -263,6 +315,9 @@ export class RelayClient {
         z: Number(obj.position.z.toFixed(3)),
         vx: Number(obj.velocity.x.toFixed(3)),
         vy: Number(obj.velocity.y.toFixed(3)),
+        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
         radius: obj.colliderRadius,
         color: obj.color,
         shape: obj.visualShape,
