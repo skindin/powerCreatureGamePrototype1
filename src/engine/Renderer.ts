@@ -434,9 +434,9 @@ export class Renderer {
       // Rendered before wall tops so top of wall renders OVER ground objects!
       for (const entity of groundRenderables) {
         if (entity instanceof Character) {
-          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter);
         } else {
-          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter);
         }
       }
 
@@ -452,9 +452,9 @@ export class Renderer {
       // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
       for (const entity of elevatedRenderables) {
         if (entity instanceof Character) {
-          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities);
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter);
         } else {
-          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena);
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter);
         }
       }
 
@@ -1977,7 +1977,7 @@ export class Renderer {
       ctx.roundRect(pillX, pillY, pillW, pillH, 4);
       ctx.fill();
 
-      const tagColor = isRemote ? "#38bdf8" : (char.playerColor || char.color);
+      const tagColor = char.playerColor || char.color;
       ctx.strokeStyle = tagColor;
       ctx.lineWidth = 1.4;
       ctx.stroke();
@@ -2020,7 +2020,8 @@ export class Renderer {
     allCharacters: Character[],
     ppu: number,
     targetGrabEntities: GameObject | null | Map<Character, GameObject | null> | Set<GameObject> | undefined,
-    arena: Arena
+    arena: Arena,
+    localHeroCharacter?: Character | null
   ): void {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
@@ -2036,9 +2037,13 @@ export class Renderer {
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;
 
-    // Check if close enough for any player character to pick up, strictly respecting layer-dependent reach.
-    // Characters holding an object can also reach ground objects for swap or pickup!
-    const charactersInReach = allCharacters.filter(
+    // In split-screen / isolated client views, only evaluate pickup reach for the local client player
+    const eligibleCharacters = localHeroCharacter
+      ? allCharacters.filter((c) => c === localHeroCharacter)
+      : allCharacters;
+
+    // Check if close enough for eligible player character to pick up, strictly respecting layer-dependent reach.
+    const charactersInReach = eligibleCharacters.filter(
       (c) =>
         !c.isHeld &&
         c.heldObject !== obj &&
@@ -2052,6 +2057,7 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [char, target] of targetGrabEntities.entries()) {
+        if (localHeroCharacter && char !== localHeroCharacter) continue;
         if (target === obj) targetingChars.push(char);
       }
     } else if (targetGrabEntities) {
@@ -2204,7 +2210,8 @@ export class Renderer {
     allCharacters: Character[],
     ppu: number,
     arena: Arena,
-    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>
+    targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>,
+    localHeroCharacter?: Character | null
   ): void {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
@@ -2218,8 +2225,12 @@ export class Renderer {
     const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Check if another character can grab this character
-    const charactersInReach = allCharacters.filter(
+    // Check if eligible character can grab this character
+    const eligibleCharacters = localHeroCharacter
+      ? allCharacters.filter((c) => c === localHeroCharacter)
+      : allCharacters;
+
+    const charactersInReach = eligibleCharacters.filter(
       (c) =>
         c !== char &&
         !c.isHeld &&
@@ -2233,6 +2244,7 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [c, target] of targetGrabEntities.entries()) {
+        if (localHeroCharacter && c !== localHeroCharacter) continue;
         if (c !== char && target === char) targetingChars.push(c);
       }
     } else if (targetGrabEntities) {

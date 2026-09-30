@@ -1032,6 +1032,10 @@ powerCreatureGamePrototype1/
     - **Automated Verification**:
       - `scratch/test_remote_facing_angle.ts`: verified 100% (remote player walking East while aiming North faces North `[-1.5708 rad]`, and when stopping completely preserves West `[3.1416 rad]` without snapping right).
 
+61. **Viewport Grab UI Isolation & Remote Player Nametag Colors**:
+    - **Grab UI Viewport Filtering**: In `Renderer.ts:drawFreebodyObject` and `drawCharacter`, `charactersInReach` and `targetingChars` are filtered against `localHeroCharacter`. In split-screen mode, grab targeting rings (`P1 GRAB`, reach outlines) only render for the client assigned to that viewport, hiding grab UI for remote characters.
+    - **Remote Nametag Colors**: In `Renderer.ts:drawCharacterNameTag`, removed the hardcoded sky blue `#38bdf8` override so that remote player nametag badges preserve their assigned character theme color (`char.playerColor || char.color`).
+
 ---
 
 

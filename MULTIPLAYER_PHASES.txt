@@ -443,6 +443,10 @@ Tasks Completed:
       - Removed velocity-inferred facing angles from `RemoteEntityInterpolator.ts`; remote players explicitly track `s.facingAngle`.
       - Resolved right-facing snap on stop (previously 0 rad) and ensured players holding items face where they aim regardless of movement direction.
 
+  [x] 9.7 Viewport Grab UI Isolation & Remote Nametag Colors
+      - Filtered pickup reach highlights and grab targeting rings in `Renderer.ts` (`drawFreebodyObject`, `drawCharacter`) to strictly match the viewport's local client character (`localHeroCharacter`). Remote characters never trigger grab UI on screens not assigned to them.
+      - Fixed remote nametag colors in `drawCharacterNameTag` to preserve the character's true player theme color (Amber for P1, Cyan for P2, Emerald for P3, etc.) instead of hardcoding sky blue.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]
