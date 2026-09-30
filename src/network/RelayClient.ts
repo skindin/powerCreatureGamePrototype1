@@ -22,6 +22,10 @@ export interface GhostEntityState {
   heldBy?: string | null;
   isAboveWalls?: boolean;
   isClimbing?: boolean;
+  angX?: number;
+  angY?: number;
+  angZ?: number;
+  isSleeping?: boolean;
 }
 
 export interface GhostSnapshot {

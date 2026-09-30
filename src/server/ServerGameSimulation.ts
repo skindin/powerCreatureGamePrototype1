@@ -373,12 +373,35 @@ export class ServerGameSimulation {
           );
         }
 
-        // Collect grab requests for authoritative arbitration
+        // Collect explicit grab requests for authoritative arbitration
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
           const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-          const grabAimX = aimTarget ? aimTarget.x : char.position.x;
-          const grabAimY = aimTarget ? aimTarget.y : char.position.y;
-          const target = char.pickupModule.findTargetObject(char, grabAimX, grabAimY, others, this.arena.wallHeight);
+          let target: GameObject | null = null;
+          if (pkt.grabTargetObjectId !== undefined) {
+            // Explicit intent from client: only grab the exact requested object
+            if (pkt.grabTargetObjectId !== null) {
+              const explicitTarget = others.find((o) => o.id === pkt.grabTargetObjectId);
+              if (explicitTarget) {
+                const maxReach = char.pickupModule.pickupReach * 1.35;
+                const charZ = Math.max(char.position.z, char.supportingSurfaceHeight ?? 0);
+                const targetZ = Math.max(explicitTarget.position.z, explicitTarget.supportingSurfaceHeight ?? 0);
+                const dist3D = Math.hypot(
+                  explicitTarget.position.x - char.position.x,
+                  explicitTarget.position.y - char.position.y,
+                  targetZ - charZ
+                );
+                if (dist3D <= maxReach) {
+                  target = explicitTarget;
+                }
+              }
+            }
+          } else {
+            // Fallback for legacy test harness packets
+            const grabAimX = aimTarget ? aimTarget.x : char.position.x;
+            const grabAimY = aimTarget ? aimTarget.y : char.position.y;
+            target = char.pickupModule.findTargetObject(char, grabAimX, grabAimY, others, this.arena.wallHeight);
+          }
+
           if (target) {
             grabRequests.push({ char, target, pkt });
           }
@@ -467,6 +490,10 @@ export class ServerGameSimulation {
       isHeld: obj.isHeld,
       heldBy: obj.heldBy ? (obj.heldBy === primaryChar ? "player" : obj.heldBy.id) : null,
       isAboveWalls: obj.isAboveWalls,
+      angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
+      angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
+      angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
+      isSleeping: obj.isSleeping,
     }));
 
     return {

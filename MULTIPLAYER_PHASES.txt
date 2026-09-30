@@ -214,7 +214,12 @@ Tasks Completed:
         - Priority 1: Creature Strength (stronger creature wins).
         - Priority 2: 3D Euclidean Proximity (closer creature wins).
         - Priority 3: Deterministic ID Priority.
-      - Loser's grab is cancelled; winner claims object; contested grab events logged to audit queue.
+  [x] 4.4 Explicit Grab Intent & Smart Object Synchronization
+      - Explicit Grab Targeting: PlayerInputPacket streams grabTargetObjectId so the server only grabs 
+        the specific object the client player reached for, never picking up random nearby objects.
+      - Smart Object Position Sync: GameLoop.syncAuthoritativeObjects continuously converges client freebody 
+        positions and velocities to authoritative server snapshots, with resting coordinate snapping and 
+        hierarchy locking for held items.
 
 ================================================================================
 PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE

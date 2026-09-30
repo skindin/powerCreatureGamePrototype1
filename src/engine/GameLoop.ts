@@ -9,6 +9,7 @@ import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 import { StateHistoryBuffer, RollbackResult, PlayerInputPacket } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
+import type { GhostEntityState } from "../network/RelayClient.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager };
@@ -291,6 +292,95 @@ export class GameLoop {
 
     // 6. Record frame into circular history buffer
     this.historyBuffer.push(this.currentTick, this.lastSnapshot, currentInputs);
+  }
+
+  public enableAuthoritativeObjectSync: boolean = true;
+  public maxObjectDrift: number = 0;
+
+  /**
+   * Synchronizes freebody objects with the authoritative server simulation snapshot in a smart, smooth way.
+   * - Held objects remain attached to the local holder.
+   * - Dragged objects in editor are bypassed.
+   * - Sleeping server objects snap accurately into identical rest coordinates and enter sleep mode (0 CPU).
+   * - Moving objects smoothly blend position, velocity, and angular roll toward authoritative state without snapping.
+   * - Large divergences (> 3.0 units) teleport directly to authoritative state.
+   */
+  public syncAuthoritativeObjects(serverObjects: GhostEntityState[]): void {
+    if (!this.enableAuthoritativeObjectSync) return;
+    if (!serverObjects || serverObjects.length === 0) return;
+    if (this.devPanel?.isEditMode) return;
+
+    let maxDrift = 0;
+
+    for (const sObj of serverObjects) {
+      const localObj = this.objects.find((o) => o.id === sObj.id);
+      if (!localObj) continue;
+
+      // 1. If currently held by a local character, local holder transform governs
+      if (localObj.isHeld && localObj.heldBy) continue;
+
+      // 2. If dragged by user mouse, user drag governs
+      if (this.inputManager?.draggedEntity === localObj) continue;
+
+      // 3. Check physical distance to authoritative server position
+      const dx = sObj.x - localObj.position.x;
+      const dy = sObj.y - localObj.position.y;
+      const dz = sObj.z - localObj.position.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > maxDrift) maxDrift = dist;
+
+      // 4. Server Sleeping / Resting State Synchronization
+      if (sObj.isSleeping) {
+        const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+        // If nearby and moving slowly, snap to exact bit-level rest position and sleep
+        if (dist < 1.0 && localSpeed < 0.3) {
+          localObj.position.x = sObj.x;
+          localObj.position.y = sObj.y;
+          localObj.position.z = sObj.z;
+          localObj.putToSleep();
+          continue;
+        }
+      }
+
+      // 5. Hard Teleport on Massive Divergence (> 3.0 units)
+      if (dist > 3.0) {
+        localObj.position.x = sObj.x;
+        localObj.position.y = sObj.y;
+        localObj.position.z = sObj.z;
+        localObj.velocity.x = sObj.vx;
+        localObj.velocity.y = sObj.vy;
+        localObj.verticalVelocity = sObj.vz ?? 0;
+        if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+          localObj.rollModule.angularVelocity.x = sObj.angX;
+          localObj.rollModule.angularVelocity.y = sObj.angY;
+          localObj.rollModule.angularVelocity.z = sObj.angZ;
+        }
+        continue;
+      }
+
+      // 6. Deadzone: < 5mm does not require adjustment (prevents micro-flutter)
+      if (dist < 0.005) {
+        continue;
+      }
+
+      // 7. Smart Smooth Convergence (Exponential blend ~12% per frame at 60Hz)
+      const blend = 0.12;
+      localObj.position.x += dx * blend;
+      localObj.position.y += dy * blend;
+      localObj.position.z += dz * blend;
+      localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
+      localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
+      if (sObj.vz !== undefined) {
+        localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+      }
+      if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+        localObj.rollModule.angularVelocity.x += (sObj.angX - localObj.rollModule.angularVelocity.x) * blend;
+        localObj.rollModule.angularVelocity.y += (sObj.angY - localObj.rollModule.angularVelocity.y) * blend;
+        localObj.rollModule.angularVelocity.z += (sObj.angZ - localObj.rollModule.angularVelocity.z) * blend;
+      }
+    }
+
+    this.maxObjectDrift = maxDrift;
   }
 
   /**

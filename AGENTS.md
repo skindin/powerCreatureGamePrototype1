@@ -226,6 +226,19 @@ powerCreatureGamePrototype1/
       3. **Deterministic ID Priority**: Tiebreak fallback.
     - Grants object to the winning player, cancels the loser's grab, and records the resolution in `contestedGrabEvents` audit queue.
   - Produces authoritative `MultiplayerGhostSnapshot` with real vertical position $z$, vertical velocity $v_z$, resting flags, and true ground contact.
+- **Explicit Grab Targeting Pipeline (`attempt to pick up X`)**:
+  - `PlayerInputPacket` includes `grabTargetObjectId?: string | null`.
+  - When the client initiates a grab, `PlayerManager` evaluates the specific entity within reach and aim (`target.id`), sending an explicit intent to grab that object.
+  - If the client player has no object within reach, `grabTargetObjectId` is `null`.
+  - Both client and authoritative server strictly validate `grabTargetObjectId`. The server ghost **never** picks up a random nearby object just because the ghost happens to be standing next to it while the client player is elsewhere.
+  - Server validates reach with a network latency grace factor ($1.35\times$ reach) to prevent false-negative drops under WAN ping.
+- **Smart Authoritative Object Synchronization (`GameLoop.syncAuthoritativeObjects`)**:
+  - Automatically synchronizes client freebody objects (`this.objects`) to the authoritative server simulation snapshot on each physics frame.
+  - **Hierarchy Lock**: Objects actively held by a local player are skipped to keep them locked to the player's hands without visual jitter.
+  - **Editor Drag Bypass**: Objects dragged by user mouse in Edit Mode are not overridden.
+  - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
+  - **Continuous Exponential Convergence**: For moving, bouncing, or rolling objects, applies smooth exponential position and velocity blending ($\alpha = 0.12$) to pull client objects into alignment with server ground truth without visual snapping.
+  - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.
 - **Deterministic Action Synchronization (Throw, Drop & Grab Pipeline)**:
   - Mouse clicks, Q keys, and gamepad RT/RB/Y buttons route their throw and drop requests through `PlayerInputPacket` (`isThrow: boolean`, `isDrop: boolean`, `isGrabHeld: boolean`).
   - Executed deterministically in `applyPlayerInputs` on both client prediction and server simulation, ensuring carried items and throws remain in perfect sync across the network.
@@ -247,6 +260,7 @@ powerCreatureGamePrototype1/
     - Multiplayer HUD displays `Tick: #N (Live 60Hz)` reflecting authoritative server simulation ticks.
 - **Automated Headless Test Suite**:
   - `scratch/test_phase_4_server_simulation.ts`: 100% passed (Headless arena init with 17 walls, jump gravity and solid ground touchdown $z = 0.000$, contested grab arbitration with strength winner, and 60Hz standalone `GameServer` loop lifecycle).
+  - `scratch/test_explicit_grab_and_object_sync.ts`: 100% passed (Null target grab rejection, explicit target grab selection, smooth convergence lerping, and resting sleep coordinate snapping).
 
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 

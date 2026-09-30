@@ -11,6 +11,7 @@ export interface PlayerInputPacket {
   isSprinting: boolean;
   isJumpHeld: boolean;
   isGrabHeld: boolean;
+  grabTargetObjectId?: string | null;
   isDrop?: boolean;
   isThrow?: boolean;
   aimX?: number;

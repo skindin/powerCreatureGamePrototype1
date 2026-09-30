@@ -294,7 +294,7 @@ export class PlayerManager {
   /**
    * Captures the input packets for all active players in the arena on the current tick.
    */
-  public capturePlayerInputs(isEditMode: boolean): Map<string, PlayerInputPacket> {
+  public capturePlayerInputs(isEditMode: boolean, objects: GameObject[] = []): Map<string, PlayerInputPacket> {
     const map = new Map<string, PlayerInputPacket>();
     const input = this.inputManager;
 
@@ -304,6 +304,26 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
+      
+      // Determine explicit target object in reach if grab is active
+      let grabTargetObjectId: string | null = null;
+      if (input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
+        const aimTarget = isMouseAiming ? input.actualMousePos : null;
+        const aimX = aimTarget ? aimTarget.x : kChar.position.x;
+        const aimY = aimTarget ? aimTarget.y : kChar.position.y;
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
+        const target = kChar.pickupModule.findTargetObject(
+          kChar,
+          aimX,
+          aimY,
+          candidateEntities,
+          this.arena.wallHeight
+        );
+        if (target) {
+          grabTargetObjectId = target.id;
+        }
+      }
+
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
@@ -311,6 +331,7 @@ export class PlayerManager {
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
         isGrabHeld: input.isGrabHeld,
+        grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: input.isKeyboardThrowRequested ?? false,
         aimX: input.actualMousePos.x,
@@ -348,13 +369,30 @@ export class PlayerManager {
         aimY = cChar.position.y + dirY * 3.0;
       }
 
+      const isGrab = (slot.rtHeld || slot.bHeld) ?? false;
+      let grabTargetObjectId: string | null = null;
+      if (isGrab && !cChar.heldObject && cChar.pickupModule) {
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
+        const target = cChar.pickupModule.findTargetObject(
+          cChar,
+          aimX,
+          aimY,
+          candidateEntities,
+          this.arena.wallHeight
+        );
+        if (target) {
+          grabTargetObjectId = target.id;
+        }
+      }
+
       map.set(entry.id, {
         playerId: entry.id,
         moveX: slot.movementVector.x,
         moveY: slot.movementVector.y,
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
-        isGrabHeld: (slot.rtHeld || slot.bHeld) ?? false,
+        isGrabHeld: isGrab,
+        grabTargetObjectId,
         isDrop: slot.isDropRequested ?? false,
         isThrow: slot.isThrowRequested ?? false,
         aimX,
@@ -425,10 +463,21 @@ export class PlayerManager {
         pkt.isLockHeld
       );
 
-      // Continuous hold-to-grab
-      if (!isEditMode && pkt.isGrabHeld && !char.heldObject && char.pickupModule && aimTarget) {
-        const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
-        char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+      // Explicit grab target resolution
+      if (!isEditMode && pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
+        if (pkt.grabTargetObjectId !== undefined) {
+          if (pkt.grabTargetObjectId !== null) {
+            const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+            const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
+            if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
+              char.pickupModule.pickup(char, targetObj);
+            }
+          }
+        } else if (aimTarget) {
+          // Fallback for legacy calls without grabTargetObjectId
+          const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+          char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+        }
       }
     }
 
@@ -456,7 +505,7 @@ export class PlayerManager {
     objects: GameObject[],
     isEditMode: boolean
   ): Map<string, PlayerInputPacket> {
-    const inputs = this.capturePlayerInputs(isEditMode);
+    const inputs = this.capturePlayerInputs(isEditMode, objects);
     this.applyPlayerInputs(inputs, dt, objects, isEditMode);
     return inputs;
   }
