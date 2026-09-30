@@ -2,7 +2,8 @@
 
 > **Notice to All AI Agents**:  
 > You **MUST** read this document at the start of every session before doing research, planning, or editing code.  
-> Before wrapping up your task or concluding your turn, you **MUST** update this file to reflect any new architectural decisions, progress made, or changes to the project roadmap.
+> Before wrapping up your task or concluding your turn, you **MUST** update this file to reflect any new architectural decisions, progress made, or changes to the project roadmap.  
+> **Git Rule**: You **MUST** push to origin (`git push origin <branch>`) every single time you commit. Never leave commits unpushed.
 
 ---
 
