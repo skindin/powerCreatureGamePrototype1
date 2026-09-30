@@ -36,6 +36,36 @@ export class GameObject {
   public isSweptActive: boolean = false;
   public lastCollisionTime: number = 0;
 
+  // Phase 3: Sleeping Freebody & Island Optimization
+  public isSleeping: boolean = false;
+  public sleepTimer: number = 0; // Number of consecutive ticks with near-zero kinetic energy
+
+  /**
+   * Immediately wakes up a sleeping body.
+   */
+  public wakeUp(): void {
+    if (this.isSleeping) {
+      this.isSleeping = false;
+      this.sleepTimer = 0;
+    }
+  }
+
+  /**
+   * Puts body to sleep, freezing velocities to absolute zero.
+   */
+  public putToSleep(): void {
+    if (this.isCharacter || this.isHeld || this.heldBy !== null) return;
+    this.isSleeping = true;
+    this.velocity.x = 0;
+    this.velocity.y = 0;
+    this.verticalVelocity = 0;
+    if (this.rollModule) {
+      this.rollModule.angularVelocity.x = 0;
+      this.rollModule.angularVelocity.y = 0;
+      this.rollModule.angularVelocity.z = 0;
+    }
+  }
+
   private _staticVelocity: Vector2D = { x: 0, y: 0 };
 
   // Modular behavior components
@@ -380,6 +410,17 @@ export class GameObject {
     if (!this.hasRigidbody) {
       // Static entity without rigidbody dynamics: does not integrate velocity or motion
       return;
+    }
+
+    // Phase 3: Sleeping Freebody Optimization
+    // If the entity is asleep, it skips physics integration entirely (0 CPU)
+    if (this.isSleeping) {
+      // Safety check: if external forces or elevation change occurred, wake up
+      if (Math.abs(this.velocity.x) > 0.001 || Math.abs(this.velocity.y) > 0.001 || Math.abs(this.verticalVelocity) > 0.001) {
+        this.wakeUp();
+      } else {
+        return;
+      }
     }
 
     this.isSweptActive = this.getEffectiveCollisionMode(dt) === "continuous";
@@ -1023,6 +1064,24 @@ export class GameObject {
 
     if (this.verticalPositionModule) {
       this.verticalPositionModule.z = this.position.z;
+    }
+
+    // Phase 3: Evaluate Sleep Conditions for Dynamic Freebodies
+    // Only non-character freebodies that are resting on a surface and not held can fall asleep
+    if (!this.isCharacter && !this.isHeld && this.heldBy === null) {
+      const speed = Math.hypot(this.velocity.x, this.velocity.y);
+      const angSpeed = this.rollModule && this.rollModule.enabled ? this.rollModule.angularSpeed : 0;
+      const isResting = this.isRestingOnSurface;
+
+      // Threshold: speed < 0.02 u/s, angularSpeed < 0.05 rad/s, vz ~ 0, and resting on floor/wall
+      if (isResting && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
+        this.sleepTimer++;
+        if (this.sleepTimer >= 15) { // 15 ticks ~ 0.25 seconds of rest
+          this.putToSleep();
+        }
+      } else {
+        this.sleepTimer = 0;
+      }
     }
   }
 

@@ -8,9 +8,10 @@ import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
 import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
 import { StateHistoryBuffer, RollbackResult } from "./physics/StateHistoryBuffer.js";
+import { IslandManager } from "./physics/IslandManager.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult };
-export { PLAYER_COLORS, StateHistoryBuffer };
+export { PLAYER_COLORS, StateHistoryBuffer, IslandManager };
 
 
 export class GameLoop {
@@ -62,6 +63,7 @@ export class GameLoop {
   public globalCollisionMode: CollisionMode = "dynamic";
   public lastSnapshot: WorldSnapshot | null = null;
   public historyBuffer = new StateHistoryBuffer(60, 30);
+  public islandManager = new IslandManager();
 
   public get isPaused(): boolean {
     return this.isPhysicsPaused;
@@ -150,6 +152,7 @@ export class GameLoop {
       count: this.historyBuffer.getCount(),
       capacity: this.historyBuffer.getCapacity(),
     };
+    this.renderer.islandStats = this.islandManager.getStats();
 
     // Update live continuous buffer trail diagnostics for selected entity (or player)
     if (this.renderer.showBufferTrail) {
@@ -269,6 +272,14 @@ export class GameLoop {
       this.globalCollisionMode
     );
 
+    // 4b. Phase 3: Update physical interaction islands
+    this.islandManager.updateIslands(
+      this.allCharacters,
+      this.objects,
+      this.currentTick,
+      this.arena
+    );
+
     // 5. Capture deterministic state snapshot for history, reconciliation, and networking
     this.lastSnapshot = SnapshotManager.capture(
       this.currentTick,
@@ -345,8 +356,9 @@ export class GameLoop {
       // Apply historical inputs
       this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
 
-      // Step objects
+      // Step objects (skipping sleeping bodies)
       for (const obj of this.objects) {
+        if (obj.isSleeping) continue;
         obj.updatePosition(this.fixedDt, this.arena);
       }
 
@@ -477,6 +489,7 @@ export class GameLoop {
     const impactPos = { x: targetEntity.position.x, y: targetEntity.position.y, z: targetEntity.position.z };
 
     // 3. Inject past tackle impulse (simulating an external hit or collision from another player)
+    targetEntity.wakeUp();
     if (targetEntity.hasRigidbody) {
       const speed = Math.hypot(targetEntity.velocity.x, targetEntity.velocity.y);
       if (speed > 1.0) {
@@ -505,7 +518,7 @@ export class GameLoop {
       SnapshotManager.capture(targetTick, this.allCharacters, this.objects)
     );
 
-    // 4. Re-simulate forward to currentTick, rewriting each historical frame along the way
+    // 4. Re-simulate forward to currentTick, using Island optimization (only re-simulating active/influenced bodies)
     while (simTick < currentTick) {
       simTick++;
       const frame = this.historyBuffer.get(simTick);
@@ -513,7 +526,9 @@ export class GameLoop {
 
       this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
 
+      // Phase 3: Only update active, non-sleeping entities
       for (const obj of this.objects) {
+        if (obj.isSleeping) continue;
         obj.updatePosition(this.fixedDt, this.arena);
       }
 

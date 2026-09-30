@@ -60,6 +60,7 @@ export class Renderer {
   public showCollisionDebug = false;
   public globalCollisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
   public historyBufferStatus?: { count: number; capacity: number };
+  public islandStats?: { totalIslands: number; activeIslands: number; sleepingCount: number; totalEntities: number };
   public rollbackDiagnostics: RollbackVisualData | null = null;
   public showBufferTrail = true;
   public liveBufferTrail: LiveBufferTrailData | null = null;
@@ -551,8 +552,9 @@ export class Renderer {
 
     // 4. Canvas Bottom-Right Collision Diagnostics HUD
     const hasBuffer = !!this.historyBufferStatus;
+    const hasIslands = !!this.islandStats;
     const cardW = 208;
-    const cardH = hasBuffer ? 82 : 68;
+    const cardH = (hasBuffer ? 82 : 68) + (hasIslands ? 14 : 0);
     const cardX = ctx.canvas.width - cardW - 16;
     const cardY = ctx.canvas.height - cardH - 16;
 
@@ -593,29 +595,41 @@ export class Renderer {
     ctx.font = "bold 9px Inter, system-ui, sans-serif";
     ctx.fillText(`${ccdActiveCount} sweeping`, cardX + 78, cardY + 45);
 
+    // Phase 3: Active Islands & Sleeping Freebodies
+    if (this.islandStats) {
+      ctx.font = "9px Inter, system-ui, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText("Islands/Sleep:", cardX + 12, cardY + 58);
+      ctx.fillStyle = "#10b981";
+      ctx.font = "bold 9px Inter, system-ui, sans-serif";
+      ctx.fillText(`${this.islandStats.activeIslands} active, ${this.islandStats.sleepingCount} asleep`, cardX + 78, cardY + 58);
+    }
+
+    const impactLineY = hasIslands ? cardY + 71 : cardY + 58;
     ctx.font = "9px Inter, system-ui, sans-serif";
     ctx.fillStyle = "#64748b";
-    ctx.fillText("Last Impact:", cardX + 12, cardY + 58);
+    ctx.fillText("Last Impact:", cardX + 12, impactLineY);
     if (mostRecentContact) {
       const typeLabel = mostRecentContact.type === "continuous_swept" ? "CCD" : (mostRecentContact.type === "naive" ? "NAIVE" : "TOI");
       const typeColor = mostRecentContact.type === "continuous_swept" ? "#06b6d4" : (mostRecentContact.type === "naive" ? "#f59e0b" : "#10b981");
       ctx.fillStyle = typeColor;
       ctx.font = "bold 9px Inter, system-ui, sans-serif";
-      ctx.fillText(`${typeLabel} (${(mostRecentContact.elapsed / 1000).toFixed(1)}s ago)`, cardX + 78, cardY + 58);
+      ctx.fillText(`${typeLabel} (${(mostRecentContact.elapsed / 1000).toFixed(1)}s ago)`, cardX + 78, impactLineY);
     } else {
       ctx.fillStyle = "#64748b";
-      ctx.fillText("None (ready)", cardX + 78, cardY + 58);
+      ctx.fillText("None (ready)", cardX + 78, impactLineY);
     }
 
     // State History Buffer status
     if (this.historyBufferStatus) {
+      const bufferLineY = hasIslands ? cardY + 84 : cardY + 71;
       ctx.font = "9px Inter, system-ui, sans-serif";
       ctx.fillStyle = "#64748b";
-      ctx.fillText("State Buffer:", cardX + 12, cardY + 71);
+      ctx.fillText("State Buffer:", cardX + 12, bufferLineY);
       ctx.fillStyle = "#38bdf8";
       ctx.font = "bold 9px Inter, system-ui, sans-serif";
       const secs = (this.historyBufferStatus.count / 60).toFixed(1);
-      ctx.fillText(`${this.historyBufferStatus.count}/${this.historyBufferStatus.capacity} (${secs}s)`, cardX + 78, cardY + 71);
+      ctx.fillText(`${this.historyBufferStatus.count}/${this.historyBufferStatus.capacity} (${secs}s)`, cardX + 78, bufferLineY);
     }
 
     ctx.restore();
@@ -1861,6 +1875,17 @@ export class Renderer {
         ctx.setLineDash([4, 4]);
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    // Phase 3: Visual indicator for sleeping freebodies
+    if (obj.isSleeping && !isWithinPickupRange && !obj.isHeld) {
+      ctx.save();
+      ctx.font = "bold 9px monospace";
+      ctx.fillStyle = "rgba(148, 163, 184, 0.65)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("zzz", x + renderRadius * 0.7, y - renderRadius * 0.7);
       ctx.restore();
     }
   }

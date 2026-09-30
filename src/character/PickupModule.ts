@@ -96,6 +96,7 @@ export class PickupModule {
     }
 
     character.heldObject = target;
+    target.wakeUp();
     target.isHeld = true;
     target.heldBy = character;
     target.velocity.x = 0;
@@ -118,6 +119,7 @@ export class PickupModule {
 
     const dropped = character.heldObject;
     character.heldObject = null;
+    dropped.wakeUp();
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null; // Instantly available to pick back up

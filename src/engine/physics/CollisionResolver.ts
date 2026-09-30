@@ -49,6 +49,9 @@ export class CollisionResolver {
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
 
+        // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
+        if (a.isSleeping && b.isSleeping) continue;
+
         // Two-Tier Altitude Gating: Objects only collide if on the same height tier
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
@@ -337,6 +340,10 @@ export class CollisionResolver {
   ): void {
     // Only apply impulse if closing towards each other
     if (velAlongNormal >= 0) return;
+
+    // Wake up any sleeping bodies involved in contact
+    a.wakeUp();
+    b.wakeUp();
 
     const isMasslessA = !a.hasMass;
     const isMasslessB = !b.hasMass;

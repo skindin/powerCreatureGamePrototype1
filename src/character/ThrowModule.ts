@@ -665,6 +665,7 @@ export class ThrowModule {
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.wakeUp();
     held.position.x = startX;
     held.position.y = startY;
     held.velocity.x = launch.vx;

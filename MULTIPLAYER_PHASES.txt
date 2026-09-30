@@ -16,7 +16,8 @@ TABLE OF PHASES
 --------------------------------------------------------------------------------
   [x] PHASE 1: Deterministic Physics, Collision Modes & Snapshots (COMPLETED)
   [x] PHASE 2: Client Circular History Ring Buffer & Local Rollback Harness (COMPLETED)
-  [ ] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization
+  [x] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization (COMPLETED)
+  [ ] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness
   [ ] PHASE 4: Authoritative Headless Server Simulation Core
   [ ] PHASE 5: Client Input Streaming & Server Jitter Input Queue
   [ ] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control)
@@ -111,7 +112,7 @@ Tasks Completed:
 
 ================================================================================
 PHASE 3: ACTIVE ISLANDS OF INFLUENCE & SLEEPING FREEBODY OPTIMIZATION
-Status: PLANNED [ ]
+Status: COMPLETED [x]
 ================================================================================
 Goal: Prevent rolling back 50+ dormant rocks, food items, and crates across the 
 entire arena. Only entities actively influenced by a player are rolled back.
@@ -123,25 +124,62 @@ Core Concept:
     holding Rock 1, which hits Crate 2). Only entities in this island are 
     rewound and re-simulated during a prediction rollback.
 
-Tasks to Implement:
-  [ ] 3.1 Sleeping Body State Flags (src/engine/GameObject.ts)
+Tasks Completed:
+  [x] 3.1 Sleeping Body State Flags (src/engine/GameObject.ts)
       - isSleeping: boolean (default false).
-      - sleepTimer: number (ticks with speed < 0.01 u/s and angularSpeed < 0.05 rad/s).
+      - sleepTimer: number (ticks with speed < 0.02 u/s and angularSpeed < 0.05 rad/s).
       - After 15 resting ticks (~0.25s), entity enters Sleep.
       - Wakes up immediately upon:
         - External collision impulse.
-        - Player grab or touch.
-        - Elevation change (ground removed or wall deleted).
+        - Player grab, throw, or touch.
+        - Elevation change or external velocity change.
 
-  [ ] 3.2 Island of Influence Graph (src/engine/physics/IslandManager.ts)
+  [x] 3.2 Island of Influence Graph (src/engine/physics/IslandManager.ts)
       - Group entities into active clusters based on:
         - Character holding/dragging freebodies.
         - Contact points during collision resolution.
       - Disband islands when bodies separate and come to rest.
 
-  [ ] 3.3 Selective Island Resimulation
-      - During rollback, only update entities belonging to the local player's 
-        active island. All other entities remain frozen in their current state.
+  [x] 3.3 Selective Island Resimulation
+      - During rollback, only update entities belonging to active islands. 
+      - Sleeping bodies skip updatePosition and collision checks (0 CPU).
+      - SnapshotManager.apply supports selective island filtering.
+
+  [x] 3.4 Diagnostics & Test Suite
+      - Bottom-right Diagnostics HUD displays live active islands and sleeping body counts.
+      - Headless test suite (scratch/test_phase_3_islands_sleeping.ts) passes 100%.
+
+================================================================================
+PHASE 3.5: PSEUDO-SERVER & REMOTE RELAY LOOPBACK TEST HARNESS
+Status: PLANNED [ ]
+================================================================================
+Goal: Run an authoritative pseudo-server simulation alongside the client in the 
+same browser tab/instance, routing client inputs and server snapshots through a real 
+remote WebSocket relay server (e.g. wss://echo.websocket.org or custom relay).
+This provides real internet packet latency and jitter, while rendering both the 
+client prediction and authoritative server state overlaid/stacked directly on 
+top of each other in real time before creating a standalone headless server.
+
+Core Concept:
+  - Dual Simulation in One Process:
+    - Client World: Predicts ahead using local inputs immediately.
+    - Pseudo-Server World: Runs authoritative physics, consuming inputs that 
+      traveled over the real internet relay round-trip.
+  - Remote WebSocket Relay Loopback:
+    - Client sends input packet -> Remote Relay Server -> Pseudo-Server receives input.
+    - Pseudo-Server steps tick -> Sends snapshot -> Remote Relay -> Client reconciles.
+  - Stacked Real-Time Visualization:
+    - Ghost / outline rendering showing the server's true position vs. client's 
+      predicted position simultaneously on screen.
+    - Live discrepancy meters (RTT latency, packet loss %, drift delta).
+
+Tasks to Implement:
+  [ ] 3.5.1 In-Tab Pseudo-Server Sim Instance
+      - Instantiate a secondary isolated physics world (Characters, Objects, Arena).
+  [ ] 3.5.2 Relay Loopback Networking Channel
+      - Leverage RelayClient to echo input and snapshot packets over real websockets.
+  [ ] 3.5.3 Stacked Real-Time Dual-Render Mode
+      - Render authoritative server state as a distinct ghost/overlay layer over client canvas.
 
 ================================================================================
 PHASE 4: AUTHORITATIVE HEADLESS SERVER SIMULATION CORE

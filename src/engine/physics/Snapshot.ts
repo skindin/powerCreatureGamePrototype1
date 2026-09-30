@@ -18,6 +18,7 @@ export interface EntitySnapshot {
   facingAngle?: number;
   isSprinting?: boolean;
   standingWallId?: string | null;
+  isSleeping?: boolean;
   angX?: number;
   angY?: number;
   angZ?: number;
@@ -63,6 +64,7 @@ export class SnapshotManager {
         facingAngle: char ? char.facingAngle : undefined,
         isSprinting: char ? char.isSprinting : undefined,
         standingWallId: e.standingWall ? e.standingWall.id : null,
+        isSleeping: e.isSleeping,
         angX: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.x.toFixed(4)) : roll.angularVelocity.x) : undefined,
         angY: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.y.toFixed(4)) : roll.angularVelocity.y) : undefined,
         angZ: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.z.toFixed(4)) : roll.angularVelocity.z) : undefined,
@@ -78,15 +80,25 @@ export class SnapshotManager {
 
   /**
    * Restores entities to the exact state captured in a snapshot.
+   * If filterEntities is provided, only restores entities present in that set (Phase 3 Island optimization).
    */
-  public static apply(snapshot: WorldSnapshot, characters: Character[], objects: GameObject[]): void {
+  public static apply(
+    snapshot: WorldSnapshot,
+    characters: Character[],
+    objects: GameObject[],
+    filterEntities?: Set<GameObject>
+  ): void {
     const allMap = new Map<string, GameObject>();
     for (const c of characters) {
-      allMap.set(c.id, c);
-      c.heldObject = null; // Reset heldObject before re-binding
+      if (!filterEntities || filterEntities.has(c)) {
+        allMap.set(c.id, c);
+        c.heldObject = null; // Reset heldObject before re-binding
+      }
     }
     for (const o of objects) {
-      allMap.set(o.id, o);
+      if (!filterEntities || filterEntities.has(o)) {
+        allMap.set(o.id, o);
+      }
     }
 
     for (const snap of snapshot.entities) {
@@ -101,6 +113,7 @@ export class SnapshotManager {
       entity.verticalVelocity = snap.vz;
       entity.isHeld = snap.isHeld;
       entity.isClimbing = snap.isClimbing;
+      entity.isSleeping = snap.isSleeping ?? false;
 
       if (snap.isCharacter && entity.isCharacter) {
         const char = entity as any;

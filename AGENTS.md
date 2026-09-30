@@ -183,6 +183,27 @@ powerCreatureGamePrototype1/
 - **Headless Test Suite**:
   - `scratch/test_phase_2_history_rollback.ts`: 100% passed (ring buffer lifecycle, dynamic resizing, 30-tick rollback replay with 0.0000u divergence, and past perturbation divergence verification).
 
+### Active Islands of Influence & Sleeping Freebody Optimization (Phase 3 — Fully Functional)
+- **Sleeping Freebody Lifecycle (`src/engine/GameObject.ts`)**:
+  - Entities resting on ground or wall platforms with near-zero kinetic energy ($v_{xy} < 0.02\text{ u/s}$, $\omega < 0.05\text{ rad/s}$, $v_z < 0.01\text{ u/s}$) accumulate sleep ticks.
+  - After 15 resting ticks ($\sim 0.25\text{s}$), the freebody enters `isSleeping = true`, zeroing velocities and consuming **0 CPU** during standard update steps and prediction rollbacks.
+  - Automatically and instantaneously wakes up upon:
+    - Collision impulse from an active entity or wall.
+    - Player pickup, drop, or throw.
+    - Elevation change or external velocity injection.
+  - Sleeping entities render with a subtle `zzz` indicator badge above their collider.
+- **Physical Island Graph Partitioning (`src/engine/physics/IslandManager.ts`)**:
+  - Partitions the arena entities into connected interaction subgraphs (islands) discovered via BFS:
+    - Character-to-held-object connections.
+    - Contact/overlap proximity between non-sleeping bodies.
+    - Sleeping bodies remain in isolated 1-element dormant islands.
+  - During local prediction rollback and re-simulation, sleeping bodies and unrelated dormant entities are bypassed, saving CPU cycles and scaling smoothly with high entity counts.
+  - `SnapshotManager.apply` supports selective island filtering (`filterEntities`).
+- **Diagnostics HUD Integration**:
+  - Bottom-right Diagnostics HUD card displays live `Islands/Sleep: N active, M asleep`.
+- **Headless Test Suite**:
+  - `scratch/test_phase_3_islands_sleeping.ts`: 100% passed (resting sleep accumulation, collision wake-up, island partitioning, and selective island snapshot restoration).
+
 ### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
 
 - **Standard Gamepad API Polling**:
