@@ -4,7 +4,7 @@ import { Character } from "../character/Character.js";
 import { CollisionResolver } from "../engine/physics/CollisionResolver.js";
 import { IslandManager } from "../engine/physics/IslandManager.js";
 import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
-import { PlayerInputPacket } from "../engine/physics/StateHistoryBuffer.js";
+import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
 
@@ -45,6 +45,10 @@ export class ServerGameSimulation {
 
   // Contested grab arbitration audit log
   public contestedGrabEvents: ContestedGrabResult[] = [];
+
+  // Reliable action deduplication & ACK tracking
+  private processedActionIds: Set<string> = new Set();
+  private recentAckedActionIds: string[] = [];
 
   constructor(config?: ServerSimConfig) {
     const width = config?.arenaWidth ?? 20;
@@ -317,6 +321,71 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Authoritatively processes high-priority reliable action commands (pickup, drop, throw).
+   * Idempotent: Deduplicates actions so retransmissions are acknowledged without re-executing.
+   */
+  public processReliableActions(actions: ReliableActionCommand[]): string[] {
+    const newlyAcked: string[] = [];
+
+    for (const act of actions) {
+      newlyAcked.push(act.actionId);
+      if (!this.recentAckedActionIds.includes(act.actionId)) {
+        this.recentAckedActionIds.push(act.actionId);
+        if (this.recentAckedActionIds.length > 100) {
+          this.recentAckedActionIds.shift();
+        }
+      }
+
+      // Idempotency: skip if already processed
+      if (this.processedActionIds.has(act.actionId)) {
+        continue;
+      }
+      this.processedActionIds.add(act.actionId);
+      if (this.processedActionIds.size > 2000) {
+        const first = this.processedActionIds.values().next().value;
+        if (first) this.processedActionIds.delete(first);
+      }
+
+      // Execute authoritative action
+      const char = this.characters.get(act.playerId || "keyboard") || this.allCharacters[0];
+      if (!char) continue;
+
+      if (act.type === "pickup") {
+        if (!char.heldObject && char.pickupModule && act.targetObjectId) {
+          const target = this.objects.find((o) => o.id === act.targetObjectId);
+          if (target && !target.isHeld) {
+            char.pickupModule.pickup(char, target);
+          }
+        }
+      } else if (act.type === "drop") {
+        if (char.heldObject && char.pickupModule) {
+          char.pickupModule.drop(char);
+        }
+      } else if (act.type === "throw") {
+        if (char.heldObject && char.throwModule) {
+          const aimX = act.aimX ?? (char.position.x + Math.cos(char.facingAngle) * 3);
+          const aimY = act.aimY ?? (char.position.y + Math.sin(char.facingAngle) * 3);
+          char.throwModule.throwHeldObject(
+            char,
+            aimX,
+            aimY,
+            this.arena,
+            undefined,
+            undefined,
+            act.isLockHeld ?? false
+          );
+        }
+      }
+    }
+
+    return newlyAcked;
+  }
+
+  public getRecentAckedActionIds(): string[] {
+    return [...this.recentAckedActionIds];
+  }
+
+  /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
    */
   private arbitrateContestedGrabs(
@@ -582,6 +651,7 @@ export class ServerGameSimulation {
       rttMs,
       character: ghostChar,
       objects: ghostObjects,
+      ackActionIds: this.getRecentAckedActionIds(),
     };
   }
 }

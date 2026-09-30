@@ -1,7 +1,7 @@
 import { Character } from "../character/Character.js";
 import { GameObject } from "../engine/GameObject.js";
 import { Arena } from "../engine/Arena.js";
-import { PlayerInputPacket } from "../engine/physics/StateHistoryBuffer.js";
+import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { ServerGameSimulation } from "../server/ServerGameSimulation.js";
 
 export interface GhostEntityState {
@@ -36,6 +36,7 @@ export interface GhostSnapshot {
   character: GhostEntityState;
   objects: GhostEntityState[];
   source?: "physics_sim" | "echo";
+  ackActionIds?: string[];
 }
 
 export type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -52,6 +53,7 @@ export interface RelayStats {
   sendRateHz: number;
   serverMode: "physics_sim" | "echo_snapshot";
   serverTick: number;
+  unackedActionsCount: number;
 }
 
 export class RelayClient {
@@ -70,6 +72,23 @@ export class RelayClient {
   private pendingInputsToSend: PlayerInputPacket[] = [];
   private latestGhostSnapshot: GhostSnapshot | null = null;
   private currentGhostSnapshot: GhostSnapshot | null = null;
+
+  // Reliable Action Outbox & Retransmission Queue (Pickup, Drop, Throw)
+  private unacknowledgedActions: Map<string, ReliableActionCommand> = new Map();
+
+  public queueReliableAction(action: ReliableActionCommand): void {
+    this.unacknowledgedActions.set(action.actionId, action);
+  }
+
+  public acknowledgeActions(ackIds: string[]): void {
+    for (const id of ackIds) {
+      this.unacknowledgedActions.delete(id);
+    }
+  }
+
+  public get unackedActionsCount(): number {
+    return this.unacknowledgedActions.size;
+  }
 
   // Stats
   private packetsSent: number = 0;
@@ -99,6 +118,9 @@ export class RelayClient {
     // Capture the authoritative physical state directly from the 60Hz simulation
     const simSnap = this.serverSimulation.getGhostSnapshot(this.lastRttMs);
     simSnap.source = "physics_sim";
+    if (simSnap.ackActionIds && simSnap.ackActionIds.length > 0) {
+      this.acknowledgeActions(simSnap.ackActionIds);
+    }
     this.latestGhostSnapshot = simSnap;
 
     // In physics_sim mode, the ghost IS a live 60Hz physics world!
@@ -327,6 +349,7 @@ export class RelayClient {
       sendRateHz: this.sendRateHz,
       serverMode: this.serverMode,
       serverTick: this.serverSimulation.currentTick,
+      unackedActionsCount: this.unacknowledgedActions.size,
     };
   }
 
@@ -370,6 +393,8 @@ export class RelayClient {
       sentAt: performance.now(),
       tick,
       inputs: inputList,
+      // Retransmit all unacknowledged reliable actions with every packet until acknowledged
+      reliableActions: Array.from(this.unacknowledgedActions.values()),
       // Fallback state sync for visual echo or dual validation
       character: {
         id: character.playerId || "player",
@@ -457,6 +482,11 @@ export class RelayClient {
         if (rttMs > this.maxRttMs) this.maxRttMs = rttMs;
         this.totalRttMs += rttMs;
 
+        // 1. Process returned ACKs to purge delivered actions from retransmission outbox
+        if (Array.isArray(parsed.ackActionIds) && parsed.ackActionIds.length > 0) {
+          this.acknowledgeActions(parsed.ackActionIds);
+        }
+
         if (this.serverMode === "physics_sim") {
           // Authoritative Server Physics Simulation (Phase 4):
           // Enqueue incoming player inputs returned from the WAN relay into the server input queue!
@@ -464,6 +494,11 @@ export class RelayClient {
             for (const inp of parsed.inputs) {
               this.serverSimulation.queueInput(inp);
             }
+          }
+          // Process and acknowledge high-priority reliable actions authoritatively
+          if (Array.isArray(parsed.reliableActions) && parsed.reliableActions.length > 0) {
+            const newlyAcked = this.serverSimulation.processReliableActions(parsed.reliableActions);
+            this.acknowledgeActions(newlyAcked);
           }
           // Synchronize freebody objects: update positions AND velocities from client packet
           // so server physics advances with the latest physical momentum!

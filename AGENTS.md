@@ -239,6 +239,11 @@ powerCreatureGamePrototype1/
   - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
   - **Continuous Exponential Convergence**: For moving, bouncing, or rolling objects, applies smooth exponential position and velocity blending ($\alpha = 0.12$) to pull client objects into alignment with server ground truth without visual snapping.
   - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.
+- **Reliable Action Messages, Retransmission Outbox & Delivery Confirmation (Phase 5.1 — Fully Functional)**:
+  - **High-Priority Command Classification**: Critical discrete one-shot actions (`pickup`, `drop`, `throw`) are designated as reliable commands (`ReliableActionCommand`) requiring explicit delivery confirmation.
+  - **Sender Retransmission Outbox (`unacknowledgedActions`)**: When the client dispatches a pickup, drop, or throw, it generates a globally unique command ID (`actionId`) and places it into an unacknowledged outbox. Every outgoing packet continuously retransmits all pending actions until acknowledged.
+  - **Recipient Idempotent Execution**: The server tracks `processedActionIds` (with automatic rolling cleanup) to guarantee that retransmitted duplicate packets are safely acknowledged without executing duplicate pickups, drops, or throws.
+  - **Delivery Confirmation (ACK)**: Authoritative server state snapshots and packet replies echo back `ackActionIds`, purging delivered commands from the sender's outbox.
 - **Deterministic Action Synchronization (Throw, Drop & Grab Pipeline)**:
   - Mouse clicks, Q keys, and gamepad RT/RB/Y buttons route their throw and drop requests through `PlayerInputPacket` (`isThrow: boolean`, `isDrop: boolean`, `isGrabHeld: boolean`).
   - Executed deterministically in `applyPlayerInputs` on both client prediction and server simulation, ensuring carried items and throws remain in perfect sync across the network.

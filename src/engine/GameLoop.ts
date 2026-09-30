@@ -7,7 +7,7 @@ import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
 import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
 import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
-import { StateHistoryBuffer, RollbackResult, PlayerInputPacket } from "./physics/StateHistoryBuffer.js";
+import { StateHistoryBuffer, RollbackResult, PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { IslandManager } from "./physics/IslandManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
 
@@ -57,6 +57,7 @@ export class GameLoop {
 
   public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
   public onPhysicsTick?: (dt: number, nowMs: number) => void;
+  public onReliableAction?: (action: ReliableActionCommand) => void;
 
   public currentTick = 0;
   public timeDilation = 1.0;
@@ -103,6 +104,10 @@ export class GameLoop {
       inputManager: this.inputManager,
       character: options.character,
     });
+
+    this.playerManager.onReliableActionDispatched = (action) => {
+      this.onReliableAction?.(action);
+    };
   }
 
   public spawnKeyboardPlayer(): Character {

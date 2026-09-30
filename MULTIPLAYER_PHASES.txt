@@ -223,31 +223,24 @@ Tasks Completed:
 
 ================================================================================
 PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE
-Status: PLANNED [ ]
+Status: IN PROGRESS [/]
 ================================================================================
-Goal: Stream player inputs from client to server reliably and buffer them on the 
+Goal: Stream player inputs from client to server reliably, retransmitting critical 
+one-shot action commands until acknowledged, and buffer continuous inputs on the 
 server to absorb network packet jitter without starvation.
 
-Tasks to Implement:
-  [ ] 5.1 Client Input Packet Specification
-      - Packet Schema:
-        {
-          type: "input",
-          playerId: string,
-          tick: number,          // The simulation tick this input applies to
-          subTickTime: number,   // Client send timestamp for RTT calculation
-          moveX: number,         // -1.0 to +1.0
-          moveY: number,         // -1.0 to +1.0
-          aimX: number,          // Virtual aim cursor x coordinate
-          aimY: number,          // Virtual aim cursor y coordinate
-          isGrab: boolean,       // Pickup / Swap
-          isDrop: boolean,       // Dedicated Drop (Q / Y)
-          isThrow: boolean,      // Throw held item (L-Click / RT / RB)
-          isJump: boolean,       // Jump / Wall Climb (Space / A)
-          isSprint: boolean      // Sprint modifier (Shift / LB)
-        }
-      - Redundant Past Inputs: Each packet includes current tick input plus 
-        the previous 3 tick inputs to survive dropped packets without stalling.
+Tasks Completed & Planned:
+  [x] 5.1 Reliable Action Commands & Retransmission Pipeline (src/network/RelayClient.ts & StateHistoryBuffer.ts)
+      - Critical Action Commands: Picking up, dropping, and throwing objects are 
+        classified as high-priority reliable action commands (ReliableActionCommand).
+      - Retransmission Outbox: The sender maintains an unacknowledged action outbox 
+        (unacknowledgedActions) and retransmits all pending actions with every outgoing packet 
+        until delivery confirmation (ACK) is received from the recipient.
+      - Server Idempotent Deduplication: The server tracks processedActionIds so duplicate 
+        retransmissions are acknowledged without executing duplicate pickups, drops, or throws.
+      - Delivery Confirmation (ACK): Recipient echoes back ackActionIds, purging confirmed 
+        commands from the sender's retransmission queue.
+      - Headless Test Suite (scratch/test_reliable_action_retransmission.ts) passes 100%.
 
   [ ] 5.2 Server Jitter Buffer (Per-Player Queue)
       - Target depth: 2 ticks of input (~33.3ms buffer).

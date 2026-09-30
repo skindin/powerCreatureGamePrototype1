@@ -1174,6 +1174,11 @@ function bootstrap(): void {
     relayClient.updateGhostLerp(dt);
     return relayClient.getLatestGhost();
   };
+  gameLoop.onReliableAction = (action) => {
+    if (isMultiplayerMode) {
+      relayClient.queueReliableAction(action);
+    }
+  };
   gameLoop.onPhysicsTick = (dt, nowMs) => {
     if (isMultiplayerMode) {
       // 1. Advance the independent authoritative server physics simulation by dt at full 60Hz

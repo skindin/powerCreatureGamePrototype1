@@ -1,10 +1,28 @@
 import { WorldSnapshot } from "./Snapshot.js";
 
+export type ReliableActionType = "pickup" | "drop" | "throw";
+
+/**
+ * High-priority action command requiring delivery confirmation and automatic retransmission.
+ */
+export interface ReliableActionCommand {
+  actionId: string;
+  type: ReliableActionType;
+  tick: number;
+  timestamp: number;
+  playerId: string;
+  targetObjectId?: string | null;
+  aimX?: number;
+  aimY?: number;
+  isLockHeld?: boolean;
+}
+
 /**
  * Encapsulates the exact input state dispatched for a single player on a specific physics tick.
  */
 export interface PlayerInputPacket {
   tick?: number;
+  subTickTime?: number;
   playerId: string;
   moveX: number;
   moveY: number;
@@ -18,6 +36,7 @@ export interface PlayerInputPacket {
   aimY?: number;
   isAiming: boolean;
   isLockHeld: boolean;
+  reliableActions?: ReliableActionCommand[];
 }
 
 /**

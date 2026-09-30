@@ -3,7 +3,7 @@ import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
 import { InputManager } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
-import { PlayerInputPacket } from "./physics/StateHistoryBuffer.js";
+import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -40,6 +40,8 @@ export class PlayerManager {
 
   public players: Map<string, PlayerEntry> = new Map();
   public onPlayersChanged?: () => void;
+  public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
+  private actionSeq: number = 0;
   public baseCharacter: Character;
 
   constructor(options: {
@@ -436,11 +438,22 @@ export class PlayerManager {
 
       // Dedicated Drop (Q / Y)
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
+        const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
+        const action: ReliableActionCommand = {
+          actionId: `act-${char.playerId || "keyboard"}-drop-${++this.actionSeq}-${Date.now()}`,
+          type: "drop",
+          tick: pkt.tick ?? 0,
+          timestamp: performance.now(),
+          playerId: char.playerId || "keyboard",
+          targetObjectId: droppedObj.id,
+        };
+        this.onReliableActionDispatched?.(action);
       }
 
       // Dedicated Throw (RT / RB / Left Click)
       if (pkt.isThrow && char.heldObject && char.throwModule && aimTarget) {
+        const thrownObj = char.heldObject;
         char.throwModule.throwHeldObject(
           char,
           aimTarget.x,
@@ -450,6 +463,18 @@ export class PlayerManager {
           undefined,
           pkt.isLockHeld
         );
+        const action: ReliableActionCommand = {
+          actionId: `act-${char.playerId || "keyboard"}-throw-${++this.actionSeq}-${Date.now()}`,
+          type: "throw",
+          tick: pkt.tick ?? 0,
+          timestamp: performance.now(),
+          playerId: char.playerId || "keyboard",
+          targetObjectId: thrownObj.id,
+          aimX: aimTarget.x,
+          aimY: aimTarget.y,
+          isLockHeld: pkt.isLockHeld,
+        };
+        this.onReliableActionDispatched?.(action);
       }
 
       char.updateCharacter(
@@ -470,7 +495,18 @@ export class PlayerManager {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
-              char.pickupModule.pickup(char, targetObj);
+              const pickedUp = char.pickupModule.pickup(char, targetObj);
+              if (pickedUp) {
+                const action: ReliableActionCommand = {
+                  actionId: `act-${char.playerId || "keyboard"}-pickup-${++this.actionSeq}-${Date.now()}`,
+                  type: "pickup",
+                  tick: pkt.tick ?? 0,
+                  timestamp: performance.now(),
+                  playerId: char.playerId || "keyboard",
+                  targetObjectId: targetObj.id,
+                };
+                this.onReliableActionDispatched?.(action);
+              }
             }
           }
         } else if (aimTarget) {
