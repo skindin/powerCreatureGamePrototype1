@@ -1049,6 +1049,15 @@ powerCreatureGamePrototype1/
     - **Automated Verification**:
       - `scratch/test_snapshot_interpolation.ts`: verified $0.0000\text{u}$ overshoot, strictly monotonic progression when stopping (no bobbing back), shortest-arc angles, and teleport snap. All passed 100%.
 
+63. **Render-Time Hand Projection Architecture for Held Objects (Eliminating Velocity Offset)**:
+    - **Problem**: When a remote character moved while holding an object, the object was rendered at its pre-override physics position, causing a visual offset from their hands proportional to character velocity ($\Delta x = \vec{v} \cdot \Delta t$).
+    - **Clean Solution Architecture**:
+      - **Render-Time Hand Projection ([Renderer.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/engine/Renderer.ts))**: In `drawFreebodyObject` and `drawObjectGroundShadowFill`, if `obj.isHeld` and a character is holding it (`holder`), the visual render coordinates `(posX, posY, posZ)` are evaluated directly from `holder.calculateHeldObjectPosition(arena)`. When `remoteOverrides` sets the character's render position to the interpolated coordinate `(ovr.x, ovr.y, ovr.facingAngle)`, the held object is drawn directly at the character's interpolated hands with $0.0000\text{u}$ offset. The physics transform (`obj.position`) is never mutated during rendering.
+      - **Uncompromised Local Physics**: The local simulation loop (`GameLoop.ts`, `CollisionResolver.ts`, `PickupModule.ts`) remains 100% untouched. Local players holding objects are never unheld or dropped by incoming server snapshots, completely preventing glitching or collision pushbacks.
+      - **Server Synchronization ([ServerGameSimulation.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/server/ServerGameSimulation.ts))**: The authoritative server simulation locks held freebody positions to holder hands in `step()` and serializes `isHeld: true`, `heldBy`, and relative hand coordinates in snapshots.
+    - **Automated Verification**:
+      - `scratch/test_held_object_relative_rendering.ts`: Verified 100% (remote player at $v = 6.0\text{ u/s}$ draws with $0.0000\text{u}$ offset from hands, physics transforms restored cleanly, local player holding is 100% resilient across 60 ticks of lagging server snapshots).
+
 ---
 
 

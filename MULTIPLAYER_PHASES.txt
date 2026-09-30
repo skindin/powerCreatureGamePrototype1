@@ -456,6 +456,13 @@ Tasks Completed:
       - Backward-compatible extrapolation mode preserved (`mode = "interpolation" | "extrapolation"`).
       - Verified 100% via headless suite `scratch/test_snapshot_interpolation.ts`.
 
+  [x] 9.9 Render-Time Hand Projection for Remote Held Freebodies (Zero Velocity Offset)
+      - In `Renderer.ts:drawFreebodyObject` and `drawObjectGroundShadowFill`, held objects evaluate visual render coordinates directly from `holder.calculateHeldObjectPosition(arena)`.
+      - When remote characters render with `remoteOverrides`, their held object and shadow render seamlessly in their interpolated hands with 0.0000u offset.
+      - Physics transforms and local player holding simulation loop remain completely untouched, ensuring zero glitch drops and zero pushbacks.
+      - Authoritative server simulation (`ServerGameSimulation.ts`) synchronizes held freebodies to hands and serializes `isHeld: true`, `heldBy`, and relative hand coordinates.
+      - Verified 100% via `scratch/test_held_object_relative_rendering.ts`.
+
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
 Status: PLANNED [ ]

@@ -313,7 +313,7 @@ export class Character extends GameObject {
    * [0, defaultHandDist] (and pushes clear of walls) so the object never clips or hits
    * walls when held or thrown.
    */
-  public calculateHeldObjectPosition(arena: Arena): { x: number; y: number; z: number } {
+  public calculateHeldObjectPosition(arena?: Arena): { x: number; y: number; z: number } {
     if (!this.heldObject) {
       return { x: this.position.x, y: this.position.y, z: this.position.z };
     }
@@ -323,8 +323,8 @@ export class Character extends GameObject {
     const dirY = Math.sin(this.facingAngle);
     const heldZ = this.heldObject.hasVerticalPosition ? (this.position.z + 0.45) : 0;
 
-    // If standing on or above walls (Layer 2+), ground walls are below and do not collide
-    if (this.position.z >= arena.wallHeight) {
+    // If standing on or above walls (Layer 2+) or arena not provided, ground walls do not collide
+    if (!arena || this.position.z >= arena.wallHeight) {
       return {
         x: this.position.x + dirX * defaultHandDist,
         y: this.position.y + dirY * defaultHandDist,

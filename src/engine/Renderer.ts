@@ -1314,9 +1314,22 @@ export class Renderer {
     // 2. Draw Ghost Objects
     if (ghostSnapshot.objects) {
       for (const obj of ghostSnapshot.objects) {
-        const altScale = useBigger ? Renderer.getAltitudeScale(obj.z, arena.wallHeight) : 1.0;
-        const px = obj.x * ppu;
-        const py = (obj.y - obj.z * hoverScale) * ppu;
+        let objX = obj.x;
+        let objY = obj.y;
+        let objZ = obj.z;
+        if (obj.isHeld && obj.heldBy) {
+          const gHolder = ghostSnapshot.characters?.find((c) => c.id === obj.heldBy) || (ghostSnapshot.character?.id === obj.heldBy ? ghostSnapshot.character : null);
+          if (gHolder) {
+            const handDist = (gHolder.radius || 0.44) + (obj.radius || 0.3) * 0.5 + 0.08;
+            const fAngle = gHolder.facingAngle ?? 0;
+            objX = gHolder.x + Math.cos(fAngle) * handDist;
+            objY = gHolder.y + Math.sin(fAngle) * handDist;
+            objZ = gHolder.z + 0.45;
+          }
+        }
+        const altScale = useBigger ? Renderer.getAltitudeScale(objZ, arena.wallHeight) : 1.0;
+        const px = objX * ppu;
+        const py = (objY - objZ * hoverScale) * ppu;
         const r = obj.radius * ppu * altScale;
 
         // Ghost ground shadow
@@ -1750,7 +1763,17 @@ export class Renderer {
    * Draws the shadow fill for the ground floor (rendered below all wall squares).
    */
   private drawObjectGroundShadowFill(obj: GameObject, _arena: Arena, ppu: number): void {
-    const z = obj.position.z;
+    const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || (obj as any).holder;
+    let posX = obj.position.x;
+    let posY = obj.position.y;
+    let posZ = obj.position.z;
+    if (obj.isHeld && holder) {
+      const relPos = holder.calculateHeldObjectPosition(_arena);
+      posX = relPos.x;
+      posY = relPos.y;
+      posZ = relPos.z;
+    }
+    const z = posZ;
     if (z <= 0.01) return;
 
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
@@ -1760,8 +1783,8 @@ export class Renderer {
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (obj.position.x - vx) * ppu;
-    const groundY = (obj.position.y - vy) * ppu;
+    const groundX = (posX - vx) * ppu;
+    const groundY = (posY - vy) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
@@ -2030,9 +2053,22 @@ export class Renderer {
 
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const x = (obj.position.x - vx) * ppu;
-    const y = (obj.position.y - vy - obj.position.z * hoverScale) * ppu;
-    const altitudeScale = useBigger ? Renderer.getAltitudeScale(obj.position.z, arena.wallHeight) : 1.0;
+
+    // If held by a character, render relative to holder's hands
+    const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || allCharacters.find((c) => c.heldObject === obj);
+    let posX = obj.position.x;
+    let posY = obj.position.y;
+    let posZ = obj.position.z;
+    if ((obj.isHeld || holder) && holder) {
+      const relPos = holder.calculateHeldObjectPosition(arena);
+      posX = relPos.x;
+      posY = relPos.y;
+      posZ = relPos.z;
+    }
+
+    const x = (posX - vx) * ppu;
+    const y = (posY - vy - posZ * hoverScale) * ppu;
+    const altitudeScale = useBigger ? Renderer.getAltitudeScale(posZ, arena.wallHeight) : 1.0;
     const visualRadius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;

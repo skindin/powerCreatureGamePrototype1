@@ -327,17 +327,18 @@ export class ServerGameSimulation {
       // 1. Synchronize Held State
       if (cObj.isHeld) {
         sObj.isHeld = true;
-        const sChar = this.characters.get(cObj.heldBy || "keyboard") || this.allCharacters[0];
+        const sChar = this.characters.get(cObj.heldBy || "keyboard") || this.allCharacters.find((c) => c.playerId === cObj.heldBy || c.id === cObj.heldBy) || this.allCharacters[0];
         if (sChar) {
           sObj.heldBy = sChar;
           sChar.heldObject = sObj;
+          const relPos = sChar.calculateHeldObjectPosition(this.arena);
+          sObj.position.x = relPos.x;
+          sObj.position.y = relPos.y;
+          sObj.position.z = relPos.z;
+          sObj.velocity.x = sChar.velocity.x;
+          sObj.velocity.y = sChar.velocity.y;
+          sObj.verticalVelocity = 0;
         }
-        sObj.position.x = cObj.x;
-        sObj.position.y = cObj.y;
-        sObj.position.z = cObj.z;
-        sObj.velocity.x = cObj.vx;
-        sObj.velocity.y = cObj.vy;
-        sObj.verticalVelocity = cObj.vz ?? 0;
         continue;
       } else if (sObj.isHeld) {
         // Was held on server, but client released / threw it!
@@ -722,6 +723,16 @@ export class ServerGameSimulation {
 
     // 4. Update all freebody objects
     for (const obj of this.objects) {
+      if (obj.isHeld && obj.heldBy && obj.heldBy instanceof Character) {
+        const relPos = obj.heldBy.calculateHeldObjectPosition(this.arena);
+        obj.position.x = relPos.x;
+        obj.position.y = relPos.y;
+        obj.position.z = relPos.z;
+        obj.velocity.x = obj.heldBy.velocity.x;
+        obj.velocity.y = obj.heldBy.velocity.y;
+        obj.verticalVelocity = 0;
+        continue;
+      }
       obj.updatePosition(dt, this.arena);
     }
 
@@ -798,28 +809,40 @@ export class ServerGameSimulation {
       facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0,
     };
 
-    const ghostObjects: GhostEntityState[] = this.objects.map((obj) => ({
-      id: obj.id,
-      name: obj.name,
-      x: Number(obj.position.x.toFixed(3)),
-      y: Number(obj.position.y.toFixed(3)),
-      z: Number(obj.position.z.toFixed(3)),
-      vx: Number(obj.velocity.x.toFixed(3)),
-      vy: Number(obj.velocity.y.toFixed(3)),
-      vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
-      surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
-      isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
-      radius: obj.colliderRadius,
-      color: obj.color,
-      shape: obj.visualShape,
-      isHeld: obj.isHeld,
-      heldBy: obj.heldBy ? ((obj.heldBy as Character).playerId || (obj.heldBy === primaryChar ? "player" : obj.heldBy.id)) : null,
-      isAboveWalls: obj.isAboveWalls,
-      angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
-      angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
-      angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
-      isSleeping: obj.isSleeping,
-    }));
+    const ghostObjects: GhostEntityState[] = this.objects.map((obj) => {
+      const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || this.allCharacters.find((c) => c.heldObject === obj);
+      let posX = obj.position.x;
+      let posY = obj.position.y;
+      let posZ = obj.position.z;
+      if ((obj.isHeld || holder) && holder) {
+        const relPos = holder.calculateHeldObjectPosition(this.arena);
+        posX = relPos.x;
+        posY = relPos.y;
+        posZ = relPos.z;
+      }
+      return {
+        id: obj.id,
+        name: obj.name,
+        x: Number(posX.toFixed(3)),
+        y: Number(posY.toFixed(3)),
+        z: Number(posZ.toFixed(3)),
+        vx: Number(obj.velocity.x.toFixed(3)),
+        vy: Number(obj.velocity.y.toFixed(3)),
+        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
+        radius: obj.colliderRadius,
+        color: obj.color,
+        shape: obj.visualShape,
+        isHeld: obj.isHeld || Boolean(holder),
+        heldBy: holder ? (holder.playerId || (holder === primaryChar ? "player" : holder.id)) : (obj.heldBy ? ((obj.heldBy as Character).playerId || obj.heldBy.id) : null),
+        isAboveWalls: obj.isAboveWalls,
+        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
+        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
+        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
+        isSleeping: obj.isSleeping,
+      };
+    });
 
     const ghostCharacters: GhostEntityState[] = this.allCharacters.map((c) => ({
       id: c.playerId || c.id || "player",
@@ -837,6 +860,8 @@ export class ServerGameSimulation {
       isClimbing: c.isClimbing,
       isAboveWalls: c.isAboveWalls,
       facingAngle: Number(c.facingAngle.toFixed(4)),
+      heldObjectId: c.heldObject ? c.heldObject.id : null,
+      isHolding: Boolean(c.heldObject),
     }));
 
     return {

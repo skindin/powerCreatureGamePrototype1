@@ -23,6 +23,8 @@ export interface GhostEntityState {
   isAboveWalls?: boolean;
   isClimbing?: boolean;
   facingAngle?: number;
+  heldObjectId?: string | null;
+  isHolding?: boolean;
   angX?: number;
   angY?: number;
   angZ?: number;
@@ -349,22 +351,36 @@ export class RelayClient {
         for (const oTar of target.objects) {
           const existing = cur.objects.find(o => o.id === oTar.id);
           if (existing) {
-            existing.x += (oTar.x - existing.x) * moveFrac;
-            existing.y += (oTar.y - existing.y) * moveFrac;
+            existing.isHeld = oTar.isHeld;
+            existing.heldBy = oTar.heldBy;
+            existing.heldObjectId = oTar.heldObjectId;
 
-            const tarSurface = oTar.surfaceZ ?? 0;
-            const isTarGrounded = Boolean(oTar.isGrounded || oTar.z <= tarSurface + 0.015);
-
-            if (isTarGrounded) {
-              if (existing.z <= tarSurface + 0.22 || existing.z < oTar.z + 0.05) {
-                existing.z = tarSurface;
-              } else {
-                existing.z += (tarSurface - existing.z) * Math.min(1.0, moveFrac * 1.8);
-              }
+            // If held by a ghost character, lock position relative to ghost character hands
+            const holderGhost = oTar.heldBy ? cur.characters?.find(c => c.id === oTar.heldBy) : null;
+            if (oTar.isHeld && holderGhost) {
+              const handDist = (holderGhost.radius || 0.44) + (oTar.radius || 0.3) * 0.5 + 0.08;
+              const fAngle = holderGhost.facingAngle ?? 0;
+              existing.x = holderGhost.x + Math.cos(fAngle) * handDist;
+              existing.y = holderGhost.y + Math.sin(fAngle) * handDist;
+              existing.z = holderGhost.z + 0.45;
             } else {
-              existing.z += (oTar.z - existing.z) * moveFrac;
-              if (Math.abs(existing.z - oTar.z) < 0.005) {
-                existing.z = oTar.z;
+              existing.x += (oTar.x - existing.x) * moveFrac;
+              existing.y += (oTar.y - existing.y) * moveFrac;
+
+              const tarSurface = oTar.surfaceZ ?? 0;
+              const isTarGrounded = Boolean(oTar.isGrounded || oTar.z <= tarSurface + 0.015);
+
+              if (isTarGrounded) {
+                if (existing.z <= tarSurface + 0.22 || existing.z < oTar.z + 0.05) {
+                  existing.z = tarSurface;
+                } else {
+                  existing.z += (tarSurface - existing.z) * Math.min(1.0, moveFrac * 1.8);
+                }
+              } else {
+                existing.z += (oTar.z - existing.z) * moveFrac;
+                if (Math.abs(existing.z - oTar.z) < 0.005) {
+                  existing.z = oTar.z;
+                }
               }
             }
 
@@ -375,7 +391,6 @@ export class RelayClient {
             existing.isGrounded = oTar.isGrounded;
             existing.radius = oTar.radius;
             existing.color = oTar.color;
-            existing.isHeld = oTar.isHeld;
             existing.shape = oTar.shape;
             existing.isAboveWalls = oTar.isAboveWalls;
             existing.isClimbing = oTar.isClimbing;
