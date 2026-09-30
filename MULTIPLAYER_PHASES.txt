@@ -23,7 +23,7 @@ TABLE OF PHASES
   [x] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control) (COMPLETED)
   [x] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression (COMPLETED)
   [x] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener (COMPLETED)
-  [ ] PHASE 9: Remote Player Entity Interpolation & Flight Handoff
+  [x] PHASE 9: Remote Player Entity Interpolation & Flight Handoff (COMPLETED)
   [ ] PHASE 10: Multiplayer Room UI, Matchmaking & Network Diagnostics HUD
 
 ================================================================================
@@ -422,6 +422,12 @@ Tasks Completed:
       - Accurate Mouse Viewport Mapping: maps physical mouse coordinates into arena space relative to the active player's screen (even if assigned to Screen 2 or beyond).
       - Auto-Reversion: cleanly collapses to full single view when switching back to Local Game, untoggling split sims, or when fewer than 2 players are connected.
       - Renamed "Single Player" mode to "Local Game" across top bar, mobile menu, and documentation.
+
+  [x] 9.4 Secondary Player / Gamepad Throw Direction & Network Serialization
+      - Fixed premature aim stick reset in InputManager.ts during trigger press so aim direction persists into input packet.
+      - Oriented character facing angle directly towards target aim vector in PlayerManager.ts before invoking throwModule.
+      - Preserved slot.hasMovedAimStick until after throw execution has completed.
+      - Fixed object heldBy network serialization in RelayClient.ts to use playerId (e.g. "player-2" / "gamepad-0") ensuring authoritative server identifies the holding player correctly.
 
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD

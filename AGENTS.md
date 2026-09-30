@@ -996,6 +996,17 @@ powerCreatureGamePrototype1/
     - **UI Renaming**:
       - Renamed "Single Player" mode to **"Local Game"** across top bar, mobile menu, and documentation.
 
+58. **Secondary Player / Gamepad Throw Direction & Network Serialization**:
+    - **Premature Aim Reset Prevention (`InputManager.ts`)**:
+      - Removed premature zeroing of `slot.hasMovedAimStick` and `slot.aimMovedWhileInRange` inside `pollGamepadSlots()` on trigger press. Aim stick orientation now cleanly persists into the tick's `PlayerInputPacket`.
+    - **Throw Orientation Prior to Execution (`PlayerManager.ts`)**:
+      - Before invoking `throwHeldObject()`, `char.facingAngle` is explicitly set to `Math.atan2(aimDy, aimDx)` facing the target reticle.
+      - Aim stick flags (`hasMovedAimStick`, `aimMovedWhileInRange`) are safely reset only *after* the throw action is fully resolved.
+    - **Multiplayer Object `heldBy` Serialization (`RelayClient.ts`)**:
+      - Serializes `obj.heldBy` using `(obj.heldBy as Character).playerId` (`"player-2"`, `"gamepad-0"`, etc.) rather than the internal GameObject ID (`char-xxx`). This ensures `ServerGameSimulation` properly attributes the held object to the secondary player on authoritative ticks.
+    - **Automated Verification**:
+      - Created `scratch/test_player2_throw_direction.ts` verifying that Player 2 holding a freebody launches it precisely along the right-stick reticle vector.
+
 ---
 
 
@@ -1021,3 +1032,5 @@ powerCreatureGamePrototype1/
 > 3. **Preserve Modularity**: Never couple features directly into the core loop if they belong in composable modules.
 > 4. **Update Memory Before Concluding**: Whenever you introduce architectural changes, implement new features, or alter project direction, update this `AGENTS.md` file so the next agent (or session on another device) has full context.
 > 5. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously. Browser testing consumes significant credits; only use the browser when the user explicitly asks you to do so.
+> 6. **Avoid Redundant File Inspection Loops**: When diagnosing an issue, do NOT repeatedly call `view_file` on the same file/lines without taking action. If runtime behavior is uncertain, immediately write or execute a targeted scratch script (`scratch/test_*.ts`) to isolate and inspect the variables rather than repeatedly re-reading static code.
+

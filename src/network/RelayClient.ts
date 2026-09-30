@@ -520,7 +520,7 @@ export class RelayClient {
         color: obj.color,
         shape: obj.visualShape,
         isHeld: obj.isHeld,
-        heldBy: obj.heldBy ? (obj.heldBy === primaryChar ? "player" : obj.heldBy.id) : null,
+        heldBy: obj.heldBy ? ((obj.heldBy as Character).playerId || (obj.heldBy === primaryChar ? "player" : obj.heldBy.id)) : null,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,

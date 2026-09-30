@@ -1012,13 +1012,9 @@ export class InputManager {
 
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
           slot.isThrowRequested = true;
-          slot.hasMovedAimStick = false;
-          slot.aimMovedWhileInRange = false;
         }
         if (rbJustPressed && char.throwModule) {
           slot.isThrowRequested = true;
-          slot.hasMovedAimStick = false;
-          slot.aimMovedWhileInRange = false;
         }
       }
 

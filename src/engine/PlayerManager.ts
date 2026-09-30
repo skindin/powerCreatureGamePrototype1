@@ -459,6 +459,14 @@ export class PlayerManager {
         const thrownObj = char.heldObject;
         const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 3);
         const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 3);
+
+        // Immediately orient character to throw target direction
+        const aimDx = throwAimX - char.position.x;
+        const aimDy = throwAimY - char.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          char.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+
         char.throwModule.throwHeldObject(
           char,
           throwAimX,
@@ -468,6 +476,16 @@ export class PlayerManager {
           undefined,
           pkt.isLockHeld
         );
+
+        // Once the throw completes and character is empty-handed, reset aim stick movement flags
+        if (entry && entry.slotIndex !== undefined) {
+          const slot = input.gamepadSlots.get(entry.slotIndex);
+          if (slot) {
+            slot.hasMovedAimStick = false;
+            slot.aimMovedWhileInRange = false;
+          }
+        }
+
         const action: ReliableActionCommand = {
           actionId: `act-${char.playerId || "keyboard"}-throw-${++this.actionSeq}-${Date.now()}`,
           type: "throw",
