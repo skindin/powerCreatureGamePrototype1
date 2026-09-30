@@ -72,11 +72,11 @@ assert(Math.abs(serverChar.velocity.y - 1.2) < 0.001, "Server char velocity Y sy
 assert(Math.abs(serverChar.verticalVelocity - 2.0) < 0.001, "Server char vertical velocity synced");
 console.log("✅ Test 1 Passed: Character snapped to client coordinates and inherited velocity");
 
-// Test 2: Character smooth convergence when close (dist <= 0.4)
-console.log("\n--- TEST 2: Smooth Character Convergence ---");
+// Test 2: Character direct sync
+console.log("\n--- TEST 2: Direct Character Sync ---");
 const smallDeltaTelemetry: GhostEntityState = {
   id: "keyboard",
-  x: 6.3, // delta = 0.1
+  x: 6.3,
   y: 7.5,
   z: 0.5,
   vx: 3.5,
@@ -86,9 +86,8 @@ const smallDeltaTelemetry: GhostEntityState = {
 };
 
 sim.syncCharacterFromPacket(smallDeltaTelemetry);
-// 50% blend of 0.1 delta = +0.05 -> x becomes 6.25
-assert(Math.abs(serverChar.position.x - 6.25) < 0.01, `Server char converged smoothly (got ${serverChar.position.x.toFixed(3)})`);
-console.log(`✅ Test 2 Passed: Character converged smoothly to ${serverChar.position.x.toFixed(3)}`);
+assert(Math.abs(serverChar.position.x - 6.3) < 0.001, `Server char synced directly (got ${serverChar.position.x.toFixed(3)})`);
+console.log(`✅ Test 2 Passed: Character synced directly to ${serverChar.position.x.toFixed(3)}`);
 
 // Test 3: Starvation handling stops runaway ghost steering
 console.log("\n--- TEST 3: Starvation Handling Stops Runaway Steering ---");

@@ -288,28 +288,13 @@ export class ServerGameSimulation {
         sObj.wakeUp();
       }
 
-      // 3. Synchronize Velocity AND Position
-      // Velocity is set directly so the server's independent physics integrates with the true momentum
+      // 3. Synchronize Velocity AND Position directly from client telemetry
+      sObj.position.x = cObj.x;
+      sObj.position.y = cObj.y;
+      sObj.position.z = cObj.z;
       sObj.velocity.x = cObj.vx;
       sObj.velocity.y = cObj.vy;
       sObj.verticalVelocity = cObj.vz ?? 0;
-
-      // Position sync: smooth convergence if close, snap if diverged
-      const dx = cObj.x - sObj.position.x;
-      const dy = cObj.y - sObj.position.y;
-      const dz = cObj.z - sObj.position.z;
-      const dist = Math.hypot(dx, dy, dz);
-
-      if (dist > 0.4) {
-        sObj.position.x = cObj.x;
-        sObj.position.y = cObj.y;
-        sObj.position.z = cObj.z;
-      } else if (dist > 0.005) {
-        const blend = 0.50;
-        sObj.position.x += dx * blend;
-        sObj.position.y += dy * blend;
-        sObj.position.z += dz * blend;
-      }
 
       // 4. Synchronize Roll Angular Velocity
       if (sObj.rollModule && cObj.angX !== undefined && cObj.angY !== undefined && cObj.angZ !== undefined) {
@@ -322,8 +307,7 @@ export class ServerGameSimulation {
 
   /**
    * Synchronizes the authoritative server character from client telemetry packets.
-   * Updates velocity and smoothly reconciles physical coordinates (with instant snap on large divergence)
-   * so the server player ghost stays tightly synchronized with the client player.
+   * Updates velocity and coordinates directly so the server player ghost stays locked to the client.
    */
   public syncCharacterFromPacket(clientChar: GhostEntityState): void {
     if (!clientChar) return;
@@ -340,24 +324,10 @@ export class ServerGameSimulation {
       sChar.verticalVelocity = clientChar.vz;
     }
 
-    // 2. Synchronize Physical Coordinates
-    const dx = clientChar.x - sChar.position.x;
-    const dy = clientChar.y - sChar.position.y;
-    const dz = clientChar.z - sChar.position.z;
-    const dist = Math.hypot(dx, dy, dz);
-
-    if (dist > 0.4) {
-      // Diverged significantly: snap coordinates directly
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
-    } else if (dist > 0.005) {
-      // Smooth rapid convergence (50% blend per packet)
-      const blend = 0.50;
-      sChar.position.x += dx * blend;
-      sChar.position.y += dy * blend;
-      sChar.position.z += dz * blend;
-    }
+    // 2. Synchronize Physical Coordinates directly
+    sChar.position.x = clientChar.x;
+    sChar.position.y = clientChar.y;
+    sChar.position.z = clientChar.z;
 
     // 3. Synchronize Surface & Elevation States
     if (clientChar.surfaceZ !== undefined) {

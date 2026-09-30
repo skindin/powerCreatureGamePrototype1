@@ -1184,15 +1184,7 @@ function bootstrap(): void {
       // 1. Advance the independent authoritative server physics simulation by dt at full 60Hz
       relayClient.stepServerPhysics(dt);
 
-      // 2. Synchronize client freebody objects with authoritative server simulation
-      if (relayClient.serverMode === "physics_sim") {
-        const simGhost = relayClient.getLatestGhost();
-        if (simGhost && simGhost.objects) {
-          gameLoop.syncAuthoritativeObjects(simGhost.objects);
-        }
-      }
-
-      // 3. Stream client input packets across the WAN relay loopback
+      // 2. Stream client input packets and world telemetry across the WAN relay loopback
       const primaryChar = gameLoop.primaryCharacter || character;
       relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, primaryChar, gameLoop.objects, nowMs);
     }
