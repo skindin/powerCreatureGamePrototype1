@@ -178,11 +178,17 @@ Tasks Completed:
       - Secondary isolated physics world running deterministic 60Hz loop.
       - Headless Arena, Characters, GameObjects, CollisionResolver, IslandManager.
   [x] 3.5.2 Relay Loopback Networking Channel (src/network/RelayClient.ts)
-      - Client streams pc_player_input packets over remote WebSocket relay.
-      - Echoed packets route into serverSimulation.queueInput() and step physics.
+      - Client streams pc_player_input packets over remote WebSocket relay with zero-drop input batching.
+      - Independent 60Hz Server Clock: RelayClient.stepServerPhysics(dt) advances the server simulation 
+        at a fixed 60Hz on every frame, decoupled from network packet arrival times (eliminating slow-motion).
+      - Echoed packets route into serverSimulation.queueInput() to feed the server's input queue.
+      - Movement extrapolation prevents jitter freeze during brief single-frame packet stalls.
   [x] 3.5.3 Stacked Real-Time Dual-Render Mode (src/engine/Renderer.ts)
       - Renders authoritative server ghost with [SERVER SIM (XXms)] pill badge.
+      - Direct live physics sync in "Sim: Physics" mode (bypasses artificial position lerp delay so 
+        the ghost mirrors the server's real 60Hz physics world with zero drag).
       - User can switch between true physics simulation (Sim: Physics) and echo (Sim: Pos Echo).
+      - Live 1-click "🔄 Resync" button instantly re-aligns server entities with client positions.
 
 ================================================================================
 PHASE 4: AUTHORITATIVE HEADLESS SERVER SIMULATION CORE

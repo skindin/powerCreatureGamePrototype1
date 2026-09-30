@@ -16,7 +16,7 @@ export { PLAYER_COLORS, StateHistoryBuffer, IslandManager };
 
 export class GameLoop {
   private arena: Arena;
-  private objects: GameObject[];
+  public objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;
   private devPanel: DevPanel;

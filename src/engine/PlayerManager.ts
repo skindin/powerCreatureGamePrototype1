@@ -300,8 +300,9 @@ export class PlayerManager {
 
     // 1. Keyboard
     const kEntry = this.players.get("keyboard");
-    if (kEntry && input.isKeyboardActive && !input.isKeyboardSuspended) {
-      const kChar = kEntry.character;
+    const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
+    if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
+      const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
       map.set("keyboard", {
         playerId: "keyboard",
@@ -310,11 +311,15 @@ export class PlayerManager {
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
         isGrabHeld: input.isGrabHeld,
+        isDrop: input.isKeyboardDropRequested ?? false,
+        isThrow: input.isKeyboardThrowRequested ?? false,
         aimX: input.actualMousePos.x,
         aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
       });
+      input.isKeyboardDropRequested = false;
+      input.isKeyboardThrowRequested = false;
     }
 
     // 2. Gamepads
@@ -350,11 +355,15 @@ export class PlayerManager {
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
         isGrabHeld: (slot.rtHeld || slot.bHeld) ?? false,
+        isDrop: slot.isDropRequested ?? false,
+        isThrow: slot.isThrowRequested ?? false,
         aimX,
         aimY,
         isAiming: true,
         isLockHeld: slot.isLockHeld ?? false,
       });
+      slot.isDropRequested = false;
+      slot.isThrowRequested = false;
     }
 
     return map;
@@ -373,8 +382,8 @@ export class PlayerManager {
 
     for (const [playerId, pkt] of inputs) {
       const entry = this.players.get(playerId);
-      if (!entry) continue;
-      const char = entry.character;
+      const char = entry ? entry.character : (this.players.size === 0 && playerId === "keyboard" ? this.baseCharacter : null);
+      if (!char) continue;
       if (input.draggedEntity === char) {
         char.velocity.x = 0;
         char.velocity.y = 0;
@@ -386,6 +395,24 @@ export class PlayerManager {
       }
 
       const aimTarget = pkt.aimX !== undefined && pkt.aimY !== undefined ? { x: pkt.aimX, y: pkt.aimY } : null;
+
+      // Dedicated Drop (Q / Y)
+      if (pkt.isDrop && char.heldObject && char.pickupModule) {
+        char.pickupModule.drop(char);
+      }
+
+      // Dedicated Throw (RT / RB / Left Click)
+      if (pkt.isThrow && char.heldObject && char.throwModule && aimTarget) {
+        char.throwModule.throwHeldObject(
+          char,
+          aimTarget.x,
+          aimTarget.y,
+          this.arena,
+          undefined,
+          undefined,
+          pkt.isLockHeld
+        );
+      }
 
       char.updateCharacter(
         dt,
@@ -405,8 +432,8 @@ export class PlayerManager {
       }
     }
 
-    // When no player device is connected, update baseCharacter so it settles naturally
-    if (this.players.size === 0) {
+    // When no player device is connected and no keyboard packet was processed, settle baseCharacter naturally
+    if (this.players.size === 0 && !inputs.has("keyboard")) {
       if (input.draggedEntity !== this.baseCharacter) {
         this.baseCharacter.updateCharacter(
           dt,

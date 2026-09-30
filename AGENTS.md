@@ -213,8 +213,11 @@ powerCreatureGamePrototype1/
   - Instances identical deterministic `Arena`, `Character` map, freebody `GameObject`s, `CollisionResolver`, and `IslandManager`.
   - **Zero DOM / Canvas Dependencies**: Completely decoupled from browser window, document, and canvas APIs, allowing it to run either in-tab or as a standalone Node.js server.
   - Replicates exact arena tile geometry, wall elevations, and physical entities.
-  - Maintains per-player input queues (`inputQueues: Map<string, PlayerInputPacket[]>`) that buffer client inputs received over the network to absorb jitter.
-  - When input queue is starved, applies safe neutral inputs (stops movement, releases jump/grab/throw) to prevent characters from getting stuck in re-jumping loops.
+  - **Continuous Independent 60Hz Server Clock (`stepServerPhysics(dt)`)**:
+    - Unlike naive packet-driven steps that slow to half-speed (30Hz) or pause when network packets are delayed, the server physics advances continuously on its own 60Hz physics clock.
+    - Simulates all freebody objects (rolling ball, bouncing ball, crates, rocks) with full gravity, angular roll, bounce, and collisions at full real-time speed.
+    - Maintains per-player input queues (`inputQueues: Map<string, PlayerInputPacket[]>`) that buffer client inputs received over the network to absorb WAN latency and jitter.
+    - When network jitter momentarily delays a packet, maintains directional steering momentum (`moveX, moveY`) across brief gaps rather than abruptly stalling the character, while releasing trigger actions (`isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false`).
   - **Phase 4.3 Authoritative Grab & Contest Arbiter**:
     - Validates reach and line-of-sight before granting an object grab.
     - Resolves simultaneous multi-player grabs on the exact same freebody on the exact same tick via strict deterministic tiebreakers:
@@ -223,18 +226,21 @@ powerCreatureGamePrototype1/
       3. **Deterministic ID Priority**: Tiebreak fallback.
     - Grants object to the winning player, cancels the loser's grab, and records the resolution in `contestedGrabEvents` audit queue.
   - Produces authoritative `MultiplayerGhostSnapshot` with real vertical position $z$, vertical velocity $v_z$, resting flags, and true ground contact.
-- **Standalone Node.js Game Server Loop (`src/server/GameServer.ts`)**:
-  - 60Hz tick runner using high-resolution `process.hrtime.bigint()` drift compensation to eliminate timing drift across frames.
-  - Broadcasts authoritative state to connected clients with serialization and delta tracking.
-- **Client Input Streaming & Real Internet Relay Loopback (`src/network/RelayClient.ts` & `src/engine/GameLoop.ts`)**:
+- **Deterministic Action Synchronization (Throw, Drop & Grab Pipeline)**:
+  - Mouse clicks, Q keys, and gamepad RT/RB/Y buttons route their throw and drop requests through `PlayerInputPacket` (`isThrow: boolean`, `isDrop: boolean`, `isGrabHeld: boolean`).
+  - Executed deterministically in `applyPlayerInputs` on both client prediction and server simulation, ensuring carried items and throws remain in perfect sync across the network.
+- **Zero-Drop Input Batching & Real Internet WAN Loopback (`src/network/RelayClient.ts` & `src/engine/GameLoop.ts`)**:
   - `GameLoop.ts` captures player input packets on each physics tick (`onPhysicsTick`) and streams `pc_player_input` packets over the WebSocket relay.
+  - Inputs are recorded every physics tick; when sending at 30Hz or during packet throttle, all accumulated ticks are batched together in `pendingInputsToSend` so zero input ticks are ever dropped.
   - Packets traverse a real remote WebSocket relay (`wss://echo.websocket.org` or `wss://ws.postman-echo.com/raw`), subjecting inputs to actual broadband internet round-trip latency (RTT) and jitter.
-  - Returned input packets feed directly into the authoritative `ServerGameSimulation`, which advances physics and publishes the authoritative world snapshot.
-- **Dual Visual Modes & UI Controls (`DevPanel.ts`, `Renderer.ts`, `index.html`)**:
+  - Returned input packets feed directly into `ServerGameSimulation.queueInput()`, which de-duplicates ticks and feeds them to the 60Hz simulation.
+- **Dual Visual Modes, Resync & UI Controls (`DevPanel.ts`, `Renderer.ts`, `index.html`)**:
   - **Server Simulation Toggle (`#relay-toggle-server-mode-btn`)**:
     - `🤖 Sim: Physics`: True authoritative server physics simulation driven by looped-back input packets. Ghost clone renders true physical altitude, jumps, bounces, and solid ground contacts.
     - `📡 Sim: Pos Echo`: Legacy coordinate mirroring directly from echoed client position packets.
+  - **One-Click Resync Button (`#relay-resync-world-btn`)**: Instantly re-aligns the authoritative server world transforms with the live client transforms for testing and calibration.
   - **Authoritative Server Ghost Display**:
+    - In `physics_sim` mode, mirrors the 60Hz server transforms directly on screen without artificial visual lerp lag dragging behind.
     - Renders with glowing `[SERVER SIM (XXms)]` pill badge (cyan/emerald theme) displaying real-time RTT latency.
     - Stacked directly on top of client prediction to give instant visual feedback of server authority vs. client prediction.
   - **Server Physics Diagnostics HUD**:

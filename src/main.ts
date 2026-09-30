@@ -435,7 +435,7 @@ function bootstrap(): void {
       mobileModeMultiBtn?.classList.add("active");
       relayHud?.classList.remove("hidden");
       relayStatusPill?.classList.remove("hidden");
-      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], objects);
+      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
       relayClient.connect();
     } else {
       btnSinglePlayer?.classList.add("active");
@@ -527,9 +527,21 @@ function bootstrap(): void {
     relayClient.serverMode = relayClient.serverMode === "physics_sim" ? "echo_snapshot" : "physics_sim";
     updateServerModeUi();
     if (relayClient.serverMode === "physics_sim") {
-      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], objects);
+      relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
     }
     relayClient.onStatsChange?.(relayClient.getStats());
+  });
+
+  const relayResyncWorldBtn = document.getElementById("relay-resync-world-btn");
+  relayResyncWorldBtn?.addEventListener("click", () => {
+    relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
+    if (relayResyncWorldBtn) {
+      const orig = relayResyncWorldBtn.textContent;
+      relayResyncWorldBtn.textContent = "✅ Synced";
+      setTimeout(() => {
+        relayResyncWorldBtn.textContent = orig;
+      }, 1000);
+    }
   });
 
   relayConnectBtn?.addEventListener("click", () => {
@@ -1162,9 +1174,14 @@ function bootstrap(): void {
     relayClient.updateGhostLerp(dt);
     return relayClient.getLatestGhost();
   };
-  gameLoop.onPhysicsTick = (_dt, nowMs) => {
+  gameLoop.onPhysicsTick = (dt, nowMs) => {
     if (isMultiplayerMode) {
-      relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, character, objects, nowMs);
+      // 1. Advance the independent authoritative server physics simulation by dt at full 60Hz
+      relayClient.stepServerPhysics(dt);
+
+      // 2. Stream client input packets across the WAN relay loopback
+      const primaryChar = gameLoop.primaryCharacter || character;
+      relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, primaryChar, gameLoop.objects, nowMs);
     }
   };
 

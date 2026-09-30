@@ -224,9 +224,15 @@ export class ServerGameSimulation {
       queue = [];
       this.inputQueues.set(pId, queue);
     }
+    // De-duplicate if tick number is present
+    if (packet.tick !== undefined) {
+      if (queue.some((p) => p.tick === packet.tick)) {
+        return;
+      }
+    }
     queue.push(packet);
     // Cap buffer depth to prevent runaway queues under severe network stall
-    if (queue.length > 30) {
+    if (queue.length > 60) {
       queue.shift();
     }
   }
@@ -334,10 +340,11 @@ export class ServerGameSimulation {
       if (pkt) {
         this.lastKnownInputs.set(pId, pkt);
       } else {
-        // Reuse last known input with zero movement and buttons released if queue is starved
+        // Queue is momentarily starved (inputs still traversing WAN relay).
+        // Maintain directional steering across brief jitter, but release button presses!
         const last = this.lastKnownInputs.get(pId);
         pkt = last
-          ? { ...last, moveX: 0, moveY: 0, isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false }
+          ? { ...last, isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false }
           : undefined;
       }
 
@@ -369,9 +376,9 @@ export class ServerGameSimulation {
         // Collect grab requests for authoritative arbitration
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
           const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-          const target = aimTarget
-            ? char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, others, this.arena.wallHeight)
-            : null;
+          const grabAimX = aimTarget ? aimTarget.x : char.position.x;
+          const grabAimY = aimTarget ? aimTarget.y : char.position.y;
+          const target = char.pickupModule.findTargetObject(char, grabAimX, grabAimY, others, this.arena.wallHeight);
           if (target) {
             grabRequests.push({ char, target, pkt });
           }

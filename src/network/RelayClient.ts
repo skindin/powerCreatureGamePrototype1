@@ -63,6 +63,7 @@ export class RelayClient {
   private socket: WebSocket | null = null;
   private seq: number = 0;
   private lastSendTime: number = 0;
+  private pendingInputsToSend: PlayerInputPacket[] = [];
   private latestGhostSnapshot: GhostSnapshot | null = null;
   private currentGhostSnapshot: GhostSnapshot | null = null;
 
@@ -79,6 +80,31 @@ export class RelayClient {
 
   constructor(url: string = "wss://echo.websocket.org") {
     this.url = url;
+  }
+
+  /**
+   * Advances the authoritative server physics simulation by 1 fixed tick on the continuous 60Hz clock.
+   * Called on every game loop physics tick so the server simulation runs independently at full 60Hz speed.
+   */
+  public stepServerPhysics(dt: number = 1 / 60): void {
+    if (this.serverMode !== "physics_sim") return;
+
+    // Step the independent server physics world
+    this.serverSimulation.step(dt);
+
+    // Capture the authoritative physical state directly from the 60Hz simulation
+    const simSnap = this.serverSimulation.getGhostSnapshot(this.lastRttMs);
+    simSnap.source = "physics_sim";
+    this.latestGhostSnapshot = simSnap;
+
+    // In physics_sim mode, the ghost IS a live 60Hz physics world!
+    // Directly mirror to currentGhostSnapshot so it renders the real-time server physics
+    // without sluggish visual lerp delay.
+    this.currentGhostSnapshot = {
+      ...simSnap,
+      character: { ...simSnap.character },
+      objects: simSnap.objects ? simSnap.objects.map((o) => ({ ...o })) : [],
+    };
   }
 
   public connect(newUrl?: string): void {
@@ -137,6 +163,11 @@ export class RelayClient {
    * Enforces solid ground/surface contact when target lands.
    */
   public updateGhostLerp(dt: number): void {
+    if (this.serverMode === "physics_sim") {
+      // In physics_sim mode, the ghost is updated continuously by stepServerPhysics()
+      return;
+    }
+
     if (!this.latestGhostSnapshot) {
       this.currentGhostSnapshot = null;
       return;
@@ -269,6 +300,14 @@ export class RelayClient {
 
   public syncServerWorld(arena: Arena, characters: Character[], objects: GameObject[]): void {
     this.serverSimulation.initializeFromWorld(arena, characters, objects);
+    const snap = this.serverSimulation.getGhostSnapshot(this.lastRttMs);
+    snap.source = "physics_sim";
+    this.latestGhostSnapshot = snap;
+    this.currentGhostSnapshot = {
+      ...snap,
+      character: { ...snap.character },
+      objects: snap.objects ? snap.objects.map((o) => ({ ...o })) : [],
+    };
   }
 
   public getStats(): RelayStats {
@@ -298,7 +337,15 @@ export class RelayClient {
     objects: GameObject[],
     nowMs: number
   ): void {
+    // Record current tick's input so no frames are dropped under reduced send rates or jitter
+    for (const inp of inputs.values()) {
+      this.pendingInputsToSend.push({ ...inp, tick });
+    }
+
     if (this.status !== "connected" || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      if (this.pendingInputsToSend.length > 60) {
+        this.pendingInputsToSend = this.pendingInputsToSend.slice(-60);
+      }
       return;
     }
 
@@ -308,7 +355,10 @@ export class RelayClient {
     }
     this.lastSendTime = nowMs;
 
-    const inputList: PlayerInputPacket[] = Array.from(inputs.values());
+    const inputList: PlayerInputPacket[] = this.pendingInputsToSend.length > 0
+      ? [...this.pendingInputsToSend]
+      : Array.from(inputs.values()).map((inp) => ({ ...inp, tick }));
+    this.pendingInputsToSend = [];
 
     const packet = {
       type: "pc_player_input",
@@ -401,18 +451,14 @@ export class RelayClient {
 
         if (this.serverMode === "physics_sim") {
           // Authoritative Server Physics Simulation (Phase 4):
-          // Enqueue incoming player inputs and advance the server physics simulation!
+          // Enqueue incoming player inputs returned from the WAN relay into the server input queue!
           if (Array.isArray(parsed.inputs)) {
             for (const inp of parsed.inputs) {
               this.serverSimulation.queueInput(inp);
             }
           }
-          this.serverSimulation.step(1 / 60);
-
-          // Get the authoritative physical state directly from the server simulation
-          const simSnap = this.serverSimulation.getGhostSnapshot(rttMs);
-          simSnap.source = "physics_sim";
-          this.latestGhostSnapshot = simSnap;
+          // Note: Physics simulation advances on its continuous 60Hz physics clock via stepServerPhysics(),
+          // NOT per arriving network packet!
         } else {
           // Fallback positional echo
           this.latestGhostSnapshot = {

@@ -28,6 +28,8 @@ export interface GamepadSlotState {
   hasMovedAimStick?: boolean;
   wasHoldingObject?: boolean;
   lastMovementInputAngle?: number;
+  isThrowRequested?: boolean;
+  isDropRequested?: boolean;
 }
 
 export class InputManager {
@@ -40,6 +42,8 @@ export class InputManager {
   
   // Keyboard player active state (true when keyboard & mouse character is in arena)
   public isKeyboardActive = true;
+  public isKeyboardThrowRequested = false;
+  public isKeyboardDropRequested = false;
 
   public mousePos: Vector2D = { x: 0, y: 0 };
   public actualMousePos: Vector2D = { x: 0, y: 0 };
@@ -931,6 +935,7 @@ export class InputManager {
       const yCurrent = isButtonPressed(3);
       if (yCurrent && !isPrevPressed(3) && char.pickupModule) {
         if (char.heldObject) {
+          slot.isDropRequested = true;
           char.pickupModule.drop(char);
         }
       }
@@ -989,6 +994,7 @@ export class InputManager {
         }
 
         if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
+          slot.isThrowRequested = true;
           char.throwModule.throwHeldObject(
             char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
           );
@@ -996,6 +1002,7 @@ export class InputManager {
           slot.aimMovedWhileInRange = false;
         }
         if (rbJustPressed && char.throwModule) {
+          slot.isThrowRequested = true;
           char.throwModule.throwHeldObject(
             char, throwTargetX, throwTargetY, arena, grabbableTargets, undefined, isLockHeld
           );
@@ -1232,6 +1239,7 @@ export class InputManager {
       // 1. If holding an object and ready to throw (and not the same click as pickup):
       if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
         const autoLock = this.isRightMouseDown;
+        this.isKeyboardThrowRequested = true;
         activeChar.throwModule.throwHeldObject(activeChar, clickX, clickY, arena, undefined, undefined, autoLock);
         this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
@@ -1269,6 +1277,7 @@ export class InputManager {
       const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null) || character;
       if (!activeChar || !activeChar.pickupModule) return;
       if (activeChar.heldObject) {
+        this.isKeyboardDropRequested = true;
         activeChar.pickupModule.drop(activeChar);
       }
     };

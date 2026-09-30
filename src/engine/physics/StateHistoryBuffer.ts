@@ -4,6 +4,7 @@ import { WorldSnapshot } from "./Snapshot.js";
  * Encapsulates the exact input state dispatched for a single player on a specific physics tick.
  */
 export interface PlayerInputPacket {
+  tick?: number;
   playerId: string;
   moveX: number;
   moveY: number;

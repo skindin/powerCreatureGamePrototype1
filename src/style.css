@@ -410,6 +410,23 @@ body {
   color: #7dd3fc;
 }
 
+#relay-resync-world-btn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+#relay-resync-world-btn:hover {
+  background: rgba(245, 158, 11, 0.28);
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
 .btn-ghost-toggle {
   background: rgba(168, 85, 247, 0.18);
   color: #d8b4fe;
