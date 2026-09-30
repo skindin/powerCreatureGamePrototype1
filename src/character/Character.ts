@@ -244,9 +244,9 @@ export class Character extends GameObject {
     }
 
     // 3. Update facing orientation using intended movement input or aim.
-    // If auto-locking onto a target while holding an object, orient toward the locked target!
+    // If auto-locking onto a target, orient toward the locked target!
     let lockedTarget: GameObject | null = null;
-    if (this.heldObject && autoLock && aimTargetPos && this.throwModule) {
+    if (autoLock && aimTargetPos && this.throwModule) {
       lockedTarget = this.throwModule.findHoveredEntity(
         aimTargetPos.x,
         aimTargetPos.y,

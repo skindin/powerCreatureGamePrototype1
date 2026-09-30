@@ -662,6 +662,14 @@ export class ThrowModule {
     );
     if (!launch) return null;
 
+    if (launch.isAutoLocked && launch.targetObject) {
+      const dx = launch.targetObject.position.x - character.position.x;
+      const dy = launch.targetObject.position.y - character.position.y;
+      if (Math.hypot(dx, dy) > 0.05) {
+        character.facingAngle = Math.atan2(dy, dx);
+      }
+    }
+
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
