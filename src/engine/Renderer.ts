@@ -1842,7 +1842,7 @@ export class Renderer {
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (obj.position.x - vx) * ppu;
+    const groundX = (posX - vx) * ppu;
     const wallTopScreenY = (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
@@ -1882,7 +1882,16 @@ export class Renderer {
    * "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
    */
   private drawObjectColliderPositionOutline(obj: GameObject, arena: Arena, ppu: number): void {
-    const z = obj.position.z;
+    let posX = obj.position.x;
+    let posY = obj.position.y;
+    let posZ = obj.position.z;
+    if (obj.isHeld && obj.heldBy instanceof Character) {
+      const relPos = obj.heldBy.calculateHeldObjectPosition(arena);
+      posX = relPos.x;
+      posY = relPos.y;
+      posZ = relPos.z;
+    }
+    const z = posZ;
     if (z <= 0.01) return;
 
     // No outline if the object is resting exactly at the floor of its layer:
@@ -1901,10 +1910,10 @@ export class Renderer {
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (obj.position.x - vx) * ppu;
+    const groundX = (posX - vx) * ppu;
     const outlineY = isAboveWall
-      ? (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu
-      : (obj.position.y - vy) * ppu;
+      ? (posY - vy - arena.wallHeight * hoverScale) * ppu
+      : (posY - vy) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
