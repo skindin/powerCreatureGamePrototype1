@@ -170,4 +170,39 @@ if (clientBox.position.x === 5.2 && clientBox.isSleeping) {
   process.exit(1);
 }
 
+// Test 3: Server Simulation syncObjectsFromPacket (Position AND Velocity)
+console.log("\n--- Test 3: Server Simulation syncObjectsFromPacket (Position AND Velocity) ---");
+
+const testRock = sim.objects.find((o) => o.id === "rock-a")!;
+// Incoming client packet reports rock-a was kicked to x=6.0, y=5.0 with vx=4.0, vy=1.5
+sim.syncObjectsFromPacket([
+  {
+    id: "rock-a",
+    x: 6.0,
+    y: 5.0,
+    z: 0,
+    vx: 4.0,
+    vy: 1.5,
+    vz: 0,
+    radius: 0.3,
+  },
+]);
+
+if (testRock.position.x === 6.0 && testRock.velocity.x === 4.0 && testRock.velocity.y === 1.5) {
+  console.log("✅ Passed: Server object synchronized position AND velocity from incoming packet.");
+} else {
+  console.error("❌ FAILED: Server object failed to sync position or velocity:", testRock.position, testRock.velocity);
+  process.exit(1);
+}
+
+// Step server physics forward: rock should integrate the synchronized velocity independently
+sim.step(1 / 60);
+
+if (testRock.position.x > 6.0) {
+  console.log(`✅ Passed: Server object ran independent physics stepping forward to x=${testRock.position.x.toFixed(3)}.`);
+} else {
+  console.error("❌ FAILED: Server object did not integrate synchronized velocity:", testRock.position.x);
+  process.exit(1);
+}
+
 console.log("\n🎉 ALL EXPLICIT GRAB & SMART OBJECT SYNCHRONIZATION TESTS PASSED 100%!");

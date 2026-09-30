@@ -403,6 +403,10 @@ export class RelayClient {
         isHeld: obj.isHeld,
         heldBy: obj.heldBy ? (obj.heldBy === character ? "player" : obj.heldBy.id) : null,
         isAboveWalls: obj.isAboveWalls,
+        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
+        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
+        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
+        isSleeping: obj.isSleeping,
       })),
     };
 
@@ -460,6 +464,11 @@ export class RelayClient {
             for (const inp of parsed.inputs) {
               this.serverSimulation.queueInput(inp);
             }
+          }
+          // Synchronize freebody objects: update positions AND velocities from client packet
+          // so server physics advances with the latest physical momentum!
+          if (Array.isArray(parsed.objects)) {
+            this.serverSimulation.syncObjectsFromPacket(parsed.objects);
           }
           // Note: Physics simulation advances on its continuous 60Hz physics clock via stepServerPhysics(),
           // NOT per arriving network packet!

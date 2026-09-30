@@ -238,6 +238,85 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Synchronizes server simulation objects from incoming client telemetry packets.
+   * Synchronizes positions AND velocities, 3D roll angular velocity, and held/resting states
+   * so the server runs physics independently with accurate momentum and coordinates.
+   */
+  public syncObjectsFromPacket(clientObjects: GhostEntityState[]): void {
+    if (!clientObjects || clientObjects.length === 0) return;
+
+    for (const cObj of clientObjects) {
+      const sObj = this.objects.find((o) => o.id === cObj.id);
+      if (!sObj) continue;
+
+      // 1. Synchronize Held State
+      if (cObj.isHeld) {
+        sObj.isHeld = true;
+        const sChar = this.characters.get(cObj.heldBy || "keyboard") || this.allCharacters[0];
+        if (sChar) {
+          sObj.heldBy = sChar;
+          sChar.heldObject = sObj;
+        }
+        sObj.position.x = cObj.x;
+        sObj.position.y = cObj.y;
+        sObj.position.z = cObj.z;
+        sObj.velocity.x = cObj.vx;
+        sObj.velocity.y = cObj.vy;
+        sObj.verticalVelocity = cObj.vz ?? 0;
+        continue;
+      } else if (sObj.isHeld) {
+        // Was held on server, but client released / threw it!
+        sObj.isHeld = false;
+        if (sObj.heldBy && sObj.heldBy instanceof Character) {
+          sObj.heldBy.heldObject = null;
+        }
+        sObj.heldBy = null;
+      }
+
+      // 2. Synchronize Sleeping / Resting State
+      if (cObj.isSleeping) {
+        sObj.position.x = cObj.x;
+        sObj.position.y = cObj.y;
+        sObj.position.z = cObj.z;
+        sObj.putToSleep();
+        continue;
+      } else if (sObj.isSleeping) {
+        sObj.wakeUp();
+      }
+
+      // 3. Synchronize Velocity AND Position
+      // Velocity is set directly so the server's independent physics integrates with the true momentum
+      sObj.velocity.x = cObj.vx;
+      sObj.velocity.y = cObj.vy;
+      sObj.verticalVelocity = cObj.vz ?? 0;
+
+      // Position sync: smooth convergence if close, snap if diverged
+      const dx = cObj.x - sObj.position.x;
+      const dy = cObj.y - sObj.position.y;
+      const dz = cObj.z - sObj.position.z;
+      const dist = Math.hypot(dx, dy, dz);
+
+      if (dist > 1.5) {
+        sObj.position.x = cObj.x;
+        sObj.position.y = cObj.y;
+        sObj.position.z = cObj.z;
+      } else if (dist > 0.005) {
+        const blend = 0.35;
+        sObj.position.x += dx * blend;
+        sObj.position.y += dy * blend;
+        sObj.position.z += dz * blend;
+      }
+
+      // 4. Synchronize Roll Angular Velocity
+      if (sObj.rollModule && cObj.angX !== undefined && cObj.angY !== undefined && cObj.angZ !== undefined) {
+        sObj.rollModule.angularVelocity.x = cObj.angX;
+        sObj.rollModule.angularVelocity.y = cObj.angY;
+        sObj.rollModule.angularVelocity.z = cObj.angZ;
+      }
+    }
+  }
+
+  /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
    */
   private arbitrateContestedGrabs(
