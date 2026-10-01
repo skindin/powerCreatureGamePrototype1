@@ -1203,6 +1203,20 @@ powerCreatureGamePrototype1/
       - On local disconnect (`status === "disconnected"` or `"error"`), `main.ts` wipes all remote players and calls `interpolator.clearAll()`.
       - Attached `beforeunload` and `pagehide` listeners in `main.ts` to transmit `leave_room` and close socket cleanly before tab teardown.
     - Verified 100% via automated integration test `scratch/test_immediate_disconnect_cleanup.ts`.
+74. **Player Name Authority Isolation & Anti-Reversion Guarantee**:
+    - **Root Cause of Name Flicker and Reversion**:
+      - In `main.ts:onSnapshotReceived`, line 896 was blindly executing `localChar.name = c.name` on every snapshot frame.
+      - When a player renamed, trailing server snapshots generated milliseconds earlier were still arriving with the old name, immediately resetting `localChar.name` to the old name.
+      - On the subsequent 16ms tick, `sendPlayerInput` streamed `localChar.name` (now reverted to the old name) in 60Hz input packets to the server.
+      - The server's input handler (`sChar.name = pkt.playerName`) then overwritten the server character back to the old name, permanently locking in the reversion.
+      - Furthermore, `PlayerManager.ts:renamePlayer` had an early return on `baseCharacter`, leaving active player instances with old names.
+    - **Architectural Fix**:
+      - **Local Authority**: Removed `localChar.name = c.name` from `onSnapshotReceived`. The local client is the sole authoritative owner of its chosen name and never adopts stale echo names from trailing snapshots.
+      - **Immediate Local Consistency**: `saveNameHandle` synchronously updates `onlineClient.playerName`, `localStorage`, `hero.name`, `baseCharacter.name`, and all local `PlayerEntry` maps.
+      - **Comprehensive PlayerManager Rename**: `PlayerManager.ts:renamePlayer` updates `player.name`, `player.character.name`, and `baseCharacter.name` without premature returns.
+      - **Consistent Packet Input Name**: `PlayerManager.ts:updatePlayers` sets `pkt.playerName = cChar.name` on every input packet.
+      - **Instant Server Broadcast**: On `rename_player`, `UniversalRoomManager` updates both `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot.
+    - Verified 100% via automated integration test `scratch/test_online_rename_no_flicker.ts`.
 
 ---
 

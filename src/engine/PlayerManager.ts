@@ -129,26 +129,30 @@ export class PlayerManager {
     const trimmed = newName.trim();
     if (!trimmed) return false;
 
+    let found = false;
     const player = this.players.get(playerId);
     if (player) {
+      player.name = trimmed;
       player.character.name = trimmed;
       if (player.isKeyboard || playerId === "keyboard") {
         try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
       }
-      this.onPlayersChanged?.();
-      return true;
+      found = true;
     }
 
-    if (this.baseCharacter && (this.baseCharacter.playerId === playerId || this.baseCharacter.playerId === "")) {
+    if (this.baseCharacter && (this.baseCharacter.playerId === playerId || playerId === "keyboard" || this.baseCharacter.playerId === "")) {
       this.baseCharacter.name = trimmed;
       try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
-      this.onPlayersChanged?.();
-      return true;
+      found = true;
     }
 
     const remote = this.remotePlayers.get(playerId);
     if (remote) {
       remote.name = trimmed;
+      found = true;
+    }
+
+    if (found) {
       this.onPlayersChanged?.();
       return true;
     }
@@ -275,7 +279,7 @@ export class PlayerManager {
     this.inputManager.isKeyboardActive = true;
     const entry: PlayerEntry = {
       id: "keyboard",
-      name: "Keyboard & Mouse",
+      name: char.name || "Keyboard & Mouse",
       playerNumber: char.playerNumber,
       color: char.playerColor,
       isKeyboard: true,
@@ -572,6 +576,7 @@ export class PlayerManager {
 
       map.set(entry.id, {
         playerId: entry.id,
+        playerName: cChar.name,
         moveX: slot.movementVector.x,
         moveY: slot.movementVector.y,
         isSprinting: cChar.isSprinting ?? false,

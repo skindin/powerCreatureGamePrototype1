@@ -548,6 +548,19 @@ Tasks to Implement:
         3. On local disconnect (`status === "disconnected"` / `"error"` in `main.ts`): immediately wipes all remote characters and purges `RemoteEntityInterpolator`, preventing frozen avatars.
         4. Added `beforeunload` and `pagehide` browser event listeners in `main.ts` to cleanly transmit `leave_room` and disconnect prior to window teardown.
       - Verified 100% via automated test suite `scratch/test_immediate_disconnect_cleanup.ts`.
+  [x] 10.9 Player Name Authority Isolation & Anti-Reversion Guarantee
+      - Root Cause of Name Flicker and Old Name Reversion:
+        1. In `main.ts:onSnapshotReceived`: `localChar.name = c.name` was blindly executing for local player characters.
+        2. When a player renamed locally, trailing in-flight network snapshots from the server still carried the old name, immediately reverting `localChar.name` to the old name.
+        3. Then `sendPlayerInput` streamed `localChar.name` (reverted to old name) in 60Hz `player_input` packets to the server, and the server's input handler (`sChar.name = pkt.playerName`) overwrote the server character back to the old name, permanently locking in the reversion.
+        4. In `PlayerManager.ts:renamePlayer`: early return on `baseCharacter` bypassed `this.players.get(...)`, leaving local character instances with divergent names.
+      - Architectural Fix:
+        1. Local Player Name Authority: Removed `localChar.name = c.name` from `onSnapshotReceived`. The local player is the authoritative source for their own name and never adopts stale echo names from trailing server snapshots.
+        2. Immediate Local Consistency: `saveNameHandle` updates `onlineClient.playerName`, `localStorage`, `hero.name`, `baseCharacter.name`, and all local `PlayerEntry` maps synchronously.
+        3. `PlayerManager.ts:renamePlayer`: Updates both `player.name`, `player.character.name`, and `this.baseCharacter.name` without premature returns.
+        4. `PlayerManager.ts:updatePlayers`: Populates `pkt.playerName = cChar.name` on every captured input packet.
+        5. `UniversalRoomManager.ts`: On `rename_player`, updates `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot to all clients.
+      - Verified 100% via automated test suite `scratch/test_online_rename_no_flicker.ts`.
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA

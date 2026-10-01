@@ -8558,12 +8558,19 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
             const trimmed = data.name.trim();
             const localPlayerId = data.localPlayerId || "keyboard";
-            const charEntry = client.characters.get(localPlayerId);
+            let charEntry = client.characters.get(localPlayerId);
+            if (!charEntry) {
+              charEntry = client.characters.get("keyboard") || client.characters.values().next().value;
+            }
             if (charEntry) {
               charEntry.name = trimmed;
               const sChar = this.simulation.characters.get(charEntry.serverCharId);
               if (sChar) sChar.name = trimmed;
+            } else if (data.serverCharId) {
+              const sChar = this.simulation.characters.get(data.serverCharId);
+              if (sChar) sChar.name = trimmed;
             }
+            this.broadcastSnapshot();
           }
           return;
         }

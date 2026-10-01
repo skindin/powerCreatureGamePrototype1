@@ -577,12 +577,26 @@ function bootstrap(): void {
     if (trimmed) {
       onlineClient.renamePlayer(trimmed);
       try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
-      const hero = gameLoop?.players.get("keyboard")?.character || character;
-      if (hero) {
-        hero.name = trimmed;
-        if (gameLoop) {
-          gameLoop.renamePlayer(hero.playerId || "keyboard", trimmed);
+      if (gameLoop) {
+        gameLoop.playerManager.renamePlayer("keyboard", trimmed);
+        for (const p of gameLoop.players.values()) {
+          if (p.isKeyboard || p.id === "keyboard") {
+            p.name = trimmed;
+            p.character.name = trimmed;
+          }
         }
+        if (gameLoop.playerManager.baseCharacter) {
+          gameLoop.playerManager.baseCharacter.name = trimmed;
+        }
+      }
+      if (character) {
+        character.name = trimmed;
+      }
+      if (onlineNameDisplay) {
+        onlineNameDisplay.textContent = trimmed;
+      }
+      if (onlineMyName) {
+        onlineMyName.textContent = trimmed;
       }
     }
     closeNameModal();
@@ -753,12 +767,15 @@ function bootstrap(): void {
   onlineClient.onJoined = (info) => {
     console.log(`🌐 [OnlineRoom] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
     const hero = gameLoop?.players.get("keyboard")?.character || character;
+    const localChosenName = onlineClient.playerName && onlineClient.playerName.trim().length > 0
+      ? onlineClient.playerName.trim()
+      : (localStorage.getItem("pcg_player_handle") || info.name);
     if (hero) {
       hero.playerId = "keyboard";
       hero.playerNumber = info.playerNumber;
       hero.color = info.color;
       hero.playerColor = info.color;
-      hero.name = info.name;
+      hero.name = localChosenName;
     }
     if (gameLoop?.playerManager?.baseCharacter) {
       const base = gameLoop.playerManager.baseCharacter;
@@ -766,7 +783,7 @@ function bootstrap(): void {
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;
-      base.name = info.name;
+      base.name = localChosenName;
     }
     if (gameLoop?.playerManager) {
       for (const p of gameLoop.playerManager.players.values()) {
@@ -893,9 +910,8 @@ function bootstrap(): void {
               localChar.playerNumber = c.playerNumber;
               if (p) p.playerNumber = c.playerNumber;
             }
-            if (c.name && localChar.name !== c.name) {
-              localChar.name = c.name;
-            }
+            // Do not overwrite localChar.name with trailing server snapshots.
+            // The local player is the authoritative source for their own chosen name.
           }
         }
       }
@@ -922,9 +938,10 @@ function bootstrap(): void {
           const chipColor = c.playerColor || c.color || (isMe ? onlineClient.assignedColor : '#38bdf8') || '#38bdf8';
           const chip = document.createElement("div");
           chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? `${chipColor}bb` : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
+          const displayName = (isMe && onlineClient.playerName ? onlineClient.playerName : c.name) || c.name || 'Player';
           chip.innerHTML = `
             <span style="width: 8px; height: 8px; border-radius: 50%; background: ${chipColor}; box-shadow: 0 0 6px ${chipColor};"></span>
-            <span style="color: ${isMe ? chipColor : '#f1f5f9'}; font-weight: ${isMe ? '700' : '600'};">${c.name || 'Player'} ${isMe ? '(You)' : ''}</span>
+            <span style="color: ${isMe ? chipColor : '#f1f5f9'}; font-weight: ${isMe ? '700' : '600'};">${displayName} ${isMe ? '(You)' : ''}</span>
           `;
           onlineRosterList.appendChild(chip);
         }
