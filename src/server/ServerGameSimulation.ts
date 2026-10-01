@@ -474,7 +474,17 @@ export class ServerGameSimulation {
       }
 
       // Execute authoritative action
-      const char = this.characters.get(act.playerId || "keyboard") || this.allCharacters[0];
+      let char = this.characters.get(act.playerId || "keyboard");
+      if (!char && act.playerId) {
+        char = this.allCharacters.find(
+          (c) => c.playerId === act.playerId ||
+                 c.playerId.endsWith(`:${act.playerId}`) ||
+                 c.id === act.playerId
+        );
+      }
+      if (!char) {
+        char = this.allCharacters[0];
+      }
       if (!char) continue;
 
       if (act.type === "pickup") {
@@ -485,11 +495,31 @@ export class ServerGameSimulation {
           }
         }
       } else if (act.type === "drop") {
-        if (char.heldObject && char.pickupModule) {
+        let dropTarget = char.heldObject;
+        if (!dropTarget && act.targetObjectId) {
+          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
+            candidate.isHeld = true;
+            candidate.heldBy = char;
+            char.heldObject = candidate;
+            dropTarget = candidate;
+          }
+        }
+        if (dropTarget && char.pickupModule) {
           char.pickupModule.drop(char);
         }
       } else if (act.type === "throw") {
-        if (char.heldObject && char.throwModule) {
+        let throwTarget = char.heldObject;
+        if (!throwTarget && act.targetObjectId) {
+          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
+            candidate.isHeld = true;
+            candidate.heldBy = char;
+            char.heldObject = candidate;
+            throwTarget = candidate;
+          }
+        }
+        if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? (char.position.x + Math.cos(char.facingAngle) * 3);
           const aimY = act.aimY ?? (char.position.y + Math.sin(char.facingAngle) * 3);
           char.throwModule.throwHeldObject(
@@ -656,11 +686,13 @@ export class ServerGameSimulation {
         }
 
         // Process dedicated Throw (RT / RB / Left Click)
-        if (pkt.isThrow && char.heldObject && char.throwModule && aimTarget) {
+        if (pkt.isThrow && char.heldObject && char.throwModule) {
+          const aimX = aimTarget ? aimTarget.x : (pkt.aimX !== undefined ? pkt.aimX : (char.position.x + Math.cos(char.facingAngle) * 3));
+          const aimY = aimTarget ? aimTarget.y : (pkt.aimY !== undefined ? pkt.aimY : (char.position.y + Math.sin(char.facingAngle) * 3));
           char.throwModule.throwHeldObject(
             char,
-            aimTarget.x,
-            aimTarget.y,
+            aimX,
+            aimY,
             this.arena,
             undefined,
             undefined,

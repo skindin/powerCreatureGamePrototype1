@@ -590,6 +590,23 @@ Tasks to Implement:
            - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
       - Verified 100% via automated test suite `scratch/test_multichar_naming_and_no_phantom.ts`.
 
+     Phase 10.4: Secondary Player Reliable Throw & Authority Fix (Completed)
+       - Fixed critical bug where secondary players on a device (e.g. Gamepad #1 alongside Keyboard) threw freebodies, experienced kickback locally, but the thrown object immediately stopped and landed on the ground due to the server not acknowledging their throw action:
+         1. Action Player ID Preservation (`OnlineRoomClient.ts:queueReliableAction`, `PlayerManager.ts:applyPlayerInputs`):
+            - `PlayerManager.ts` now uses `entry?.id || char.playerId || playerId || "keyboard"` when stamping `ReliableActionCommand.playerId`, ensuring gamepad players are marked as `"gamepad-0"`.
+            - `OnlineRoomClient.ts:queueReliableAction` resolved `rawPlayerId` using `this.getServerCharId(rawPlayerId)` (e.g. `${clientId}:gamepad-0`) rather than blindly overwriting `action.playerId = this.clientId` (keyboard). Also attaches `serverCharId` and `localPlayerId` to standalone WebSocket message.
+         2. Multi-Character Action Resolution & Execution Order (`UniversalRoomManager.ts`):
+            - Added `resolveActionPlayerId(client, act, fallback)`: checks whether `act.playerId` belongs to any registered character on that client before defaulting to sender's character ID. Prevents keyboard input packets from overwriting gamepad actions when piggybacking reliable actions.
+            - Reordered input processing: executes `this.simulation.processReliableActions(data.reliableActions)` BEFORE `syncCharacterFromPacket(data.character)`. Prevents incoming client packet with `isHolding === false` from clearing `sChar.heldObject` before the throw action can run.
+         3. Server-Side Action Recovery & Fallback Throw Aim (`ServerGameSimulation.ts`):
+            - Character lookup supports suffix matching (`c.playerId.endsWith(":" + act.playerId)`).
+            - If `char.heldObject` was momentarily nullified by network interleaving, recovers candidate `act.targetObjectId` and re-attaches it to `char` before invoking `throwHeldObject`.
+            - In `step()`: Dedicated throw supports fallback to facing angle trajectory if `aimTarget` is omitted.
+         4. Client In-Flight Ballistic Protection (`GameLoop.ts:syncAuthoritativeObjects`):
+            - `isLocalChar` updated to match any local player in `this.players` by `playerId` or reference.
+            - Protected in-flight local throws from being dragged down by trailing server rest/sleep snapshots.
+       - Verified 100% via automated test suite `scratch/test_secondary_player_throw.ts`.
+
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
 ================================================================================

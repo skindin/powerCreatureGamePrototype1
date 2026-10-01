@@ -549,7 +549,7 @@ export class GameLoop {
       const wasHeldByMe = isHeldByMyClient || isMyLocalId || Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character);
 
       // Identify if any remote character is currently holding this object locally
-      const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c);
+      const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c || p.character.playerId === c.playerId || p.id === c.playerId);
       const remoteHolder = this.allCharacters.find(
         (c) => (!isLocalChar(c)) && (c.heldObject === localObj || localObj.heldBy === c)
       );
@@ -613,8 +613,10 @@ export class GameLoop {
       // While a thrown object is in ballistic flight from local player, client predicts 100% locally
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
-      if (wasThrownByLocal && (localObj.isInFlight || localObj.lastThrower) && isAirborne) {
-        continue;
+      if (wasThrownByLocal && (localObj.isInFlight || localObj.lastThrower) && (isAirborne || localObj.isInFlight)) {
+        if (sObj.isSleeping || Math.hypot(sObj.vx, sObj.vy) < 0.1) {
+          continue;
+        }
       }
 
       // 3. Check physical distance to authoritative server position

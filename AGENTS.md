@@ -1231,6 +1231,16 @@ powerCreatureGamePrototype1/
       - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
     - Verified 100% via automated integration test `scratch/test_multichar_naming_and_no_phantom.ts`.
 
+76. **Secondary Player Reliable Throw & Authority Fix**:
+    - **Problem**: When secondary characters on a machine (e.g. Gamepad #1 alongside Keyboard) threw freebodies, they experienced kickback locally, but the thrown object immediately stopped and landed on the ground.
+    - **Root Cause & Fixes**:
+      1. `OnlineRoomClient.ts:queueReliableAction`: Overwrote `action.playerId = this.clientId` (keyboard). Fixed to map `rawPlayerId` using `this.getServerCharId(rawPlayerId)` (e.g. `${this.clientId}:gamepad-0`) and attach `serverCharId` and `localPlayerId` to the WebSocket message.
+      2. `PlayerManager.ts:applyPlayerInputs`: Updated reliable action generation to evaluate `entry?.id || char.playerId || playerId || "keyboard"`.
+      3. `UniversalRoomManager.ts`: Added `resolveActionPlayerId(client, act, fallback)` verifying character ownership before overriding, and executed `this.simulation.processReliableActions()` BEFORE `syncCharacterFromPacket(data.character)` so that `isHolding === false` does not prematurely clear `heldObject` on the throw frame.
+      4. `ServerGameSimulation.ts:processReliableActions`: Added suffix matching for secondary character IDs, object recovery on throw/drop if temporarily nullified by packet telemetry, and facing-angle fallback in `step()` for throw aim.
+      5. `GameLoop.ts:syncAuthoritativeObjects`: Strengthened `isLocalChar` to match all players in `this.players`, and protected locally thrown in-flight objects from being dragged down by trailing server rest/sleep snapshots.
+    - Verified 100% via automated integration test `scratch/test_secondary_player_throw.ts`.
+
 ---
 
 

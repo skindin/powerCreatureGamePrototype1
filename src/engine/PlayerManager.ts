@@ -637,12 +637,13 @@ export class PlayerManager {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
         if (!isReplay) {
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {
-            actionId: `act-${char.playerId || "keyboard"}-drop-${++this.actionSeq}-${Date.now()}`,
+            actionId: `act-${actPlayerId}-drop-${++this.actionSeq}-${Date.now()}`,
             type: "drop",
             tick: pkt.tick ?? 0,
             timestamp: performance.now(),
-            playerId: char.playerId || "keyboard",
+            playerId: actPlayerId,
             targetObjectId: droppedObj.id,
           };
           this.onReliableActionDispatched?.(action);
@@ -681,12 +682,13 @@ export class PlayerManager {
           }
         }
 
+        const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
         const action: ReliableActionCommand = {
-          actionId: `act-${char.playerId || "keyboard"}-throw-${++this.actionSeq}-${Date.now()}`,
+          actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
           type: "throw",
           tick: pkt.tick ?? 0,
           timestamp: performance.now(),
-          playerId: char.playerId || "keyboard",
+          playerId: actPlayerId,
           targetObjectId: thrownObj.id,
           aimX: throwAimX,
           aimY: throwAimY,
@@ -747,12 +749,13 @@ export class PlayerManager {
       if (currentHeldId !== prevHeldId) {
         this.lastHeldObjectIds.set(char.id, currentHeldId);
         if (currentHeldId && !isReplay) {
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {
-            actionId: `act-${char.playerId || "keyboard"}-pickup-${++this.actionSeq}-${Date.now()}`,
+            actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
             type: "pickup",
             tick: pkt.tick ?? 0,
             timestamp: performance.now(),
-            playerId: char.playerId || "keyboard",
+            playerId: actPlayerId,
             targetObjectId: currentHeldId,
           };
           this.onReliableActionDispatched?.(action);

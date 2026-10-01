@@ -208,6 +208,29 @@ export class UniversalRoomManager {
     return this.simulation.characters.size + 1;
   }
 
+  public resolveActionPlayerId(
+    client: ConnectedRoomClient,
+    act: ReliableActionCommand,
+    fallbackServerCharId: string
+  ): string {
+    if (!act.playerId) return fallbackServerCharId;
+    // 1. If act.playerId is directly a registered serverCharId for this client, preserve it!
+    for (const charEntry of client.characters.values()) {
+      if (act.playerId === charEntry.serverCharId) {
+        return charEntry.serverCharId;
+      }
+    }
+    // 2. If act.playerId matches a localPlayerId for this client (e.g. "gamepad-0" or "keyboard"), resolve to its serverCharId
+    if (client.characters.has(act.playerId)) {
+      return client.characters.get(act.playerId)!.serverCharId;
+    }
+    // 3. If act.playerId contains a colon (e.g. client_xxx:gamepad-0), check if client owns it
+    if (act.playerId.startsWith(`${client.id}:`)) {
+      return act.playerId;
+    }
+    return fallbackServerCharId;
+  }
+
   /**
    * Trashes any memory of the online map the moment no players are connected.
    */
@@ -499,6 +522,14 @@ export class UniversalRoomManager {
 
           this.simulation.queueInput(pkt);
 
+          // Process reliable actions FIRST before syncCharacterFromPacket clears heldObject
+          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
+            for (const act of data.reliableActions) {
+              act.playerId = this.resolveActionPlayerId(client, act, serverCharId);
+            }
+            this.simulation.processReliableActions(data.reliableActions);
+          }
+
           if (data.character) {
             data.character.id = serverCharId;
             if (sChar) {
@@ -506,13 +537,6 @@ export class UniversalRoomManager {
               data.character.color = sChar.color;
             }
             this.simulation.syncCharacterFromPacket(data.character);
-          }
-
-          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
-            for (const act of data.reliableActions) {
-              act.playerId = serverCharId;
-            }
-            this.simulation.processReliableActions(data.reliableActions);
           }
 
           if (Array.isArray(data.objects) && data.objects.length > 0) {
@@ -524,10 +548,10 @@ export class UniversalRoomManager {
         if (data.type === "reliable_action" && data.action) {
           const localPlayerId = data.localPlayerId || "keyboard";
           const charEntry = client.characters.get(localPlayerId);
-          const serverCharId = charEntry ? charEntry.serverCharId : (data.serverCharId || clientId);
+          const fallbackServerCharId = charEntry ? charEntry.serverCharId : (data.serverCharId || clientId);
 
           const act = data.action as ReliableActionCommand;
-          act.playerId = serverCharId;
+          act.playerId = this.resolveActionPlayerId(client, act, fallbackServerCharId);
           this.simulation.processReliableActions([act]);
           return;
         }

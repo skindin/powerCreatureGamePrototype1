@@ -7761,7 +7761,15 @@ class ServerGameSimulation {
         const first = this.processedActionIds.values().next().value;
         if (first) this.processedActionIds.delete(first);
       }
-      const char = this.characters.get(act.playerId || "keyboard") || this.allCharacters[0];
+      let char = this.characters.get(act.playerId || "keyboard");
+      if (!char && act.playerId) {
+        char = this.allCharacters.find(
+          (c) => c.playerId === act.playerId || c.playerId.endsWith(`:${act.playerId}`) || c.id === act.playerId
+        );
+      }
+      if (!char) {
+        char = this.allCharacters[0];
+      }
       if (!char) continue;
       if (act.type === "pickup") {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
@@ -7771,11 +7779,31 @@ class ServerGameSimulation {
           }
         }
       } else if (act.type === "drop") {
-        if (char.heldObject && char.pickupModule) {
+        let dropTarget = char.heldObject;
+        if (!dropTarget && act.targetObjectId) {
+          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
+            candidate.isHeld = true;
+            candidate.heldBy = char;
+            char.heldObject = candidate;
+            dropTarget = candidate;
+          }
+        }
+        if (dropTarget && char.pickupModule) {
           char.pickupModule.drop(char);
         }
       } else if (act.type === "throw") {
-        if (char.heldObject && char.throwModule) {
+        let throwTarget = char.heldObject;
+        if (!throwTarget && act.targetObjectId) {
+          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
+            candidate.isHeld = true;
+            candidate.heldBy = char;
+            char.heldObject = candidate;
+            throwTarget = candidate;
+          }
+        }
+        if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
           char.throwModule.throwHeldObject(
@@ -7911,11 +7939,13 @@ class ServerGameSimulation {
         if (pkt.isDrop && char.heldObject && char.pickupModule) {
           char.pickupModule.drop(char);
         }
-        if (pkt.isThrow && char.heldObject && char.throwModule && aimTarget) {
+        if (pkt.isThrow && char.heldObject && char.throwModule) {
+          const aimX = aimTarget ? aimTarget.x : pkt.aimX !== void 0 ? pkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
+          const aimY = aimTarget ? aimTarget.y : pkt.aimY !== void 0 ? pkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
           char.throwModule.throwHeldObject(
             char,
-            aimTarget.x,
-            aimTarget.y,
+            aimX,
+            aimY,
             this.arena,
             void 0,
             void 0,
@@ -8292,6 +8322,21 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     }
     return this.simulation.characters.size + 1;
   }
+  resolveActionPlayerId(client, act, fallbackServerCharId) {
+    if (!act.playerId) return fallbackServerCharId;
+    for (const charEntry of client.characters.values()) {
+      if (act.playerId === charEntry.serverCharId) {
+        return charEntry.serverCharId;
+      }
+    }
+    if (client.characters.has(act.playerId)) {
+      return client.characters.get(act.playerId).serverCharId;
+    }
+    if (act.playerId.startsWith(`${client.id}:`)) {
+      return act.playerId;
+    }
+    return fallbackServerCharId;
+  }
   /**
    * Trashes any memory of the online map the moment no players are connected.
    */
@@ -8540,6 +8585,12 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           }
           this.simulation.queueInput(pkt);
+          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
+            for (const act of data.reliableActions) {
+              act.playerId = this.resolveActionPlayerId(client, act, serverCharId);
+            }
+            this.simulation.processReliableActions(data.reliableActions);
+          }
           if (data.character) {
             data.character.id = serverCharId;
             if (sChar) {
@@ -8547,12 +8598,6 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               data.character.color = sChar.color;
             }
             this.simulation.syncCharacterFromPacket(data.character);
-          }
-          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
-            for (const act of data.reliableActions) {
-              act.playerId = serverCharId;
-            }
-            this.simulation.processReliableActions(data.reliableActions);
           }
           if (Array.isArray(data.objects) && data.objects.length > 0) {
             this.simulation.syncObjectsFromPacket(data.objects, serverCharId);
@@ -8562,9 +8607,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
         if (data.type === "reliable_action" && data.action) {
           const localPlayerId = data.localPlayerId || "keyboard";
           const charEntry = client.characters.get(localPlayerId);
-          const serverCharId = charEntry ? charEntry.serverCharId : data.serverCharId || clientId;
+          const fallbackServerCharId = charEntry ? charEntry.serverCharId : data.serverCharId || clientId;
           const act = data.action;
-          act.playerId = serverCharId;
+          act.playerId = this.resolveActionPlayerId(client, act, fallbackServerCharId);
           this.simulation.processReliableActions([act]);
           return;
         }

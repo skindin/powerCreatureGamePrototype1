@@ -82,9 +82,9 @@ export class OnlineRoomClient {
   }
 
   public queueReliableAction(action: ReliableActionCommand): void {
-    if (this.clientId) {
-      action.playerId = this.clientId;
-    }
+    const rawPlayerId = action.playerId || "keyboard";
+    const serverCharId = this.getServerCharId(rawPlayerId);
+    action.playerId = serverCharId;
     this.unacknowledgedActions.set(action.actionId, action);
 
     // Send standalone packet immediately if open for lowest latency
@@ -93,6 +93,8 @@ export class OnlineRoomClient {
         this.ws.send(JSON.stringify({
           type: "reliable_action",
           action,
+          serverCharId,
+          localPlayerId: rawPlayerId,
         }));
       } catch (_) {}
     }
