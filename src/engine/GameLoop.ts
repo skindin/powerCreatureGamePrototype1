@@ -503,7 +503,7 @@ export class GameLoop {
    * - Moving objects smoothly blend position, velocity, and angular roll toward authoritative state without snapping.
    * - Large divergences (> 3.0 units) teleport directly to authoritative state.
    */
-  public syncAuthoritativeObjects(serverObjects: GhostEntityState[]): void {
+  public syncAuthoritativeObjects(serverObjects: GhostEntityState[], localClientId?: string): void {
     if (!this.enableAuthoritativeObjectSync) return;
     if (!serverObjects || serverObjects.length === 0) return;
     if (this.devPanel?.isEditMode) return;
@@ -516,9 +516,12 @@ export class GameLoop {
 
       // 1. Identify local player character
       const localHero = this.players.get("keyboard")?.character || this.primaryCharacter;
-      const isHeldByLocalHero = localObj.isHeld && localObj.heldBy && (
-        localObj.heldBy === localHero ||
-        (localHero && (localObj.heldBy as Character).playerId === localHero.playerId)
+      const isHeldByLocalHero = Boolean(
+        localObj.isHeld && localObj.heldBy && (
+          localObj.heldBy === localHero ||
+          (localHero && (localObj.heldBy as Character).playerId === localHero.playerId) ||
+          (localHero && (localObj.heldBy as Character).id === localHero.id)
+        )
       );
 
       // 1a. If currently held by local character, local holder transform governs
@@ -528,12 +531,16 @@ export class GameLoop {
       if (this.inputManager?.draggedEntity === localObj) continue;
 
       // 3. Remote Player Holding / Releasing Synchronizer:
+      const isMyServerId = Boolean(localClientId && sObj.heldBy === localClientId);
+      const isMyLocalId = Boolean(localHero && (sObj.heldBy === localHero.playerId || sObj.heldBy === localHero.id));
+      const wasHeldByMe = isMyServerId || isMyLocalId || localObj.lastThrower === localHero;
+
       if (sObj.isHeld && sObj.heldBy) {
         // Find remote character holding it
         const remoteHolder = this.allCharacters.find(
           (c) => (c.playerId === sObj.heldBy || c.id === sObj.heldBy) && c !== localHero
         );
-        if (remoteHolder) {
+        if (remoteHolder && !wasHeldByMe) {
           localObj.isHeld = true;
           localObj.heldBy = remoteHolder;
           remoteHolder.heldObject = localObj;
@@ -544,6 +551,7 @@ export class GameLoop {
           localObj.velocity.x = remoteHolder.velocity.x;
           localObj.velocity.y = remoteHolder.velocity.y;
           localObj.verticalVelocity = 0;
+          localObj.isInFlight = false;
           continue;
         }
       } else if (localObj.isHeld && localObj.heldBy && localObj.heldBy !== localHero) {
@@ -561,15 +569,15 @@ export class GameLoop {
       // has already thrown or dropped it locally (!localObj.isHeld):
       // The server is simply trailing by the network round-trip and hasn't processed the release yet.
       // Do NOT drag the in-flight object back into the player's hands or kill its velocity!
-      if (sObj.isHeld && !localObj.isHeld && (sObj.heldBy === localHero?.playerId || localObj.lastThrower === localHero)) {
+      if (sObj.isHeld && !localObj.isHeld && (wasHeldByMe || localObj.isInFlight)) {
         continue;
       }
 
-      // 4. Ballistic In-Flight Prediction:
-      // While a thrown object is in ballistic flight (airborne, has lastThrower), the client assumes
+      // 5. Ballistic In-Flight Prediction:
+      // While a thrown object is in ballistic flight (airborne), the client assumes
       // its simulated flight physics are 100% correct until the object lands or the server approves/diverges.
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
-      if (localObj.lastThrower && isAirborne) {
+      if ((localObj.isInFlight || localObj.lastThrower) && isAirborne) {
         continue;
       }
 

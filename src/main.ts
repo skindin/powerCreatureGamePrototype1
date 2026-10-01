@@ -842,7 +842,7 @@ function bootstrap(): void {
 
     // 3. Sync authoritative freebody objects
     if (Array.isArray(snapshot.objects)) {
-      gameLoop.syncAuthoritativeObjects(snapshot.objects);
+      gameLoop.syncAuthoritativeObjects(snapshot.objects, onlineClient.clientId || undefined);
     }
   };
 

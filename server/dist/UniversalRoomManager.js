@@ -4167,6 +4167,7 @@ class GameObject {
     __publicField(this, "isHeld");
     __publicField(this, "heldBy");
     __publicField(this, "lastThrower", null);
+    __publicField(this, "isInFlight", false);
     __publicField(this, "isCharacter", false);
     __publicField(this, "isClimbing", false);
     __publicField(this, "visualShape", "circle");
@@ -4257,6 +4258,7 @@ class GameObject {
   putToSleep() {
     if (this.isCharacter || this.isHeld || this.heldBy !== null) return;
     this.isSleeping = true;
+    this.isInFlight = false;
     this.velocity.x = 0;
     this.velocity.y = 0;
     this.verticalVelocity = 0;
@@ -4483,6 +4485,9 @@ class GameObject {
       if (dist3D > reach || this.isRestingOnSurface) {
         this.lastThrower = null;
       }
+    }
+    if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
+      this.isInFlight = false;
     }
     if (!this.hasVerticalPosition) {
       this.position.z = 0;
@@ -4886,7 +4891,7 @@ class GameObject {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
                 const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
                 this.resolveWallCollision(wall, isAscendingJump);
               }
             }
@@ -4943,7 +4948,7 @@ class GameObject {
               continue;
             }
             const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
             this.resolveWallCollision(wall, isAscendingJump);
           }
         }
@@ -5272,6 +5277,8 @@ class PickupModule {
     target.wakeUp();
     target.isHeld = true;
     target.heldBy = character;
+    target.isInFlight = false;
+    target.lastThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -5294,6 +5301,7 @@ class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null;
+    dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;
     dropped.verticalVelocity = character.isAboveGround ? character.verticalVelocity : 0;
@@ -5843,6 +5851,7 @@ class ThrowModule {
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;
     held.position.y = startY;
@@ -6860,6 +6869,7 @@ class SnapshotManager {
         isSprinting: char ? char.isSprinting : void 0,
         standingWallId: e.standingWall ? e.standingWall.id : null,
         isSleeping: e.isSleeping,
+        isInFlight: e.isInFlight,
         angX: roll && roll.enabled ? quantize ? Number(roll.angularVelocity.x.toFixed(4)) : roll.angularVelocity.x : void 0,
         angY: roll && roll.enabled ? quantize ? Number(roll.angularVelocity.y.toFixed(4)) : roll.angularVelocity.y : void 0,
         angZ: roll && roll.enabled ? quantize ? Number(roll.angularVelocity.z.toFixed(4)) : roll.angularVelocity.z : void 0
@@ -6909,6 +6919,9 @@ class SnapshotManager {
         entity.rollModule.angularVelocity.x = snap.angX;
         entity.rollModule.angularVelocity.y = snap.angY ?? 0;
         entity.rollModule.angularVelocity.z = snap.angZ ?? 0;
+      }
+      if (snap.isInFlight !== void 0) {
+        entity.isInFlight = snap.isInFlight;
       }
       if (snap.heldById) {
         const holder = allMap.get(snap.heldById);
@@ -7680,6 +7693,9 @@ class ServerGameSimulation {
       if (sObj.isHeld) {
         continue;
       }
+      if (sObj.isInFlight) {
+        continue;
+      }
       if (cObj.isSleeping) {
         sObj.position.x = cObj.x;
         sObj.position.y = cObj.y;
@@ -8357,14 +8373,14 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             if (character.color) data.character.color = character.color;
             this.simulation.syncCharacterFromPacket(data.character);
           }
-          if (Array.isArray(data.objects) && data.objects.length > 0) {
-            this.simulation.syncObjectsFromPacket(data.objects, clientId);
-          }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
               act.playerId = clientId;
             }
             this.simulation.processReliableActions(data.reliableActions);
+          }
+          if (Array.isArray(data.objects) && data.objects.length > 0) {
+            this.simulation.syncObjectsFromPacket(data.objects, clientId);
           }
           return;
         }

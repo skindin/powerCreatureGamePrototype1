@@ -246,15 +246,15 @@ export class UniversalRoomManager {
             this.simulation.syncCharacterFromPacket(data.character);
           }
 
-          if (Array.isArray(data.objects) && data.objects.length > 0) {
-            this.simulation.syncObjectsFromPacket(data.objects, clientId);
-          }
-
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
               act.playerId = clientId;
             }
             this.simulation.processReliableActions(data.reliableActions);
+          }
+
+          if (Array.isArray(data.objects) && data.objects.length > 0) {
+            this.simulation.syncObjectsFromPacket(data.objects, clientId);
           }
           return;
         }

@@ -1152,7 +1152,18 @@ powerCreatureGamePrototype1/
     - **Root Cause**: `onlineClient.onJoined` had set `hero.playerId = info.clientId` (e.g. `client_xxx`), while `InputManager.handleClick` was looking for `c.playerId === "keyboard"`. Because the ID didn't match, `handleClick` exited early before setting `isKeyboardThrowRequested = true`.
     - **Local Input Device ID Separation**: The client-side `playerId` on local entities represents the hardware device (`"keyboard"`, `"gamepad_0"`), while `clientId` is the WebSocket connection ID. Kept `hero.playerId = "keyboard"` on client.
     - **Resilient Character Resolution (`getActiveKeyboardChar`)**: In `InputManager.ts`, replaced brittle `c.playerId === "keyboard"` lookups in `handleClick`, `onKeyboardDrop`, and `onKeyboardPickup` with `getActiveKeyboardChar()`, which falls back gracefully to any local character or `character` reference.
-    - Verified 100% via automated test suite `scratch/test_throw_controls.ts`.
+70. **In-Flight Throw Ballistics & Trailing Snapshot Dragdown Protection**:
+    - **Root Cause of Glitchy / Chopped Online Throws**:
+      1. Overloaded `lastThrower` Expiration: `GameObject.ts` cleared `lastThrower` once distance exceeded `1.3 units` (~50ms after launch). However, `GameLoop.ts` ballistic prediction and `GameObject.ts` ascending wall clearance (`isAscendingJump`) relied on `Boolean(this.lastThrower)`. After 1.3 units, the check failed mid-air!
+      2. Trailing WAN Snapshot Dragdown: Because the server snapshot arrived with ~80-120ms latency, it arrived at the client still reporting `sObj.isHeld = true` (or lagging at the start of the arc). Because `sObj.heldBy` was `clientId` while local was `"keyboard"`, `syncAuthoritativeObjects` failed to recognize the local throw, blending the in-flight object's $z$ and $v_z$ downward towards 0 every frame.
+      3. Server Action Reordering: In `UniversalRoomManager.ts`, `syncObjectsFromPacket` executed before `processReliableActions`, wiping `heldObject = null` on the server before `throwHeldObject` could execute.
+    - **Airtight Fix**:
+      - `GameObject.isInFlight`: Added persistent `isInFlight` property that remains `true` from launch until the object physically lands on a surface (`isRestingOnSurface === true`) or is picked up.
+      - Wall Clearance (`isAscendingJump`): Included `this.isInFlight` in lines 990 & 1060 of `GameObject.ts` so ascending projectiles cleanly soar over intermediate walls.
+      - Ballistic Prediction Guard: In `GameLoop.ts:syncAuthoritativeObjects`, passes `onlineClient.clientId` and bypasses convergence while `(isInFlight || lastThrower) && isAirborne`, preventing any dragdown or pullback during the entire parabolic arc.
+      - Action Order in `UniversalRoomManager.ts`: Processed `reliableActions` before `syncObjectsFromPacket`, allowing server `throwHeldObject` to launch identically.
+      - Server Simulation Guard: Guarded `sObj.isInFlight` in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
+    - Verified 100% via automated test suite `scratch/test_online_throw_ballistics.ts`.
 
 ---
 

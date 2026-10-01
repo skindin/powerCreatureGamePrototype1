@@ -27,6 +27,7 @@ export class GameObject {
   public isHeld: boolean;
   public heldBy: GameObject | null;
   public lastThrower: GameObject | null = null;
+  public isInFlight: boolean = false;
   public isCharacter = false;
   public isClimbing = false;
   public visualShape: "circle" | "box" = "circle";
@@ -71,6 +72,7 @@ export class GameObject {
   public putToSleep(): void {
     if (this.isCharacter || this.isHeld || this.heldBy !== null) return;
     this.isSleeping = true;
+    this.isInFlight = false;
     this.velocity.x = 0;
     this.velocity.y = 0;
     this.verticalVelocity = 0;
@@ -461,6 +463,10 @@ export class GameObject {
       if (dist3D > reach || this.isRestingOnSurface) {
         this.lastThrower = null;
       }
+    }
+
+    if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
+      this.isInFlight = false;
     }
 
     if (!this.hasVerticalPosition) {
@@ -982,7 +988,7 @@ export class GameObject {
                 const apexZ = this.hasGravity && this.hasVerticalVelocity
                   ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
                   : this.position.z;
-                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
                 this.resolveWallCollision(wall, isAscendingJump);
               }
             }
@@ -1051,7 +1057,7 @@ export class GameObject {
             const apexZ = this.hasGravity && this.hasVerticalVelocity
               ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
               : this.position.z;
-            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower)) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
             this.resolveWallCollision(wall, isAscendingJump);
           }
         }

@@ -374,6 +374,11 @@ export class ServerGameSimulation {
         continue;
       }
 
+      // If object is currently in ballistic flight on the server, let authoritative server physics govern!
+      if (sObj.isInFlight) {
+        continue;
+      }
+
       // 2. Synchronize Sleeping / Resting State
       if (cObj.isSleeping) {
         sObj.position.x = cObj.x;

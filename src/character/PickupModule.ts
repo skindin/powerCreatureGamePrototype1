@@ -99,6 +99,8 @@ export class PickupModule {
     target.wakeUp();
     target.isHeld = true;
     target.heldBy = character;
+    target.isInFlight = false;
+    target.lastThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -123,6 +125,7 @@ export class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null; // Instantly available to pick back up
+    dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;
     dropped.verticalVelocity = character.isAboveGround ? character.verticalVelocity : 0;

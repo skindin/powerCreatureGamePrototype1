@@ -510,6 +510,15 @@ Tasks to Implement:
       - In `main.ts`: `onJoined`, `onStatsChange`, and `onSnapshotReceived` dynamically synchronize `hero`, `baseCharacter`, top bar status badge (`#online-player-badge`), HUD slot badge (`#online-my-slot`), aim cursors, grab highlights, and roster chips.
       - Verified 100% via automated integration test `scratch/test_online_player_colors.ts`.
 
+  [x] 10.5 In-Flight Ballistic Prediction & Trailing Snapshot Dragdown Protection
+      - Fixed chopped / glitchy premature impact in Online Mode:
+        1. Added persistent `isInFlight` property on `GameObject` which remains `true` throughout the entire ballistic trajectory until the object physically lands on a surface (`isRestingOnSurface`) or is picked up.
+        2. Fixed wall clearance ascending projectile check (`isAscendingJump`) in `GameObject.ts` lines 990 & 1060 by including `this.isInFlight` so soaring objects cleanly clear intermediate walls without hitting rims.
+        3. Fixed `syncAuthoritativeObjects` in `GameLoop.ts`: passes `onlineClient.clientId` and guards airborne in-flight objects (`isInFlight || lastThrower`) from being blended or dragged down by trailing server snapshots across WAN round-trip latency.
+        4. Reordered packet processing in `UniversalRoomManager.ts`: reliable action commands (`throw`, `pickup`, `drop`) execute authoritatively before telemetry sync, preventing telemetry packets from wiping `heldObject` before `throwHeldObject` runs.
+        5. Protected server in-flight freebody simulation in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
+      - Verified 100% via automated test suite `scratch/test_online_throw_ballistics.ts`.
+
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
 ================================================================================

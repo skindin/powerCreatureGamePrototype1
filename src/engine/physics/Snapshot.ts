@@ -19,6 +19,7 @@ export interface EntitySnapshot {
   isSprinting?: boolean;
   standingWallId?: string | null;
   isSleeping?: boolean;
+  isInFlight?: boolean;
   angX?: number;
   angY?: number;
   angZ?: number;
@@ -65,6 +66,7 @@ export class SnapshotManager {
         isSprinting: char ? char.isSprinting : undefined,
         standingWallId: e.standingWall ? e.standingWall.id : null,
         isSleeping: e.isSleeping,
+        isInFlight: e.isInFlight,
         angX: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.x.toFixed(4)) : roll.angularVelocity.x) : undefined,
         angY: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.y.toFixed(4)) : roll.angularVelocity.y) : undefined,
         angZ: roll && roll.enabled ? (quantize ? Number(roll.angularVelocity.z.toFixed(4)) : roll.angularVelocity.z) : undefined,
@@ -125,6 +127,10 @@ export class SnapshotManager {
         entity.rollModule.angularVelocity.x = snap.angX;
         entity.rollModule.angularVelocity.y = snap.angY ?? 0;
         entity.rollModule.angularVelocity.z = snap.angZ ?? 0;
+      }
+
+      if (snap.isInFlight !== undefined) {
+        entity.isInFlight = snap.isInFlight;
       }
 
       if (snap.heldById) {
