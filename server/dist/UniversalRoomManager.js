@@ -8130,158 +8130,23 @@ const PLAYER_COLORS = [
   "#3b82f6"
   // P6: Blue
 ];
-class ServerNetworkPipeline {
-  constructor(simulation) {
-    __publicField(this, "simulation");
-    __publicField(this, "clients", /* @__PURE__ */ new Map());
-    __publicField(this, "fixedDt", 1 / 60);
-    this.simulation = simulation || new ServerGameSimulation({
-      arenaWidth: 20,
-      arenaHeight: 14,
-      wallHeight: 1,
-      fixedDt: 1 / 60,
-      jitterTargetDepth: 2,
-      broadcastRateHz: 60
-    });
-    this.simulation.initializeDefaultScenario();
-  }
-  allocatePlayerNumber() {
-    const used = /* @__PURE__ */ new Set();
-    for (const c of this.clients.values()) {
-      used.add(c.playerNumber);
-    }
-    for (let i = 1; i <= 16; i++) {
-      if (!used.has(i)) return i;
-    }
-    return this.clients.size + 1;
-  }
-  registerClient(clientId, preferredName) {
-    if (this.simulation.characters.has("player-1")) {
-      this.simulation.characters.delete("player-1");
-    }
-    const playerNumber = this.allocatePlayerNumber();
-    const color = PLAYER_COLORS[(playerNumber - 1) % PLAYER_COLORS.length];
-    const name = preferredName && preferredName.trim() ? preferredName.trim() : `Player ${playerNumber}`;
-    const info = {
-      id: clientId,
-      playerNumber,
-      name,
-      color,
-      lastPingMs: 0
-    };
-    this.clients.set(clientId, info);
-    const spawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
-    const spawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
-    const character = new Character({
-      x: spawnX,
-      y: spawnY,
-      color,
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1,
-      playerId: clientId,
-      playerNumber,
-      name
-    });
-    this.simulation.characters.set(clientId, character);
-    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
-    return info;
-  }
-  unregisterClient(clientId) {
-    this.clients.delete(clientId);
-    const char = this.simulation.characters.get(clientId);
-    if (char) {
-      char.cleanupBeforeRemoval();
-      this.simulation.characters.delete(clientId);
-      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
-    }
-  }
-  renameClient(clientId, newName) {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    const info = this.clients.get(clientId);
-    if (info) {
-      info.name = trimmed;
-    }
-    const char = this.simulation.characters.get(clientId);
-    if (char) {
-      char.name = trimmed;
-    }
-  }
-  /**
-   * Ingests a client packet (inputs, reliable actions, telemetry).
-   */
-  processClientPacket(clientId, packet) {
-    const char = this.simulation.characters.get(clientId);
-    if (Array.isArray(packet.inputs)) {
-      for (const inp of packet.inputs) {
-        inp.playerId = clientId;
-        if (inp.playerName && char && char.name !== inp.playerName) {
-          this.renameClient(clientId, inp.playerName);
-        }
-        this.simulation.queueInput(inp);
-      }
-    }
-    if (Array.isArray(packet.reliableActions) && packet.reliableActions.length > 0) {
-      for (const act of packet.reliableActions) {
-        act.playerId = clientId;
-      }
-      this.simulation.processReliableActions(packet.reliableActions);
-    }
-  }
-  executeReliableAction(clientId, action) {
-    action.playerId = clientId;
-    this.simulation.processReliableActions([action]);
-  }
-  /**
-   * Advances the authoritative physics world by 1 fixed tick (1/60s).
-   */
-  step(dt = this.fixedDt) {
-    this.simulation.step(dt);
-  }
-  /**
-   * Creates a snapshot packet customized for a specific client (with their RTT and clock sync).
-   */
-  createSnapshotPacketForClient(clientId, worldSnapshot) {
-    const client = this.clients.get(clientId);
-    const rttMs = client ? client.lastPingMs : 0;
-    const snapshot = this.simulation.getGhostSnapshot(rttMs);
-    const clockSync = this.simulation.getLatestClockSync(clientId);
-    if (clockSync) {
-      snapshot.clockSync = clockSync;
-    }
-    const world = worldSnapshot || this.simulation.getAuthoritativeWorldSnapshot();
-    return {
-      type: "pc_server_snapshot",
-      snapshot,
-      worldSnapshot: world,
-      playerCount: this.clients.size
-    };
-  }
-  getAuthoritativeWorldSnapshot() {
-    return this.simulation.getAuthoritativeWorldSnapshot();
-  }
-  getGhostSnapshot(rttMs = 0) {
-    return this.simulation.getGhostSnapshot(rttMs);
-  }
-}
 if (typeof process !== "undefined" && process.env) {
   process.env.WS_NO_BUFFER_UTIL = "1";
   process.env.WS_NO_UTF_8_VALIDATE = "1";
 }
 const _UniversalRoomManager = class _UniversalRoomManager {
   constructor() {
-    __publicField(this, "pipeline");
-    __publicField(this, "sockets", /* @__PURE__ */ new Map());
+    __publicField(this, "simulation");
+    __publicField(this, "clients", /* @__PURE__ */ new Map());
     __publicField(this, "isRunning", false);
     __publicField(this, "loopInterval", null);
     __publicField(this, "lastTimeHr", process.hrtime.bigint());
     __publicField(this, "accumulator", 0);
     __publicField(this, "fixedDt", 1 / 60);
-    this.pipeline = new ServerNetworkPipeline();
-  }
-  get simulation() {
-    return this.pipeline.simulation;
+    this.simulation = new ServerGameSimulation({
+      broadcastRateHz: 60,
+      deltaCompression: false
+    });
   }
   static getInstance() {
     if (!_UniversalRoomManager.instance) {
@@ -8291,8 +8156,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     return _UniversalRoomManager.instance;
   }
   /**
-   * Attaches the WebSocket server to an existing Node.js HTTP server.
-   * Intercepts upgrades on path '/ws'.
+   * Attaches the WebSocket server to an existing Node.js HTTP server at path '/ws'.
    */
   static attach(httpServer) {
     const manager = _UniversalRoomManager.getInstance();
@@ -8341,76 +8205,135 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.lastTimeHr = nowHr;
     this.accumulator += Math.min(0.2, elapsedSec);
     while (this.accumulator >= this.fixedDt) {
-      this.pipeline.step(this.fixedDt);
+      this.simulation.step(this.fixedDt);
       this.accumulator -= this.fixedDt;
       this.broadcastSnapshot();
     }
   }
   broadcastSnapshot() {
-    if (this.sockets.size === 0) return;
-    const worldSnapshot = this.pipeline.getAuthoritativeWorldSnapshot();
-    for (const [clientId, sock] of this.sockets) {
-      if (sock.ws.readyState === WebSocket.OPEN) {
+    if (this.clients.size === 0) return;
+    const worldSnapshot = this.simulation.getAuthoritativeWorldSnapshot();
+    for (const [clientId, client] of this.clients) {
+      if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const packet = this.pipeline.createSnapshotPacketForClient(clientId, worldSnapshot);
-          sock.ws.send(JSON.stringify(packet));
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const clockSync = this.simulation.getLatestClockSync(clientId);
+          if (clockSync) {
+            snapshot.clockSync = clockSync;
+          }
+          const payload = JSON.stringify({
+            type: "pc_server_snapshot",
+            snapshot,
+            worldSnapshot,
+            playerCount: this.clients.size
+          });
+          client.ws.send(payload);
         } catch (err) {
           console.warn(`[UniversalRoom] Failed to send snapshot to ${clientId}:`, err);
         }
       }
     }
   }
+  allocatePlayerNumber() {
+    const used = /* @__PURE__ */ new Set();
+    for (const c of this.clients.values()) {
+      used.add(c.playerNumber);
+    }
+    for (let i = 1; i <= 16; i++) {
+      if (!used.has(i)) return i;
+    }
+    return this.clients.size + 1;
+  }
   handleConnection(ws, _req) {
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const info = this.pipeline.registerClient(clientId);
-    const roomSocket = {
+    const playerNumber = this.allocatePlayerNumber();
+    const color = PLAYER_COLORS[(playerNumber - 1) % PLAYER_COLORS.length];
+    const defaultName = `Player ${playerNumber}`;
+    const client = {
       id: clientId,
       ws,
-      info
+      playerNumber,
+      name: defaultName,
+      color,
+      lastPingMs: 0
     };
-    this.sockets.set(clientId, roomSocket);
-    console.log(`🌐 [UniversalRoom] Player connected: ${clientId} as P${info.playerNumber} "${info.name}" (Total: ${this.sockets.size})`);
+    this.clients.set(clientId, client);
+    console.log(`🌐 [UniversalRoom] Player connected: ${clientId} as P${playerNumber} (Total in room: ${this.clients.size})`);
+    if (this.simulation.characters.has("player-1")) {
+      this.simulation.characters.delete("player-1");
+    }
+    const spawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
+    const spawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const character = new Character({
+      x: spawnX,
+      y: spawnY,
+      color,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1,
+      playerId: clientId,
+      playerNumber,
+      name: defaultName
+    });
+    this.simulation.characters.set(clientId, character);
+    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     ws.on("message", (raw) => {
       try {
         const text = raw.toString();
         const data = JSON.parse(text);
         if (data.type === "join_room") {
           if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
-            this.pipeline.renameClient(clientId, data.name.trim());
+            client.name = data.name.trim();
+            character.name = client.name;
           }
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber: info.playerNumber,
-            name: info.name,
-            color: info.color,
+            playerNumber,
+            name: character.name,
+            color: character.color,
             arena: {
               width: this.simulation.arena.width,
               height: this.simulation.arena.height,
               wallHeight: this.simulation.arena.wallHeight,
               tileGrid: this.simulation.arena.tileGrid
             },
-            worldSnapshot: this.pipeline.getAuthoritativeWorldSnapshot()
+            worldSnapshot: this.simulation.getAuthoritativeWorldSnapshot()
           }));
           return;
         }
-        if (data.type === "player_input") {
-          this.pipeline.processClientPacket(clientId, data);
+        if (data.type === "player_input" && data.packet) {
+          const pkt = data.packet;
+          pkt.playerId = clientId;
+          if (pkt.playerName && pkt.playerName !== character.name) {
+            client.name = pkt.playerName;
+            character.name = pkt.playerName;
+          }
+          this.simulation.queueInput(pkt);
+          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
+            for (const act of data.reliableActions) {
+              act.playerId = clientId;
+            }
+            this.simulation.processReliableActions(data.reliableActions);
+          }
           return;
         }
         if (data.type === "reliable_action" && data.action) {
-          this.pipeline.executeReliableAction(clientId, data.action);
+          const act = data.action;
+          act.playerId = clientId;
+          this.simulation.processReliableActions([act]);
           return;
         }
         if (data.type === "rename_player") {
-          if (data.name && typeof data.name === "string") {
-            this.pipeline.renameClient(clientId, data.name);
+          if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
+            client.name = data.name.trim();
+            character.name = client.name;
           }
           return;
         }
         if (data.type === "ping") {
           if (typeof data.clientTimestamp === "number") {
-            info.lastPingMs = Math.max(1, Math.round(performance.now() - data.clientTimestamp));
+            client.lastPingMs = Math.max(1, Math.round(performance.now() - data.clientTimestamp));
           }
           ws.send(JSON.stringify({
             type: "pong",
@@ -8433,17 +8356,22 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber: info.playerNumber,
-      name: info.name,
-      color: info.color
+      playerNumber,
+      name: character.name,
+      color: character.color
     }));
   }
   handleDisconnection(clientId) {
-    const sock = this.sockets.get(clientId);
-    if (!sock) return;
-    this.sockets.delete(clientId);
-    this.pipeline.unregisterClient(clientId);
-    console.log(`🌐 [UniversalRoom] Player disconnected: ${clientId} (Remaining: ${this.sockets.size})`);
+    const client = this.clients.get(clientId);
+    if (!client) return;
+    this.clients.delete(clientId);
+    const char = this.simulation.characters.get(clientId);
+    if (char) {
+      char.cleanupBeforeRemoval();
+      this.simulation.characters.delete(clientId);
+      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    }
+    console.log(`🌐 [UniversalRoom] Player disconnected: ${clientId} (Remaining in room: ${this.clients.size})`);
   }
 };
 __publicField(_UniversalRoomManager, "instance", null);

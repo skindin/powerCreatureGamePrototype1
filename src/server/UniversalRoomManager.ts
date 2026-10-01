@@ -4,28 +4,32 @@ if (typeof process !== "undefined" && process.env) {
 }
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
-import { ServerNetworkPipeline, ConnectedClientInfo } from "../network/protocol/ServerNetworkPipeline.js";
-import { ClientInputPacket } from "../network/protocol/NetworkPackets.js";
+import { ServerGameSimulation } from "./ServerGameSimulation.js";
+import { Character } from "../character/Character.js";
+import { PLAYER_COLORS } from "../engine/PlayerManager.js";
+import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 
-export interface ConnectedRoomSocket {
+export interface ConnectedRoomClient {
   id: string;
   ws: WebSocket;
-  info: ConnectedClientInfo;
+  playerNumber: number;
+  name: string;
+  color: string;
+  lastPingMs: number;
 }
 
 /**
  * UniversalRoomManager
  *
- * Real server manager for Phase 10 Live Online Multiplayer.
- * Attaches to an HTTP server and serves WebSocket connections at '/ws'.
- * Delegates all physics simulation, input ingestion, contested grab arbitration,
- * and snapshot creation directly to the reusable ServerNetworkPipeline.
+ * Dedicated, authoritative 60Hz WebSocket server on path '/ws'.
+ * Completely separate from the local boomerang relay client.
+ * Runs an independent ServerGameSimulation for real online multiplayer.
  */
 export class UniversalRoomManager {
   private static instance: UniversalRoomManager | null = null;
 
-  public pipeline: ServerNetworkPipeline;
-  public sockets: Map<string, ConnectedRoomSocket> = new Map();
+  public simulation: ServerGameSimulation;
+  public clients: Map<string, ConnectedRoomClient> = new Map();
   public isRunning = false;
 
   private loopInterval: NodeJS.Timeout | null = null;
@@ -34,11 +38,10 @@ export class UniversalRoomManager {
   private readonly fixedDt: number = 1 / 60;
 
   constructor() {
-    this.pipeline = new ServerNetworkPipeline();
-  }
-
-  public get simulation() {
-    return this.pipeline.simulation;
+    this.simulation = new ServerGameSimulation({
+      broadcastRateHz: 60,
+      deltaCompression: false,
+    });
   }
 
   public static getInstance(): UniversalRoomManager {
@@ -50,8 +53,7 @@ export class UniversalRoomManager {
   }
 
   /**
-   * Attaches the WebSocket server to an existing Node.js HTTP server.
-   * Intercepts upgrades on path '/ws'.
+   * Attaches the WebSocket server to an existing Node.js HTTP server at path '/ws'.
    */
   public static attach(httpServer: Server): UniversalRoomManager {
     const manager = UniversalRoomManager.getInstance();
@@ -111,7 +113,7 @@ export class UniversalRoomManager {
     this.accumulator += Math.min(0.2, elapsedSec);
 
     while (this.accumulator >= this.fixedDt) {
-      this.pipeline.step(this.fixedDt);
+      this.simulation.step(this.fixedDt);
       this.accumulator -= this.fixedDt;
 
       // Broadcast authoritative state at 60Hz to all connected clients
@@ -120,15 +122,26 @@ export class UniversalRoomManager {
   }
 
   private broadcastSnapshot(): void {
-    if (this.sockets.size === 0) return;
+    if (this.clients.size === 0) return;
 
-    const worldSnapshot = this.pipeline.getAuthoritativeWorldSnapshot();
+    const worldSnapshot = this.simulation.getAuthoritativeWorldSnapshot();
 
-    for (const [clientId, sock] of this.sockets) {
-      if (sock.ws.readyState === WebSocket.OPEN) {
+    for (const [clientId, client] of this.clients) {
+      if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const packet = this.pipeline.createSnapshotPacketForClient(clientId, worldSnapshot);
-          sock.ws.send(JSON.stringify(packet));
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const clockSync = this.simulation.getLatestClockSync(clientId);
+          if (clockSync) {
+            snapshot.clockSync = clockSync;
+          }
+
+          const payload = JSON.stringify({
+            type: "pc_server_snapshot",
+            snapshot,
+            worldSnapshot,
+            playerCount: this.clients.size,
+          });
+          client.ws.send(payload);
         } catch (err) {
           console.warn(`[UniversalRoom] Failed to send snapshot to ${clientId}:`, err);
         }
@@ -136,18 +149,57 @@ export class UniversalRoomManager {
     }
   }
 
+  private allocatePlayerNumber(): number {
+    const used = new Set<number>();
+    for (const c of this.clients.values()) {
+      used.add(c.playerNumber);
+    }
+    for (let i = 1; i <= 16; i++) {
+      if (!used.has(i)) return i;
+    }
+    return this.clients.size + 1;
+  }
+
   public handleConnection(ws: WebSocket, _req: IncomingMessage): void {
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const info = this.pipeline.registerClient(clientId);
+    const playerNumber = this.allocatePlayerNumber();
+    const color = PLAYER_COLORS[(playerNumber - 1) % PLAYER_COLORS.length];
+    const defaultName = `Player ${playerNumber}`;
 
-    const roomSocket: ConnectedRoomSocket = {
+    const client: ConnectedRoomClient = {
       id: clientId,
       ws,
-      info,
+      playerNumber,
+      name: defaultName,
+      color,
+      lastPingMs: 0,
     };
-    this.sockets.set(clientId, roomSocket);
+    this.clients.set(clientId, client);
 
-    console.log(`🌐 [UniversalRoom] Player connected: ${clientId} as P${info.playerNumber} "${info.name}" (Total: ${this.sockets.size})`);
+    console.log(`🌐 [UniversalRoom] Player connected: ${clientId} as P${playerNumber} (Total in room: ${this.clients.size})`);
+
+    // Remove dummy placeholder character if present
+    if (this.simulation.characters.has("player-1")) {
+      this.simulation.characters.delete("player-1");
+    }
+
+    // Spawn character in simulation
+    const spawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
+    const spawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
+
+    const character = new Character({
+      x: spawnX,
+      y: spawnY,
+      color,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+      playerId: clientId,
+      playerNumber,
+      name: defaultName,
+    });
+    this.simulation.characters.set(clientId, character);
+    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
 
     // Listen for incoming messages
     ws.on("message", (raw) => {
@@ -157,45 +209,62 @@ export class UniversalRoomManager {
 
         if (data.type === "join_room") {
           if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
-            this.pipeline.renameClient(clientId, data.name.trim());
+            client.name = data.name.trim();
+            character.name = client.name;
           }
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber: info.playerNumber,
-            name: info.name,
-            color: info.color,
+            playerNumber,
+            name: character.name,
+            color: character.color,
             arena: {
               width: this.simulation.arena.width,
               height: this.simulation.arena.height,
               wallHeight: this.simulation.arena.wallHeight,
               tileGrid: this.simulation.arena.tileGrid,
             },
-            worldSnapshot: this.pipeline.getAuthoritativeWorldSnapshot(),
+            worldSnapshot: this.simulation.getAuthoritativeWorldSnapshot(),
           }));
           return;
         }
 
-        if (data.type === "player_input") {
-          this.pipeline.processClientPacket(clientId, data as ClientInputPacket);
+        if (data.type === "player_input" && data.packet) {
+          const pkt = data.packet as PlayerInputPacket;
+          pkt.playerId = clientId;
+          if (pkt.playerName && pkt.playerName !== character.name) {
+            client.name = pkt.playerName;
+            character.name = pkt.playerName;
+          }
+          this.simulation.queueInput(pkt);
+
+          if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
+            for (const act of data.reliableActions) {
+              act.playerId = clientId;
+            }
+            this.simulation.processReliableActions(data.reliableActions);
+          }
           return;
         }
 
         if (data.type === "reliable_action" && data.action) {
-          this.pipeline.executeReliableAction(clientId, data.action);
+          const act = data.action as ReliableActionCommand;
+          act.playerId = clientId;
+          this.simulation.processReliableActions([act]);
           return;
         }
 
         if (data.type === "rename_player") {
-          if (data.name && typeof data.name === "string") {
-            this.pipeline.renameClient(clientId, data.name);
+          if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
+            client.name = data.name.trim();
+            character.name = client.name;
           }
           return;
         }
 
         if (data.type === "ping") {
           if (typeof data.clientTimestamp === "number") {
-            info.lastPingMs = Math.max(1, Math.round(performance.now() - data.clientTimestamp));
+            client.lastPingMs = Math.max(1, Math.round(performance.now() - data.clientTimestamp));
           }
           ws.send(JSON.stringify({
             type: "pong",
@@ -218,23 +287,28 @@ export class UniversalRoomManager {
       this.handleDisconnection(clientId);
     });
 
-    // Send immediate welcome packet so client knows connection is established
+    // Send immediate welcome packet
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber: info.playerNumber,
-      name: info.name,
-      color: info.color,
+      playerNumber,
+      name: character.name,
+      color: character.color,
     }));
   }
 
   public handleDisconnection(clientId: string): void {
-    const sock = this.sockets.get(clientId);
-    if (!sock) return;
+    const client = this.clients.get(clientId);
+    if (!client) return;
 
-    this.sockets.delete(clientId);
-    this.pipeline.unregisterClient(clientId);
+    this.clients.delete(clientId);
+    const char = this.simulation.characters.get(clientId);
+    if (char) {
+      char.cleanupBeforeRemoval();
+      this.simulation.characters.delete(clientId);
+      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    }
 
-    console.log(`🌐 [UniversalRoom] Player disconnected: ${clientId} (Remaining: ${this.sockets.size})`);
+    console.log(`🌐 [UniversalRoom] Player disconnected: ${clientId} (Remaining in room: ${this.clients.size})`);
   }
 }

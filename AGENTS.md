@@ -82,20 +82,13 @@ powerCreatureGamePrototype1/
 │   │   ├── GravityModule.ts
 │   │   ├── MassModule.ts
 │   │   ├── RollModule.ts  # 3D angular velocity, rolling resistance, indicators
-│   ├── network/           # Networking, protocols, and transports
-│   │   ├── protocol/      # Transport-agnostic network pipelines & packet schemas
-│   │   │   ├── NetworkPackets.ts       # Unified packet interfaces and contracts
-│   │   │   ├── ClientNetworkPipeline.ts # Client data packaging, outbox & snapshot ingestion
-│   │   │   └── ServerNetworkPipeline.ts # Server input handling, arbitration & snapshot creation
-│   │   ├── transports/    # Pluggable network transports
-│   │   │   ├── BoomerangRelayTransport.ts # Echo relay loopback simulator & ghost clones
-│   │   │   └── OnlineClientTransport.ts   # Real WebSocket client transport for live multiplayer
-│   │   ├── OnlineRoomClient.ts # Clean export alias for OnlineClientTransport
-│   │   └── RelayClient.ts # Backward-compatible shim delegating to BoomerangRelayTransport
+│   ├── network/           # Networking and telemetry
+│   │   ├── RelayClient.ts # Standalone WebSocket echo relay simulator, RTT tracking & ghost clones
+│   │   └── OnlineRoomClient.ts # Standalone WebSocket client for real live online rooms (/ws)
 │   ├── server/            # Authoritative server simulation core
 │   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world, contested grab arbiter
 │   │   ├── ServerJitterBuffer.ts   # Per-player priority jitter queues & starvation guards
-│   │   ├── UniversalRoomManager.ts # Real Node.js/Vite WebSocket server on /ws
+│   │   ├── UniversalRoomManager.ts # Standalone 60Hz WebSocket server on /ws
 │   │   └── GameServer.ts  # Standalone Node.js 60Hz tick runner with hrtime drift correction
 │   └── ui/                # User interface and developer tools
 │       ├── DevPanel.ts    # Collapsible live inspector, variable sliders, wall tools
@@ -507,29 +500,19 @@ powerCreatureGamePrototype1/
   - **Native Fullscreen Top-Layer Resilience**: `DeployNotifier.getToastMountContainer()` dynamically mounts toasts into `document.fullscreenElement || document.getElementById("app-layout") || document.body`. Automatic listeners on `fullscreenchange` reparent open toasts if fullscreen is entered or exited during live gameplay, preventing native top-layer occlusion.
   - **Persistent Floating Quick Reload Button (`#mobile-reload-float-btn`)**: Fixed at top-left (`left: max(14px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); height: 44px;`) on mobile ratio in and out of fullscreen whenever an update is live. Even if the user dismisses the toast to clear the screen during a round, the glowing `🔄 Update Live` button remains readily available.
   - **Mobile Menu Integration (`#mobile-expanded-menu`)**: Mobile menu header displays `#mobile-deploy-badge` and Column 1 displays `#mobile-menu-update-card` with status info and a full-width "Reload Game Now" button. The floating hamburger button displays a pulsing green indicator dot (`.has-update`).
-- **Architectural Consolidation of Network Pipelines & Transports**:
-  - **Shared Packet Schemas (`src/network/protocol/NetworkPackets.ts`)**:
-    - Centralizes all multiplayer interfaces: `GhostEntityState`, `GhostSnapshot`, `ClientInputPacket`, `ServerSnapshotPacket`, `JoinRoomPacket`, `RenamePlayerPacket`, `PingPacket`, `PongPacket`, `ReliableActionCommand`, and `ClockSyncPacket`.
-  - **Universal Client Protocol Pipeline (`src/network/protocol/ClientNetworkPipeline.ts`)**:
-    - Encapsulates pure client behavior decoupled from WebSocket transport:
-      - **Reliable Action Outbox**: Tracks unacknowledged action commands (`pickup`, `drop`, `throw`), automatically retransmits pending actions with every outgoing input packet, and purges actions upon server ACK confirmation (`acknowledgeActions`).
-      - **Input Packet Creation**: Sequences input packets (`packetSequence`), batches per-player inputs, and maintains input tick timestamps.
-      - **Snapshot & Telemetry Ingestion**: Ingests server snapshots, extracts RTT latency, computes running average/min/max RTT, and ingests clock synchronization packets.
-      - **Remote Entity Extraction**: Transforms server snapshots into timestamped position, velocity, and facing angle samples for `RemoteEntityInterpolator`.
-  - **Universal Server Protocol Pipeline (`src/network/protocol/ServerNetworkPipeline.ts`)**:
-    - Encapsulates pure server behavior decoupled from WebSocket transport:
-      - **Authoritative Headless World**: Drives 60Hz `ServerGameSimulation` with arena geometry, freebodies, and players.
-      - **Client Lifecycle**: Registers, unregisters, and renames clients, dynamically assigning player slots (P1 Amber, P2 Cyan, etc.).
-      - **Jitter Input Ingestion**: Ingests client input packets into dedicated per-player jitter queues (`ServerJitterBufferManager`), deduplicating packets and absorbing WAN jitter.
-      - **Authoritative Reliable Action Execution**: Arbitrates contested actions, enforces deduplication via `processedActionIds`, and executes physical pickups, drops, and throws authoritatively.
-      - **Snapshot Broadcast Creation**: Serializes authoritative 60Hz snapshots containing client entity states, ACK lists, and per-client `ClockSyncPacket`.
-  - **Pluggable Transports**:
-    - **Boomerang Relay Transport (`src/network/transports/BoomerangRelayTransport.ts`)**: Modular transport wrapping `ClientNetworkPipeline` and an in-tab `ServerNetworkPipeline`. Uses 3rd-party cloud WebSocket echo relays (`wss://echo.websocket.org`) to test latency, jitter, and ghost clones locally.
-    - **Live Online Client Transport (`src/network/transports/OnlineClientTransport.ts`)**: Real WebSocket client connecting to the authoritative server at `/ws`, delegating 100% of protocol packaging, outbox management, and snapshot processing to `ClientNetworkPipeline`.
-    - **Universal Room Server (`src/server/UniversalRoomManager.ts`)**: Real Node.js/Vite WebSocket server running on `/ws`, delegating 100% of simulation, arbitration, and packet serialization to `ServerNetworkPipeline`.
-  - **Backward-Compatible RelayClient Shim (`src/network/RelayClient.ts`)**:
-    - Re-exports all types and `BoomerangRelayTransport` as `RelayClient` so all existing test suites, UI controls, and modes continue running without changes.
-  - **Automated Verification**: Headless test suite `scratch/test_consolidated_pipelines.ts` validates client outbox, server execution, boomerang simulation, and live `/ws` client-server interaction with 100% pass rate.
+- **Clean Separation of Boomerang Relay Simulation and Live Online Multiplayer**:
+  - **Standalone Boomerang Relay Client (`src/network/RelayClient.ts`)**:
+    - Completely self-contained, proven implementation for in-browser echo simulation, split-screen client prediction, and server ghost clones.
+    - Connects to 3rd-party echo WebSocket relays (`wss://ws.postman-echo.com/raw`, `wss://echo.websocket.org`), loops back incoming telemetry into an in-tab `ServerGameSimulation`, and drives remote avatar interpolation without any external server dependencies.
+    - Preserves exact historical behavior, position synchronization, and ghost clone rendering.
+  - **Standalone Authoritative Universal Room Server (`src/server/UniversalRoomManager.ts`)**:
+    - Attaches directly to the Node.js / Vite HTTP server at path `/ws`.
+    - Directly drives an authoritative 60Hz `ServerGameSimulation` with arena geometry, dynamic freebodies, and connected clients.
+    - Ingests incoming client inputs into jitter buffers, processes high-priority reliable action commands (`pickup`, `drop`, `throw`), and broadcasts 60Hz authoritative state snapshots to all room participants.
+  - **Standalone Online Room Client (`src/network/OnlineRoomClient.ts`)**:
+    - Clean, lightweight WebSocket client connecting directly to `/ws`.
+    - Streams local player inputs, tracks unacknowledged reliable actions, processes incoming server snapshots, and updates ping/RTT telemetry.
+    - Completely decoupled from `RelayClient.ts` to ensure 0% regression risk to local and boomerang gameplay.
 
 ---
 

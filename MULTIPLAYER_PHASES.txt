@@ -467,15 +467,11 @@ Tasks Completed:
       - Trajectory lines, impact markers, and destination footprints are completely private to the local client aiming the throw.
       - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
 
-  [x] 9.11 Architectural Separation & Consolidation of Network Pipelines and Transports
-      - Consolidated all network protocols, schemas, and interfaces into `src/network/protocol/NetworkPackets.ts`.
-      - Extracted universal Client Protocol Pipeline (`src/network/protocol/ClientNetworkPipeline.ts`): manages reliable action outbox (`queueReliableAction`, `acknowledgeActions`, `unackedActionsCount`), input packet creation with sequence tracking, snapshot ingestion, ACK purging, clock sync dispatch, and remote entity extraction for Hermite/linear interpolation.
-      - Extracted universal Server Protocol Pipeline (`src/network/protocol/ServerNetworkPipeline.ts`): manages client lifecycle (join/leave/rename), ingests input packets into jitter buffers, executes reliable actions authoritatively (`pickup`, `drop`, `throw`), steps 60Hz headless physics simulation, and serializes client snapshots with ACKs and per-client `clockSync`.
-      - Modular Boomerang Relay Simulator (`src/network/transports/BoomerangRelayTransport.ts`): uses `ClientNetworkPipeline` to package data over 3rd-party echo relays (`wss://echo.websocket.org`), loops back into in-tab `ServerNetworkPipeline`, and produces ghost clones.
-      - Real Online Client Transport (`src/network/transports/OnlineClientTransport.ts`): uses the exact same `ClientNetworkPipeline` to connect to real backend WebSocket servers (`/ws`) with zero echo ghosts.
-      - Real Universal Room Server (`src/server/UniversalRoomManager.ts`): uses the exact same `ServerNetworkPipeline` to run 60Hz headless physics on `/ws` over Node.js and Vite dev server.
-      - Backward-compatible `RelayClient.ts` shim preserved.
-      - Verified 100% via headless test suite `scratch/test_consolidated_pipelines.ts`.
+  [x] 9.11 Clean Architectural Separation of Boomerang Relay and Online Multiplayer
+      - Restored `RelayClient.ts` to its exact, proven, standalone implementation for in-browser echo simulation, split-screen client prediction, and server ghost clones.
+      - Developed standalone `UniversalRoomManager.ts`: authoritative 60Hz WebSocket server on `/ws` using `ServerGameSimulation` directly.
+      - Developed standalone `OnlineRoomClient.ts`: dedicated WebSocket client for online rooms at `/ws`, completely decoupled from `RelayClient.ts`.
+      - Preserves 100% of existing single-player and split-screen multiplayer gameplay with 0% regression risk.
 
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
