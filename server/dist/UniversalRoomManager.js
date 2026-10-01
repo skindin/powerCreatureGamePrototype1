@@ -8172,6 +8172,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     __publicField(this, "isRunning", false);
     __publicField(this, "needsMapReload", false);
     __publicField(this, "loopInterval", null);
+    __publicField(this, "heartbeatInterval", null);
     __publicField(this, "lastTimeHr", process.hrtime.bigint());
     __publicField(this, "accumulator", 0);
     __publicField(this, "fixedDt", 1 / 60);
@@ -8221,6 +8222,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.loopInterval = setInterval(() => {
       this.tick();
     }, 4);
+    this.heartbeatInterval = setInterval(() => {
+      this.checkClientLiveness();
+    }, 1e3);
     console.log(`🌐 [UniversalRoom] Authoritative 60Hz physics world active. Ticks: #${this.simulation.currentTick}`);
   }
   stop() {
@@ -8229,6 +8233,30 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     if (this.loopInterval) {
       clearInterval(this.loopInterval);
       this.loopInterval = null;
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+  /**
+   * Drops dead / silent clients whose connection was abruptly terminated
+   * without a clean WebSocket close frame (e.g. WiFi cut, laptop sleep, crashed tab).
+   */
+  checkClientLiveness() {
+    const now = Date.now();
+    const TIMEOUT_MS = 3500;
+    for (const [clientId, client] of Array.from(this.clients.entries())) {
+      if (now - client.lastSeen > TIMEOUT_MS) {
+        console.warn(
+          `⚠️ [UniversalRoom] Connection lost for client ${clientId} (silent for ${now - client.lastSeen}ms). Evicting character immediately.`
+        );
+        try {
+          client.ws.terminate();
+        } catch (_) {
+        }
+        this.handleDisconnection(clientId);
+      }
     }
   }
   tick() {
@@ -8369,11 +8397,35 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     client.characters.delete(localPlayerId);
     const sChar = this.simulation.characters.get(entry.serverCharId);
     if (sChar) {
+      if (sChar.heldObject) {
+        sChar.heldObject.isHeld = false;
+        sChar.heldObject.heldBy = null;
+        sChar.heldObject.wakeUp();
+        sChar.heldObject = null;
+      }
       sChar.cleanupBeforeRemoval();
       this.simulation.characters.delete(entry.serverCharId);
       this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     }
+    this.simulation.jitterBuffer.clear(entry.serverCharId);
+    this.simulation.latestClockSync.delete(entry.serverCharId);
+    this.simulation.clientAckedTicks.delete(entry.serverCharId);
     console.log(`🌐 [UniversalRoom] Character removed: ${entry.serverCharId} from client ${client.id}`);
+    const leftPayload = JSON.stringify({
+      type: "player_left",
+      clientId: client.id,
+      removedCharIds: [entry.serverCharId],
+      playerCount: this.simulation.characters.size
+    });
+    for (const other of this.clients.values()) {
+      if (other.ws.readyState === WebSocket.OPEN) {
+        try {
+          other.ws.send(leftPayload);
+        } catch (_) {
+        }
+      }
+    }
+    this.broadcastSnapshot();
   }
   handleConnection(ws, _req) {
     if (this.needsMapReload || this.clients.size === 0) {
@@ -8384,7 +8436,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       id: clientId,
       ws,
       characters: /* @__PURE__ */ new Map(),
-      lastPingMs: 0
+      lastPingMs: 0,
+      lastSeen: Date.now()
     };
     this.clients.set(clientId, client);
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
@@ -8396,8 +8449,17 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     const primaryEntry = this.registerCharacter(client, "keyboard");
     ws.on("message", (raw) => {
       try {
+        client.lastSeen = Date.now();
         const text = raw.toString();
         const data = JSON.parse(text);
+        if (data.type === "leave_room") {
+          this.handleDisconnection(clientId);
+          try {
+            ws.close();
+          } catch (_) {
+          }
+          return;
+        }
         if (data.type === "join_room") {
           if (Array.isArray(data.localPlayers) && data.localPlayers.length > 0) {
             for (const lp of data.localPlayers) {
@@ -8538,18 +8600,47 @@ const _UniversalRoomManager = class _UniversalRoomManager {
   handleDisconnection(clientId) {
     const client = this.clients.get(clientId);
     if (!client) return;
+    const removedCharIds = [];
     for (const entry of client.characters.values()) {
+      removedCharIds.push(entry.serverCharId);
       const char = this.simulation.characters.get(entry.serverCharId);
       if (char) {
+        if (char.heldObject) {
+          char.heldObject.isHeld = false;
+          char.heldObject.heldBy = null;
+          char.heldObject.wakeUp();
+          char.heldObject = null;
+        }
         char.cleanupBeforeRemoval();
         this.simulation.characters.delete(entry.serverCharId);
       }
+      this.simulation.jitterBuffer.clear(entry.serverCharId);
+      this.simulation.latestClockSync.delete(entry.serverCharId);
+      this.simulation.clientAckedTicks.delete(entry.serverCharId);
     }
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     this.clients.delete(clientId);
-    console.log(`🌐 [UniversalRoom] Client disconnected: ${clientId} (Remaining clients: ${this.clients.size})`);
+    console.log(
+      `🌐 [UniversalRoom] Client disconnected: ${clientId} (Remaining clients: ${this.clients.size}, removed characters: ${removedCharIds.join(", ")})`
+    );
     if (this.clients.size === 0) {
       this.trashMapMemory();
+    } else {
+      const leftPayload = JSON.stringify({
+        type: "player_left",
+        clientId,
+        removedCharIds,
+        playerCount: this.simulation.characters.size
+      });
+      for (const other of this.clients.values()) {
+        if (other.ws.readyState === WebSocket.OPEN) {
+          try {
+            other.ws.send(leftPayload);
+          } catch (_) {
+          }
+        }
+      }
+      this.broadcastSnapshot();
     }
   }
 };

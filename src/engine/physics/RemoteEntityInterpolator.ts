@@ -352,5 +352,23 @@ export class RemoteEntityInterpolator {
     if (diff > Math.PI) diff -= Math.PI * 2;
     return a + diff * t;
   }
+
+  /**
+   * Immediately clears an entity from the interpolation buffer and smoothed cache.
+   */
+  public clearEntity(entityId: string): void {
+    this.smoothedStates.delete(entityId);
+    for (const packet of this.buffer) {
+      packet.entities.delete(entityId);
+    }
+  }
+
+  /**
+   * Completely clears all entity buffers and smoothed states.
+   */
+  public clearAll(): void {
+    this.buffer = [];
+    this.smoothedStates.clear();
+  }
 }
 

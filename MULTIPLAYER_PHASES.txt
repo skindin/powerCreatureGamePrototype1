@@ -536,6 +536,18 @@ Tasks to Implement:
         1. In `UniversalRoomManager.trashMapMemory()`: The moment all players disconnect (0 clients), completely wipes all characters, objects, jitter buffers, held objects, and resets simulation accumulator and map state.
         2. In `UniversalRoomManager.reloadMap()`: The moment a new player connects, loads a pristine map scenario with fresh freebodies and geometry.
       - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
+  [x] 10.8 Instant Character Eviction on Lost Connection & Server Watchdog
+      - Server-Side Connection Loss & Silent Drop Detection:
+        1. Added `lastSeen` tracking to `ConnectedRoomClient` in `UniversalRoomManager.ts`.
+        2. Implemented active 1-second server watchdog timer (`checkClientLiveness()`): detects silent TCP drops (WiFi drop, closed laptop, crashed process) within 3.5s of silence, terminates the socket, and evicts all characters registered to that client.
+        3. Immediate Disconnect Protocol: When a client disconnects or times out, the server immediately drops and wakes up any held objects (`isHeld = false; heldBy = null; wakeUp()`), purges jitter buffers, broadcasts an explicit `player_left` notification with `removedCharIds`, and broadcasts an authoritative snapshot immediately without waiting for tick loops.
+        4. Added graceful `leave_room` packet handling on socket close.
+      - Client-Side Immediate Eviction & State Sanitization:
+        1. Added `onPlayerLeft` callback to `OnlineRoomClient.ts`: immediately calls `playerManager.removeRemoteCharacter(charId)` and `interpolator.clearEntity(charId)`, eliminating residual ghost positions.
+        2. Added heartbeat timeout watchdog in `OnlineRoomClient.ts:startPingLoop()`: disconnects and resets state if no message is received from server within 4.0s.
+        3. On local disconnect (`status === "disconnected"` / `"error"` in `main.ts`): immediately wipes all remote characters and purges `RemoteEntityInterpolator`, preventing frozen avatars.
+        4. Added `beforeunload` and `pagehide` browser event listeners in `main.ts` to cleanly transmit `leave_room` and disconnect prior to window teardown.
+      - Verified 100% via automated test suite `scratch/test_immediate_disconnect_cleanup.ts`.
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA

@@ -22,6 +22,7 @@ export interface ConnectedRoomClient {
   ws: WebSocket;
   characters: Map<string, ClientCharacterEntry>;
   lastPingMs: number;
+  lastSeen: number;
 }
 
 /**
@@ -40,6 +41,7 @@ export class UniversalRoomManager {
   private needsMapReload: boolean = false;
 
   private loopInterval: NodeJS.Timeout | null = null;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
   private lastTimeHr: bigint = process.hrtime.bigint();
   private accumulator: number = 0;
   private readonly fixedDt: number = 1 / 60;
@@ -99,6 +101,11 @@ export class UniversalRoomManager {
       this.tick();
     }, 4);
 
+    // Watchdog checking for silent / dropped connections every 1s
+    this.heartbeatInterval = setInterval(() => {
+      this.checkClientLiveness();
+    }, 1000);
+
     console.log(`🌐 [UniversalRoom] Authoritative 60Hz physics world active. Ticks: #${this.simulation.currentTick}`);
   }
 
@@ -108,6 +115,30 @@ export class UniversalRoomManager {
     if (this.loopInterval) {
       clearInterval(this.loopInterval);
       this.loopInterval = null;
+    }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * Drops dead / silent clients whose connection was abruptly terminated
+   * without a clean WebSocket close frame (e.g. WiFi cut, laptop sleep, crashed tab).
+   */
+  private checkClientLiveness(): void {
+    const now = Date.now();
+    const TIMEOUT_MS = 3500; // 3.5s of absolute silence = connection lost
+    for (const [clientId, client] of Array.from(this.clients.entries())) {
+      if (now - client.lastSeen > TIMEOUT_MS) {
+        console.warn(
+          `⚠️ [UniversalRoom] Connection lost for client ${clientId} (silent for ${now - client.lastSeen}ms). Evicting character immediately.`
+        );
+        try {
+          client.ws.terminate();
+        } catch (_) {}
+        this.handleDisconnection(clientId);
+      }
     }
   }
 
@@ -278,11 +309,36 @@ export class UniversalRoomManager {
     client.characters.delete(localPlayerId);
     const sChar = this.simulation.characters.get(entry.serverCharId);
     if (sChar) {
+      if (sChar.heldObject) {
+        sChar.heldObject.isHeld = false;
+        sChar.heldObject.heldBy = null;
+        sChar.heldObject.wakeUp();
+        sChar.heldObject = null;
+      }
       sChar.cleanupBeforeRemoval();
       this.simulation.characters.delete(entry.serverCharId);
       this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     }
+    this.simulation.jitterBuffer.clear(entry.serverCharId);
+    this.simulation.latestClockSync.delete(entry.serverCharId);
+    this.simulation.clientAckedTicks.delete(entry.serverCharId);
     console.log(`🌐 [UniversalRoom] Character removed: ${entry.serverCharId} from client ${client.id}`);
+
+    // Broadcast removal to remaining clients immediately
+    const leftPayload = JSON.stringify({
+      type: "player_left",
+      clientId: client.id,
+      removedCharIds: [entry.serverCharId],
+      playerCount: this.simulation.characters.size,
+    });
+    for (const other of this.clients.values()) {
+      if (other.ws.readyState === WebSocket.OPEN) {
+        try {
+          other.ws.send(leftPayload);
+        } catch (_) {}
+      }
+    }
+    this.broadcastSnapshot();
   }
 
   public handleConnection(ws: WebSocket, _req: IncomingMessage): void {
@@ -297,6 +353,7 @@ export class UniversalRoomManager {
       ws,
       characters: new Map(),
       lastPingMs: 0,
+      lastSeen: Date.now(),
     };
     this.clients.set(clientId, client);
 
@@ -315,8 +372,15 @@ export class UniversalRoomManager {
     // Listen for incoming messages
     ws.on("message", (raw) => {
       try {
+        client.lastSeen = Date.now();
         const text = raw.toString();
         const data = JSON.parse(text);
+
+        if (data.type === "leave_room") {
+          this.handleDisconnection(clientId);
+          try { ws.close(); } catch (_) {}
+          return;
+        }
 
         if (data.type === "join_room") {
           // If the client provided a list of local players already active on their machine
@@ -480,22 +544,53 @@ export class UniversalRoomManager {
     const client = this.clients.get(clientId);
     if (!client) return;
 
+    const removedCharIds: string[] = [];
+
     // Clean up all characters registered by this client
     for (const entry of client.characters.values()) {
+      removedCharIds.push(entry.serverCharId);
       const char = this.simulation.characters.get(entry.serverCharId);
       if (char) {
+        if (char.heldObject) {
+          char.heldObject.isHeld = false;
+          char.heldObject.heldBy = null;
+          char.heldObject.wakeUp();
+          char.heldObject = null;
+        }
         char.cleanupBeforeRemoval();
         this.simulation.characters.delete(entry.serverCharId);
       }
+      this.simulation.jitterBuffer.clear(entry.serverCharId);
+      this.simulation.latestClockSync.delete(entry.serverCharId);
+      this.simulation.clientAckedTicks.delete(entry.serverCharId);
     }
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     this.clients.delete(clientId);
 
-    console.log(`🌐 [UniversalRoom] Client disconnected: ${clientId} (Remaining clients: ${this.clients.size})`);
+    console.log(
+      `🌐 [UniversalRoom] Client disconnected: ${clientId} (Remaining clients: ${this.clients.size}, removed characters: ${removedCharIds.join(", ")})`
+    );
 
     // TRASH ANY MEMORY OF ONLINE MAP IF NO PLAYERS REMAIN
     if (this.clients.size === 0) {
       this.trashMapMemory();
+    } else {
+      // Notify all remaining clients immediately that these characters have left
+      const leftPayload = JSON.stringify({
+        type: "player_left",
+        clientId,
+        removedCharIds,
+        playerCount: this.simulation.characters.size,
+      });
+      for (const other of this.clients.values()) {
+        if (other.ws.readyState === WebSocket.OPEN) {
+          try {
+            other.ws.send(leftPayload);
+          } catch (_) {}
+        }
+      }
+      // Broadcast an immediate snapshot reflecting the character deletion without waiting for next tick
+      this.broadcastSnapshot();
     }
   }
 }

@@ -1189,6 +1189,20 @@ powerCreatureGamePrototype1/
       - *UniversalRoomManager.trashMapMemory()*: Called the moment all players disconnect (`this.clients.size === 0`). Drops all held objects, completely wipes all characters, freebodies, jitter buffers, and entities, resets the accumulator to 0, and flags `needsMapReload = true`. Zero persistent or corrupted physics state is retained when a room is vacant.
       - *UniversalRoomManager.reloadMap()*: When a new client connects to an empty or reload-flagged room, cleanly calls `initializeDefaultScenario()`, purging placeholder characters and spawning fresh arena objects and geometry.
     - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
+73. **Instant Character Eviction on Lost Connection & Server Watchdog**:
+    - **Server Liveness Watchdog & Silent Disconnect Detection (`UniversalRoomManager.ts`)**:
+      - *Root Cause*: In standard TCP/WebSockets, if a client abruptly loses connection (laptop sleep, killed process, WiFi drop), the OS kernel does not fire `close` or `error` for minutes or hours, leaving orphan characters frozen in the server world.
+      - *Fix*: Added `lastSeen` tracking on `ConnectedRoomClient`. Implemented a 1.0s periodic watchdog (`checkClientLiveness`) in `UniversalRoomManager` that flags any client silent for > 3.5 seconds, forcibly terminates the socket, and evicts all associated characters immediately.
+    - **Immediate Disconnect Protocol & Snapshot Broadcast**:
+      - In `handleDisconnection` and `unregisterCharacter`, any held objects are cleanly unheld and awakened (`wakeUp()`), jitter buffer queues are deleted, and an explicit `player_left` packet is sent to all remaining clients.
+      - An authoritative snapshot is broadcast immediately without waiting for the next physics tick accumulator.
+      - Added graceful `leave_room` packet handling.
+    - **Client-Side Instant Eviction & Interpolator Cleanup (`OnlineRoomClient.ts` & `main.ts`)**:
+      - Added `onPlayerLeft` callback to `OnlineRoomClient`: when received, `main.ts` immediately removes the remote character and calls `interpolator.clearEntity(charId)` on `RemoteEntityInterpolator`, purging historical buffered frames so zero residual ghost frames or shadows remain.
+      - Added client-side server heartbeat watchdog in `OnlineRoomClient:startPingLoop`: if no packets are received from server for > 4.0s, disconnects and triggers local cleanup.
+      - On local disconnect (`status === "disconnected"` or `"error"`), `main.ts` wipes all remote players and calls `interpolator.clearAll()`.
+      - Attached `beforeunload` and `pagehide` listeners in `main.ts` to transmit `leave_room` and close socket cleanly before tab teardown.
+    - Verified 100% via automated integration test `scratch/test_immediate_disconnect_cleanup.ts`.
 
 ---
 

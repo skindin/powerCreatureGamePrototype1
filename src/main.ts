@@ -730,6 +730,24 @@ function bootstrap(): void {
     if (onlinePlayersCount) {
       onlinePlayersCount.textContent = `${stats.playerCount} Connected`;
     }
+
+    if (stats.status === "disconnected" || stats.status === "error") {
+      gameLoop?.playerManager.clearRemoteCharacters();
+      gameLoop?.interpolator.clearAll();
+      for (const obj of gameLoop?.objects || []) {
+        if (obj.heldBy && (obj.heldBy as any).playerId && (obj.heldBy as any).playerId !== "keyboard" && !gameLoop?.players.has((obj.heldBy as any).playerId)) {
+          obj.isHeld = false;
+          obj.heldBy = null;
+          obj.wakeUp();
+        }
+      }
+      if (onlineRosterList) {
+        onlineRosterList.innerHTML = `<span style="color: #64748b; font-size: 0.78rem;">Not connected</span>`;
+      }
+      if (onlinePlayersCount) {
+        onlinePlayersCount.textContent = `0 Connected`;
+      }
+    }
   };
 
   onlineClient.onJoined = (info) => {
@@ -807,6 +825,31 @@ function bootstrap(): void {
     };
   }
 
+  onlineClient.onPlayerLeft = (charId: string) => {
+    console.log(`🌐 [OnlineRoom] Remote player left: ${charId}`);
+    gameLoop?.playerManager.removeRemoteCharacter(charId);
+    gameLoop?.interpolator.clearEntity(charId);
+    for (const obj of gameLoop?.objects || []) {
+      if (obj.heldBy && (obj.heldBy as any).playerId === charId) {
+        obj.isHeld = false;
+        obj.heldBy = null;
+        obj.wakeUp();
+      }
+    }
+  };
+
+  // Ensure prompt cleanup when closing the tab or navigating away
+  window.addEventListener("beforeunload", () => {
+    if (onlineClient.status === "connected") {
+      onlineClient.disconnect();
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    if (onlineClient.status === "connected") {
+      onlineClient.disconnect();
+    }
+  });
+
   onlineClient.onSnapshotReceived = (snapshot) => {
     if (activeGameMode !== "online" || !gameLoop) return;
 
@@ -860,6 +903,14 @@ function bootstrap(): void {
       for (const remId of gameLoop.playerManager.remotePlayers.keys()) {
         if (!activeCharIds.has(remId)) {
           gameLoop.playerManager.removeRemoteCharacter(remId);
+          gameLoop.interpolator.clearEntity(remId);
+          for (const obj of gameLoop.objects) {
+            if (obj.heldBy && (obj.heldBy as any).playerId === remId) {
+              obj.isHeld = false;
+              obj.heldBy = null;
+              obj.wakeUp();
+            }
+          }
         }
       }
 

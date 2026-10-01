@@ -37,11 +37,13 @@ export class OnlineRoomClient {
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }>();
+  public lastServerMessageTime: number = 0;
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
   public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
   public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }) => void;
   public onPlayerRemoved?: (localPlayerId: string) => void;
+  public onPlayerLeft?: (charId: string) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
@@ -185,9 +187,24 @@ export class OnlineRoomClient {
             return;
           }
 
+          this.lastServerMessageTime = Date.now();
+
           if (msg.type === "player_removed") {
             this.localPlayers.delete(msg.localPlayerId);
             this.onPlayerRemoved?.(msg.localPlayerId);
+            return;
+          }
+
+          if (msg.type === "player_left") {
+            if (Array.isArray(msg.removedCharIds)) {
+              for (const charId of msg.removedCharIds) {
+                this.onPlayerLeft?.(charId);
+              }
+            }
+            if (typeof msg.playerCount === "number") {
+              this.playerCount = msg.playerCount;
+            }
+            this.notifyStats();
             return;
           }
 
@@ -253,6 +270,12 @@ export class OnlineRoomClient {
     this.stopPingLoop();
     if (this.ws) {
       try {
+        if (this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            type: "leave_room",
+            clientId: this.clientId,
+          }));
+        }
         this.ws.close();
       } catch (_) {}
       this.ws = null;
@@ -394,6 +417,13 @@ export class OnlineRoomClient {
   private startPingLoop(): void {
     this.stopPingLoop();
     this.pingInterval = setInterval(() => {
+      // Check for silent connection loss (4 seconds without any server message)
+      if (this.status === "connected" && this.lastServerMessageTime > 0 && Date.now() - this.lastServerMessageTime > 4000) {
+        console.warn("⚠️ [OnlineRoomClient] Server connection lost (heartbeat timeout). Evicting room session.");
+        this.disconnect();
+        return;
+      }
+
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.lastPingSentAt = performance.now();
         try {
@@ -403,7 +433,7 @@ export class OnlineRoomClient {
           }));
         } catch (_) {}
       }
-    }, 2000);
+    }, 1000);
   }
 
   private stopPingLoop(): void {
