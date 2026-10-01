@@ -1123,6 +1123,11 @@ powerCreatureGamePrototype1/
       - Fixed unclosed `</div>` tags in `#multiplayer-relay-hud` that previously caused the entire `<main class="canvas-wrapper"><canvas id="game-canvas">` to be nested inside `.relay-hud-container.hidden` (`display: none`), rendering a blank black canvas screen. Verified automated DOM tag balance.
     - **Automated Verification**:
       - `scratch/test_phase_10_online_room.ts`: Verified 100% (2 clients connecting to UniversalRoomManager, slot allocation P1/P2, bidirectional position sync, live player renaming, and clean disconnection cleanup).
+66. **Production Server Attachment & WebSocket Path Fix (Railway & Docker)**:
+    - **`pathToFileURL` ESM Import**: In `server.js`, imported `pathToFileURL` from `node:url` and added fallback between relative path `./server/dist/UniversalRoomManager.js` and `pathToFileURL(path.join(__dirname, ...))` so dynamic import never fails with `ReferenceError`.
+    - **Diagnostics Endpoint Property**: Updated `/api/room-status` to reference `universalRoomManager.clients.size` instead of non-existent `.sockets.size`.
+    - **Dockerfile Runner Stage Fix**: Added `RUN npm install --omit=dev` and `COPY --from=builder /app/server/dist ./server/dist` in Stage 2 runner of `Dockerfile` to guarantee runtime dependencies (`ws`) and compiled SSR server modules are available in Docker/containerized deployments.
+    - Verified locally with end-to-end server integration test `scratch/test_server_js_ws.ts`.
 
 ---
 

@@ -3,7 +3,7 @@ process.env.WS_NO_UTF_8_VALIDATE = '1';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -251,7 +251,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       attached: Boolean(universalRoomManager),
       error: universalRoomError,
-      clients: universalRoomManager ? universalRoomManager.sockets.size : 0,
+      clients: universalRoomManager ? universalRoomManager.clients.size : 0,
       tick: universalRoomManager ? universalRoomManager.simulation.currentTick : 0,
     }));
     return;
@@ -328,8 +328,15 @@ const server = http.createServer(async (req, res) => {
 let universalRoomManager = null;
 let universalRoomError = null;
 try {
-  const moduleUrl = pathToFileURL(path.join(__dirname, 'server', 'dist', 'UniversalRoomManager.js')).href;
-  const { UniversalRoomManager } = await import(moduleUrl);
+  let UniversalRoomManager;
+  try {
+    const res = await import('./server/dist/UniversalRoomManager.js');
+    UniversalRoomManager = res.UniversalRoomManager;
+  } catch (_e) {
+    const moduleUrl = pathToFileURL(path.join(__dirname, 'server', 'dist', 'UniversalRoomManager.js')).href;
+    const res = await import(moduleUrl);
+    UniversalRoomManager = res.UniversalRoomManager;
+  }
   universalRoomManager = UniversalRoomManager.attach(server);
 } catch (err) {
   universalRoomError = (err && (err.stack || err.message)) || String(err);
