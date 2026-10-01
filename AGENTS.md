@@ -1119,6 +1119,8 @@ powerCreatureGamePrototype1/
       - Modal dialog (`#player-name-modal`) allows editing player handle, persisted to `localStorage.pcg_player_handle`.
       - Real-time `rename_player` network command propagates across server simulation and updates live roster chips and name tags for all clients.
       - Clean disconnect handling cleans up character from authoritative world and evicts from client remote rosters.
+    - **HTML Tag Nesting Integrity**:
+      - Fixed unclosed `</div>` tags in `#multiplayer-relay-hud` that previously caused the entire `<main class="canvas-wrapper"><canvas id="game-canvas">` to be nested inside `.relay-hud-container.hidden` (`display: none`), rendering a blank black canvas screen. Verified automated DOM tag balance.
     - **Automated Verification**:
       - `scratch/test_phase_10_online_room.ts`: Verified 100% (2 clients connecting to UniversalRoomManager, slot allocation P1/P2, bidirectional position sync, live player renaming, and clean disconnection cleanup).
 
