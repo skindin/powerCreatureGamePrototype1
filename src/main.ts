@@ -706,7 +706,7 @@ function bootstrap(): void {
     console.log(`🌐 [OnlineRoom] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
     const hero = gameLoop?.players.get("keyboard")?.character || character;
     if (hero) {
-      hero.playerId = info.clientId;
+      hero.playerId = "keyboard";
       hero.playerNumber = info.playerNumber;
       hero.color = info.color;
       hero.playerColor = info.color;
@@ -714,7 +714,7 @@ function bootstrap(): void {
     }
     if (gameLoop?.playerManager?.baseCharacter) {
       const base = gameLoop.playerManager.baseCharacter;
-      base.playerId = info.clientId;
+      base.playerId = "keyboard";
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;

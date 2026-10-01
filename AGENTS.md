@@ -1148,6 +1148,11 @@ powerCreatureGamePrototype1/
       - Top bar `#online-player-badge`, HUD `#online-my-slot`, and connected roster chips in `#online-roster-list` render with the authoritative assigned colors and translucent theme backgrounds.
       - Returning to Local Game mode cleanly restores Player 1 to default Amber `#f59e0b`.
     - Verified 100% via automated test suite `scratch/test_online_player_colors.ts`.
+69. **Keyboard Throw & Input Device Routing Fix**:
+    - **Root Cause**: `onlineClient.onJoined` had set `hero.playerId = info.clientId` (e.g. `client_xxx`), while `InputManager.handleClick` was looking for `c.playerId === "keyboard"`. Because the ID didn't match, `handleClick` exited early before setting `isKeyboardThrowRequested = true`.
+    - **Local Input Device ID Separation**: The client-side `playerId` on local entities represents the hardware device (`"keyboard"`, `"gamepad_0"`), while `clientId` is the WebSocket connection ID. Kept `hero.playerId = "keyboard"` on client.
+    - **Resilient Character Resolution (`getActiveKeyboardChar`)**: In `InputManager.ts`, replaced brittle `c.playerId === "keyboard"` lookups in `handleClick`, `onKeyboardDrop`, and `onKeyboardPickup` with `getActiveKeyboardChar()`, which falls back gracefully to any local character or `character` reference.
+    - Verified 100% via automated test suite `scratch/test_throw_controls.ts`.
 
 ---
 

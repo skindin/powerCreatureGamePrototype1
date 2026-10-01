@@ -242,9 +242,7 @@ export class PlayerManager {
 
     if (isBaseUnassigned) {
       char = this.baseCharacter;
-      if (!char.playerId || char.playerId === "player") {
-        char.playerId = "keyboard";
-      }
+      char.playerId = "keyboard";
       if (!char.playerNumber) {
         char.playerNumber = 1;
       }
@@ -327,9 +325,7 @@ export class PlayerManager {
 
     if (isBaseUnassigned) {
       char = this.baseCharacter;
-      if (!char.playerId || char.playerId === "player" || char.playerId === "keyboard") {
-        char.playerId = key;
-      }
+      char.playerId = key;
       if (!char.playerNumber) {
         char.playerNumber = 1;
       }

@@ -1232,6 +1232,20 @@ export class InputManager {
       }
     };
 
+    const getActiveKeyboardChar = (): Character | null => {
+      if (getAllCharacters) {
+        const chars = getAllCharacters();
+        // Priority 1: explicitly marked with playerId === "keyboard"
+        const kbChar = chars.find((c) => c.playerId === "keyboard");
+        if (kbChar) return kbChar;
+        // Priority 2: local character not assigned to a gamepad or marked as remote
+        const localChar = chars.find((c) => !c.playerId?.startsWith("gamepad") && !c.playerId?.startsWith("remote"));
+        if (localChar) return localChar;
+        if (chars.length > 0) return chars[0];
+      }
+      return character;
+    };
+
     this.handleClick = (clickX: number, clickY: number) => {
       if (devPanel?.isEditMode) {
         // Handled in onMouseDown/onMouseMove
@@ -1239,7 +1253,7 @@ export class InputManager {
       }
 
       if (!this.isKeyboardActive) return;
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null);
+      const activeChar = getActiveKeyboardChar();
       if (!activeChar) return;
 
       // Play Mode:
@@ -1279,7 +1293,7 @@ export class InputManager {
 
     this.onKeyboardDrop = () => {
       if (!this.isKeyboardActive) return;
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null) || character;
+      const activeChar = getActiveKeyboardChar();
       if (!activeChar || !activeChar.pickupModule) return;
       if (activeChar.heldObject) {
         this.isKeyboardDropRequested = true;
@@ -1289,7 +1303,7 @@ export class InputManager {
 
     this.onKeyboardPickup = () => {
       if (!this.isKeyboardActive) return;
-      const activeChar = (getAllCharacters ? getAllCharacters().find((c) => c.playerId === "keyboard") : null) || character;
+      const activeChar = getActiveKeyboardChar();
       if (!activeChar || !activeChar.pickupModule) return;
       const grabbableTargets = getAllCharacters
         ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]

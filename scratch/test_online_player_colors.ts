@@ -91,13 +91,13 @@ async function runColorTest(): Promise<void> {
     character: hero2,
   });
 
-  hero2.playerId = client2SlotInfo.clientId;
+  hero2.playerId = "keyboard";
   hero2.playerNumber = client2SlotInfo.playerNumber;
   hero2.color = client2SlotInfo.color;
   hero2.playerColor = client2SlotInfo.color;
   hero2.name = client2SlotInfo.name;
 
-  pm2.baseCharacter.playerId = client2SlotInfo.clientId;
+  pm2.baseCharacter.playerId = "keyboard";
   pm2.baseCharacter.playerNumber = client2SlotInfo.playerNumber;
   pm2.baseCharacter.color = client2SlotInfo.color;
   pm2.baseCharacter.playerColor = client2SlotInfo.color;
