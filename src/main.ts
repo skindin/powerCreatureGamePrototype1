@@ -7,7 +7,7 @@ import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { FeedbackPanel } from "./ui/FeedbackPanel.js";
-import { GameLoop } from "./engine/GameLoop.js";
+import { GameLoop, PLAYER_COLORS } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
 import { OnlineRoomClient } from "./network/OnlineRoomClient.js";
 import type { PlayerInputPacket } from "./engine/physics/StateHistoryBuffer.js";
@@ -614,6 +614,22 @@ function bootstrap(): void {
       relayStatusPill?.classList.add("hidden");
 
       gameLoop?.playerManager.clearRemoteCharacters();
+      const hero = gameLoop?.players.get("keyboard")?.character || character;
+      if (hero) {
+        hero.color = PLAYER_COLORS[0];
+        hero.playerColor = PLAYER_COLORS[0];
+        hero.playerNumber = 1;
+        hero.playerId = "keyboard";
+        hero.name = "Player 1";
+      }
+      if (gameLoop?.playerManager?.baseCharacter) {
+        const base = gameLoop.playerManager.baseCharacter;
+        base.color = PLAYER_COLORS[0];
+        base.playerColor = PLAYER_COLORS[0];
+        base.playerNumber = 1;
+        base.playerId = "keyboard";
+        base.name = "Player 1";
+      }
     } else if (mode === "boomerang") {
       onlineClient.disconnect();
       onlineHud?.classList.add("hidden");
@@ -658,8 +674,11 @@ function bootstrap(): void {
     if (onlinePingDisplay) {
       onlinePingDisplay.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : stats.status;
     }
+    const assignedColor = stats.color || onlineClient.assignedColor || PLAYER_COLORS[0];
     if (onlinePlayerBadge) {
       onlinePlayerBadge.textContent = `P${stats.playerNumber}`;
+      onlinePlayerBadge.style.color = assignedColor;
+      onlinePlayerBadge.style.background = `${assignedColor}33`;
     }
     if (onlineNameDisplay) {
       onlineNameDisplay.textContent = stats.playerName;
@@ -669,6 +688,8 @@ function bootstrap(): void {
     }
     if (onlineMySlot) {
       onlineMySlot.textContent = `P${stats.playerNumber} ${stats.playerNumber === 1 ? '(Host)' : ''}`;
+      onlineMySlot.style.color = assignedColor;
+      onlineMySlot.style.background = `${assignedColor}33`;
     }
     if (onlineRttCurrent) {
       onlineRttCurrent.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : "-- ms";
@@ -691,9 +712,31 @@ function bootstrap(): void {
       hero.playerColor = info.color;
       hero.name = info.name;
     }
+    if (gameLoop?.playerManager?.baseCharacter) {
+      const base = gameLoop.playerManager.baseCharacter;
+      base.playerId = info.clientId;
+      base.playerNumber = info.playerNumber;
+      base.color = info.color;
+      base.playerColor = info.color;
+      base.name = info.name;
+    }
+    if (gameLoop?.playerManager) {
+      for (const p of gameLoop.playerManager.players.values()) {
+        if (p.character === hero || p.id === "keyboard") {
+          p.color = info.color;
+          p.playerNumber = info.playerNumber;
+        }
+      }
+    }
     if (onlineMySlot) {
       onlineMySlot.textContent = `P${info.playerNumber} ${info.playerNumber === 1 ? '(Host)' : ''}`;
       onlineMySlot.style.color = info.color;
+      onlineMySlot.style.background = `${info.color}33`;
+    }
+    if (onlinePlayerBadge) {
+      onlinePlayerBadge.textContent = `P${info.playerNumber}`;
+      onlinePlayerBadge.style.color = info.color;
+      onlinePlayerBadge.style.background = `${info.color}33`;
     }
     if (onlineMyName) {
       onlineMyName.textContent = info.name;
@@ -703,7 +746,7 @@ function bootstrap(): void {
   onlineClient.onSnapshotReceived = (snapshot) => {
     if (activeGameMode !== "online" || !gameLoop) return;
 
-    // 1. Sync remote characters in playerManager
+    // 1. Sync characters in playerManager
     if (Array.isArray(snapshot.characters)) {
       const activeCharIds = new Set<string>();
       for (const c of snapshot.characters) {
@@ -727,6 +770,22 @@ function bootstrap(): void {
               remChar.heldObject = null;
             }
           }
+        } else {
+          // Local client character! Ensure authoritative server-assigned color and number are preserved
+          const hero = gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter;
+          if (hero) {
+            const authoritativeColor = c.playerColor || c.color || onlineClient.assignedColor;
+            if (authoritativeColor && (hero.color !== authoritativeColor || hero.playerColor !== authoritativeColor)) {
+              hero.color = authoritativeColor;
+              hero.playerColor = authoritativeColor;
+            }
+            if (c.playerNumber !== undefined && hero.playerNumber !== c.playerNumber) {
+              hero.playerNumber = c.playerNumber;
+            }
+            if (c.name && hero.name !== c.name) {
+              hero.name = c.name;
+            }
+          }
         }
       }
       // Remove disconnected remote players
@@ -741,11 +800,12 @@ function bootstrap(): void {
         onlineRosterList.innerHTML = "";
         for (const c of snapshot.characters) {
           const isMe = c.id === onlineClient.clientId;
+          const chipColor = c.playerColor || c.color || (isMe ? onlineClient.assignedColor : '#38bdf8') || '#38bdf8';
           const chip = document.createElement("div");
-          chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? 'rgba(56, 189, 248, 0.6)' : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
+          chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? `${chipColor}bb` : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
           chip.innerHTML = `
-            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${c.color || '#38bdf8'}; box-shadow: 0 0 6px ${c.color || '#38bdf8'};"></span>
-            <span style="color: ${isMe ? '#38bdf8' : '#f1f5f9'};">${c.name || 'Player'} ${isMe ? '(You)' : ''}</span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${chipColor}; box-shadow: 0 0 6px ${chipColor};"></span>
+            <span style="color: ${isMe ? chipColor : '#f1f5f9'}; font-weight: ${isMe ? '700' : '600'};">${c.name || 'Player'} ${isMe ? '(You)' : ''}</span>
           `;
           onlineRosterList.appendChild(chip);
         }

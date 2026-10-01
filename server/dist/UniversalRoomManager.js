@@ -7376,6 +7376,20 @@ class AuthoritativeSnapshotManager {
     this.lastBroadcastTick = 0;
   }
 }
+const PLAYER_COLORS = [
+  "#f59e0b",
+  // P1: Amber Gold
+  "#06b6d4",
+  // P2: Cyan
+  "#10b981",
+  // P3: Emerald
+  "#a855f7",
+  // P4: Violet
+  "#f43f5e",
+  // P5: Rose
+  "#3b82f6"
+  // P6: Blue
+];
 class ServerGameSimulation {
   constructor(config) {
     __publicField(this, "arena");
@@ -7708,10 +7722,11 @@ class ServerGameSimulation {
     let sChar = this.characters.get(charId);
     if (!sChar) {
       const pNum = this.characters.size + 1;
+      const assignedColor = PLAYER_COLORS[(pNum - 1) % PLAYER_COLORS.length];
       sChar = new Character({
         x: clientChar.x,
         y: clientChar.y,
-        color: clientChar.color || "#38bdf8",
+        color: assignedColor,
         colliderRadius: clientChar.radius || 0.44,
         mass: 1.2,
         strength: 1,
@@ -7745,10 +7760,6 @@ class ServerGameSimulation {
     }
     if (clientChar.facingAngle !== void 0) {
       sChar.facingAngle = clientChar.facingAngle;
-    }
-    if (clientChar.color) {
-      sChar.color = clientChar.color;
-      sChar.playerColor = clientChar.color;
     }
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
@@ -8084,7 +8095,9 @@ class ServerGameSimulation {
       surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
       isGrounded: primaryChar ? primaryChar.isRestingOnSurface || primaryChar.position.z <= 5e-3 : true,
       radius: primaryChar ? primaryChar.colliderRadius : 0.44,
-      color: primaryChar ? primaryChar.color : "#f59e0b",
+      color: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
+      playerColor: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
+      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
       isClimbing: primaryChar ? primaryChar.isClimbing : false,
       isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
       facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0
@@ -8135,7 +8148,9 @@ class ServerGameSimulation {
       surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
       isGrounded: c.isRestingOnSurface || c.position.z <= 5e-3,
       radius: c.colliderRadius,
-      color: c.color,
+      color: c.playerColor || c.color,
+      playerColor: c.playerColor || c.color,
+      playerNumber: c.playerNumber,
       isClimbing: c.isClimbing,
       isAboveWalls: c.isAboveWalls,
       facingAngle: Number(c.facingAngle.toFixed(4)),
@@ -8155,20 +8170,6 @@ class ServerGameSimulation {
     };
   }
 }
-const PLAYER_COLORS = [
-  "#f59e0b",
-  // P1: Amber Gold
-  "#06b6d4",
-  // P2: Cyan
-  "#10b981",
-  // P3: Emerald
-  "#a855f7",
-  // P4: Violet
-  "#f43f5e",
-  // P5: Rose
-  "#3b82f6"
-  // P6: Blue
-];
 if (typeof process !== "undefined" && process.env) {
   process.env.WS_NO_BUFFER_UTIL = "1";
   process.env.WS_NO_UTF_8_VALIDATE = "1";

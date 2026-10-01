@@ -502,6 +502,14 @@ Tasks to Implement:
       - Clean disconnect handling cleans up character from authoritative world and evicts from client remote rosters.
       - Verified 100% via headless test suite `scratch/test_phase_10_online_room.ts`.
 
+  [x] 10.4 Authoritative Server-Assigned Player Color & Global Perspective Synchronization
+      - Fixed color assignment architecture in Online Mode: online clients do not have liberty to dictate their player color.
+      - Authoritative server allocation from standard `PLAYER_COLORS` palette (`#f59e0b` P1 Amber, `#06b6d4` P2 Cyan, `#10b981` P3 Emerald, etc.).
+      - In `ServerGameSimulation.ts:syncCharacterFromPacket`: removed client packet color override; server color is immutable by clients.
+      - In `PlayerManager.ts`: `spawnKeyboardPlayer` and `spawnGamepadPlayer` preserve existing server-assigned `playerNumber`, `playerColor`, and `color` rather than resetting to P1 Amber.
+      - In `main.ts`: `onJoined`, `onStatsChange`, and `onSnapshotReceived` dynamically synchronize `hero`, `baseCharacter`, top bar status badge (`#online-player-badge`), HUD slot badge (`#online-my-slot`), aim cursors, grab highlights, and roster chips.
+      - Verified 100% via automated integration test `scratch/test_online_player_colors.ts`.
+
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
 ================================================================================

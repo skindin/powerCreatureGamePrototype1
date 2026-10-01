@@ -10,6 +10,7 @@ export interface OnlineRoomStats {
   clientId: string | null;
   playerNumber: number;
   playerName: string;
+  color: string;
   unackedActionsCount: number;
 }
 
@@ -31,6 +32,7 @@ export class OnlineRoomClient {
   public clientId: string | null = null;
   public playerNumber: number = 1;
   public playerName: string = "Player 1";
+  public assignedColor: string = "#f59e0b";
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
@@ -63,6 +65,7 @@ export class OnlineRoomClient {
       clientId: this.clientId,
       playerNumber: this.playerNumber,
       playerName: this.playerName,
+      color: this.assignedColor,
       unackedActionsCount: this.unacknowledgedActions.size,
     };
   }
@@ -136,6 +139,7 @@ export class OnlineRoomClient {
           if (msg.type === "room_welcome" || msg.type === "room_joined") {
             this.clientId = msg.clientId;
             this.playerNumber = msg.playerNumber || 1;
+            if (msg.color) this.assignedColor = msg.color;
             if (msg.name) this.playerName = msg.name;
             this.notifyStats();
 
@@ -143,7 +147,7 @@ export class OnlineRoomClient {
               clientId: msg.clientId,
               playerNumber: msg.playerNumber,
               name: msg.name,
-              color: msg.color,
+              color: msg.color || this.assignedColor,
             });
             return;
           }

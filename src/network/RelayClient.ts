@@ -17,6 +17,8 @@ export interface GhostEntityState {
   isGrounded?: boolean;
   radius: number;
   color?: string;
+  playerColor?: string;
+  playerNumber?: number;
   shape?: "circle" | "box";
   isHeld?: boolean;
   heldBy?: string | null;

@@ -1137,6 +1137,17 @@ powerCreatureGamePrototype1/
     - **Remote Snapshot Held Object Wire**: In `src/main.ts`, fixed line 758 to `heldObjectId: gc.heldObjectId || (gc.isHolding ? "held" : null)` and synchronized `remChar.heldObject` upon snapshot receipt.
     - **Reliable Pickup Dispatch**: In `PlayerManager.ts`, tracked `lastHeldObjectIds` to dispatch `pickup` reliable actions whenever a player acquires a held object via mouse click, keypress, or gamepad button.
     - Verified 100% via headless test suite `scratch/test_online_grab_sync.ts`.
+68. **Authoritative Server-Assigned Player Color & Global Perspective Synchronization**:
+    - **Immutable Server Color Assignment**: Clients connecting to Online Mode (`UniversalRoomManager`) no longer have the liberty to choose/dictate their local colors. The server assigns an authoritative color and slot from the standard `PLAYER_COLORS` palette (`#f59e0b` P1 Amber, `#06b6d4` P2 Cyan, `#10b981` P3 Emerald, `#a855f7` P4 Violet, `#f43f5e` P5 Rose, `#3b82f6` P6 Blue).
+    - **Server Override Removal**: In `ServerGameSimulation.ts:syncCharacterFromPacket`, removed incoming client color override (`if (clientChar.color) { sChar.color = clientChar.color; }`). The server maintains its authoritative assignment regardless of client packet payload.
+    - **Local PlayerManager Color Preservation**: In `PlayerManager.ts:spawnKeyboardPlayer` and `spawnGamepadPlayer`, preserved existing `playerColor`, `color`, and `playerNumber` if already assigned to `baseCharacter` (from server `room_joined`), rather than forcibly overwriting them back to P1 Amber `#f59e0b`.
+    - **Aim Cursor & Reticle Synchronization**: `PlayerManager.updatePlayerInputs` now assigns the server-assigned `char.playerColor` to active keyboard/mouse and gamepad aim cursors (`activeAimCursors`), rendering the reticle in the player's true assigned color.
+    - **Sprite & GUI Client Perspective**:
+      - Creature body fill, eyes, and nametag border/fill evaluate `char.playerColor || char.color`.
+      - Ground object grab rings, reach highlights, and `P{N} GRAB` badges dynamically reflect each player's theme color.
+      - Top bar `#online-player-badge`, HUD `#online-my-slot`, and connected roster chips in `#online-roster-list` render with the authoritative assigned colors and translucent theme backgrounds.
+      - Returning to Local Game mode cleanly restores Player 1 to default Amber `#f59e0b`.
+    - Verified 100% via automated test suite `scratch/test_online_player_colors.ts`.
 
 ---
 

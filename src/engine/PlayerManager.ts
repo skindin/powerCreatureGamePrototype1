@@ -242,11 +242,19 @@ export class PlayerManager {
 
     if (isBaseUnassigned) {
       char = this.baseCharacter;
-      char.playerId = "keyboard";
-      char.playerNumber = 1;
-      char.playerColor = PLAYER_COLORS[0];
-      char.color = PLAYER_COLORS[0];
-      char.name = "Player 1";
+      if (!char.playerId || char.playerId === "player") {
+        char.playerId = "keyboard";
+      }
+      if (!char.playerNumber) {
+        char.playerNumber = 1;
+      }
+      if (!char.playerColor) {
+        char.playerColor = char.color || PLAYER_COLORS[0];
+      }
+      char.color = char.playerColor;
+      if (!char.name) {
+        char.name = `Player ${char.playerNumber}`;
+      }
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
@@ -319,11 +327,19 @@ export class PlayerManager {
 
     if (isBaseUnassigned) {
       char = this.baseCharacter;
-      char.playerId = key;
-      char.playerNumber = 1;
-      char.playerColor = PLAYER_COLORS[0];
-      char.color = PLAYER_COLORS[0];
-      char.name = "Player 1";
+      if (!char.playerId || char.playerId === "player" || char.playerId === "keyboard") {
+        char.playerId = key;
+      }
+      if (!char.playerNumber) {
+        char.playerNumber = 1;
+      }
+      if (!char.playerColor) {
+        char.playerColor = char.color || PLAYER_COLORS[0];
+      }
+      char.color = char.playerColor;
+      if (!char.name) {
+        char.name = `Player ${char.playerNumber}`;
+      }
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];

@@ -12,6 +12,7 @@ import {
   AuthoritativeSnapshotManager,
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
+import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -425,10 +426,11 @@ export class ServerGameSimulation {
     if (!sChar) {
       // Dynamically instantiate and register the new player character on the server
       const pNum = this.characters.size + 1;
+      const assignedColor = PLAYER_COLORS[(pNum - 1) % PLAYER_COLORS.length];
       sChar = new Character({
         x: clientChar.x,
         y: clientChar.y,
-        color: clientChar.color || "#38bdf8",
+        color: assignedColor,
         colliderRadius: clientChar.radius || 0.44,
         mass: 1.2,
         strength: 1.0,
@@ -469,10 +471,7 @@ export class ServerGameSimulation {
     if (clientChar.facingAngle !== undefined) {
       sChar.facingAngle = clientChar.facingAngle;
     }
-    if (clientChar.color) {
-      sChar.color = clientChar.color;
-      sChar.playerColor = clientChar.color;
-    }
+    // Note: client packets are NOT permitted to override the server's authoritative player color.
 
     // 4. Synchronize Held Object state
     if (clientChar.heldObjectId) {
@@ -873,7 +872,9 @@ export class ServerGameSimulation {
       surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
       isGrounded: primaryChar ? (primaryChar.isRestingOnSurface || primaryChar.position.z <= 0.005) : true,
       radius: primaryChar ? primaryChar.colliderRadius : 0.44,
-      color: primaryChar ? primaryChar.color : "#f59e0b",
+      color: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
+      playerColor: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
+      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
       isClimbing: primaryChar ? primaryChar.isClimbing : false,
       isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
       facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0,
@@ -926,7 +927,9 @@ export class ServerGameSimulation {
       surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
       isGrounded: c.isRestingOnSurface || c.position.z <= 0.005,
       radius: c.colliderRadius,
-      color: c.color,
+      color: c.playerColor || c.color,
+      playerColor: c.playerColor || c.color,
+      playerNumber: c.playerNumber,
       isClimbing: c.isClimbing,
       isAboveWalls: c.isAboveWalls,
       facingAngle: Number(c.facingAngle.toFixed(4)),
