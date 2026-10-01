@@ -308,12 +308,12 @@ export class PlayerManager {
       const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
       
       // Determine explicit target object in reach if grab is active
+      const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
       let grabTargetObjectId: string | null = null;
       if (input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
         const aimTarget = isMouseAiming ? input.actualMousePos : null;
         const aimX = aimTarget ? aimTarget.x : kChar.position.x;
         const aimY = aimTarget ? aimTarget.y : kChar.position.y;
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
         const target = kChar.pickupModule.findTargetObject(
           kChar,
           aimX,
@@ -326,12 +326,47 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      // Ensure facingAngle is explicit: face locked target when locking aim, face aim when holding an object, movement direction when walking
       if (kChar.heldObject) {
-        const aimDx = input.actualMousePos.x - kChar.position.x;
-        const aimDy = input.actualMousePos.y - kChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        let lockedTarget: GameObject | null = null;
+        if (input.isRightMouseDown) {
+          if (
+            kChar.lockedTargetObject &&
+            candidateEntities.includes(kChar.lockedTargetObject) &&
+            !kChar.lockedTargetObject.isHeld
+          ) {
+            lockedTarget = kChar.lockedTargetObject;
+          } else if (kChar.activeTrajectory?.isAutoLocked && kChar.activeTrajectory.targetObject && !kChar.activeTrajectory.targetObject.isHeld) {
+            lockedTarget = kChar.activeTrajectory.targetObject;
+          } else if (kChar.throwModule) {
+            lockedTarget = kChar.throwModule.findHoveredEntity(
+              input.actualMousePos.x,
+              input.actualMousePos.y,
+              this.arena,
+              kChar,
+              kChar.heldObject,
+              candidateEntities,
+              this.arena.visualAltitudeScale,
+              Infinity
+            );
+          }
+          kChar.lockedTargetObject = lockedTarget;
+        } else {
+          kChar.lockedTargetObject = null;
+        }
+
+        if (lockedTarget) {
+          const lockDx = lockedTarget.position.x - kChar.position.x;
+          const lockDy = lockedTarget.position.y - kChar.position.y;
+          if (Math.hypot(lockDx, lockDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(lockDy, lockDx);
+          }
+        } else {
+          const aimDx = input.actualMousePos.x - kChar.position.x;
+          const aimDy = input.actualMousePos.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else {
         const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
@@ -387,9 +422,9 @@ export class PlayerManager {
       }
 
       const isGrab = (slot.rtHeld || slot.bHeld) ?? false;
+      const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
       let grabTargetObjectId: string | null = null;
       if (isGrab && !cChar.heldObject && cChar.pickupModule) {
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
         const target = cChar.pickupModule.findTargetObject(
           cChar,
           aimX,
@@ -402,12 +437,47 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      // Ensure facingAngle is explicit: face locked target when locking aim, face aim when holding an object, movement direction when walking
       if (cChar.heldObject) {
-        const aimDx = aimX - cChar.position.x;
-        const aimDy = aimY - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        let lockedTarget: GameObject | null = null;
+        if (slot.isLockHeld) {
+          if (
+            cChar.lockedTargetObject &&
+            candidateEntities.includes(cChar.lockedTargetObject) &&
+            !cChar.lockedTargetObject.isHeld
+          ) {
+            lockedTarget = cChar.lockedTargetObject;
+          } else if (cChar.activeTrajectory?.isAutoLocked && cChar.activeTrajectory.targetObject && !cChar.activeTrajectory.targetObject.isHeld) {
+            lockedTarget = cChar.activeTrajectory.targetObject;
+          } else if (cChar.throwModule) {
+            lockedTarget = cChar.throwModule.findHoveredEntity(
+              aimX,
+              aimY,
+              this.arena,
+              cChar,
+              cChar.heldObject,
+              candidateEntities,
+              this.arena.visualAltitudeScale,
+              Infinity
+            );
+          }
+          cChar.lockedTargetObject = lockedTarget;
+        } else {
+          cChar.lockedTargetObject = null;
+        }
+
+        if (lockedTarget) {
+          const lockDx = lockedTarget.position.x - cChar.position.x;
+          const lockDy = lockedTarget.position.y - cChar.position.y;
+          if (Math.hypot(lockDx, lockDy) > 0.05) {
+            cChar.facingAngle = Math.atan2(lockDy, lockDx);
+          }
+        } else {
+          const aimDx = aimX - cChar.position.x;
+          const aimDy = aimY - cChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            cChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else {
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
@@ -543,8 +613,24 @@ export class PlayerManager {
         pkt.isLockHeld
       );
 
-      if (pkt.facingAngle !== undefined) {
+      // If locked onto an object, ensure facing angle stays locked directly onto that object
+      const activeLockTarget = char.lockedTargetObject ?? (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject ? char.activeTrajectory.targetObject : null);
+      if (activeLockTarget) {
+        const dx = activeLockTarget.position.x - char.position.x;
+        const dy = activeLockTarget.position.y - char.position.y;
+        if (Math.hypot(dx, dy) > 0.05) {
+          char.facingAngle = Math.atan2(dy, dx);
+        }
+      } else if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
+      }
+
+      // Re-synchronize held object position so it faces the final facing angle
+      if (char.heldObject) {
+        const heldPos = char.calculateHeldObjectPosition(this.arena);
+        char.heldObject.position.x = heldPos.x;
+        char.heldObject.position.y = heldPos.y;
+        char.heldObject.position.z = heldPos.z;
       }
 
       // Explicit grab target resolution

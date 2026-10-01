@@ -95,6 +95,7 @@ export class Character extends GameObject {
   public isAiming: boolean;
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
+  public lockedTargetObject: GameObject | null = null;
 
   constructor(options: {
     id?: string;
@@ -130,6 +131,7 @@ export class Character extends GameObject {
     this.isAiming = false;
     this.aimTarget = null;
     this.activeTrajectory = null;
+    this.lockedTargetObject = null;
 
     // Initialize default modular capabilities
     this.strengthModule = new StrengthModule({ strength: options.strength ?? 1.0 });
@@ -244,19 +246,31 @@ export class Character extends GameObject {
     }
 
     // 3. Update facing orientation using intended movement input or aim.
-    // If auto-locking onto a target, orient toward the locked target!
+    // If auto-locking onto a target, continuously orient toward the locked target!
     let lockedTarget: GameObject | null = null;
-    if (autoLock && aimTargetPos && this.throwModule) {
-      lockedTarget = this.throwModule.findHoveredEntity(
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena,
-        this,
-        this.heldObject,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        Infinity
-      );
+    const candidateList = entities ?? arena.entities ?? [];
+    if (this.heldObject && autoLock && aimTargetPos && this.throwModule) {
+      if (
+        this.lockedTargetObject &&
+        candidateList.includes(this.lockedTargetObject) &&
+        !this.lockedTargetObject.isHeld
+      ) {
+        lockedTarget = this.lockedTargetObject;
+      } else {
+        lockedTarget = this.throwModule.findHoveredEntity(
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          this,
+          this.heldObject,
+          candidateList,
+          arena.visualAltitudeScale,
+          Infinity
+        );
+        this.lockedTargetObject = lockedTarget;
+      }
+    } else {
+      this.lockedTargetObject = null;
     }
 
     if (lockedTarget) {
@@ -290,7 +304,7 @@ export class Character extends GameObject {
         aimTargetPos.x,
         aimTargetPos.y,
         arena,
-        entities ?? arena.entities,
+        candidateList,
         arena.visualAltitudeScale,
         autoLock
       );
@@ -299,6 +313,11 @@ export class Character extends GameObject {
         const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
         if (Math.hypot(dx, dy) > 0.05) {
           this.facingAngle = Math.atan2(dy, dx);
+          // Re-update held object position so it matches the newly updated facing angle
+          const heldPos = this.calculateHeldObjectPosition(arena);
+          this.heldObject.position.x = heldPos.x;
+          this.heldObject.position.y = heldPos.y;
+          this.heldObject.position.z = heldPos.z;
         }
       }
     } else {

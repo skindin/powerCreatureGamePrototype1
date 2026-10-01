@@ -127,6 +127,11 @@ powerCreatureGamePrototype1/
     - Other reachable ground objects render with reach outline and dashed reach ring.
     - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items onto the ground.
     - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, if a ground item is targeted in reach, it swaps items (dropping current and picking up new). If no ground item is in range, the held item is retained.
+  - **Lock Aim Facing Direction & Network Synchronization (`Character.ts`, `PlayerManager.ts`, `ServerGameSimulation.ts`)**:
+    - **Target Lock Retention Across Movement**: When holding an object and engaging lock aim (Right Click / Left Trigger, `isLockHeld = true`), the character locks onto the targeted entity (`lockedTargetObject`). As the player moves, walks, or navigates the arena, the character's facing angle continuously remains locked onto that object rather than snapping to movement direction or raw mouse cursor coordinates.
+    - **Held Object Forward Hand Re-alignment**: Held objects dynamically update their physical position in the player's hands to follow the locked facing direction, keeping both eyes and held objects pointed directly at the locked target.
+    - **Network Packet & Server Synchronization**: `PlayerManager.capturePlayerInputs()` writes the exact locked angle into `pkt.facingAngle`. Local client reconciliation and authoritative `ServerGameSimulation` (including catchup burst ticks) preserve and enforce the locked angle. Authoritative ghost snapshots broadcast this angle to all remote clients, synchronizing player rotation and held object orientation across multiplayer.
+    - **Clean Release & Action Lifecycle**: Releasing lock (`isLockHeld = false`), dropping the object (`drop()`), or throwing the object (`throwHeldObject()`) clears `lockedTargetObject`, seamlessly restoring standard aim and movement-based facing.
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 
