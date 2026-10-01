@@ -32,6 +32,7 @@ export class OnlineRoomClient {
   public clientId: string | null = null;
   public playerNumber: number = 1;
   public playerName: string = "Player 1";
+  public hasCustomName: boolean = false;
   public assignedColor: string = "#f59e0b";
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
@@ -51,6 +52,7 @@ export class OnlineRoomClient {
   constructor(initialName?: string) {
     if (initialName) {
       this.playerName = initialName;
+      this.hasCustomName = !/^Player(\s+\d+)?$/i.test(initialName.trim());
     }
   }
 
@@ -130,13 +132,17 @@ export class OnlineRoomClient {
         // Send join room request with all local players currently active on this client
         const activeLocalPlayers = Array.from(this.localPlayers.values()).map(p => ({
           localPlayerId: p.localPlayerId,
-          name: p.name,
+          name: (p.name && !/^Player(\s+\d+)?$/i.test(p.name.trim()) && !/^Controller\s+#\d+$/i.test(p.name.trim()))
+            ? p.name
+            : (p.localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : undefined),
         }));
 
         this.ws?.send(JSON.stringify({
           type: "join_room",
-          name: this.playerName,
-          localPlayers: activeLocalPlayers.length > 0 ? activeLocalPlayers : [{ localPlayerId: "keyboard", name: this.playerName }],
+          name: this.hasCustomName ? this.playerName : undefined,
+          localPlayers: activeLocalPlayers.length > 0
+            ? activeLocalPlayers
+            : [{ localPlayerId: "keyboard", name: this.hasCustomName ? this.playerName : undefined }],
         }));
 
         this.startPingLoop();
@@ -287,17 +293,23 @@ export class OnlineRoomClient {
   public getServerCharId(localPlayerId: string = "keyboard"): string {
     const reg = this.localPlayers.get(localPlayerId);
     if (reg) return reg.serverCharId;
-    if (localPlayerId === "keyboard" || !localPlayerId) return this.clientId || "player";
+    if (localPlayerId === "keyboard" || !localPlayerId) return this.clientId || "keyboard";
     return this.clientId ? `${this.clientId}:${localPlayerId}` : localPlayerId;
   }
 
   public addPlayer(localPlayerId: string, name?: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
+      const isCustom = Boolean(
+        name &&
+        name.trim().length > 0 &&
+        !/^Player(\s+\d+)?$/i.test(name.trim()) &&
+        !/^Controller\s+#\d+$/i.test(name.trim())
+      );
       this.ws.send(JSON.stringify({
         type: "add_player",
         localPlayerId,
-        name: name || `Player`,
+        name: isCustom ? name!.trim() : undefined,
       }));
     } catch (_) {}
   }
@@ -327,18 +339,25 @@ export class OnlineRoomClient {
     try {
       const serverCharId = this.getServerCharId(localPlayerId);
       packet.playerId = serverCharId;
-      if (character?.name) {
+
+      const isCustomCharacter = Boolean(character?.hasCustomName && character?.name);
+      if (isCustomCharacter) {
         packet.playerName = character.name;
-      } else if (this.playerName) {
+      } else if (localPlayerId === "keyboard" && this.hasCustomName && this.playerName) {
         packet.playerName = this.playerName;
+      } else {
+        packet.playerName = character?.name;
       }
+
       const reliableActions = this.unacknowledgedActions.size > 0
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
       const charTelemetry = character ? {
         id: serverCharId,
-        name: character.name || this.playerName,
+        name: isCustomCharacter
+          ? character.name
+          : (localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : character.name),
         x: Number(character.position.x.toFixed(3)),
         y: Number(character.position.y.toFixed(3)),
         z: Number(character.position.z.toFixed(3)),
@@ -399,7 +418,10 @@ export class OnlineRoomClient {
   public renamePlayer(newName: string, localPlayerId: string = "keyboard"): void {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    this.playerName = trimmed;
+    if (localPlayerId === "keyboard") {
+      this.playerName = trimmed;
+      this.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
+    }
     const entry = this.localPlayers.get(localPlayerId);
     if (entry) entry.name = trimmed;
     this.notifyStats();

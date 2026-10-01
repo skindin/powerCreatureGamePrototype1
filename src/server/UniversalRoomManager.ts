@@ -255,20 +255,30 @@ export class UniversalRoomManager {
   ): ClientCharacterEntry {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
-      if (name && name.trim().length > 0) {
+      if (name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())) {
         existing.name = name.trim();
         const sChar = this.simulation.characters.get(existing.serverCharId);
-        if (sChar) sChar.name = existing.name;
+        if (sChar) {
+          sChar.name = existing.name;
+          sChar.hasCustomName = true;
+        }
       }
       return existing;
     }
 
     const playerNumber = this.allocatePlayerNumber();
     const color = PLAYER_COLORS[(playerNumber - 1) % PLAYER_COLORS.length];
-    const serverCharId = (localPlayerId === "keyboard" && client.characters.size === 0)
+    const serverCharId = localPlayerId === "keyboard"
       ? client.id
       : `${client.id}:${localPlayerId}`;
-    const charName = name && name.trim().length > 0 ? name.trim() : `Player ${playerNumber}`;
+    
+    const isExplicitCustom = Boolean(
+      name &&
+      name.trim().length > 0 &&
+      !/^Player(\s+\d+)?$/i.test(name.trim()) &&
+      !/^Controller\s+#\d+$/i.test(name.trim())
+    );
+    const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
     const spawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
     const spawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
@@ -283,6 +293,7 @@ export class UniversalRoomManager {
       playerId: serverCharId,
       playerNumber,
       name: charName,
+      hasCustomName: isExplicitCustom,
     });
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
@@ -385,15 +396,33 @@ export class UniversalRoomManager {
         if (data.type === "join_room") {
           // If the client provided a list of local players already active on their machine
           if (Array.isArray(data.localPlayers) && data.localPlayers.length > 0) {
+            const requestedLocalIds = new Set(data.localPlayers.map((lp: any) => lp.localPlayerId).filter(Boolean));
+            // Prune any characters that were created as temporary default but not requested by this client
+            for (const localId of Array.from(client.characters.keys())) {
+              if (!requestedLocalIds.has(localId)) {
+                this.unregisterCharacter(client, localId);
+              }
+            }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
                 this.registerCharacter(client, lp.localPlayerId, lp.name);
               }
             }
-          } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
-            primaryEntry.name = data.name.trim();
-            const sChar = this.simulation.characters.get(primaryEntry.serverCharId);
-            if (sChar) sChar.name = primaryEntry.name;
+          } else {
+            // Default: ensure "keyboard" is registered
+            if (!client.characters.has("keyboard")) {
+              this.registerCharacter(client, "keyboard", data.name);
+            } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
+              const entry = client.characters.get("keyboard")!;
+              if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
+                entry.name = data.name.trim();
+                const sChar = this.simulation.characters.get(entry.serverCharId);
+                if (sChar) {
+                  sChar.name = entry.name;
+                  sChar.hasCustomName = true;
+                }
+              }
+            }
           }
 
           const primary = client.characters.get("keyboard") || client.characters.values().next().value || primaryEntry;
@@ -444,16 +473,28 @@ export class UniversalRoomManager {
 
         if (data.type === "player_input" && data.packet) {
           const localPlayerId = data.localPlayerId || "keyboard";
-          const charEntry = client.characters.get(localPlayerId);
-          const serverCharId = charEntry ? charEntry.serverCharId : (data.serverCharId || clientId);
+          let charEntry = client.characters.get(localPlayerId);
+          if (!charEntry) {
+            if (client.characters.size === 0) {
+              charEntry = this.registerCharacter(client, localPlayerId, data.character?.name);
+            } else {
+              // Ignore packets for unmapped/unregistered local players on this client to prevent ghost characters
+              return;
+            }
+          }
+          const serverCharId = charEntry.serverCharId;
 
           const pkt = data.packet as PlayerInputPacket;
           pkt.playerId = serverCharId;
 
           const sChar = this.simulation.characters.get(serverCharId);
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
-            sChar.name = pkt.playerName;
-            if (charEntry) charEntry.name = pkt.playerName;
+            // Only adopt explicit custom name from packet, never overwrite with default template name
+            if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {
+              sChar.name = pkt.playerName.trim();
+              sChar.hasCustomName = true;
+              charEntry.name = pkt.playerName.trim();
+            }
           }
 
           this.simulation.queueInput(pkt);

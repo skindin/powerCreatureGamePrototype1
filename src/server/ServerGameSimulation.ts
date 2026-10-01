@@ -12,7 +12,6 @@ import {
   AuthoritativeSnapshotManager,
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
-import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -256,16 +255,8 @@ export class ServerGameSimulation {
       }
     }
     if (packet.playerId && !this.characters.has(packet.playerId)) {
-      const pNum = this.characters.size + 1;
-      const newChar = new Character({
-        x: this.arena.width / 2,
-        y: this.arena.height / 2,
-        playerId: packet.playerId,
-        playerNumber: pNum,
-        name: `Player ${pNum}`,
-      });
-      this.characters.set(packet.playerId, newChar);
-      this.arena.entities = [...this.allCharacters, ...this.objects];
+      // In authoritative server mode, ignore input for unknown or unregistered characters
+      return false;
     }
     return this.jitterBuffer.push(packet);
   }
@@ -396,25 +387,10 @@ export class ServerGameSimulation {
     if (!clientChar) return;
 
     const charId = clientChar.id || "keyboard";
-    let sChar = this.characters.get(charId);
-
+    const sChar = this.characters.get(charId);
     if (!sChar) {
-      // Dynamically instantiate and register the new player character on the server
-      const pNum = this.characters.size + 1;
-      const assignedColor = PLAYER_COLORS[(pNum - 1) % PLAYER_COLORS.length];
-      sChar = new Character({
-        x: clientChar.x,
-        y: clientChar.y,
-        color: assignedColor,
-        colliderRadius: clientChar.radius || 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: charId,
-        playerNumber: pNum,
-        name: clientChar.name || `Player ${pNum}`,
-      });
-      this.characters.set(charId, sChar);
-      this.arena.entities = [...this.allCharacters, ...this.objects];
+      // In authoritative server mode, ignore telemetry for unknown/unregistered characters
+      return;
     }
 
     // 1. Synchronize Linear and Vertical Velocity

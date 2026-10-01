@@ -416,7 +416,10 @@ function bootstrap(): void {
   const onlineClient = new OnlineRoomClient();
   try {
     const savedName = localStorage.getItem("pcg_player_handle");
-    if (savedName) onlineClient.playerName = savedName;
+    if (savedName && !/^Player(\s+\d+)?$/i.test(savedName.trim()) && !/^Controller\s+#\d+$/i.test(savedName.trim())) {
+      onlineClient.playerName = savedName.trim();
+      onlineClient.hasCustomName = true;
+    }
   } catch {}
 
   type GameModeType = "local" | "boomerang" | "online";
@@ -575,7 +578,7 @@ function bootstrap(): void {
     if (!inputPlayerHandle) return;
     const trimmed = inputPlayerHandle.value.trim();
     if (trimmed) {
-      onlineClient.renamePlayer(trimmed);
+      onlineClient.renamePlayer(trimmed, "keyboard");
       try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
       if (gameLoop) {
         gameLoop.playerManager.renamePlayer("keyboard", trimmed);
@@ -583,14 +586,17 @@ function bootstrap(): void {
           if (p.isKeyboard || p.id === "keyboard") {
             p.name = trimmed;
             p.character.name = trimmed;
+            p.character.hasCustomName = true;
           }
         }
         if (gameLoop.playerManager.baseCharacter) {
           gameLoop.playerManager.baseCharacter.name = trimmed;
+          gameLoop.playerManager.baseCharacter.hasCustomName = true;
         }
       }
       if (character) {
         character.name = trimmed;
+        character.hasCustomName = true;
       }
       if (onlineNameDisplay) {
         onlineNameDisplay.textContent = trimmed;
@@ -672,14 +678,15 @@ function bootstrap(): void {
       onlineStatusPill?.classList.remove("hidden");
       
       // Populate localPlayers on client before connecting so join_room includes all active players on this machine
+      onlineClient.localPlayers.clear();
       if (gameLoop?.playerManager) {
         for (const p of gameLoop.playerManager.players.values()) {
           onlineClient.localPlayers.set(p.id, {
             localPlayerId: p.id,
-            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "player") : `${onlineClient.clientId || "client"}:${p.id}`,
+            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "keyboard") : `${onlineClient.clientId || "client"}:${p.id}`,
             playerNumber: p.playerNumber,
             color: p.color,
-            name: p.character.name,
+            name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
           });
         }
       }
@@ -689,7 +696,7 @@ function bootstrap(): void {
       // If already connected, notify server of any additional local players
       if (onlineClient.status === "connected" && gameLoop?.playerManager) {
         for (const p of gameLoop.playerManager.players.values()) {
-          onlineClient.addPlayer(p.id, p.character.name);
+          onlineClient.addPlayer(p.id, p.character.hasCustomName ? p.character.name : undefined);
         }
       }
     }
@@ -815,15 +822,20 @@ function bootstrap(): void {
       p.character.playerNumber = info.playerNumber;
       p.character.color = info.color;
       p.character.playerColor = info.color;
-      p.character.name = info.name;
+      if (!p.character.hasCustomName) {
+        p.character.name = info.name || `Player ${info.playerNumber}`;
+      }
       p.color = info.color;
       p.playerNumber = info.playerNumber;
+      p.name = p.character.name;
     } else if (info.localPlayerId === "keyboard" && gameLoop?.playerManager.baseCharacter) {
       const base = gameLoop.playerManager.baseCharacter;
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;
-      base.name = info.name;
+      if (!base.hasCustomName) {
+        base.name = info.name || `Player ${info.playerNumber}`;
+      }
     }
     gameLoop?.playerManager.onPlayersChanged?.();
   };
@@ -831,7 +843,7 @@ function bootstrap(): void {
   if (gameLoop?.playerManager) {
     gameLoop.playerManager.onPlayerJoined = (player) => {
       if (activeGameMode === "online" && onlineClient.status === "connected") {
-        onlineClient.addPlayer(player.id, player.character.name);
+        onlineClient.addPlayer(player.id, player.character.hasCustomName ? player.character.name : undefined);
       }
     };
 
@@ -910,8 +922,11 @@ function bootstrap(): void {
               localChar.playerNumber = c.playerNumber;
               if (p) p.playerNumber = c.playerNumber;
             }
-            // Do not overwrite localChar.name with trailing server snapshots.
-            // The local player is the authoritative source for their own chosen name.
+            if (!localChar.hasCustomName) {
+              const authoritativeName = c.name || `Player ${localChar.playerNumber || 1}`;
+              localChar.name = authoritativeName;
+              if (p) p.name = authoritativeName;
+            }
           }
         }
       }
@@ -938,7 +953,18 @@ function bootstrap(): void {
           const chipColor = c.playerColor || c.color || (isMe ? onlineClient.assignedColor : '#38bdf8') || '#38bdf8';
           const chip = document.createElement("div");
           chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? `${chipColor}bb` : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
-          const displayName = (isMe && onlineClient.playerName ? onlineClient.playerName : c.name) || c.name || 'Player';
+          
+          let displayName = c.name || `Player ${c.playerNumber || 1}`;
+          if (isMe) {
+            const localPlayerId = c.id.includes(":") ? c.id.split(":")[1] : "keyboard";
+            const p = gameLoop.players.get(localPlayerId);
+            const localChar = p?.character || (localPlayerId === "keyboard" ? (gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter) : null);
+            if (localChar?.hasCustomName && localChar?.name) {
+              displayName = localChar.name;
+            } else if (localPlayerId === "keyboard" && onlineClient.hasCustomName && onlineClient.playerName) {
+              displayName = onlineClient.playerName;
+            }
+          }
           chip.innerHTML = `
             <span style="width: 8px; height: 8px; border-radius: 50%; background: ${chipColor}; box-shadow: 0 0 6px ${chipColor};"></span>
             <span style="color: ${isMe ? chipColor : '#f1f5f9'}; font-weight: ${isMe ? '700' : '600'};">${displayName} ${isMe ? '(You)' : ''}</span>

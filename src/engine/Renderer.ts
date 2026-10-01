@@ -2041,7 +2041,14 @@ export class Renderer {
     ctx.textBaseline = "middle";
 
     if (char.playerId) {
-      const chosenName = char.name && char.name.trim().length > 0 ? char.name.trim() : `P${char.playerNumber || 1}`;
+      let chosenName: string;
+      if (char.hasCustomName && char.name && char.name.trim().length > 0) {
+        chosenName = char.name.trim();
+      } else if (char.name && char.name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(char.name.trim()) && !/^Controller\s+#\d+$/i.test(char.name.trim())) {
+        chosenName = char.name.trim();
+      } else {
+        chosenName = `Player ${char.playerNumber || 1}`;
+      }
       const badgeText = isRemote ? `${chosenName} [REMOTE]` : chosenName;
       ctx.font = isRemote ? "bold 9px monospace" : "bold 11px monospace";
       const textWidth = ctx.measureText(badgeText).width;

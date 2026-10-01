@@ -1217,6 +1217,19 @@ powerCreatureGamePrototype1/
       - **Consistent Packet Input Name**: `PlayerManager.ts:updatePlayers` sets `pkt.playerName = cChar.name` on every input packet.
       - **Instant Server Broadcast**: On `rename_player`, `UniversalRoomManager` updates both `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot.
     - Verified 100% via automated integration test `scratch/test_online_rename_no_flicker.ts`.
+75. **Multi-Character Naming Isolation & Phantom Ghost Elimination**:
+    - **Elimination of Rogue Phantom Ghost Characters**:
+      - Removed dynamic `new Character` instantiation from `ServerGameSimulation.ts:queueInput` and `syncCharacterFromPacket`. In authoritative server mode, packets with unknown or unregistered IDs are rejected; characters can only be instantiated through `UniversalRoomManager.registerCharacter()`.
+      - In `UniversalRoomManager.ts:join_room`: When `data.localPlayers` arrives, any characters created during initial connection that are not in the requested active players list are pruned immediately, preventing abandoned ghost avatars from remaining in the world.
+      - Enforced clean serverCharId mapping (`localPlayerId === "keyboard" ? client.id : `${client.id}:${localPlayerId}``) and prevented dummy `"player"` strings before client connection.
+    - **Multi-Character Naming Isolation**:
+      - Added `hasCustomName: boolean` to `Character` and `OnlineRoomClient` to distinguish explicit custom player handles from default numbering template names (`Player X`, `Controller #X`).
+      - In `OnlineRoomClient.ts:sendPlayerInput`: Secondary characters (e.g. gamepads) never inherit `this.playerName`. They retain their own distinct names.
+      - In `OnlineRoomClient.ts:addPlayer`: Uncustomized players pass `undefined` name to the server so the server assigns the authoritative sequential global slot (`Player ${playerNumber}`).
+    - **Authoritative Nametag & Roster Synchronization (Elimination of Duplicate "Player 2" Tags)**:
+      - In `Renderer.ts:drawCharacterNameTag`: Uncustomized characters always display `Player ${char.playerNumber || 1}`, matching the server's authoritative sequential slot (P1, P2, P3, P4).
+      - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
+    - Verified 100% via automated integration test `scratch/test_multichar_naming_and_no_phantom.ts`.
 
 ---
 

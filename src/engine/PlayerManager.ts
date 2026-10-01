@@ -134,6 +134,7 @@ export class PlayerManager {
     if (player) {
       player.name = trimmed;
       player.character.name = trimmed;
+      player.character.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
       if (player.isKeyboard || playerId === "keyboard") {
         try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
       }
@@ -142,6 +143,7 @@ export class PlayerManager {
 
     if (this.baseCharacter && (this.baseCharacter.playerId === playerId || playerId === "keyboard" || this.baseCharacter.playerId === "")) {
       this.baseCharacter.name = trimmed;
+      this.baseCharacter.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
       try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
       found = true;
     }
@@ -149,6 +151,7 @@ export class PlayerManager {
     const remote = this.remotePlayers.get(playerId);
     if (remote) {
       remote.name = trimmed;
+      remote.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
       found = true;
     }
 
@@ -342,8 +345,9 @@ export class PlayerManager {
         char.playerColor = char.color || PLAYER_COLORS[0];
       }
       char.color = char.playerColor;
-      if (!char.name) {
+      if (!char.name || /^Player(\s+\d+)?$/i.test(char.name.trim())) {
         char.name = `Player ${char.playerNumber}`;
+        char.hasCustomName = false;
       }
     } else {
       const playerNum = this.getNextPlayerNumber();
@@ -358,7 +362,9 @@ export class PlayerManager {
         playerId: key,
         playerNumber: playerNum,
         name: `Player ${playerNum}`,
+        hasCustomName: false,
       });
+      char.hasCustomName = false;
       this.arena.syncEntitiesWithWalls([char]);
     }
 

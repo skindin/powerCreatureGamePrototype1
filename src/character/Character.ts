@@ -90,6 +90,7 @@ export class Character extends GameObject {
   public playerId: string = "keyboard";
   public playerNumber: number = 1;
   public playerColor: string = "#f59e0b";
+  public hasCustomName: boolean = false;
 
   // Aiming state
   public isAiming: boolean;
@@ -107,6 +108,7 @@ export class Character extends GameObject {
     playerId?: string;
     playerNumber?: number;
     name?: string;
+    hasCustomName?: boolean;
   } = {}) {
     const initialColor = options.color ?? "#f59e0b";
     super({
@@ -122,6 +124,10 @@ export class Character extends GameObject {
     this.playerId = options.playerId ?? "keyboard";
     this.playerNumber = options.playerNumber ?? 1;
     this.playerColor = initialColor;
+    const isExplicitCustom = options.name
+      ? (!/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()))
+      : false;
+    this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
 
     this.baseMass = options.mass ?? 1.2;
     this.strength = options.strength ?? 1.0;

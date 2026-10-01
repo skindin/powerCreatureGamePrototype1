@@ -561,6 +561,34 @@ Tasks to Implement:
         4. `PlayerManager.ts:updatePlayers`: Populates `pkt.playerName = cChar.name` on every captured input packet.
         5. `UniversalRoomManager.ts`: On `rename_player`, updates `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot to all clients.
       - Verified 100% via automated test suite `scratch/test_online_rename_no_flicker.ts`.
+  [x] 10.10 Multi-Character Naming Isolation & Phantom Ghost Character Elimination
+      - Root Causes of Phantom Ghost Characters & Name Inconsistency:
+        1. Premature Fallback Character Spawning in `ServerGameSimulation.ts`:
+           - In `queueInput`: If `packet.playerId` was not found in `this.characters`, it dynamically instantiated a `new Character` at arena center (`width/2, height/2`).
+           - In `syncCharacterFromPacket`: If `clientChar.id` was not found in `this.characters`, it dynamically instantiated a new Character on the server.
+           - When temporary or out-of-sync packets arrived, rogue phantom characters were spawned on the server, broadcast in all snapshots, rendered by remote clients as phantom remote avatars, but never claimed or rendered by the sending client.
+        2. Premature Fallback Keyboard Character in `UniversalRoomManager.ts`:
+           - When a client connected with only a gamepad or controller, `handleConnection` prematurely registered a default `"keyboard"` character. When `join_room` arrived specifying only `gamepad-0`, the unused `"keyboard"` character was left behind as an abandoned phantom character visible to other clients.
+        3. Custom Name Propagation / Leaking Across Local Devices:
+           - In `OnlineRoomClient.ts:sendPlayerInput`, when a controller character had no name, it fell back to `this.playerName` (the primary user's custom handle), overwriting controllers on the same device with the primary player's name.
+           - In `main.ts:onSnapshotReceived`, roster chip rendering displayed `onlineClient.playerName` for all characters matching `clientId`, labeling all controllers from that machine with the keyboard handle.
+        4. Duplicate "Player 2" Nametags:
+           - In `PlayerManager.ts:spawnGamepadPlayer`, newly joined gamepads had `char.name = 'Player ${playerNum}'` baked in locally using local player counts (returning 2), while the server allocated authoritative global numbers (P3, P4).
+           - `Renderer.ts:drawCharacterNameTag` used `char.name` directly, displaying `Player 2` on the nametag even after the server assigned P3/P4.
+      - Architectural Solutions Implemented:
+        1. Server Dynamic Spawning Elimination (`ServerGameSimulation.ts`):
+           - In `queueInput` and `syncCharacterFromPacket`: Removed dynamic `new Character` instantiation. Rogue packets with unknown IDs are rejected; only `UniversalRoomManager.registerCharacter()` can instantiate characters on the authoritative server.
+        2. Fallback Pruning in `UniversalRoomManager.ts`:
+           - In `join_room`: When `data.localPlayers` arrives, any characters in `client.characters` not present in `data.localPlayers` are cleanly unregistered and pruned.
+           - In `registerCharacter`: Enforces deterministic IDs (`localPlayerId === "keyboard" ? client.id : `${client.id}:${localPlayerId}``). Default template names (`Player X`, `Controller #X`) are detected and replaced with the authoritative global `Player ${playerNumber}`.
+        3. Name Customization Isolation (`Character.ts`, `OnlineRoomClient.ts`, `PlayerManager.ts`):
+           - Added `hasCustomName: boolean` to `Character`. Explicit custom handles are preserved, while template names are flagged as uncustomized.
+           - In `OnlineRoomClient.ts:sendPlayerInput`: Secondary characters (gamepads) never inherit `this.playerName`. They retain their own distinct names.
+           - In `OnlineRoomClient.ts:addPlayer`: Uncustomized players pass `undefined` so the server allocates sequential `Player ${playerNumber}`.
+        4. Authoritative Nametag & Roster Synchronization (`Renderer.ts`, `main.ts`):
+           - In `Renderer.ts:drawCharacterNameTag`: Uncustomized characters always display `Player ${char.playerNumber || 1}`, matching the server's authoritative sequential slot (P1, P2, P3, P4).
+           - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
+      - Verified 100% via automated test suite `scratch/test_multichar_naming_and_no_phantom.ts`.
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
