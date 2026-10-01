@@ -219,21 +219,68 @@ export class OnlineRoomClient {
   }
 
   /**
-   * Streams local player inputs to the server along with any pending reliable actions.
+   * Streams local player inputs to the server along with local character & object telemetry.
+   * Enables the authoritative server to maintain locked coordinates and velocity.
    */
-  public sendPlayerInput(packet: PlayerInputPacket): void {
+  public sendPlayerInput(packet: PlayerInputPacket, character?: any, objects?: any[]): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       if (this.clientId) {
         packet.playerId = this.clientId;
       }
+      if (this.playerName) {
+        packet.playerName = this.playerName;
+      }
       const reliableActions = this.unacknowledgedActions.size > 0
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
+      const charTelemetry = character ? {
+        id: this.clientId || character.playerId || "player",
+        name: this.playerName || character.name,
+        x: Number(character.position.x.toFixed(3)),
+        y: Number(character.position.y.toFixed(3)),
+        z: Number(character.position.z.toFixed(3)),
+        vx: Number(character.velocity.x.toFixed(3)),
+        vy: Number(character.velocity.y.toFixed(3)),
+        vz: Number((character.hasVerticalVelocity ? character.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((character.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: character.isRestingOnSurface || character.position.z <= 0.005,
+        radius: character.colliderRadius,
+        color: character.playerColor || character.color,
+        isClimbing: character.isClimbing,
+        isAboveWalls: character.isAboveWalls,
+        facingAngle: Number(character.facingAngle.toFixed(4)),
+      } : undefined;
+
+      const objTelemetry = (Array.isArray(objects) && objects.length > 0) ? objects.map((obj) => ({
+        id: obj.id,
+        name: obj.name,
+        x: Number(obj.position.x.toFixed(3)),
+        y: Number(obj.position.y.toFixed(3)),
+        z: Number(obj.position.z.toFixed(3)),
+        vx: Number(obj.velocity.x.toFixed(3)),
+        vy: Number(obj.velocity.y.toFixed(3)),
+        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
+        radius: obj.colliderRadius,
+        color: obj.color,
+        shape: obj.visualShape,
+        isHeld: obj.isHeld,
+        heldBy: obj.heldBy ? (obj.heldBy.playerId || obj.heldBy.id) : null,
+        isAboveWalls: obj.isAboveWalls,
+        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
+        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
+        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
+        isSleeping: obj.isSleeping,
+      })) : undefined;
+
       this.ws.send(JSON.stringify({
         type: "player_input",
         packet,
+        character: charTelemetry,
+        objects: objTelemetry,
         reliableActions,
       }));
     } catch (_) {}

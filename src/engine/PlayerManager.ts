@@ -39,6 +39,7 @@ export class PlayerManager {
   private inputManager: InputManager;
 
   public players: Map<string, PlayerEntry> = new Map();
+  public remotePlayers: Map<string, Character> = new Map();
   public onPlayersChanged?: () => void;
   public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
   private actionSeq: number = 0;
@@ -52,9 +53,17 @@ export class PlayerManager {
     this.arena = options.arena;
     this.inputManager = options.inputManager;
 
+    const initialHandle = (() => {
+      try {
+        return localStorage.getItem("pcg_player_handle") || "Player 1";
+      } catch {
+        return "Player 1";
+      }
+    })();
+
     // Base character that exists in the arena waiting for a device to claim it
     this.baseCharacter = options.character || new Character({
-      name: "Player 1",
+      name: initialHandle,
       color: PLAYER_COLORS[0],
       x: 4.8,
       y: 7.0,
@@ -67,7 +76,7 @@ export class PlayerManager {
     this.baseCharacter.playerNumber = 1;
     this.baseCharacter.playerColor = PLAYER_COLORS[0];
     this.baseCharacter.color = PLAYER_COLORS[0];
-    this.baseCharacter.name = "Player 1";
+    this.baseCharacter.name = initialHandle;
     this.inputManager.isKeyboardActive = false;
     this.arena.syncEntitiesWithWalls([this.baseCharacter]);
 
@@ -95,10 +104,14 @@ export class PlayerManager {
 
   public get allCharacters(): Character[] {
     const activeChars = Array.from(this.players.values()).map((p) => p.character);
-    if (activeChars.length === 0) {
+    const remotes = Array.from(this.remotePlayers.values());
+    if (activeChars.length === 0 && remotes.length === 0) {
       return [this.baseCharacter];
     }
-    return activeChars;
+    if (activeChars.length === 0) {
+      return [this.baseCharacter, ...remotes];
+    }
+    return [...activeChars, ...remotes];
   }
 
   public get primaryCharacter(): Character {
@@ -107,6 +120,104 @@ export class PlayerManager {
     const first = this.players.values().next().value;
     if (first) return first.character;
     return this.baseCharacter;
+  }
+
+  public renamePlayer(playerId: string, newName: string): boolean {
+    const trimmed = newName.trim();
+    if (!trimmed) return false;
+
+    const player = this.players.get(playerId);
+    if (player) {
+      player.character.name = trimmed;
+      if (player.isKeyboard || playerId === "keyboard") {
+        try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
+      }
+      this.onPlayersChanged?.();
+      return true;
+    }
+
+    if (this.baseCharacter && (this.baseCharacter.playerId === playerId || this.baseCharacter.playerId === "")) {
+      this.baseCharacter.name = trimmed;
+      try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
+      this.onPlayersChanged?.();
+      return true;
+    }
+
+    const remote = this.remotePlayers.get(playerId);
+    if (remote) {
+      remote.name = trimmed;
+      this.onPlayersChanged?.();
+      return true;
+    }
+
+    return false;
+  }
+
+  public syncRemoteCharacter(data: {
+    id: string;
+    name?: string;
+    playerNumber?: number;
+    color?: string;
+    x: number;
+    y: number;
+    z: number;
+    radius?: number;
+    facingAngle?: number;
+    isClimbing?: boolean;
+  }): Character {
+    let char = this.remotePlayers.get(data.id);
+    if (!char) {
+      const pNum = data.playerNumber ?? (this.players.size + this.remotePlayers.size + 1);
+      const color = data.color || PLAYER_COLORS[(pNum - 1) % PLAYER_COLORS.length];
+      char = new Character({
+        x: data.x,
+        y: data.y,
+        color,
+        colliderRadius: data.radius || 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: data.id,
+        playerNumber: pNum,
+        name: data.name || `Player ${pNum}`,
+      });
+      char.position.z = data.z;
+      if (data.facingAngle !== undefined) char.facingAngle = data.facingAngle;
+      if (data.isClimbing !== undefined) char.isClimbing = data.isClimbing;
+      this.remotePlayers.set(data.id, char);
+      this.arena.syncEntitiesWithWalls(this.allCharacters);
+      this.onPlayersChanged?.();
+    } else {
+      if (data.name && data.name !== char.name) {
+        char.name = data.name;
+      }
+      if (data.color && data.color !== char.color) {
+        char.color = data.color;
+        char.playerColor = data.color;
+      }
+      if (data.playerNumber !== undefined) {
+        char.playerNumber = data.playerNumber;
+      }
+    }
+    return char;
+  }
+
+  public removeRemoteCharacter(id: string): void {
+    const char = this.remotePlayers.get(id);
+    if (char) {
+      char.cleanupBeforeRemoval();
+      this.remotePlayers.delete(id);
+      this.arena.syncEntitiesWithWalls(this.allCharacters);
+      this.onPlayersChanged?.();
+    }
+  }
+
+  public clearRemoteCharacters(): void {
+    for (const char of this.remotePlayers.values()) {
+      char.cleanupBeforeRemoval();
+    }
+    this.remotePlayers.clear();
+    this.arena.syncEntitiesWithWalls(this.allCharacters);
+    this.onPlayersChanged?.();
   }
 
   public getNextPlayerNumber(): number {

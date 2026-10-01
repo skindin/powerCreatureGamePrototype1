@@ -1097,6 +1097,31 @@ powerCreatureGamePrototype1/
       - `scratch/test_single_screen_multiplayer_and_held_connector.ts`: Verified 100% (both local players retain visible cursors and GUI on single-screen mode, vertical connector line connects at holder hands $X=722.5\text{px}$ instead of stale physics $X=525\text{px}$).
       - `scratch/test_remote_trajectory_isolation.ts`: Verified 100% remote client trajectory isolation.
 
+65. **Phase 10: 3-Tab Game Navigation, Dedicated Online Room Server & Client, and Player Naming**:
+    - **Architectural Clean Separation**:
+      - Restored `RelayClient.ts` to its standalone, self-contained implementation for in-browser echo simulation and split-screen validation.
+      - Developed standalone `UniversalRoomManager.ts` attaching to HTTP server on `/ws` (Vite dev server and production `server.js`). Encapsulates authoritative 60Hz physics world via `ServerGameSimulation.ts`.
+      - Developed standalone `OnlineRoomClient.ts` connecting directly to `/ws` with zero dependency on `RelayClient.ts`.
+    - **3-Tab Game Mode Navigation ([index.html](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/index.html) & [src/main.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/main.ts))**:
+      - Top bar and mobile drawer feature a 3-tab segmented control:
+        1. `🏠 Local Game` (`#tab-mode-local`): Multi-controller single-machine simulation.
+        2. `🔄 Boomerang Sim` (`#tab-mode-boomerang`): Isolated 3rd-party WAN echo simulation with ghost clones.
+        3. `🌐 Online Room` (`#tab-mode-online`): Live authoritative multiplayer room on `/ws`.
+      - Top bar includes dedicated `#online-status-pill` displaying live RTT ping, slot badge (e.g. `P1`), and handle with 1-click access to the Online Room HUD (`#online-room-hud`).
+      - Hotkey `O` toggles the Online Room HUD overlay.
+    - **Bidirectional Telemetry & Telemetry-Coupled Inputs**:
+      - `OnlineRoomClient.sendPlayerInput` transmits client inputs coupled with character spatial coordinates and velocity (`x, y, z, vx, vy, vz, surfaceZ, isGrounded, facingAngle`).
+      - `UniversalRoomManager` processes `data.character` via `this.simulation.syncCharacterFromPacket(data.character)` and freebodies via `syncObjectsFromPacket(data.objects)`. This eliminates jitter buffer input starvation drift and locks remote avatars directly to reality.
+      - In `GameLoop.ts`, `renderFrame` iterates over `this.allCharacters` (`[...activeChars, ...remotes]`), populating `remoteOverrides` for every remote client avatar.
+      - In `GameLoop.updatePhysics`, remote player transforms are updated from `interpolator.getInterpolatedState()` each tick so local collisions, raycasts, and grab checks work against remote players.
+      - In `online` mode, ghost clone rendering is suppressed (`gameLoop.showGhostClones = false`), and remote characters render directly with classical snapshot interpolation.
+    - **Player Naming & Live Roster Updates**:
+      - Modal dialog (`#player-name-modal`) allows editing player handle, persisted to `localStorage.pcg_player_handle`.
+      - Real-time `rename_player` network command propagates across server simulation and updates live roster chips and name tags for all clients.
+      - Clean disconnect handling cleans up character from authoritative world and evicts from client remote rosters.
+    - **Automated Verification**:
+      - `scratch/test_phase_10_online_room.ts`: Verified 100% (2 clients connecting to UniversalRoomManager, slot allocation P1/P2, bidirectional position sync, live player renaming, and clean disconnection cleanup).
+
 ---
 
 

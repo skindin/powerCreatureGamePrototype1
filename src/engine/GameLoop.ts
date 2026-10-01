@@ -78,9 +78,19 @@ export class GameLoop {
   public interpolator = new RemoteEntityInterpolator();
   public splitClientSimsEnabled = false;
   public isMultiplayerMode = false;
+  public activeMode: "local" | "boomerang" | "online" = "local";
+  public onPlayerRenamed?: (playerId: string, newName: string) => void;
 
   public get isSplitScreen(): boolean {
     return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
+  }
+
+  public renamePlayer(playerId: string, newName: string): boolean {
+    const success = this.playerManager.renamePlayer(playerId, newName);
+    if (success) {
+      this.onPlayerRenamed?.(playerId, newName);
+    }
+    return success;
   }
 
   public get isPaused(): boolean {
@@ -298,11 +308,13 @@ export class GameLoop {
         }
       }
 
+      const renderGhostData = this.activeMode === "online" ? null : ghostData;
+
       const viewports = this.renderer.renderSplitScreen(
         this.arena,
         playerViews,
         this.objects,
-        ghostData,
+        renderGhostData,
         remoteOverrides,
         targetGrabEntities,
         this.devPanel.isEditMode,
@@ -323,15 +335,15 @@ export class GameLoop {
 
       const localHeroChar = this.playerManager.players.get("keyboard")?.character || this.allCharacters[0] || null;
 
-      // Sample remote player interpolated states for single-screen multiplayer if any
+      // Sample remote player interpolated states for all non-local characters
       const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
       const now = performance.now();
       const rttMs = ghostData?.rttMs ?? 0;
-      for (const pe of this.playerManager.players.values()) {
-        if (localHeroChar && pe.character === localHeroChar) continue;
-        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now, rttMs);
+      for (const char of this.allCharacters) {
+        if (localHeroChar && char === localHeroChar) continue;
+        const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);
         if (interp) {
-          remoteOverrides.set(pe.character.playerId, {
+          remoteOverrides.set(char.playerId, {
             x: interp.x,
             y: interp.y,
             z: interp.z,
@@ -340,6 +352,8 @@ export class GameLoop {
           });
         }
       }
+
+      const renderGhostData = this.activeMode === "online" ? null : ghostData;
 
       this.renderer.render(
         this.arena,
@@ -351,7 +365,7 @@ export class GameLoop {
         targetGrabEntities,
         isWallEditor,
         this.inputManager.hoverWallTile,
-        ghostData,
+        renderGhostData,
         activeAimCursors,
         undefined,
         false,
@@ -417,6 +431,21 @@ export class GameLoop {
     // 2. Update players (keyboard, gamepads, or idle baseCharacter) and capture inputs
     const currentInputs = this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
     this.lastInputs = currentInputs;
+
+    // Synchronize remote characters from interpolation so local physics & queries reflect real positions
+    const nowPhys = performance.now();
+    for (const rc of this.playerManager.remotePlayers.values()) {
+      const interp = this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
+      if (interp) {
+        rc.position.x = interp.x;
+        rc.position.y = interp.y;
+        rc.position.z = interp.z;
+        rc.velocity.x = interp.vx;
+        rc.velocity.y = interp.vy;
+        if (interp.facingAngle !== undefined) rc.facingAngle = interp.facingAngle;
+        if (interp.isClimbing !== undefined) rc.isClimbing = interp.isClimbing;
+      }
+    }
 
     // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {

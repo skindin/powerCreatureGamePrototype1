@@ -238,6 +238,17 @@ export class UniversalRoomManager {
           }
           this.simulation.queueInput(pkt);
 
+          if (data.character) {
+            data.character.id = clientId;
+            if (character.name) data.character.name = character.name;
+            if (character.color) data.character.color = character.color;
+            this.simulation.syncCharacterFromPacket(data.character);
+          }
+
+          if (Array.isArray(data.objects) && data.objects.length > 0) {
+            this.simulation.syncObjectsFromPacket(data.objects);
+          }
+
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
               act.playerId = clientId;

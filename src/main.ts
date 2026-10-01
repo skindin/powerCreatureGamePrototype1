@@ -9,6 +9,8 @@ import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { FeedbackPanel } from "./ui/FeedbackPanel.js";
 import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
+import { OnlineRoomClient } from "./network/OnlineRoomClient.js";
+import type { PlayerInputPacket } from "./engine/physics/StateHistoryBuffer.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import QRCode from "qrcode";
 
@@ -400,12 +402,24 @@ function bootstrap(): void {
     }
   };
 
-  // 7. Setup Multiplayer 3rd-Party Relay Client & Mode Switching
+  // 7. Setup Multiplayer 3rd-Party Relay Client, Dedicated Online Room Client & 3-Tab Mode Switching
   const relayClient = new RelayClient("wss://ws.postman-echo.com/raw");
-  let isMultiplayerMode = false;
+  const onlineClient = new OnlineRoomClient();
+  try {
+    const savedName = localStorage.getItem("pcg_player_handle");
+    if (savedName) onlineClient.playerName = savedName;
+  } catch {}
 
-  const btnSinglePlayer = document.getElementById("mode-singleplayer-btn");
-  const btnMultiplayer = document.getElementById("mode-multiplayer-btn");
+  type GameModeType = "local" | "boomerang" | "online";
+  let activeGameMode: GameModeType = "local";
+
+  const tabModeLocal = document.getElementById("tab-mode-local");
+  const tabModeBoomerang = document.getElementById("tab-mode-boomerang");
+  const tabModeOnline = document.getElementById("tab-mode-online");
+  const mobileModeLocalBtn = document.getElementById("mobile-mode-local-btn");
+  const mobileModeBoomerangBtn = document.getElementById("mobile-mode-boomerang-btn");
+  const mobileModeOnlineBtn = document.getElementById("mobile-mode-online-btn");
+
   const relayHud = document.getElementById("multiplayer-relay-hud");
   const relayStatusPill = document.getElementById("relay-status-pill");
   const relayPingDisplay = document.getElementById("relay-ping-display");
@@ -425,6 +439,32 @@ function bootstrap(): void {
   const btnMinimizeRelayHud = document.getElementById("btn-minimize-relay-hud") as HTMLButtonElement | null;
   const btnCloseRelayHud = document.getElementById("btn-close-relay-hud") as HTMLButtonElement | null;
   const relayHudCard = relayHud?.querySelector(".relay-hud-card") as HTMLElement | null;
+
+  // Dedicated Online Room HUD Elements
+  const onlineHud = document.getElementById("online-room-hud");
+  const onlineHudCard = onlineHud?.querySelector(".relay-hud-card") as HTMLElement | null;
+  const onlineStatusPill = document.getElementById("online-status-pill");
+  const onlinePingDisplay = document.getElementById("online-ping-display");
+  const onlinePlayerBadge = document.getElementById("online-player-badge");
+  const onlineNameDisplay = document.getElementById("online-name-display");
+  const onlineBadgeStatus = document.getElementById("online-badge-status");
+  const onlineConnectBtn = document.getElementById("online-connect-btn") as HTMLButtonElement | null;
+  const btnMinimizeOnlineHud = document.getElementById("btn-minimize-online-hud");
+  const btnCloseOnlineHud = document.getElementById("btn-close-online-hud");
+  const onlineMySlot = document.getElementById("online-my-slot");
+  const onlineMyName = document.getElementById("online-my-name");
+  const btnPromptRename = document.getElementById("btn-prompt-rename");
+  const onlineBtnEditName = document.getElementById("online-btn-edit-name");
+  const btnCopyOnlineUrl = document.getElementById("btn-copy-online-url");
+  const onlineRttCurrent = document.getElementById("online-rtt-current");
+  const onlinePlayersCount = document.getElementById("online-players-count");
+  const onlineRosterList = document.getElementById("online-roster-list");
+
+  // Player Name Prompt Modal
+  const playerNameModal = document.getElementById("player-name-modal");
+  const btnCloseNameModal = document.getElementById("btn-close-name-modal");
+  const inputPlayerHandle = document.getElementById("input-player-handle") as HTMLInputElement | null;
+  const btnSavePlayerHandle = document.getElementById("btn-save-player-handle");
 
   const toggleRelayHudMinimize = (forceState?: boolean) => {
     if (!relayHudCard) return;
@@ -461,38 +501,285 @@ function bootstrap(): void {
     }
   });
 
-  const mobileModeSingleBtn = document.getElementById("mobile-mode-single-btn");
-  const mobileModeMultiBtn = document.getElementById("mobile-mode-multi-btn");
-
-  const setMode = (multiplayer: boolean) => {
-    isMultiplayerMode = multiplayer;
-    if (gameLoop) {
-      gameLoop.isMultiplayerMode = multiplayer;
+  const toggleOnlineHudMinimize = (forceState?: boolean) => {
+    if (!onlineHudCard) return;
+    const shouldCollapse = forceState !== undefined ? forceState : !onlineHudCard.classList.contains("collapsed");
+    onlineHudCard.classList.toggle("collapsed", shouldCollapse);
+    if (btnMinimizeOnlineHud) {
+      btnMinimizeOnlineHud.textContent = shouldCollapse ? "➕" : "➖";
+      btnMinimizeOnlineHud.title = shouldCollapse ? "Expand Online Settings (O)" : "Minimize Online Settings (O)";
     }
-    if (multiplayer) {
-      btnSinglePlayer?.classList.remove("active");
-      btnMultiplayer?.classList.add("active");
-      mobileModeSingleBtn?.classList.remove("active");
-      mobileModeMultiBtn?.classList.add("active");
+  };
+
+  const toggleOnlineHudVisibility = (forceOpen?: boolean) => {
+    if (!onlineHud) return;
+    const isHidden = onlineHud.classList.contains("hidden");
+    const nextHidden = forceOpen !== undefined ? !forceOpen : !isHidden;
+    onlineHud.classList.toggle("hidden", nextHidden);
+  };
+
+  btnMinimizeOnlineHud?.addEventListener("click", () => {
+    toggleOnlineHudMinimize();
+  });
+
+  btnCloseOnlineHud?.addEventListener("click", () => {
+    toggleOnlineHudVisibility(false);
+  });
+
+  onlineStatusPill?.addEventListener("click", () => {
+    if (onlineHud?.classList.contains("hidden")) {
+      toggleOnlineHudVisibility(true);
+    } else if (onlineHudCard?.classList.contains("collapsed")) {
+      toggleOnlineHudMinimize(false);
+    } else {
+      toggleOnlineHudVisibility(false);
+    }
+  });
+
+  onlineConnectBtn?.addEventListener("click", () => {
+    if (onlineClient.status === "connected") {
+      onlineClient.disconnect();
+    } else {
+      onlineClient.connect();
+    }
+  });
+
+  btnCopyOnlineUrl?.addEventListener("click", () => {
+    copyPublicLink(btnCopyOnlineUrl);
+  });
+
+  // Name Modal Interactions
+  const openNameModal = () => {
+    if (!playerNameModal) return;
+    if (inputPlayerHandle) {
+      inputPlayerHandle.value = onlineClient.playerName;
+    }
+    playerNameModal.classList.remove("hidden");
+    inputPlayerHandle?.focus();
+  };
+
+  const closeNameModal = () => {
+    playerNameModal?.classList.add("hidden");
+  };
+
+  const saveNameHandle = () => {
+    if (!inputPlayerHandle) return;
+    const trimmed = inputPlayerHandle.value.trim();
+    if (trimmed) {
+      onlineClient.renamePlayer(trimmed);
+      try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
+      const hero = gameLoop?.players.get("keyboard")?.character || character;
+      if (hero) {
+        hero.name = trimmed;
+        if (gameLoop) {
+          gameLoop.renamePlayer(hero.playerId || "keyboard", trimmed);
+        }
+      }
+    }
+    closeNameModal();
+  };
+
+  btnPromptRename?.addEventListener("click", openNameModal);
+  onlineBtnEditName?.addEventListener("click", openNameModal);
+  btnCloseNameModal?.addEventListener("click", closeNameModal);
+  btnSavePlayerHandle?.addEventListener("click", saveNameHandle);
+  inputPlayerHandle?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveNameHandle();
+    if (e.key === "Escape") closeNameModal();
+  });
+
+  const setGameMode = (mode: GameModeType) => {
+    activeGameMode = mode;
+    if (gameLoop) {
+      gameLoop.activeMode = mode;
+      gameLoop.isMultiplayerMode = (mode === "boomerang");
+    }
+
+    // Update Tab UI
+    tabModeLocal?.classList.toggle("active", mode === "local");
+    tabModeBoomerang?.classList.toggle("active", mode === "boomerang");
+    tabModeOnline?.classList.toggle("active", mode === "online");
+
+    mobileModeLocalBtn?.classList.toggle("active", mode === "local");
+    mobileModeBoomerangBtn?.classList.toggle("active", mode === "boomerang");
+    mobileModeOnlineBtn?.classList.toggle("active", mode === "online");
+
+    if (mode === "local") {
+      onlineClient.disconnect();
+      onlineHud?.classList.add("hidden");
+      onlineStatusPill?.classList.add("hidden");
+
+      relayClient.disconnect();
+      relayHud?.classList.add("hidden");
+      relayStatusPill?.classList.add("hidden");
+
+      gameLoop?.playerManager.clearRemoteCharacters();
+    } else if (mode === "boomerang") {
+      onlineClient.disconnect();
+      onlineHud?.classList.add("hidden");
+      onlineStatusPill?.classList.add("hidden");
+      gameLoop?.playerManager.clearRemoteCharacters();
+
       relayHud?.classList.remove("hidden");
       relayStatusPill?.classList.remove("hidden");
       relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
       relayClient.connect();
-    } else {
-      btnSinglePlayer?.classList.add("active");
-      btnMultiplayer?.classList.remove("active");
-      mobileModeSingleBtn?.classList.add("active");
-      mobileModeMultiBtn?.classList.remove("active");
+    } else if (mode === "online") {
+      relayClient.disconnect();
       relayHud?.classList.add("hidden");
       relayStatusPill?.classList.add("hidden");
-      relayClient.disconnect();
+
+      onlineHud?.classList.remove("hidden");
+      onlineStatusPill?.classList.remove("hidden");
+      onlineClient.connect();
     }
   };
 
-  btnSinglePlayer?.addEventListener("click", () => setMode(false));
-  btnMultiplayer?.addEventListener("click", () => setMode(true));
-  mobileModeSingleBtn?.addEventListener("click", () => setMode(false));
-  mobileModeMultiBtn?.addEventListener("click", () => setMode(true));
+  tabModeLocal?.addEventListener("click", () => setGameMode("local"));
+  tabModeBoomerang?.addEventListener("click", () => setGameMode("boomerang"));
+  tabModeOnline?.addEventListener("click", () => setGameMode("online"));
+  mobileModeLocalBtn?.addEventListener("click", () => setGameMode("local"));
+  mobileModeBoomerangBtn?.addEventListener("click", () => setGameMode("boomerang"));
+  mobileModeOnlineBtn?.addEventListener("click", () => setGameMode("online"));
+
+  // Dedicated Online Client Telemetry & Snapshot Callbacks
+  onlineClient.onStatsChange = (stats) => {
+    if (onlineBadgeStatus) {
+      onlineBadgeStatus.textContent = stats.status;
+      onlineBadgeStatus.className = `relay-badge-status ${stats.status}`;
+    }
+    if (onlineConnectBtn) {
+      onlineConnectBtn.textContent = stats.status === "connected" ? "Disconnect" : "Connect";
+    }
+    const dot = onlineStatusPill?.querySelector(".status-dot");
+    if (dot) {
+      dot.className = `status-dot ${stats.status}`;
+    }
+    if (onlinePingDisplay) {
+      onlinePingDisplay.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : stats.status;
+    }
+    if (onlinePlayerBadge) {
+      onlinePlayerBadge.textContent = `P${stats.playerNumber}`;
+    }
+    if (onlineNameDisplay) {
+      onlineNameDisplay.textContent = stats.playerName;
+    }
+    if (onlineMyName) {
+      onlineMyName.textContent = stats.playerName;
+    }
+    if (onlineMySlot) {
+      onlineMySlot.textContent = `P${stats.playerNumber} ${stats.playerNumber === 1 ? '(Host)' : ''}`;
+    }
+    if (onlineRttCurrent) {
+      onlineRttCurrent.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : "-- ms";
+      if (stats.pingMs < 70) onlineRttCurrent.style.color = "#22c55e";
+      else if (stats.pingMs < 140) onlineRttCurrent.style.color = "#f59e0b";
+      else onlineRttCurrent.style.color = "#ef4444";
+    }
+    if (onlinePlayersCount) {
+      onlinePlayersCount.textContent = `${stats.playerCount} Connected`;
+    }
+  };
+
+  onlineClient.onJoined = (info) => {
+    console.log(`🌐 [OnlineRoom] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
+    const hero = gameLoop?.players.get("keyboard")?.character || character;
+    if (hero) {
+      hero.playerId = info.clientId;
+      hero.playerNumber = info.playerNumber;
+      hero.color = info.color;
+      hero.playerColor = info.color;
+      hero.name = info.name;
+    }
+    if (onlineMySlot) {
+      onlineMySlot.textContent = `P${info.playerNumber} ${info.playerNumber === 1 ? '(Host)' : ''}`;
+      onlineMySlot.style.color = info.color;
+    }
+    if (onlineMyName) {
+      onlineMyName.textContent = info.name;
+    }
+  };
+
+  onlineClient.onSnapshotReceived = (snapshot) => {
+    if (activeGameMode !== "online" || !gameLoop) return;
+
+    // 1. Sync remote characters in playerManager
+    if (Array.isArray(snapshot.characters)) {
+      const activeCharIds = new Set<string>();
+      for (const c of snapshot.characters) {
+        activeCharIds.add(c.id);
+        if (c.id !== onlineClient.clientId) {
+          gameLoop.playerManager.syncRemoteCharacter(c);
+        }
+      }
+      // Remove disconnected remote players
+      for (const remId of gameLoop.playerManager.remotePlayers.keys()) {
+        if (!activeCharIds.has(remId)) {
+          gameLoop.playerManager.removeRemoteCharacter(remId);
+        }
+      }
+
+      // Update Roster chips UI
+      if (onlineRosterList) {
+        onlineRosterList.innerHTML = "";
+        for (const c of snapshot.characters) {
+          const isMe = c.id === onlineClient.clientId;
+          const chip = document.createElement("div");
+          chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? 'rgba(56, 189, 248, 0.6)' : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
+          chip.innerHTML = `
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${c.color || '#38bdf8'}; box-shadow: 0 0 6px ${c.color || '#38bdf8'};"></span>
+            <span style="color: ${isMe ? '#38bdf8' : '#f1f5f9'};">${c.name || 'Player'} ${isMe ? '(You)' : ''}</span>
+          `;
+          onlineRosterList.appendChild(chip);
+        }
+      }
+    }
+
+    // 2. Push snapshot samples to RemoteEntityInterpolator
+    const samples: any[] = [];
+    const ghostChars = (snapshot.characters && snapshot.characters.length > 0)
+      ? snapshot.characters
+      : (snapshot.character ? [snapshot.character] : []);
+
+    for (const gc of ghostChars) {
+      samples.push({
+        id: gc.id,
+        x: gc.x,
+        y: gc.y,
+        z: gc.z,
+        vx: gc.vx,
+        vy: gc.vy,
+        vz: gc.vz || 0,
+        facingAngle: gc.facingAngle ?? 0,
+        isClimbing: gc.isClimbing,
+        isAboveWalls: gc.isAboveWalls,
+        isGrounded: gc.isGrounded,
+        surfaceZ: gc.surfaceZ,
+        heldObjectId: gc.isHeld ? "held" : null,
+        heldBy: gc.heldBy,
+        color: gc.color,
+        radius: gc.radius,
+      });
+    }
+    gameLoop.interpolator.pushSnapshot(snapshot.seq, samples, performance.now());
+
+    // 3. Sync authoritative freebody objects
+    if (Array.isArray(snapshot.objects)) {
+      gameLoop.syncAuthoritativeObjects(snapshot.objects);
+    }
+  };
+
+  onlineClient.onWorldSnapshotReceived = (worldSnapshot) => {
+    if (activeGameMode === "online" && gameLoop) {
+      gameLoop.reconcileWorldSnapshot(worldSnapshot);
+    }
+  };
+
+  onlineClient.onClockSync = (sync) => {
+    if (activeGameMode === "online" && gameLoop) {
+      gameLoop.applyClockSync(sync);
+    }
+  };
 
   relayClient.onStatsChange = (stats) => {
     if (relayBadgeStatus) {
@@ -521,7 +808,7 @@ function bootstrap(): void {
 
     const mobileRelayStatus = document.getElementById("mobile-relay-status");
     const mobilePingDisplay = document.getElementById("mobile-ping-display");
-    if (isMultiplayerMode) {
+    if (activeGameMode === "boomerang") {
       mobileRelayStatus?.classList.remove("hidden");
       if (mobilePingDisplay) {
         mobilePingDisplay.textContent = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
@@ -1175,7 +1462,7 @@ function bootstrap(): void {
       !e.altKey &&
       !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
     ) {
-      if (isMultiplayerMode) {
+      if (activeGameMode === "boomerang") {
         if (relayHud?.classList.contains("hidden")) {
           toggleRelayHudVisibility(true);
         } else if (!relayHudCard?.classList.contains("collapsed")) {
@@ -1186,14 +1473,36 @@ function bootstrap(): void {
       }
     }
 
+    if (
+      e.code === "KeyO" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
+    ) {
+      if (activeGameMode === "online") {
+        if (onlineHud?.classList.contains("hidden")) {
+          toggleOnlineHudVisibility(true);
+        } else if (!onlineHudCard?.classList.contains("collapsed")) {
+          toggleOnlineHudMinimize(true);
+        } else {
+          toggleOnlineHudVisibility(false);
+        }
+      }
+    }
+
     if (e.code === "Escape") {
       setMobileMenuOpen(false);
       setViewSettingsOpen(false);
       setPhoneModalOpen(false);
       feedbackPanel.close();
       setControlsModalOpen(false);
+      closeNameModal();
       if (relayHud && !relayHud.classList.contains("hidden")) {
         toggleRelayHudVisibility(false);
+      }
+      if (onlineHud && !onlineHud.classList.contains("hidden")) {
+        toggleOnlineHudVisibility(false);
       }
     }
 
@@ -1270,8 +1579,8 @@ function bootstrap(): void {
   const mobileBtnRelayHud = document.getElementById("mobile-btn-relay-hud");
   mobileBtnRelayHud?.addEventListener("click", () => {
     setMobileMenuOpen(false);
-    if (!isMultiplayerMode) {
-      setMode(true);
+    if (activeGameMode !== "boomerang") {
+      setGameMode("boomerang");
     } else {
       toggleRelayHudVisibility(true);
       toggleRelayHudMinimize(false);
@@ -1287,39 +1596,65 @@ function bootstrap(): void {
       mobilePlayersBadge.textContent = `${count} Active`;
     }
     // Synchronize authoritative server simulation with all players whenever players join or leave
-    if (isMultiplayerMode && gameLoop) {
+    if (activeGameMode === "boomerang" && gameLoop) {
       relayClient.syncServerWorld(arena, gameLoop.allCharacters, gameLoop.objects);
     }
   };
 
   // Connect Game Loop to Ghost Clones and Network Telemetry Dispatch
   gameLoop.getGhostSnapshot = (dt: number) => {
-    if (!isMultiplayerMode) return null;
-    relayClient.updateGhostLerp(dt);
-    return relayClient.getLatestGhost();
+    if (activeGameMode === "boomerang") {
+      relayClient.updateGhostLerp(dt);
+      return relayClient.getLatestGhost();
+    }
+    return null;
   };
-  gameLoop.getShowGhostClones = () => relayClient.showGhostClones;
+  gameLoop.getShowGhostClones = () => {
+    if (activeGameMode === "boomerang") return relayClient.showGhostClones;
+    return false;
+  };
   gameLoop.showGhostClones = relayClient.showGhostClones;
+
   gameLoop.onReliableAction = (action) => {
-    if (isMultiplayerMode) {
+    if (activeGameMode === "boomerang") {
       relayClient.queueReliableAction(action);
+    } else if (activeGameMode === "online") {
+      onlineClient.queueReliableAction(action);
     }
   };
+
   relayClient.onClockSync = (sync) => {
-    gameLoop.applyClockSync(sync);
+    if (activeGameMode === "boomerang") {
+      gameLoop.applyClockSync(sync);
+    }
   };
   relayClient.onWorldSnapshotReceived = (snapshot) => {
-    if (isMultiplayerMode && gameLoop) {
+    if (activeGameMode === "boomerang" && gameLoop) {
       gameLoop.reconcileWorldSnapshot(snapshot);
     }
   };
+
   gameLoop.onPhysicsTick = (dt, nowMs) => {
-    if (isMultiplayerMode) {
+    if (activeGameMode === "boomerang") {
       // 1. Advance the independent authoritative server physics simulation by dt at full 60Hz
       relayClient.stepServerPhysics(dt);
 
       // 2. Stream client input packets and world telemetry across the WAN relay loopback
       relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, gameLoop.allCharacters, gameLoop.objects, nowMs);
+    } else if (activeGameMode === "online") {
+      // Stream local inputs + character telemetry + object telemetry to authoritative online server
+      const hero = gameLoop.players.get("keyboard")?.character || gameLoop.primaryCharacter;
+      const kbPkt = gameLoop.lastInputs.get("keyboard") || (gameLoop.lastInputs.values().next().value as PlayerInputPacket) || {
+        playerId: hero?.playerId || onlineClient.clientId || "player",
+        playerName: hero?.name || onlineClient.playerName,
+        tick: gameLoop.currentTick,
+        moveX: 0,
+        moveY: 0,
+        isSprinting: hero?.isSprinting ?? false,
+        isJumpHeld: false,
+        isAiming: false,
+      };
+      onlineClient.sendPlayerInput(kbPkt, hero, gameLoop.objects);
     }
   };
 

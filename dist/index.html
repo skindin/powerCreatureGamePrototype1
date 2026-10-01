@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-DctuRNrD.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CTyKL1RM.css">
+    <script type="module" crossorigin src="/assets/index-BP4s2sfq.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BstCKdoJ.css">
   </head>
   <body>
     <div id="app-layout">
@@ -28,16 +28,25 @@
 
         <div class="top-bar-center">
           <div class="mode-pill-group">
-            <button id="mode-singleplayer-btn" class="mode-btn active" title="Local multi-controller / single-machine simulation">
+            <button id="tab-mode-local" class="mode-btn active" title="Local multi-controller / single-machine simulation">
               <span>🏠 Local Game</span>
             </button>
-            <button id="mode-multiplayer-btn" class="mode-btn" title="Multiplayer relay test with ghost echo">
-              <span>🌐 Multiplayer (Relay Test)</span>
+            <button id="tab-mode-boomerang" class="mode-btn" title="Multiplayer relay test with ghost echo (WAN loopback)">
+              <span>🔄 Boomerang Sim</span>
+            </button>
+            <button id="tab-mode-online" class="mode-btn" title="Live online multiplayer room (/ws)">
+              <span>🌐 Online Room</span>
             </button>
           </div>
         </div>
 
         <div class="top-bar-right">
+          <div id="online-status-pill" class="relay-pill online-pill hidden" title="Toggle Online Room Settings overlay (Hotkey: O)" role="button" tabindex="0">
+            <span class="status-dot"></span>
+            <span id="online-ping-display">-- ms</span>
+            <span id="online-player-badge" class="online-pill-badge" style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-weight: 600;">1P</span>
+            <span id="online-name-display" class="online-pill-name" style="font-size: 11px; color: #f1f5f9; font-weight: 500; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Player 1</span>
+          </div>
           <div id="relay-status-pill" class="relay-pill hidden" title="Toggle Multiplayer Relay Settings overlay (Hotkey: M)" role="button" tabindex="0">
             <span class="status-dot"></span>
             <span id="relay-ping-display">-- ms</span>
@@ -147,11 +156,14 @@
                   <h3>Game Mode</h3>
                 </div>
                 <div class="mobile-mode-switcher">
-                  <button id="mobile-mode-single-btn" class="mobile-mode-btn active">
-                    <span>🏠 Local Game</span>
+                  <button id="mobile-mode-local-btn" class="mobile-mode-btn active">
+                    <span>🏠 Local</span>
                   </button>
-                  <button id="mobile-mode-multi-btn" class="mobile-mode-btn">
-                    <span>🌐 Multiplayer</span>
+                  <button id="mobile-mode-boomerang-btn" class="mobile-mode-btn">
+                    <span>🔄 Boomerang</span>
+                  </button>
+                  <button id="mobile-mode-online-btn" class="mobile-mode-btn">
+                    <span>🌐 Online</span>
                   </button>
                 </div>
               </div>
@@ -319,6 +331,26 @@
             </div>
             <div class="phone-modal-status-box" id="phone-modal-tip">
               <span>💡 Run <code>npm run share</code> in terminal to create an instant worldwide tunnel!</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Player Name Prompt Modal -->
+      <div id="player-name-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card phone-modal-card" style="max-width: 380px;">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👤</span>
+              <span>Player Name</span>
+            </div>
+            <button id="btn-close-name-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+          <div class="phone-modal-body" style="padding: 16px 20px;">
+            <p class="phone-modal-desc" style="margin-bottom: 12px;">Choose how other players will see you in the online arena:</p>
+            <div style="display: flex; gap: 8px;">
+              <input id="input-player-handle" type="text" maxlength="20" placeholder="e.g. TealBeast" style="flex: 1; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 8px 12px; color: #f8fafc; font-size: 0.95rem;" />
+              <button id="btn-save-player-handle" class="btn-preset" style="padding: 8px 16px; background: var(--accent-cyan); color: #090d16; font-weight: 700;">Save</button>
             </div>
           </div>
         </div>
@@ -752,6 +784,62 @@
                   <span class="stat-label">Split Client Sims</span>
                   <div class="split-sim-control-group">
                     <button id="relay-toggle-split-sims-body-btn" class="btn-split-toggle off" title="Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)">👥 Split Sims: OFF</button>
+                  </div>
+                </div>
+          </div>
+
+          <!-- Online Room HUD (Visible when Online Room mode is active) -->
+          <div id="online-room-hud" class="relay-hud-container online-hud-container hidden">
+            <div class="relay-hud-card">
+              <div class="relay-hud-header">
+                <div class="relay-title">
+                  <span class="relay-icon">🌐</span>
+                  <span class="relay-name">Universal Online Room</span>
+                  <span id="online-badge-status" class="relay-badge-status disconnected">Disconnected</span>
+                </div>
+                <div class="relay-hud-actions">
+                  <button id="online-btn-edit-name" class="btn-preset" title="Change your player name" style="height: 24px; padding: 2px 8px; font-size: 11px;">👤 Edit Name</button>
+                  <button id="online-connect-btn" class="btn-relay-connect">Connect</button>
+                  <button id="btn-minimize-online-hud" class="btn-relay-tool" title="Minimize / Collapse Online Settings (O)" aria-label="Minimize Online Settings">➖</button>
+                  <button id="btn-close-online-hud" class="btn-relay-tool close" title="Hide Online Room Card (keeps connection active in background, click pill in top bar to reopen)" aria-label="Hide Online Room Settings">✕</button>
+                </div>
+              </div>
+
+              <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Your Slot & Name</span>
+                  <div class="url-input-wrapper">
+                    <span id="online-my-slot" class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 3px 8px; border-radius: 4px; font-weight: 600;">P1</span>
+                    <span id="online-my-name" style="color: #f1f5f9; font-weight: 600; margin-left: 6px;">Player 1</span>
+                    <button id="btn-prompt-rename" class="btn-preset" style="margin-left: 8px; height: 24px; padding: 2px 8px; font-size: 11px;" title="Change display name">✏️ Rename</button>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item">
+                  <span class="stat-label">Server Connection</span>
+                  <div class="url-input-wrapper">
+                    <input id="online-url-input" class="relay-url-input" type="text" readonly value="/ws" />
+                    <button id="btn-copy-online-url" class="btn-preset" title="Copy public game link">📋 Copy Invite</button>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item rtt-item">
+                  <span class="stat-label">Round-Trip Latency (RTT)</span>
+                  <div class="rtt-metrics">
+                    <span class="rtt-current" id="online-rtt-current">-- ms</span>
+                    <span class="rtt-sub" id="online-rtt-sub">Authoritative 60Hz Server Simulation on /ws</span>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item">
+                  <span class="stat-label">Room Capacity</span>
+                  <span class="stat-value" id="online-players-count">1 Connected</span>
+                </div>
+
+                <div class="relay-stat-item" style="grid-column: 1 / -1;">
+                  <span class="stat-label">Player Roster</span>
+                  <div id="online-roster-list" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+                    <!-- Dynamically populated roster chips -->
                   </div>
                 </div>
               </div>
