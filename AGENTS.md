@@ -127,6 +127,13 @@ powerCreatureGamePrototype1/
     - Other reachable ground objects render with reach outline and dashed reach ring.
     - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items onto the ground.
     - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, if a ground item is targeted in reach, it swaps items (dropping current and picking up new). If no ground item is in range, the held item is retained.
+  - **Lock Aim Facing Direction & Network Synchronization**:
+    - When locked onto a target (`activeTrajectory?.isAutoLocked && activeTrajectory.targetObject`), character orientation faces directly toward the locked object instead of the mouse cursor or stick position.
+    - Held object physical position (`calculateHeldObjectPosition`) in hands updates to follow this locked facing orientation.
+    - This locked facing direction is written to `pkt.facingAngle` and enforced during server simulation steps (`ServerGameSimulation.ts`) and ghost snapshot broadcast, preserving the exact locking functionality without modification.
+  - **Grab GUI Client Isolation**:
+    - Reach highlights, target grab colored outlines, glowing grab rings, and player grab badges (`P1 GRAB`) are preserved for each local client player on their respective screen/viewport and in single-screen/local game mode.
+    - Grab GUI is strictly hidden only for players belonging to other client simulations on that screen.
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 

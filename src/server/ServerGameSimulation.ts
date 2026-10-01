@@ -630,8 +630,20 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
-        if (catchupPkt.facingAngle !== undefined) {
+        if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
+          const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
+          const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
+          if (Math.hypot(dx, dy) > 0.05) {
+            char.facingAngle = Math.atan2(dy, dx);
+          }
+        } else if (catchupPkt.facingAngle !== undefined) {
           char.facingAngle = catchupPkt.facingAngle;
+        }
+        if (char.heldObject) {
+          const heldPos = char.calculateHeldObjectPosition(this.arena);
+          char.heldObject.position.x = heldPos.x;
+          char.heldObject.position.y = heldPos.y;
+          char.heldObject.position.z = heldPos.z;
         }
       }
 
@@ -706,9 +718,21 @@ export class ServerGameSimulation {
           pkt.isLockHeld
         );
 
-        // Explicitly enforce facing angle sent by client packet
-        if (pkt.facingAngle !== undefined) {
+        // Explicitly enforce facing angle sent by client packet (or locked target if active)
+        if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
+          const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
+          const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
+          if (Math.hypot(dx, dy) > 0.05) {
+            char.facingAngle = Math.atan2(dy, dx);
+          }
+        } else if (pkt.facingAngle !== undefined) {
           char.facingAngle = pkt.facingAngle;
+        }
+        if (char.heldObject) {
+          const heldPos = char.calculateHeldObjectPosition(this.arena);
+          char.heldObject.position.x = heldPos.x;
+          char.heldObject.position.y = heldPos.y;
+          char.heldObject.position.z = heldPos.z;
         }
       } else {
         // Neutral step for empty-handed player

@@ -326,12 +326,23 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      // Ensure facingAngle is explicit: face locked target object if locked, otherwise face aim when holding, movement direction when walking
       if (kChar.heldObject) {
-        const aimDx = input.actualMousePos.x - kChar.position.x;
-        const aimDy = input.actualMousePos.y - kChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        const lockTarget = kChar.activeTrajectory?.isAutoLocked && kChar.activeTrajectory.targetObject
+          ? kChar.activeTrajectory.targetObject
+          : null;
+        if (lockTarget) {
+          const aimDx = lockTarget.position.x - kChar.position.x;
+          const aimDy = lockTarget.position.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
+        } else {
+          const aimDx = input.actualMousePos.x - kChar.position.x;
+          const aimDy = input.actualMousePos.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else {
         const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
@@ -402,12 +413,23 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face aim when holding an object, movement direction when walking
+      // Ensure facingAngle is explicit: face locked target object if locked, otherwise face aim when holding, movement direction when walking
       if (cChar.heldObject) {
-        const aimDx = aimX - cChar.position.x;
-        const aimDy = aimY - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        const lockTarget = cChar.activeTrajectory?.isAutoLocked && cChar.activeTrajectory.targetObject
+          ? cChar.activeTrajectory.targetObject
+          : null;
+        if (lockTarget) {
+          const aimDx = lockTarget.position.x - cChar.position.x;
+          const aimDy = lockTarget.position.y - cChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            cChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
+        } else {
+          const aimDx = aimX - cChar.position.x;
+          const aimDy = aimY - cChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            cChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else {
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
@@ -543,8 +565,20 @@ export class PlayerManager {
         pkt.isLockHeld
       );
 
-      if (pkt.facingAngle !== undefined) {
+      if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
+        const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
+        const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
+        if (Math.hypot(dx, dy) > 0.05) {
+          char.facingAngle = Math.atan2(dy, dx);
+        }
+      } else if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
+      }
+      if (char.heldObject) {
+        const heldPos = char.calculateHeldObjectPosition(this.arena);
+        char.heldObject.position.x = heldPos.x;
+        char.heldObject.position.y = heldPos.y;
+        char.heldObject.position.z = heldPos.z;
       }
 
       // Explicit grab target resolution

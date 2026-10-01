@@ -299,6 +299,12 @@ export class Character extends GameObject {
         const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
         if (Math.hypot(dx, dy) > 0.05) {
           this.facingAngle = Math.atan2(dy, dx);
+          if (this.heldObject) {
+            const heldPos = this.calculateHeldObjectPosition(arena);
+            this.heldObject.position.x = heldPos.x;
+            this.heldObject.position.y = heldPos.y;
+            this.heldObject.position.z = heldPos.z;
+          }
         }
       }
     } else {

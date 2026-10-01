@@ -2121,9 +2121,14 @@ export class Renderer {
 
     // In split-screen / isolated client views, only evaluate pickup reach for the local client player.
     // In shared single-screen views, all local players (not remote) are eligible.
-    const eligibleCharacters = isSplitScreenViewport && localHeroCharacter
-      ? allCharacters.filter((c) => c === localHeroCharacter)
-      : allCharacters.filter((c) => !(remoteOverrides && remoteOverrides.has(c.playerId)));
+    const isOtherClientSim = (c: Character): boolean => {
+      if (isSplitScreenViewport) {
+        return localHeroCharacter ? c !== localHeroCharacter : false;
+      }
+      return Boolean(remoteOverrides && remoteOverrides.has(c.playerId));
+    };
+
+    const eligibleCharacters = allCharacters.filter((c) => !isOtherClientSim(c));
 
     // Check if close enough for eligible player character to pick up, strictly respecting layer-dependent reach.
     const charactersInReach = eligibleCharacters.filter(
@@ -2140,8 +2145,7 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [char, target] of targetGrabEntities.entries()) {
-        if (isSplitScreenViewport && localHeroCharacter && char !== localHeroCharacter) continue;
-        if (remoteOverrides && remoteOverrides.has(char.playerId)) continue;
+        if (isOtherClientSim(char)) continue;
         if (target === obj) targetingChars.push(char);
       }
     } else if (targetGrabEntities) {
@@ -2314,9 +2318,14 @@ export class Renderer {
 
     // In split-screen / isolated client views, only evaluate pickup reach for the local client player.
     // In shared single-screen views, all local players (not remote) are eligible.
-    const eligibleCharacters = isSplitScreenViewport && localHeroCharacter
-      ? allCharacters.filter((c) => c === localHeroCharacter)
-      : allCharacters.filter((c) => !(remoteOverrides && remoteOverrides.has(c.playerId)));
+    const isOtherClientSim = (c: Character): boolean => {
+      if (isSplitScreenViewport) {
+        return localHeroCharacter ? c !== localHeroCharacter : false;
+      }
+      return Boolean(remoteOverrides && remoteOverrides.has(c.playerId));
+    };
+
+    const eligibleCharacters = allCharacters.filter((c) => !isOtherClientSim(c));
 
     const charactersInReach = eligibleCharacters.filter(
       (c) =>
@@ -2332,8 +2341,7 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [c, target] of targetGrabEntities.entries()) {
-        if (isSplitScreenViewport && localHeroCharacter && c !== localHeroCharacter) continue;
-        if (remoteOverrides && remoteOverrides.has(c.playerId)) continue;
+        if (isOtherClientSim(c)) continue;
         if (c !== char && target === char) targetingChars.push(c);
       }
     } else if (targetGrabEntities) {
