@@ -235,8 +235,9 @@ export class OnlineRoomClient {
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
+      const myId = this.clientId || character?.playerId || "player";
       const charTelemetry = character ? {
-        id: this.clientId || character.playerId || "player",
+        id: myId,
         name: this.playerName || character.name,
         x: Number(character.position.x.toFixed(3)),
         y: Number(character.position.y.toFixed(3)),
@@ -251,6 +252,8 @@ export class OnlineRoomClient {
         isClimbing: character.isClimbing,
         isAboveWalls: character.isAboveWalls,
         facingAngle: Number(character.facingAngle.toFixed(4)),
+        heldObjectId: character.heldObject ? character.heldObject.id : null,
+        isHolding: Boolean(character.heldObject),
       } : undefined;
 
       const objTelemetry = (Array.isArray(objects) && objects.length > 0) ? objects.map((obj) => ({
@@ -268,7 +271,7 @@ export class OnlineRoomClient {
         color: obj.color,
         shape: obj.visualShape,
         isHeld: obj.isHeld,
-        heldBy: obj.heldBy ? (obj.heldBy.playerId || obj.heldBy.id) : null,
+        heldBy: obj.heldBy ? (obj.heldBy === character ? myId : (obj.heldBy.playerId || obj.heldBy.id)) : null,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,

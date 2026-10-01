@@ -445,6 +445,17 @@ export class GameLoop {
         if (interp.facingAngle !== undefined) rc.facingAngle = interp.facingAngle;
         if (interp.isClimbing !== undefined) rc.isClimbing = interp.isClimbing;
       }
+      // If remote character is holding an object, update the held object's transform to match hands!
+      if (rc.heldObject) {
+        const heldPos = rc.calculateHeldObjectPosition(this.arena);
+        rc.heldObject.position.x = heldPos.x;
+        rc.heldObject.position.y = heldPos.y;
+        rc.heldObject.position.z = heldPos.z;
+        rc.heldObject.velocity.x = rc.velocity.x;
+        rc.heldObject.velocity.y = rc.velocity.y;
+        rc.heldObject.isHeld = true;
+        rc.heldObject.heldBy = rc;
+      }
     }
 
     // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
@@ -503,18 +514,54 @@ export class GameLoop {
       const localObj = this.objects.find((o) => o.id === sObj.id);
       if (!localObj) continue;
 
-      // 1. If currently held by a local character, local holder transform governs
-      if (localObj.isHeld && localObj.heldBy) continue;
+      // 1. Identify local player character
+      const localHero = this.players.get("keyboard")?.character || this.primaryCharacter;
+      const isHeldByLocalHero = localObj.isHeld && localObj.heldBy && (
+        localObj.heldBy === localHero ||
+        (localHero && (localObj.heldBy as Character).playerId === localHero.playerId)
+      );
 
-      // 2. If dragged by user mouse, user drag governs
+      // 1a. If currently held by local character, local holder transform governs
+      if (isHeldByLocalHero) continue;
+
+      // 2. If dragged by user mouse in editor, user drag governs
       if (this.inputManager?.draggedEntity === localObj) continue;
 
-      // 3. Client-Side Prediction for Thrown / Dropped / Released Objects:
-      // If the server still reports the object as held (sObj.isHeld === true), but the client
+      // 3. Remote Player Holding / Releasing Synchronizer:
+      if (sObj.isHeld && sObj.heldBy) {
+        // Find remote character holding it
+        const remoteHolder = this.allCharacters.find(
+          (c) => (c.playerId === sObj.heldBy || c.id === sObj.heldBy) && c !== localHero
+        );
+        if (remoteHolder) {
+          localObj.isHeld = true;
+          localObj.heldBy = remoteHolder;
+          remoteHolder.heldObject = localObj;
+          const relPos = remoteHolder.calculateHeldObjectPosition(this.arena);
+          localObj.position.x = relPos.x;
+          localObj.position.y = relPos.y;
+          localObj.position.z = relPos.z;
+          localObj.velocity.x = remoteHolder.velocity.x;
+          localObj.velocity.y = remoteHolder.velocity.y;
+          localObj.verticalVelocity = 0;
+          continue;
+        }
+      } else if (localObj.isHeld && localObj.heldBy && localObj.heldBy !== localHero) {
+        // Was held by a remote player locally, but server says it is now released/thrown!
+        const prevHolder = localObj.heldBy as Character;
+        if (prevHolder.heldObject === localObj) {
+          prevHolder.heldObject = null;
+        }
+        localObj.isHeld = false;
+        localObj.heldBy = null;
+      }
+
+      // 4. Client-Side Prediction for Thrown / Dropped / Released Objects by LOCAL player:
+      // If the server still reports the object as held by ME, but the local client
       // has already thrown or dropped it locally (!localObj.isHeld):
       // The server is simply trailing by the network round-trip and hasn't processed the release yet.
       // Do NOT drag the in-flight object back into the player's hands or kill its velocity!
-      if (sObj.isHeld && !localObj.isHeld) {
+      if (sObj.isHeld && !localObj.isHeld && (sObj.heldBy === localHero?.playerId || localObj.lastThrower === localHero)) {
         continue;
       }
 

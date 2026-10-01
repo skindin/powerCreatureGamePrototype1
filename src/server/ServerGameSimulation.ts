@@ -317,18 +317,32 @@ export class ServerGameSimulation {
    * Synchronizes positions AND velocities, 3D roll angular velocity, and held/resting states
    * so the server runs physics independently with accurate momentum and coordinates.
    */
-  public syncObjectsFromPacket(clientObjects: GhostEntityState[]): void {
+  public syncObjectsFromPacket(clientObjects: GhostEntityState[], senderClientId?: string): void {
     if (!clientObjects || clientObjects.length === 0) return;
 
     for (const cObj of clientObjects) {
-      const sObj = this.objects.find((o) => o.id === cObj.id);
-      if (!sObj) continue;
+      let sObj = this.objects.find((o) => o.id === cObj.id);
+      if (!sObj) {
+        sObj = new GameObject({
+          id: cObj.id,
+          name: cObj.name || "Object",
+          position: { x: cObj.x, y: cObj.y, z: cObj.z },
+          color: cObj.color || "#38bdf8",
+          colliderRadius: cObj.radius || 0.35,
+          visualShape: cObj.shape || "circle",
+        });
+        this.objects.push(sObj);
+        this.arena.entities = [...this.allCharacters, ...this.objects];
+      }
 
       // 1. Synchronize Held State
       if (cObj.isHeld) {
-        sObj.isHeld = true;
-        const sChar = this.characters.get(cObj.heldBy || "keyboard") || this.allCharacters.find((c) => c.playerId === cObj.heldBy || c.id === cObj.heldBy) || this.allCharacters[0];
+        const holderId = cObj.heldBy || senderClientId;
+        const sChar = holderId
+          ? (this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId))
+          : null;
         if (sChar) {
+          sObj.isHeld = true;
           sObj.heldBy = sChar;
           sChar.heldObject = sObj;
           const relPos = sChar.calculateHeldObjectPosition(this.arena);
@@ -341,12 +355,22 @@ export class ServerGameSimulation {
         }
         continue;
       } else if (sObj.isHeld) {
-        // Was held on server, but client released / threw it!
+        // Was held on server: only the character holding it can release it via their packet!
+        const holderId = sObj.heldBy instanceof Character ? (sObj.heldBy.playerId || sObj.heldBy.id) : null;
+        if (senderClientId && holderId && holderId !== senderClientId) {
+          // Packet from another client who is NOT holding this object: DO NOT ungrab!
+          continue;
+        }
         sObj.isHeld = false;
         if (sObj.heldBy && sObj.heldBy instanceof Character) {
           sObj.heldBy.heldObject = null;
         }
         sObj.heldBy = null;
+      }
+
+      // If object is currently held on the server by ANYONE, do not let non-holders overwrite its position/velocity!
+      if (sObj.isHeld) {
+        continue;
       }
 
       // 2. Synchronize Sleeping / Resting State
@@ -371,8 +395,8 @@ export class ServerGameSimulation {
       // 4. Synchronize Roll Angular Velocity
       if (sObj.rollModule && cObj.angX !== undefined && cObj.angY !== undefined && cObj.angZ !== undefined) {
         sObj.rollModule.angularVelocity.x = cObj.angX;
-        sObj.rollModule.angularVelocity.y = cObj.angY;
-        sObj.rollModule.angularVelocity.z = cObj.angZ;
+        sObj.rollModule.angularVelocity.y = cObj.angY ?? 0;
+        sObj.rollModule.angularVelocity.z = cObj.angZ ?? 0;
       }
     }
   }
@@ -449,6 +473,28 @@ export class ServerGameSimulation {
       sChar.color = clientChar.color;
       sChar.playerColor = clientChar.color;
     }
+
+    // 4. Synchronize Held Object state
+    if (clientChar.heldObjectId) {
+      const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
+      if (sObj) {
+        sChar.heldObject = sObj;
+        sObj.isHeld = true;
+        sObj.heldBy = sChar;
+        const relPos = sChar.calculateHeldObjectPosition(this.arena);
+        sObj.position.x = relPos.x;
+        sObj.position.y = relPos.y;
+        sObj.position.z = relPos.z;
+        sObj.velocity.x = sChar.velocity.x;
+        sObj.velocity.y = sChar.velocity.y;
+        sObj.verticalVelocity = 0;
+      }
+    } else if (sChar.heldObject && clientChar.isHolding === false) {
+      const sObj = sChar.heldObject;
+      sObj.isHeld = false;
+      sObj.heldBy = null;
+      sChar.heldObject = null;
+    }
   }
 
   /**
@@ -484,7 +530,7 @@ export class ServerGameSimulation {
       if (act.type === "pickup") {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
-          if (target && !target.isHeld) {
+          if (target && (!target.isHeld || target.heldBy === char)) {
             char.pickupModule.pickup(char, target);
           }
         }

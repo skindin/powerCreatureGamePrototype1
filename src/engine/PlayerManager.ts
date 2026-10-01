@@ -43,6 +43,7 @@ export class PlayerManager {
   public onPlayersChanged?: () => void;
   public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
   private actionSeq: number = 0;
+  private lastHeldObjectIds: Map<string, string | null> = new Map();
   public baseCharacter: Character;
 
   constructor(options: {
@@ -699,24 +700,31 @@ export class PlayerManager {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
-              const pickedUp = char.pickupModule.pickup(char, targetObj);
-              if (pickedUp && !isReplay) {
-                const action: ReliableActionCommand = {
-                  actionId: `act-${char.playerId || "keyboard"}-pickup-${++this.actionSeq}-${Date.now()}`,
-                  type: "pickup",
-                  tick: pkt.tick ?? 0,
-                  timestamp: performance.now(),
-                  playerId: char.playerId || "keyboard",
-                  targetObjectId: targetObj.id,
-                };
-                this.onReliableActionDispatched?.(action);
-              }
+              char.pickupModule.pickup(char, targetObj);
             }
           }
         } else if (aimTarget) {
           // Fallback for legacy calls without grabTargetObjectId
           const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
           char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+        }
+      }
+
+      // Detect newly acquired or released held object to reliably dispatch action
+      const currentHeldId = char.heldObject ? char.heldObject.id : null;
+      const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
+      if (currentHeldId !== prevHeldId) {
+        this.lastHeldObjectIds.set(char.id, currentHeldId);
+        if (currentHeldId && !isReplay) {
+          const action: ReliableActionCommand = {
+            actionId: `act-${char.playerId || "keyboard"}-pickup-${++this.actionSeq}-${Date.now()}`,
+            type: "pickup",
+            tick: pkt.tick ?? 0,
+            timestamp: performance.now(),
+            playerId: char.playerId || "keyboard",
+            targetObjectId: currentHeldId,
+          };
+          this.onReliableActionDispatched?.(action);
         }
       }
     }

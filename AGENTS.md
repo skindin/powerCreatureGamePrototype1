@@ -1128,6 +1128,15 @@ powerCreatureGamePrototype1/
     - **Diagnostics Endpoint Property**: Updated `/api/room-status` to reference `universalRoomManager.clients.size` instead of non-existent `.sockets.size`.
     - **Dockerfile Runner Stage Fix**: Added `RUN npm install --omit=dev` and `COPY --from=builder /app/server/dist ./server/dist` in Stage 2 runner of `Dockerfile` to guarantee runtime dependencies (`ws`) and compiled SSR server modules are available in Docker/containerized deployments.
     - Verified locally with end-to-end server integration test `scratch/test_server_js_ws.ts`.
+67. **Online Room Grab & Carry Synchronization Fix**:
+    - **UniversalRoom Default Scenario Spawning**: Initialized default arena and objects (`initializeDefaultScenario()`) in `UniversalRoomManager` constructor so freebodies exist on server startup, and auto-register any unknown client objects dynamically in `ServerGameSimulation.ts:syncObjectsFromPacket`.
+    - **Multiplayer Object Held Protection**: In `ServerGameSimulation.ts:syncObjectsFromPacket`, guarded against foreign client packets ungrabbing objects held by other players. Only the player holding an object (or authoritative action) can release it.
+    - **Character Telemetry `heldObjectId`**: `OnlineRoomClient.ts:sendPlayerInput` now includes `heldObjectId` and `isHolding` in `charTelemetry`, and maps `heldBy` to `clientId` in `objTelemetry`.
+    - **Server Character Held Synchronization**: `ServerGameSimulation.ts:syncCharacterFromPacket` synchronizes `heldObjectId` and coordinates with the server entity.
+    - **Client-Side Remote Held Object Attaching**: `GameLoop.ts:syncAuthoritativeObjects` attaches remote held objects to the respective remote character (`remoteHolder.heldObject = localObj; localObj.heldBy = remoteHolder; localObj.isHeld = true`), detaches on server release, and continuously updates hands position at 60 FPS in `updatePhysics`.
+    - **Remote Snapshot Held Object Wire**: In `src/main.ts`, fixed line 758 to `heldObjectId: gc.heldObjectId || (gc.isHolding ? "held" : null)` and synchronized `remChar.heldObject` upon snapshot receipt.
+    - **Reliable Pickup Dispatch**: In `PlayerManager.ts`, tracked `lastHeldObjectIds` to dispatch `pickup` reliable actions whenever a player acquires a held object via mouse click, keypress, or gamepad button.
+    - Verified 100% via headless test suite `scratch/test_online_grab_sync.ts`.
 
 ---
 

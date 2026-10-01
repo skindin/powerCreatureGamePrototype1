@@ -710,6 +710,23 @@ function bootstrap(): void {
         activeCharIds.add(c.id);
         if (c.id !== onlineClient.clientId) {
           gameLoop.playerManager.syncRemoteCharacter(c);
+          const remChar = gameLoop.playerManager.remotePlayers.get(c.id);
+          if (remChar) {
+            if (c.heldObjectId) {
+              const targetObj = gameLoop.objects.find((o) => o.id === c.heldObjectId);
+              if (targetObj) {
+                remChar.heldObject = targetObj;
+                targetObj.isHeld = true;
+                targetObj.heldBy = remChar;
+              }
+            } else if (remChar.heldObject && !c.isHolding) {
+              if (remChar.heldObject.heldBy === remChar) {
+                remChar.heldObject.isHeld = false;
+                remChar.heldObject.heldBy = null;
+              }
+              remChar.heldObject = null;
+            }
+          }
         }
       }
       // Remove disconnected remote players
@@ -755,7 +772,7 @@ function bootstrap(): void {
         isAboveWalls: gc.isAboveWalls,
         isGrounded: gc.isGrounded,
         surfaceZ: gc.surfaceZ,
-        heldObjectId: gc.isHeld ? "held" : null,
+        heldObjectId: gc.heldObjectId || (gc.isHolding ? "held" : null),
         heldBy: gc.heldBy,
         color: gc.color,
         radius: gc.radius,

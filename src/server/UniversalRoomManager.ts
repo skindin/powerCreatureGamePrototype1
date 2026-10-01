@@ -42,6 +42,7 @@ export class UniversalRoomManager {
       broadcastRateHz: 60,
       deltaCompression: false,
     });
+    this.simulation.initializeDefaultScenario();
   }
 
   public static getInstance(): UniversalRoomManager {
@@ -246,7 +247,7 @@ export class UniversalRoomManager {
           }
 
           if (Array.isArray(data.objects) && data.objects.length > 0) {
-            this.simulation.syncObjectsFromPacket(data.objects);
+            this.simulation.syncObjectsFromPacket(data.objects, clientId);
           }
 
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
