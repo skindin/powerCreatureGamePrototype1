@@ -272,27 +272,16 @@ export class ThrowModule {
 
     // Only search for lock target if autoLock is explicitly active
     if (autoLock) {
-      if (
-        thrower?.lockedTargetObject &&
-        (candidateEntities ?? arena.entities ?? []).includes(thrower.lockedTargetObject) &&
-        !thrower.lockedTargetObject.isHeld
-      ) {
-        hoveredEntity = thrower.lockedTargetObject;
-      } else {
-        hoveredEntity = this.findHoveredEntity(
-          targetX,
-          targetY,
-          arena,
-          thrower,
-          heldObject,
-          candidateEntities,
-          hoverScale,
-          Infinity
-        );
-        if (hoveredEntity && thrower) {
-          thrower.lockedTargetObject = hoveredEntity;
-        }
-      }
+      hoveredEntity = this.findHoveredEntity(
+        targetX,
+        targetY,
+        arena,
+        thrower,
+        heldObject,
+        candidateEntities,
+        hoverScale,
+        Infinity
+      );
 
       if (hoveredEntity) {
         effectiveTargetX = hoveredEntity.position.x;
@@ -307,8 +296,6 @@ export class ThrowModule {
         );
         targetSurfaceHeight = entZ;
       }
-    } else if (thrower) {
-      thrower.lockedTargetObject = null;
     }
 
     if (!isLocked) {
@@ -713,8 +700,6 @@ export class ThrowModule {
 
     // Detach from hands
     character.heldObject = null;
-    character.lockedTargetObject = null;
-    character.activeTrajectory = null;
 
     const deltaVx = launch.vx - character.velocity.x;
     const deltaVy = launch.vy - character.velocity.y;

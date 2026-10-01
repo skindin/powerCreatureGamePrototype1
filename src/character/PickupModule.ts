@@ -119,8 +119,6 @@ export class PickupModule {
 
     const dropped = character.heldObject;
     character.heldObject = null;
-    character.lockedTargetObject = null;
-    character.activeTrajectory = null;
     dropped.wakeUp();
     dropped.isHeld = false;
     dropped.heldBy = null;
