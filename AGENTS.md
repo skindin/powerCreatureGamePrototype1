@@ -1164,6 +1164,16 @@ powerCreatureGamePrototype1/
       - Action Order in `UniversalRoomManager.ts`: Processed `reliableActions` before `syncObjectsFromPacket`, allowing server `throwHeldObject` to launch identically.
       - Server Simulation Guard: Guarded `sObj.isInFlight` in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
     - Verified 100% via automated test suite `scratch/test_online_throw_ballistics.ts`.
+71. **Remote Throw Instant Hand-Off & Freebody Authority Isolation**:
+    - **Root Causes of Remote Throw Hesitation & Back-and-Forth Jitter**:
+      1. *Hesitation on Remote Clients*: When a remote player threw, `main.ts` prematurely set `remChar.heldObject = null`. In `syncAuthoritativeObjects`, because `localObj.heldBy` was already cleared, it failed to recognize the release transition and defaulted to a sluggish 30% per-frame position blend from the thrower's hands instead of an instant launch.
+      2. *Back-and-Forth Glitching & Random Settling (Tug-of-War)*: Every client was sending `gameLoop.objects` (including unheld freebodies) in their telemetry packet. The server in `syncObjectsFromPacket` was blindly overwriting `sObj.position` with telemetry from *any* client. Client B (who was 100ms lagged behind) was constantly dragging the server rock back to where it was in Client A's hands, while Client A was pushing it forward. This caused severe back-and-forth jitter and made landing locations seemingly random.
+    - **Airtight Fix**:
+      - **Strict Freebody Authority Isolation**: In `OnlineRoomClient.ts:sendPlayerInput`, clients strictly filter `objTelemetry` so they ONLY transmit telemetry for objects they are actively holding (`obj.isHeld && (obj.heldBy === character || character?.heldObject === obj)`). In `ServerGameSimulation.ts:syncObjectsFromPacket`, the server rejects non-held object telemetry: unheld freebodies on the server are 100% authoritative and simulated by the server's 60Hz physics.
+      - **Instant Launch Hand-off**: In `GameLoop.ts:syncAuthoritativeObjects`, when a remote player holding an object releases it on the server (`!sObj.isHeld && remoteHolder`), the remote client immediately hands off the launch transform and trajectory (`localObj.position = sObj; localObj.velocity = sObj.v; localObj.verticalVelocity = sObj.vz; localObj.isInFlight = true; localObj.wakeUp()`) with zero hesitation.
+      - **Monotonic Snapshot Sequence Guard**: Added `lastAppliedObjectSeq` to `GameLoop.ts` and passed `snapshot.seq` from `main.ts`. Dropping stale or out-of-order snapshots eliminates network-level packet jitter.
+      - **Deferred Remote Release Cleanup**: In `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, preserving the holder reference during the hand-off.
+    - Verified 100% via automated integration test `scratch/test_remote_throw_handshake.ts`.
 
 ---
 

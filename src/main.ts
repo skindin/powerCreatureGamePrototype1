@@ -763,11 +763,7 @@ function bootstrap(): void {
                 targetObj.heldBy = remChar;
               }
             } else if (remChar.heldObject && !c.isHolding) {
-              if (remChar.heldObject.heldBy === remChar) {
-                remChar.heldObject.isHeld = false;
-                remChar.heldObject.heldBy = null;
-              }
-              remChar.heldObject = null;
+              // Remote player released object: hand-off is performed cleanly with authoritative velocity in syncAuthoritativeObjects
             }
           }
         } else {
@@ -842,7 +838,7 @@ function bootstrap(): void {
 
     // 3. Sync authoritative freebody objects
     if (Array.isArray(snapshot.objects)) {
-      gameLoop.syncAuthoritativeObjects(snapshot.objects, onlineClient.clientId || undefined);
+      gameLoop.syncAuthoritativeObjects(snapshot.objects, onlineClient.clientId || undefined, snapshot.seq);
     }
   };
 

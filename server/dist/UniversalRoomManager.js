@@ -7690,32 +7690,7 @@ class ServerGameSimulation {
         }
         sObj.heldBy = null;
       }
-      if (sObj.isHeld) {
-        continue;
-      }
-      if (sObj.isInFlight) {
-        continue;
-      }
-      if (cObj.isSleeping) {
-        sObj.position.x = cObj.x;
-        sObj.position.y = cObj.y;
-        sObj.position.z = cObj.z;
-        sObj.putToSleep();
-        continue;
-      } else if (sObj.isSleeping) {
-        sObj.wakeUp();
-      }
-      sObj.position.x = cObj.x;
-      sObj.position.y = cObj.y;
-      sObj.position.z = cObj.z;
-      sObj.velocity.x = cObj.vx;
-      sObj.velocity.y = cObj.vy;
-      sObj.verticalVelocity = cObj.vz ?? 0;
-      if (sObj.rollModule && cObj.angX !== void 0 && cObj.angY !== void 0 && cObj.angZ !== void 0) {
-        sObj.rollModule.angularVelocity.x = cObj.angX;
-        sObj.rollModule.angularVelocity.y = cObj.angY ?? 0;
-        sObj.rollModule.angularVelocity.z = cObj.angZ ?? 0;
-      }
+      continue;
     }
   }
   /**

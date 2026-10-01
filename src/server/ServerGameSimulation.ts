@@ -369,41 +369,11 @@ export class ServerGameSimulation {
         sObj.heldBy = null;
       }
 
-      // If object is currently held on the server by ANYONE, do not let non-holders overwrite its position/velocity!
-      if (sObj.isHeld) {
-        continue;
-      }
-
-      // If object is currently in ballistic flight on the server, let authoritative server physics govern!
-      if (sObj.isInFlight) {
-        continue;
-      }
-
-      // 2. Synchronize Sleeping / Resting State
-      if (cObj.isSleeping) {
-        sObj.position.x = cObj.x;
-        sObj.position.y = cObj.y;
-        sObj.position.z = cObj.z;
-        sObj.putToSleep();
-        continue;
-      } else if (sObj.isSleeping) {
-        sObj.wakeUp();
-      }
-
-      // 3. Synchronize Velocity AND Position directly from client telemetry
-      sObj.position.x = cObj.x;
-      sObj.position.y = cObj.y;
-      sObj.position.z = cObj.z;
-      sObj.velocity.x = cObj.vx;
-      sObj.velocity.y = cObj.vy;
-      sObj.verticalVelocity = cObj.vz ?? 0;
-
-      // 4. Synchronize Roll Angular Velocity
-      if (sObj.rollModule && cObj.angX !== undefined && cObj.angY !== undefined && cObj.angZ !== undefined) {
-        sObj.rollModule.angularVelocity.x = cObj.angX;
-        sObj.rollModule.angularVelocity.y = cObj.angY ?? 0;
-        sObj.rollModule.angularVelocity.z = cObj.angZ ?? 0;
-      }
+      // STRICT MULTIPLAYER AUTHORITY RULE:
+      // Freebody objects in the arena (in flight, resting, rolling) are simulated authoritatively
+      // by the 60Hz server engine. Non-holding clients CANNOT overwrite freebody position or velocity!
+      // This completely eliminates cross-client tug-of-wars, delayed teleports, and settling desyncs.
+      continue;
     }
   }
 

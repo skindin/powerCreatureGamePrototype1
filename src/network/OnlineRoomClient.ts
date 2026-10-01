@@ -260,7 +260,12 @@ export class OnlineRoomClient {
         isHolding: Boolean(character.heldObject),
       } : undefined;
 
-      const objTelemetry = (Array.isArray(objects) && objects.length > 0) ? objects.map((obj) => ({
+      // Only stream telemetry for objects that the local player has authority over (held in local hands)
+      const myHeldObjects = (Array.isArray(objects) && objects.length > 0)
+        ? objects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
+        : [];
+
+      const objTelemetry = myHeldObjects.length > 0 ? myHeldObjects.map((obj) => ({
         id: obj.id,
         name: obj.name,
         x: Number(obj.position.x.toFixed(3)),
@@ -274,8 +279,8 @@ export class OnlineRoomClient {
         radius: obj.colliderRadius,
         color: obj.color,
         shape: obj.visualShape,
-        isHeld: obj.isHeld,
-        heldBy: obj.heldBy ? (obj.heldBy === character ? myId : (obj.heldBy.playerId || obj.heldBy.id)) : null,
+        isHeld: true,
+        heldBy: myId,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,

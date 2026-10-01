@@ -517,7 +517,13 @@ Tasks to Implement:
         3. Fixed `syncAuthoritativeObjects` in `GameLoop.ts`: passes `onlineClient.clientId` and guards airborne in-flight objects (`isInFlight || lastThrower`) from being blended or dragged down by trailing server snapshots across WAN round-trip latency.
         4. Reordered packet processing in `UniversalRoomManager.ts`: reliable action commands (`throw`, `pickup`, `drop`) execute authoritatively before telemetry sync, preventing telemetry packets from wiping `heldObject` before `throwHeldObject` runs.
         5. Protected server in-flight freebody simulation in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
-      - Verified 100% via automated test suite `scratch/test_online_throw_ballistics.ts`.
+  [x] 10.6 Remote Throw Instant Hand-Off & Authority Isolation
+      - Eliminated remote client throw hesitation and back-and-forth jitter:
+        1. Isolated Freebody Authority: non-holding clients can NEVER overwrite an unheld freebody's position or velocity on the server (`ServerGameSimulation.ts:syncObjectsFromPacket`). In `OnlineRoomClient.ts:sendPlayerInput`, clients strictly filter `objTelemetry` to only send objects they are actively holding.
+        2. Instant Launch Hand-Off: in `GameLoop.ts:syncAuthoritativeObjects`, when a remote character releases a held item on the server, the remote client immediately hands off the launch transform and trajectory (`localObj.position = sObj; localObj.velocity = sObj.v; localObj.isInFlight = true; localObj.wakeUp()`) with zero lag or 30% blending hesitation.
+        3. Monotonic Snapshot Guard: added `lastAppliedObjectSeq` in `GameLoop.ts` to reject out-of-order or duplicate server snapshots, preventing network-level packet jitter from jerking objects backward.
+        4. Deferred Remote Release Detachment: in `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, ensuring the hand-off logic retains full context of who threw the item.
+      - Verified 100% via automated integration test `scratch/test_remote_throw_handshake.ts`.
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
