@@ -460,15 +460,22 @@ Tasks Completed:
       - In `Renderer.ts:drawFreebodyObject` and `drawObjectGroundShadowFill`, held objects evaluate visual render coordinates directly from `holder.calculateHeldObjectPosition(arena)`.
       - When remote characters render with `remoteOverrides`, their held object and shadow render seamlessly in their interpolated hands with 0.0000u offset.
       - Physics transforms and local player holding simulation loop remain completely untouched, ensuring zero glitch drops and zero pushbacks.
-      - Authoritative server simulation (`ServerGameSimulation.ts`) synchronizes held freebodies to hands and serializes `isHeld: true`, `heldBy`, and relative hand coordinates.
-      - Verified 100% via `scratch/test_held_object_relative_rendering.ts`.
-
   [x] 9.10 Remote Client Throw Trajectory & Destination Marker Isolation
       - Filtered ballistic trajectory dots, wall impact markers, landing destination footprint previews, and aim reticles in `Renderer.ts:renderArenaScene`.
       - In split-screen viewports, each client screen ONLY renders its own controlling character's throw trajectory, destination marker, and aim reticle.
       - In single-screen multiplayer, remote characters (`remoteOverrides.has(char.playerId)` or `char !== localHeroCharacter`) are strictly excluded from trajectory and reticle rendering.
       - Trajectory lines, impact markers, and destination footprints are completely private to the local client aiming the throw.
       - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
+
+  [x] 9.11 Architectural Separation & Consolidation of Network Pipelines and Transports
+      - Consolidated all network protocols, schemas, and interfaces into `src/network/protocol/NetworkPackets.ts`.
+      - Extracted universal Client Protocol Pipeline (`src/network/protocol/ClientNetworkPipeline.ts`): manages reliable action outbox (`queueReliableAction`, `acknowledgeActions`, `unackedActionsCount`), input packet creation with sequence tracking, snapshot ingestion, ACK purging, clock sync dispatch, and remote entity extraction for Hermite/linear interpolation.
+      - Extracted universal Server Protocol Pipeline (`src/network/protocol/ServerNetworkPipeline.ts`): manages client lifecycle (join/leave/rename), ingests input packets into jitter buffers, executes reliable actions authoritatively (`pickup`, `drop`, `throw`), steps 60Hz headless physics simulation, and serializes client snapshots with ACKs and per-client `clockSync`.
+      - Modular Boomerang Relay Simulator (`src/network/transports/BoomerangRelayTransport.ts`): uses `ClientNetworkPipeline` to package data over 3rd-party echo relays (`wss://echo.websocket.org`), loops back into in-tab `ServerNetworkPipeline`, and produces ghost clones.
+      - Real Online Client Transport (`src/network/transports/OnlineClientTransport.ts`): uses the exact same `ClientNetworkPipeline` to connect to real backend WebSocket servers (`/ws`) with zero echo ghosts.
+      - Real Universal Room Server (`src/server/UniversalRoomManager.ts`): uses the exact same `ServerNetworkPipeline` to run 60Hz headless physics on `/ws` over Node.js and Vite dev server.
+      - Backward-compatible `RelayClient.ts` shim preserved.
+      - Verified 100% via headless test suite `scratch/test_consolidated_pipelines.ts`.
 
 ================================================================================
 PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD

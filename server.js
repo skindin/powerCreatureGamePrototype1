@@ -1,3 +1,5 @@
+process.env.WS_NO_BUFFER_UTIL = '1';
+process.env.WS_NO_UTF_8_VALIDATE = '1';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -230,6 +232,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // WebSocket endpoint guard: if HTTP GET hits /ws, inform client to upgrade
+  if (urlPath === '/ws' || urlPath.endsWith('/ws')) {
+    res.writeHead(426, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Upgrade': 'WebSocket',
+    });
+    res.end('Upgrade Required: Connect via WebSocket (ws:// or wss://)');
+    return;
+  }
+
+  // Room status diagnostic endpoint
+  if (urlPath === '/api/room-status') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    });
+    res.end(JSON.stringify({
+      attached: Boolean(universalRoomManager),
+      error: universalRoomError,
+      clients: universalRoomManager ? universalRoomManager.sockets.size : 0,
+      tick: universalRoomManager ? universalRoomManager.simulation.currentTick : 0,
+    }));
+    return;
+  }
+
   // Version / deployment info endpoint for live browser notification
   if (urlPath === '/api/version' || urlPath === '/api/deploy-status') {
     const buildStatus = await getLiveBuildStatus();
@@ -296,6 +323,18 @@ const server = http.createServer(async (req, res) => {
     });
   });
 });
+
+// Attach Authoritative Universal Multiplayer Room WebSocket Server (Phase 10)
+let universalRoomManager = null;
+let universalRoomError = null;
+try {
+  const moduleUrl = pathToFileURL(path.join(__dirname, 'server', 'dist', 'UniversalRoomManager.js')).href;
+  const { UniversalRoomManager } = await import(moduleUrl);
+  universalRoomManager = UniversalRoomManager.attach(server);
+} catch (err) {
+  universalRoomError = (err && (err.stack || err.message)) || String(err);
+  console.error('❌ [UniversalRoom] Failed to attach UniversalRoomManager:', err);
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`⚡ Power Creature Game server running at http://${HOST}:${PORT}`);

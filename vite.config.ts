@@ -1,3 +1,5 @@
+process.env.WS_NO_BUFFER_UTIL = '1';
+process.env.WS_NO_UTF_8_VALIDATE = '1';
 import { defineConfig, type Plugin, build } from 'vite';
 import localtunnel from 'localtunnel';
 import fs from 'node:fs';
@@ -198,6 +200,18 @@ function autoTunnelPlugin(): Plugin {
   return {
     name: 'auto-localtunnel',
     configureServer(server) {
+      if (server.httpServer) {
+        import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
+          UniversalRoomManager.attach(server.httpServer!);
+        }).catch((err) => {
+          server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
+            UniversalRoomManager.attach(server.httpServer!);
+          }).catch((err2) => {
+            console.warn('⚠️ [Vite] Notice attaching UniversalRoomManager:', err2?.message || err2);
+          });
+        });
+      }
+
       // 1. Intercept public tunnel requests (loca.lt) and serve the single pre-bundled production dist/
       // This prevents 50+ concurrent unbundled ESM requests from choking localtunnel with 502 Bad Gateway
       server.middlewares.use((req, res, next) => {
@@ -348,6 +362,9 @@ function autoTunnelPlugin(): Plugin {
 
 export default defineConfig(({ command }) => ({
   plugins: command === 'serve' ? [autoTunnelPlugin()] : [],
+  ssr: {
+    noExternal: ['ws'],
+  },
   server: {
     host: true, // Listen on all network addresses (0.0.0.0)
     port: 5173,
