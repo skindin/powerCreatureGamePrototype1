@@ -156,7 +156,8 @@ export class Renderer {
       legacyGamepadAimPos,
       isPaused,
       hero,
-      remoteOverrides
+      remoteOverrides,
+      false
     );
   }
 
@@ -253,7 +254,8 @@ export class Renderer {
         null,
         false,
         pv.character,
-        remoteOverrides
+        remoteOverrides,
+        true
       );
 
       ctx.restore();
@@ -330,6 +332,30 @@ export class Renderer {
   }
 
   /**
+   * Helper to resolve the effective 3D position (x, y, z) of any GameObject or Character,
+   * taking into account whether it is currently held by another character.
+   */
+  public getEffectiveObjectPosition(
+    obj: GameObject,
+    arena: Arena,
+    characters?: Character[]
+  ): { x: number; y: number; z: number } {
+    let holder: Character | null = null;
+    if (obj.heldBy instanceof Character) {
+      holder = obj.heldBy;
+    } else if ((obj as any).holder instanceof Character) {
+      holder = (obj as any).holder;
+    } else if (characters) {
+      holder = characters.find((c) => c.heldObject === obj) || null;
+    }
+
+    if (holder) {
+      return holder.calculateHeldObjectPosition(arena);
+    }
+    return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  }
+
+  /**
    * Internal common scene renderer. Renders the arena, entities, shadows, walls, aim trajectories, and ghosts.
    */
   public renderArenaScene(
@@ -348,10 +374,21 @@ export class Renderer {
     legacyGamepadAimPos?: Vector2D | null,
     isPaused = false,
     localHeroCharacter?: Character | null,
-    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>,
+    isSplitScreenViewport = false
   ): void {
     const ctx = this.ctx;
     const character = localHeroCharacter || characters[0] || null;
+
+    // Helper to evaluate if a character is remote from the perspective of THIS view:
+    // In split-screen mode: isolated to localHeroCharacter (other players hidden from this viewport's local HUD)
+    // In shared single-screen mode: only network clients in remoteOverrides are remote (all local players render HUD)
+    const isRemoteForThisView = (char: Character): boolean => {
+      if (isSplitScreenViewport) {
+        return localHeroCharacter ? char !== localHeroCharacter : false;
+      }
+      return Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
+    };
 
     // Apply remote player state overrides if present, saving original transforms
     const savedTransforms: { char: Character; x: number; y: number; z: number; angle: number; climb: boolean }[] = [];
@@ -415,7 +452,7 @@ export class Renderer {
       // 2. Ground Shadows (Rendered BELOW all wall squares including sides and tops)
       // Only the shadow fill is covered!
       for (const entity of allRenderables) {
-        this.drawObjectGroundShadowFill(entity, arena, ppu);
+        this.drawObjectGroundShadowFill(entity, arena, ppu, characters);
       }
 
       // 3. Wall Bases (squares representing the sides / front faces at ground level)
@@ -428,51 +465,51 @@ export class Renderer {
 
       // Split entities into ground layer (< wallHeight) and elevated layer (>= wallHeight).
       const groundRenderables = allRenderables.filter(e => {
-        if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return false;
-        return e.position.z < arena.wallHeight - 0.05;
+        const eff = this.getEffectiveObjectPosition(e, arena, characters);
+        return eff.z < arena.wallHeight - 0.05;
       });
       const elevatedRenderables = allRenderables.filter(e => {
-        if (e.isHeld && e.heldBy && e.heldBy.position.z >= arena.wallHeight - 0.05) return true;
-        return e.position.z >= arena.wallHeight - 0.05;
+        const eff = this.getEffectiveObjectPosition(e, arena, characters);
+        return eff.z >= arena.wallHeight - 0.05;
       });
 
       // 4. Ground Entities (z < wallHeight)
       // Rendered before wall tops so top of wall renders OVER ground objects!
       for (const entity of groundRenderables) {
         if (entity instanceof Character) {
-          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter);
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter, isSplitScreenViewport, remoteOverrides);
         } else {
-          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter);
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter, isSplitScreenViewport, remoteOverrides);
         }
       }
 
       // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
-      this.drawWallTops(arena, ppu, allRenderables);
+      this.drawWallTops(arena, ppu, allRenderables, characters);
 
       // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
       for (const entity of allRenderables) {
-        this.drawObjectWallTopShadowFill(entity, arena, ppu);
+        this.drawObjectWallTopShadowFill(entity, arena, ppu, characters);
       }
 
       // 7. Elevated Entities (z >= wallHeight)
       // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
       for (const entity of elevatedRenderables) {
         if (entity instanceof Character) {
-          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter);
+          this.drawCharacter(entity, characters, ppu, arena, targetGrabEntities, localHeroCharacter, isSplitScreenViewport, remoteOverrides);
         } else {
-          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter);
+          this.drawFreebodyObject(entity, characters, ppu, targetGrabEntities, arena, localHeroCharacter, isSplitScreenViewport, remoteOverrides);
         }
       }
 
       // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
       for (const entity of allRenderables) {
-        this.drawObjectColliderPositionOutline(entity, arena, ppu);
+        this.drawObjectColliderPositionOutline(entity, arena, ppu, characters);
       }
 
       // 9. Vertical connector lines for elevated entities (renders OVER objects and character!)
       if (useHover) {
         for (const entity of allRenderables) {
-          this.drawVerticalConnectorLine(entity, arena, ppu);
+          this.drawVerticalConnectorLine(entity, arena, ppu, characters);
         }
       }
 
@@ -480,10 +517,7 @@ export class Renderer {
       // First: render active trajectories for any character holding an object
       for (const char of characters) {
         // Do NOT show throw trajectory and destination marker to a remote client / other screen
-        const isRemote = localHeroCharacter
-          ? char !== localHeroCharacter
-          : Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
-        if (isRemote) continue;
+        if (isRemoteForThisView(char)) continue;
 
         if (char.activeTrajectory) {
           // Is this character's cursor currently unhidden and visible?
@@ -499,10 +533,7 @@ export class Renderer {
       if (Array.isArray(activeAimCursorsOrIsGamepad)) {
         for (const cursor of activeAimCursorsOrIsGamepad) {
           const cChar = cursor.character;
-          const isRemote = localHeroCharacter
-            ? cChar !== localHeroCharacter
-            : Boolean(remoteOverrides && remoteOverrides.has(cChar.playerId));
-          if (isRemote) continue;
+          if (isRemoteForThisView(cChar)) continue;
 
           const cursorX = cursor.x * ppu;
           const cursorY = cursor.y * ppu;
@@ -515,17 +546,12 @@ export class Renderer {
       } else {
         // Legacy singleplayer fallback
         const isUsingGamepad = activeAimCursorsOrIsGamepad;
-        if (character) {
-          const isRemote = localHeroCharacter
-            ? character !== localHeroCharacter
-            : Boolean(remoteOverrides && remoteOverrides.has(character.playerId));
-          if (!isRemote) {
-            const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
-            if (character.activeTrajectory) {
-              this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
-            } else if (isUsingGamepad && activeAimCursor) {
-              this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
-            }
+        if (character && !isRemoteForThisView(character)) {
+          const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
+          if (character.activeTrajectory) {
+            this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
+          } else if (isUsingGamepad && activeAimCursor) {
+            this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);
           }
         }
       }
@@ -547,7 +573,7 @@ export class Renderer {
 
       // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
       for (const char of characters) {
-        const isRemote = Boolean(char !== localHeroCharacter && remoteOverrides?.has(char.playerId));
+        const isRemote = Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
         this.drawCharacterNameTag(char, arena, ppu, isRemote);
       }
 
@@ -1486,7 +1512,7 @@ export class Renderer {
    *   Being beside a wall (left or right) does NOT cause transparency.
    *   "if any objects are coverd by the top of a wall, make it transparent. not just if covering the player character"
    */
-  private drawWallTops(arena: Arena, ppu: number, entities: GameObject[]): void {
+  private drawWallTops(arena: Arena, ppu: number, entities: GameObject[], characters?: Character[]): void {
     const ctx = this.ctx;
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
@@ -1516,9 +1542,10 @@ export class Renderer {
       let isAnyCovered = false;
       for (const obj of entities) {
         const objR = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.35);
-        const objX = obj.position.x;
-        const objY = obj.position.y;
-        const isObjOnGround = obj.position.z < arena.wallHeight - 0.05;
+        const eff = this.getEffectiveObjectPosition(obj, arena, characters);
+        const objX = eff.x;
+        const objY = eff.y;
+        const isObjOnGround = eff.z < arena.wallHeight - 0.05;
         if (!isObjOnGround) continue;
 
         // 1. Overlap on screen X:
@@ -1626,10 +1653,11 @@ export class Renderer {
    * "the dotted virtical line that points to the objects real 2d position should still be visible when they're on a wall.
    * maybe it's covered, maybe it's logically hidden, but it should be visible for every object that has higher elevation than 0"
    */
-  private drawVerticalConnectorLine(obj: GameObject, arena: Arena, ppu: number): void {
+  private drawVerticalConnectorLine(obj: GameObject, arena: Arena, ppu: number, characters?: Character[]): void {
+    const effPos = this.getEffectiveObjectPosition(obj, arena, characters);
     // Check effective elevation across physical position, supporting surface, or standing wall
     const z = Math.max(
-      obj.position.z,
+      effPos.z,
       obj.supportingSurfaceHeight ?? 0,
       (obj.standingWall ? arena.wallHeight : 0)
     );
@@ -1640,12 +1668,14 @@ export class Renderer {
     if (hoverScale <= 0) return;
 
     const ctx = this.ctx;
-    const groundX = obj.position.x * ppu;
-    const groundY = obj.position.y * ppu;
-    const renderY = (obj.position.y - z * hoverScale) * ppu;
+    const vx = obj.visualOffset ? obj.visualOffset.x : 0;
+    const vy = obj.visualOffset ? obj.visualOffset.y : 0;
+    const groundX = (effPos.x - vx) * ppu;
+    const groundY = (effPos.y - vy) * ppu;
+    const renderY = (effPos.y - vy - z * hoverScale) * ppu;
     const wallH = arena.wallHeight;
-    const layer2BaseY = (obj.position.y - wallH * hoverScale) * ppu;
-    const layer2CeilingY = (obj.position.y - 2 * wallH * hoverScale) * ppu;
+    const layer2BaseY = (effPos.y - vy - wallH * hoverScale) * ppu;
+    const layer2CeilingY = (effPos.y - vy - 2 * wallH * hoverScale) * ppu;
 
     // Determine whether the object is physically supported by or directly above a wall.
     // Draw the vertical line down to the first surface it would hit if falling straight down:
@@ -1654,7 +1684,7 @@ export class Renderer {
     const radius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
     const wallBeneath = (obj.standingWall && arena.walls.some(w => w.id === obj.standingWall!.id))
       ? obj.standingWall
-      : arena.getSupportingWall(obj.position.x, obj.position.y, radius);
+      : arena.getSupportingWall(effPos.x, effPos.y, radius);
     const isClimbing = Boolean(obj.isCharacter && (obj as any).isClimbing);
     const isOnOrAboveWall = wallBeneath !== null && z >= wallH - 0.05 && !isClimbing;
     const lineBottomY = isOnOrAboveWall ? layer2BaseY : groundY;
@@ -1764,17 +1794,16 @@ export class Renderer {
     ctx.restore();
   }
 
-
   /**
-   * Checks whether an entity's collider footprint overlaps any wall in 2D.
+   * Checks whether a 2D circle overlaps any wall in the arena.
    */
-  private isEntityOverWall(obj: GameObject, arena: Arena): boolean {
+  private isEntityOverWallAt(x: number, y: number, radius: number, arena: Arena): boolean {
     for (const wall of arena.walls) {
-      const closestX = Math.max(wall.x, Math.min(obj.position.x, wall.x + wall.width));
-      const closestY = Math.max(wall.y, Math.min(obj.position.y, wall.y + wall.height));
-      const dx = obj.position.x - closestX;
-      const dy = obj.position.y - closestY;
-      if (dx * dx + dy * dy < obj.colliderRadius * obj.colliderRadius) {
+      const closestX = Math.max(wall.x, Math.min(x, wall.x + wall.width));
+      const closestY = Math.max(wall.y, Math.min(y, wall.y + wall.height));
+      const dx = x - closestX;
+      const dy = y - closestY;
+      if (dx * dx + dy * dy < radius * radius) {
         return true;
       }
     }
@@ -1782,20 +1811,20 @@ export class Renderer {
   }
 
   /**
+   * Checks whether an entity's collider footprint overlaps any wall in 2D.
+   */
+  private isEntityOverWall(obj: GameObject, arena: Arena, characters?: Character[]): boolean {
+    const eff = this.getEffectiveObjectPosition(obj, arena, characters);
+    const radius = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
+    return this.isEntityOverWallAt(eff.x, eff.y, radius, arena);
+  }
+
+  /**
    * Draws the shadow fill for the ground floor (rendered below all wall squares).
    */
-  private drawObjectGroundShadowFill(obj: GameObject, _arena: Arena, ppu: number): void {
-    const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || (obj as any).holder;
-    let posX = obj.position.x;
-    let posY = obj.position.y;
-    let posZ = obj.position.z;
-    if (obj.isHeld && holder) {
-      const relPos = holder.calculateHeldObjectPosition(_arena);
-      posX = relPos.x;
-      posY = relPos.y;
-      posZ = relPos.z;
-    }
-    const z = posZ;
+  private drawObjectGroundShadowFill(obj: GameObject, arena: Arena, ppu: number, characters?: Character[]): void {
+    const effPos = this.getEffectiveObjectPosition(obj, arena, characters);
+    const z = effPos.z;
     if (z <= 0.01) return;
 
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
@@ -1805,8 +1834,8 @@ export class Renderer {
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (posX - vx) * ppu;
-    const groundY = (posY - vy) * ppu;
+    const groundX = (effPos.x - vx) * ppu;
+    const groundY = (effPos.y - vy) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     ctx.save();
@@ -1828,22 +1857,23 @@ export class Renderer {
    * Draws the shadow fill on top of the wall surface for entities hovering above a wall (rendered below elevated entities).
    * "mask top of wall shadows to the top of wall squares"
    */
-  private drawObjectWallTopShadowFill(obj: GameObject, arena: Arena, ppu: number): void {
-    const z = obj.position.z;
+  private drawObjectWallTopShadowFill(obj: GameObject, arena: Arena, ppu: number, characters?: Character[]): void {
+    const effPos = this.getEffectiveObjectPosition(obj, arena, characters);
+    const z = effPos.z;
     if (z <= 0.01) return;
 
     const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
     if (!useHover || hoverScale <= 0) return;
 
-    const isAboveWall = z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
+    const isAboveWall = z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena, characters);
     if (!isAboveWall) return;
 
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
-    const groundX = (obj.position.x - vx) * ppu;
-    const wallTopScreenY = (obj.position.y - vy - arena.wallHeight * hoverScale) * ppu;
+    const groundX = (effPos.x - vx) * ppu;
+    const wallTopScreenY = (effPos.y - vy - arena.wallHeight * hoverScale) * ppu;
     const shadowRadius = obj.colliderRadius * ppu;
 
     const constructShadowPath = () => {
@@ -1881,16 +1911,9 @@ export class Renderer {
    * "the outline of the actual collider position should render on top of everything. only the shadow should be covered"
    * "outlines are only drawn for the top most relevant shadow. if its above a wall, only draw the outline around the shadow for the top of the wall"
    */
-  private drawObjectColliderPositionOutline(obj: GameObject, arena: Arena, ppu: number): void {
-    let posX = obj.position.x;
-    let posY = obj.position.y;
-    let posZ = obj.position.z;
-    if (obj.isHeld && obj.heldBy instanceof Character) {
-      const relPos = obj.heldBy.calculateHeldObjectPosition(arena);
-      posX = relPos.x;
-      posY = relPos.y;
-      posZ = relPos.z;
-    }
+  private drawObjectColliderPositionOutline(obj: GameObject, arena: Arena, ppu: number, characters?: Character[]): void {
+    const effPos = this.getEffectiveObjectPosition(obj, arena, characters);
+    const { x: posX, y: posY, z: posZ } = effPos;
     const z = posZ;
     if (z <= 0.01) return;
 
@@ -1905,7 +1928,7 @@ export class Renderer {
     const hoverScale = useHover ? this.viewSettings.visualAltitudeScale : 0;
 
     // Check if the entity is above a wall
-    const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena);
+    const isAboveWall = useHover && hoverScale > 0 && z >= arena.wallHeight - 0.05 && this.isEntityOverWall(obj, arena, characters);
 
     const ctx = this.ctx;
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
@@ -2075,7 +2098,9 @@ export class Renderer {
     ppu: number,
     targetGrabEntities: GameObject | null | Map<Character, GameObject | null> | Set<GameObject> | undefined,
     arena: Arena,
-    localHeroCharacter?: Character | null
+    localHeroCharacter?: Character | null,
+    isSplitScreenViewport = false,
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
   ): void {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
@@ -2085,17 +2110,7 @@ export class Renderer {
     const vx = obj.visualOffset ? obj.visualOffset.x : 0;
     const vy = obj.visualOffset ? obj.visualOffset.y : 0;
 
-    // If held by a character, render relative to holder's hands
-    const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || allCharacters.find((c) => c.heldObject === obj);
-    let posX = obj.position.x;
-    let posY = obj.position.y;
-    let posZ = obj.position.z;
-    if ((obj.isHeld || holder) && holder) {
-      const relPos = holder.calculateHeldObjectPosition(arena);
-      posX = relPos.x;
-      posY = relPos.y;
-      posZ = relPos.z;
-    }
+    const { x: posX, y: posY, z: posZ } = this.getEffectiveObjectPosition(obj, arena, allCharacters);
 
     const x = (posX - vx) * ppu;
     const y = (posY - vy - posZ * hoverScale) * ppu;
@@ -2104,10 +2119,11 @@ export class Renderer {
     const realRadius = visualRadius * ppu;
     const renderRadius = realRadius * altitudeScale;
 
-    // In split-screen / isolated client views, only evaluate pickup reach for the local client player
-    const eligibleCharacters = localHeroCharacter
+    // In split-screen / isolated client views, only evaluate pickup reach for the local client player.
+    // In shared single-screen views, all local players (not remote) are eligible.
+    const eligibleCharacters = isSplitScreenViewport && localHeroCharacter
       ? allCharacters.filter((c) => c === localHeroCharacter)
-      : allCharacters;
+      : allCharacters.filter((c) => !(remoteOverrides && remoteOverrides.has(c.playerId)));
 
     // Check if close enough for eligible player character to pick up, strictly respecting layer-dependent reach.
     const charactersInReach = eligibleCharacters.filter(
@@ -2124,7 +2140,8 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [char, target] of targetGrabEntities.entries()) {
-        if (localHeroCharacter && char !== localHeroCharacter) continue;
+        if (isSplitScreenViewport && localHeroCharacter && char !== localHeroCharacter) continue;
+        if (remoteOverrides && remoteOverrides.has(char.playerId)) continue;
         if (target === obj) targetingChars.push(char);
       }
     } else if (targetGrabEntities) {
@@ -2278,7 +2295,9 @@ export class Renderer {
     ppu: number,
     arena: Arena,
     targetGrabEntities?: GameObject | null | Map<Character, GameObject | null> | Set<GameObject>,
-    localHeroCharacter?: Character | null
+    localHeroCharacter?: Character | null,
+    isSplitScreenViewport = false,
+    remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
   ): void {
     const ctx = this.ctx;
     const useBigger = this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both";
@@ -2287,15 +2306,17 @@ export class Renderer {
 
     const vx = char.visualOffset ? char.visualOffset.x : 0;
     const vy = char.visualOffset ? char.visualOffset.y : 0;
-    const x = (char.position.x - vx) * ppu;
-    const y = (char.position.y - vy - char.position.z * hoverScale) * ppu;
-    const altitudeScale = useBigger ? Renderer.getAltitudeScale(char.position.z, arena.wallHeight) : 1.0;
+    const { x: posX, y: posY, z: posZ } = this.getEffectiveObjectPosition(char, arena, allCharacters);
+    const x = (posX - vx) * ppu;
+    const y = (posY - vy - posZ * hoverScale) * ppu;
+    const altitudeScale = useBigger ? Renderer.getAltitudeScale(posZ, arena.wallHeight) : 1.0;
     const r = char.colliderRadius * ppu * altitudeScale;
 
-    // Check if eligible character can grab this character
-    const eligibleCharacters = localHeroCharacter
+    // In split-screen / isolated client views, only evaluate pickup reach for the local client player.
+    // In shared single-screen views, all local players (not remote) are eligible.
+    const eligibleCharacters = isSplitScreenViewport && localHeroCharacter
       ? allCharacters.filter((c) => c === localHeroCharacter)
-      : allCharacters;
+      : allCharacters.filter((c) => !(remoteOverrides && remoteOverrides.has(c.playerId)));
 
     const charactersInReach = eligibleCharacters.filter(
       (c) =>
@@ -2311,7 +2332,8 @@ export class Renderer {
     const targetingChars: Character[] = [];
     if (targetGrabEntities instanceof Map) {
       for (const [c, target] of targetGrabEntities.entries()) {
-        if (localHeroCharacter && c !== localHeroCharacter) continue;
+        if (isSplitScreenViewport && localHeroCharacter && c !== localHeroCharacter) continue;
+        if (remoteOverrides && remoteOverrides.has(c.playerId)) continue;
         if (c !== char && target === char) targetingChars.push(c);
       }
     } else if (targetGrabEntities) {

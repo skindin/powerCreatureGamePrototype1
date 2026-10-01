@@ -1061,7 +1061,19 @@ powerCreatureGamePrototype1/
       - **Uncompromised Local Physics**: The local simulation loop (`GameLoop.ts`, `CollisionResolver.ts`, `PickupModule.ts`) remains 100% untouched. Local players holding objects are never unheld or dropped by incoming server snapshots, completely preventing glitching or collision pushbacks.
       - **Server Synchronization ([ServerGameSimulation.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/server/ServerGameSimulation.ts))**: The authoritative server simulation locks held freebody positions to holder hands in `step()` and serializes `isHeld: true`, `heldBy`, and relative hand coordinates in snapshots.
     - **Automated Verification**:
-      - `scratch/test_held_object_relative_rendering.ts`: Verified 100% (remote player at $v = 6.0\text{ u/s}$ draws with $0.0000\text{u}$ offset from hands, physics transforms restored cleanly, local player holding is 100% resilient across 60 ticks of lagging server snapshots).
+64. **Unified Held Object Altitude / Shadow Synchronization & Single-Screen Multiplayer GUI Visibility**:
+    - **Held Object Altitude Guide & Shadow Synchronization ([Renderer.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/engine/Renderer.ts))**:
+      - Centralized `Renderer.getEffectiveObjectPosition(obj, arena, characters)` helper that dynamically resolves the 3D position `(x, y, z)` for any held freebody or character from `holder.calculateHeldObjectPosition(arena)`.
+      - Replaced raw un-synced `obj.position` reads across `drawVerticalConnectorLine`, `drawObjectGroundShadowFill`, `drawObjectWallTopShadowFill`, `drawObjectColliderPositionOutline`, and `drawWallTops`.
+      - The vertical dotted altitude connector line and all ground/wall shadows now connect directly from the held object's visual position at the holder's hands down to its ground/wall surface footprint with $0.0000\text{u}$ desync.
+    - **Single-Screen Multiplayer GUI & Cursor Visibility Architecture**:
+      - Fixed bug where exiting split-screen mode caused all local players other than Player 1 (`localHeroCharacter`) to lose their aim cursors, throw trajectories, reach rings, and grab badges.
+      - Introduced `isSplitScreenViewport` parameter in `renderArenaScene`.
+      - **Split-Screen Viewports (`isSplitScreenViewport = true`)**: Only the viewport's owning player (`localHeroCharacter = pv.character`) renders their private aim reticle, throw trajectory, and grab targeting GUI.
+      - **Shared Single-Screen View (`isSplitScreenViewport = false`)**: All local players sharing the screen (keyboard and gamepads) have full aim cursors, throw trajectories, and grab targeting rings/badges rendered. Only actual remote network clients (`remoteOverrides.has(playerId)`) are filtered from drawing local aim reticles and trajectories.
+    - **Automated Verification**:
+      - `scratch/test_single_screen_multiplayer_and_held_connector.ts`: Verified 100% (both local players retain visible cursors and GUI on single-screen mode, vertical connector line connects at holder hands $X=722.5\text{px}$ instead of stale physics $X=525\text{px}$).
+      - `scratch/test_remote_trajectory_isolation.ts`: Verified 100% remote client trajectory isolation.
 
 ---
 
