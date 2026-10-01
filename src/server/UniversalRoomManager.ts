@@ -15,6 +15,7 @@ export interface ClientCharacterEntry {
   playerNumber: number;
   color: string;
   name: string;
+  isDefaultPlaceholder?: boolean;
 }
 
 export interface ConnectedRoomClient {
@@ -23,6 +24,7 @@ export interface ConnectedRoomClient {
   characters: Map<string, ClientCharacterEntry>;
   lastPingMs: number;
   lastSeen: number;
+  hasReceivedKeyboardInput?: boolean;
 }
 
 /**
@@ -402,6 +404,7 @@ export class UniversalRoomManager {
 
     // Register initial default player for this connection
     const primaryEntry = this.registerCharacter(client, "keyboard");
+    primaryEntry.isDefaultPlaceholder = true;
 
     // Listen for incoming messages
     ws.on("message", (raw) => {
@@ -428,7 +431,10 @@ export class UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                if (lp.localPlayerId !== "keyboard") {
+                  reg.isDefaultPlaceholder = false;
+                }
               }
             }
           } else {
@@ -470,7 +476,24 @@ export class UniversalRoomManager {
 
         if (data.type === "add_player") {
           const localPlayerId = data.localPlayerId || `player-${client.characters.size + 1}`;
+
+          // If this client currently only has the initial unsteered "keyboard" placeholder,
+          // and is adding a non-keyboard device (e.g. "gamepad-0"), unregister the placeholder "keyboard"
+          // so the client's actual controller cleanly claims the slot without leaving a phantom behind!
+          const kbEntry = client.characters.get("keyboard");
+          if (
+            localPlayerId !== "keyboard" &&
+            kbEntry &&
+            kbEntry.isDefaultPlaceholder &&
+            !client.hasReceivedKeyboardInput &&
+            client.characters.size === 1
+          ) {
+            console.log(`🌐 [UniversalRoom] Replacing unused default placeholder "keyboard" with first real player "${localPlayerId}" for client ${clientId}`);
+            this.unregisterCharacter(client, "keyboard");
+          }
+
           const entry = this.registerCharacter(client, localPlayerId, data.name);
+          entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",
             localPlayerId: entry.localPlayerId,
@@ -509,6 +532,14 @@ export class UniversalRoomManager {
 
           const pkt = data.packet as PlayerInputPacket;
           pkt.playerId = serverCharId;
+
+          // Track if keyboard has sent active input
+          if (localPlayerId === "keyboard") {
+            if (pkt.moveX !== 0 || pkt.moveY !== 0 || pkt.isJumpHeld || pkt.isGrabHeld || pkt.isAiming) {
+              charEntry.isDefaultPlaceholder = false;
+              client.hasReceivedKeyboardInput = true;
+            }
+          }
 
           const sChar = this.simulation.characters.get(serverCharId);
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {

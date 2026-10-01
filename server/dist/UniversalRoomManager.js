@@ -8479,6 +8479,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       this.simulation.characters.delete("player-1");
     }
     const primaryEntry = this.registerCharacter(client, "keyboard");
+    primaryEntry.isDefaultPlaceholder = true;
     ws.on("message", (raw) => {
       var _a;
       try {
@@ -8503,7 +8504,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                if (lp.localPlayerId !== "keyboard") {
+                  reg.isDefaultPlaceholder = false;
+                }
               }
             }
           } else {
@@ -8541,7 +8545,13 @@ const _UniversalRoomManager = class _UniversalRoomManager {
         }
         if (data.type === "add_player") {
           const localPlayerId = data.localPlayerId || `player-${client.characters.size + 1}`;
+          const kbEntry = client.characters.get("keyboard");
+          if (localPlayerId !== "keyboard" && kbEntry && kbEntry.isDefaultPlaceholder && !client.hasReceivedKeyboardInput && client.characters.size === 1) {
+            console.log(`🌐 [UniversalRoom] Replacing unused default placeholder "keyboard" with first real player "${localPlayerId}" for client ${clientId}`);
+            this.unregisterCharacter(client, "keyboard");
+          }
           const entry = this.registerCharacter(client, localPlayerId, data.name);
+          entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",
             localPlayerId: entry.localPlayerId,
@@ -8576,6 +8586,12 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           const serverCharId = charEntry.serverCharId;
           const pkt = data.packet;
           pkt.playerId = serverCharId;
+          if (localPlayerId === "keyboard") {
+            if (pkt.moveX !== 0 || pkt.moveY !== 0 || pkt.isJumpHeld || pkt.isGrabHeld || pkt.isAiming) {
+              charEntry.isDefaultPlaceholder = false;
+              client.hasReceivedKeyboardInput = true;
+            }
+          }
           const sChar = this.simulation.characters.get(serverCharId);
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
             if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {

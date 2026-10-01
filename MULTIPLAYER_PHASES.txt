@@ -607,6 +607,22 @@ Tasks to Implement:
             - Protected in-flight local throws from being dragged down by trailing server rest/sleep snapshots.
        - Verified 100% via automated test suite `scratch/test_secondary_player_throw.ts`.
 
+     [x] 10.4. Phone / Mobile Gamepad Phantom Character Elimination (COMPLETED):
+        - Resolved issue where connecting on a phone/mobile device spawned an extra phantom character with the same name on remote devices, while invisible on the phone itself.
+        - Root Cause:
+          1. Server pre-registered an initial "keyboard" avatar upon connection (client.id) with custom name from localStorage.
+          2. On the phone, playerManager.players was empty before controller input, so baseCharacter was unassigned.
+          3. When a mobile/Bluetooth controller connected or pressed A, spawnGamepadPlayer claimed baseCharacter and sent add_player("gamepad-0", name).
+          4. The server registered "gamepad-0" as a second character, retaining the unsteered "keyboard" avatar on the server.
+          5. On the phone, isLocal was true for both characters, but local players only drew gamepad-0, making the phantom completely invisible on the phone. All other clients rendered both characters with the identical name!
+        - Architecture Solution:
+          1. Default Placeholder Tracking (UniversalRoomManager.ts): Initial "keyboard" character marked with isDefaultPlaceholder = true.
+          2. Automatic Placeholder Reclamation (UniversalRoomManager.ts:add_player): When a non-keyboard device (e.g. "gamepad-0") joins and only the unsteered placeholder "keyboard" exists, the server immediately unregisters "keyboard", allowing the controller to cleanly claim the primary P1 slot without leaving any phantom behind.
+          3. join_room Local Device Delegate (OnlineRoomClient.ts & main.ts): Wired getLocalPlayers delegate querying active local players from gameLoop.playerManager.players, ensuring join_room requests only real local players (e.g. gamepad-0) and server immediately prunes "keyboard".
+          4. Active Input Keyboard Promotion (UniversalRoomManager.ts:player_input): Active WASD/arrow movements promote "keyboard" to permanent (isDefaultPlaceholder = false), preserving both keyboard and gamepad for true local split-screen multi-device play on PC.
+          5. Disconnect Cleanup (OnlineRoomClient.ts:disconnect): Clears localPlayers map and resets clientId to prevent stale registrations across reconnects.
+        - Verified 100% via automated test suite scratch/test_phone_gamepad_no_phantom.ts across all 3 scenarios.
+
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
 ================================================================================

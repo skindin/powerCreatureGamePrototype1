@@ -552,6 +552,18 @@ function bootstrap(): void {
     if (onlineClient.status === "connected") {
       onlineClient.disconnect();
     } else {
+      onlineClient.localPlayers.clear();
+      if (gameLoop?.playerManager) {
+        for (const p of gameLoop.playerManager.players.values()) {
+          onlineClient.localPlayers.set(p.id, {
+            localPlayerId: p.id,
+            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "keyboard") : `${onlineClient.clientId || "client"}:${p.id}`,
+            playerNumber: p.playerNumber,
+            color: p.color,
+            name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
+          });
+        }
+      }
       onlineClient.connect();
     }
   });
@@ -695,6 +707,10 @@ function bootstrap(): void {
 
       // If already connected, notify server of any additional local players
       if (onlineClient.status === "connected" && gameLoop?.playerManager) {
+        if (!gameLoop.playerManager.players.has("keyboard") && onlineClient.localPlayers.has("keyboard")) {
+          onlineClient.removePlayer("keyboard");
+          onlineClient.localPlayers.delete("keyboard");
+        }
         for (const p of gameLoop.playerManager.players.values()) {
           onlineClient.addPlayer(p.id, p.character.hasCustomName ? p.character.name : undefined);
         }
@@ -843,6 +859,10 @@ function bootstrap(): void {
   if (gameLoop?.playerManager) {
     gameLoop.playerManager.onPlayerJoined = (player) => {
       if (activeGameMode === "online" && onlineClient.status === "connected") {
+        if (player.id !== "keyboard" && !gameLoop.playerManager.players.has("keyboard") && onlineClient.localPlayers.has("keyboard")) {
+          onlineClient.removePlayer("keyboard");
+          onlineClient.localPlayers.delete("keyboard");
+        }
         onlineClient.addPlayer(player.id, player.character.hasCustomName ? player.character.name : undefined);
       }
     };
@@ -853,6 +873,19 @@ function bootstrap(): void {
       }
     };
   }
+
+  onlineClient.getLocalPlayers = () => {
+    const list: Array<{ localPlayerId: string; name?: string }> = [];
+    if (gameLoop?.playerManager) {
+      for (const p of gameLoop.playerManager.players.values()) {
+        list.push({
+          localPlayerId: p.id,
+          name: p.character.hasCustomName ? p.character.name : undefined,
+        });
+      }
+    }
+    return list;
+  };
 
   onlineClient.onPlayerLeft = (charId: string) => {
     console.log(`🌐 [OnlineRoom] Remote player left: ${charId}`);

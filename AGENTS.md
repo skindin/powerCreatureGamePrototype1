@@ -1241,6 +1241,22 @@ powerCreatureGamePrototype1/
       5. `GameLoop.ts:syncAuthoritativeObjects`: Strengthened `isLocalChar` to match all players in `this.players`, and protected locally thrown in-flight objects from being dragged down by trailing server rest/sleep snapshots.
     - Verified 100% via automated integration test `scratch/test_secondary_player_throw.ts`.
 
+77. **Phone / Mobile Controller Phantom Character Elimination**:
+    - **Problem**: Connecting from a mobile device or phone spawned an extra phantom character with the same custom name as the player's controlled character on all remote devices, while remaining completely invisible on the phone itself.
+    - **Root Cause Identified**:
+      1. `UniversalRoomManager.ts` immediately assigned a default `"keyboard"` avatar upon connection (`client.id`), inheriting the custom handle from `localStorage`.
+      2. On mobile/touch devices, `playerManager.players` was empty before controller input.
+      3. When a mobile gamepad or Bluetooth controller joined, `spawnGamepadPlayer(0)` claimed `baseCharacter` and dispatched `add_player("gamepad-0", name)`.
+      4. The server registered `"gamepad-0"` as a second character without pruning or replacing the unsteered placeholder `"keyboard"`.
+      5. The phone's local view filtered out all characters starting with `client.id`, rendering only its local `gamepad-0` player, leaving the phantom `"keyboard"` avatar 100% invisible on the phone. All other connected devices saw both characters with the identical name.
+    - **Architecture Solution**:
+      1. **Default Placeholder Flag (`UniversalRoomManager.ts`)**: Initial `"keyboard"` entry tagged with `isDefaultPlaceholder = true`.
+      2. **Automatic Placeholder Reclamation (`UniversalRoomManager.ts:add_player`)**: When a non-keyboard device (`"gamepad-0"`) joins and only the unsteered placeholder `"keyboard"` exists, the server immediately unregisters `"keyboard"`, allowing the controller to cleanly take the primary P1 slot without leaving any phantom behind.
+      3. **Local Player Query Delegate (`OnlineRoomClient.ts:getLocalPlayers` & `main.ts`)**: When sending `join_room`, delegates directly to `gameLoop.playerManager.players`. If a controller is already active, requests only `"gamepad-0"` and the server immediately drops `"keyboard"`.
+      4. **Active Input Keyboard Promotion (`UniversalRoomManager.ts:player_input`)**: Real keyboard movement (WASD/arrows) clears `isDefaultPlaceholder`, preserving both keyboard and gamepad for true local split-screen multi-device play on PC.
+      5. **Clean Disconnect (`OnlineRoomClient.ts:disconnect`)**: Clears `localPlayers` map and resets `clientId` to prevent stale local registrations across reconnects.
+    - Verified 100% via automated test suite `scratch/test_phone_gamepad_no_phantom.ts` across all 3 scenarios (delayed controller join, direct controller join, and PC keyboard + gamepad multi-device).
+
 ---
 
 

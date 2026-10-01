@@ -48,6 +48,7 @@ export class OnlineRoomClient {
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
+  public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string }>;
 
   constructor(initialName?: string) {
     if (initialName) {
@@ -132,12 +133,17 @@ export class OnlineRoomClient {
         this.notifyStats();
 
         // Send join room request with all local players currently active on this client
-        const activeLocalPlayers = Array.from(this.localPlayers.values()).map(p => ({
-          localPlayerId: p.localPlayerId,
-          name: (p.name && !/^Player(\s+\d+)?$/i.test(p.name.trim()) && !/^Controller\s+#\d+$/i.test(p.name.trim()))
-            ? p.name
-            : (p.localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : undefined),
-        }));
+        let activeLocalPlayers: Array<{ localPlayerId: string; name?: string }> = [];
+        if (this.getLocalPlayers) {
+          activeLocalPlayers = this.getLocalPlayers();
+        } else {
+          activeLocalPlayers = Array.from(this.localPlayers.values()).map(p => ({
+            localPlayerId: p.localPlayerId,
+            name: (p.name && !/^Player(\s+\d+)?$/i.test(p.name.trim()) && !/^Controller\s+#\d+$/i.test(p.name.trim()))
+              ? p.name
+              : (p.localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : undefined),
+          }));
+        }
 
         this.ws?.send(JSON.stringify({
           type: "join_room",
@@ -288,6 +294,8 @@ export class OnlineRoomClient {
       } catch (_) {}
       this.ws = null;
     }
+    this.localPlayers.clear();
+    this.clientId = null;
     this.status = "disconnected";
     this.notifyStats();
   }
