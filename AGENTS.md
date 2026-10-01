@@ -1174,6 +1174,21 @@ powerCreatureGamePrototype1/
       - **Monotonic Snapshot Sequence Guard**: Added `lastAppliedObjectSeq` to `GameLoop.ts` and passed `snapshot.seq` from `main.ts`. Dropping stale or out-of-order snapshots eliminates network-level packet jitter.
       - **Deferred Remote Release Cleanup**: In `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, preserving the holder reference during the hand-off.
     - Verified 100% via automated integration test `scratch/test_remote_throw_handshake.ts`.
+72. **Multi-Character Single-Machine Support, Custom Nametag Display & Online Map Memory Trashing**:
+    - **Single-Machine Multi-Character Architecture (Keyboard + Controllers on Same Browser Tab)**:
+      - *Root Cause*: Previously, `UniversalRoomManager` mapped 1 WebSocket connection (`clientId`) to exactly 1 server character, and `main.ts` only streamed inputs for `players.get("keyboard")`. When a second player joined locally via a gamepad controller, the server never spawned a character for it, and its inputs were completely ignored.
+      - *UniversalRoomManager Multi-Character Support*: Added `ClientCharacterEntry` interface (`localPlayerId`, `serverCharId`, `playerNumber`, `color`, `name`) and refactored `ConnectedRoomClient.characters` to a `Map<string, ClientCharacterEntry>`. Sequential global `playerNumber` (1 to 16) and authoritative theme colors are allocated across all machines without collisions.
+      - *Input Packet Routing*: Mapped `player_input` packets by `localPlayerId` (e.g., `keyboard`, `gamepad-0`) to `${clientId}:${localPlayerId}`, updating the corresponding server character independently.
+      - *Dynamic Player Lifecycle*: Added `add_player` and `remove_player` protocol handlers. When a local player connects or disconnects, the server immediately adds/removes their character and broadcasts updated rosters.
+      - *Client Input Streaming & Authority*: `OnlineRoomClient` manages `localPlayers` map and hooks `PlayerManager.onPlayerJoined` / `onPlayerRemoved`. In `main.ts`, physics ticks stream telemetry for all active local players (`gameLoop.players.values()`). `GameLoop.ts:render` and `syncAuthoritativeObjects` guard all local player avatars and their held items from `remoteOverrides` and trailing server snapshot dragdown.
+    - **Custom Nametag Display**:
+      - *Root Cause*: `Renderer.ts:drawCharacterNameTag` previously hardcoded `const badgeText = isRemote ? \`P\${char.playerNumber} [REMOTE]\` : \`P\${char.playerNumber}\``, completely ignoring `char.name`.
+      - *Fix*: In `Renderer.ts:drawCharacterNameTag`, evaluates `const chosenName = char.name && char.name.trim().length > 0 ? char.name.trim() : \`P\${char.playerNumber || 1}\``. The name tag renders the player's chosen name in dynamic width, in their assigned theme color pill, preserving the `[REMOTE]` suffix when remote.
+      - *Startup Handle*: In `main.ts`, initialized `baseCharacter.name` and `hero.name` directly from `localStorage.getItem("pcg_player_handle")`.
+    - **Online Map Memory Trashing & Clean Reload**:
+      - *UniversalRoomManager.trashMapMemory()*: Called the moment all players disconnect (`this.clients.size === 0`). Drops all held objects, completely wipes all characters, freebodies, jitter buffers, and entities, resets the accumulator to 0, and flags `needsMapReload = true`. Zero persistent or corrupted physics state is retained when a room is vacant.
+      - *UniversalRoomManager.reloadMap()*: When a new client connects to an empty or reload-flagged room, cleanly calls `initializeDefaultScenario()`, purging placeholder characters and spawning fresh arena objects and geometry.
+    - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
 
 ---
 

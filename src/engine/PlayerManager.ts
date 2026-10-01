@@ -45,6 +45,8 @@ export class PlayerManager {
   private actionSeq: number = 0;
   private lastHeldObjectIds: Map<string, string | null> = new Map();
   public baseCharacter: Character;
+  public onPlayerJoined?: (player: PlayerEntry) => void;
+  public onPlayerRemoved?: (playerId: string) => void;
 
   constructor(options: {
     arena: Arena;
@@ -271,16 +273,18 @@ export class PlayerManager {
     }
 
     this.inputManager.isKeyboardActive = true;
-    this.players.set("keyboard", {
+    const entry: PlayerEntry = {
       id: "keyboard",
       name: "Keyboard & Mouse",
       playerNumber: char.playerNumber,
       color: char.playerColor,
       isKeyboard: true,
       character: char,
-    });
+    };
+    this.players.set("keyboard", entry);
 
     this.onPlayersChanged?.();
+    this.onPlayerJoined?.(entry);
     return char;
   }
 
@@ -309,6 +313,7 @@ export class PlayerManager {
     this.players.delete("keyboard");
     this.inputManager.isKeyboardActive = false;
     this.onPlayersChanged?.();
+    this.onPlayerRemoved?.("keyboard");
   }
 
   public spawnGamepadPlayer(slotIndex: number, gamepadName?: string): Character {
@@ -353,7 +358,7 @@ export class PlayerManager {
       this.arena.syncEntitiesWithWalls([char]);
     }
 
-    this.players.set(key, {
+    const entry: PlayerEntry = {
       id: key,
       name: cleanName,
       playerNumber: char.playerNumber,
@@ -361,7 +366,8 @@ export class PlayerManager {
       isKeyboard: false,
       slotIndex,
       character: char,
-    });
+    };
+    this.players.set(key, entry);
 
     const slot = this.inputManager.gamepadSlots.get(slotIndex);
     if (slot) {
@@ -370,6 +376,7 @@ export class PlayerManager {
     }
 
     this.onPlayersChanged?.();
+    this.onPlayerJoined?.(entry);
     return char;
   }
 
@@ -404,6 +411,7 @@ export class PlayerManager {
     }
 
     this.onPlayersChanged?.();
+    this.onPlayerRemoved?.(key);
   }
 
   public removePlayer(playerId: string): void {

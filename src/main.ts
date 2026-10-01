@@ -200,6 +200,14 @@ function bootstrap(): void {
 
   updateFullscreenUI();
 
+  const initialPlayerHandle = (() => {
+    try {
+      return localStorage.getItem("pcg_player_handle") || "Player 1";
+    } catch {
+      return "Player 1";
+    }
+  })();
+
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
     x: 4.8,
@@ -208,6 +216,7 @@ function bootstrap(): void {
     colliderRadius: 0.44,
     mass: 1.2,
     strength: 1.0,
+    name: initialPlayerHandle,
   });
 
   // 3. Initialize Initial Freebody Objects in unit coordinates
@@ -647,7 +656,28 @@ function bootstrap(): void {
 
       onlineHud?.classList.remove("hidden");
       onlineStatusPill?.classList.remove("hidden");
+      
+      // Populate localPlayers on client before connecting so join_room includes all active players on this machine
+      if (gameLoop?.playerManager) {
+        for (const p of gameLoop.playerManager.players.values()) {
+          onlineClient.localPlayers.set(p.id, {
+            localPlayerId: p.id,
+            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "player") : `${onlineClient.clientId || "client"}:${p.id}`,
+            playerNumber: p.playerNumber,
+            color: p.color,
+            name: p.character.name,
+          });
+        }
+      }
+
       onlineClient.connect();
+
+      // If already connected, notify server of any additional local players
+      if (onlineClient.status === "connected" && gameLoop?.playerManager) {
+        for (const p of gameLoop.playerManager.players.values()) {
+          onlineClient.addPlayer(p.id, p.character.name);
+        }
+      }
     }
   };
 
@@ -743,6 +773,40 @@ function bootstrap(): void {
     }
   };
 
+  onlineClient.onPlayerRegistered = (info) => {
+    console.log(`🌐 [OnlineRoom] Local player ${info.localPlayerId} registered as P${info.playerNumber} (${info.color}, "${info.name}")`);
+    const p = gameLoop?.playerManager.players.get(info.localPlayerId);
+    if (p) {
+      p.character.playerNumber = info.playerNumber;
+      p.character.color = info.color;
+      p.character.playerColor = info.color;
+      p.character.name = info.name;
+      p.color = info.color;
+      p.playerNumber = info.playerNumber;
+    } else if (info.localPlayerId === "keyboard" && gameLoop?.playerManager.baseCharacter) {
+      const base = gameLoop.playerManager.baseCharacter;
+      base.playerNumber = info.playerNumber;
+      base.color = info.color;
+      base.playerColor = info.color;
+      base.name = info.name;
+    }
+    gameLoop?.playerManager.onPlayersChanged?.();
+  };
+
+  if (gameLoop?.playerManager) {
+    gameLoop.playerManager.onPlayerJoined = (player) => {
+      if (activeGameMode === "online" && onlineClient.status === "connected") {
+        onlineClient.addPlayer(player.id, player.character.name);
+      }
+    };
+
+    gameLoop.playerManager.onPlayerRemoved = (playerId) => {
+      if (activeGameMode === "online" && onlineClient.status === "connected") {
+        onlineClient.removePlayer(playerId);
+      }
+    };
+  }
+
   onlineClient.onSnapshotReceived = (snapshot) => {
     if (activeGameMode !== "online" || !gameLoop) return;
 
@@ -751,10 +815,14 @@ function bootstrap(): void {
       const activeCharIds = new Set<string>();
       for (const c of snapshot.characters) {
         activeCharIds.add(c.id);
-        if (c.id !== onlineClient.clientId) {
+        const isLocal = c.id === onlineClient.clientId || (onlineClient.clientId !== null && c.id.startsWith(`${onlineClient.clientId}:`));
+        if (!isLocal) {
           gameLoop.playerManager.syncRemoteCharacter(c);
           const remChar = gameLoop.playerManager.remotePlayers.get(c.id);
           if (remChar) {
+            if (c.name && remChar.name !== c.name) {
+              remChar.name = c.name;
+            }
             if (c.heldObjectId) {
               const targetObj = gameLoop.objects.find((o) => o.id === c.heldObjectId);
               if (targetObj) {
@@ -767,19 +835,23 @@ function bootstrap(): void {
             }
           }
         } else {
-          // Local client character! Ensure authoritative server-assigned color and number are preserved
-          const hero = gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter;
-          if (hero) {
-            const authoritativeColor = c.playerColor || c.color || onlineClient.assignedColor;
-            if (authoritativeColor && (hero.color !== authoritativeColor || hero.playerColor !== authoritativeColor)) {
-              hero.color = authoritativeColor;
-              hero.playerColor = authoritativeColor;
+          // Local client character! Ensure authoritative server-assigned color, number and name are preserved
+          const localPlayerId = c.id.includes(":") ? c.id.split(":")[1] : "keyboard";
+          const p = gameLoop.players.get(localPlayerId);
+          const localChar = p?.character || (localPlayerId === "keyboard" ? (gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter) : null);
+          if (localChar) {
+            const authoritativeColor = c.playerColor || c.color || (p ? p.color : onlineClient.assignedColor);
+            if (authoritativeColor && (localChar.color !== authoritativeColor || localChar.playerColor !== authoritativeColor)) {
+              localChar.color = authoritativeColor;
+              localChar.playerColor = authoritativeColor;
+              if (p) p.color = authoritativeColor;
             }
-            if (c.playerNumber !== undefined && hero.playerNumber !== c.playerNumber) {
-              hero.playerNumber = c.playerNumber;
+            if (c.playerNumber !== undefined && localChar.playerNumber !== c.playerNumber) {
+              localChar.playerNumber = c.playerNumber;
+              if (p) p.playerNumber = c.playerNumber;
             }
-            if (c.name && hero.name !== c.name) {
-              hero.name = c.name;
+            if (c.name && localChar.name !== c.name) {
+              localChar.name = c.name;
             }
           }
         }
@@ -795,7 +867,7 @@ function bootstrap(): void {
       if (onlineRosterList) {
         onlineRosterList.innerHTML = "";
         for (const c of snapshot.characters) {
-          const isMe = c.id === onlineClient.clientId;
+          const isMe = c.id === onlineClient.clientId || (onlineClient.clientId !== null && c.id.startsWith(`${onlineClient.clientId}:`));
           const chipColor = c.playerColor || c.color || (isMe ? onlineClient.assignedColor : '#38bdf8') || '#38bdf8';
           const chip = document.createElement("div");
           chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? `${chipColor}bb` : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
@@ -1715,19 +1787,40 @@ function bootstrap(): void {
       // 2. Stream client input packets and world telemetry across the WAN relay loopback
       relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, gameLoop.allCharacters, gameLoop.objects, nowMs);
     } else if (activeGameMode === "online") {
-      // Stream local inputs + character telemetry + object telemetry to authoritative online server
-      const hero = gameLoop.players.get("keyboard")?.character || gameLoop.primaryCharacter;
-      const kbPkt = gameLoop.lastInputs.get("keyboard") || (gameLoop.lastInputs.values().next().value as PlayerInputPacket) || {
-        playerId: hero?.playerId || onlineClient.clientId || "player",
-        playerName: hero?.name || onlineClient.playerName,
-        tick: gameLoop.currentTick,
-        moveX: 0,
-        moveY: 0,
-        isSprinting: hero?.isSprinting ?? false,
-        isJumpHeld: false,
-        isAiming: false,
-      };
-      onlineClient.sendPlayerInput(kbPkt, hero, gameLoop.objects);
+      // Stream local inputs + character telemetry + object telemetry for ALL active local players on this machine
+      const activePlayers = Array.from(gameLoop.players.values());
+      if (activePlayers.length > 0) {
+        for (const p of activePlayers) {
+          const pkt: PlayerInputPacket = gameLoop.lastInputs.get(p.id) || {
+            playerId: p.id,
+            playerName: p.character.name || onlineClient.playerName,
+            tick: gameLoop.currentTick,
+            moveX: 0,
+            moveY: 0,
+            isSprinting: p.character.isSprinting ?? false,
+            isJumpHeld: false,
+            isGrabHeld: false,
+            isLockHeld: false,
+            isAiming: false,
+          };
+          onlineClient.sendPlayerInput(p.id, pkt, p.character, gameLoop.objects);
+        }
+      } else {
+        const hero = gameLoop.primaryCharacter;
+        const kbPkt: PlayerInputPacket = {
+          playerId: "keyboard",
+          playerName: hero?.name || onlineClient.playerName,
+          tick: gameLoop.currentTick,
+          moveX: 0,
+          moveY: 0,
+          isSprinting: hero?.isSprinting ?? false,
+          isJumpHeld: false,
+          isGrabHeld: false,
+          isLockHeld: false,
+          isAiming: false,
+        };
+        onlineClient.sendPlayerInput("keyboard", kbPkt, hero, gameLoop.objects);
+      }
     }
   };
 

@@ -2041,13 +2041,14 @@ export class Renderer {
     ctx.textBaseline = "middle";
 
     if (char.playerId) {
-      const badgeText = isRemote ? `P${char.playerNumber} [REMOTE]` : `P${char.playerNumber}`;
+      const chosenName = char.name && char.name.trim().length > 0 ? char.name.trim() : `P${char.playerNumber || 1}`;
+      const badgeText = isRemote ? `${chosenName} [REMOTE]` : chosenName;
       ctx.font = isRemote ? "bold 9px monospace" : "bold 11px monospace";
       const textWidth = ctx.measureText(badgeText).width;
-      const pillW = textWidth + 8;
-      const pillH = isRemote ? 13 : 14;
+      const pillW = textWidth + 10;
+      const pillH = isRemote ? 14 : 16;
       const pillX = x - pillW / 2;
-      const pillY = y - r - 15;
+      const pillY = y - r - 16;
 
       ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
       ctx.beginPath();

@@ -523,7 +523,19 @@ Tasks to Implement:
         2. Instant Launch Hand-Off: in `GameLoop.ts:syncAuthoritativeObjects`, when a remote character releases a held item on the server, the remote client immediately hands off the launch transform and trajectory (`localObj.position = sObj; localObj.velocity = sObj.v; localObj.isInFlight = true; localObj.wakeUp()`) with zero lag or 30% blending hesitation.
         3. Monotonic Snapshot Guard: added `lastAppliedObjectSeq` in `GameLoop.ts` to reject out-of-order or duplicate server snapshots, preventing network-level packet jitter from jerking objects backward.
         4. Deferred Remote Release Detachment: in `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, ensuring the hand-off logic retains full context of who threw the item.
-      - Verified 100% via automated integration test `scratch/test_remote_throw_handshake.ts`.
+  [x] 10.7 Multi-Character Single-Machine Support, Custom Nametag Display & Online Map Memory Trashing
+      - Multi-Character Single-Machine Support (e.g. Keyboard + Gamepads on same browser tab):
+        1. `UniversalRoomManager`: Added `ClientCharacterEntry` mapping multiple characters per WebSocket connection (`characters: Map<string, ClientCharacterEntry>`). Sequentially allocates `playerNumber` (1-16) and authoritative theme colors across all machines without collisions.
+        2. `OnlineRoomClient`: Added `localPlayers` map, `addPlayer()`, `removePlayer()`, and streaming of `player_input` packets keyed by `localPlayerId` (e.g. `keyboard`, `gamepad-0`).
+        3. `PlayerManager`: Dispatches `onPlayerJoined` and `onPlayerRemoved` callbacks when controllers connect or join locally, notifying the server via `add_player` / `remove_player` packets.
+        4. `main.ts` & `GameLoop.ts`: Loops over all local players on physics ticks to stream telemetry. Guards all local characters and their held items from `remoteOverrides` and trailing server snapshot dragdown.
+      - Custom Nametag Display:
+        1. In `Renderer.ts:drawCharacterNameTag`: Character name tags render the player's chosen name (`char.name`), with fallback to `P${char.playerNumber}`, preserving the `[REMOTE]` badge for remote clients in their assigned color pill.
+        2. In `main.ts`: Populates `hero.name` and `baseCharacter.name` on startup from `localStorage.getItem("pcg_player_handle")`.
+      - Online Map Memory Trashing & Clean Reload:
+        1. In `UniversalRoomManager.trashMapMemory()`: The moment all players disconnect (0 clients), completely wipes all characters, objects, jitter buffers, held objects, and resets simulation accumulator and map state.
+        2. In `UniversalRoomManager.reloadMap()`: The moment a new player connects, loads a pristine map scenario with fresh freebodies and geometry.
+      - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA

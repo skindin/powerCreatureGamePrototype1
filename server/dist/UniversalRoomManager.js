@@ -8170,6 +8170,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     __publicField(this, "simulation");
     __publicField(this, "clients", /* @__PURE__ */ new Map());
     __publicField(this, "isRunning", false);
+    __publicField(this, "needsMapReload", false);
     __publicField(this, "loopInterval", null);
     __publicField(this, "lastTimeHr", process.hrtime.bigint());
     __publicField(this, "accumulator", 0);
@@ -8232,6 +8233,11 @@ const _UniversalRoomManager = class _UniversalRoomManager {
   }
   tick() {
     if (!this.isRunning) return;
+    if (this.clients.size === 0) {
+      this.lastTimeHr = process.hrtime.bigint();
+      this.accumulator = 0;
+      return;
+    }
     const nowHr = process.hrtime.bigint();
     const elapsedSec = Number(nowHr - this.lastTimeHr) / 1e9;
     this.lastTimeHr = nowHr;
@@ -8257,7 +8263,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             type: "pc_server_snapshot",
             snapshot,
             worldSnapshot,
-            playerCount: this.clients.size
+            playerCount: this.simulation.characters.size
           });
           client.ws.send(payload);
         } catch (err) {
@@ -8268,32 +8274,67 @@ const _UniversalRoomManager = class _UniversalRoomManager {
   }
   allocatePlayerNumber() {
     const used = /* @__PURE__ */ new Set();
-    for (const c of this.clients.values()) {
-      used.add(c.playerNumber);
+    for (const char of this.simulation.characters.values()) {
+      if (char.playerNumber && char.playerNumber > 0) {
+        used.add(char.playerNumber);
+      }
     }
     for (let i = 1; i <= 16; i++) {
       if (!used.has(i)) return i;
     }
-    return this.clients.size + 1;
+    return this.simulation.characters.size + 1;
   }
-  handleConnection(ws, _req) {
-    const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  /**
+   * Trashes any memory of the online map the moment no players are connected.
+   */
+  trashMapMemory() {
+    console.log("🌐 [UniversalRoom] All players left. Trashing online map memory...");
+    for (const obj of this.simulation.objects) {
+      obj.isHeld = false;
+      obj.heldBy = null;
+    }
+    for (const char of this.simulation.characters.values()) {
+      char.cleanupBeforeRemoval();
+    }
+    this.simulation.characters.clear();
+    this.simulation.objects = [];
+    this.simulation.jitterBuffer.clear();
+    this.simulation.arena.entities = [];
+    this.accumulator = 0;
+    this.needsMapReload = true;
+    console.log("🌐 [UniversalRoom] Online map memory trashed cleanly.");
+  }
+  /**
+   * Reloads the pristine default scenario when a player tries to connect to an empty room.
+   */
+  reloadMap() {
+    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
+    this.simulation.initializeDefaultScenario();
+    if (this.simulation.characters.has("player-1")) {
+      const p1 = this.simulation.characters.get("player-1");
+      p1 == null ? void 0 : p1.cleanupBeforeRemoval();
+      this.simulation.characters.delete("player-1");
+      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    }
+    this.lastTimeHr = process.hrtime.bigint();
+    this.accumulator = 0;
+    this.needsMapReload = false;
+    console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
+  }
+  registerCharacter(client, localPlayerId, name) {
+    const existing = client.characters.get(localPlayerId);
+    if (existing) {
+      if (name && name.trim().length > 0) {
+        existing.name = name.trim();
+        const sChar = this.simulation.characters.get(existing.serverCharId);
+        if (sChar) sChar.name = existing.name;
+      }
+      return existing;
+    }
     const playerNumber = this.allocatePlayerNumber();
     const color = PLAYER_COLORS[(playerNumber - 1) % PLAYER_COLORS.length];
-    const defaultName = `Player ${playerNumber}`;
-    const client = {
-      id: clientId,
-      ws,
-      playerNumber,
-      name: defaultName,
-      color,
-      lastPingMs: 0
-    };
-    this.clients.set(clientId, client);
-    console.log(`🌐 [UniversalRoom] Player connected: ${clientId} as P${playerNumber} (Total in room: ${this.clients.size})`);
-    if (this.simulation.characters.has("player-1")) {
-      this.simulation.characters.delete("player-1");
-    }
+    const serverCharId = localPlayerId === "keyboard" && client.characters.size === 0 ? client.id : `${client.id}:${localPlayerId}`;
+    const charName = name && name.trim().length > 0 ? name.trim() : `Player ${playerNumber}`;
     const spawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
     const spawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
     const character = new Character({
@@ -8303,27 +8344,80 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       colliderRadius: 0.44,
       mass: 1.2,
       strength: 1,
-      playerId: clientId,
+      playerId: serverCharId,
       playerNumber,
-      name: defaultName
+      name: charName
     });
-    this.simulation.characters.set(clientId, character);
+    this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    const entry = {
+      localPlayerId,
+      serverCharId,
+      playerNumber,
+      color,
+      name: charName
+    };
+    client.characters.set(localPlayerId, entry);
+    console.log(
+      `🌐 [UniversalRoom] Acknowledged character: ${serverCharId} as P${playerNumber} (${color}, "${charName}") for client ${client.id}`
+    );
+    return entry;
+  }
+  unregisterCharacter(client, localPlayerId) {
+    const entry = client.characters.get(localPlayerId);
+    if (!entry) return;
+    client.characters.delete(localPlayerId);
+    const sChar = this.simulation.characters.get(entry.serverCharId);
+    if (sChar) {
+      sChar.cleanupBeforeRemoval();
+      this.simulation.characters.delete(entry.serverCharId);
+      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    }
+    console.log(`🌐 [UniversalRoom] Character removed: ${entry.serverCharId} from client ${client.id}`);
+  }
+  handleConnection(ws, _req) {
+    if (this.needsMapReload || this.clients.size === 0) {
+      this.reloadMap();
+    }
+    const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const client = {
+      id: clientId,
+      ws,
+      characters: /* @__PURE__ */ new Map(),
+      lastPingMs: 0
+    };
+    this.clients.set(clientId, client);
+    console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
+    if (this.simulation.characters.has("player-1")) {
+      const p1 = this.simulation.characters.get("player-1");
+      p1 == null ? void 0 : p1.cleanupBeforeRemoval();
+      this.simulation.characters.delete("player-1");
+    }
+    const primaryEntry = this.registerCharacter(client, "keyboard");
     ws.on("message", (raw) => {
       try {
         const text = raw.toString();
         const data = JSON.parse(text);
         if (data.type === "join_room") {
-          if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
-            client.name = data.name.trim();
-            character.name = client.name;
+          if (Array.isArray(data.localPlayers) && data.localPlayers.length > 0) {
+            for (const lp of data.localPlayers) {
+              if (lp.localPlayerId) {
+                this.registerCharacter(client, lp.localPlayerId, lp.name);
+              }
+            }
+          } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
+            primaryEntry.name = data.name.trim();
+            const sChar = this.simulation.characters.get(primaryEntry.serverCharId);
+            if (sChar) sChar.name = primaryEntry.name;
           }
+          const primary = client.characters.get("keyboard") || client.characters.values().next().value || primaryEntry;
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber,
-            name: character.name,
-            color: character.color,
+            playerNumber: primary.playerNumber,
+            name: primary.name,
+            color: primary.color,
+            registeredPlayers: Array.from(client.characters.values()),
             arena: {
               width: this.simulation.arena.width,
               height: this.simulation.arena.height,
@@ -8334,41 +8428,80 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }));
           return;
         }
+        if (data.type === "add_player") {
+          const localPlayerId = data.localPlayerId || `player-${client.characters.size + 1}`;
+          const entry = this.registerCharacter(client, localPlayerId, data.name);
+          ws.send(JSON.stringify({
+            type: "player_added",
+            localPlayerId: entry.localPlayerId,
+            serverCharId: entry.serverCharId,
+            playerNumber: entry.playerNumber,
+            color: entry.color,
+            name: entry.name
+          }));
+          return;
+        }
+        if (data.type === "remove_player") {
+          const localPlayerId = data.localPlayerId;
+          if (localPlayerId) {
+            this.unregisterCharacter(client, localPlayerId);
+            ws.send(JSON.stringify({
+              type: "player_removed",
+              localPlayerId
+            }));
+          }
+          return;
+        }
         if (data.type === "player_input" && data.packet) {
+          const localPlayerId = data.localPlayerId || "keyboard";
+          const charEntry = client.characters.get(localPlayerId);
+          const serverCharId = charEntry ? charEntry.serverCharId : data.serverCharId || clientId;
           const pkt = data.packet;
-          pkt.playerId = clientId;
-          if (pkt.playerName && pkt.playerName !== character.name) {
-            client.name = pkt.playerName;
-            character.name = pkt.playerName;
+          pkt.playerId = serverCharId;
+          const sChar = this.simulation.characters.get(serverCharId);
+          if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
+            sChar.name = pkt.playerName;
+            if (charEntry) charEntry.name = pkt.playerName;
           }
           this.simulation.queueInput(pkt);
           if (data.character) {
-            data.character.id = clientId;
-            if (character.name) data.character.name = character.name;
-            if (character.color) data.character.color = character.color;
+            data.character.id = serverCharId;
+            if (sChar) {
+              data.character.name = sChar.name;
+              data.character.color = sChar.color;
+            }
             this.simulation.syncCharacterFromPacket(data.character);
           }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
-              act.playerId = clientId;
+              act.playerId = serverCharId;
             }
             this.simulation.processReliableActions(data.reliableActions);
           }
           if (Array.isArray(data.objects) && data.objects.length > 0) {
-            this.simulation.syncObjectsFromPacket(data.objects, clientId);
+            this.simulation.syncObjectsFromPacket(data.objects, serverCharId);
           }
           return;
         }
         if (data.type === "reliable_action" && data.action) {
+          const localPlayerId = data.localPlayerId || "keyboard";
+          const charEntry = client.characters.get(localPlayerId);
+          const serverCharId = charEntry ? charEntry.serverCharId : data.serverCharId || clientId;
           const act = data.action;
-          act.playerId = clientId;
+          act.playerId = serverCharId;
           this.simulation.processReliableActions([act]);
           return;
         }
         if (data.type === "rename_player") {
           if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
-            client.name = data.name.trim();
-            character.name = client.name;
+            const trimmed = data.name.trim();
+            const localPlayerId = data.localPlayerId || "keyboard";
+            const charEntry = client.characters.get(localPlayerId);
+            if (charEntry) {
+              charEntry.name = trimmed;
+              const sChar = this.simulation.characters.get(charEntry.serverCharId);
+              if (sChar) sChar.name = trimmed;
+            }
           }
           return;
         }
@@ -8397,22 +8530,27 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber,
-      name: character.name,
-      color: character.color
+      playerNumber: primaryEntry.playerNumber,
+      name: primaryEntry.name,
+      color: primaryEntry.color
     }));
   }
   handleDisconnection(clientId) {
     const client = this.clients.get(clientId);
     if (!client) return;
-    this.clients.delete(clientId);
-    const char = this.simulation.characters.get(clientId);
-    if (char) {
-      char.cleanupBeforeRemoval();
-      this.simulation.characters.delete(clientId);
-      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    for (const entry of client.characters.values()) {
+      const char = this.simulation.characters.get(entry.serverCharId);
+      if (char) {
+        char.cleanupBeforeRemoval();
+        this.simulation.characters.delete(entry.serverCharId);
+      }
     }
-    console.log(`🌐 [UniversalRoom] Player disconnected: ${clientId} (Remaining in room: ${this.clients.size})`);
+    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    this.clients.delete(clientId);
+    console.log(`🌐 [UniversalRoom] Client disconnected: ${clientId} (Remaining clients: ${this.clients.size})`);
+    if (this.clients.size === 0) {
+      this.trashMapMemory();
+    }
   }
 };
 __publicField(_UniversalRoomManager, "instance", null);

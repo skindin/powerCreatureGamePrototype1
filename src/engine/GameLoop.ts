@@ -342,6 +342,8 @@ export class GameLoop {
       const rttMs = ghostData?.rttMs ?? 0;
       for (const char of this.allCharacters) {
         if (localHeroChar && char === localHeroChar) continue;
+        const isLocalChar = Array.from(this.playerManager.players.values()).some((p) => p.character === char);
+        if (isLocalChar) continue;
         const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);
         if (interp) {
           remoteOverrides.set(char.playerId, {
@@ -523,36 +525,39 @@ export class GameLoop {
       const localObj = this.objects.find((o) => o.id === sObj.id);
       if (!localObj) continue;
 
-      // 1. Identify local player character
-      const localHero = this.players.get("keyboard")?.character || this.primaryCharacter;
-      const isHeldByLocalHero = Boolean(
-        localObj.isHeld && localObj.heldBy && (
-          localObj.heldBy === localHero ||
-          (localHero && (localObj.heldBy as Character).playerId === localHero.playerId) ||
-          (localHero && (localObj.heldBy as Character).id === localHero.id)
+      // 1. Identify if held by any local player on this machine
+      const isHeldByAnyLocalPlayer = Boolean(
+        localObj.isHeld && localObj.heldBy &&
+        Array.from(this.players.values()).some((p) =>
+          p.character === localObj.heldBy ||
+          (localObj.heldBy as Character).playerId === p.id ||
+          (localObj.heldBy as Character).id === p.id
         )
       );
 
-      // 1a. If currently held by local character, local holder transform governs
-      if (isHeldByLocalHero) continue;
+      // 1a. If currently held by any local character on this machine, local holder transform governs
+      if (isHeldByAnyLocalPlayer) continue;
 
       // 2. If dragged by user mouse in editor, user drag governs
       if (this.inputManager?.draggedEntity === localObj) continue;
 
       // 3. Remote Player Holding / Releasing Synchronizer:
-      const isMyServerId = Boolean(localClientId && sObj.heldBy === localClientId);
-      const isMyLocalId = Boolean(localHero && (sObj.heldBy === localHero.playerId || sObj.heldBy === localHero.id));
-      const wasHeldByMe = isMyServerId || isMyLocalId || localObj.lastThrower === localHero;
+      const isHeldByMyClient = Boolean(
+        sObj.heldBy && localClientId && (sObj.heldBy === localClientId || sObj.heldBy.startsWith(`${localClientId}:`))
+      );
+      const isMyLocalId = Array.from(this.players.values()).some((p) => sObj.heldBy === p.id || sObj.heldBy === p.character.playerId);
+      const wasHeldByMe = isHeldByMyClient || isMyLocalId || Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character);
 
       // Identify if any remote character is currently holding this object locally
+      const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c);
       const remoteHolder = this.allCharacters.find(
-        (c) => (c !== localHero) && (c.heldObject === localObj || localObj.heldBy === c)
+        (c) => (!isLocalChar(c)) && (c.heldObject === localObj || localObj.heldBy === c)
       );
 
       if (sObj.isHeld && sObj.heldBy) {
         // Find remote character holding it
         const targetRemoteHolder = this.allCharacters.find(
-          (c) => (c.playerId === sObj.heldBy || c.id === sObj.heldBy) && c !== localHero
+          (c) => (c.playerId === sObj.heldBy || c.id === sObj.heldBy) && !isLocalChar(c)
         );
         if (targetRemoteHolder && !wasHeldByMe) {
           localObj.isHeld = true;
@@ -568,7 +573,7 @@ export class GameLoop {
           localObj.isInFlight = false;
           continue;
         }
-      } else if (remoteHolder || (localObj.isHeld && localObj.heldBy && localObj.heldBy !== localHero)) {
+      } else if (remoteHolder || (localObj.isHeld && localObj.heldBy && !isLocalChar(localObj.heldBy as Character))) {
         // Was held by a remote player locally, but server says it is now released/thrown!
         const prevHolder = (localObj.heldBy as Character) || remoteHolder;
         if (prevHolder && prevHolder.heldObject === localObj) {
@@ -607,7 +612,8 @@ export class GameLoop {
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
       // While a thrown object is in ballistic flight from local player, client predicts 100% locally
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
-      if (localObj.lastThrower === localHero && (localObj.isInFlight || localObj.lastThrower) && isAirborne) {
+      const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
+      if (wasThrownByLocal && (localObj.isInFlight || localObj.lastThrower) && isAirborne) {
         continue;
       }
 

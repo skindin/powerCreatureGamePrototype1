@@ -36,9 +36,12 @@ export class OnlineRoomClient {
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
+  public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }>();
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
   public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
+  public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }) => void;
+  public onPlayerRemoved?: (localPlayerId: string) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
@@ -122,10 +125,16 @@ export class OnlineRoomClient {
         this.status = "connected";
         this.notifyStats();
 
-        // Send join room request
+        // Send join room request with all local players currently active on this client
+        const activeLocalPlayers = Array.from(this.localPlayers.values()).map(p => ({
+          localPlayerId: p.localPlayerId,
+          name: p.name,
+        }));
+
         this.ws?.send(JSON.stringify({
           type: "join_room",
           name: this.playerName,
+          localPlayers: activeLocalPlayers.length > 0 ? activeLocalPlayers : [{ localPlayerId: "keyboard", name: this.playerName }],
         }));
 
         this.startPingLoop();
@@ -141,6 +150,24 @@ export class OnlineRoomClient {
             this.playerNumber = msg.playerNumber || 1;
             if (msg.color) this.assignedColor = msg.color;
             if (msg.name) this.playerName = msg.name;
+
+            if (Array.isArray(msg.registeredPlayers)) {
+              for (const reg of msg.registeredPlayers) {
+                this.localPlayers.set(reg.localPlayerId, reg);
+                this.onPlayerRegistered?.(reg);
+              }
+            } else {
+              const defaultReg = {
+                localPlayerId: "keyboard",
+                serverCharId: this.clientId || "client",
+                playerNumber: this.playerNumber,
+                color: this.assignedColor,
+                name: this.playerName,
+              };
+              this.localPlayers.set("keyboard", defaultReg);
+              this.onPlayerRegistered?.(defaultReg);
+            }
+
             this.notifyStats();
 
             this.onJoined?.({
@@ -149,6 +176,18 @@ export class OnlineRoomClient {
               name: msg.name,
               color: msg.color || this.assignedColor,
             });
+            return;
+          }
+
+          if (msg.type === "player_added") {
+            this.localPlayers.set(msg.localPlayerId, msg);
+            this.onPlayerRegistered?.(msg);
+            return;
+          }
+
+          if (msg.type === "player_removed") {
+            this.localPlayers.delete(msg.localPlayerId);
+            this.onPlayerRemoved?.(msg.localPlayerId);
             return;
           }
 
@@ -222,27 +261,61 @@ export class OnlineRoomClient {
     this.notifyStats();
   }
 
-  /**
-   * Streams local player inputs to the server along with local character & object telemetry.
-   * Enables the authoritative server to maintain locked coordinates and velocity.
-   */
-  public sendPlayerInput(packet: PlayerInputPacket, character?: any, objects?: any[]): void {
+  public getServerCharId(localPlayerId: string = "keyboard"): string {
+    const reg = this.localPlayers.get(localPlayerId);
+    if (reg) return reg.serverCharId;
+    if (localPlayerId === "keyboard" || !localPlayerId) return this.clientId || "player";
+    return this.clientId ? `${this.clientId}:${localPlayerId}` : localPlayerId;
+  }
+
+  public addPlayer(localPlayerId: string, name?: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
-      if (this.clientId) {
-        packet.playerId = this.clientId;
-      }
-      if (this.playerName) {
+      this.ws.send(JSON.stringify({
+        type: "add_player",
+        localPlayerId,
+        name: name || `Player`,
+      }));
+    } catch (_) {}
+  }
+
+  public removePlayer(localPlayerId: string): void {
+    this.localPlayers.delete(localPlayerId);
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      this.ws.send(JSON.stringify({
+        type: "remove_player",
+        localPlayerId,
+      }));
+    } catch (_) {}
+  }
+
+  /**
+   * Streams local player inputs to the server along with local character & object telemetry.
+   * Enables the authoritative server to maintain locked coordinates and velocity for each local character.
+   */
+  public sendPlayerInput(
+    localPlayerId: string,
+    packet: PlayerInputPacket,
+    character?: any,
+    objects?: any[]
+  ): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const serverCharId = this.getServerCharId(localPlayerId);
+      packet.playerId = serverCharId;
+      if (character?.name) {
+        packet.playerName = character.name;
+      } else if (this.playerName) {
         packet.playerName = this.playerName;
       }
       const reliableActions = this.unacknowledgedActions.size > 0
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
-      const myId = this.clientId || character?.playerId || "player";
       const charTelemetry = character ? {
-        id: myId,
-        name: this.playerName || character.name,
+        id: serverCharId,
+        name: character.name || this.playerName,
         x: Number(character.position.x.toFixed(3)),
         y: Number(character.position.y.toFixed(3)),
         z: Number(character.position.z.toFixed(3)),
@@ -260,7 +333,7 @@ export class OnlineRoomClient {
         isHolding: Boolean(character.heldObject),
       } : undefined;
 
-      // Only stream telemetry for objects that the local player has authority over (held in local hands)
+      // Only stream telemetry for objects that this specific local character has authority over (held in hands)
       const myHeldObjects = (Array.isArray(objects) && objects.length > 0)
         ? objects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
         : [];
@@ -280,7 +353,7 @@ export class OnlineRoomClient {
         color: obj.color,
         shape: obj.visualShape,
         isHeld: true,
-        heldBy: myId,
+        heldBy: serverCharId,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
@@ -290,6 +363,8 @@ export class OnlineRoomClient {
 
       this.ws.send(JSON.stringify({
         type: "player_input",
+        localPlayerId,
+        serverCharId,
         packet,
         character: charTelemetry,
         objects: objTelemetry,
@@ -298,15 +373,19 @@ export class OnlineRoomClient {
     } catch (_) {}
   }
 
-  public renamePlayer(newName: string): void {
+  public renamePlayer(newName: string, localPlayerId: string = "keyboard"): void {
     const trimmed = newName.trim();
     if (!trimmed) return;
     this.playerName = trimmed;
+    const entry = this.localPlayers.get(localPlayerId);
+    if (entry) entry.name = trimmed;
     this.notifyStats();
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       this.ws.send(JSON.stringify({
         type: "rename_player",
+        localPlayerId,
+        serverCharId: this.getServerCharId(localPlayerId),
         name: trimmed,
       }));
     } catch (_) {}
