@@ -573,7 +573,7 @@ export class Renderer {
 
       // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
       for (const char of characters) {
-        const isRemote = Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
+        const isRemote = isRemoteForThisView(char);
         this.drawCharacterNameTag(char, arena, ppu, isRemote);
       }
 

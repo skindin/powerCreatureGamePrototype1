@@ -134,6 +134,7 @@ powerCreatureGamePrototype1/
   - **Grab GUI Client Isolation**:
     - Reach highlights, target grab colored outlines, glowing grab rings, and player grab badges (`P1 GRAB`) are preserved for each local client player on their respective screen/viewport and in single-screen/local game mode.
     - Grab GUI is strictly hidden only for players belonging to other client simulations on that screen.
+    - Player name tags evaluate `isRemoteForThisView(char)`: the local player on their screen displays clean `P1` (never `[REMOTE]`), while remote players display `P2 [REMOTE]`.
 - **Roll Dynamics**:
   - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
 
