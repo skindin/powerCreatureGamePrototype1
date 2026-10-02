@@ -191,14 +191,12 @@ export class PlayerManager {
         name: data.name || `Player ${pNum}`,
       });
       char.position.z = data.z;
-      char.isImmovable = true;
       if (data.facingAngle !== undefined) char.facingAngle = data.facingAngle;
       if (data.isClimbing !== undefined) char.isClimbing = data.isClimbing;
       this.remotePlayers.set(data.id, char);
       this.arena.syncEntitiesWithWalls(this.allCharacters);
       this.onPlayersChanged?.();
     } else {
-      char.isImmovable = true;
       if (data.name && data.name !== char.name) {
         char.name = data.name;
       }

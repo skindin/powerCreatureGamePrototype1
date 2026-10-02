@@ -438,20 +438,54 @@ export class GameLoop {
     // Synchronize remote characters from interpolation so local physics & queries reflect real positions
     const nowPhys = performance.now();
     for (const rc of this.playerManager.remotePlayers.values()) {
-      rc.isImmovable = true;
+      rc.isImmovable = false;
       const interp = this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
       if (interp) {
-        rc.position.x = interp.x;
-        rc.position.y = interp.y;
-        rc.position.z = interp.z;
-        rc.velocity.x = interp.vx;
-        rc.velocity.y = interp.vy;
+        const dx = interp.x - rc.position.x;
+        const dy = interp.y - rc.position.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 2.5) {
+          // Large difference (teleport or initial join): snap directly
+          rc.position.x = interp.x;
+          rc.position.y = interp.y;
+          rc.position.z = interp.z;
+          rc.velocity.x = interp.vx;
+          rc.velocity.y = interp.vy;
+        } else if (nowPhys - rc.lastCollisionTime < 400) {
+          // ACTIVE RECENT COLLISION:
+          // The character was just pushed or struck! Integrate physics so the impulse carries through.
+          rc.updatePosition(dt, this.arena);
+          // Smoothly blend toward network position so it doesn't drift, without snapping back into the pusher
+          const blend = 0.25;
+          rc.position.x += dx * blend;
+          rc.position.y += dy * blend;
+          rc.position.z += (interp.z - rc.position.z) * blend;
+          rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
+          rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
+        } else {
+          // Normal state: follow interpolated network position smoothly
+          if (dist > 0.02) {
+            rc.position.x = interp.x;
+            rc.position.y = interp.y;
+            rc.position.z = interp.z;
+            rc.velocity.x = interp.vx;
+            rc.velocity.y = interp.vy;
+          } else {
+            // Deadzone: if player is standing still, zero out velocity to prevent micro-jitter
+            if (Math.hypot(interp.vx, interp.vy) < 0.05) {
+              rc.velocity.x = 0;
+              rc.velocity.y = 0;
+            }
+          }
+        }
+
         if (interp.facingAngle !== undefined) rc.facingAngle = interp.facingAngle;
         if (interp.isClimbing !== undefined) rc.isClimbing = interp.isClimbing;
       }
       // If remote character is holding an object, update the held object's transform to match hands!
       if (rc.heldObject) {
-        rc.heldObject.isImmovable = true;
+        rc.heldObject.isImmovable = false;
         const heldPos = rc.calculateHeldObjectPosition(this.arena);
         rc.heldObject.position.x = heldPos.x;
         rc.heldObject.position.y = heldPos.y;

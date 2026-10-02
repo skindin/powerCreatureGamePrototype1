@@ -1281,11 +1281,13 @@ powerCreatureGamePrototype1/
     - **Architecture Solutions**:
       1. **Pure 60Hz Server Authoritative Physics (`UniversalRoomManager.ts`)**:
          - Disabled client telemetry coordinate overwrites in `syncCharacterFromPacket`. The server physics engine deterministically simulates all character movements from queued input packets and full collision impulses.
-      2. **Immovable Remote Entity Proxy (`GameObject.ts`, `CollisionResolver.ts`, `PlayerManager.ts`, `GameLoop.ts`)**:
-         - Added `isImmovable` flag on `GameObject`. Remote characters and their held items on the client are marked `isImmovable = true`.
-         - `CollisionResolver` (Discrete TOI, Continuous Swept, and Naive) treats immovable proxies as stationary obstacles for the local client. The local client cannot perturb remote players locally, eliminating the 60Hz reset fight and resolving idle jitter.
-         - Both players are dynamic on the authoritative server, which computes mutual momentum transfer and broadcasts authoritative coordinates.
-      3. **Server Entity ID Linking (`GameObject.ts`, `main.ts`, `PredictionReconciliation.ts`)**:
+             2. **Dynamic Players Architecture & Smooth Collision Convergence (`GameLoop.ts`, `ServerGameSimulation.ts`, `PlayerManager.ts`)**:
+          - Removed `isImmovable` solid obstacle constraints from remote players. All players are dynamic freebodies with mass (1.2), restitution, momentum exchange, and push response.
+          - In `GameLoop.ts`, remote player positions synchronize with `interp` through smooth convergence:
+            - When `nowPhys - rc.lastCollisionTime < 400ms` (active impact/push), `rc.updatePosition(dt, arena)` carries the physical push through with ground friction, and exponential blending (`blend = 0.25`) gently converges with network positions without snapping back into the pusher or inverting the normal.
+            - When idle/non-colliding, a small deadzone filter prevents micro-fluttering in place.
+          - In `ServerGameSimulation.ts:syncCharacterFromPacket`, when `hasRecentImpact` is active (`now - sChar.lastCollisionTime < 400ms`), server preserves collision impulses from external pushes and thrown objects rather than zeroing them out with stale client telemetry.
+       3. **Server Entity ID Linking (`GameObject.ts`, `main.ts`, `PredictionReconciliation.ts`)**:
          - Added `serverCharId` on `GameObject` and linked it via `onlineClient.onPlayerRegistered`.
          - `PredictionReconciliation` matches entities by `serverCharId`, ensuring local players smoothly reconcile and decay visual offsets when pushed externally on the server.
       4. **Refined Ballistic In-Flight Prediction (`GameLoop.ts`)**:

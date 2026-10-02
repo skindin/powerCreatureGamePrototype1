@@ -7788,14 +7788,39 @@ class ServerGameSimulation {
     if (!sChar) {
       return;
     }
-    sChar.velocity.x = clientChar.vx;
-    sChar.velocity.y = clientChar.vy;
-    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
-      sChar.verticalVelocity = clientChar.vz;
+    const now = performance.now();
+    const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
+    if (hasRecentImpact) {
+      const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+      if (isClientMoving) {
+        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
+      }
+    } else {
+      sChar.velocity.x = clientChar.vx;
+      sChar.velocity.y = clientChar.vy;
     }
-    sChar.position.x = clientChar.x;
-    sChar.position.y = clientChar.y;
-    sChar.position.z = clientChar.z;
+    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
+      if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
+        sChar.verticalVelocity = clientChar.vz;
+      }
+    }
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 2.5) {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (hasRecentImpact) {
+      sChar.position.x += dx * 0.25;
+      sChar.position.y += dy * 0.25;
+      sChar.position.z = clientChar.z;
+    } else {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;
     }
