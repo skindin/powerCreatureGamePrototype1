@@ -1312,6 +1312,21 @@ powerCreatureGamePrototype1/
 - **Problem 2 (Perpendicular Sliding / Squirting)**: Pushed idle characters had their positions pulled backward by stale incoming client telemetry on the server, acting like a rubber band anchor. Under continuous contact, normal forces slipped sideways, causing the pushed character to squirt out perpendicularly.
 - **Fix 2**: On the server (ServerGameSimulation.ts), stale idle telemetry is ignored during active collision impact (hasRecentImpact). On the client (main.ts), external server displacements > 0.06u are smoothly absorbed into the local character so the pushed player moves forward on their own screen, eliminating the rubber-band anchor.
 
+### Phase 10.4 — Ground Friction on Idle/Remote Characters & Push Jitter Elimination
+- **Problem 1 (Infinite Sliding / "No Friction")**:
+  - In `GameObject.ts`, line 649 had: `const hasActiveWalkingModule = this.isCharacter && (this as any).walkingModule?.enabled; if (!hasActiveWalkingModule)`. Because every Character entity has a `WalkingModule`, `updatePosition` completely skipped standard sliding ground friction for characters.
+  - Remote characters never run `WalkingModule.update()` locally (since they have no local inputs), so any impulse or push velocity given to a remote character NEVER decayed. The character drifted endlessly across the arena like an air-hockey puck on ice.
+  - **Fix 1**: Changed condition in `GameObject.ts` to `const isActivelyWalking = this.isCharacter && (this as any).walkingModule?.enabled && (this as any).isActivelyWalking; if (!isActivelyWalking)`. When a character is not actively walking under player control (idle, stopped, pushed by an external entity, struck by a projectile, or remote), standard sliding ground friction applies directly in `updatePosition`, smoothly bringing push velocities to 0 in ~0.20s (12 ticks).
+- **Problem 2 (Push Jitter / Push-Pull Oscillation)**:
+  - In `GameLoop.ts`, during active collision (`nowPhys - rc.lastCollisionTime < 400`), the client was pulling `rc.position` backward towards `interp.x` by 25% every 16ms frame with no deadzone. Because `interp.x` came from snapshot interpolation with a 60ms delay, `interp.x` was historical and lagged behind the instantaneous contact point.
+  - This created a 60Hz sawtooth oscillation: `CollisionResolver` pushed `rc` forward, then `interp` dragged `rc` backward into the pusher's body, triggering collision separation again.
+  - On the receiving client (`main.ts`), idle players only blended 35% towards server displacement, fighting the server's push position.
+  - **Fix 2**:
+    1. Added `getLatestState(entityId)` to `RemoteEntityInterpolator.ts` to retrieve the newest un-delayed server snapshot during active physical contact.
+    2. In `GameLoop.ts`, applied a `0.06u` deadzone and smooth `0.15` convergence factor (matching freebody objects) during active collisions so the pusher does not drag the pushed player backward into their own collider.
+    3. In `main.ts`, if the local character is idle (`!isSteering`) and the server reports a push, the client accepts the authoritative server position and velocity directly, eliminating client-server rubber-banding.
+- **Verification**: Verified via `scratch/test_push_friction_jitter_fix.ts` (100% pass: idle character stops in 12 ticks via ground friction; push is strictly monotonic forward with 0 jitter; full stop after push ends). Build compiles cleanly (`npm run build`).
+
 ---
 
 ## 5. Agent Workflow Rule

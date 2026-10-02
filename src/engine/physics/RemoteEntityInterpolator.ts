@@ -142,6 +142,21 @@ export class RemoteEntityInterpolator {
   }
 
   /**
+   * Retrieves the newest buffered raw state for an entity (without interpolation delay).
+   * Used during active collisions/pushes to prevent delayed historical frames from dragging the entity backwards.
+   */
+  public getLatestState(entityId: string): InterpolatedEntityResult | null {
+    if (this.buffer.length === 0) return null;
+    for (let i = this.buffer.length - 1; i >= 0; i--) {
+      const s = this.buffer[i].entities.get(entityId);
+      if (s) {
+        return this.sampleToResult(s, false);
+      }
+    }
+    return null;
+  }
+
+  /**
    * Classical Snapshot Interpolation:
    * Interpolates between two buffered snapshots S0 and S1 at T_render = nowMs - interpDelayMs.
    */

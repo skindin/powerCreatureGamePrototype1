@@ -439,7 +439,12 @@ export class GameLoop {
     const nowPhys = performance.now();
     for (const rc of this.playerManager.remotePlayers.values()) {
       rc.isImmovable = false;
-      const interp = this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
+      const isColliding = nowPhys - rc.lastCollisionTime < 400;
+      // During active collision, use latest un-delayed state to prevent dragging backwards into the pusher
+      const interp = isColliding
+        ? (this.interpolator.getLatestState(rc.playerId) || this.interpolator.getInterpolatedState(rc.playerId, nowPhys))
+        : this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
+
       if (interp) {
         const dx = interp.x - rc.position.x;
         const dy = interp.y - rc.position.y;
@@ -452,19 +457,21 @@ export class GameLoop {
           rc.position.z = interp.z;
           rc.velocity.x = interp.vx;
           rc.velocity.y = interp.vy;
-        } else if (nowPhys - rc.lastCollisionTime < 400) {
+        } else if (isColliding) {
           // ACTIVE RECENT COLLISION:
-          // The character was just pushed or struck! Integrate physics so the impulse carries through.
+          // The character was pushed or struck! Integrate physics so ground friction and impulse apply.
           rc.updatePosition(dt, this.arena);
-          // Smoothly blend toward network position so it doesn't drift, without snapping back into the pusher
-          const blend = 0.25;
-          rc.position.x += dx * blend;
-          rc.position.y += dy * blend;
-          rc.position.z += (interp.z - rc.position.z) * blend;
+          // Deadzone: if within 0.06 units of server position, don't drag backward into the pusher (prevents push-pull jitter)
+          if (dist > 0.06) {
+            const blend = 0.15;
+            rc.position.x += dx * blend;
+            rc.position.y += dy * blend;
+            rc.position.z += (interp.z - rc.position.z) * blend;
+          }
           const isInterpMoving = Math.hypot(interp.vx, interp.vy) > 0.1;
           if (isInterpMoving) {
-            rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
-            rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
+            rc.velocity.x += (interp.vx - rc.velocity.x) * 0.15;
+            rc.velocity.y += (interp.vy - rc.velocity.y) * 0.15;
           }
         } else {
           // Normal state: follow interpolated network position smoothly

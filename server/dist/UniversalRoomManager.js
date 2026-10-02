@@ -4629,8 +4629,8 @@ class GameObject {
     const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
     const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
     if (isResting && this.hasFriction) {
-      const hasActiveWalkingModule = this.isCharacter && ((_e = this.walkingModule) == null ? void 0 : _e.enabled);
-      if (!hasActiveWalkingModule) {
+      const isActivelyWalking = this.isCharacter && ((_e = this.walkingModule) == null ? void 0 : _e.enabled) && this.isActivelyWalking;
+      if (!isActivelyWalking) {
         if (this.rollModule && this.rollModule.enabled) {
           const roll = this.rollModule;
           const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;

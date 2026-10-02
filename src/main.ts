@@ -1047,12 +1047,20 @@ function bootstrap(): void {
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
+        // If server reports displacement (e.g. external tackle / push / hit by thrown rock):
+        if (dist > 0.04) {
+          const isSteering = localChar.isActivelyWalking || Math.hypot(localChar.movementInput.x, localChar.movementInput.y) > 0.05;
+          if (!isSteering) {
+            // Idle player was pushed on server: accept server position and velocity directly to prevent tug-of-war
+            localChar.position.x = myServerState.x;
+            localChar.position.y = myServerState.y;
+            localChar.velocity.x = myServerState.vx;
+            localChar.velocity.y = myServerState.vy;
+          } else {
+            // Actively steering player: blend external displacement smoothly
+            const blend = dist > 2.0 ? 1.0 : 0.4;
+            localChar.position.x += dx * blend;
+            localChar.position.y += dy * blend;
             localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
             localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
           }
