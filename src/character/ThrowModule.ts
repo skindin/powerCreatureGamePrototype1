@@ -673,6 +673,7 @@ export class ThrowModule {
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    character.lastThrowTime = performance.now();
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;

@@ -5856,6 +5856,7 @@ class ThrowModule {
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    character.lastThrowTime = performance.now();
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;
@@ -5993,6 +5994,7 @@ class Character extends GameObject {
     __publicField(this, "isClimbInputHeld", false);
     __publicField(this, "movementInput", { x: 0, y: 0 });
     __publicField(this, "isSprinting", false);
+    __publicField(this, "lastThrowTime", 0);
     __publicField(this, "onSprintChange");
     // Base mass when not carrying anything
     __publicField(this, "baseMass", 1.2);

@@ -36,6 +36,7 @@ export class Character extends GameObject {
   public isClimbInputHeld = false;
   public movementInput: Vector2D = { x: 0, y: 0 };
   public isSprinting = false;
+  public lastThrowTime: number = 0;
   public onSprintChange?: (isSprinting: boolean) => void;
 
   public setSprinting(sprint: boolean): void {

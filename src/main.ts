@@ -1048,21 +1048,24 @@ function bootstrap(): void {
         const dist = Math.hypot(dx, dy);
 
         // If server reports displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.04) {
-          const isSteering = localChar.isActivelyWalking || Math.hypot(localChar.movementInput.x, localChar.movementInput.y) > 0.05;
-          if (!isSteering) {
-            // Idle player was pushed on server: accept server position and velocity directly to prevent tug-of-war
-            localChar.position.x = myServerState.x;
-            localChar.position.y = myServerState.y;
-            localChar.velocity.x = myServerState.vx;
-            localChar.velocity.y = myServerState.vy;
-          } else {
-            // Actively steering player: blend external displacement smoothly
-            const blend = dist > 2.0 ? 1.0 : 0.4;
+        if (dist > 0.05) {
+          const now = performance.now();
+          const isRecentThrowRecoil = now - (localChar.lastThrowTime ?? 0) < 600;
+          const localSpeed = Math.hypot(localChar.velocity.x, localChar.velocity.y);
+          const serverSpeed = Math.hypot(myServerState.vx, myServerState.vy);
+
+          // If the local character recently threw an object or has active local recoil while the server is stationary,
+          // the incoming server snapshot is trailing by latency (pre-throw). Reject stale rubber-band snap!
+          if (!isRecentThrowRecoil && !(localSpeed > 0.1 && serverSpeed < 0.05)) {
+            const isSteering = localChar.isActivelyWalking || Math.hypot(localChar.movementInput.x, localChar.movementInput.y) > 0.05;
+            // Always blend smoothly (never instantaneous teleport) to prevent visual flicker
+            const blend = dist > 2.0 ? 1.0 : (isSteering ? 0.35 : 0.4);
             localChar.position.x += dx * blend;
             localChar.position.y += dy * blend;
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+            if (serverSpeed > localSpeed || !isSteering) {
+              localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
+              localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+            }
           }
         }
       }

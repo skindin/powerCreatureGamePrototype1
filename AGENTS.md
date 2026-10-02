@@ -1327,6 +1327,18 @@ powerCreatureGamePrototype1/
     3. In `main.ts`, if the local character is idle (`!isSteering`) and the server reports a push, the client accepts the authoritative server position and velocity directly, eliminating client-server rubber-banding.
 - **Verification**: Verified via `scratch/test_push_friction_jitter_fix.ts` (100% pass: idle character stops in 12 ticks via ground friction; push is strictly monotonic forward with 0 jitter; full stop after push ends). Build compiles cleanly (`npm run build`).
 
+### Phase 10.5 — Throw Kickback Recoil Immunity & Zero-Flicker Settlement
+- **Problem (Multi-Second Kickback Flicker / Rubber-Band Ping-Pong)**:
+  - When throwing an object, `ThrowModule` applies linear momentum recoil (`character.velocity -= deltaVx * recoilRatio`), pushing the thrower backward.
+  - Because the player was not pressing directional input (`!isSteering`), `main.ts` observed `dist > 0.04` and assumed the character was an idle body being pushed by the server.
+  - However, incoming server snapshots in flight were generated *before* the server processed the throw packet, so `myServerState` contained the pre-throw position.
+  - `main.ts` snapped `localChar.position` backward to the pre-throw position and zeroed its velocity. The next frame, local physics or client updates moved it back to recoil position, creating an alternating ping-pong telemetry loop that echoed across the server and client for multiple seconds.
+- **Fix**:
+  1. Added `public lastThrowTime: number = 0` on `Character` and updated `ThrowModule.throwHeldObject` to stamp `character.lastThrowTime = performance.now()`.
+  2. In `main.ts`, added a recoil immunity guard: if `now - localChar.lastThrowTime < 600` or if local character has active velocity while the server is stationary (`localSpeed > 0.1 && serverSpeed < 0.05`), stale incoming pre-throw snapshots are rejected so local kickback plays out cleanly without snapping.
+  3. Replaced hard instantaneous teleports with smooth blending (`blend = 0.35` / `0.40`) so genuine external pushes transition smoothly without 1-frame visual flicker.
+- **Verification**: Verified via `scratch/test_throw_recoil_no_flicker.ts` (100% pass: recoil velocity applies, stale snapshot rejected, zero flicker/teleport). `npm run build` cleanly compiled.
+
 ---
 
 ## 5. Agent Workflow Rule
