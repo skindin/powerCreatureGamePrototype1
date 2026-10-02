@@ -52,10 +52,28 @@ export class CollisionResolver {
         // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
         if (a.isSleeping && b.isSleeping) continue;
 
-        // Two-Tier Altitude Gating: Objects only collide if on the same height tier
+        // 3D Altitude Gating & Two-Tier Layer Separation:
+        // 1. If BOTH objects are resting on static surfaces (ground vs wall top), they only collide if on the same layer:
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
-        if (layerA !== layerB) continue;
+        if (a.isRestingOnSurface && b.isRestingOnSurface && layerA !== layerB) {
+          continue;
+        }
+
+        // 2. 3D vertical volume overlap check:
+        // A character has physical height spanning from its supporting base up by creature height (~0.9u).
+        // A dynamic freebody object (rock, crate) spans [z - r, z + r] or [z, z + 2r].
+        const charHeight = 0.9;
+        const zMinA = a.isCharacter ? Math.max(0, a.position.z, a.supportingSurfaceHeight ?? 0) : Math.max(0, a.position.z - a.colliderRadius);
+        const zMaxA = a.isCharacter ? zMinA + charHeight : Math.max(zMinA + 0.1, a.position.z + a.colliderRadius);
+
+        const zMinB = b.isCharacter ? Math.max(0, b.position.z, b.supportingSurfaceHeight ?? 0) : Math.max(0, b.position.z - b.colliderRadius);
+        const zMaxB = b.isCharacter ? zMinB + charHeight : Math.max(zMinB + 0.1, b.position.z + b.colliderRadius);
+
+        // If no vertical overlap in 3D space, entities pass over/under each other cleanly:
+        if (zMaxA < zMinB || zMaxB < zMinA) {
+          continue;
+        }
 
         // Determine effective collision mode for this pair
         let useContinuous = false;

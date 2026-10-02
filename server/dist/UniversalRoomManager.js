@@ -6354,7 +6354,17 @@ class CollisionResolver {
         if (a.isSleeping && b.isSleeping) continue;
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
-        if (layerA !== layerB) continue;
+        if (a.isRestingOnSurface && b.isRestingOnSurface && layerA !== layerB) {
+          continue;
+        }
+        const charHeight = 0.9;
+        const zMinA = a.isCharacter ? Math.max(0, a.position.z, a.supportingSurfaceHeight ?? 0) : Math.max(0, a.position.z - a.colliderRadius);
+        const zMaxA = a.isCharacter ? zMinA + charHeight : Math.max(zMinA + 0.1, a.position.z + a.colliderRadius);
+        const zMinB = b.isCharacter ? Math.max(0, b.position.z, b.supportingSurfaceHeight ?? 0) : Math.max(0, b.position.z - b.colliderRadius);
+        const zMaxB = b.isCharacter ? zMinB + charHeight : Math.max(zMinB + 0.1, b.position.z + b.colliderRadius);
+        if (zMaxA < zMinB || zMaxB < zMinA) {
+          continue;
+        }
         let useContinuous = false;
         if (globalMode === "continuous") {
           useContinuous = true;
@@ -7790,8 +7800,8 @@ class ServerGameSimulation {
     }
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
+    const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
     if (hasRecentImpact) {
-      const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
       if (isClientMoving) {
         sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
         sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
@@ -7813,8 +7823,10 @@ class ServerGameSimulation {
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
     } else if (hasRecentImpact) {
-      sChar.position.x += dx * 0.25;
-      sChar.position.y += dy * 0.25;
+      if (isClientMoving) {
+        sChar.position.x += dx * 0.25;
+        sChar.position.y += dy * 0.25;
+      }
       sChar.position.z = clientChar.z;
     } else {
       sChar.position.x = clientChar.x;
