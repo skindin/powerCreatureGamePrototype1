@@ -653,6 +653,31 @@ Tasks to Implement:
               - Ballistic prediction smoothly transitions to authoritative server trajectory if divergence exceeds 0.6u or when the server object impacts/rests.
          - Verified 100% via automated test suite `scratch/test_online_push_and_throw_repro.ts`.
 
+      [x] 10.12 Runaway Separation Impulses & Perpetual Motion Elimination (COMPLETED):
+         - Resolved issue where running and throwing an object at another remote player caused all players and freebodies to enter perpetual motion, sliding uncontrollably to the screen boundaries.
+         - Root Causes:
+           1. Missing Separation Guard in CollisionResolver (`CollisionResolver.ts:applyImpulseAtContact`):
+              - When two bodies overlapped while separating along the normal (`velAlongNormal >= 0`), `applyImpulseAtContact` still executed. For massive bodies, `normalImpulse` inverted, pulling bodies into each other. For massless bodies, closing velocity was added unconditionally every frame (`Math.abs(velAlongNormal) * (1 + e)`), creating an exponential runaway engine that accelerated entities across the map.
+              - `lastCollisionTime` was renewed continuously every tick, trapping entities in a permanent impact state.
+           2. Server Lockout of Client Telemetry on Idle (`ServerGameSimulation.ts:syncCharacterFromPacket`):
+              - When `hasRecentImpact` was active, the server required `isClientMoving` to synchronize velocity and position. When an idle player stopped pressing keys (`!isClientMoving`), the server dropped client coordinates and refused to zero out velocity, locking the character in drift.
+           3. Remote Player Physics Integration on Client (`GameLoop.ts:460-475`):
+              - If server reported remote player had stopped (`!isInterpMoving`), local velocity on the remote proxy was retained without friction dampening, pushing nearby local bodies and re-triggering collisions.
+           4. Idle Client Rubber-Band Drag (`main.ts:1050-1065`):
+              - Local idle players blended toward trailing server ghost discrepancies, feeding the drifted position back to the server.
+         - Architectural Solutions:
+           1. Separation Depenetration Without Impulse (`CollisionResolver.ts`):
+              - In `resolvePairDiscreteTOI`: if `velAlongNormal >= -0.0001`, bodies depenetrate cleanly by `overlap` without rewind or impulse.
+              - In `resolvePairContinuousSwept`: if `velAlongNormal >= -0.0001`, returns false.
+              - In `applyImpulseAtContact`: `if (velAlongNormal >= -0.0001) return;` ensures impulses and `lastCollisionTime` are only applied on genuine closing impacts.
+           2. Server Telemetry Convergence (`ServerGameSimulation.ts`):
+              - Synchronizes velocity directly when server speed decays (`serverSpeed < 0.1`) or client is stopped (`!isClientMoving`). Converges position smoothly or snaps directly to eliminate drift.
+           3. Remote Proxy Physics Dampening (`GameLoop.ts`):
+              - If remote player has stopped moving on the server (`!isInterpMoving`), rapidly damps proxy velocity and zeroes out if `rcSpeed < 0.2`.
+           4. Idle Local Settlement (`main.ts`):
+              - Local idle players (`localSpeed < 0.05 && serverSpeed < 0.05 && dist < 0.2`) do not chase trailing server ghosts.
+         - Verified 100% via automated test suites `scratch/test_two_clients_running_throw.ts` and `scratch/test_online_push_and_throw_repro.ts`.
+
 
 ================================================================================
 VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA

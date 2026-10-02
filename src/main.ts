@@ -1057,11 +1057,17 @@ function bootstrap(): void {
           // If the local character recently threw an object or has active local recoil while the server is stationary,
           // the incoming server snapshot is trailing by latency (pre-throw). Reject stale rubber-band snap!
           if (!isRecentThrowRecoil && !(localSpeed > 0.1 && serverSpeed < 0.05)) {
-            const isSteering = localChar.isActivelyWalking || Math.hypot(localChar.movementInput.x, localChar.movementInput.y) > 0.05;
-            // Always blend smoothly (never instantaneous teleport) to prevent visual flicker
-            const blend = dist > 2.0 ? 1.0 : (isSteering ? 0.35 : 0.4);
-            localChar.position.x += dx * blend;
-            localChar.position.y += dy * blend;
+            // When both local player and server are at rest, do not chase sub-decimeter differences;
+            // the server converges to the client's packet.
+            if (localSpeed < 0.05 && serverSpeed < 0.05 && dist < 0.2) {
+              // Both at rest; keep local position steady
+            } else {
+              const isSteering = localChar.isActivelyWalking || Math.hypot(localChar.movementInput.x, localChar.movementInput.y) > 0.05;
+              // Always blend smoothly (never instantaneous teleport) to prevent visual flicker
+              const blend = dist > 2.0 ? 1.0 : (isSteering ? 0.35 : 0.4);
+              localChar.position.x += dx * blend;
+              localChar.position.y += dy * blend;
+            }
           }
         }
       }

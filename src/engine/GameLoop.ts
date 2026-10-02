@@ -463,15 +463,25 @@ export class GameLoop {
           rc.updatePosition(dt, this.arena);
           // Deadzone: if within 0.06 units of server position, don't drag backward into the pusher (prevents push-pull jitter)
           if (dist > 0.06) {
-            const blend = 0.15;
+            const blend = 0.25;
             rc.position.x += dx * blend;
             rc.position.y += dy * blend;
             rc.position.z += (interp.z - rc.position.z) * blend;
           }
           const isInterpMoving = Math.hypot(interp.vx, interp.vy) > 0.1;
+          const rcSpeed = Math.hypot(rc.velocity.x, rc.velocity.y);
           if (isInterpMoving) {
-            rc.velocity.x += (interp.vx - rc.velocity.x) * 0.15;
-            rc.velocity.y += (interp.vy - rc.velocity.y) * 0.15;
+            rc.velocity.x += (interp.vx - rc.velocity.x) * 0.25;
+            rc.velocity.y += (interp.vy - rc.velocity.y) * 0.25;
+          } else if (rcSpeed < 0.2) {
+            // Server says remote player has stopped moving and local speed has decayed:
+            // Settle to rest immediately to prevent perpetual motion
+            rc.velocity.x = 0;
+            rc.velocity.y = 0;
+          } else {
+            // Apply strong friction dampening towards 0
+            rc.velocity.x *= 0.85;
+            rc.velocity.y *= 0.85;
           }
         } else {
           // Normal state: follow interpolated network position smoothly

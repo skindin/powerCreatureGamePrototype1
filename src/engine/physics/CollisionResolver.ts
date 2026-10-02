@@ -136,6 +136,27 @@ export class CollisionResolver {
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
 
+    // CRITICAL: If bodies are already separating or stationary relative to each other along contact normal,
+    // do NOT rewind or apply collision impulse! Just depenetrate cleanly so they don't overlap.
+    if (velAlongNormal >= -0.0001) {
+      if (overlap > 0.00001) {
+        if (b.isImmovable) {
+          a.position.x -= normX * overlap;
+          a.position.y -= normY * overlap;
+        } else if (a.isImmovable) {
+          b.position.x += normX * overlap;
+          b.position.y += normY * overlap;
+        } else {
+          const fix = overlap * 0.5;
+          a.position.x -= normX * fix;
+          a.position.y -= normY * fix;
+          b.position.x += normX * fix;
+          b.position.y += normY * fix;
+        }
+      }
+      return true;
+    }
+
     // Find contact fraction alpha in [0, 1] using relative motion
     const relSpeed = Math.hypot(relVx, relVy);
     let alpha = 0; // fraction of frame to rewind
@@ -277,6 +298,9 @@ export class CollisionResolver {
     const normY = contactDist > 0.0001 ? contactDy / contactDist : 0;
 
     const velAlongNormal = vRelX * normX + vRelY * normY;
+    if (velAlongNormal >= -0.0001) {
+      return false;
+    }
 
     // Combined restitution
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
@@ -397,7 +421,7 @@ export class CollisionResolver {
     collisionType: "discrete_toi" | "continuous_swept"
   ): void {
     // Only apply impulse if closing towards each other
-    if (velAlongNormal >= 0) return;
+    if (velAlongNormal >= -0.0001) return;
 
     // Wake up any sleeping bodies involved in contact
     a.wakeUp();

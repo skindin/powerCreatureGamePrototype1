@@ -397,18 +397,16 @@ export class ServerGameSimulation {
     const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
 
     const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+    const serverSpeed = Math.hypot(sChar.velocity.x, sChar.velocity.y);
 
     // 1. Synchronize Linear and Vertical Velocity
-    if (hasRecentImpact) {
-      // Character has an active collision impulse on the server (e.g. was pushed or hit by thrown object).
-      // Blend voluntary client velocity with impulse velocity instead of wiping out the impulse!
-      if (isClientMoving) {
-        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
-        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
-      }
-    } else {
+    if (!hasRecentImpact || serverSpeed < 0.1 || !isClientMoving) {
       sChar.velocity.x = clientChar.vx;
       sChar.velocity.y = clientChar.vy;
+    } else {
+      // During active high-speed collision impulse, blend voluntary client velocity with impulse velocity
+      sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+      sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
     }
 
     if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
@@ -427,16 +425,14 @@ export class ServerGameSimulation {
       sChar.position.x = clientChar.x;
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
-    } else if (hasRecentImpact) {
-      // During active collision on the server, preserve the physical push!
-      // Only blend client position if the client is actively steering/walking:
-      if (isClientMoving) {
-        sChar.position.x += dx * 0.25;
-        sChar.position.y += dy * 0.25;
-      }
+    } else if (hasRecentImpact && serverSpeed > 0.2) {
+      // Active high-speed collision on the server: blend smoothly toward client position
+      const blend = isClientMoving ? 0.25 : 0.35;
+      sChar.position.x += dx * blend;
+      sChar.position.y += dy * blend;
       sChar.position.z = clientChar.z;
     } else {
-      // When not colliding, sync directly to eliminate drift
+      // When not in high-speed collision, sync directly to eliminate drift
       sChar.position.x = clientChar.x;
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;

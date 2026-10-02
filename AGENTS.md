@@ -1354,6 +1354,24 @@ powerCreatureGamePrototype1/
     This ensures projectiles pass freely away from their thrower until exiting reach distance (`1.3u`) or resting on a surface.
 - **Verification**: Verified via `scratch/test_running_throw_no_perpetual_motion.ts` (100% pass: thrower running at 5 u/s throws rock, does not collide with own rock, stops cleanly at tick 5 via ground friction with vx = 0, trailing server snapshots do not re-inject velocity, and 0 perpetual motion). `npm run build` cleanly compiled.
 
+### Phase 10.7 — Elimination of Runaway Collision Impulses on Separating Overlaps & Server Lockout Loop
+- **Problem 1 (Impulses Applied to Already-Separating Overlapping Bodies)**:
+  - In `CollisionResolver.ts:applyImpulseAtContact`, there was no guard checking if the bodies were closing along the contact normal (`velAlongNormal < -0.0001`).
+  - When two bodies overlapped by even a sub-millimeter while separating (`velAlongNormal >= 0`), `applyImpulseAtContact` still executed. For massive bodies, `normalImpulse = -(1 + e) * velAlongNormal / invMassSum` became negative, creating an inverted force that sucked bodies toward each other. For massless bodies, `Math.abs(velAlongNormal) * (1 + e)` was added unconditionally every frame, creating an exponential runaway engine that pushed entities faster and faster each frame until they hit the arena boundary.
+  - Moreover, `lastCollisionTime = now` was renewed every single tick they remained near each other.
+  - **Fix 1**:
+    1. In `CollisionResolver.ts:resolvePairDiscreteTOI`: If `velAlongNormal >= -0.0001` (separating), bodies depenetrate cleanly by `overlap` without rewinding or applying any collision impulse.
+    2. In `CollisionResolver.ts:resolvePairContinuousSwept`: If `velAlongNormal >= -0.0001`, return false.
+    3. In `CollisionResolver.ts:applyImpulseAtContact`: Added `if (velAlongNormal >= -0.0001) return;` so impulses and `lastCollisionTime = now` are only ever applied during genuine closing impacts.
+- **Problem 2 (Server Collision Lockout Loop of Client Telemetry)**:
+  - In `ServerGameSimulation.ts:syncCharacterFromPacket`, when `hasRecentImpact` was true (`now - lastCollisionTime < 400`), lines 405 and 433 required `isClientMoving` to synchronize velocity and position. When an idle player stopped pressing keys (`!isClientMoving`), the server completely ignored `clientChar.vx, vy` and `clientChar.x, y`, refusing to zero out velocity and refusing to converge position.
+  - As a result, the server trapped idle players in perpetual drift. When the client observed the drifting server ghost, `main.ts` chased the ghost, streaming the drifted position to the server, which then pushed it further.
+  - **Fix 2**:
+    1. In `ServerGameSimulation.ts:syncCharacterFromPacket`: If server speed has decayed (`serverSpeed < 0.1`) or client is stopped (`!isClientMoving`), sync velocity directly to client velocity. If `serverSpeed > 0.2` during impact, blend position smoothly (`0.25` / `0.35`); otherwise, sync directly to eliminate drift.
+    2. In `GameLoop.ts:460-475`: For remote player proxies on client, if server says the remote player has stopped (`!isInterpMoving`), rapidly damp velocity and zero out if `rcSpeed < 0.2` so remote proxies do not integrate perpetual physics locally.
+    3. In `main.ts:1050-1065`: If both local player and server are at rest (`localSpeed < 0.05 && serverSpeed < 0.05 && dist < 0.2`), do not displace the local character, allowing the server to settle cleanly to the client.
+- **Verification**: Verified via `scratch/test_two_clients_running_throw.ts` and `scratch/test_online_push_and_throw_repro.ts`. All entities come to an exact complete halt ($vx = 0, vy = 0$) within ~15–20 ticks of impact. `npm run build` cleanly passed.
+
 ---
 
 ## 5. Agent Workflow Rule

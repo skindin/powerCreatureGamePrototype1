@@ -6409,6 +6409,24 @@ class CollisionResolver {
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
+    if (velAlongNormal >= -1e-4) {
+      if (overlap > 1e-5) {
+        if (b.isImmovable) {
+          a.position.x -= normX * overlap;
+          a.position.y -= normY * overlap;
+        } else if (a.isImmovable) {
+          b.position.x += normX * overlap;
+          b.position.y += normY * overlap;
+        } else {
+          const fix = overlap * 0.5;
+          a.position.x -= normX * fix;
+          a.position.y -= normY * fix;
+          b.position.x += normX * fix;
+          b.position.y += normY * fix;
+        }
+      }
+      return true;
+    }
     const relSpeed = Math.hypot(relVx, relVy);
     let alpha = 0;
     if (relSpeed > 1e-4) {
@@ -6512,6 +6530,9 @@ class CollisionResolver {
     const normX = contactDist > 1e-4 ? contactDx / contactDist : 1;
     const normY = contactDist > 1e-4 ? contactDy / contactDist : 0;
     const velAlongNormal = vRelX * normX + vRelY * normY;
+    if (velAlongNormal >= -1e-4) {
+      return false;
+    }
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
@@ -6585,7 +6606,7 @@ class CollisionResolver {
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
   static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType) {
-    if (velAlongNormal >= 0) return;
+    if (velAlongNormal >= -1e-4) return;
     a.wakeUp();
     b.wakeUp();
     const isMasslessA = !a.hasMass;
@@ -7805,14 +7826,13 @@ class ServerGameSimulation {
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
     const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
-    if (hasRecentImpact) {
-      if (isClientMoving) {
-        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
-        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
-      }
-    } else {
+    const serverSpeed = Math.hypot(sChar.velocity.x, sChar.velocity.y);
+    if (!hasRecentImpact || serverSpeed < 0.1 || !isClientMoving) {
       sChar.velocity.x = clientChar.vx;
       sChar.velocity.y = clientChar.vy;
+    } else {
+      sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+      sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
     }
     if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
       if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
@@ -7826,11 +7846,10 @@ class ServerGameSimulation {
       sChar.position.x = clientChar.x;
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
-    } else if (hasRecentImpact) {
-      if (isClientMoving) {
-        sChar.position.x += dx * 0.25;
-        sChar.position.y += dy * 0.25;
-      }
+    } else if (hasRecentImpact && serverSpeed > 0.2) {
+      const blend = isClientMoving ? 0.25 : 0.35;
+      sChar.position.x += dx * blend;
+      sChar.position.y += dy * blend;
       sChar.position.z = clientChar.z;
     } else {
       sChar.position.x = clientChar.x;
