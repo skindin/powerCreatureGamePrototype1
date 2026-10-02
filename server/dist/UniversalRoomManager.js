@@ -8707,6 +8707,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
             }
+            this.simulation.syncCharacterFromPacket(data.character);
           }
           if (Array.isArray(data.objects) && data.objects.length > 0) {
             this.simulation.syncObjectsFromPacket(data.objects, serverCharId);
