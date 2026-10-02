@@ -1043,10 +1043,10 @@ function bootstrap(): void {
     }
   };
 
-  onlineClient.onWorldSnapshotReceived = (worldSnapshot) => {
-    if (activeGameMode === "online" && gameLoop) {
-      gameLoop.reconcileWorldSnapshot(worldSnapshot);
-    }
+  onlineClient.onWorldSnapshotReceived = (_worldSnapshot) => {
+    // In live online multiplayer, voluntary player locomotion is authoritatively simulated by the local client at 60fps.
+    // Unconditional rewind/re-simulation against WAN-delayed network snapshots caused 60Hz re-simulation fighting (movement jitter)
+    // and burst re-simulation (initial spawn super-speed). ReconcileWorldSnapshot is retained for DevPanel tackle tests.
   };
 
   onlineClient.onClockSync = (sync) => {
