@@ -52,6 +52,9 @@ export class CollisionResolver {
         // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
         if (a.isSleeping && b.isSleeping) continue;
 
+        // Thrower immunity: a thrown projectile does not collide with its thrower until it exits reach
+        if (a.lastThrower === b || b.lastThrower === a) continue;
+
         // 3D Altitude Gating & Two-Tier Layer Separation:
         // 1. If BOTH objects are resting on static surfaces (ground vs wall top), they only collide if on the same layer:
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
@@ -541,6 +544,7 @@ export class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
+          if (a.lastThrower === b || b.lastThrower === a) continue;
 
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);

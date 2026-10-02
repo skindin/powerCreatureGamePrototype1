@@ -1062,10 +1062,6 @@ function bootstrap(): void {
             const blend = dist > 2.0 ? 1.0 : (isSteering ? 0.35 : 0.4);
             localChar.position.x += dx * blend;
             localChar.position.y += dy * blend;
-            if (serverSpeed > localSpeed || !isSteering) {
-              localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-              localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
-            }
           }
         }
       }

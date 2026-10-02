@@ -6354,6 +6354,7 @@ class CollisionResolver {
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
         if (a.isSleeping && b.isSleeping) continue;
+        if (a.lastThrower === b || b.lastThrower === a) continue;
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
         if (a.isRestingOnSurface && b.isRestingOnSurface && layerA !== layerB) {
@@ -6699,6 +6700,7 @@ class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
+          if (a.lastThrower === b || b.lastThrower === a) continue;
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
           if (layerA !== layerB) continue;

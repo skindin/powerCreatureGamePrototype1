@@ -1337,7 +1337,22 @@ powerCreatureGamePrototype1/
   1. Added `public lastThrowTime: number = 0` on `Character` and updated `ThrowModule.throwHeldObject` to stamp `character.lastThrowTime = performance.now()`.
   2. In `main.ts`, added a recoil immunity guard: if `now - localChar.lastThrowTime < 600` or if local character has active velocity while the server is stationary (`localSpeed > 0.1 && serverSpeed < 0.05`), stale incoming pre-throw snapshots are rejected so local kickback plays out cleanly without snapping.
   3. Replaced hard instantaneous teleports with smooth blending (`blend = 0.35` / `0.40`) so genuine external pushes transition smoothly without 1-frame visual flicker.
-- **Verification**: Verified via `scratch/test_throw_recoil_no_flicker.ts` (100% pass: recoil velocity applies, stale snapshot rejected, zero flicker/teleport). `npm run build` cleanly compiled.
+### Phase 10.6 — Elimination of Circular Velocity Feedback Echo & Thrower Self-Collision
+- **Problem 1 (Perpetual Motion / Every Player Drifting to Arena Edge)**:
+  - When a player threw an object or ran and then released movement keys, `!isSteering` became true.
+  - In `src/main.ts`, line 1065 executed: `if (serverSpeed > localSpeed || !isSteering) { localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend; localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend; }`.
+  - Because incoming server snapshots carry delayed velocities from earlier in flight, setting `localChar.velocity` from `myServerState` continually re-injected non-zero velocity into the local character, completely overriding ground friction.
+  - The client streamed this re-injected velocity right back to the server via `OnlineRoomClient.ts:374` (`vx: Number(character.velocity.x.toFixed(3))`), and `ServerGameSimulation.ts:410` adopted it (`sChar.velocity = clientChar.vx`).
+  - This established an infinite circular velocity feedback echo between client and server, causing players to slide perpetually without stopping all the way to the edge of the view.
+  - **Fix 1**: Removed velocity overwriting from `main.ts`. The client now synchronizes server displacement purely via position convergence (`localChar.position.x += dx * blend; localChar.position.y += dy * blend;`). `localChar.velocity` is governed solely by voluntary locomotion, local ground friction, and physical impulses, allowing ground friction to smoothly and deterministically stop the character in 5–10 ticks when keys are released.
+- **Problem 2 (Self-Collision on Running Throw)**:
+  - When running forward and throwing, the projectile spawned at the character's hands and was detected as overlapping the running thrower in `CollisionResolver.ts:resolveEntityCollisions` and `resolveNaiveIterative`.
+  - Neither collision method checked `a.lastThrower === b || b.lastThrower === a`.
+  - As a result, running throwers immediately collided with their own thrown projectile on the release frame, imparting unexpected collision impulses and triggering the feedback echo.
+  - **Fix 2**: Added thrower immunity in `CollisionResolver.ts`:
+    `if (a.lastThrower === b || b.lastThrower === a) continue;`
+    This ensures projectiles pass freely away from their thrower until exiting reach distance (`1.3u`) or resting on a surface.
+- **Verification**: Verified via `scratch/test_running_throw_no_perpetual_motion.ts` (100% pass: thrower running at 5 u/s throws rock, does not collide with own rock, stops cleanly at tick 5 via ground friction with vx = 0, trailing server snapshots do not re-inject velocity, and 0 perpetual motion). `npm run build` cleanly compiled.
 
 ---
 
