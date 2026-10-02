@@ -3,7 +3,7 @@
 > **Notice to All AI Agents**:  
 > You **MUST** read this document at the start of every session before doing research, planning, or editing code.  
 > Before wrapping up your task or concluding your turn, you **MUST** update this file to reflect any new architectural decisions, progress made, or changes to the project roadmap.  
-> **Git Rule**: You **MUST** push to origin (`git push origin <branch>`) every single time you commit. Never leave commits unpushed.
+> **Git Rule**: You **MUST** push to origin on the active working branch (git push origin <working-branch>) every single time you commit. Never leave commits unpushed. **CRITICAL CONSTRAINT**: NEVER push or merge to main unless the USER explicitly instructs you to push to main.
 
 ---
 
@@ -1323,4 +1323,5 @@ powerCreatureGamePrototype1/
 > 4. **Update Memory Before Concluding**: Whenever you introduce architectural changes, implement new features, or alter project direction, update this `AGENTS.md` file so the next agent (or session on another device) has full context.
 > 5. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously. Browser testing consumes significant credits; only use the browser when the user explicitly asks you to do so.
 > 6. **Avoid Redundant File Inspection Loops**: When diagnosing an issue, do NOT repeatedly call `view_file` on the same file/lines without taking action. If runtime behavior is uncertain, immediately write or execute a targeted scratch script (`scratch/test_*.ts`) to isolate and inspect the variables rather than repeatedly re-reading static code.
+> 7. **Never Push to Main Without Explicit Permission**: NEVER push, merge, or fast-forward to the main branch unless the USER explicitly gives a direct instruction to push to main. Always work on and push exclusively to the active working branch (e.g. preMultiplayer).
 
