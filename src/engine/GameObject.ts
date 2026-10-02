@@ -6,7 +6,7 @@ import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
 import { VerticalPositionModule } from "./VerticalPositionModule.js";
-import type { Trajectory } from "./Trajectory.js";
+import { RigidbodyModule } from "./RigidbodyModule.js";
 
 export interface Vector2D {
   x: number;
@@ -23,18 +23,70 @@ export class GameObject {
   public id: string;
   public name: string;
   public position: Vector3D;
-  public velocity: Vector2D;
   public color: string;
   public isHeld: boolean;
   public heldBy: GameObject | null;
+  public lastThrower: GameObject | null = null;
+  public isInFlight: boolean = false;
   public isCharacter = false;
+  public isClimbing = false;
   public visualShape: "circle" | "box" = "circle";
-  public trajectory: Trajectory | null = null;
-  public trajectoryStartTime = 0;
-  public throwImmunityPlayerId: string | null = null;
-  public throwImmunityUntil = 0;
+  public lastCollisionType: "none" | "discrete_toi" | "continuous_swept" | "naive" = "none";
+  public lastContactPoint: { x: number; y: number } | null = null;
+  public lastContactNormal: { x: number; y: number } | null = null;
+  public isSweptActive: boolean = false;
+  public lastCollisionTime: number = 0;
+
+  // Phase 3: Sleeping Freebody & Island Optimization
+  public isSleeping: boolean = false;
+  public sleepTimer: number = 0; // Number of consecutive ticks with near-zero kinetic energy
+
+  // Phase 8: Client Prediction Reconciliation & Visual Smoothing Dampener
+  public visualOffset: Vector2D = { x: 0, y: 0 };
+
+  /**
+   * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
+   * Eliminates visual popping when physical prediction reconciles.
+   */
+  public decayVisualOffset(factor: number = 0.70): void {
+    if (this.visualOffset.x === 0 && this.visualOffset.y === 0) return;
+    this.visualOffset.x *= factor;
+    this.visualOffset.y *= factor;
+    if (Math.abs(this.visualOffset.x) < 0.001) this.visualOffset.x = 0;
+    if (Math.abs(this.visualOffset.y) < 0.001) this.visualOffset.y = 0;
+  }
+
+  /**
+   * Immediately wakes up a sleeping body.
+   */
+  public wakeUp(): void {
+    if (this.isSleeping) {
+      this.isSleeping = false;
+      this.sleepTimer = 0;
+    }
+  }
+
+  /**
+   * Puts body to sleep, freezing velocities to absolute zero.
+   */
+  public putToSleep(): void {
+    if (this.isCharacter || this.isHeld || this.heldBy !== null) return;
+    this.isSleeping = true;
+    this.isInFlight = false;
+    this.velocity.x = 0;
+    this.velocity.y = 0;
+    this.verticalVelocity = 0;
+    if (this.rollModule) {
+      this.rollModule.angularVelocity.x = 0;
+      this.rollModule.angularVelocity.y = 0;
+      this.rollModule.angularVelocity.z = 0;
+    }
+  }
+
+  private _staticVelocity: Vector2D = { x: 0, y: 0 };
 
   // Modular behavior components
+  public rigidbodyModule: RigidbodyModule | null = null;
   public colliderModule: ColliderModule | null = null;
   public massModule: MassModule | null = null;
   public frictionModule: FrictionModule | null = null;
@@ -51,6 +103,9 @@ export class GameObject {
     verticalVelocity?: number;
     color?: string;
     visualShape?: "circle" | "box";
+    collisionMode?: "discrete" | "continuous" | "dynamic";
+    rigidbodyModule?: RigidbodyModule | null;
+    hasRigidbody?: boolean;
     colliderModule?: ColliderModule | null;
     massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
@@ -75,14 +130,22 @@ export class GameObject {
       y: options.position?.y ?? 0,
       z: options.position?.z ?? 0,
     };
-    this.velocity = {
-      x: options.velocity?.x ?? 0,
-      y: options.velocity?.y ?? 0,
-    };
     this.color = options.color ?? "#94a3b8";
     this.isHeld = false;
     this.heldBy = null;
     this.visualShape = options.visualShape ?? "circle";
+
+    // Initialize Rigidbody Module
+    this.rigidbodyModule = options.rigidbodyModule !== undefined
+      ? options.rigidbodyModule
+      : (options.hasRigidbody === false
+          ? null
+          : new RigidbodyModule({
+              velocity: options.velocity ? { x: options.velocity.x ?? 0, y: options.velocity.y ?? 0 } : undefined,
+              hasVerticalVelocity: options.hasVerticalVelocity !== false,
+              verticalVelocity: options.verticalVelocity ?? 0,
+              collisionMode: options.collisionMode ?? "dynamic",
+            }));
 
     // Initialize modules
     this.colliderModule = options.colliderModule !== undefined
@@ -133,8 +196,53 @@ export class GameObject {
 
   // --- Convenience Getters & Setters ---
 
+  public get hasRigidbody(): boolean {
+    return Boolean(this.rigidbodyModule && this.rigidbodyModule.enabled);
+  }
+
+  public get velocity(): Vector2D {
+    if (this.hasRigidbody && this.rigidbodyModule) {
+      return this.rigidbodyModule.velocity;
+    }
+    return this._staticVelocity;
+  }
+
+  public set velocity(val: Vector2D) {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.velocity = { x: val.x, y: val.y };
+    } else {
+      this._staticVelocity = { x: val.x, y: val.y };
+    }
+  }
+
+  public get collisionMode(): "discrete" | "continuous" | "dynamic" {
+    return this.hasRigidbody && this.rigidbodyModule ? this.rigidbodyModule.collisionMode : "discrete";
+  }
+
+  public set collisionMode(val: "discrete" | "continuous" | "dynamic") {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.collisionMode = val;
+    }
+  }
+
   public get hasCollider(): boolean {
     return Boolean(this.colliderModule && this.colliderModule.enabled);
+  }
+
+  /**
+   * Evaluates whether this body acts as 'discrete' or 'continuous' on the current tick.
+   * If collisionMode is 'dynamic', tests if movement distance (v * dt) exceeds ccdThresholdRatio * radius.
+   */
+  public getEffectiveCollisionMode(dt: number = 1 / 60): "discrete" | "continuous" {
+    if (this.collisionMode === "continuous") return "continuous";
+    if (this.collisionMode === "discrete") return "discrete";
+    // "dynamic" mode: evaluate velocity vs. collider radius
+    if (!this.hasCollider || !this.colliderModule?.canSweep) return "discrete";
+    const speed = Math.hypot(this.velocity.x, this.velocity.y);
+    const r = Math.max(0.01, this.colliderRadius);
+    const displacement = speed * dt;
+    const threshold = this.colliderModule.ccdThresholdRatio ?? 0.5;
+    return (displacement / r) >= threshold ? "continuous" : "discrete";
   }
 
   public get colliderRadius(): number {
@@ -221,16 +329,31 @@ export class GameObject {
     return Boolean(this.verticalPositionModule && this.verticalPositionModule.enabled);
   }
 
+  /**
+   * Vertical velocity is physically dynamic, so it lives on RigidbodyModule,
+   * but strictly requires VerticalPositionModule (spatial altitude z-axis).
+   * Without VerticalPositionModule, vertical velocity cannot exist.
+   */
   public get hasVerticalVelocity(): boolean {
-    return Boolean(this.hasVerticalPosition && this.verticalPositionModule?.hasVerticalVelocity);
+    return Boolean(
+      this.hasRigidbody &&
+      this.rigidbodyModule?.hasVerticalVelocity &&
+      this.hasVerticalPosition
+    );
   }
 
   public get verticalVelocity(): number {
-    return this.hasVerticalVelocity && this.verticalPositionModule ? this.verticalPositionModule.verticalVelocity : 0;
+    if (this.hasVerticalVelocity && this.rigidbodyModule) {
+      return this.rigidbodyModule.verticalVelocity;
+    }
+    return 0;
   }
 
   public set verticalVelocity(val: number) {
-    if (this.hasVerticalVelocity && this.verticalPositionModule) {
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.verticalVelocity = val;
+    }
+    if (this.verticalPositionModule) {
       this.verticalPositionModule.verticalVelocity = val;
     }
   }
@@ -253,9 +376,12 @@ export class GameObject {
   /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
   public supportingSurfaceHeight = 0;
 
+  /** The specific wall the entity is currently standing on (if supported on layer 2) */
+  public standingWall: Wall | null = null;
+
   /** True if entity is actively resting on a supporting surface (ground or wall top) */
   public get isRestingOnSurface(): boolean {
-    return Math.abs(this.position.z - this.supportingSurfaceHeight) <= 0.01 && Math.abs(this.verticalVelocity) <= 0.05;
+    return Math.abs(this.position.z - this.supportingSurfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= 0.1;
   }
 
   /** Readonly getter: true if elevated above ground level (z > 0) */
@@ -265,7 +391,30 @@ export class GameObject {
 
   /** Readonly getter: true if elevated at or above standard arena wall height (1.0 unit) or resting on a wall */
   public get isAboveWalls(): boolean {
-    return this.hasVerticalPosition && (this.position.z >= 0.95 || this.supportingSurfaceHeight >= 0.95);
+    return this.hasVerticalPosition && (
+      this.position.z >= 0.85 ||
+      this.supportingSurfaceHeight >= 0.85 ||
+      this.standingWall !== null
+    );
+  }
+
+  /**
+   * Virtual Infinite Layer System:
+   * Objects only collide if they are on the exact same layer.
+   * Virtually infinite layers where layer = Math.floor(objectHeight / wallHeight) + 1.
+   * - Layer 1 (0 <= z < wallHeight): Ground layer (only layer with walls).
+   * - Layer 2 (wallHeight <= z < 2 * wallHeight): Wall elevation / first elevated layer.
+   * - Layer 3, 4, ...: Infinite higher altitude layers.
+   */
+  public static getEntityLayer(entity: GameObject, wallHeight: number = 1.0): number {
+    const effectiveH = Math.max(
+      0,
+      entity.position.z,
+      entity.supportingSurfaceHeight ?? 0,
+      entity.standingWall ? wallHeight : 0
+    );
+    const safeWallH = Math.max(0.01, wallHeight);
+    return Math.floor(effectiveH / safeWallH) + 1;
   }
 
   /** Update physics, gravity, friction, and ground/wall collision */
@@ -275,6 +424,51 @@ export class GameObject {
       return;
     }
 
+    if (!this.hasRigidbody) {
+      // Static entity without rigidbody dynamics: does not integrate velocity or motion
+      return;
+    }
+
+    // Phase 3: Sleeping Freebody Optimization
+    // If the entity is asleep, it skips physics integration entirely (0 CPU)
+    if (this.isSleeping) {
+      // Safety check: if external forces or elevation change occurred, wake up
+      if (Math.abs(this.velocity.x) > 0.001 || Math.abs(this.velocity.y) > 0.001 || Math.abs(this.verticalVelocity) > 0.001) {
+        this.wakeUp();
+      } else {
+        return;
+      }
+    }
+
+    this.isSweptActive = this.getEffectiveCollisionMode(dt) === "continuous";
+
+    // If thrown, track when it has exited thrower's reach or settled on a surface
+    if (this.lastThrower) {
+      const reach = ((this.lastThrower as any).pickupModule?.pickupReach ?? 1.3);
+      const throwerZ = Math.max(
+        this.lastThrower.position.z,
+        this.lastThrower.supportingSurfaceHeight ?? 0,
+        this.lastThrower.standingWall ? arena.wallHeight : 0
+      );
+      const myZ = Math.max(
+        this.position.z,
+        this.supportingSurfaceHeight ?? 0,
+        this.standingWall ? arena.wallHeight : 0
+      );
+      const dist3D = Math.hypot(
+        this.position.x - this.lastThrower.position.x,
+        this.position.y - this.lastThrower.position.y,
+        myZ - throwerZ
+      );
+      if (dist3D > reach || this.isRestingOnSurface) {
+        this.lastThrower = null;
+      }
+    }
+
+    if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
+      this.isInFlight = false;
+    }
+
     if (!this.hasVerticalPosition) {
       this.position.z = 0;
       this.verticalVelocity = 0;
@@ -282,17 +476,92 @@ export class GameObject {
     }
 
     // 0. Supporting surface:
-    // Only check wall support if entity has a collider; otherwise surface is 0 (ground level)
+    // Only check wall support if entity has a collider and vertical position
     let surfaceHeight = 0;
-    let supportingWall: Wall | null = null;
 
-    if (this.hasCollider && this.hasVerticalPosition) {
-      const canBeOnWall = this.position.z >= arena.wallHeight - 0.15 ||
-        (this.supportingSurfaceHeight > 0.01 && this.position.z >= arena.wallHeight - 0.35);
-      supportingWall = canBeOnWall
-        ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius)
-        : null;
-      surfaceHeight = supportingWall ? supportingWall.wallHeight : 0;
+    if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
+      // Layer 2 threshold: entity is elevated to or resting on layer 2 (wall height)
+      const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 ||
+        (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2) ||
+        this.standingWall !== null;
+
+      if (isAtWallLayer) {
+        const char = this.isCharacter ? (this as any) : null;
+        const isDismountFalling = Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
+
+        if (isDismountFalling) {
+          // While in dismount freefall into gap or off wall: entity must fall down to ground!
+          this.standingWall = null;
+          surfaceHeight = 0;
+        } else if (!this.isCharacter) {
+          // Freebody object: supported if and only if its collider overlaps an active wall in arena
+          const supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+          if (supportingWall) {
+            this.standingWall = supportingWall;
+            surfaceHeight = supportingWall.wallHeight;
+          } else {
+            this.standingWall = null;
+            surfaceHeight = 0;
+          }
+        } else if (this.standingWall) {
+          // Character standing on wall top:
+          // Check if this.standingWall still exists in arena (was not deleted)
+          const wallStillExists = arena.walls.find(w => w.id === this.standingWall!.id);
+          const supportRadius = this.colliderRadius;
+          const touchesCurrent = wallStillExists ? arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wallStillExists) : false;
+
+          if (touchesCurrent && wallStillExists) {
+            this.standingWall = wallStillExists;
+            surfaceHeight = wallStillExists.wallHeight;
+          } else if (wallStillExists && char?.climbingModule?.dismountSuppressedUntilRelease) {
+            this.standingWall = wallStillExists;
+            surfaceHeight = wallStillExists.wallHeight;
+          } else {
+            let nextSupport: Wall | null = null;
+            if (wallStillExists) {
+              for (const wall of arena.walls) {
+                if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
+                  nextSupport = wall;
+                  break;
+                }
+              }
+            } else {
+              // The wall the character was on was deleted! Find any other active wall overlapping the collider
+              nextSupport = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
+            }
+
+            if (nextSupport) {
+              this.standingWall = nextSupport;
+              surfaceHeight = nextSupport.wallHeight;
+            } else {
+              // Left the contiguous platform or all supporting walls were deleted! Fall into gap
+              this.standingWall = null;
+              surfaceHeight = 0;
+              if (char?.climbingModule) {
+                char.climbingModule.isDismountFreefall = true;
+              }
+            }
+          }
+        } else {
+          // standingWall not set yet: acquire if resting at wall height and not climbing
+          if (!this.isClimbing && this.verticalVelocity <= 0.5 && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
+            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
+            if (wall) {
+              this.standingWall = wall;
+              surfaceHeight = wall.wallHeight;
+            }
+          }
+        }
+      } else {
+        this.standingWall = null;
+      }
+    } else {
+      this.standingWall = null;
+      surfaceHeight = 0;
+    }
+    if (this.isClimbing) {
+      surfaceHeight = Math.max(surfaceHeight, this.position.z);
+      this.verticalVelocity = 0;
     }
     this.supportingSurfaceHeight = surfaceHeight;
 
@@ -306,8 +575,9 @@ export class GameObject {
         // Surface impact (hitting floor or top of wall from above)
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          // Bounce vertically only if vertical bounce is enabled (requires Mass, Bounce with verticalBounce=true, and Vertical Velocity)
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          // Bounce vertically only if impact speed exceeds the single-step gravity increment (prevents infinite micro-bouncing)
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
             const impactVz = Math.abs(this.verticalVelocity);
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
 
@@ -356,7 +626,8 @@ export class GameObject {
         this.position.z += this.verticalVelocity * dt;
         if (this.position.z <= surfaceHeight) {
           this.position.z = surfaceHeight;
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > 0.25) {
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
             this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
           } else {
             this.verticalVelocity = 0;
@@ -366,7 +637,8 @@ export class GameObject {
     }
 
     // 2. Surface Friction & Rolling Behavior (applies only if resting on surface and has friction)
-    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.01 && Math.abs(this.verticalVelocity) <= 0.05;
+    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
+    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
     if (isResting && this.hasFriction) {
       const hasActiveWalkingModule = this.isCharacter && (this as any).walkingModule?.enabled;
       if (!hasActiveWalkingModule) {
@@ -467,8 +739,263 @@ export class GameObject {
     }
 
     // 3. Horizontal Position Integration
-    this.position.x += this.velocity.x * dt;
-    this.position.y += this.velocity.y * dt;
+    // Assist Clamp (Ledge Guard) Lifecycle:
+    // - Purely an assist feature; does NOT dictate whether the character is allowed on the wall.
+    // - Arming: Enabled once character moves within 0.1 units of the wall.
+    // - Disabling: Pressing Space disables the assist clamp, allowing character to walk off without pressing Space again.
+    // - Re-arming: Remains disabled until character moves outside the clamp area (> 0.1u) and then back into it (<= 0.1u).
+    const char = this.isCharacter ? (this as any) : null;
+    const edgeMod = char?.wallEdgeAssistModule ?? char?.climbingModule;
+    const isStandingOnWallTop = Boolean(
+      char &&
+      !this.isClimbing &&
+      this.standingWall !== null &&
+      Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01 &&
+      Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01 &&
+      this.isRestingOnSurface
+    );
+    const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
+
+    if (edgeMod) {
+      if (!isStandingOnWallTop) {
+        // Only works if character is at exactly wall height standing on top of a wall
+        edgeMod.isAssistClampArmed = false;
+        edgeMod.hasLeftClampZoneSinceDismount = true;
+      } else if (this.standingWall) {
+        // Compute distance to current wall platform
+        const standing = this.standingWall;
+        const platformWalls: Wall[] = [standing];
+        for (const w of arena.walls) {
+          if (w.id !== standing.id && arena.areWallsContiguous(standing, w)) {
+            platformWalls.push(w);
+          }
+        }
+        let distToPlatform = Infinity;
+        for (const w of platformWalls) {
+          const cx = Math.max(w.x, Math.min(this.position.x, w.x + w.width));
+          const cy = Math.max(w.y, Math.min(this.position.y, w.y + w.height));
+          const d = Math.hypot(this.position.x - cx, this.position.y - cy);
+          if (d < distToPlatform) distToPlatform = d;
+        }
+
+        const isInsideClampZone = distToPlatform <= hangDistance + 0.001;
+
+        if (isInsideClampZone) {
+          // Inside the clamp zone (within 0.1 units of the wall)
+          if (edgeMod.hasLeftClampZoneSinceDismount) {
+            // Once character moves within 0.1 units of the wall after being outside: clamp is enabled!
+            edgeMod.isAssistClampArmed = true;
+          }
+        } else {
+          // Outside the clamp zone (> 0.1 units from the wall)
+          edgeMod.hasLeftClampZoneSinceDismount = true;
+          edgeMod.isAssistClampArmed = false;
+        }
+
+        // Check if character has moved onto the wall platform after climbing
+        if (!edgeMod.hasMovedOntoWall) {
+          const distMoved = Math.hypot(this.position.x - edgeMod.mountStartX, this.position.y - edgeMod.mountStartY);
+          let centerInsideWall = false;
+          for (const w of platformWalls) {
+            if (this.position.x >= w.x && this.position.x <= w.x + w.width &&
+                this.position.y >= w.y && this.position.y <= w.y + w.height) {
+              centerInsideWall = true;
+              break;
+            }
+          }
+          if (distMoved >= 0.20 || centerInsideWall) {
+            edgeMod.hasMovedOntoWall = true;
+          }
+        }
+      }
+    }
+
+    const isPreventWalkOffActive = Boolean(
+      isStandingOnWallTop &&
+      edgeMod?.enabled &&
+      edgeMod?.preventWalkOff &&
+      edgeMod?.isAssistClampArmed
+    );
+
+    const deltaX = this.velocity.x * dt;
+    const deltaY = this.velocity.y * dt;
+    const moveDist = Math.hypot(deltaX, deltaY);
+
+    if (moveDist > 0.0001) {
+      if (isPreventWalkOffActive) {
+        let currentWall = this.standingWall;
+
+        const candidateX = this.position.x + deltaX;
+        const candidateY = this.position.y + deltaY;
+
+        // The ledge guard only considers the current platform (current wall and walls contiguous to it)
+        const platformWalls: Wall[] = [];
+        if (currentWall) {
+          platformWalls.push(currentWall);
+          for (const w of arena.walls) {
+            if (w.id !== currentWall.id && arena.areWallsContiguous(currentWall, w)) {
+              platformWalls.push(w);
+            }
+          }
+        }
+
+        let supportedWall: Wall | null = null;
+        for (const w of platformWalls) {
+          if (arena.testWallOverlap(candidateX, candidateY, hangDistance, w)) {
+            supportedWall = w;
+            break;
+          }
+        }
+
+        if (supportedWall) {
+          this.position.x = candidateX;
+          this.position.y = candidateY;
+          this.standingWall = supportedWall;
+        } else if (platformWalls.length > 0) {
+          // Ledge guard: dual of walking into a wall on the ground.
+          // Instead of not being able to enter the wall at all, character cannot move further than hangDistance off the wall.
+          // Find closest point on current platform walls ONLY (never jump/clamp to walls across gaps)
+          let bestDistSq = Infinity;
+          let closest: { wall: Wall; closestX: number; closestY: number; dist: number; dx: number; dy: number } | null = null;
+
+          for (const wall of platformWalls) {
+            const cx = Math.max(wall.x, Math.min(candidateX, wall.x + wall.width));
+            const cy = Math.max(wall.y, Math.min(candidateY, wall.y + wall.height));
+            const dx = candidateX - cx;
+            const dy = candidateY - cy;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+              bestDistSq = distSq;
+              closest = { wall, closestX: cx, closestY: cy, dist: Math.sqrt(distSq), dx, dy };
+            }
+          }
+
+          if (closest && closest.dist > 0) {
+            const normalX = closest.dx / closest.dist;
+            const normalY = closest.dy / closest.dist;
+
+            // Outward velocity attempting to step into the void beyond hangDistance
+            const outwardVel = this.velocity.x * normalX + this.velocity.y * normalY;
+            const moveInput = char?.movementInput ?? { x: 0, y: 0 };
+            const outwardInput = moveInput.x * normalX + moveInput.y * normalY;
+
+            // Actively pushing against the guardrail: outward velocity or directional input towards the void
+            const isPushingAgainstGuardrail = outwardVel > 0.001 || outwardInput > 0.05;
+
+            // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail,
+            // and the character has moved onto the wall platform first!
+            const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
+            if (isPushingAgainstGuardrail && char?.isClimbInputHeld && canDismount) {
+              if (edgeMod) {
+                edgeMod.isAssistClampArmed = false;
+                edgeMod.hasLeftClampZoneSinceDismount = false;
+              }
+              // Allow character to step forward naturally without the guardrail holding them back.
+              // Character remains supported on the wall until they naturally walk off the edge!
+              this.position.x = candidateX;
+              this.position.y = candidateY;
+            } else {
+              if (outwardVel > 0) {
+                // Eliminate the outward velocity, leaving tangential velocity (curves smoothly around corners)
+                this.velocity.x -= outwardVel * normalX;
+                this.velocity.y -= outwardVel * normalY;
+              }
+
+              // Clamp position along the normal to valid hang distance (hangDistance - 0.002) so character is prevented from moving more than hangDistance off walls
+              const maxAllowedDist = hangDistance - 0.002;
+              if (closest.dist > maxAllowedDist) {
+                this.position.x = closest.closestX + normalX * maxAllowedDist;
+                this.position.y = closest.closestY + normalY * maxAllowedDist;
+              } else {
+                this.position.x = candidateX;
+                this.position.y = candidateY;
+              }
+
+              const newSupport = arena.testWallOverlap(this.position.x, this.position.y, hangDistance, closest.wall)
+                ? closest.wall
+                : platformWalls.find(w => arena.testWallOverlap(this.position.x, this.position.y, hangDistance, w));
+              if (newSupport) {
+                this.standingWall = newSupport;
+              }
+            }
+          } else {
+            this.velocity.x = 0;
+            this.velocity.y = 0;
+          }
+        }
+      } else {
+        // Sub-step interpolation approach (continuous collision detection):
+        // Step by at most 1 cm per sub-step to catch any gaps or wall transitions between current point and next point
+        const stepSize = 0.01;
+        const numSteps = Math.max(1, Math.ceil(moveDist / stepSize));
+        const stepDx = deltaX / numSteps;
+        const stepDy = deltaY / numSteps;
+        // Standard movement / dismount / airborne:
+        // Interpolate continuously. If at any point between current point and next point the collider
+        // wouldn't be touching a wall and they have just dismounted a wall, they should collide with
+        // the wall they're heading towards and fall.
+        let currentWall = this.standingWall ?? (isStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
+        let hasDismountedIntoGap = false;
+        const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
+
+        for (let s = 1; s <= numSteps; s++) {
+          let candX = this.position.x + stepDx;
+          let candY = this.position.y + stepDy;
+
+          if (currentWall) {
+            let nextSupport: Wall | null = null;
+            if (arena.testWallOverlap(candX, candY, this.colliderRadius, currentWall)) {
+              nextSupport = currentWall;
+            } else {
+              for (const w of arena.walls) {
+                if (arena.areWallsContiguous(currentWall, w) && arena.testWallOverlap(candX, candY, this.colliderRadius, w)) {
+                  nextSupport = w;
+                  break;
+                }
+              }
+            }
+
+            if (nextSupport) {
+              currentWall = nextSupport;
+              this.standingWall = nextSupport;
+            } else if (canDismount) {
+              // Collider does not touch current wall or any contiguous wall: dismount into gap!
+              hasDismountedIntoGap = true;
+              currentWall = null;
+              this.standingWall = null;
+              this.supportingSurfaceHeight = 0;
+              if (char?.climbingModule) {
+                char.climbingModule.isDismountFreefall = true;
+              }
+            } else {
+              // Has not moved onto the wall yet: keep position supported on current wall
+              candX = this.position.x;
+              candY = this.position.y;
+            }
+          }
+
+          this.position.x = candX;
+          this.position.y = candY;
+
+          // If dismounted into a gap, airborne, or in dismount falling:
+          // Immediately resolve collision with any wall ahead so collider cannot enter another wall across the gap!
+          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap ||
+            (!this.standingWall && Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress)));
+
+          if (isFallingInGap && this.hasCollider) {
+            for (const wall of arena.walls) {
+              if (this.position.z <= wall.wallHeight) {
+                const apexZ = this.hasGravity && this.hasVerticalVelocity
+                  ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
+                  : this.position.z;
+                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                this.resolveWallCollision(wall, isAscendingJump);
+              }
+            }
+          }
+        }
+      }
+    }
 
     // 4 & 5. Boundary & Wall Collisions (Only if ColliderModule is active!)
     if (this.hasCollider) {
@@ -482,25 +1009,56 @@ export class GameObject {
 
       if (this.position.x < minX) {
         this.position.x = minX;
+        this.lastContactPoint = { x: 0, y: this.position.y };
+        this.lastContactNormal = { x: 1, y: 0 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(1, 0, bRestitution);
       } else if (this.position.x > maxX) {
         this.position.x = maxX;
+        this.lastContactPoint = { x: arena.width, y: this.position.y };
+        this.lastContactNormal = { x: -1, y: 0 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(-1, 0, bRestitution);
       }
 
       if (this.position.y < minY) {
         this.position.y = minY;
+        this.lastContactPoint = { x: this.position.x, y: 0 };
+        this.lastContactNormal = { x: 0, y: 1 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, 1, bRestitution);
       } else if (this.position.y > maxY) {
         this.position.y = maxY;
+        this.lastContactPoint = { x: this.position.x, y: arena.height };
+        this.lastContactNormal = { x: 0, y: -1 };
+        this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+        this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, -1, bRestitution);
       }
 
-      // Internal arena walls collision
-      if (!supportingWall) {
-        for (const wall of arena.walls) {
-          if (this.position.z < wall.wallHeight - 0.05) {
-            this.resolveWallCollision(wall);
+      // Internal arena walls collision:
+      // A wall only exists physically from z=0 up to wall.wallHeight.
+      // If an entity or thrown object is elevated above the wall (z > wall.wallHeight), it flies cleanly over the wall!
+      const isDismountFallingNow = Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
+      for (const wall of arena.walls) {
+        if (this.position.z <= wall.wallHeight) {
+          const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
+          if (isAtWallTop && (this.standingWall?.id === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
+            continue;
+          }
+          if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
+            // If standing on a wall, that wall and its contiguous walls don't collide
+            if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
+              continue;
+            }
+            const apexZ = this.hasGravity && this.hasVerticalVelocity
+              ? this.position.z + (this.verticalVelocity * this.verticalVelocity) / (2 * arena.gravity)
+              : this.position.z;
+            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            this.resolveWallCollision(wall, isAscendingJump);
           }
         }
       }
@@ -528,12 +1086,78 @@ export class GameObject {
     if (this.verticalPositionModule) {
       this.verticalPositionModule.z = this.position.z;
     }
+
+    // Phase 3: Evaluate Sleep Conditions for Dynamic Freebodies
+    // Only non-character freebodies that are resting on a surface and not held can fall asleep
+    if (!this.isCharacter && !this.isHeld && this.heldBy === null) {
+      const speed = Math.hypot(this.velocity.x, this.velocity.y);
+      const angSpeed = this.rollModule && this.rollModule.enabled ? this.rollModule.angularSpeed : 0;
+      const isResting = this.isRestingOnSurface;
+
+      // Threshold: speed < 0.02 u/s, angularSpeed < 0.05 rad/s, vz ~ 0, and resting on floor/wall
+      if (isResting && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
+        this.sleepTimer++;
+        if (this.sleepTimer >= 15) { // 15 ticks ~ 0.25 seconds of rest
+          this.putToSleep();
+        }
+      } else {
+        this.sleepTimer = 0;
+      }
+    }
+  }
+
+  /**
+   * Finds the closest point on any wall footprint in the arena to (x, y),
+   * along with distance and normal vector components.
+   */
+  public static getClosestWallPoint(x: number, y: number, arena: Arena): {
+    wall: Wall;
+    closestX: number;
+    closestY: number;
+    dist: number;
+    dx: number;
+    dy: number;
+  } | null {
+    if (!arena.walls || arena.walls.length === 0) return null;
+
+    let bestDistSq = Infinity;
+    let bestResult: {
+      wall: Wall;
+      closestX: number;
+      closestY: number;
+      dist: number;
+      dx: number;
+      dy: number;
+    } | null = null;
+
+    for (const wall of arena.walls) {
+      const cx = Math.max(wall.x, Math.min(x, wall.x + wall.width));
+      const cy = Math.max(wall.y, Math.min(y, wall.y + wall.height));
+      const dx = x - cx;
+      const dy = y - cy;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestResult = {
+          wall,
+          closestX: cx,
+          closestY: cy,
+          dist: Math.sqrt(distSq),
+          dx,
+          dy,
+        };
+      }
+    }
+
+    return bestResult;
   }
 
   /**
    * Applies realistic wall/boundary impact dynamics
    */
   protected resolveWallImpact(normalX: number, normalY: number, restitution: number): void {
+    this.lastThrower = null;
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return; // Moving away from wall
 
@@ -587,7 +1211,7 @@ export class GameObject {
   }
 
   /** Resolves 2D circle-AABB wall collision on the ground plane */
-  protected resolveWallCollision(wall: Wall): void {
+  protected resolveWallCollision(wall: Wall, isAscendingJump = false): void {
     if (!this.hasCollider) return;
 
     const r = this.colliderRadius;
@@ -599,6 +1223,7 @@ export class GameObject {
     const distSq = dx * dx + dy * dy;
 
     if (distSq < r * r) {
+      this.lastThrower = null;
       const dist = Math.sqrt(distSq);
       let normalX = 0;
       let normalY = 0;
@@ -624,8 +1249,18 @@ export class GameObject {
       this.position.x += normalX * overlap;
       this.position.y += normalY * overlap;
 
-      const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
-      this.resolveWallImpact(normalX, normalY, restitution);
+      // Record contact diagnostics for wall impacts
+      this.lastContactPoint = { x: closestX, y: closestY };
+      this.lastContactNormal = { x: normalX, y: normalY };
+      this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
+      this.lastCollisionTime = performance.now();
+
+      // When ascending in a jump that can reach or clear the wall top, do not destroy
+      // horizontal velocity into the wall so the character can smoothly vault onto the wall platform!
+      if (!isAscendingJump) {
+        const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
+        this.resolveWallImpact(normalX, normalY, restitution);
+      }
     }
   }
 }

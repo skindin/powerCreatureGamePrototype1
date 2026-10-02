@@ -1,0 +1,653 @@
+================================================================================
+POWER CREATURE GAME (PROTOTYPE 1) — MULTIPLAYER IMPLEMENTATION ROADMAP
+================================================================================
+File: MULTIPLAYER_PHASES.txt
+Type: Living Editable Plan
+Status: Active Roadmap
+
+Notice: This is an editable text file. You can check off items ([x]), modify 
+parameters, add notes, or reprioritize phases directly in this file at any time.
+
+Architecture Reference: Deterministic Fixed-Timestep Physics, Server Authority, 
+Client Prediction, Adaptive Time Dilation, and Islands of Influence (Rocket League Model).
+
+--------------------------------------------------------------------------------
+TABLE OF PHASES
+--------------------------------------------------------------------------------
+  [x] PHASE 1: Deterministic Physics, Collision Modes & Snapshots (COMPLETED)
+  [x] PHASE 2: Client Circular History Ring Buffer & Local Rollback Harness (COMPLETED)
+  [x] PHASE 3: Active Islands of Influence & Sleeping Freebody Optimization (COMPLETED)
+  [x] PHASE 3.5: Pseudo-Server & Remote Relay Loopback Test Harness (COMPLETED)
+  [x] PHASE 4: Authoritative Headless Server Simulation Core (COMPLETED)
+  [x] PHASE 5: Client Input Streaming & Server Jitter Input Queue (COMPLETED)
+  [x] PHASE 6: Adaptive Clock Synchronization & Time Dilation (Cruise Control) (COMPLETED)
+  [x] PHASE 7: Authoritative Snapshot Broadcast & Delta Compression (COMPLETED)
+  [x] PHASE 8: Client Prediction Reconciliation & Visual Smoothing Dampener (COMPLETED)
+  [x] PHASE 9: Remote Player Entity Interpolation & Flight Handoff (COMPLETED)
+  [ ] PHASE 10: Multiplayer Room UI, Matchmaking & Network Diagnostics HUD
+
+================================================================================
+PHASE 1: DETERMINISTIC PHYSICS, COLLISION MODES & SNAPSHOTS
+Status: COMPLETED [x]
+================================================================================
+Goal: Ensure that physics simulations on client and server run at identical fixed 
+intervals and resolve collisions deterministically without high-speed tunneling.
+
+Tasks Completed:
+  [x] 1.1 Fixed 60Hz Timestep Loop
+      - Simulation advances strictly in fixed increments: fixedDt = 1 / 60s (~16.667ms).
+      - Time accumulator prevents spiral of death on tab unfocus.
+
+  [x] 1.2 Modular Collision Resolver (src/engine/physics/CollisionResolver.ts)
+      - Discrete TOI Rollback: Overlapping colliders are rolled back along relative 
+        velocity path to the exact fraction of tick (alpha) of tangent contact.
+      - Continuous Swept (CCD): Quadratic swept circle-vs-circle and circle-vs-wall 
+        solver prevents high-speed bullet/rock tunneling.
+      - Dynamic Adaptive Policy: Automatically promotes bodies from discrete to 
+        continuous when displacement (v * dt) exceeds threshold (default: 0.50x radius).
+      - Pairwise Continuous Supersession: If either body in a pair is Continuous, 
+        the pair resolves via Continuous Swept.
+      - Two-tier altitude gating: z < wallHeight vs z >= wallHeight.
+      - Massless vs. Massive momentum transfer and roll angular coupling preserved.
+
+  [x] 1.3 Deterministic State Snapshot Engine (src/engine/physics/Snapshot.ts)
+      - SnapshotManager.capture(): Serializes tick number, entity positions (x, y, z), 
+        linear velocity (vx, vy), vertical velocity (vz), roll angular velocity, 
+        heldBy connections, and climbing flags.
+      - SnapshotManager.apply(): Restores exact world state from snapshot.
+      - SnapshotManager.hasDivergence(): Compares snapshots within configurable deadzones.
+
+  [x] 1.4 Visual Diagnostics & Contact Decay (src/engine/Renderer.ts)
+      - 1.2s smooth contact decay: contact pip, expanding ripple, 30px normal vector arrow.
+      - Forward swept volume (capsule) lookahead with fill and side rails.
+      - Entity status rings and floating badges ([CCD] cyan, [TOI] emerald).
+      - Bottom-right corner Collision Diagnostics HUD card.
+
+  [x] 1.5 Verification Test Suites
+      - scratch/test_phase_a_collisions.ts: 100% passed.
+      - scratch/test_rigidbody_module.ts: 100% passed.
+
+================================================================================
+PHASE 2: CLIENT CIRCULAR HISTORY RING BUFFER & LOCAL ROLLBACK HARNESS
+Status: COMPLETED [x]
+================================================================================
+Goal: Equip the client with the memory and capability to rewind physical state 
+into the past and re-simulate forward deterministically.
+
+Core Concept:
+  The client stores a circular ring buffer of recent ticks (default: 60 ticks / 1.0s,
+  dynamically resizable live from 15 to 120 ticks), with a hard rollback clamp of 
+  30 ticks (~500ms) to ensure re-simulation never causes frame stutter.
+  Each entry contains:
+    1. The deterministic physical snapshot of all entities at Tick T.
+    2. The local player's input packet applied at Tick T.
+
+Tasks Completed:
+  [x] 2.1 StateHistoryBuffer Class (src/engine/physics/StateHistoryBuffer.ts)
+      - High-performance circular ring buffer (O(1) indexing by `tick % capacity`).
+      - Configurable capacity (default 60 ticks / 1.0s; max rollback limit: 30 ticks / 500ms).
+      - Live dynamic capacity resizing (`setCapacity`) preserving recent frames.
+      - Push and retrieval methods (`push`, `get`, `getOldestTick`, `getLatestTick`, `getCount`, `clear`).
+
+  [x] 2.2 Client Rollback & Resimulation Engine (src/engine/GameLoop.ts & PlayerManager.ts)
+      - Recorded player inputs per tick via `PlayerManager.capturePlayerInputs()`.
+      - Replayed inputs deterministically via `PlayerManager.applyPlayerInputs()`.
+      - `simulateRollbackTest(ticksBack)`: rewinds to target tick, replays recorded 
+        inputs forward, and verifies 0.0000u bit-level divergence against original present state.
+      - `injectPerturbationTest(ticksBack)`: demonstrates client-side prediction 
+        reconciliation when a past perturbation is corrected.
+
+  [x] 2.3 Interactive DevPanel Rollback Test Tool (src/ui/DevPanel.ts & src/engine/Renderer.ts)
+      - Live State History Buffer & Rollback Replay card with real-time status badge.
+      - Buffer capacity slider (15 to 120 ticks) with live dynamic resizing.
+      - Rollback depth slider (5 to 60 ticks, clamped to maxRollbackTicks).
+      - "⏪ Rollback & Verify Replay" test button with pass/fail banner.
+      - "🔀 Inject Past Desync & Re-simulate" test button.
+      - Diagnostics HUD card on canvas displaying live `Buffer: N/M (X.Xs)`.
+
+  [x] 2.4 Headless Automated Rollback Verification Script
+      - scratch/test_phase_2_history_rollback.ts: 100% passed (ring buffer lifecycle,
+        live dynamic capacity resizing, 30-tick rollback replay with 0.0000u divergence,
+        and past perturbation divergence verification).
+
+================================================================================
+PHASE 3: ACTIVE ISLANDS OF INFLUENCE & SLEEPING FREEBODY OPTIMIZATION
+Status: COMPLETED [x]
+================================================================================
+Goal: Prevent rolling back 50+ dormant rocks, food items, and crates across the 
+entire arena. Only entities actively influenced by a player are rolled back.
+
+Core Concept:
+  - Sleeping Freebodies: Any freebody resting on ground/surface with velocity ~ 0 
+    is marked Sleeping. Sleeping bodies take 0 CPU during prediction rollback.
+  - Active Island: A connected subgraph of interacting entities (e.g., Player A 
+    holding Rock 1, which hits Crate 2). Only entities in this island are 
+    rewound and re-simulated during a prediction rollback.
+
+Tasks Completed:
+  [x] 3.1 Sleeping Body State Flags (src/engine/GameObject.ts)
+      - isSleeping: boolean (default false).
+      - sleepTimer: number (ticks with speed < 0.02 u/s and angularSpeed < 0.05 rad/s).
+      - After 15 resting ticks (~0.25s), entity enters Sleep.
+      - Wakes up immediately upon:
+        - External collision impulse.
+        - Player grab, throw, or touch.
+        - Elevation change or external velocity change.
+
+  [x] 3.2 Island of Influence Graph (src/engine/physics/IslandManager.ts)
+      - Group entities into active clusters based on:
+        - Character holding/dragging freebodies.
+        - Contact points during collision resolution.
+      - Disband islands when bodies separate and come to rest.
+
+  [x] 3.3 Selective Island Resimulation
+      - During rollback, only update entities belonging to active islands. 
+      - Sleeping bodies skip updatePosition and collision checks (0 CPU).
+      - SnapshotManager.apply supports selective island filtering.
+
+  [x] 3.4 Diagnostics & Test Suite
+      - Bottom-right Diagnostics HUD displays live active islands and sleeping body counts.
+      - Headless test suite (scratch/test_phase_3_islands_sleeping.ts) passes 100%.
+
+================================================================================
+PHASE 3.5: PSEUDO-SERVER & REMOTE RELAY LOOPBACK TEST HARNESS
+Status: COMPLETED [x]
+================================================================================
+Goal: Run an authoritative pseudo-server simulation alongside the client in the 
+same browser tab/instance, routing client inputs and server snapshots through a real 
+remote WebSocket relay server (e.g. wss://echo.websocket.org or custom relay).
+This provides real internet packet latency and jitter, while rendering both the 
+client prediction and authoritative server state overlaid/stacked directly on 
+top of each other in real time before creating a standalone headless server.
+
+Core Concept:
+  - Dual Simulation in One Process:
+    - Client World: Predicts ahead using local inputs immediately.
+    - Pseudo-Server World: Runs authoritative physics, consuming inputs that 
+      traveled over the real internet relay round-trip.
+  - Remote WebSocket Relay Loopback:
+    - Client sends input packet -> Remote Relay Server -> Pseudo-Server receives input.
+    - Pseudo-Server steps tick -> Sends snapshot -> Remote Relay -> Client reconciles.
+  - Stacked Real-Time Visualization:
+    - Ghost / outline rendering showing the server's true position vs. client's 
+      predicted position simultaneously on screen.
+    - Live discrepancy meters (RTT latency, packet loss %, drift delta).
+
+Tasks Completed:
+  [x] 3.5.1 In-Tab Pseudo-Server Sim Instance (src/server/ServerGameSimulation.ts)
+      - Secondary isolated physics world running deterministic 60Hz loop.
+      - Headless Arena, Characters, GameObjects, CollisionResolver, IslandManager.
+  [x] 3.5.2 Relay Loopback Networking Channel (src/network/RelayClient.ts)
+      - Client streams pc_player_input packets over remote WebSocket relay with zero-drop input batching.
+      - Independent 60Hz Server Clock: RelayClient.stepServerPhysics(dt) advances the server simulation 
+        at a fixed 60Hz on every frame, decoupled from network packet arrival times (eliminating slow-motion).
+      - Echoed packets route into serverSimulation.queueInput() to feed the server's input queue.
+      - Movement extrapolation prevents jitter freeze during brief single-frame packet stalls.
+  [x] 3.5.3 Stacked Real-Time Dual-Render Mode (src/engine/Renderer.ts)
+      - Renders authoritative server ghost with [SERVER SIM (XXms)] pill badge.
+      - Direct live physics sync in "Sim: Physics" mode (bypasses artificial position lerp delay so 
+        the ghost mirrors the server's real 60Hz physics world with zero drag).
+      - User can switch between true physics simulation (Sim: Physics) and echo (Sim: Pos Echo).
+      - Live 1-click "🔄 Resync" button instantly re-aligns server entities with client positions.
+
+================================================================================
+PHASE 4: AUTHORITATIVE HEADLESS SERVER SIMULATION CORE
+Status: COMPLETED [x]
+================================================================================
+Goal: Create an authoritative Node.js server loop running the exact same 
+deterministic physics simulation as the client, serving as the definitive arbiter.
+
+Tasks Completed:
+  [x] 4.1 Server Game Simulation Engine (src/server/ServerGameSimulation.ts & src/server/GameServer.ts)
+      - Headless Node.js 60Hz tick runner (fixedDt = 1/60s) using high-resolution hrtime drift correction.
+      - Instances identical Arena, GameObject, RigidbodyModule, and CollisionResolver logic.
+      - Zero DOM/Canvas dependencies.
+      - Headless test suite (scratch/test_phase_4_server_simulation.ts) passes 100%.
+
+  [x] 4.2 Room & Connection Lifecycle
+      - Player slots with addPlayer/removePlayer, theme color mapping, and arena sync.
+      - Headless world state management per server instance.
+
+  [x] 4.3 Authoritative Grab & Contest Arbiter
+      - Authoritative range check and obstacle gating for grabs.
+      - Contested Grab Resolution: When two or more players grab the same freebody on the exact same tick:
+        - Priority 1: Creature Strength (stronger creature wins).
+        - Priority 2: 3D Euclidean Proximity (closer creature wins).
+        - Priority 3: Deterministic ID Priority.
+  [x] 4.4 Explicit Grab Intent & Smart Object Synchronization
+      - Explicit Grab Targeting: PlayerInputPacket streams grabTargetObjectId so the server only grabs 
+        the specific object the client player reached for, never picking up random nearby objects.
+      - Smart Object Position Sync: GameLoop.syncAuthoritativeObjects continuously converges client freebody 
+        positions and velocities to authoritative server snapshots, with resting coordinate snapping and 
+        hierarchy locking for held items.
+  [x] 4.5 Full Character & Freebody Position / Velocity Synchronization
+      - Server syncCharacterFromPacket: Server character synchronizes linear and vertical velocity, 
+        physical coordinates (x, y, z), and climbing/surface contact from client telemetry. Divergences > 0.4u 
+        snap immediately; small discrepancies converge at 50% blend per packet.
+      - Input Starvation & Burst Backlog Drain: Starved queues zero steering (moveX: 0, moveY: 0) instead 
+        of holding phantom steering indefinitely. Backlogs (> 2 frames) from WAN jitter bursts drain 
+        immediately to keep server simulation locked within 1-2 ticks of client timeline.
+      - Ghost Clones Sync Lock: "🤖 SERVER SIM" ghost character stays tightly locked to player coordinates 
+        at all times without wandering off or drifting across arena walls.
+      - Headless test suite (scratch/test_character_and_object_position_sync.ts) passes 100%.
+  [x] 4.6 Ballistic Throw Prediction & In-Flight Flight Preservation (Pre-Phase 8 Groundwork)
+      - Client-Side Throw Prediction: When an item is thrown, client immediately assumes simulated ballistic 
+        flight physics are correct without mid-air dampening, freeze, or jitter.
+      - Lagging Server Held-State Immunity: GameLoop.syncAuthoritativeObjects ignores lagging snapshots where 
+        the server still reports sObj.isHeld === true when the client has already thrown or released it locally.
+      - In-Flight Airborne Exemption: While localObj.lastThrower is set and the item is airborne, client throw 
+        physics run smoothly to completion without being yanked backward into player hands.
+      - Deterministic Dispatch Fix: InputManager delegates throw execution to PlayerManager.applyPlayerInputs 
+        on the fixed physics tick, guaranteeing the reliable throw command is always dispatched to the server.
+      - Server Authoritative Simulation: Server receives the reliable throw action, launches the object with 
+        the exact same ballistic trajectory, and simulates flight independently.
+      - Headless test suite (scratch/test_throw_client_prediction_and_flight.ts) passes 100%.
+
+================================================================================
+PHASE 5: CLIENT INPUT STREAMING & SERVER JITTER INPUT QUEUE
+Status: COMPLETED [x]
+===============================================================================
+Goal: Stream player inputs from client to server reliably, retransmitting critical 
+one-shot action commands until acknowledged, and buffer continuous inputs on the 
+server to absorb network packet jitter without starvation.
+
+Tasks Completed & Planned:
+  [x] 5.1 Reliable Action Commands & Retransmission Pipeline (src/network/RelayClient.ts & StateHistoryBuffer.ts)
+      - Critical Action Commands: Picking up, dropping, and throwing objects are 
+        classified as high-priority reliable action commands (ReliableActionCommand).
+      - Retransmission Outbox: The sender maintains an unacknowledged action outbox 
+        (unacknowledgedActions) and retransmits all pending actions with every outgoing packet 
+        until delivery confirmation (ACK) is received from the recipient.
+      - Server Idempotent Deduplication: The server tracks processedActionIds so duplicate 
+        retransmissions are acknowledged without executing duplicate pickups, drops, or throws.
+      - Delivery Confirmation (ACK): Recipient echoes back ackActionIds, purging confirmed 
+        commands from the sender's retransmission queue.
+      - Headless Test Suite (scratch/test_reliable_action_retransmission.ts) passes 100%.
+
+  [x] 5.2 Server Jitter Buffer (Per-Player Queue) (src/server/ServerJitterBuffer.ts & ServerGameSimulation.ts)
+      - Target Depth: 2 ticks of input (~33.3ms buffer) to absorb WAN packet jitter.
+      - Priority Queue: Inputs held in PlayerJitterQueue sorted strictly ascending by simulation tick.
+      - Out-of-Order & Deduplication: Out-of-order packets correctly inserted into sorted positions;
+        duplicate and stale packets (tick <= lastConsumedTick) safely rejected.
+      - Each Tick Consumption: Server simulation consumes input corresponding to current simulation tick.
+      - Starvation Handling: When queue is empty, returns safe neutral input packet (zero movement velocity
+        and all action buttons false to prevent runaway ghost overshoot), while preserving last known aim coordinates.
+      - Burst Drainage: When WAN jitter delivers a backlog burst (> 4 ticks), intermediate excess inputs
+        are drained and fast-forwarded to keep server input latency tightly locked to 1-2 ticks without lagging.
+      - Telemetry Metrics: Exposes currentDepth, targetDepth (2), oldestTick, newestTick, starvations,
+        overflows, duplicates, and burstDrains via getStats() for Phase 6 adaptive cruise control.
+      - Headless Test Suite (scratch/test_phase_5_2_jitter_buffer.ts) passes 38/38 tests (100%).
+
+================================================================================
+PHASE 6: ADAPTIVE CLOCK SYNCHRONIZATION & TIME DILATION (CRUISE CONTROL)
+Status: COMPLETED [x]
+================================================================================
+Goal: Maintain a steady 2-tick input buffer on the server by gently speeding up 
+or slowing down the client's physics tick rate without hard pauses or stutter.
+
+Tasks Completed & Implemented:
+  [x] 6.1 Server Buffer Depth Measurement (src/server/ServerGameSimulation.ts & ServerJitterBuffer.ts)
+      - Every 10 ticks, the server checks the jitter queue depth for each player.
+      - Target: 2 frames (~33.3ms buffer).
+      - Underflow (< 1 frame): Client is running too slow or packets arriving late; flags speedup.
+      - Overflow (> 3 frames): Client is running ahead of server; flags slowdown.
+      - Steady (1 to 3 frames): Healthy cruise buffer maintained.
+
+  [x] 6.2 Time Dilation Feedback Packet (src/server/ServerJitterBuffer.ts & ServerGameSimulation.ts)
+      - Server sends clock command ClockSyncPacket with snapshot broadcasts:
+        {
+          type: "clock_sync",
+          serverTick: number,
+          targetQueueDepth: 2,
+          currentQueueDepth: number,
+          dilationFactor: number  // e.g., 1.015 (speed up 1.5%) or 0.985 (slow down 1.5%)
+        }
+      - Strict clamping within [0.980, 1.020] (imperceptible to human eye, keeps physics deterministic).
+
+  [x] 6.3 Client Adaptive Accumulator (src/engine/GameLoop.ts & src/engine/Renderer.ts)
+      - In `GameLoop.ts`:
+        Smoothly steers current timeDilation toward targetTimeDilation (lerp rate 0.08 per frame).
+        `this.accumulator += deltaSeconds * this.timeDilation;`
+      - Clamped range: 0.98x to 1.02x (imperceptible to human eye, keeps audio smooth).
+      - Automatically returns to 1.000x once the server buffer stabilizes at 2 frames.
+      - Visual Diagnostics: Displayed in Canvas Diagnostics HUD as `Cruise Control: 1.000x (2f)`
+        and in top-bar telemetry as `Jitter: 2f (1.000x)`.
+      - Headless Test Suite (scratch/test_phase_6_clock_sync.ts) passes 26/26 tests (100%).
+
+================================================================================
+PHASE 7: AUTHORITATIVE SNAPSHOT BROADCAST & DELTA COMPRESSION
+Status: COMPLETED [x]
+================================================================================
+Goal: Broadcast authoritative world states from server to clients efficiently 
+without choking network bandwidth.
+
+Tasks Completed:
+  [x] 7.1 Server Snapshot Broadcast Rate
+      - Broadcast frequency: 30Hz or 60Hz (configurable via AuthoritativeSnapshotManager).
+      - Packet Schema:
+        {
+          type: "world_snapshot",
+          tick: number,
+          serverTime: number,
+          lastProcessedInputTick: { [playerId: string]: number },
+          entities: [
+            {
+              id: string,
+              x: number, y: number, z: number,
+              vx: number, vy: number, vz: number,
+              angX?: number, angY?: number, angZ?: number,
+              heldBy: string | null,
+              isClimbing: boolean,
+              isSleeping?: boolean
+            }
+          ],
+          ackActionIds?: string[],
+          clockSync?: ClockSyncPacket,
+          isDelta?: boolean
+        }
+
+  [x] 7.2 Delta Compression (Active Entities Only)
+      - Omit sleeping bodies that have not moved since last snapshot, broadcasting transitions into/out of sleep.
+      - Stationary bodies with unchanged transforms within quantization deadzone are omitted.
+      - Quantize positions to 3 decimal places (1mm precision), velocities to 2 decimal places, and angular roll to 2 decimal places.
+      - Periodic keyframe refresh (default every 60 ticks / 1.0s) sends full world baselines.
+      - Client-side helper merges delta snapshots into persistent accumulated entity state map.
+
+  [x] 7.3 Client ACK Feedback
+      - Client sends `lastReceivedServerTick` back in every `PlayerInputPacket`.
+      - Server tracks confirmed client ticks (`clientAckedTicks`) and integrates with AuthoritativeSnapshotManager.
+      - Headless Test Suite (scratch/test_phase_7_authoritative_snapshots.ts) passes 38/38 tests (100%).
+
+================================================================================
+PHASE 8: CLIENT PREDICTION RECONCILIATION & VISUAL SMOOTHING DAMPENER
+Status: COMPLETED [x]
+===============================================================================
+Goal: When server snapshots arrive, verify client prediction. If predicted 
+state matches within deadzone tolerance, do nothing. If divergence occurred, 
+snap physics and smoothly damp visual offset.
+
+Tasks Completed:
+  [x] 8.1 Snapshot Comparison & Error Deadzones
+      - When server snapshot for Tick T arrives:
+        1. Identify client's acknowledged input tick: `clientTick = serverSnapshot.lastProcessedInputTick[playerId]`.
+        2. Look up client's historical prediction at `clientTick` in StateHistoryBuffer.
+        3. Compare positions: deltaPos = |serverPos - predictedPos|.
+        4. Compare velocities: deltaVel = |serverVel - predictedVel|.
+      - Deadzone Tolerances:
+        - If deltaPos < 0.05 units (~1.8px) and deltaVel < 0.15:
+          PREDICTION SUCCESS. Prune history older than `clientTick`. Zero rollbacks, zero jitter!
+
+  [x] 8.2 Misprediction Correction (Rollback & Fast-Forward)
+      - If deltaPos or deltaVel exceeds deadzone (e.g. unexpected collision or server nudge):
+        1. Set visual offset: `visualOffset = postPos - prePos` (0.000u initial screen pop).
+        2. Snap local player character state to Authoritative Server State at `clientTick`.
+        3. Re-simulate physics forward from `clientTick + 1` to `currentTick` using recorded inputs (`isReplay = true` prevents duplicate network emissions).
+        4. Overwrite history buffer for ticks `clientTick + 1`..`currentTick`.
+        5. Freebody objects remain cleanly managed by `syncAuthoritativeObjects` to prevent object rewind jitter.
+
+  [x] 8.3 Render Smoothing Dampener (Eliminates Visual Popping)
+      - During rendering:
+        `drawX = entity.position.x - visualOffset.x;`
+        `drawY = entity.position.y - visualOffset.y;`
+      - Decay visualOffset smoothly toward zero over 3 to 5 frames (~50ms - 80ms):
+        `visualOffset.x *= 0.70;`
+        `visualOffset.y *= 0.70;`
+      - Result: Physics hitboxes snap instantaneously and remain 100% accurate, 
+        while the visible sprite glides smoothly without jitter or teleportation.
+
+================================================================================
+PHASE 9: REMOTE PLAYER ENTITY INTERPOLATION & FLIGHT HANDOFF
+Status: COMPLETE [x]
+==================================================================
+Goal: Render other human players and their thrown objects fluidly without jitter,
+with optional side-by-side split screen client simulation for multi-client testing.
+
+Tasks Completed:
+  [x] 9.1 Remote Player Entity Interpolation (Snapshot Interpolation)
+      - Implemented `RemoteEntityInterpolator` buffering authoritative server snapshots with 100ms render delay.
+      - Slerps/lerps remote players smoothly between snapshots: position (x, y, z), velocity (vx, vy, vz), and facing angle.
+      - Extrapolates up to 50ms with dead-reckoning along velocity vectors when jitter delays packets.
+      - Integrated remote entity overrides into rendering pipeline without desyncing physical transforms.
+
+  [x] 9.2 Ballistic Item Flight Handoff & Ground/Altitude Preservation
+      - Preserves altitude (z), vertical velocity (vz), and ground contact flags during flight handoff.
+      - Retains height-rings and ground shadows across remote and predicted entities.
+
+  [x] 9.3 Side-by-Side Split Client Sims & Viewport Mouse Mapping (Developer Feature)
+      - Added "👥 Split Sims" toggle in Multiplayer Test Settings.
+      - When enabled with 2+ players in multiplayer mode, splits canvas side-by-side:
+        * Left Viewport: Client 1 perspective (P1 predicted, P2 remote interpolated).
+        * Right Viewport: Client 2 perspective (P2 predicted, P1 remote interpolated).
+      - Renders Server Ghost Clones in BOTH split viewports simultaneously for live alignment comparison.
+      - Accurate Mouse Viewport Mapping: maps physical mouse coordinates into arena space relative to the active player's screen (even if assigned to Screen 2 or beyond).
+      - Auto-Reversion: cleanly collapses to full single view when switching back to Local Game, untoggling split sims, or when fewer than 2 players are connected.
+      - Renamed "Single Player" mode to "Local Game" across top bar, mobile menu, and documentation.
+
+  [x] 9.4 Secondary Player / Gamepad Throw Direction & Network Serialization
+      - Fixed premature aim stick reset in InputManager.ts during trigger press so aim direction persists into input packet.
+      - Oriented character facing angle directly towards target aim vector in PlayerManager.ts before invoking throwModule.
+      - Preserved slot.hasMovedAimStick until after throw execution has completed.
+      - Fixed object heldBy network serialization in RelayClient.ts to use playerId (e.g. "player-2" / "gamepad-0") ensuring authoritative server identifies the holding player correctly.
+
+  [x] 9.5 Ghost Visual Toggle Decoupled from Authoritative State Pipeline
+      - Decoupled `RelayClient.getLatestGhost()` from the `showGhostClones` visual flag so the network/server state snapshot is never withheld.
+      - Migrated visual suppression directly into `Renderer.ts:drawGhostClones` (`renderer.showGhostClones`).
+      - Server snapshots continue streaming uninterrupted to `RemoteEntityInterpolator`, `syncAuthoritativeObjects`, and clock synchronization even when visual ghosts are toggled OFF.
+      - Guaranteed continuous position synchronization between split-screen client viewpoints regardless of ghost clone visibility.
+
+  [x] 9.6 Explicit Remote Player Facing Angle Pipeline & Aim Retention
+      - Added explicit `facingAngle` to `PlayerInputPacket` captured directly from character aiming/movement.
+      - Streamed `facingAngle` across network telemetry, input queue, and authoritative server simulation (`ServerGameSimulation.ts`).
+      - Serialized `facingAngle` into authoritative ghost snapshots (`GhostEntityState.facingAngle`).
+      - Updated `GameLoop.ts` to pass `gc.facingAngle` into `RemoteEntityInterpolator` samples instead of hardcoded 0.
+      - Removed velocity-inferred facing angles from `RemoteEntityInterpolator.ts`; remote players explicitly track `s.facingAngle`.
+      - Resolved right-facing snap on stop (previously 0 rad) and ensured players holding items face where they aim regardless of movement direction.
+
+  [x] 9.7 Viewport Grab UI Isolation & Remote Nametag Colors
+      - Filtered pickup reach highlights and grab targeting rings in `Renderer.ts` (`drawFreebodyObject`, `drawCharacter`) to strictly match the viewport's local client character (`localHeroCharacter`). Remote characters never trigger grab UI on screens not assigned to them.
+      - Fixed remote nametag colors in `drawCharacterNameTag` to preserve the character's true player theme color (Amber for P1, Cyan for P2, Emerald for P3, etc.) instead of hardcoding sky blue.
+
+  [x] 9.8 Classical Snapshot Interpolation Engine (Zero Overshoot & Zero Bobbing)
+      - Upgraded `RemoteEntityInterpolator.ts` to implement classical Snapshot Interpolation with a configurable 60ms delay buffer (`interpDelayMs = 60`).
+      - Samples remote entities between verified historical snapshots S0 and S1 at T_render = nowMs - interpDelayMs.
+      - Eliminates extrapolation overshoot when remote players stop: as S1 arrives at rest (vx=0, vy=0), interpolation monotonically converges to the stop coordinate without EVER overshooting (0.0000u overshoot) and without any reverse bobbing or rubberbanding.
+      - Shortest-arc angular interpolation across [-PI, PI] boundary.
+      - Teleport / respawn distance guard (>8u) snaps immediately without lerp distortion.
+      - Backward-compatible extrapolation mode preserved (`mode = "interpolation" | "extrapolation"`).
+      - Verified 100% via headless suite `scratch/test_snapshot_interpolation.ts`.
+
+  [x] 9.9 Render-Time Hand Projection for Remote Held Freebodies (Zero Velocity Offset)
+      - In `Renderer.ts:drawFreebodyObject` and `drawObjectGroundShadowFill`, held objects evaluate visual render coordinates directly from `holder.calculateHeldObjectPosition(arena)`.
+      - When remote characters render with `remoteOverrides`, their held object and shadow render seamlessly in their interpolated hands with 0.0000u offset.
+      - Physics transforms and local player holding simulation loop remain completely untouched, ensuring zero glitch drops and zero pushbacks.
+  [x] 9.10 Remote Client Throw Trajectory & Destination Marker Isolation
+      - Filtered ballistic trajectory dots, wall impact markers, landing destination footprint previews, and aim reticles in `Renderer.ts:renderArenaScene`.
+      - In split-screen viewports, each client screen ONLY renders its own controlling character's throw trajectory, destination marker, and aim reticle.
+      - In single-screen multiplayer, remote characters (`remoteOverrides.has(char.playerId)` or `char !== localHeroCharacter`) are strictly excluded from trajectory and reticle rendering.
+      - Trajectory lines, impact markers, and destination footprints are completely private to the local client aiming the throw.
+      - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
+
+  [x] 9.11 Clean Architectural Separation of Boomerang Relay and Online Multiplayer
+      - Restored `RelayClient.ts` to its exact, proven, standalone implementation for in-browser echo simulation, split-screen client prediction, and server ghost clones.
+      - Developed standalone `UniversalRoomManager.ts`: authoritative 60Hz WebSocket server on `/ws` using `ServerGameSimulation` directly.
+      - Developed standalone `OnlineRoomClient.ts`: dedicated WebSocket client for online rooms at `/ws`, completely decoupled from `RelayClient.ts`.
+      - Preserves 100% of existing single-player and split-screen multiplayer gameplay with 0% regression risk.
+
+================================================================================
+PHASE 10: MULTIPLAYER ROOM UI, MATCHMAKING & NETWORK DIAGNOSTICS HUD
+Status: COMPLETED [x]
+================================================================================
+Goal: Provide clean, user-friendly UI for hosting/joining multiplayer rooms 
+and comprehensive developer telemetry.
+
+Tasks to Implement:
+  [x] 10.1 3-Tab Game Mode Navigation & Dedicated Online Room Architecture
+      - Top bar and mobile menu feature 3 distinct modes:
+        1. 🏠 Local Game: Single-machine simulation with multi-gamepad & keyboard support.
+        2. 🔄 Boomerang Sim: Isolated 3rd-party WAN echo relay simulation with ghost clones.
+        3. 🌐 Online Room: Real live authoritative multiplayer room connecting to `/ws`.
+      - Live Online Room HUD (`#online-room-hud`) displaying connection status, RTT latency, player slot info, invite URL with copy action, and live connected roster chips.
+      - Hotkey `O` toggles Online Room HUD overlay.
+
+  [x] 10.2 Dedicated Authoritative Server & Client Architecture (`UniversalRoomManager` & `OnlineRoomClient`)
+      - Authoritative 60Hz physics world on `/ws` utilizing `ServerGameSimulation`.
+      - Dynamic player slot allocation: P1 Amber (`#f59e0b`), P2 Cyan (`#06b6d4`), P3 Emerald (`#10b981`), P4 Violet (`#8b5cf6`), etc.
+      - Input stream coupled with spatial telemetry and object sync (`syncCharacterFromPacket` and `syncObjectsFromPacket`) guarantees exact avatar synchronization without drift.
+      - Snapshot broadcasting streams all connected characters and freebodies at 60Hz.
+      - Zero-boomerang online mode: ghost clones are suppressed (`gameLoop.showGhostClones = false`), and remote characters render directly with classical snapshot interpolation.
+
+  [x] 10.3 Player Naming System & Live Roster Updates
+      - Modal dialog (`#player-name-modal`) prompts and edits player handle, persisted to `localStorage.pcg_player_handle`.
+      - Real-time `rename_player` network command propagates across server simulation and updates live roster chips and name tags for all clients.
+      - Clean disconnect handling cleans up character from authoritative world and evicts from client remote rosters.
+      - Verified 100% via headless test suite `scratch/test_phase_10_online_room.ts`.
+
+  [x] 10.4 Authoritative Server-Assigned Player Color & Global Perspective Synchronization
+      - Fixed color assignment architecture in Online Mode: online clients do not have liberty to dictate their player color.
+      - Authoritative server allocation from standard `PLAYER_COLORS` palette (`#f59e0b` P1 Amber, `#06b6d4` P2 Cyan, `#10b981` P3 Emerald, etc.).
+      - In `ServerGameSimulation.ts:syncCharacterFromPacket`: removed client packet color override; server color is immutable by clients.
+      - In `PlayerManager.ts`: `spawnKeyboardPlayer` and `spawnGamepadPlayer` preserve existing server-assigned `playerNumber`, `playerColor`, and `color` rather than resetting to P1 Amber.
+      - In `main.ts`: `onJoined`, `onStatsChange`, and `onSnapshotReceived` dynamically synchronize `hero`, `baseCharacter`, top bar status badge (`#online-player-badge`), HUD slot badge (`#online-my-slot`), aim cursors, grab highlights, and roster chips.
+      - Verified 100% via automated integration test `scratch/test_online_player_colors.ts`.
+
+  [x] 10.5 In-Flight Ballistic Prediction & Trailing Snapshot Dragdown Protection
+      - Fixed chopped / glitchy premature impact in Online Mode:
+        1. Added persistent `isInFlight` property on `GameObject` which remains `true` throughout the entire ballistic trajectory until the object physically lands on a surface (`isRestingOnSurface`) or is picked up.
+        2. Fixed wall clearance ascending projectile check (`isAscendingJump`) in `GameObject.ts` lines 990 & 1060 by including `this.isInFlight` so soaring objects cleanly clear intermediate walls without hitting rims.
+        3. Fixed `syncAuthoritativeObjects` in `GameLoop.ts`: passes `onlineClient.clientId` and guards airborne in-flight objects (`isInFlight || lastThrower`) from being blended or dragged down by trailing server snapshots across WAN round-trip latency.
+        4. Reordered packet processing in `UniversalRoomManager.ts`: reliable action commands (`throw`, `pickup`, `drop`) execute authoritatively before telemetry sync, preventing telemetry packets from wiping `heldObject` before `throwHeldObject` runs.
+        5. Protected server in-flight freebody simulation in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
+  [x] 10.6 Remote Throw Instant Hand-Off & Authority Isolation
+      - Eliminated remote client throw hesitation and back-and-forth jitter:
+        1. Isolated Freebody Authority: non-holding clients can NEVER overwrite an unheld freebody's position or velocity on the server (`ServerGameSimulation.ts:syncObjectsFromPacket`). In `OnlineRoomClient.ts:sendPlayerInput`, clients strictly filter `objTelemetry` to only send objects they are actively holding.
+        2. Instant Launch Hand-Off: in `GameLoop.ts:syncAuthoritativeObjects`, when a remote character releases a held item on the server, the remote client immediately hands off the launch transform and trajectory (`localObj.position = sObj; localObj.velocity = sObj.v; localObj.isInFlight = true; localObj.wakeUp()`) with zero lag or 30% blending hesitation.
+        3. Monotonic Snapshot Guard: added `lastAppliedObjectSeq` in `GameLoop.ts` to reject out-of-order or duplicate server snapshots, preventing network-level packet jitter from jerking objects backward.
+        4. Deferred Remote Release Detachment: in `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, ensuring the hand-off logic retains full context of who threw the item.
+  [x] 10.7 Multi-Character Single-Machine Support, Custom Nametag Display & Online Map Memory Trashing
+      - Multi-Character Single-Machine Support (e.g. Keyboard + Gamepads on same browser tab):
+        1. `UniversalRoomManager`: Added `ClientCharacterEntry` mapping multiple characters per WebSocket connection (`characters: Map<string, ClientCharacterEntry>`). Sequentially allocates `playerNumber` (1-16) and authoritative theme colors across all machines without collisions.
+        2. `OnlineRoomClient`: Added `localPlayers` map, `addPlayer()`, `removePlayer()`, and streaming of `player_input` packets keyed by `localPlayerId` (e.g. `keyboard`, `gamepad-0`).
+        3. `PlayerManager`: Dispatches `onPlayerJoined` and `onPlayerRemoved` callbacks when controllers connect or join locally, notifying the server via `add_player` / `remove_player` packets.
+        4. `main.ts` & `GameLoop.ts`: Loops over all local players on physics ticks to stream telemetry. Guards all local characters and their held items from `remoteOverrides` and trailing server snapshot dragdown.
+      - Custom Nametag Display:
+        1. In `Renderer.ts:drawCharacterNameTag`: Character name tags render the player's chosen name (`char.name`), with fallback to `P${char.playerNumber}`, preserving the `[REMOTE]` badge for remote clients in their assigned color pill.
+        2. In `main.ts`: Populates `hero.name` and `baseCharacter.name` on startup from `localStorage.getItem("pcg_player_handle")`.
+      - Online Map Memory Trashing & Clean Reload:
+        1. In `UniversalRoomManager.trashMapMemory()`: The moment all players disconnect (0 clients), completely wipes all characters, objects, jitter buffers, held objects, and resets simulation accumulator and map state.
+        2. In `UniversalRoomManager.reloadMap()`: The moment a new player connects, loads a pristine map scenario with fresh freebodies and geometry.
+      - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
+  [x] 10.8 Instant Character Eviction on Lost Connection & Server Watchdog
+      - Server-Side Connection Loss & Silent Drop Detection:
+        1. Added `lastSeen` tracking to `ConnectedRoomClient` in `UniversalRoomManager.ts`.
+        2. Implemented active 1-second server watchdog timer (`checkClientLiveness()`): detects silent TCP drops (WiFi drop, closed laptop, crashed process) within 3.5s of silence, terminates the socket, and evicts all characters registered to that client.
+        3. Immediate Disconnect Protocol: When a client disconnects or times out, the server immediately drops and wakes up any held objects (`isHeld = false; heldBy = null; wakeUp()`), purges jitter buffers, broadcasts an explicit `player_left` notification with `removedCharIds`, and broadcasts an authoritative snapshot immediately without waiting for tick loops.
+        4. Added graceful `leave_room` packet handling on socket close.
+      - Client-Side Immediate Eviction & State Sanitization:
+        1. Added `onPlayerLeft` callback to `OnlineRoomClient.ts`: immediately calls `playerManager.removeRemoteCharacter(charId)` and `interpolator.clearEntity(charId)`, eliminating residual ghost positions.
+        2. Added heartbeat timeout watchdog in `OnlineRoomClient.ts:startPingLoop()`: disconnects and resets state if no message is received from server within 4.0s.
+        3. On local disconnect (`status === "disconnected"` / `"error"` in `main.ts`): immediately wipes all remote characters and purges `RemoteEntityInterpolator`, preventing frozen avatars.
+        4. Added `beforeunload` and `pagehide` browser event listeners in `main.ts` to cleanly transmit `leave_room` and disconnect prior to window teardown.
+      - Verified 100% via automated test suite `scratch/test_immediate_disconnect_cleanup.ts`.
+  [x] 10.9 Player Name Authority Isolation & Anti-Reversion Guarantee
+      - Root Cause of Name Flicker and Old Name Reversion:
+        1. In `main.ts:onSnapshotReceived`: `localChar.name = c.name` was blindly executing for local player characters.
+        2. When a player renamed locally, trailing in-flight network snapshots from the server still carried the old name, immediately reverting `localChar.name` to the old name.
+        3. Then `sendPlayerInput` streamed `localChar.name` (reverted to old name) in 60Hz `player_input` packets to the server, and the server's input handler (`sChar.name = pkt.playerName`) overwrote the server character back to the old name, permanently locking in the reversion.
+        4. In `PlayerManager.ts:renamePlayer`: early return on `baseCharacter` bypassed `this.players.get(...)`, leaving local character instances with divergent names.
+      - Architectural Fix:
+        1. Local Player Name Authority: Removed `localChar.name = c.name` from `onSnapshotReceived`. The local player is the authoritative source for their own name and never adopts stale echo names from trailing server snapshots.
+        2. Immediate Local Consistency: `saveNameHandle` updates `onlineClient.playerName`, `localStorage`, `hero.name`, `baseCharacter.name`, and all local `PlayerEntry` maps synchronously.
+        3. `PlayerManager.ts:renamePlayer`: Updates both `player.name`, `player.character.name`, and `this.baseCharacter.name` without premature returns.
+        4. `PlayerManager.ts:updatePlayers`: Populates `pkt.playerName = cChar.name` on every captured input packet.
+        5. `UniversalRoomManager.ts`: On `rename_player`, updates `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot to all clients.
+      - Verified 100% via automated test suite `scratch/test_online_rename_no_flicker.ts`.
+  [x] 10.10 Multi-Character Naming Isolation & Phantom Ghost Character Elimination
+      - Root Causes of Phantom Ghost Characters & Name Inconsistency:
+        1. Premature Fallback Character Spawning in `ServerGameSimulation.ts`:
+           - In `queueInput`: If `packet.playerId` was not found in `this.characters`, it dynamically instantiated a `new Character` at arena center (`width/2, height/2`).
+           - In `syncCharacterFromPacket`: If `clientChar.id` was not found in `this.characters`, it dynamically instantiated a new Character on the server.
+           - When temporary or out-of-sync packets arrived, rogue phantom characters were spawned on the server, broadcast in all snapshots, rendered by remote clients as phantom remote avatars, but never claimed or rendered by the sending client.
+        2. Premature Fallback Keyboard Character in `UniversalRoomManager.ts`:
+           - When a client connected with only a gamepad or controller, `handleConnection` prematurely registered a default `"keyboard"` character. When `join_room` arrived specifying only `gamepad-0`, the unused `"keyboard"` character was left behind as an abandoned phantom character visible to other clients.
+        3. Custom Name Propagation / Leaking Across Local Devices:
+           - In `OnlineRoomClient.ts:sendPlayerInput`, when a controller character had no name, it fell back to `this.playerName` (the primary user's custom handle), overwriting controllers on the same device with the primary player's name.
+           - In `main.ts:onSnapshotReceived`, roster chip rendering displayed `onlineClient.playerName` for all characters matching `clientId`, labeling all controllers from that machine with the keyboard handle.
+        4. Duplicate "Player 2" Nametags:
+           - In `PlayerManager.ts:spawnGamepadPlayer`, newly joined gamepads had `char.name = 'Player ${playerNum}'` baked in locally using local player counts (returning 2), while the server allocated authoritative global numbers (P3, P4).
+           - `Renderer.ts:drawCharacterNameTag` used `char.name` directly, displaying `Player 2` on the nametag even after the server assigned P3/P4.
+      - Architectural Solutions Implemented:
+        1. Server Dynamic Spawning Elimination (`ServerGameSimulation.ts`):
+           - In `queueInput` and `syncCharacterFromPacket`: Removed dynamic `new Character` instantiation. Rogue packets with unknown IDs are rejected; only `UniversalRoomManager.registerCharacter()` can instantiate characters on the authoritative server.
+        2. Fallback Pruning in `UniversalRoomManager.ts`:
+           - In `join_room`: When `data.localPlayers` arrives, any characters in `client.characters` not present in `data.localPlayers` are cleanly unregistered and pruned.
+           - In `registerCharacter`: Enforces deterministic IDs (`localPlayerId === "keyboard" ? client.id : `${client.id}:${localPlayerId}``). Default template names (`Player X`, `Controller #X`) are detected and replaced with the authoritative global `Player ${playerNumber}`.
+        3. Name Customization Isolation (`Character.ts`, `OnlineRoomClient.ts`, `PlayerManager.ts`):
+           - Added `hasCustomName: boolean` to `Character`. Explicit custom handles are preserved, while template names are flagged as uncustomized.
+           - In `OnlineRoomClient.ts:sendPlayerInput`: Secondary characters (gamepads) never inherit `this.playerName`. They retain their own distinct names.
+           - In `OnlineRoomClient.ts:addPlayer`: Uncustomized players pass `undefined` so the server allocates sequential `Player ${playerNumber}`.
+        4. Authoritative Nametag & Roster Synchronization (`Renderer.ts`, `main.ts`):
+           - In `Renderer.ts:drawCharacterNameTag`: Uncustomized characters always display `Player ${char.playerNumber || 1}`, matching the server's authoritative sequential slot (P1, P2, P3, P4).
+           - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
+      - Verified 100% via automated test suite `scratch/test_multichar_naming_and_no_phantom.ts`.
+
+     Phase 10.4: Secondary Player Reliable Throw & Authority Fix (Completed)
+       - Fixed critical bug where secondary players on a device (e.g. Gamepad #1 alongside Keyboard) threw freebodies, experienced kickback locally, but the thrown object immediately stopped and landed on the ground due to the server not acknowledging their throw action:
+         1. Action Player ID Preservation (`OnlineRoomClient.ts:queueReliableAction`, `PlayerManager.ts:applyPlayerInputs`):
+            - `PlayerManager.ts` now uses `entry?.id || char.playerId || playerId || "keyboard"` when stamping `ReliableActionCommand.playerId`, ensuring gamepad players are marked as `"gamepad-0"`.
+            - `OnlineRoomClient.ts:queueReliableAction` resolved `rawPlayerId` using `this.getServerCharId(rawPlayerId)` (e.g. `${clientId}:gamepad-0`) rather than blindly overwriting `action.playerId = this.clientId` (keyboard). Also attaches `serverCharId` and `localPlayerId` to standalone WebSocket message.
+         2. Multi-Character Action Resolution & Execution Order (`UniversalRoomManager.ts`):
+            - Added `resolveActionPlayerId(client, act, fallback)`: checks whether `act.playerId` belongs to any registered character on that client before defaulting to sender's character ID. Prevents keyboard input packets from overwriting gamepad actions when piggybacking reliable actions.
+            - Reordered input processing: executes `this.simulation.processReliableActions(data.reliableActions)` BEFORE `syncCharacterFromPacket(data.character)`. Prevents incoming client packet with `isHolding === false` from clearing `sChar.heldObject` before the throw action can run.
+         3. Server-Side Action Recovery & Fallback Throw Aim (`ServerGameSimulation.ts`):
+            - Character lookup supports suffix matching (`c.playerId.endsWith(":" + act.playerId)`).
+            - If `char.heldObject` was momentarily nullified by network interleaving, recovers candidate `act.targetObjectId` and re-attaches it to `char` before invoking `throwHeldObject`.
+            - In `step()`: Dedicated throw supports fallback to facing angle trajectory if `aimTarget` is omitted.
+         4. Client In-Flight Ballistic Protection (`GameLoop.ts:syncAuthoritativeObjects`):
+            - `isLocalChar` updated to match any local player in `this.players` by `playerId` or reference.
+            - Protected in-flight local throws from being dragged down by trailing server rest/sleep snapshots.
+       - Verified 100% via automated test suite `scratch/test_secondary_player_throw.ts`.
+
+     [x] 10.4. Phone / Mobile Gamepad Phantom Character Elimination (COMPLETED):
+        - Resolved issue where connecting on a phone/mobile device spawned an extra phantom character with the same name on remote devices, while invisible on the phone itself.
+        - Root Cause:
+          1. Server pre-registered an initial "keyboard" avatar upon connection (client.id) with custom name from localStorage.
+          2. On the phone, playerManager.players was empty before controller input, so baseCharacter was unassigned.
+          3. When a mobile/Bluetooth controller connected or pressed A, spawnGamepadPlayer claimed baseCharacter and sent add_player("gamepad-0", name).
+          4. The server registered "gamepad-0" as a second character, retaining the unsteered "keyboard" avatar on the server.
+          5. On the phone, isLocal was true for both characters, but local players only drew gamepad-0, making the phantom completely invisible on the phone. All other clients rendered both characters with the identical name!
+        - Architecture Solution:
+          1. Default Placeholder Tracking (UniversalRoomManager.ts): Initial "keyboard" character marked with isDefaultPlaceholder = true.
+          2. Automatic Placeholder Reclamation (UniversalRoomManager.ts:add_player): When a non-keyboard device (e.g. "gamepad-0") joins and only the unsteered placeholder "keyboard" exists, the server immediately unregisters "keyboard", allowing the controller to cleanly claim the primary P1 slot without leaving any phantom behind.
+          3. join_room Local Device Delegate (OnlineRoomClient.ts & main.ts): Wired getLocalPlayers delegate querying active local players from gameLoop.playerManager.players, ensuring join_room requests only real local players (e.g. gamepad-0) and server immediately prunes "keyboard".
+          4. Active Input Keyboard Promotion (UniversalRoomManager.ts:player_input): Active WASD/arrow movements promote "keyboard" to permanent (isDefaultPlaceholder = false), preserving both keyboard and gamepad for true local split-screen multi-device play on PC.
+          5. Disconnect Cleanup (OnlineRoomClient.ts:disconnect): Clears localPlayers map and resets clientId to prevent stale registrations across reconnects.
+        - Verified 100% via automated test suite scratch/test_phone_gamepad_no_phantom.ts across all 3 scenarios.
+
+================================================================================
+VERIFICATION CHECKLIST & ACCEPTANCE CRITERIA
+================================================================================
+To consider Multiplayer fully complete, the following scenarios must pass:
+
+  [ ] 1. High-Speed Throw Consistency:
+         Throwing a high-speed ball at a wall reflects with identical trajectory 
+         on both client and server without tunneling through the wall.
+
+  [ ] 2. Contested Pick Up Tiebreaker:
+         Two players pressing Grab on the same object on the same frame results 
+         in one clean pickup without duplicate held objects or desync.
+
+  [ ] 3. Simulated Latency Resilience (50ms - 150ms simulated ping):
+         Local character movement, sprinting, jumping, and grabbing feels 
+         instantaneous (0ms perceived input lag) with zero noticeable snapping.
+
+  [ ] 4. Time Dilation Stability:
+         Under fluctuating ping (jitter), the client accumulator gently dilates 
+         by +/-1% without audio/visual stutter or frame freezes.
+
+  [ ] 5. Headless Determinism Test:
+         Automated server-client simulation running 5,000 continuous ticks 
+         produces identical hash / 0.0000 divergence across all entities.
+
+================================================================================
+END OF ROADMAP — EDITABLE TEXT FILE
+================================================================================

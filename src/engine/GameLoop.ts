@@ -1,535 +1,174 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
-import { Renderer } from "./Renderer.js";
+import { Renderer, RollbackPathPoint, SplitScreenPlayerView } from "./Renderer.js";
 import { InputManager } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
-import { Trajectory } from "./Trajectory.js";
-import type { NetworkManager } from "../network/NetworkManager.js";
-import type { ObjectNetworkData } from "../network/types.js";
+import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
+import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
+import { SnapshotManager, WorldSnapshot } from "./physics/Snapshot.js";
+import { StateHistoryBuffer, RollbackResult, PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
+import { IslandManager } from "./physics/IslandManager.js";
+import { PredictionReconciliation, ReconciliationResult } from "./physics/PredictionReconciliation.js";
+import { RemoteEntityInterpolator, RemoteEntitySample } from "./physics/RemoteEntityInterpolator.js";
+import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
+import type { GhostEntityState } from "../network/RelayClient.js";
+
+export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
+export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
+
 
 export class GameLoop {
   private arena: Arena;
-  private character: Character;
-  private objects: GameObject[];
+  public objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;
   private devPanel: DevPanel;
-  public networkManager?: NetworkManager;
-  public remoteCharacters: Map<string, Character> = new Map();
+
+  // Dedicated player session manager
+  public playerManager: PlayerManager;
+
+  public get players(): Map<string, PlayerEntry> {
+    return this.playerManager.players;
+  }
+  public get onPlayersChanged(): (() => void) | undefined {
+    return this.playerManager.onPlayersChanged;
+  }
+  public set onPlayersChanged(cb: (() => void) | undefined) {
+    this.playerManager.onPlayersChanged = cb;
+  }
+  public get baseCharacter(): Character {
+    return this.playerManager.baseCharacter;
+  }
+  public set baseCharacter(char: Character) {
+    this.playerManager.baseCharacter = char;
+  }
+  public get allCharacters(): Character[] {
+    return this.playerManager.allCharacters;
+  }
+  public get primaryCharacter(): Character {
+    return this.playerManager.primaryCharacter;
+  }
+  public get character(): Character {
+    return this.primaryCharacter;
+  }
 
   private isRunning = false;
   private lastTime = 0;
   private accumulator = 0;
   private readonly fixedDt = 1 / 60; // 60Hz fixed simulation timestep
-  private objectOwnershipLocks = new Map<string, number>();
-  private lastImpulseBroadcast = new Map<string, number>();
+
+  public getGhostSnapshot?: (dt: number) => import("../network/RelayClient.js").GhostSnapshot | null;
+  public getShowGhostClones?: () => boolean;
+  public showGhostClones = true;
+  public onPhysicsTick?: (dt: number, nowMs: number) => void;
+  public onReliableAction?: (action: ReliableActionCommand) => void;
+
+  public currentTick = 0;
+  public timeDilation = 1.0;
+  public targetTimeDilation = 1.0;
+  public timeDilationLerpRate = 0.08;
+  public latestClockSync: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null = null;
+  public isPhysicsPaused = false;
+  public globalCollisionMode: CollisionMode = "dynamic";
+  public lastSnapshot: WorldSnapshot | null = null;
+  public lastInputs = new Map<string, PlayerInputPacket>();
+  public historyBuffer = new StateHistoryBuffer(60, 30);
+  public islandManager = new IslandManager();
+  public interpolator = new RemoteEntityInterpolator();
+  public splitClientSimsEnabled = false;
+  public isMultiplayerMode = false;
+  public activeMode: "local" | "boomerang" | "online" = "local";
+  public onPlayerRenamed?: (playerId: string, newName: string) => void;
+  public lastAppliedObjectSeq = 0;
+
+  public get isSplitScreen(): boolean {
+    return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
+  }
+
+  public renamePlayer(playerId: string, newName: string): boolean {
+    const success = this.playerManager.renamePlayer(playerId, newName);
+    if (success) {
+      this.onPlayerRenamed?.(playerId, newName);
+    }
+    return success;
+  }
+
+  public get isPaused(): boolean {
+    return this.isPhysicsPaused;
+  }
+  public set isPaused(val: boolean) {
+    this.isPhysicsPaused = val;
+  }
+
+  public stepSingleTick(): void {
+    this.updatePhysics(this.fixedDt);
+    if (this.onPhysicsTick) {
+      this.onPhysicsTick(this.fixedDt, performance.now());
+    }
+    this.renderFrame(this.fixedDt);
+    this.devPanel.updateInspector();
+  }
+
+  /**
+   * Applies an adaptive clock synchronization packet from the server (Phase 6.3).
+   * Gently dilates client accumulator by +/-1% to maintain 2 frames on server buffer.
+   */
+  public applyClockSync(sync: import("../server/ServerJitterBuffer.js").ClockSyncPacket): void {
+    this.latestClockSync = sync;
+    // Strictly clamp within [0.98, 1.02] (imperceptible to human eye)
+    const clamped = Math.max(0.98, Math.min(1.02, sync.dilationFactor));
+    this.targetTimeDilation = clamped;
+  }
+
 
   constructor(options: {
     arena: Arena;
-    character: Character;
+    character?: Character;
     objects: GameObject[];
     renderer: Renderer;
     inputManager: InputManager;
     devPanel: DevPanel;
-    networkManager?: NetworkManager;
   }) {
     this.arena = options.arena;
-    this.character = options.character;
     this.objects = options.objects;
     this.renderer = options.renderer;
     this.inputManager = options.inputManager;
     this.devPanel = options.devPanel;
-    this.networkManager = options.networkManager;
 
-    if (this.networkManager) {
-      this.setupNetworkHandlers(this.networkManager);
-    }
-  }
-
-  private setupNetworkHandlers(net: NetworkManager): void {
-    net.onInit = (packet) => {
-      this.character.playerId = packet.playerId;
-      this.character.color = packet.playerColor;
-      this.character.name = packet.playerName;
-      this.devPanel.setHost(packet.isHost, packet.hostId);
-
-      // Spawn characters for players already connected in room
-      for (const p of packet.players) {
-        if (p.id !== packet.playerId && !this.remoteCharacters.has(p.id)) {
-          const remote = new Character({
-            name: p.name,
-            playerId: p.id,
-            color: p.color,
-            isLocalPlayer: false,
-            x: p.x,
-            y: p.y,
-          });
-          this.remoteCharacters.set(p.id, remote);
-        }
-      }
-    };
-
-    net.onPlayerJoined = (packet) => {
-      if (packet.player.id !== this.character.playerId && !this.remoteCharacters.has(packet.player.id)) {
-        const remote = new Character({
-          name: packet.player.name,
-          playerId: packet.player.id,
-          color: packet.player.color,
-          isLocalPlayer: false,
-          x: packet.player.x,
-          y: packet.player.y,
-        });
-        this.remoteCharacters.set(packet.player.id, remote);
-        console.log(`[GameLoop] Remote player joined: ${packet.player.name} (${packet.player.id})`);
-      }
-    };
-
-    net.onPlayerLeft = (packet) => {
-      const remote = this.remoteCharacters.get(packet.playerId);
-      if (remote) {
-        if (remote.heldObject) {
-          remote.heldObject.isHeld = false;
-          remote.heldObject.heldBy = null;
-          remote.heldObject = null;
-        }
-        this.remoteCharacters.delete(packet.playerId);
-        console.log(`[GameLoop] Remote player removed: ${packet.playerId}`);
-      }
-      if (packet.newHostId) {
-        this.devPanel.setHost(packet.newHostId === this.character.playerId, packet.newHostId);
-      }
-    };
-
-    net.onRoleChange = (packet) => {
-      this.devPanel.setHost(packet.isHost, packet.hostId);
-    };
-
-    net.onPlayerState = (packet) => {
-      const remote = this.remoteCharacters.get(packet.playerId);
-      if (remote) {
-        const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-        const transitSec = packet.timestamp ? Math.max(0, Math.min(0.2, (now - packet.timestamp) / 1000)) : 0;
-
-        // Predictive dead-reckoning extrapolation: where the player is RIGHT NOW
-        const extrapolatedX = packet.x + packet.vx * transitSec;
-        const extrapolatedY = packet.y + packet.vy * transitSec;
-        const extrapolatedZ = packet.z + packet.vz * transitSec;
-
-        const errDist = Math.hypot(extrapolatedX - remote.position.x, extrapolatedY - remote.position.y);
-        if (errDist > 2.0) {
-          // Hard snap on major divergence (teleport / spawn)
-          remote.position.x = extrapolatedX;
-          remote.position.y = extrapolatedY;
-          remote.position.z = extrapolatedZ;
-          remote.targetX = extrapolatedX;
-          remote.targetY = extrapolatedY;
-          remote.targetZ = extrapolatedZ;
-        } else {
-          remote.targetX = extrapolatedX;
-          remote.targetY = extrapolatedY;
-          remote.targetZ = extrapolatedZ;
-        }
-
-        remote.velocity.x = packet.vx;
-        remote.velocity.y = packet.vy;
-        remote.verticalVelocity = packet.vz;
-        remote.facingAngle = packet.facingAngle;
-        remote.isAiming = packet.isAiming;
-        remote.aimTarget = packet.aimTarget;
-        remote.isActivelyWalking = packet.isActivelyWalking;
-
-        if (packet.heldObjectId) {
-          const held = this.objects.find((o) => o.id === packet.heldObjectId);
-          if (held) {
-            remote.heldObject = held;
-            held.isHeld = true;
-            held.heldBy = remote;
-          }
-        } else if (remote.heldObject) {
-          remote.heldObject.isHeld = false;
-          remote.heldObject.heldBy = null;
-          remote.heldObject = null;
-        }
-      }
-    };
-
-    net.onObjectAction = (packet) => {
-      const target = this.objects.find((o) => o.id === packet.objectId);
-      if (!target) return;
-
-      const actor =
-        this.remoteCharacters.get(packet.playerId) ||
-        (this.character.playerId === packet.playerId ? this.character : null);
-
-      if (packet.action === "pickup") {
-        if (actor) {
-          actor.heldObject = target;
-          target.isHeld = true;
-          target.heldBy = actor;
-          this.objectOwnershipLocks.set(target.id, performance.now() + 5000);
-        }
-      } else if (packet.action === "drop") {
-        target.isHeld = false;
-        target.heldBy = null;
-        if (actor && actor.heldObject === target) {
-          actor.heldObject = null;
-        }
-        if (packet.x !== undefined && packet.y !== undefined) {
-          target.position.x = packet.x;
-          target.position.y = packet.y;
-          target.position.z = packet.z ?? 0;
-        }
-        target.velocity.x = packet.vx ?? 0;
-        target.velocity.y = packet.vy ?? 0;
-        target.verticalVelocity = packet.vz ?? 0;
-        this.objectOwnershipLocks.set(target.id, performance.now() + 1500);
-      } else if (packet.action === "throw" || packet.action === "impulse") {
-        target.isHeld = false;
-        target.heldBy = null;
-        if (actor && actor.heldObject === target) {
-          actor.heldObject = null;
-        }
-
-        const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-        // Time elapsed over network transit (in seconds)
-        const elapsedSec = Math.max(0, Math.min(0.3, (now - packet.timestamp) / 1000));
-
-        // Synchronize velocities
-        target.velocity.x = packet.vx ?? 0;
-        target.velocity.y = packet.vy ?? 0;
-        target.verticalVelocity = packet.vz ?? 0;
-
-        if (target.rollModule) {
-          target.rollModule.angularVelocity.x = packet.rotX ?? 0;
-          target.rollModule.angularVelocity.y = packet.rotY ?? 0;
-          target.rollModule.angularVelocity.z = packet.rotZ ?? 0;
-        }
-
-        // Extrapolate position forward by elapsedSec so it aligns with sender's current time
-        const startX = packet.x ?? target.position.x;
-        const startY = packet.y ?? target.position.y;
-        const startZ = packet.z ?? target.position.z;
-        const g = this.arena.gravity;
-
-        target.position.x = startX + target.velocity.x * elapsedSec;
-        target.position.y = startY + target.velocity.y * elapsedSec;
-        target.position.z = Math.max(
-          target.supportingSurfaceHeight,
-          startZ + target.verticalVelocity * elapsedSec - 0.5 * g * elapsedSec * elapsedSec
-        );
-
-        // Lock against background snapshot overrides while in motion
-        this.objectOwnershipLocks.set(target.id, performance.now() + 2000);
-      }
-    };
-
-    net.onTrajectoryLaunch = (packet) => {
-      const target = this.objects.find((o) => o.id === packet.objectId);
-      if (!target) return;
-
-      // Detach from any character holding it
-      target.isHeld = false;
-      target.heldBy = null;
-      for (const remote of this.remoteCharacters.values()) {
-        if (remote.heldObject === target) remote.heldObject = null;
-      }
-      if (this.character.heldObject === target) {
-        this.character.heldObject = null;
-      }
-
-      // Synchronize throw immunity so the thrower does not collide with the flying object
-      target.throwImmunityPlayerId = packet.throwerPlayerId || packet.playerId;
-      target.throwImmunityUntil = performance.now() + 800;
-
-      // Lock against snapshot overrides while in flight
-      this.objectOwnershipLocks.set(target.id, performance.now() + 6000);
-
-      // Calculate the exact amount of time it took to be told about this trajectory launch
-      const now = this.networkManager ? this.networkManager.getSyncedTime() : Date.now();
-      const oneWayPing = this.networkManager ? this.networkManager.getOneWayPing() : 40;
-
-      let elapsedLateMs = 0;
-      if (packet.serverRelayTime) {
-        const transitFromServer = Math.max(oneWayPing, now - packet.serverRelayTime);
-        const transitToServer = Math.max(oneWayPing, packet.serverRelayTime - packet.t0);
-        elapsedLateMs = transitToServer + transitFromServer;
-      } else {
-        elapsedLateMs = Math.max(oneWayPing * 2, now - packet.t0);
-      }
-
-      // Skip the exact amount of time it took to be told about it!
-      target.trajectoryStartTime = performance.now() - elapsedLateMs;
-
-      // Potential colliders in the arena to predict collisions against
-      const potentialColliders = this.objects.filter(
-        (o) => o.id !== target.id && !o.isHeld && o.hasCollider
-      );
-
-      // Pre-calculate identical deterministic trajectory from launch point with object collision prediction
-      target.trajectory = Trajectory.build(
-        target,
-        packet.x0,
-        packet.y0,
-        packet.z0,
-        packet.vx0,
-        packet.vy0,
-        packet.vz0,
-        this.arena,
-        potentialColliders,
-        1
-      );
-
-      // Immediately advance the object to the exact elapsed state right now!
-      const initialSample = target.trajectory.sample(elapsedLateMs);
-      target.position.x = initialSample.x;
-      target.position.y = initialSample.y;
-      target.position.z = initialSample.z;
-      target.velocity.x = initialSample.vx;
-      target.velocity.y = initialSample.vy;
-      target.verticalVelocity = initialSample.vz;
-      target.supportingSurfaceHeight = this.arena.getSupportingSurfaceHeight(initialSample.x, initialSample.y);
-      if (target.rollModule && target.rollModule.enabled) {
-        target.rollModule.angularVelocity.x = initialSample.rotX;
-        target.rollModule.angularVelocity.y = initialSample.rotY;
-        target.rollModule.angularVelocity.z = initialSample.rotZ;
-      }
-
-      // If any predicted collision already occurred during transit, trigger it immediately
-      if (target.trajectory.predictedCollisions) {
-        for (const col of target.trajectory.predictedCollisions) {
-          if (!col.triggered && elapsedLateMs >= col.timeMs) {
-            col.triggered = true;
-            const hitObj = this.objects.find((o) => o.id === col.targetId);
-            if (hitObj && !hitObj.isHeld) {
-              hitObj.velocity.x = col.impulseVx;
-              hitObj.velocity.y = col.impulseVy;
-              hitObj.verticalVelocity = col.impulseVz;
-              const remainingTime = elapsedLateMs - col.timeMs;
-              hitObj.trajectoryStartTime = performance.now() - remainingTime;
-              hitObj.trajectory = Trajectory.build(
-                hitObj,
-                hitObj.position.x,
-                hitObj.position.y,
-                hitObj.position.z,
-                hitObj.velocity.x,
-                hitObj.velocity.y,
-                hitObj.verticalVelocity,
-                this.arena,
-                [],
-                1
-              );
-            }
-          }
-        }
-      }
-    };
-
-    net.onWorldSnapshot = (packet) => {
-      // Non-host reconciles objects with host authoritative snapshot
-      if (net.isHost) return;
-
-      if (packet.arena) {
-        this.arena.gravity = packet.arena.gravity;
-        this.arena.frictionCoeff = packet.arena.frictionCoeff;
-        this.arena.staticFrictionThreshold = packet.arena.staticFrictionThreshold;
-      }
-
-      for (const objData of packet.objects) {
-        const localObj = this.objects.find((o) => o.id === objData.id);
-        if (localObj) {
-          // 1. If currently held by local player, local prediction is authoritative
-          if (this.character.heldObject === localObj) {
-            continue;
-          }
-
-          // 2. If object is animating along an analytical trajectory, DO NOT overwrite with snapshot!
-          if (localObj.trajectory) {
-            continue;
-          }
-
-          // 3. If locked by recent interaction action, skip snapshot override!
-          const lockUntil = this.objectOwnershipLocks.get(localObj.id);
-          if (lockUntil && performance.now() < lockUntil) {
-            continue;
-          }
-
-          if (objData.isHeld) {
-            localObj.isHeld = true;
-            localObj.position.x = objData.x;
-            localObj.position.y = objData.y;
-            localObj.position.z = objData.z;
-            localObj.velocity.x = objData.vx;
-            localObj.velocity.y = objData.vy;
-            localObj.verticalVelocity = objData.vz;
-            continue;
-          } else {
-            localObj.isHeld = false;
-          }
-
-          // Resting alignment: verify resting positions agree down to the millimeter
-          const isAtRest =
-            Math.hypot(objData.vx, objData.vy) < 0.05 &&
-            Math.abs(objData.vz) < 0.05 &&
-            Math.hypot(localObj.velocity.x, localObj.velocity.y) < 0.05 &&
-            Math.abs(localObj.verticalVelocity) < 0.05;
-
-          if (isAtRest) {
-            const dx = objData.x - localObj.position.x;
-            const dy = objData.y - localObj.position.y;
-            const errDist = Math.hypot(dx, dy);
-            if (errDist > 0.02) {
-              localObj.position.x += dx * 0.5;
-              localObj.position.y += dy * 0.5;
-            }
-            localObj.velocity.x = 0;
-            localObj.velocity.y = 0;
-            localObj.verticalVelocity = 0;
-          } else if (!localObj.trajectory) {
-            // Freebody in continuous motion without active trajectory (e.g. pushed slowly)
-            const dx = objData.x - localObj.position.x;
-            const dy = objData.y - localObj.position.y;
-            const dz = objData.z - localObj.position.z;
-            if (Math.hypot(dx, dy) > 0.05) {
-              localObj.position.x += dx * 0.3;
-              localObj.position.y += dy * 0.3;
-            }
-            if (Math.abs(dz) > 0.05) {
-              localObj.position.z += dz * 0.3;
-            }
-            localObj.velocity.x = objData.vx;
-            localObj.velocity.y = objData.vy;
-            localObj.verticalVelocity = objData.vz;
-          }
-        }
-      }
-    };
-
-    net.onHostEvent = (packet) => {
-      if (net.isHost) return;
-      if (packet.event === "object_deleted" && packet.objectId) {
-        const idx = this.objects.findIndex((o) => o.id === packet.objectId);
-        if (idx !== -1) {
-          const removed = this.objects.splice(idx, 1)[0];
-          if (this.character.heldObject === removed) {
-            this.character.heldObject = null;
-          }
-          this.devPanel.updateSelectorOptions();
-        }
-      }
-    };
-
-    net.onClientAction = (packet) => {
-      // Host executes action requested by guest
-      if (!net.isHost) return;
-      const remote = this.remoteCharacters.get(packet.playerId);
-      if (!remote) return;
-
-      if (packet.action === "pickup" && packet.targetObjectId) {
-        const target = this.objects.find((o) => o.id === packet.targetObjectId);
-        if (target && !target.isHeld && remote.pickupModule) {
-          target.trajectory = null;
-          remote.pickupModule.pickup(remote, target);
-        }
-      } else if (packet.action === "throw" && remote.heldObject && remote.throwModule) {
-        const thrown = remote.heldObject;
-        remote.throwModule.throwHeldObject(
-          remote,
-          packet.aimX ?? remote.position.x + Math.cos(remote.facingAngle) * 5,
-          packet.aimY ?? remote.position.y + Math.sin(remote.facingAngle) * 5,
-          this.arena
-        );
-        this.broadcastTrajectoryLaunch(thrown);
-      } else if (packet.action === "drop" && remote.heldObject) {
-        const dropped = remote.heldObject;
-        remote.heldObject.isHeld = false;
-        remote.heldObject.heldBy = null;
-        remote.heldObject = null;
-        this.broadcastTrajectoryLaunch(dropped);
-      }
-    };
-  }
-
-  /**
-   * Pre-calculates an analytical trajectory for the object and broadcasts
-   * its initial launch state to all other clients.
-   */
-  public broadcastTrajectoryLaunch(obj: GameObject): void {
-    obj.trajectoryStartTime = performance.now();
-    this.objectOwnershipLocks.set(obj.id, performance.now() + 6000);
-
-    // Potential colliders in the arena to predict collisions against
-    const potentialColliders = this.objects.filter(
-      (o) => o.id !== obj.id && !o.isHeld && o.hasCollider
-    );
-
-    // Precalculate trajectory locally starting at t=0 with object collision prediction
-    obj.trajectory = Trajectory.build(
-      obj,
-      obj.position.x,
-      obj.position.y,
-      obj.position.z,
-      obj.velocity.x,
-      obj.velocity.y,
-      obj.verticalVelocity,
-      this.arena,
-      potentialColliders,
-      1
-    );
-
-    if (this.networkManager) {
-      const launchTime = this.networkManager.getSyncedTime();
-      this.networkManager.sendTrajectoryLaunch({
-        objectId: obj.id,
-        playerId: this.character.playerId,
-        throwerPlayerId: obj.throwImmunityPlayerId || this.character.playerId,
-        t0: launchTime,
-        x0: obj.position.x,
-        y0: obj.position.y,
-        z0: obj.position.z,
-        vx0: obj.velocity.x,
-        vy0: obj.velocity.y,
-        vz0: obj.verticalVelocity,
-      });
-    }
-  }
-
-  /**
-   * Broadcast an object interaction (pickup, drop)
-   */
-  public broadcastObjectAction(
-    action: "throw" | "pickup" | "drop" | "impulse",
-    obj: GameObject
-  ): void {
-    if (!this.networkManager) return;
-    this.objectOwnershipLocks.set(obj.id, performance.now() + 2000);
-
-    this.networkManager.sendObjectAction({
-      action,
-      objectId: obj.id,
-      x: obj.position.x,
-      y: obj.position.y,
-      z: obj.position.z,
-      vx: obj.velocity.x,
-      vy: obj.velocity.y,
-      vz: obj.verticalVelocity,
-      rotX: obj.rollModule?.angularVelocity.x || 0,
-      rotY: obj.rollModule?.angularVelocity.y || 0,
-      rotZ: obj.rollModule?.angularVelocity.z || 0,
-      timestamp: this.networkManager.getSyncedTime(),
+    this.playerManager = new PlayerManager({
+      arena: this.arena,
+      inputManager: this.inputManager,
+      character: options.character,
     });
+
+    this.playerManager.onReliableActionDispatched = (action) => {
+      this.onReliableAction?.(action);
+    };
   }
 
-  private checkAndBroadcastImpulse(obj: GameObject): void {
-    const speed = Math.hypot(obj.velocity.x, obj.velocity.y, obj.verticalVelocity);
-    if (speed > 0.12) {
-      const now = performance.now();
-      const last = this.lastImpulseBroadcast.get(obj.id) || 0;
-      if (now - last > 50) {
-        this.lastImpulseBroadcast.set(obj.id, now);
-        this.broadcastTrajectoryLaunch(obj);
-      }
-    }
+  public spawnKeyboardPlayer(): Character {
+    this.lastTime = performance.now();
+    this.accumulator = 0;
+    return this.playerManager.spawnKeyboardPlayer();
+  }
+
+  public removeKeyboardPlayer(): void {
+    this.playerManager.removeKeyboardPlayer();
+  }
+
+  public spawnGamepadPlayer(slotIndex: number, gamepadName?: string): Character {
+    this.lastTime = performance.now();
+    this.accumulator = 0;
+    return this.playerManager.spawnGamepadPlayer(slotIndex, gamepadName);
+  }
+
+  public removeGamepadPlayer(slotIndex: number): void {
+    this.playerManager.removeGamepadPlayer(slotIndex);
+  }
+
+  public removePlayer(playerId: string): void {
+    this.playerManager.removePlayer(playerId);
   }
 
   public start(): void {
@@ -543,6 +182,202 @@ export class GameLoop {
     this.isRunning = false;
   }
 
+  private renderFrame(deltaSeconds: number): void {
+    const { targetGrabEntities, activeAimCursors } = this.playerManager.computeAimCursorsAndGrabTargets(
+      this.objects,
+      this.devPanel.isEditMode
+    );
+
+    const isWallEditor = this.devPanel.isEditMode && this.devPanel.editTool === "walls";
+    const ghostData = this.getGhostSnapshot ? this.getGhostSnapshot(deltaSeconds) : null;
+
+    this.renderer.globalCollisionMode = this.globalCollisionMode;
+    this.renderer.showGhostClones = this.getShowGhostClones ? this.getShowGhostClones() : this.showGhostClones;
+    this.renderer.historyBufferStatus = {
+      count: this.historyBuffer.getCount(),
+      capacity: this.historyBuffer.getCapacity(),
+    };
+    this.renderer.islandStats = this.islandManager.getStats();
+    this.renderer.timeDilation = this.timeDilation;
+    this.renderer.clockSyncStatus = this.latestClockSync;
+
+    // Apply clock sync feedback from server if present
+    if (ghostData?.clockSync) {
+      this.applyClockSync(ghostData.clockSync);
+    }
+
+    // Update live continuous buffer trail diagnostics for selected entity (or player)
+    if (this.renderer.showBufferTrail) {
+      const targetEntity = this.devPanel?.selectedEntity || this.allCharacters[0];
+      if (targetEntity) {
+        const targetId = targetEntity.id;
+        const allFrames = this.historyBuffer.getAllFrames();
+        const trailPoints: RollbackPathPoint[] = [];
+        for (const f of allFrames) {
+          const snap = f.snapshot.entities.find((e) => e.id === targetId);
+          if (snap) {
+            trailPoints.push({ x: snap.x, y: snap.y, z: snap.z, tick: f.tick });
+          }
+        }
+        trailPoints.push({
+          x: targetEntity.position.x,
+          y: targetEntity.position.y,
+          z: targetEntity.position.z,
+          tick: this.currentTick,
+        });
+
+        const depth = this.devPanel?.rollbackDepthTicks ?? 30;
+        const targetDepthTick = Math.max(this.historyBuffer.getOldestTick(), this.currentTick - depth);
+
+        this.renderer.liveBufferTrail = {
+          enabled: true,
+          points: trailPoints,
+          targetDepthTick,
+          radius: targetEntity.colliderRadius,
+          entityName: targetEntity.name,
+        };
+      } else {
+        this.renderer.liveBufferTrail = null;
+      }
+    } else {
+      this.renderer.liveBufferTrail = null;
+    }
+
+    // Feed incoming server state to the Phase 9 RemoteEntityInterpolator
+    if (ghostData) {
+      const now = performance.now();
+      const samples: RemoteEntitySample[] = [];
+      const ghostChars = (ghostData.characters && ghostData.characters.length > 0)
+        ? ghostData.characters
+        : (ghostData.character ? [ghostData.character] : []);
+
+      for (const gc of ghostChars) {
+        samples.push({
+          id: gc.id,
+          x: gc.x,
+          y: gc.y,
+          z: gc.z,
+          vx: gc.vx,
+          vy: gc.vy,
+          vz: gc.vz || 0,
+          facingAngle: gc.facingAngle ?? 0,
+          isClimbing: gc.isClimbing,
+          isAboveWalls: gc.isAboveWalls,
+          isGrounded: gc.isGrounded,
+          surfaceZ: gc.surfaceZ,
+          heldObjectId: gc.isHeld ? "held" : null,
+          heldBy: gc.heldBy,
+          color: gc.color,
+          radius: gc.radius,
+        });
+      }
+      this.interpolator.pushSnapshot(ghostData.seq, samples, now);
+    }
+
+    if (this.isSplitScreen) {
+      const activeEntries = Array.from(this.playerManager.players.values())
+        .sort((a, b) => a.playerNumber - b.playerNumber);
+
+      const playerViews: SplitScreenPlayerView[] = activeEntries.map((pe) => {
+        const cursor = Array.isArray(activeAimCursors)
+          ? activeAimCursors.find((c) => c.character === pe.character)
+          : null;
+        return {
+          playerNumber: pe.playerNumber,
+          playerName: pe.name,
+          playerColor: pe.color,
+          isKeyboard: pe.isKeyboard,
+          character: pe.character,
+          activeAimCursor: cursor,
+        };
+      });
+
+      // Sample remote player interpolated states
+      const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
+      const now = performance.now();
+      const rttMs = ghostData?.rttMs ?? 0;
+      for (const pe of activeEntries) {
+        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now, rttMs);
+        if (interp) {
+          remoteOverrides.set(pe.character.playerId, {
+            x: interp.x,
+            y: interp.y,
+            z: interp.z,
+            facingAngle: interp.facingAngle,
+            isClimbing: interp.isClimbing,
+          });
+        }
+      }
+
+      const renderGhostData = this.activeMode === "online" ? null : ghostData;
+
+      const viewports = this.renderer.renderSplitScreen(
+        this.arena,
+        playerViews,
+        this.objects,
+        renderGhostData,
+        remoteOverrides,
+        targetGrabEntities,
+        this.devPanel.isEditMode,
+        this.inputManager.hoverEntity,
+        this.inputManager.selectedCanvasEntity
+      );
+
+      // Route keyboard/mouse coordinates to whichever screen the keyboard player is on
+      const kbIndex = playerViews.findIndex((pv) => pv.isKeyboard);
+      if (kbIndex !== -1 && viewports[kbIndex]) {
+        this.inputManager.setKeyboardViewport(viewports[kbIndex]);
+      } else {
+        this.inputManager.setKeyboardViewport(null);
+      }
+    } else {
+      // Revert to full-canvas mouse coordinate mapping
+      this.inputManager.setKeyboardViewport(null);
+
+      const localHeroChar = this.playerManager.players.get("keyboard")?.character || this.allCharacters[0] || null;
+
+      // Sample remote player interpolated states for all non-local characters
+      const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
+      const now = performance.now();
+      const rttMs = ghostData?.rttMs ?? 0;
+      for (const char of this.allCharacters) {
+        if (localHeroChar && char === localHeroChar) continue;
+        const isLocalChar = Array.from(this.playerManager.players.values()).some((p) => p.character === char);
+        if (isLocalChar) continue;
+        const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);
+        if (interp) {
+          remoteOverrides.set(char.playerId, {
+            x: interp.x,
+            y: interp.y,
+            z: interp.z,
+            facingAngle: interp.facingAngle,
+            isClimbing: interp.isClimbing,
+          });
+        }
+      }
+
+      const renderGhostData = this.activeMode === "online" ? null : ghostData;
+
+      this.renderer.render(
+        this.arena,
+        this.allCharacters,
+        this.objects,
+        this.inputManager.selectedCanvasEntity,
+        this.devPanel.isEditMode,
+        this.inputManager.hoverEntity,
+        targetGrabEntities,
+        isWallEditor,
+        this.inputManager.hoverWallTile,
+        renderGhostData,
+        activeAimCursors,
+        undefined,
+        false,
+        localHeroChar,
+        remoteOverrides
+      );
+    }
+  }
+
   private tick(currentTime: number): void {
     if (!this.isRunning) return;
 
@@ -554,212 +389,629 @@ export class GameLoop {
       deltaSeconds = 0.2;
     }
 
-    this.accumulator += deltaSeconds;
+    if (!this.isPhysicsPaused) {
+      // Phase 6.3: Smoothly steer timeDilation toward targetTimeDilation
+      if (Math.abs(this.timeDilation - this.targetTimeDilation) > 0.0001) {
+        this.timeDilation += (this.targetTimeDilation - this.timeDilation) * this.timeDilationLerpRate;
+      } else {
+        this.timeDilation = this.targetTimeDilation;
+      }
 
-    // Fixed timestep simulation updates
-    while (this.accumulator >= this.fixedDt) {
-      this.updatePhysics(this.fixedDt);
-      this.accumulator -= this.fixedDt;
+      this.accumulator += deltaSeconds * this.timeDilation;
+
+      // Fixed timestep simulation updates
+      while (this.accumulator >= this.fixedDt) {
+        this.updatePhysics(this.fixedDt);
+        if (this.onPhysicsTick) {
+          this.onPhysicsTick(this.fixedDt, currentTime);
+        }
+        this.accumulator -= this.fixedDt;
+      }
     }
 
-    // Render current frame with active selection highlight & remote characters
-    this.renderer.render(
-      this.arena,
-      this.character,
-      this.objects,
-      this.inputManager.selectedCanvasEntity,
-      this.devPanel.isEditMode,
-      this.inputManager.hoverEntity,
-      Array.from(this.remoteCharacters.values())
-    );
-
-    // Update live inspector
+    this.renderFrame(deltaSeconds);
     this.devPanel.updateInspector();
 
     requestAnimationFrame((t) => this.tick(t));
   }
 
   private updatePhysics(dt: number): void {
+    this.currentTick++;
     const input = this.inputManager;
 
-    // 1. Update character with movement and aim inputs
-    if (input.draggedEntity !== this.character) {
-      this.character.updateCharacter(
-        dt,
-        input.movementVector,
-        input.isMouseDown && !this.devPanel.isEditMode,
-        input.mousePos,
-        this.arena
-      );
-    } else {
-      this.character.velocity.x = 0;
-      this.character.velocity.y = 0;
+    // Synchronize active entities and visual altitude scale on arena
+    this.arena.entities = [...this.allCharacters, ...this.objects];
+    this.arena.visualAltitudeScale = this.renderer.getHoverScale();
+
+    // 1. Poll connected Gamepads (rising-edge A button to join, analog sticks, triggers)
+    input.pollGamepadSlots(
+      this.players,
+      this.objects,
+      this.arena,
+      this.allCharacters,
+      (entity) => this.renderer.getVisualPosition(entity)
+    );
+    // 2. Update players (keyboard, gamepads, or idle baseCharacter) and capture inputs
+    const currentInputs = this.playerManager.updatePlayers(dt, this.objects, this.devPanel.isEditMode);
+    this.lastInputs = currentInputs;
+
+    // Synchronize remote characters from interpolation so local physics & queries reflect real positions
+    const nowPhys = performance.now();
+    for (const rc of this.playerManager.remotePlayers.values()) {
+      const interp = this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
+      if (interp) {
+        rc.position.x = interp.x;
+        rc.position.y = interp.y;
+        rc.position.z = interp.z;
+        rc.velocity.x = interp.vx;
+        rc.velocity.y = interp.vy;
+        if (interp.facingAngle !== undefined) rc.facingAngle = interp.facingAngle;
+        if (interp.isClimbing !== undefined) rc.isClimbing = interp.isClimbing;
+      }
+      // If remote character is holding an object, update the held object's transform to match hands!
+      if (rc.heldObject) {
+        const heldPos = rc.calculateHeldObjectPosition(this.arena);
+        rc.heldObject.position.x = heldPos.x;
+        rc.heldObject.position.y = heldPos.y;
+        rc.heldObject.position.z = heldPos.z;
+        rc.heldObject.velocity.x = rc.velocity.x;
+        rc.heldObject.velocity.y = rc.velocity.y;
+        rc.heldObject.isHeld = true;
+        rc.heldObject.heldBy = rc;
+      }
     }
 
-    // 2. Extrapolate and smoothly interpolate remote characters with exponential smoothing
-    for (const remote of this.remoteCharacters.values()) {
-      // Advance dead-reckoning target along velocity
-      remote.targetX += remote.velocity.x * dt;
-      remote.targetY += remote.velocity.y * dt;
-      remote.targetZ += remote.verticalVelocity * dt;
-
-      // Exponential smoothing towards target for liquid-smooth 60+ FPS motion
-      const blend = 1 - Math.exp(-22 * dt);
-      remote.position.x += (remote.targetX - remote.position.x) * blend;
-      remote.position.y += (remote.targetY - remote.position.y) * blend;
-      if (remote.verticalPositionModule) {
-        remote.position.z += (remote.targetZ - remote.position.z) * blend;
-      }
-
-      if (remote.heldObject) {
-        const handDist = remote.colliderRadius + remote.heldObject.colliderRadius * 0.5 + 0.08;
-        remote.heldObject.position.x = remote.position.x + Math.cos(remote.facingAngle) * handDist;
-        remote.heldObject.position.y = remote.position.y + Math.sin(remote.facingAngle) * handDist;
-        remote.heldObject.position.z = remote.heldObject.hasVerticalPosition ? 0.45 : 0;
-        remote.heldObject.velocity.x = remote.velocity.x;
-        remote.heldObject.velocity.y = remote.velocity.y;
-      }
-    }
-
-    // 3. Update all freebody objects locally on BOTH Host and Guest at 60 FPS
-    const localNow = performance.now();
+    // 3. Update all freebody objects (skip physics integration while manually dragged in Edit Mode)
     for (const obj of this.objects) {
-      if (input.draggedEntity === obj || obj.isHeld) {
-        if (obj.trajectory) obj.trajectory = null;
+      if (input.draggedEntity === obj) continue;
+      obj.updatePosition(dt, this.arena);
+    }
+
+    // 4. Resolve collisions across all characters and objects via CollisionResolver
+    CollisionResolver.resolveEntityCollisions(
+      [...this.allCharacters, ...this.objects],
+      this.arena,
+      dt,
+      input.draggedEntity,
+      this.globalCollisionMode
+    );
+
+    // 4b. Phase 3: Update physical interaction islands
+    this.islandManager.updateIslands(
+      this.allCharacters,
+      this.objects,
+      this.currentTick,
+      this.arena
+    );
+
+    // 5. Capture deterministic state snapshot for history, reconciliation, and networking
+    this.lastSnapshot = SnapshotManager.capture(
+      this.currentTick,
+      this.allCharacters,
+      this.objects
+    );
+
+    // 6. Record frame into circular history buffer
+    this.historyBuffer.push(this.currentTick, this.lastSnapshot, currentInputs);
+  }
+
+  public enableAuthoritativeObjectSync: boolean = true;
+  public maxObjectDrift: number = 0;
+
+  /**
+   * Synchronizes freebody objects with the authoritative server simulation snapshot in a smart, smooth way.
+   * - Held objects remain attached to the local holder.
+   * - Dragged objects in editor are bypassed.
+   * - Sleeping server objects snap accurately into identical rest coordinates and enter sleep mode (0 CPU).
+   * - Moving objects smoothly blend position, velocity, and angular roll toward authoritative state without snapping.
+   * - Large divergences (> 3.0 units) teleport directly to authoritative state.
+   */
+  public syncAuthoritativeObjects(serverObjects: GhostEntityState[], localClientId?: string, serverSeq?: number): void {
+    if (!this.enableAuthoritativeObjectSync) return;
+    if (!serverObjects || serverObjects.length === 0) return;
+    if (this.devPanel?.isEditMode) return;
+
+    // Reject out-of-order or duplicate server snapshots
+    if (serverSeq !== undefined && serverSeq <= this.lastAppliedObjectSeq) {
+      return;
+    }
+    if (serverSeq !== undefined) {
+      this.lastAppliedObjectSeq = serverSeq;
+    }
+
+    let maxDrift = 0;
+
+    for (const sObj of serverObjects) {
+      const localObj = this.objects.find((o) => o.id === sObj.id);
+      if (!localObj) continue;
+
+      // 1. Identify if held by any local player on this machine
+      const isHeldByAnyLocalPlayer = Boolean(
+        localObj.isHeld && localObj.heldBy &&
+        Array.from(this.players.values()).some((p) =>
+          p.character === localObj.heldBy ||
+          (localObj.heldBy as Character).playerId === p.id ||
+          (localObj.heldBy as Character).id === p.id
+        )
+      );
+
+      // 1a. If currently held by any local character on this machine, local holder transform governs
+      if (isHeldByAnyLocalPlayer) continue;
+
+      // 2. If dragged by user mouse in editor, user drag governs
+      if (this.inputManager?.draggedEntity === localObj) continue;
+
+      // 3. Remote Player Holding / Releasing Synchronizer:
+      const isHeldByMyClient = Boolean(
+        sObj.heldBy && localClientId && (sObj.heldBy === localClientId || sObj.heldBy.startsWith(`${localClientId}:`))
+      );
+      const isMyLocalId = Array.from(this.players.values()).some((p) => sObj.heldBy === p.id || sObj.heldBy === p.character.playerId);
+      const wasHeldByMe = isHeldByMyClient || isMyLocalId || Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character);
+
+      // Identify if any remote character is currently holding this object locally
+      const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c || p.character.playerId === c.playerId || p.id === c.playerId);
+      const remoteHolder = this.allCharacters.find(
+        (c) => (!isLocalChar(c)) && (c.heldObject === localObj || localObj.heldBy === c)
+      );
+
+      if (sObj.isHeld && sObj.heldBy) {
+        // Find remote character holding it
+        const targetRemoteHolder = this.allCharacters.find(
+          (c) => (c.playerId === sObj.heldBy || c.id === sObj.heldBy) && !isLocalChar(c)
+        );
+        if (targetRemoteHolder && !wasHeldByMe) {
+          localObj.isHeld = true;
+          localObj.heldBy = targetRemoteHolder;
+          targetRemoteHolder.heldObject = localObj;
+          const relPos = targetRemoteHolder.calculateHeldObjectPosition(this.arena);
+          localObj.position.x = relPos.x;
+          localObj.position.y = relPos.y;
+          localObj.position.z = relPos.z;
+          localObj.velocity.x = targetRemoteHolder.velocity.x;
+          localObj.velocity.y = targetRemoteHolder.velocity.y;
+          localObj.verticalVelocity = 0;
+          localObj.isInFlight = false;
+          continue;
+        }
+      } else if (remoteHolder || (localObj.isHeld && localObj.heldBy && !isLocalChar(localObj.heldBy as Character))) {
+        // Was held by a remote player locally, but server says it is now released/thrown!
+        const prevHolder = (localObj.heldBy as Character) || remoteHolder;
+        if (prevHolder && prevHolder.heldObject === localObj) {
+          prevHolder.heldObject = null;
+        }
+        localObj.isHeld = false;
+        localObj.heldBy = null;
+
+        // INSTANT THROW HAND-OFF (Zero Hesitation):
+        // Immediately snap to authoritative launch trajectory without slow 30% blending!
+        localObj.position.x = sObj.x;
+        localObj.position.y = sObj.y;
+        localObj.position.z = sObj.z;
+        localObj.velocity.x = sObj.vx;
+        localObj.velocity.y = sObj.vy;
+        localObj.verticalVelocity = sObj.vz ?? 0;
+        localObj.isInFlight = !sObj.isGrounded;
+        localObj.wakeUp();
+        if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+          localObj.rollModule.angularVelocity.x = sObj.angX;
+          localObj.rollModule.angularVelocity.y = sObj.angY;
+          localObj.rollModule.angularVelocity.z = sObj.angZ;
+        }
         continue;
       }
 
-      if (obj.trajectory) {
-        const elapsedMs = localNow - obj.trajectoryStartTime;
-        const sample = obj.trajectory.sample(elapsedMs);
-        obj.position.x = sample.x;
-        obj.position.y = sample.y;
-        obj.position.z = sample.z;
-        obj.velocity.x = sample.vx;
-        obj.velocity.y = sample.vy;
-        obj.verticalVelocity = sample.vz;
-        obj.supportingSurfaceHeight = this.arena.getSupportingSurfaceHeight(obj.position.x, obj.position.y);
-        if (obj.rollModule && obj.rollModule.enabled) {
-          obj.rollModule.angularVelocity.x = sample.rotX;
-          obj.rollModule.angularVelocity.y = sample.rotY;
-          obj.rollModule.angularVelocity.z = sample.rotZ;
-          obj.rollModule.updateVisualPhase(dt);
-        }
+      // 4. Client-Side Prediction for Thrown / Dropped / Released Objects by LOCAL player:
+      // If the server still reports the object as held by ME, but the local client
+      // has already thrown or dropped it locally (!localObj.isHeld):
+      // The server is simply trailing by the network round-trip and hasn't processed the release yet.
+      // Do NOT drag the in-flight object back into the player's hands or kill its velocity!
+      if (sObj.isHeld && !localObj.isHeld && (wasHeldByMe || localObj.isInFlight)) {
+        continue;
+      }
 
-        // Trigger precalculated collisions with other objects at the exact impact moment
-        if (obj.trajectory.predictedCollisions) {
-          for (const collision of obj.trajectory.predictedCollisions) {
-            if (!collision.triggered && elapsedMs >= collision.timeMs) {
-              collision.triggered = true;
-              const hitObj = this.objects.find((o) => o.id === collision.targetId);
-              if (hitObj && !hitObj.isHeld) {
-                hitObj.velocity.x = collision.impulseVx;
-                hitObj.velocity.y = collision.impulseVy;
-                hitObj.verticalVelocity = collision.impulseVz;
-
-                // Launch trajectory for the hit object if host or the thrower
-                if (!this.networkManager || this.networkManager.isHost || obj.throwImmunityPlayerId === this.character.playerId) {
-                  this.broadcastTrajectoryLaunch(hitObj);
-                } else {
-                  // Non-thrower guest predicts trajectory locally immediately for 0-latency response
-                  hitObj.trajectoryStartTime = performance.now();
-                  const hitColliders = this.objects.filter((o) => o.id !== hitObj.id && !o.isHeld && o.hasCollider);
-                  hitObj.trajectory = Trajectory.build(
-                    hitObj,
-                    hitObj.position.x,
-                    hitObj.position.y,
-                    hitObj.position.z,
-                    hitObj.velocity.x,
-                    hitObj.velocity.y,
-                    hitObj.verticalVelocity,
-                    this.arena,
-                    hitColliders,
-                    1
-                  );
-                }
-              }
-            }
-          }
+      // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
+      // While a thrown object is in ballistic flight from local player, client predicts 100% locally
+      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
+      if (wasThrownByLocal && (localObj.isInFlight || localObj.lastThrower) && (isAirborne || localObj.isInFlight)) {
+        if (sObj.isSleeping || Math.hypot(sObj.vx, sObj.vy) < 0.1) {
+          continue;
         }
+      }
 
-        if (obj.trajectory.isComplete(elapsedMs)) {
-          obj.trajectory = null;
-          obj.velocity.x = 0;
-          obj.velocity.y = 0;
-          obj.verticalVelocity = 0;
+      // 3. Check physical distance to authoritative server position
+      const dx = sObj.x - localObj.position.x;
+      const dy = sObj.y - localObj.position.y;
+      const dz = sObj.z - localObj.position.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > maxDrift) maxDrift = dist;
+
+      // 4. Server Sleeping / Resting State Synchronization
+      if (sObj.isSleeping) {
+        const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+        // If nearby and moving slowly, snap to exact bit-level rest position and sleep
+        if (dist < 1.0 && localSpeed < 0.3) {
+          localObj.position.x = sObj.x;
+          localObj.position.y = sObj.y;
+          localObj.position.z = sObj.z;
+          localObj.putToSleep();
+          continue;
         }
-      } else {
-        obj.updatePosition(dt, this.arena);
+      }
+
+      // 5. Hard Teleport on Massive Divergence (> 3.0 units)
+      if (dist > 3.0) {
+        localObj.position.x = sObj.x;
+        localObj.position.y = sObj.y;
+        localObj.position.z = sObj.z;
+        localObj.velocity.x = sObj.vx;
+        localObj.velocity.y = sObj.vy;
+        localObj.verticalVelocity = sObj.vz ?? 0;
+        if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+          localObj.rollModule.angularVelocity.x = sObj.angX;
+          localObj.rollModule.angularVelocity.y = sObj.angY;
+          localObj.rollModule.angularVelocity.z = sObj.angZ;
+        }
+        continue;
+      }
+
+      // 6. Deadzone & micro-flutter filter:
+      if (dist < 0.02) {
+        continue;
+      }
+
+      // 7. Smart Smooth Convergence
+      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+      const blend = localSpeed > 0.2 ? 0.30 : 0.25;
+      localObj.position.x += dx * blend;
+      localObj.position.y += dy * blend;
+      localObj.position.z += dz * blend;
+      localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
+      localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
+      if (sObj.vz !== undefined) {
+        localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+      }
+      if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+        localObj.rollModule.angularVelocity.x += (sObj.angX - localObj.rollModule.angularVelocity.x) * blend;
+        localObj.rollModule.angularVelocity.y += (sObj.angY - localObj.rollModule.angularVelocity.y) * blend;
+        localObj.rollModule.angularVelocity.z += (sObj.angZ - localObj.rollModule.angularVelocity.z) * blend;
       }
     }
 
-    // 4. Continuous hold-to-grab (only active in Play Mode):
-    if (!this.devPanel.isEditMode && input.isMouseDown && !this.character.heldObject && this.character.pickupModule) {
-      const target = this.character.pickupModule.findTargetObject(
-        this.character,
-        input.mousePos.x,
-        input.mousePos.y,
-        this.objects
-      );
-      if (target) {
-        target.trajectory = null;
-        this.character.pickupModule.pickup(this.character, target);
-        input.justPickedUp = true;
-        this.broadcastObjectAction("pickup", target);
-      }
-    }
-
-    // 5. Resolve freebody-to-freebody circle collisions (including remote players!)
-    this.resolveFreebodyCollisions();
-
-    // 6. Network streaming
-    if (this.networkManager) {
-      this.networkManager.sendPlayerState(
-        this.character.position.x,
-        this.character.position.y,
-        this.character.position.z,
-        this.character.velocity.x,
-        this.character.velocity.y,
-        this.character.verticalVelocity,
-        this.character.facingAngle,
-        this.character.isAiming,
-        this.character.aimTarget,
-        this.character.heldObject?.id || null,
-        this.character.isActivelyWalking
-      );
-
-      if (this.networkManager.isHost) {
-        const snapshotObjects: ObjectNetworkData[] = this.objects.map((o) => ({
-          id: o.id,
-          x: o.position.x,
-          y: o.position.y,
-          z: o.position.z,
-          vx: o.velocity.x,
-          vy: o.velocity.y,
-          vz: o.verticalVelocity,
-          rotX: o.rollModule?.angularVelocity.x || 0,
-          rotY: o.rollModule?.angularVelocity.y || 0,
-          rotZ: o.rollModule?.angularVelocity.z || 0,
-          isHeld: o.isHeld,
-          heldByPlayerId: o.heldBy instanceof Character ? (o.heldBy as Character).playerId : null,
-          supportingSurfaceHeight: o.supportingSurfaceHeight,
-        }));
-
-        this.networkManager.sendWorldSnapshot(snapshotObjects, {
-          gravity: this.arena.gravity,
-          frictionCoeff: this.arena.frictionCoeff,
-          staticFrictionThreshold: this.arena.staticFrictionThreshold,
-        });
-      }
-    }
+    this.maxObjectDrift = maxDrift;
   }
 
-  private resolveFreebodyCollisions(): void {
-    const all = [this.character, ...Array.from(this.remoteCharacters.values()), ...this.objects];
+  /**
+   * Phase 8: Reconciles an authoritative world snapshot against client-side prediction history.
+   * Compares the snapshot with the client frame at serverSnapshot.lastProcessedInputTick[playerId].
+   * If within deadzones (pos < 0.05u, vel < 0.15u/s), confirms prediction without re-simulating.
+   * If diverged, rewinds local player, re-simulates to present, and applies visual smoothing dampeners.
+   */
+  public reconcileWorldSnapshot(snapshot: AuthoritativeWorldSnapshot): ReconciliationResult {
+    const localPlayerId = this.primaryCharacter?.playerId || "keyboard";
+    return PredictionReconciliation.reconcile(
+      snapshot,
+      this.historyBuffer,
+      this.currentTick,
+      localPlayerId,
+      this.allCharacters,
+      this.objects,
+      this.arena,
+      this.playerManager,
+      this.fixedDt,
+      this.globalCollisionMode,
+      this.devPanel.isEditMode
+    );
+  }
+
+  /**
+   * Rewinds the simulation back by N ticks and re-simulates forward using historical inputs,
+   * verifying bit-level deterministic state reproduction.
+   */
+  public simulateRollbackTest(ticksBack: number = 30): RollbackResult {
+    const startTime = performance.now();
+    const currentTick = this.currentTick;
+    const availableTicks = this.historyBuffer.getCount() - 1;
+
+    if (availableTicks <= 0) {
+      return {
+        success: false,
+        startTick: currentTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: "History buffer is empty. Let the simulation run for a few ticks first.",
+      };
+    }
+
+    const clampedTicksBack = Math.max(1, Math.min(ticksBack, this.historyBuffer.maxRollbackTicks, availableTicks));
+    const targetTick = currentTick - clampedTicksBack;
+    const targetFrame = this.historyBuffer.get(targetTick);
+
+    if (!targetFrame) {
+      return {
+        success: false,
+        startTick: targetTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: `Historical snapshot for tick #${targetTick} not found in buffer.`,
+      };
+    }
+
+    // 1. Capture original present state for exact verification
+    const originalPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+
+    // 2. Roll back state to targetTick
+    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
+    let simTick = targetTick;
+
+    const targetEntity = this.devPanel?.selectedEntity || this.allCharacters[0];
+    const replayedPath: RollbackPathPoint[] = [{
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: targetTick,
+    }];
+
+    // 3. Re-simulate forward tick-by-tick up to currentTick using recorded inputs
+    while (simTick < currentTick) {
+      simTick++;
+      const frame = this.historyBuffer.get(simTick);
+      const inputs = frame ? frame.inputs : new Map();
+
+      // Apply historical inputs
+      this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
+
+      // Step objects (skipping sleeping bodies)
+      for (const obj of this.objects) {
+        if (obj.isSleeping) continue;
+        obj.updatePosition(this.fixedDt, this.arena);
+      }
+
+      // Resolve collisions
+      CollisionResolver.resolveEntityCollisions(
+        [...this.allCharacters, ...this.objects],
+        this.arena,
+        this.fixedDt,
+        null,
+        this.globalCollisionMode
+      );
+
+      replayedPath.push({
+        x: targetEntity.position.x,
+        y: targetEntity.position.y,
+        z: targetEntity.position.z,
+        tick: simTick,
+      });
+    }
+
+    // 4. Capture replayed state and check divergence against original
+    const replayedPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+    const divergence = SnapshotManager.hasDivergence(originalPresent, replayedPresent, 0.0001, 0.0001);
+    const elapsedMs = performance.now() - startTime;
+
+    // Display replayed ghost trace on canvas
+    this.renderer.rollbackDiagnostics = {
+      type: "pure_replay",
+      targetName: targetEntity.name,
+      startTick: targetTick,
+      endTick: currentTick,
+      timestamp: performance.now(),
+      durationMs: 3500,
+      radius: targetEntity.colliderRadius,
+      originalPath: replayedPath,
+      reconciledPath: replayedPath,
+      deltaPos: divergence.maxDeltaPos,
+    };
+
+    return {
+      success: true,
+      startTick: targetTick,
+      endTick: currentTick,
+      ticksReplayed: clampedTicksBack,
+      durationMs: elapsedMs,
+      diverged: divergence.diverged,
+      entityId: divergence.entityId,
+      maxDeltaPos: divergence.maxDeltaPos,
+      maxDeltaVel: divergence.maxDeltaVel,
+      message: divergence.diverged
+        ? `DIVERGENCE DETECTED: Entity ${divergence.entityId} deviated by ${divergence.maxDeltaPos.toFixed(4)}u!`
+        : `PERFECT REPLAY: ${clampedTicksBack} ticks re-simulated in ${elapsedMs.toFixed(2)}ms with 0.0000u divergence!`,
+    };
+  }
+
+  /**
+   * Injects a physical perturbation into the past (Tick T - N) and re-simulates forward,
+   * demonstrating how client-side prediction reconciles when a server packet alters past state.
+   */
+  public injectPerturbationTest(ticksBack: number = 20, targetOverride?: GameObject | null): RollbackResult {
+    const startTime = performance.now();
+    const currentTick = this.currentTick;
+    const availableTicks = this.historyBuffer.getCount() - 1;
+
+    if (availableTicks <= 0) {
+      return {
+        success: false,
+        startTick: currentTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: "History buffer is empty. Let the simulation run for a few ticks first.",
+      };
+    }
+
+    const clampedTicksBack = Math.max(1, Math.min(ticksBack, this.historyBuffer.maxRollbackTicks, availableTicks));
+    const targetTick = currentTick - clampedTicksBack;
+    const targetFrame = this.historyBuffer.get(targetTick);
+
+    if (!targetFrame) {
+      return {
+        success: false,
+        startTick: targetTick,
+        endTick: currentTick,
+        ticksReplayed: 0,
+        durationMs: 0,
+        diverged: false,
+        maxDeltaPos: 0,
+        maxDeltaVel: 0,
+        message: `Historical snapshot for tick #${targetTick} not found in buffer.`,
+      };
+    }
+
+    // 1. Capture original present state
+    const originalPresent = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+
+    // Identify target entity to apply the simulated tackle to
+    let candidate: GameObject | null | undefined = targetOverride || this.devPanel?.selectedEntity;
+    if (candidate && !candidate.hasRigidbody) {
+      candidate = null;
+    }
+    const targetEntity = candidate || this.objects.find(o => o.hasRigidbody) || this.allCharacters[0];
+    const targetId = targetEntity.id;
+
+    // Capture the original predicted path from the history buffer for comparison
+    const originalPath: RollbackPathPoint[] = [];
+    for (let t = targetTick; t <= currentTick; t++) {
+      const f = this.historyBuffer.get(t);
+      if (f) {
+        const entSnap = f.snapshot.entities.find(e => e.id === targetId);
+        if (entSnap) {
+          originalPath.push({ x: entSnap.x, y: entSnap.y, z: entSnap.z, tick: t });
+        }
+      }
+    }
+    originalPath.push({
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: currentTick,
+    });
+
+    // 2. Roll back state to targetTick
+    SnapshotManager.apply(targetFrame.snapshot, this.allCharacters, this.objects);
+    const impactPos = { x: targetEntity.position.x, y: targetEntity.position.y, z: targetEntity.position.z };
+
+    // 3. Inject past tackle impulse (simulating an external hit or collision from another player)
+    targetEntity.wakeUp();
+    if (targetEntity.hasRigidbody) {
+      const speed = Math.hypot(targetEntity.velocity.x, targetEntity.velocity.y);
+      if (speed > 1.0) {
+        const perpX = -targetEntity.velocity.y / speed;
+        const perpY = targetEntity.velocity.x / speed;
+        targetEntity.velocity.x += perpX * 12.0;
+        targetEntity.velocity.y += perpY * 12.0;
+      } else {
+        targetEntity.velocity.x += 12.0;
+        targetEntity.velocity.y -= 10.0;
+      }
+    }
+
+    const reconciledPath: RollbackPathPoint[] = [{
+      x: targetEntity.position.x,
+      y: targetEntity.position.y,
+      z: targetEntity.position.z,
+      tick: targetTick,
+    }];
+
+    let simTick = targetTick;
+
+    // Update targetTick snapshot with the newly perturbed state
+    this.historyBuffer.updateSnapshot(
+      targetTick,
+      SnapshotManager.capture(targetTick, this.allCharacters, this.objects)
+    );
+
+    // 4. Re-simulate forward to currentTick, using Island optimization (only re-simulating active/influenced bodies)
+    while (simTick < currentTick) {
+      simTick++;
+      const frame = this.historyBuffer.get(simTick);
+      const inputs = frame ? frame.inputs : new Map();
+
+      this.playerManager.applyPlayerInputs(inputs, this.fixedDt, this.objects, this.devPanel.isEditMode);
+
+      // Phase 3: Only update active, non-sleeping entities
+      for (const obj of this.objects) {
+        if (obj.isSleeping) continue;
+        obj.updatePosition(this.fixedDt, this.arena);
+      }
+
+      CollisionResolver.resolveEntityCollisions(
+        [...this.allCharacters, ...this.objects],
+        this.arena,
+        this.fixedDt,
+        null,
+        this.globalCollisionMode
+      );
+
+      // Overwrite the historical snapshot in the ring buffer with the newly simulated reality
+      const stepSnapshot = SnapshotManager.capture(simTick, this.allCharacters, this.objects);
+      this.historyBuffer.updateSnapshot(simTick, stepSnapshot);
+
+      reconciledPath.push({
+        x: targetEntity.position.x,
+        y: targetEntity.position.y,
+        z: targetEntity.position.z,
+        tick: simTick,
+      });
+    }
+
+    // 5. Update lastSnapshot
+    this.lastSnapshot = SnapshotManager.capture(currentTick, this.allCharacters, this.objects);
+    const divergence = SnapshotManager.hasDivergence(originalPresent, this.lastSnapshot, 0.05, 0.1);
+    const elapsedMs = performance.now() - startTime;
+
+    // Trigger ghost visual diagnostics showing old vs. new path
+    this.renderer.rollbackDiagnostics = {
+      type: "desync_tackle",
+      targetName: targetEntity.name,
+      startTick: targetTick,
+      endTick: currentTick,
+      timestamp: performance.now(),
+      durationMs: 4500, // 4.5 seconds of smooth visibility
+      radius: targetEntity.colliderRadius,
+      originalPath,
+      reconciledPath,
+      impactPos,
+      deltaPos: divergence.maxDeltaPos,
+    };
+
+    return {
+      success: true,
+      startTick: targetTick,
+      endTick: currentTick,
+      ticksReplayed: clampedTicksBack,
+      durationMs: elapsedMs,
+      diverged: divergence.diverged,
+      entityId: targetEntity ? targetEntity.id : undefined,
+      maxDeltaPos: divergence.maxDeltaPos,
+      maxDeltaVel: divergence.maxDeltaVel,
+      message: `PAST TACKLE RECONCILED: Injected tackle impulse at tick #${targetTick} on ${targetEntity?.name || 'entity'}; forward timeline re-routed by ${divergence.maxDeltaPos.toFixed(2)}u in ${elapsedMs.toFixed(2)}ms.`,
+    };
+  }
+
+  public resolveFreebodyCollisions(dt: number = this.fixedDt): void {
+    CollisionResolver.resolveEntityCollisions(
+      [...this.allCharacters, ...this.objects],
+      this.arena,
+      dt,
+      this.inputManager.draggedEntity,
+      this.globalCollisionMode
+    );
+  }
+
+  public legacyResolveFreebodyCollisions(): void {
+    const all = [...this.allCharacters, ...this.objects];
     const input = this.inputManager;
-    const localBumpedObjects = new Set<GameObject>();
-    const objectCollisions = new Set<GameObject>();
-    const remoteBumpedObjects = new Set<GameObject>();
 
     // Iterative separation solver: pushes entities away until not overlapping
     const iterations = 3;
@@ -775,46 +1027,12 @@ export class GameLoop {
           // Skip if either entity does not have an active collider
           if (!a.hasCollider || !b.hasCollider) continue;
 
-          // Skip collision between thrower and thrown object while separating
-          const nowPerf = performance.now();
-          if (a.isCharacter && b.throwImmunityPlayerId && b.throwImmunityUntil > nowPerf) {
-            if (b.throwImmunityPlayerId === (a as Character).playerId || (b.throwImmunityPlayerId === "local" && a === this.character)) {
-              continue;
-            }
-          }
-          if (b.isCharacter && a.throwImmunityPlayerId && a.throwImmunityUntil > nowPerf) {
-            if (a.throwImmunityPlayerId === (b as Character).playerId || (a.throwImmunityPlayerId === "local" && b === this.character)) {
-              continue;
-            }
-          }
-
-          // Skip frame-by-frame collision solver if this object pair collision was already predicted in either trajectory
-          if (
-            this.objects.includes(a as GameObject) &&
-            this.objects.includes(b as GameObject) &&
-            (((a as GameObject).trajectory?.hasPredictedCollisionWith((b as GameObject).id)) ||
-             ((b as GameObject).trajectory?.hasPredictedCollisionWith((a as GameObject).id)))
-          ) {
-            continue;
-          }
-
-          // Two-Tier Altitude Collision Rule:
-          // 1. All colliders below wall height collide with each other, and NOT with colliders above wall height.
-          // 2. All colliders above wall height (including objects resting on walls) collide with each other, and NOT with colliders below wall height.
-          const wallThreshold = this.arena.wallHeight - 0.15;
-          const aAboveWall = a.position.z >= wallThreshold || a.supportingSurfaceHeight >= wallThreshold;
-          const bAboveWall = b.position.z >= wallThreshold || b.supportingSurfaceHeight >= wallThreshold;
-
-          // If one is above wall height and the other is not, they never collide (clean pass-over)
-          if (aAboveWall !== bAboveWall) continue;
-
-          // 3D vertical span check: objects flying in the air do not collide with ground entities below them
-          const aMinZ = a.isCharacter ? a.position.z : (a.hasVerticalPosition ? a.position.z - a.colliderRadius * 0.5 : 0);
-          const aMaxZ = a.isCharacter ? a.position.z + 0.7 : (a.hasVerticalPosition ? a.position.z + a.colliderRadius * 0.5 : 0.2);
-          const bMinZ = b.isCharacter ? b.position.z : (b.hasVerticalPosition ? b.position.z - b.colliderRadius * 0.5 : 0);
-          const bMaxZ = b.isCharacter ? b.position.z + 0.7 : (b.hasVerticalPosition ? b.position.z + b.colliderRadius * 0.5 : 0.2);
-
-          if (aMinZ > bMaxZ || bMinZ > aMaxZ) continue;
+          // Infinite Virtual Layer Collision Rule:
+          // Objects only collide if they are on the exact same layer (height / wallHeight).
+          // Only Layer 1 has walls.
+          const layerA = GameObject.getEntityLayer(a, this.arena.wallHeight);
+          const layerB = GameObject.getEntityLayer(b, this.arena.wallHeight);
+          if (layerA !== layerB) continue;
 
           // 2D planar distance between the centers of the two colliders
           const dx = b.position.x - a.position.x;
@@ -921,95 +1139,61 @@ export class GameLoop {
               const eB = (b.isCharacter || !b.hasBounce) ? 0.0 : (b.bounceMod ?? 0.0);
               const restitution = (isActivelyPushing || !canBounce) ? 0.0 : Math.max(0.0, Math.min(0.98, Math.max(eA, eB)));
 
+              // Normal impulse magnitude J_n (strictly conserving linear momentum)
               const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
 
-                a.velocity.x -= normalImpulse * invMassA * normX;
-                a.velocity.y -= normalImpulse * invMassA * normY;
-                b.velocity.x += normalImpulse * invMassB * normX;
-                b.velocity.y += normalImpulse * invMassB * normY;
+              a.velocity.x -= normalImpulse * invMassA * normX;
+              a.velocity.y -= normalImpulse * invMassA * normY;
 
-                // Tangential relative velocity (perpendicular to normal)
-                const tangX = -normY;
-                const tangY = normX;
-                const relVt = relVx * tangX + relVy * tangY;
+              b.velocity.x += normalImpulse * invMassB * normX;
+              b.velocity.y += normalImpulse * invMassB * normY;
 
-                if (Math.abs(relVt) > 0.001) {
-                  // Contact friction
-                  const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-                  const beta = 0.4; // Sphere rotational inertia factor
-                  const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
-                  const maxFricImpulse = muObj * Math.abs(normalImpulse);
-                  const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
+              // Tangential relative velocity (perpendicular to normal)
+              const tangX = -normY;
+              const tangY = normX;
+              const relVt = relVx * tangX + relVy * tangY;
 
-                  // Tangential impulse opposes relative sliding velocity
-                  a.velocity.x += fricImpulse * invMassA * tangX;
-                  a.velocity.y += fricImpulse * invMassA * tangY;
+              if (Math.abs(relVt) > 0.001) {
+                // Contact friction
+                const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+                const beta = 0.4; // Sphere rotational inertia factor
+                const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+                const maxFricImpulse = muObj * Math.abs(normalImpulse);
+                const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
 
-                  b.velocity.x -= fricImpulse * invMassB * tangX;
-                  b.velocity.y -= fricImpulse * invMassB * tangY;
+                // Tangential impulse opposes relative sliding velocity
+                a.velocity.x += fricImpulse * invMassA * tangX;
+                a.velocity.y += fricImpulse * invMassA * tangY;
 
-                  // Rotational coupling if roll module is present
-                  if (a.rollModule && a.rollModule.enabled) {
-                    const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
-                    a.rollModule.angularVelocity.z += spinImpulse;
-                    a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+                b.velocity.x -= fricImpulse * invMassB * tangX;
+                b.velocity.y -= fricImpulse * invMassB * tangY;
 
-                    if (a.isRestingOnSurface) {
-                      a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
-                      a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
-                    }
-                  }
+                // Rotational coupling if roll module is present
+                if (a.rollModule && a.rollModule.enabled) {
+                  const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+                  a.rollModule.angularVelocity.z += spinImpulse;
+                  a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
 
-                  if (b.rollModule && b.rollModule.enabled) {
-                    const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
-                    b.rollModule.angularVelocity.z -= spinImpulseB;
-                    b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
-
-                    if (b.isRestingOnSurface) {
-                      b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
-                      b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
-                    }
+                  if (a.isRestingOnSurface) {
+                    a.rollModule.angularVelocity.y = a.velocity.x / a.colliderRadius;
+                    a.rollModule.angularVelocity.x = -a.velocity.y / a.colliderRadius;
                   }
                 }
-              }
 
-              // Check collisions and clear old trajectories for recalculated paths
-              if (a === this.character && !b.isHeld && this.objects.includes(b as GameObject)) {
-                (b as GameObject).trajectory = null;
-                localBumpedObjects.add(b as GameObject);
-              } else if (b === this.character && !a.isHeld && this.objects.includes(a as GameObject)) {
-                (a as GameObject).trajectory = null;
-                localBumpedObjects.add(a as GameObject);
-              } else if (this.objects.includes(a as GameObject) && this.objects.includes(b as GameObject)) {
-                (a as GameObject).trajectory = null;
-                (b as GameObject).trajectory = null;
-                objectCollisions.add(a as GameObject);
-                objectCollisions.add(b as GameObject);
-              } else if (this.networkManager?.isHost) {
-                if (this.objects.includes(b as GameObject) && !b.isHeld) {
-                  (b as GameObject).trajectory = null;
-                  remoteBumpedObjects.add(b as GameObject);
-                } else if (this.objects.includes(a as GameObject) && !a.isHeld) {
-                  (a as GameObject).trajectory = null;
-                  remoteBumpedObjects.add(a as GameObject);
+                if (b.rollModule && b.rollModule.enabled) {
+                  const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+                  b.rollModule.angularVelocity.z -= spinImpulseB;
+                  b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+
+                  if (b.isRestingOnSurface) {
+                    b.rollModule.angularVelocity.y = b.velocity.x / b.colliderRadius;
+                    b.rollModule.angularVelocity.x = -b.velocity.y / b.colliderRadius;
+                  }
                 }
               }
             }
           }
         }
-      }
-
-    // Recalculate & broadcast trajectories for any bumped objects after solver iterations
-    for (const obj of localBumpedObjects) {
-      this.checkAndBroadcastImpulse(obj);
-    }
-
-    if (!this.networkManager || this.networkManager.isHost) {
-      for (const obj of objectCollisions) {
-        this.checkAndBroadcastImpulse(obj);
-      }
-      for (const obj of remoteBumpedObjects) {
-        this.checkAndBroadcastImpulse(obj);
       }
     }
   }

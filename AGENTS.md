@@ -1,0 +1,1286 @@
+# AGENTS.md — Shared Agent Memory & Architecture Guide
+
+> **Notice to All AI Agents**:  
+> You **MUST** read this document at the start of every session before doing research, planning, or editing code.  
+> Before wrapping up your task or concluding your turn, you **MUST** update this file to reflect any new architectural decisions, progress made, or changes to the project roadmap.  
+> **Git Rule**: You **MUST** push to origin (`git push origin <branch>`) every single time you commit. Never leave commits unpushed.
+
+---
+
+## 🔒 Sealed & Read-Only Files ("Complete" Modules)
+> **CRITICAL AGENT CONSTRAINT**:  
+> The following files have been audited, fully verified, and deemed feature-complete.  
+> Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless the USER explicitly names the file and gives an direct instruction to modify it:
+>
+> 1. `src/engine/MassModule.ts` — Mass, inertia, inverse mass calculations.
+> 2. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
+> 3. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
+> 4. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
+> 5. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
+> 6. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
+> 7. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
+>
+> If a new feature requires interacting with these systems, interact strictly through their existing public APIs. Do not modify the source files.
+>
+> **Enforcement Mechanics**:
+> - **OS-Level Lock**: Marked with Windows file system `attrib +r` (IsReadOnly = True). Any write attempt triggers an immediate OS `Access is denied` / `EPERM` error.
+> - **Git Pre-Commit Hook**: Enforced via `.githooks/pre-commit`. Any commit attempting to stage these files will be aborted automatically.
+
+---
+
+## 1. Project Overview & Tech Stack
+
+### High-Level Concept
+**Power Creature Game (Prototype 1)** is a top-down 2D action arena and interactive developer sandbox where creatures fight, sprint, climb, and pick up / throw dynamic freebodies (rocks, crates, food, and even other creatures) across an arena featuring walls of physical height.
+
+### Tech Stack
+- **Language & Runtime**: TypeScript 5.7+, Node.js (v18+)
+- **Build Tool & Bundler**: Vite 6.x (`npm run dev`, `npm run build`)
+- **Graphics & Rendering**: Vanilla HTML5 Canvas 2D (custom software renderer with pseudo-3D altitude scaling, ground footprint shadows, and wall-height indicator rings; multiplayer ghost clones dynamically synchronize with view settings modes: bigger, hover, or both)
+- **Styling**: Vanilla CSS with modern dark glassmorphic UI tokens (`src/style.css`)
+- **Networking**: WebSocket protocol with JSON telemetry; currently uses 3rd-party cloud echo relays (`wss://echo.websocket.org`, `wss://ws.postman-echo.com/raw`) for latency & ghost clone validation
+- **Launcher / Desktop App**: Lightweight C# launcher (`Launcher.cs` / `LaunchGame.exe` / `desktop_app/`)
+
+### File Structure Map
+```text
+powerCreatureGamePrototype1/
+├── DESIGN_DOC.md          # Living Master Design Document
+├── PHASE_ONE.md           # Phase 1 properties & milestone notes
+├── PHYSICS_NETWORKING_PLAN.md # Living Phase 1.2 Physics Networking Plan (editable by user)
+├── MULTIPLAYER_PHASES.txt # Living editable multiplayer roadmap & phase checklist
+├── AGENTS.md              # Shared agent memory across sessions & devices (this file)
+├── index.html             # Main entry HTML, top bar, HUD overlays, canvas
+├── package.json           # Dependencies and scripts (dev, build, preview, start)
+├── server.js              # Node.js production static server with health checks
+├── vite.config.ts         # Vite configuration
+├── src/
+│   ├── main.ts            # Application bootstrap, entity initialization, mode switching
+│   ├── style.css          # Design system, glassmorphic HUDs, inspector styling
+│   ├── character/         # Modular creature capabilities
+│   │   ├── Character.ts   # Core creature entity with composable modules
+│   │   ├── WalkingModule.ts
+│   │   ├── ClimbingModule.ts
+│   │   ├── PickupModule.ts
+│   │   └── ThrowModule.ts
+│   ├── engine/            # Simulation and rendering core
+│   │   ├── Arena.ts       # Grid-based arena with wall heights and tile queries
+│   │   ├── GameLoop.ts    # 60Hz fixed timestep simulation loop, collision resolver
+│   │   ├── GameObject.ts  # Universal freebody entity (mass, colliders, altitude)
+│   │   ├── PlayerManager.ts # Multiplayer slots, join/drop lifecycle, input dispatch & cursors
+│   │   ├── Renderer.ts    # Canvas 2D coordinator, altitude projection, ghost clones
+│   │   ├── rendering/     # Modular rendering passes
+│   │   │   ├── README.md
+│   │   │   └── TrajectoryRenderer.ts # Ballistic arcs, landing markers, lock brackets, aim reticles
+│   │   ├── physics/       # Deterministic simulation & collision resolution
+│   │   │   ├── CollisionResolver.ts # Discrete TOI rollback, Continuous Swept CCD, Dynamic Adaptive
+│   │   │   ├── Snapshot.ts # Deterministic physical state snapshots, restoration & divergence
+│   │   │   └── StateHistoryBuffer.ts # Circular ring buffer for history, dynamic capacity, input packets
+│   │   ├── ColliderModule.ts
+│   │   ├── RigidbodyModule.ts # Linear velocity, vertical velocity, motion integration & collision mode
+│   │   ├── FrictionModule.ts
+│   │   ├── BounceModule.ts
+│   │   ├── GravityModule.ts
+│   │   ├── MassModule.ts
+│   │   ├── RollModule.ts  # 3D angular velocity, rolling resistance, indicators
+│   ├── network/           # Networking and telemetry
+│   │   ├── RelayClient.ts # Standalone WebSocket echo relay simulator, RTT tracking & ghost clones
+│   │   └── OnlineRoomClient.ts # Standalone WebSocket client for real live online rooms (/ws)
+│   ├── server/            # Authoritative server simulation core
+│   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world, contested grab arbiter
+│   │   ├── ServerJitterBuffer.ts   # Per-player priority jitter queues & starvation guards
+│   │   ├── UniversalRoomManager.ts # Standalone 60Hz WebSocket server on /ws
+│   │   └── GameServer.ts  # Standalone Node.js 60Hz tick runner with hrtime drift correction
+│   └── ui/                # User interface and developer tools
+│       ├── DevPanel.ts    # Collapsible live inspector, variable sliders, wall tools
+│       └── InputManager.ts # Keyboard, mouse, drag-and-drop, touch controls
+└── scratch/               # Automated test simulations and headless scenarios
+```
+
+---
+
+## 2. Current State & Progress
+
+### Physics & Controls (Phase 1.1 — Fully Functional)
+- **60Hz Deterministic Fixed Timestep**: Simulation advances strictly in `fixedDt = 1 / 60` increments with an accumulator preventing spiral-of-death on tab unfocus.
+- **Two-Tier Altitude Gating**:
+  - Objects exist in pseudo-3D with $(x, y, z)$ coordinates and vertical velocity $v_z$.
+  - **Layer 1** (Ground, $z < \text{wallHeight}$): Collides with ground-level walls and entities.
+  - **Layer 2** (Wall elevation, $z \ge \text{wallHeight}$): Cleanly passes *over* ground walls. Thrown items fly above walls and only hit walls if falling down to wall height.
+- **Wall Climbing & Dismounting**:
+  - Space key climbs walls or dismounts.
+  - Dismounting only occurs when the player actively steers/pushes towards open ground.
+- **Universal Freebodies & Modular Rigidbody (`src/engine/RigidbodyModule.ts`)**:
+  - Entities encapsulate dynamic physical motion through the isolated `RigidbodyModule` behavior (`velocity: Vector2D`, `hasVerticalVelocity: boolean`, `verticalVelocity: number`, `collisionMode`).
+  - **Static Body vs. Dynamic Body**: Entities without a Rigidbody (`hasRigidbody === false`) act as immovable scenery / static colliders that do not integrate velocity or gravity.
+  - **Vertical Velocity Dependency Architecture**:
+    - `VerticalPositionModule` represents *spatial 3D altitude ($z$ coordinate)*.
+    - `RigidbodyModule` represents *kinematic dynamics (linear velocity $\vec{v}_{xy}$, vertical velocity $v_z$, collision mode)*.
+    - `hasVerticalVelocity` strictly evaluates `Boolean(this.hasRigidbody && this.rigidbodyModule.hasVerticalVelocity && this.hasVerticalPosition)`. If an entity has no vertical position behavior, vertical velocity is physically impossible and automatically disabled.
+    - In `DevPanel.ts`, the vertical velocity toggle and slider live directly on the **Rigidbody** behavior card with reactive dependency warnings when Vertical Position is detached.
+  - Every dynamic object (and creature) has mass, collider radius, bounce restitution, and friction.
+  - **Massless vs. Massive Rule**: Massless objects absorb separation and inherit closing velocity from massive objects without dampening massive objects, unless pinned against a wall.
+- **Grabbing, Carrying & Throwing**:
+  - Players can pick up nearby items (`E` key or Left Click).
+  - Ballistic parabolic trajectory calculation previews throw arcs, showing clearance over walls. When holding an object with mouse and keyboard, the creature continuously faces the mouse cursor and projects the ballistic trajectory toward the mouse.
+  - Carrying heavy objects scales throw speed and distance according to creature strength vs. object weight.
+  - **Ground Object Highlight & Targeting While Holding (Keyboard & Controller)**:
+    - Ground objects within pickup reach of a character holding an object are fully detected as in-reach (isWithinPickupRange).
+    - The closest reachable ground object to the aim cursor (or in front of character if aim has not moved) is actively targeted (isTargetGrab), rendering with that player's vibrant theme color outline and a solid glowing grab ring with P1 GRAB / GRAB badge.
+    - Other reachable ground objects render with reach outline and dashed reach ring.
+    - Dedicated drop controls: Q key (Keyboard) and Y button (Gamepad) drop held items onto the ground.
+    - Pickup controls: E key (Keyboard) and B button (Gamepad) pick up ground items. When holding an item, if a ground item is targeted in reach, it swaps items (dropping current and picking up new). If no ground item is in range, the held item is retained.
+  - **Lock Aim Facing Direction & Network Synchronization**:
+    - When locked onto a target (`activeTrajectory?.isAutoLocked && activeTrajectory.targetObject`), character orientation faces directly toward the locked object instead of the mouse cursor or stick position.
+    - Held object physical position (`calculateHeldObjectPosition`) in hands updates to follow this locked facing orientation.
+    - This locked facing direction is written to `pkt.facingAngle` and enforced during server simulation steps (`ServerGameSimulation.ts`) and ghost snapshot broadcast, preserving the exact locking functionality without modification.
+  - **Grab GUI Client Isolation**:
+    - Reach highlights, target grab colored outlines, glowing grab rings, and player grab badges (`P1 GRAB`) are preserved for each local client player on their respective screen/viewport and in single-screen/local game mode.
+    - Grab GUI is strictly hidden only for players belonging to other client simulations on that screen.
+    - Player name tags evaluate `isRemoteForThisView(char)`: the local player on their screen displays clean `P1` (never `[REMOTE]`), while remote players display `P2 [REMOTE]`.
+- **Roll Dynamics**:
+  - Spherical freebodies support 3D angular velocity, roll resistance, and rotating directional roll indicators rendered on canvas.
+
+### Deterministic Physics, TOI Contact Rollback & Swept CCD (Phase 1.2.1 — Fully Functional)
+- **Modular Collision Resolver (`src/engine/physics/CollisionResolver.ts`)**:
+  - Encapsulates entity-to-entity and entity-to-wall contact resolution outside monolithic loops.
+  - **Discrete TOI Rollback (`discrete_toi`)**: When overlapping bodies are detected after position updates, rewinds along their relative velocity path to the exact fraction of the tick $\alpha \in [0, 1]$ where tangent contact occurred ($(r_A + r_B)$). Applies physical bounce impulses (normal restitution) and tangential sliding friction with roll spin coupling, then advances the remaining $(1 - \alpha) \cdot dt$.
+  - **Continuous Swept CCD (`continuous_swept`)**: Quadratic swept circle-vs-circle and swept circle-vs-wall collision tests. Computes earliest contact time $t_{\text{hit}} \in [0, dt]$ before entities penetrate or tunnel.
+  - **Dynamic Adaptive Policy (`dynamic`)**: Automatically checks the CFL/tunneling ratio $\frac{|\vec{v}| \cdot dt}{r}$. If displacement exceeds the collider's threshold ratio (`ccdThresholdRatio`, default $0.50\times$ radius), the body automatically promotes itself to Continuous Swept; otherwise, it operates as Discrete TOI.
+  - **Pairwise Continuous Supersession**: If two bodies collide and either body is Continuous, the pair is resolved via Continuous Swept detection.
+  - **Preserved Physical Invariants**: Strict two-tier altitude gating ($z < \text{wallHeight}$ vs. $z \ge \text{wallHeight}$), Massless vs. Massive closing velocity inheritance without slowing massive objects unless pinned, and roll angular velocity coupling.
+- **Deterministic Physical State Snapshots (`src/engine/physics/Snapshot.ts`)**:
+  - `SnapshotManager.capture(tick, characters, objects)` captures serializable world state with 4-decimal precision coordinates, velocities, holding pointers, and climbing flags.
+  - `SnapshotManager.apply(snapshot, characters, objects)` deterministically restores physical transforms and connections.
+  - `SnapshotManager.hasDivergence(a, b, posThreshold, velThreshold)` compares snapshots with deadzone tolerances for prediction reconciliation.
+- **Interactive Dev Tools & Visual Diagnostics (`DevPanel.ts` & `Renderer.ts`)**:
+  - Live **Global Collision Mode Dropdown**: Dynamic Adaptive, Discrete TOI, Continuous Swept, and Legacy Naive Overlap.
+  - **Dynamic CCD Threshold Slider**: Configurable from $0.10\times$ to $2.00\times$ radius.
+  - **Selected Entity Collision Mode**: Inspect and override collision policy per entity (`dynamic`, `discrete`, `continuous`).
+  - **Test Cannon Spawner**: `🚀 Launch High-Speed Ball (40 u/s)` instantly tests tunneling against walls in real time.
+  - **Physics Simulation Controls**: `⏸️ Pause Sim` and `⏭️ Step 1 Tick (1/60s)` for frame-by-frame impact inspection.
+  - **Canvas Visual Diagnostics & Persistent Decay (Toggleable, Default: OFF)**:
+    - **Toggle Button**: "Show CCD / TOI Visuals" button in DevPanel toggles all collision overlays and HUD on/off dynamically (defaults to OFF for clean gameplay).
+    - **1.2-Second Contact Persistence**: Contact points, expanding shockwave rings, 30px normal vector arrows with triangular arrowheads, and floating banners (`⚡ CCD IMPACT` / `⚡ TOI CONTACT` / `⚡ NAIVE PUSH`) smoothly decay and fade over 1.2s ($1200\text{ms}$) instead of wiping out on the next 16.6ms tick.
+    - **Entity-to-Wall & Boundary Diagnostics**: Both arena wall impacts and outer boundary impacts record contact point, normal, collision mode, and timestamp.
+    - **Forward Swept Capsule Lookahead**: Active continuous entities (`isSweptActive`) moving at speed render a glowing cyan forward swept volume (capsule) with tangent rails, leading circle cap, translucent fill, and center ray arrow.
+    - **Entity Mode Rings & Badges**: Active entities render floating `[CCD]` (cyan) and `[TOI]` (emerald) pill badges and collider status rings.
+    - **Corner Solver Diagnostics HUD**: Compact glassmorphic HUD card in bottom-right corner displaying current solver mode, active sweeping bodies count, most recent collision event time, and buffer status.
+
+### Client History Buffer & Deterministic Rollback Replay (Phase 2 — Fully Functional)
+- **State History Circular Ring Buffer (`src/engine/physics/StateHistoryBuffer.ts`)**:
+  - High-performance, zero-garbage circular ring buffer indexing by `tick % capacity`.
+  - Default capacity: **60 ticks (1.0 second)**, protecting frame rate while fully accommodating any broadband internet latency.
+  - Hard rollback clamp of **30 ticks (~500ms)**: prevents CPU starvation by guaranteeing re-simulation never exceeds 30 ticks within a single 16.6ms render frame.
+  - **Live Dynamic Capacity Resizing (`setCapacity`)**: Supports dynamic resizing on the fly (15 to 120 ticks) from UI sliders without resetting or losing recent historical frames.
+  - Stores paired `WorldSnapshot` and `Map<string, PlayerInputPacket>` per frame.
+  - **Historical Snapshot Rewriting on Reconciliation (`updateSnapshot`)**: When client prediction reconciles a past perturbation/correction at tick $T - N$, each intermediate frame from $T - N$ to $T$ in the circular buffer is actively rewritten with the re-simulated reality. The live buffer trail instantly snaps to the corrected timeline.
+- **Enhanced Deterministic Snapshot Engine (`src/engine/physics/Snapshot.ts`)**:
+  - Exact 64-bit IEEE float retention for local history buffer (eliminates quantization drift during local re-simulation).
+  - Captures and restores `facingAngle`, `isSprinting`, `standingWallId`, and 3D angular velocities (`angX`, `angY`, `angZ`) for roll modules.
+  - Deterministically reconstructs two-way `heldBy` and `heldObject` relationships upon restore.
+  - `hasDivergence` computes `maxDeltaPos` and `maxDeltaVel` with deadzone tolerance.
+- **Input Capture & Replay Dispatch (`src/engine/PlayerManager.ts`)**:
+  - `capturePlayerInputs()` extracts movement vectors, sprint state, climb/jump, grab, drop, throw, and virtual aim cursor positions each tick.
+  - `applyPlayerInputs()` deterministically reapplies recorded input packets during historical re-simulation.
+- **Rollback & Re-simulation Verification Harness (`src/engine/GameLoop.ts`)**:
+  - `simulateRollbackTest(ticksBack)`: rewinds world state to tick $T - N$, steps physics and recorded player inputs forward to present tick $T$, and verifies $0.0000\text{u}$ bit-level divergence against the ground-truth present state.
+  - `injectPerturbationTest(ticksBack)`: injects a past velocity perturbation at tick $T - N$ and re-simulates forward to demonstrate client-side prediction reconciliation when past state is corrected.
+- **Live Interactive DevPanel Controls & HUD Integration (`DevPanel.ts` & `Renderer.ts`)**:
+  - **History Buffer & Rollback Replay Card**: Real-time tick count and duration badge (`#badge-buffer-status`), buffer capacity slider (15 to 120 ticks), rollback depth slider (5 to 60 ticks), and interactive test buttons:
+    - `⏪ Rollback & Verify Replay`: Rewinds world state $N$ ticks, replays historical player inputs, and confirms 100% bit-level reproducibility ($0.0000\text{u}$ drift). Renders a cyan replay ghost trail on canvas.
+    - `💥 Simulate Past Tackle & Reconcile`: Simulates an external tackle hitting the selected entity $N$ ticks in the past and reconciling forward. Renders side-by-side **Ghost Trails** (dashed red path for old prediction, yellow impact shockwave at $T - N$, and solid emerald path for reconciled timeline with offset label).
+  - **Live Continuous Buffer Trail & Past Target Marker (`Renderer.ts`)**:
+    - Connects all historical points currently sitting in the live buffer into a continuous glowing ribbon behind the active entity, with waypoint pips every 5 frames.
+    - Features a clean, static amber **`📍 PAST TARGET (Tick #T-N)`** circular marker pinned to the exact tick index from the rollback slider, showing where past events will occur before the user clicks (clean static ring with subtle amber fill, no pulsing or crosshairs).
+    - Toggleable live via the **"Show Live Buffer Trail"** switch in the DevPanel (default: OFF).
+  - **Diagnostics HUD**: Bottom-right canvas HUD card displays real-time `State Buffer: N/M (X.Xs)`.
+- **Headless Test Suite**:
+  - `scratch/test_phase_2_history_rollback.ts`: 100% passed (ring buffer lifecycle, dynamic resizing, 30-tick rollback replay with 0.0000u divergence, and past perturbation divergence verification).
+
+### Active Islands of Influence & Sleeping Freebody Optimization (Phase 3 — Fully Functional)
+- **Sleeping Freebody Lifecycle (`src/engine/GameObject.ts`)**:
+  - Entities resting on ground or wall platforms with near-zero kinetic energy ($v_{xy} < 0.02\text{ u/s}$, $\omega < 0.05\text{ rad/s}$, $v_z < 0.01\text{ u/s}$) accumulate sleep ticks.
+  - After 15 resting ticks ($\sim 0.25\text{s}$), the freebody enters `isSleeping = true`, zeroing velocities and consuming **0 CPU** during standard update steps and prediction rollbacks.
+  - Automatically and instantaneously wakes up upon:
+    - Collision impulse from an active entity or wall.
+    - Player pickup, drop, or throw.
+    - Elevation change or external velocity injection.
+  - Sleeping entities render with a subtle `zzz` indicator badge above their collider.
+- **Physical Island Graph Partitioning (`src/engine/physics/IslandManager.ts`)**:
+  - Partitions the arena entities into connected interaction subgraphs (islands) discovered via BFS:
+    - Character-to-held-object connections.
+    - Contact/overlap proximity between non-sleeping bodies.
+    - Sleeping bodies remain in isolated 1-element dormant islands.
+  - During local prediction rollback and re-simulation, sleeping bodies and unrelated dormant entities are bypassed, saving CPU cycles and scaling smoothly with high entity counts.
+  - `SnapshotManager.apply` supports selective island filtering (`filterEntities`).
+- **Diagnostics HUD Integration**:
+  - Bottom-right Diagnostics HUD card displays live `Islands/Sleep: N active, M asleep`.
+- **Headless Test Suite**:
+  - `scratch/test_phase_3_islands_sleeping.ts`: 100% passed (resting sleep accumulation, collision wake-up, island partitioning, and selective island snapshot restoration).
+
+### Authoritative Server Physics Simulation & Input Relay Loopback (Phase 3.5 & Phase 4 — Fully Functional)
+- **Headless Server Simulation Core (`src/server/ServerGameSimulation.ts`)**:
+  - Encapsulates an authoritative, fully headless physics world running at fixed 60Hz timestep (`fixedDt = 1 / 60`).
+  - Instances identical deterministic `Arena`, `Character` map, freebody `GameObject`s, `CollisionResolver`, and `IslandManager`.
+  - **Zero DOM / Canvas Dependencies**: Completely decoupled from browser window, document, and canvas APIs, allowing it to run either in-tab or as a standalone Node.js server.
+  - Replicates exact arena tile geometry, wall elevations, and physical entities.
+  - **Continuous Independent 60Hz Server Clock (`stepServerPhysics(dt)`)**:
+    - Unlike naive packet-driven steps that slow to half-speed (30Hz) or pause when network packets are delayed, the server physics advances continuously on its own 60Hz physics clock.
+    - Simulates all freebody objects (rolling ball, bouncing ball, crates, rocks) with full gravity, angular roll, bounce, and collisions at full real-time speed.
+    - Maintains per-player input queues (`inputQueues: Map<string, PlayerInputPacket[]>`) that buffer client inputs received over the network to absorb WAN latency and jitter.
+    - When network jitter momentarily delays a packet, maintains directional steering momentum (`moveX, moveY`) across brief gaps rather than abruptly stalling the character, while releasing trigger actions (`isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false`).
+  - **Phase 4.3 Authoritative Grab & Contest Arbiter**:
+    - Validates reach and line-of-sight before granting an object grab.
+    - Resolves simultaneous multi-player grabs on the exact same freebody on the exact same tick via strict deterministic tiebreakers:
+      1. **Creature Strength** (`char.strength`): Stronger creature wins.
+      2. **3D Euclidean Proximity**: Closer creature to object center wins.
+      3. **Deterministic ID Priority**: Tiebreak fallback.
+    - Grants object to the winning player, cancels the loser's grab, and records the resolution in `contestedGrabEvents` audit queue.
+  - Produces authoritative `MultiplayerGhostSnapshot` with real vertical position $z$, vertical velocity $v_z$, resting flags, and true ground contact.
+- **Explicit Grab Targeting Pipeline (`attempt to pick up X`)**:
+  - `PlayerInputPacket` includes `grabTargetObjectId?: string | null`.
+  - When the client initiates a grab, `PlayerManager` evaluates the specific entity within reach and aim (`target.id`), sending an explicit intent to grab that object.
+  - If the client player has no object within reach, `grabTargetObjectId` is `null`.
+  - Both client and authoritative server strictly validate `grabTargetObjectId`. The server ghost **never** picks up a random nearby object just because the ghost happens to be standing next to it while the client player is elsewhere.
+  - Server validates reach with a network latency grace factor ($1.35\times$ reach) to prevent false-negative drops under WAN ping.
+- **Full Character & Freebody Position / Velocity Synchronization (Phase 4.5 — Fully Functional)**:
+  - **Server-Side Character Telemetry Synchronization (`ServerGameSimulation.syncCharacterFromPacket`)**:
+    - When client telemetry packets return over the network, `syncCharacterFromPacket` updates the server character's linear velocity ($v_x, v_y$), vertical velocity ($v_z$), climbing state, and elevation coordinates.
+    - Large divergences ($> 0.4\text{ units}$) snap directly to client coordinates. Small discrepancies converge smoothly at a $50\%$ blend rate per packet, keeping the "🤖 SERVER SIM" ghost character locked within millimeters of the client character.
+  - **Input Backlog Drainage & Zero-Steering Starvation Protection**:
+    - When WAN jitter bursts deliver multiple queued input packets at once (`queue.length > 2`), the server instantly processes the extra packets in catch-up steps, keeping input latency tightly bound to 1-2 ticks.
+    - When the input queue is empty during packet transit, steering input is zeroed (`moveX: 0, moveY: 0`) rather than held indefinitely, eliminating runaway ghost overshoot while waiting for packets.
+  - **Smart Authoritative Object Synchronization (`GameLoop.syncAuthoritativeObjects`)**:
+    - Automatically synchronizes client freebody objects (`this.objects`) to the authoritative server simulation snapshot on each physics frame.
+    - **Hierarchy Lock**: Objects actively held by a local player are skipped to keep them locked to the player's hands without visual jitter.
+    - **Editor Drag Bypass**: Objects dragged by user mouse in Edit Mode are not overridden.
+    - **Lagging Server Held-State Immunity**: If the server still reports an object as held (`sObj.isHeld === true`) after the client has already thrown or released it locally (`!localObj.isHeld`), the sync ignores the lagging snapshot, preventing the object from being yanked backward into the player's hands.
+    - **Ballistic In-Flight Prediction**: While an object is airborne from a throw (`localObj.lastThrower` is active and object is airborne), the client assumes its simulated ballistic trajectory is 100% correct, eliminating mid-air freezes, velocity damping, or jitter.
+    - **Resting / Sleep Snapping**: When the server reports an object has settled into rest (`isSleeping === true`), the client object snaps to the exact rest coordinates and enters sleep mode ($0$ CPU, $0.0000\text{u}$ drift).
+    - **Speed-Aware Jitter Tolerance & Convergence**: Uses a $0.02\text{u}$ deadzone to filter micro-flutter while smoothly converging discrepancies at $25-30\%$ blend rate without dragging moving objects backwards.
+    - **Hard Teleport Safe-Catch**: Divergences exceeding $3.0\text{ units}$ instantly snap to authoritative server transforms.
+- **Reliable Action Messages, Retransmission Outbox & Delivery Confirmation (Phase 5.1 — Fully Functional)**:
+  - **High-Priority Command Classification**: Critical discrete one-shot actions (`pickup`, `drop`, `throw`) are designated as reliable commands (`ReliableActionCommand`) requiring explicit delivery confirmation.
+  - **Sender Retransmission Outbox (`unacknowledgedActions`)**: When the client dispatches a pickup, drop, or throw, it generates a globally unique command ID (`actionId`) and places it into an unacknowledged outbox. Every outgoing packet continuously retransmits all pending actions until acknowledged.
+  - **Recipient Idempotent Execution**: The server tracks `processedActionIds` (with automatic rolling cleanup) to guarantee that retransmitted duplicate packets are safely acknowledged without executing duplicate pickups, drops, or throws.
+  - **Delivery Confirmation (ACK)**: Authoritative server state snapshots and packet replies echo back `ackActionIds`, purging delivered commands from the sender's outbox.
+- **Deterministic Action Synchronization (Throw, Drop & Grab Pipeline)**:
+  - Mouse clicks, Q keys, and gamepad RT/RB/Y buttons route their throw and drop requests through `PlayerInputPacket` (`isThrow: boolean`, `isDrop: boolean`, `isGrabHeld: boolean`).
+  - Executed deterministically in `applyPlayerInputs` on both client prediction and server simulation, ensuring carried items and throws remain in perfect sync across the network.
+- **Zero-Drop Input Batching & Real Internet WAN Loopback (`src/network/RelayClient.ts` & `src/engine/GameLoop.ts`)**:
+  - `GameLoop.ts` captures player input packets on each physics tick (`onPhysicsTick`) and streams `pc_player_input` packets over the WebSocket relay.
+  - Inputs are recorded every physics tick; when sending at 30Hz or during packet throttle, all accumulated ticks are batched together in `pendingInputsToSend` so zero input ticks are ever dropped.
+  - Packets traverse a real remote WebSocket relay (`wss://echo.websocket.org` or `wss://ws.postman-echo.com/raw`), subjecting inputs to actual broadband internet round-trip latency (RTT) and jitter.
+  - Returned input packets feed directly into `ServerGameSimulation.queueInput()`, which de-duplicates ticks and feeds them to the 60Hz simulation.
+- **Dual Visual Modes, Resync & UI Controls (`DevPanel.ts`, `Renderer.ts`, `index.html`)**:
+  - **Server Simulation Toggle (`#relay-toggle-server-mode-btn`)**:
+    - `🤖 Sim: Physics`: True authoritative server physics simulation driven by looped-back input packets. Ghost clone renders true physical altitude, jumps, bounces, and solid ground contacts.
+    - `📡 Sim: Pos Echo`: Legacy coordinate mirroring directly from echoed client position packets.
+  - **One-Click Resync Button (`#relay-resync-world-btn`)**: Instantly re-aligns the authoritative server world transforms with the live client transforms for testing and calibration.
+  - **Authoritative Server Ghost Display**:
+    - In `physics_sim` mode, mirrors the 60Hz server transforms directly on screen without artificial visual lerp lag dragging behind.
+    - Renders with glowing `[SERVER SIM (XXms)]` pill badge (cyan/emerald theme) displaying real-time RTT latency.
+    - Stacked directly on top of client prediction to give instant visual feedback of server authority vs. client prediction.
+  - **Server Physics Diagnostics HUD**:
+    - Multiplayer HUD displays `Tick: #N (Live 60Hz)` reflecting authoritative server simulation ticks.
+  - **Relay HUD Viewport Controls (Minimize, Close & Reopen Without Disconnecting)**:
+    - **Minimize / Collapse Button (`➖` / `➕`)**: Collapses `#multiplayer-relay-hud` into a compact single-line 36px header bar (`.relay-hud-card.collapsed`), keeping tick, connection status, RTT, resync, connect, and expand buttons while hiding all bulky settings and inputs.
+    - **Close Button (`✕`)**: Completely hides `#multiplayer-relay-hud` from the viewport while keeping the WebSocket relay connection and server simulation running uninterrupted in the background.
+    - **Top Bar Reopen Pill (`#relay-status-pill`)**: The top bar status pill (`🟢 57 ms [M]`) remains visible in multiplayer mode; clicking it toggles the Relay HUD open, collapsed, or closed at any time.
+    - **Hotkey `M` & `Escape`**: Pressing `M` toggles the Relay HUD (open -> collapse -> close -> open) during active gameplay. Pressing `Escape` closes the overlay if open.
+    - **Mobile Menu Quick Access**: Added "Relay Settings" button in the mobile landscape menu to open or expand the Relay HUD on touch devices.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_4_server_simulation.ts`: 100% passed (Headless arena init with 17 walls, jump gravity and solid ground touchdown $z = 0.000$, contested grab arbitration with strength winner, and 60Hz standalone `GameServer` loop lifecycle).
+  - `scratch/test_explicit_grab_and_object_sync.ts`: 100% passed (Null target grab rejection, explicit target grab selection, smooth convergence lerping, and resting sleep coordinate snapping).
+
+### Client Input Streaming & Server Jitter Input Queue (Phase 5 — Fully Functional)
+- **Reliable Action Messages, Retransmission Outbox & Delivery Confirmation (Phase 5.1)**:
+  - Critical discrete one-shot actions (`pickup`, `drop`, `throw`) are designated as reliable commands (`ReliableActionCommand`) requiring explicit delivery confirmation.
+  - Sender retransmission outbox (`unacknowledgedActions`) retransmits all pending actions with every outgoing packet until acknowledged.
+  - Recipient idempotent execution tracks `processedActionIds` to acknowledge duplicates without re-executing.
+  - Delivery confirmation (`ackActionIds`) echoed back to purge delivered actions from sender outbox.
+- **Server Jitter Buffer & Priority Input Queue (`src/server/ServerJitterBuffer.ts`) (Phase 5.2)**:
+  - **Modular Architecture (`ServerJitterBufferManager` & `PlayerJitterQueue`)**:
+    - Manages dedicated per-player priority queues sorted strictly ascending by simulation tick.
+    - Absorbs WAN network packet jitter, handles out-of-order packet delivery, deduplicates retransmitted packets, and provides steady inputs at 60Hz.
+  - **Target Depth (2 Ticks / ~33.3ms)**:
+    - Maintains a tight, steady 2-tick target depth on the server simulation, keeping server input latency tightly bound to 1–2 ticks.
+  - **Out-of-Order Packet Insertion & Deduplication**:
+    - Out-of-order packets arriving over the network are inserted into their exact sorted tick position.
+    - Stale packets (`tick <= lastConsumedTick`) and duplicate packets are safely rejected.
+  - **Starvation Handling & Neutral Safe Packet**:
+    - When the jitter queue is empty (packets in transit across WAN), consumption returns a safe neutral input packet with zero movement velocity (`moveX: 0, moveY: 0`) and all action buttons false, preventing runaway ghost overshoot while preserving last known aim coordinates.
+  - **Burst Backlog Drainage**:
+    - When WAN jitter bursts deliver a backlog (> 4 ticks), intermediate excess inputs are drained and returned as `drainedPackets`, allowing `ServerGameSimulation` to fast-forward character movement and aim so the server never falls perpetually behind.
+  - **Telemetry & Cruise Control Diagnostics (`JitterBufferStats`)**:
+    - Exposes `currentDepth`, `targetDepth: 2`, `oldestTick`, `newestTick`, `lastConsumedTick`, `starvations`, `overflows`, `duplicates`, and `burstDrains` via `getStats()` to feed Phase 6 adaptive clock synchronization (cruise control).
+    - Integrated with `RelayStats` and the Multiplayer HUD (`Jitter: Nf`).
+  - **Automated Headless Test Suite**:
+    - `scratch/test_phase_5_2_jitter_buffer.ts`: 100% passed (38/38 assertions covering out-of-order sorting, deduplication, stale rejection, burst drainage, starvation neutral packets, capacity overflow, and ServerGameSimulation integration).
+
+### Adaptive Clock Synchronization & Time Dilation (Phase 6 — Fully Functional)
+- **Server Jitter Buffer Depth Measurement (Task 6.1)**:
+  - Every 10 ticks (`clockSyncCheckInterval`), `ServerGameSimulation.evaluateClockSync()` checks the queue depth for each player against the target depth of 2 frames (~33.3ms buffer).
+  - Underflow (< 1 frame): Indicates client is running slow or WAN packets are delayed; calculates speedup factor (e.g. 1.015x).
+  - Overflow (> 3 frames): Indicates client is running ahead of server; calculates slowdown factor (e.g. 0.990x or 0.985x).
+  - Steady (1 to 3 frames): Healthy cruise buffer maintained (1.000x).
+- **Time Dilation Feedback Packets (`ClockSyncPacket`) (Task 6.2)**:
+  - Sent with authoritative snapshot broadcasts:
+    `{ type: "clock_sync", serverTick, targetQueueDepth: 2, currentQueueDepth, dilationFactor, playerId }`.
+  - Factors are strictly clamped within `[0.980, 1.020]` (a +/-2% maximum envelope that is completely imperceptible to human eye and preserves audio pitch).
+- **Client Adaptive Accumulator & Smooth Steering (Task 6.3)**:
+  - In `GameLoop.ts`:
+    - `applyClockSync(sync)` receives the feedback command and clamps target dilation.
+    - `this.accumulator += deltaSeconds * this.timeDilation;`
+    - Each frame, `timeDilation` smoothly steers toward `targetTimeDilation` at a rate of 0.08 per frame, preventing discrete step jumps or audio clicks.
+    - Once the server jitter buffer stabilizes at 2 frames, the dilation factor gently returns to 1.000x.
+- **Diagnostics HUD & Telemetry Integration**:
+  - Rendered in bottom-right Canvas Diagnostics HUD as `Cruise Control: 1.000x (2f)`.
+  - Top bar packet counts show real-time cruise status: `Jitter: 2f (1.000x)`.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_6_clock_sync.ts`: 100% passed (26/26 assertions covering underflow/overflow/steady dilation calculations, server periodic evaluation, GhostSnapshot embedding, and GameLoop client accumulator time dilation).
+
+### Authoritative Snapshot Broadcast & Delta Compression (Phase 7 — Fully Functional)
+- **Authoritative Snapshot Manager (`src/server/AuthoritativeSnapshotManager.ts`)**:
+  - Encapsulates snapshot creation, quantization, delta compression, and client merging outside monolithic loops.
+  - **Broadcast Rate (Task 7.1)**:
+    - Configurable broadcast rate (default 30Hz or 60Hz via `snapshotBroadcastHz`).
+    - Uses `isBroadcastDue(tick)` to pace snapshot delivery.
+    - Schema: `{ type: "world_snapshot", tick, serverTime, lastProcessedInputTick, entities, ackActionIds?, clockSync?, isDelta }`.
+- **Coordinate & Velocity Quantization (Task 7.2)**:
+  - World positions ($x, y, z$) quantized to 3 decimal places (1mm precision).
+  - Linear velocities ($v_x, v_y, v_z$) and roll angular velocities ($\omega_x, \omega_y, \omega_z$) quantized to 2 decimal places.
+  - Significantly reduces JSON payload size over WAN WebSocket relays.
+- **Delta Compression & Sleeping Entity Omission**:
+  - Sleeping bodies (`isSleeping === true`) that remain sleeping are omitted from delta snapshots, saving > 65% network bandwidth on resting arena items.
+  - Transitions into and out of sleep are broadcasted immediately so clients stay in sync.
+  - Entities whose transforms and velocities have not changed within deadzone tolerances ($0.001\text{u}$ pos, $0.01\text{u}$ vel) are omitted from delta snapshots.
+  - Keyframe interval (default 60 ticks / 1.0s) broadcasts full world baseline snapshots, allowing late-joining clients and packet recovery to catch up cleanly.
+  - Client-side helper `mergeSnapshot(currentState, snapshot)` integrates delta updates into an accumulated persistent entity map.
+- **Client ACK Feedback Pipeline (Task 7.3)**:
+  - Client streams `lastReceivedServerTick` back inside every `PlayerInputPacket`.
+  - `ServerGameSimulation` tracks each player's confirmed server tick in `clientAckedTicks: Map<string, number>`.
+- **Default Relay Endpoint**:
+  - Standardized default relay URL across `index.html`, `main.ts`, and `RelayClient.ts` to `wss://ws.postman-echo.com/raw`.
+- **Automated Headless Test Suite**:
+  - `scratch/test_phase_7_authoritative_snapshots.ts`: 100% passed (38/38 assertions covering schema quantization, 30Hz/60Hz broadcast pacing, delta compression, sleeping entity omission & wakeup, client delta merging, and client ACK feedback tracking).
+
+### Client Prediction Reconciliation & Visual Smoothing Dampener (Phase 8 — Fully Functional)
+- **Modular Prediction Reconciliation (`src/engine/physics/PredictionReconciliation.ts`)**:
+  - **Snapshot Comparison & Acknowledged Input Matching (Task 8.1)**:
+    - Instead of erroneously comparing against the server's delayed world clock tick, snapshots are matched against the client's historical prediction at the exact input tick acknowledged by the server: `clientTick = serverSnapshot.lastProcessedInputTick[localPlayerId]`.
+    - Compares position ($|\vec{p}_{\text{server}} - \vec{p}_{\text{client}}|$) and linear velocity ($|\vec{v}_{\text{server}} - \vec{v}_{\text{client}}|$) with deadzones ($0.05\text{u}$ pos $\approx 1.8\text{px}$, $0.15\text{u/s}$ vel).
+    - When within deadzones: Evaluates to `success_within_deadzone`, prunes history older than `clientTick`, and performs **0 rollbacks**, resulting in completely jitter-free 60fps local gameplay.
+  - **Single Local Character Misprediction Correction (Task 8.2)**:
+    - When divergence exceeds deadzones (e.g. server-side collision or authoritative displacement):
+      1. Sets initial visual offset dampener: $\vec{v}_{\text{offset}} = \vec{p}_{\text{post}} - \vec{p}_{\text{pre}}$, so rendered position $\vec{p}_{\text{draw}} = \vec{p}_{\text{post}} - \vec{v}_{\text{offset}} = \vec{p}_{\text{pre}}$ (**$0.000\text{u}$ visual pop**).
+      2. Snaps the local player character to the server state at `clientTick`.
+      3. Fast-forwards physics re-simulation to `currentTick` using recorded player inputs with `isReplay = true` (preventing duplicate network command emissions).
+      4. Overwrites intermediate frames in `historyBuffer` with deterministic re-simulated reality.
+      5. Freebody objects remain cleanly managed by `syncAuthoritativeObjects` (which protects in-flight ballistic trajectories and resting sleep snaps) without disruptive entity rewind loops.
+  - **Render Smoothing Dampener (Task 8.3)**:
+    - In `GameObject.ts` & `Renderer.ts`: `visualOffset` ($x, y$) offsets sprite rendering, outlines, and shadows without modifying physical collision hitboxes.
+    - Decays smoothly by $0.70\times$ per render frame, gliding smoothly from the pre-correction display position to the true physical hitbox over ~3–5 frames (~50–80ms).
+  - **DevPanel Integration**:
+    - "🔄 Test Prediction Reconciliation (Phase 8)" button in the History Buffer section injects an authoritative perturbation at the selected rollback depth tick, rewinds local player, reconciles forward, and demonstrates 0-pop visual offset dampening.
+  - **Automated Headless Test Suite**:
+    - `scratch/test_phase_8_prediction_reconciliation.ts`: 100% passed (prediction success within deadzones, misprediction detection & rollback, 0.000000u zero-pop visual dampening, and multi-frame visual offset decay).
+
+### Gamepad Controller & Virtual Aim Cursor (Phase 1.1 Expansion — Fully Functional)
+
+- **Standard Gamepad API Polling**:
+  - Polled deterministically each physics tick (`pollGamepad()`) in `InputManager.ts` & `GameLoop.ts`.
+  - **Left Joystick (`axes[0]`, `axes[1]`)**: Smooth proportional analog character movement with $0.18$ radial deadzone. Movement direction **never** aims the throwing arc.
+  - **Right Joystick (`axes[2]`, `axes[3]`) Virtual Aim Cursor**:
+    - Operates like a free-floating mouse cursor that can travel anywhere across the screen/arena.
+    - **Active Device Isolation**: The virtual joystick cursor is **only** drawn and active when playing with a controller (`activeInputDevice === "gamepad"`). When playing with keyboard and mouse, the joystick cursor is never drawn, and mouse & keyboard controls operate 100% cleanly without controller overrides.
+    - **Always Visible On Controller**: Stays visible and active on screen at all times whenever using a controller — it **never** disappears when you release or stop moving the joysticks.
+    - **Facing Direction Rule**: The character **only** turns to face the aim cursor when holding an object (ready to throw). When empty-handed, the character turns to face their movement direction.
+    - **No Position Resets**: Position is preserved after throwing or picking up objects (never reset).
+    - **Cursor-Directed Pickup Targeting**: Moving the cursor highlights the closest reachable grabbable object on the ground (white ring), just like a mouse cursor.
+    - Deflecting the right joystick pushes the crosshair in that direction at $17.0\text{ u/s}$ ($2\times$ original speed).
+    - Releasing the stick leaves the cursor locked at its relative offset from the character (`gamepadAimOffset`), maintaining its screen position as the character moves.
+    - The cursor itself is **unclamped** by throw distance, roaming freely across the entire arena/screen.
+    - The throw target (trajectory arc & landing marker) points along the ray from character toward the cursor, with its physical landing distance clamped to **$13.0\text{ units}$** (`maxThrowAimDistance = 13.0`, restored original setting).
+    - When aiming beyond throw range, a dashed sightline guides the eye from the clamped landing target to the unclamped aim reticle.
+  - **Bottom Button (`A` / Cross, `button[0]`)**: Wall climbing and dismounting (`isClimbHeld`).
+  - **Right Trigger (`RT`, `button[7]`)**:
+    - **Empty-handed**: Grabs the reachable grabbable object closest to the virtual aim cursor.
+    - **Holding an object**: Throws the held object toward the cursor. A release-lock (`rtGrabbed`) requires the player to release the trigger after grabbing before a throw can be initiated, preventing accidental immediate throws upon pickup.
+  - **Right Bumper (`RB` / R1, `button[5]`)**:
+    - Dedicated throw button when holding an object (never grabs). Throws immediately at the virtual aim cursor.
+  - **`B` Button (`button[1]`)**: Pickup & Swap (`pickupAndSwap`) — grabs reachable object closest to cursor. If holding an item and selecting a ground item, doubles as drop control to swap; if holding an item and none in range, drops the held item.
+  - **`Y` Button (`button[3]`)**: Dedicated Drop button — immediately drops the held item onto the ground; doubles as pickup control when empty-handed.
+  - **Left Bumper (`LB` / L1, `button[4]`) & Left Under-Paddle (M2)**: Toggles or holds Sprinting on/off.
+  - **Left Under-Paddle (M2 — Sprint Control)**:
+    - Supported inputs: `LB (4)`, `L3 (10)`, `X (2)`, `Select/Back (8)`, `D-pad Left (14)`, `D-pad Down (13)`, `D-pad Up (12)`, extended M2 paddle buttons (`Button 17` on 18-btn pads, `Button 18`, `Button 20`, `Button 22` on 19+ pads), axis 4, and remapped `Shift` keys.
+    - Seamlessly supports **Hold-to-Sprint** (holding paddle guarantees sprinting, releasing drops back to walk) and **Tap-to-Sprint** (quick click toggles sprint on, releasing stick or tapping again disengages).
+  - **Right Under-Paddle (M1 — Jump & Climb Control)**:
+    - Supported inputs: `A (0)`, `R3 (11)`, `Menu/Start (9)`, `D-pad Right (15)`, extended M1 paddle buttons (`Button 16` on 17/18-btn pads, `Button 17`, `Button 19`, `Button 21` on 19+ pads), axis 4, and remapped `Space` keys.
+    - Immediate jump trigger on press (`char.jump(arena, movementVector)`), with automatic climb / wall-dismount hold (`slot.isClimbHeld = true`) and buffered touchdown bunny hops.
+- **Sprinting Mechanics**:
+  - `Shift + WASD`, `LB` controller bumper, or Gamepad Left Under-Paddle triggers sprint mode.
+  - Increases character speed by **$1.55\times$** and propulsion acceleration by **$1.5\times$** via `WalkingModule.ts`.
+  - Releasing directional movement controls automatically resets sprinting to off.
+  - Controls bar cleanly displays the `👥 N PLAYERS` roster button and `🎮 GAMEPAD` connection badge (individual player sprinting operates independently without a global status box cluttering the bar).
+  - Gamepad connection displays live `🎮 GAMEPAD` status badge.
+- **Comprehensive Multi-Device Controls Display & Interactive Guide**:
+  - The in-game controls overlay bar (`#game-controls-box`) displays **ALL 8 controls** explicitly for both input devices side-by-side with color-coded keycaps:
+    - **Move**: `WASD` (Keyboard, crisp white `.kb-badge`) / `LS` (Gamepad, glowing cyan `.pad-badge`)
+    - **Aim**: `Mouse` / `RS`
+    - **Jump / Climb**: `Space` / `A` (and Right Paddle M1)
+    - **Pick Up / Swap**: `E` / `B` (grabs ground item; when holding, swaps with targeted item)
+    - **Drop**: `Q` / `Y` (drops held item onto the ground)
+    - **Throw / Grab**: `L-Click` / `RT` / `RB` (throws held item; grabs target when empty-handed)
+    - **Aim Lock**: `R-Click` / `LT` (snaps aim reticle to closest reachable target)
+    - **Sprint**: `Shift` / `LB` (and Left Paddle M2, 1.55x speed)
+  - **Full Controls & Mechanics Modal (`#controls-modal`)**: Clickable directly via `🎮 Controls ℹ️` (`#btn-controls-guide`), hotkey `H`, or Escape to close. Displays side-by-side keyboard and gamepad mechanics cards with detailed tips.
+  - **Mobile Menu Parity**: The mobile landscape menu (`.mobile-controls-list`) mirrors the complete 8-row control table.
+  - **Responsive Wrapping**: `.controls-box-items` uses responsive flex-wrap and fluid typography (`clamp`) to eliminate clipping across all screen sizes and viewport aspect ratios.
+
+### Dynamic Multi-Player, Controllers Panel & Colored Sightlines (Phase 1.1 Expansion — Fully Functional)
+- **Multi-Gamepad & Multi-Character Support**:
+  - Deterministically polls multiple gamepads simultaneously via `pollGamepadSlots()`. Each connected controller has its own independent character, movement vectors, aim reticle travel, climbing, sprint, grab, and throw mechanics.
+- **On-Demand Player Join, Unassigned Page Load & Device Reconnect**:
+  - **Initial Page Load**: The primary character exists in the arena unassigned (not automatically claimed by keyboard). Floating tag reads `Press Space / A`.
+  - **First Device Connection**: Whichever input device (Keyboard `Space` or any Gamepad `A`) presses join first claims the standing character as Player 1 (Amber Gold).
+  - **Subsequent Device Joins**: When the primary character is already controlled, additional devices pressing `Space` or `A` dynamically spawn Player 2, Player 3, etc.
+  - **Last Player Removal Rule**: Removing the last active player does **never delete the character from the arena**. Instead, it cleanly unassigns the controller/keyboard and drops any held object safely. The character remains standing in the arena, ready to be claimed by the next device to press `Space` or `A`.
+  - **Physical Disconnection**: When a controller disconnects, its player entry is removed; if it was the last player, the character remains standing in place unassigned.
+- **Interactive Arena Players & Controllers Panel (`src/ui/PlayersPanel.ts`)**:
+  - Accessible via top-bar toggle button (`#toggle-players-btn` / `👥 Players (N)`), in-game HUD chip (`#btn-quick-players`), or hotkey (`P`).
+  - Lists every active character with their player number, device name ("Keyboard & Mouse", "Xbox Wireless Controller"), and assigned theme color swatch.
+  - Provides a dedicated **`✕ Remove` button** next to each player's name to remove that player from the arena on demand.
+  - Inactive/Available section lists available join options (`+ Add` button and join key prompts).
+- **Player-Colored Dotted Sightlines to Cursors**:
+  - For every active player, a dotted guide line (`setLineDash([4, 4])`) in that player's assigned color connects directly from the character center to their aim cursor.
+  - Each cursor reticle displays the player's color and floating "P1", "P2" badge, eliminating any ambiguity about which reticle belongs to which player across the arena.
+- **Curated Player Color Palette**:
+  - Player 1: Amber Gold (`#f59e0b`)
+  - Player 2: Cyan (`#06b6d4`)
+  - Player 3: Emerald (`#10b981`)
+  - Player 4: Violet (`#a855f7`)
+  - Player 5: Rose (`#f43f5e`)
+  - Player 6: Blue (`#3b82f6`)
+- **Universal Player Character Selection & Independent Customization**:
+  - All player characters (Player 1, Player 2, Player 3, etc.) are fully selectable, hoverable, inspectable, and editable on both the canvas and in the inspector panel.
+  - **Canvas Picking (`InputManager.ts`)**: `findEntityAt` dynamically queries `getAllCharacters()`, allowing left-click dragging in Edit Mode and right-click inspection in Play & Edit Modes for any player character.
+  - **Entity Selector Dropdown (`DevPanel.ts`)**: Lists every active character by name and mass (`⭐ Player 1 (1.2kg)`, `⭐ Player 2 (1.2kg)`). Auto-refreshes when players join or leave.
+  - **Polymorphic Ability Slider Binding**: Selecting any `Character` activates character abilities (Walking, Strength, Pickup, Throw, Climbing). Sliders inspect and directly mutate the selected character's modules without affecting other characters.
+- **Remote Client Throw Trajectory & Destination Marker Isolation (Phase 9.10 — Fully Functional)**:
+  - Ballistic throw trajectory dots, landing destination footprint previews, wall collision markers, and precision aim reticles are strictly private to the local client aiming the throw.
+  - In `Renderer.ts:renderArenaScene`, characters are evaluated against `localHeroCharacter` and `remoteOverrides`.
+  - In split-screen viewports (`renderSplitScreen`), each viewport ONLY renders the trajectory and aim reticle of its assigned local character (`pv.character`). Other players' trajectories and landing markers are completely hidden.
+  - In single-screen multiplayer, remote characters (`char !== localHeroCharacter` or `remoteOverrides.has(char.playerId)`) are filtered out from trajectory and reticle rendering passes.
+  - Verified 100% via `scratch/test_remote_trajectory_isolation.ts`.
+
+### Mobile Landscape & PWA (Installable Game — Fully Functional)
+- **Mobile Landscape Layout**:
+  - Strictly **no virtual on-screen touch controls** per user directive; full gamepad/controller compatibility.
+  - Notch and camera safe-area padding using `viewport-fit=cover` and CSS `env(safe-area-inset-left/right)`.
+  - Compact header (36px) preserving aspect ratio ($20:14$) of arena canvas on phones (e.g. 844x390, 932x430).
+- **Progressive Web App (PWA)**:
+  - `public/manifest.webmanifest`: Configured with `display: "standalone"`, `orientation: "landscape"`, and theme colors for full-screen mobile app install.
+  - `public/sw.js`: Service worker with network-first app caching for instant offline loading.
+  - `public/icon.svg`: Scalable high-resolution creature game icon.
+- **Persistent Remote Connection & Nationwide Public Access**:
+  - Tunnel consistently binds to **`https://pcg-arena-teal.loca.lt`** via `--subdomain pcg-arena-teal`.
+  - Built-in project dependencies: `localtunnel`, `qrcode`, `qrcode-terminal`.
+  - **Prominent Display & Direct Utilization Across the Entire App**:
+    - **In-Game Header Bar Widget** (`#public-link-widget`): Directly displays `PUBLIC: https://pcg-arena-teal.loca.lt` with a live pulsing status dot, instant 1-click clipboard copy (`#btn-copy-public-url` & clicking the URL), a direct browser open button (`↗`), and phone QR code scan modal (`📱 QR`).
+    - **Desktop App Header Bar** (`desktop_app/Form1.cs`): Features dedicated `btnPublicLink` (`🌐 https://pcg-arena-teal.loca.lt`) with instant copy feedback, `↗ Open` to launch in the default browser, and auto-starts the tunnel on launch (`_ = StartTunnelAsync()`).
+    - **Multiplayer Relay HUD (`#multiplayer-relay-hud`)**: Features a dedicated `Public Game Room` row with `https://pcg-arena-teal.loca.lt`, 1-click copy, and browser open button for inviting remote players.
+    - **Pre-Bundled Tunnel Serving (`vite.config.ts`)**: Remote requests passing through localtunnel (`x-forwarded-host: *.loca.lt`) are automatically served the optimized pre-bundled production build from `dist/` (instead of 50+ concurrent unbundled ESM `.ts` requests). This completely eliminates 502 Bad Gateway proxy timeouts on remote laptops/phones, while preserving instant HMR for local PC development. Background watcher auto-updates `dist/` on source edits.
+  - **In-Game `📱 Phone Link` Modal & View Settings Access**:
+    - Accessible directly in the browser top-bar (`#btn-phone-connect`, `#toggle-view-settings-btn`), in the desktop app top bar (`👁 View`), and in the Inspector panel (`👁️ View`).
+    - View Settings panel is elevated to `z-index: 50` and remains open during live gameplay so players can test visual options live without click-outside closing.
+
+- **Mobile Display & Fullscreen Update Notification & Reload Architecture**:
+  - **Bottom-Centered Toast on Mobile**: On mobile landscape and touch viewports (`bottom: max(14px, env(safe-area-inset-bottom)); top: auto`), the toast notification is positioned at the bottom center. This completely prevents overlap with top-right floating buttons (`.mobile-fullscreen-btn`, `.mobile-hamburger-btn`) and respects camera notches / home indicators.
+  - **Native Fullscreen Top-Layer Resilience**: `DeployNotifier.getToastMountContainer()` dynamically mounts toasts into `document.fullscreenElement || document.getElementById("app-layout") || document.body`. Automatic listeners on `fullscreenchange` reparent open toasts if fullscreen is entered or exited during live gameplay, preventing native top-layer occlusion.
+  - **Persistent Floating Quick Reload Button (`#mobile-reload-float-btn`)**: Fixed at top-left (`left: max(14px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); height: 44px;`) on mobile ratio in and out of fullscreen whenever an update is live. Even if the user dismisses the toast to clear the screen during a round, the glowing `🔄 Update Live` button remains readily available.
+  - **Mobile Menu Integration (`#mobile-expanded-menu`)**: Mobile menu header displays `#mobile-deploy-badge` and Column 1 displays `#mobile-menu-update-card` with status info and a full-width "Reload Game Now" button. The floating hamburger button displays a pulsing green indicator dot (`.has-update`).
+- **Clean Separation of Boomerang Relay Simulation and Live Online Multiplayer**:
+  - **Standalone Boomerang Relay Client (`src/network/RelayClient.ts`)**:
+    - Completely self-contained, proven implementation for in-browser echo simulation, split-screen client prediction, and server ghost clones.
+    - Connects to 3rd-party echo WebSocket relays (`wss://ws.postman-echo.com/raw`, `wss://echo.websocket.org`), loops back incoming telemetry into an in-tab `ServerGameSimulation`, and drives remote avatar interpolation without any external server dependencies.
+    - Preserves exact historical behavior, position synchronization, and ghost clone rendering.
+  - **Standalone Authoritative Universal Room Server (`src/server/UniversalRoomManager.ts`)**:
+    - Attaches directly to the Node.js / Vite HTTP server at path `/ws`.
+    - Directly drives an authoritative 60Hz `ServerGameSimulation` with arena geometry, dynamic freebodies, and connected clients.
+    - Ingests incoming client inputs into jitter buffers, processes high-priority reliable action commands (`pickup`, `drop`, `throw`), and broadcasts 60Hz authoritative state snapshots to all room participants.
+  - **Standalone Online Room Client (`src/network/OnlineRoomClient.ts`)**:
+    - Clean, lightweight WebSocket client connecting directly to `/ws`.
+    - Streams local player inputs, tracks unacknowledged reliable actions, processes incoming server snapshots, and updates ping/RTT telemetry.
+    - Completely decoupled from `RelayClient.ts` to ensure 0% regression risk to local and boomerang gameplay.
+
+---
+
+## 3. Key Architectural Decisions
+
+1. **60Hz Fixed Timestep**:
+   - Standardized on **60Hz** (`dt = 1 / 60`) for physics simulation across client and server.
+2. **True Modularity & Opt-in Mechanics**:
+   - If a creature or freebody does not have a module (e.g. no `StaminaModule`, no `ClimbingModule`, no `RollModule`), that system simply does not run for that entity. Never introduce hardcoded monolithic checks.
+3. **Controller-First Mobile Experience**:
+   - Mobile devices in landscape use physical Bluetooth/USB gamepads without on-screen virtual touch UI overlays.
+4. **Rocket League-Style Rollback Physics (Phase 1.2 Architecture)**:
+   - **Continuous Swept Contact Rollback (TOI)**: Fast-moving colliders rewind to the exact point of tangent contact before applying impulse/restitution, eliminating penetration squish.
+   - **Islands of Influence**: Resting/sleeping arena objects ($v \approx 0$) are excluded from resimulation. Only active players and the objects they currently touch, hold, or throw form an active island.
+   - **Time Dilation Clock Sync**: The server adjusts client physics speed ($0.99\times$ to $1.01\times$) to maintain a stable ~2-frame input buffer without client hitching.
+   - **Decoupled Visual Smoothing**: Physical coordinates snap immediately on rollback correction; renderer interpolates visual offsets across 3–5 frames so corrections are imperceptible.
+5. **Desktop / Laptop Development Workflow & Mandatory Git Push**:
+   - The primary code repository is hosted on GitHub: `https://github.com/skindin/powerCreatureGamePrototype1.git` (active branch `preMultiplayer` / `branch1`).
+   - Work is synced across desktop and laptop via Git commits and pulls.
+   - **MANDATORY AUTO-PUSH RULE**: Whenever an agent commits code, the agent **MUST ALWAYS** immediately push the commit to remote (`git push origin <active_branch>`). Never leave local commits unpushed.
+6. **Dynamic UI Scaling & Aspect-Ratio Preservation**:
+   - Application layout uses a full-width header (`.top-bar` at `100vw`, `z-index: 30`) and a flex column container (`#app-layout`).
+   - `.app-body` wraps `.viewport-container` and `#dev-sidebar`, so the inspector panel docks *below* the top bar and never covers header buttons.
+   - Canvas wrapper and viewport containers enforce `min-width: 0; min-height: 0;` so flexbox children scale down fluidly on laptop displays and high-DPI scaling (125%/150%).
+   - `#game-canvas` uses `aspect-ratio: 20 / 14; object-fit: contain;` to guarantee the complete arena is visible with zero edge cropping across all window sizes.
+   - DevPanel inspector sidebar is open by default on desktop/laptops ($\ge 950\text{px}$) with user preference persisted in `localStorage` under `pcg_sidebar_open`.
+   - Collapsing is supported via header toggle button, close button `✕`, hotkeys (`Backquote` or `KeyI`), and a floating `.quick-sidebar-tab` docked to the right edge of the viewport.
+   - Responsive media queries collapse top-bar button labels to compact icon pills (`👁️` and `🛠️`) at $< 1140\text{px}$ to prevent header button cropping.
+7. **Resilient Local Launcher & Zero-Cache Ephemeral Desktop App**:
+   - `Launcher.cs` / `LaunchGame.exe` automatically searches for and injects `C:\Program Files\nodejs` into the process environment and verifies port 5173 health before opening the game window.
+   - `desktop_app/Form1.cs` / `PowerCreatureGame.exe` strictly enforces **Zero Persistent Cache**:
+     - Creates an isolated ephemeral profile folder per session in `%TEMP%` (`PowerCreatureGame_Session_<GUID>`).
+     - Passes `--disable-http-cache --disable-cache --disk-cache-size=0 --disable-application-cache` to `CoreWebView2EnvironmentOptions`.
+     - Explicitly clears `DiskCache`, `ServiceWorkers`, `CacheStorage`, `IndexedDb`, and `WebSql` on initialization.
+     - Appends a cache-busting timestamp parameter (`?_v=<epoch_ms>`) on startup to guarantee the latest live Vite dev server source is always rendered.
+     - Deletes the ephemeral folder upon app exit.
+8. **Movement Auto-Cancels Sprint**:
+   - In `WalkingModule.ts`, letting go of directional movement controls (`!isMoving`, i.e. keys or left joystick released) automatically resets `character.isSprinting = false`.
+   - `Character.ts` dispatches `onSprintChange` events so HUD badges (`#sprint-badge`) update instantly without desync.
+9. **Wall-Start Throw Clamping**:
+   - `ThrowModule.clampStartOutsideWalls`: If a character is on the ground ($z < \text{wallHeight}$) and facing into a wall, held objects and projectile trajectories are clamped to the closest non-overlapping coordinates outside the wall face, preventing items from clipping or spawning embedded inside wall geometry.
+10. **Isometric 2.5D Walls & Entity Occlusion Transparency**:
+    - In Hover Above Shadow and Both modes, walls render with 2.5D depth as two stacked squares: an intermediate slate bottom square (`#1e293b`) at ground level and a lighter top square (`#334155`) shifted vertically by $y - \text{wallHeight} \times \text{visualAltitudeScale}$. Ground tiles remain deep slate (`#0f172a`), creating clear visual separation between floor, wall front face, and wall roof.
+    - **Occlusion Transparency**: Transparency (`globalAlpha = 0.35`) triggers when **any** ground entity's collider (player character, crates, rocks, food, creatures) on screen is completely above the wall's ground collider (`objY + objR <= wall.y`), overlapping on screen X, and within the top square's projection. Being beside a wall (left or right) never causes transparency.
+    - **Wall Tops Render Over Objects**: In the rendering pipeline, wall top squares render OVER ground-layer entities ($z < \text{wallHeight}$), ensuring proper occlusion and clean see-through transparency. Elevated entities ($z \ge \text{wallHeight}$) render on top of the wall roof.
+11. **Visual Wall Height Slider & Cursor Aim Alignment**:
+    - View Settings features a visual wall height slider from `0.0` (pure 2D flat) to `1.0` (1:1 isometric height), scaling the vertical position of wall top squares, squishing the visible front face, and scaling all altitude hover offsets.
+    - Ground aim reticle always renders precisely at the cursor position. High-elevation wall hits render the landing target vertically elevated above the mouse at $(y - z_{\text{hit}} \times \text{scale})$ with an altitude guide line.
+    - Elevated entities cast secondary shadows on top of wall surfaces when hovering over walls at $z \ge \text{wallHeight}$.
+12. **Straight Trajectory Dots Broken into Ground & Wall-Height Sections (Hover & Both Modes)**:
+    - In addition to the elevated 3D parabolic arc, the straight dotted guide line along the throw path is broken into parallel sections based on projectile altitude:
+      - **Below Wall Height ($z < \text{wallHeight}$)**: Rendered on the ground track ($(x, y)$) as opaque white dots (`rgba(255, 255, 255, 0.95)`).
+      - **At or Above Wall Height ($z \ge \text{wallHeight}$)**: Moved vertically upwards on screen to wall height ($(x, y - \text{wallHeight} \times \text{visualAltitudeScale})$) as transparent white dots (`rgba(255, 255, 255, 0.38)`).
+      - For an arched throw over wall height, this renders as 3 parallel straight dotted sections (2 aligned ground segments at start and end, with the mid-air segment elevated and parallel between them).
+    - No tether or connector lines are drawn between the character and held objects.
+13. **Shadow Fills Covered Below Entities & Collider Outlines Render On Top of Everything**:
+    - **Shadow Fills**: Only the dark shadow fills are covered by walls and entities. Ground shadow fills render on the floor grid below wall bases and ground entities; wall-top shadow fills (masked to wall squares) render on wall roofs before elevated entities are drawn.
+    - **Collider Position Outlines Render On Top of Everything**: The dashed outline of the actual collider position (`drawObjectColliderPositionOutline`) renders **ON TOP OF EVERYTHING** (after walls, ground entities, and elevated entities).
+    - **Top-Most Relevant Outline Rule**: Exactly one outline is drawn for an elevated object — if an object is above a wall ($z \ge \text{wallHeight} - 0.05$ over wall geometry), only the outline around the shadow on the top of the wall is drawn (ground footprint outline under the wall is omitted). If over open ground, the ground outline is drawn.
+    - **Vertical Altitude Connector Lines**: Renders for every object with effective elevation $> 0$ (computing `Math.max(position.z, supportingSurfaceHeight, standingWall ? wallHeight : 0)` so it is never logically hidden when resting on walls). Rendered **OVER** the character and objects using high-contrast white dashes (`[4, 4]`) with a dark drop shadow, connecting directly from the object's center down to its real 2D position on the ground/wall surface.
+14. **Held Objects & Bigger-Without-Hover Wall Transparency**:
+    - Objects held by a character render with semi-transparency (`globalAlpha = 0.55`) and are sorted to render ON TOP OF the holding character at all times, ensuring the player can clearly see their character and facing orientation through the carried object.
+    - Entities on walls render semi-transparent (`globalAlpha = 0.55`) when they get bigger and are not hovering over a shadow (`useBigger && (!useHover || hoverScale <= 0) && isOnLayer2`), ensuring players can see what is underneath them on the wall/floor. When hovering over a shadow in Hover mode, they render opaque.
+15. **Virtual Infinite Layer Collision System & Layer 2 Collision Indicators**:
+    - Objects only collide with each other if they occupy the exact same vertical layer: $\text{layer} = \lfloor \text{effectiveHeight} / \text{wallHeight} \rfloor + 1$.
+    - **Layer 1** ($0 \le z < \text{wallHeight}$): Ground layer — this is the **only** layer that has physical walls.
+    - **Layer 2** ($\text{wallHeight} \le z < 2 \times \text{wallHeight}$): Wall-top elevation layer.
+    - **Layer 3, 4, ...**: Infinite higher elevation layers. Projectiles and high-flying entities pass completely through entities on other layers without collision unless they are on the exact same layer.
+    - **Layer 2 Collision Visuals**:
+      - **Vertical Altitude Line Notches & Zone**: The vertical line marks the Layer 2 floor ($z = \text{wallHeight}$) and Layer 2 ceiling ($z = 2 \times \text{wallHeight}$) with distinct horizontal brackets and transition dots, tinting the Layer 2 collision zone in cyan (`#38bdf8`).
+      - **Layer 2 Ceiling Footprint Outline**: When an airborne object is in Layer 3 or higher ($z \ge 2 \times \text{wallHeight}$), a dashed cyan footprint outline renders at the Layer 2 ceiling height ($(y - 2 \times \text{wallHeight} \times \text{hoverScale}) \times \text{ppu}$ in Hover mode, or $2\times$ reference ring in Bigger Sprites mode), visually showing the exact threshold the object must drop below to enter and collide with Layer 2.
+16. **Multiplayer Ghost Interpolation (Lerp) & Ground Contact Snapping**:
+    - In `#multiplayer-relay-hud`, players can toggle ghost clone position smoothing on/off (`#relay-toggle-lerp-btn`) and adjust the lerp rate (`#relay-lerp-rate-input` in `% / frame`, persisted in `localStorage` under `pcg_ghost_lerp` and `pcg_ghost_lerp_rate`).
+    - **Per-Frame Interpolation**: Normalized to 60 FPS ($1 - (1 - \text{rate}/100)^{dt \times 60}$), where $100\%$ provides instant snapping every frame ($0$ delay) and $35\%$ provides silky smooth tracking without monitor refresh rate discrepancies (60Hz vs 120Hz/144Hz).
+    - **Solid Ground Contact & Surface Touchdown**: Includes physical landing and grounded surface detection (`isGrounded`, `surfaceZ`, `vz`). When target reaches the ground or wall platform, descending ghosts within $0.22\text{u}$ touchdown range snap flat to the surface ($z = \text{surfaceZ}$), eliminating mid-air turnaround float and ensuring the ghost firmly touches the ground on rapid jumps. When disabled, raw network snapshot coordinates render directly.
+17. **True 3D Pickup Range & Delta Magnitude Calculation**:
+    - Replaced the legacy 2D distance and cross-layer multiplier ratio with true 3D Euclidean distance math.
+    - An object is in grab reach if and only if the delta magnitude of their 3D positions $\sqrt{\Delta x^2 + \Delta y^2 + \Delta z^2} \le \text{pickupReach}$, using the exact physical coordinates of the character and target object (accounting for surface elevation when standing on wall tops).
+    - Forces the character to be within a single pickup range across all vertical altitudes: airborne objects high overhead ($z \gg 0$) or objects far below can no longer be grabbed by flat 2D proximity. DevPanel pickup slider governs the single 3D sphere reach.
+18. **Dynamic Object Behavior Modules & Add Behavior Menu**:
+    - Replaced the static, monolithic inspector cards in `DevPanel.ts` with a fully dynamic module management system:
+      - **Only Attached Behaviors Render**: An entity only displays module cards for behaviors that are actively attached (`collider`, `mass`, `friction`, `bounce`, `verticalPosition`, `gravity`, `roll`, plus creature abilities `walking`, `strength`, `pickup`, `throw`, `climbing`).
+      - **Individual Module Removal**: Every active module card features a dedicated `✕ Remove` button at top-right. Clicking it immediately detaches the module from the entity (setting the module property to `null` and resetting relevant dynamic fields like velocity, elevation, or grip), removing the card from the UI.
+      - **Bottom `➕ Add Behavior` Button**: Placed cleanly at the bottom of the behaviors list. Shows a dynamic count of unattached behaviors. Clicking it toggles a styled dropdown listing only behaviors not yet attached.
+      - **Instant Re-Addition**: Selecting any behavior from the dropdown instantiates that module on the entity, immediately re-renders its card with live tuning sliders, and removes it from the dropdown. Fully synchronized with entity selection, duplication, and deletion.
+19. **Held Object Wall Clamping & Throw Clearance**:
+    - **Exact Quadratic Ray-Wall Distance Solver**:
+      - Replaced discrete binary search and negative pull-back with an exact quadratic ray-obstacle distance solver in `Character.calculateHeldObjectPosition(arena)`.
+      - Solves the ray-plane intersections for the 4 expanded wall edges ($x_1 - R, x_2 + R, y_1 - R, y_2 + R$) and the exact quadratic equation $t^2 + 2(\vec{v} \cdot \vec{w})t + (\|\vec{w}\|^2 - R^2) = 0$ for the 4 rounded corner circles of each wall.
+      - Finds the exact earliest positive contact distance along the facing direction ray ($d_{\text{hit}}$) without iterative guessing.
+      - Pulls the held object back along the ray to $\max(0, d_{\text{hit}} - \text{extraThrowClearback})$, strictly enforcing $d \ge 0$ so the object is **never** pulled behind the player's back or flipped violently from side to side in tight corridors.
+      - Provides clean clearance for throws so the projectile has horizontal distance to gain vertical altitude before reaching the wall face.
+    - **Dense Trajectory Clearance Sampling**:
+      - In `ThrowModule.computeLaunchVelocity`, dense sampling near the start of the throw trajectory ($s \in [0.005, 0.1]$) ensures that walls immediately in front of the thrower are detected and the parabolic arc is granted sufficient upward launch velocity ($v_z$) to cleanly clear the wall top without colliding on release.
+20. **Gamepad Hold-to-Grab (RT & B)**:
+    - **RT (Right Trigger)**: Previously only grabbed on the initial press edge. Now, if RT is held while empty-handed and no object is in range, `rtHeld = true` is set and `pickupAndSwap` is re-called every physics tick while RT remains held. The moment an object enters the aim cursor's pickup radius, it is grabbed automatically. `rtHeld` clears when the grab succeeds or RT is released.
+    - **B Button**: Same hold-to-grab behavior via `bHeld` flag. Retries `pickupAndSwap` every tick while B is held and the character is empty-handed. Drops/swaps (fresh press only) when already holding an object.
+    - The release-lock (`rtGrabbed`) still applies: after grabbing via RT, the trigger must be released before RT can throw — preventing accidental immediate throws.
+21. **Continuous Climbing & Dismounting Without Releasing Climb Control**:
+    - Removed the artificial restrictions that forced players to release the climb button (Space / Gamepad A) before dismounting or before climbing again.
+    - **Inward Mounting Nudge**: Upon reaching wall top ($z \ge \text{wallHeight}$), the character is nudged inward onto the wall platform by $\min(r \times 0.5, 0.18\text{u})$ so they firmly plant on the wall rather than teetering on the exterior edge.
+    - **Movement Requirement Before Dismount (`hasMovedOntoWall`)**:
+      - Prevents the character from instantly dropping back into freefall the moment they hit the wall top.
+      - Tracks movement after mounting (`mountStartX, mountStartY`). Dismounting past the guardrail or into gaps is gated by `canDismount = !climbMod || climbMod.hasMovedOntoWall`.
+      - Requires the character to move onto the wall platform (traveling $\ge 0.20\text{u}$ inward or having character center inside the wall footprint) before a dismount off an edge can occur.
+      - Once on the wall, walking off any edge cleanly dismounts while holding climb.
+    - **Instant Mid-Air Climbing from Current Height**:
+      - Players do **not** have to wait until hitting the ground to climb again.
+      - At any vertical elevation ($z < \text{wallHeight}$), the second the character contacts any wall they are moving towards (`targetDot > 0.01` and `shortestDist <= r + contactTolerance`) while holding the climb button, they immediately latch on and resume climbing upward from their current altitude.
+      - Removed mid-air re-grab lockouts (`climbSuppressedUntilRelease`), enabling seamless wall-to-wall traversing, mid-air ledge catches, and continuous dismount/re-climb loops.
+22. **Universal Multi-Player Grab Highlights & Themed Targeting Rings**:
+    - In `Renderer.ts`, `drawFreebodyObject` and `drawCharacter` evaluate pickup reach across `allCharacters` (`charactersInReach = allCharacters.filter(...)`), eliminating the previous restriction where only Player 1 (`characters[0]`) triggered object highlights.
+    - **Player-Colored Grab Badges & Highlights**: When any player targets a reachable object (via virtual aim stick or mouse cursor), the object renders an outer highlight border and solid glowing ring matching that targeting player's theme color (e.g. Amber Gold `#f59e0b` for P1, Cyan `#06b6d4` for P2).
+    - **Multiplayer Badge Context**: If multiple players are present in the arena, the badge displays `P1 GRAB`, `P2 GRAB`, etc., making it clear which player has lock on the object. In single player, it displays `GRAB`.
+    - **Gamepad Pickup Target Expansion**: In `InputManager.pollGamepadSlots`, grabbable candidate lists incorporate other characters (`[...allCharacters.filter(c => c !== char), ...objects]`), ensuring gamepad players can interact with and pick up all eligible entities.
+23. **Simulation Pause & Graceful Zero-Player State**:
+    - **Automatic Simulation Pause**: When all players depart the arena (`isPaused = players.size === 0`), `GameLoop.tick` pauses physics integration and clears the fixed timestep accumulator. Freebody objects remain frozen in place rather than rolling or falling unchecked.
+    - **Continuous Input Polling for Rejoin**: Gamepad polling (`pollGamepadSlots`) and keyboard Spacebar listeners remain active while paused so pressing `Space` or Controller `(A)` immediately spawns a character back into the arena.
+    - **Zero-Backlog Unpausing**: Spawning any player (`spawnKeyboardPlayer` or `spawnGamepadPlayer`) resets `lastTime = performance.now()` and `accumulator = 0`, resuming smooth 60Hz physics without time-skip spikes.
+    - **Glassmorphic Paused Overlay & HUD Sync**: `Renderer` draws a center paused card (`⏸️ SIMULATION PAUSED`) with rejoin prompts; the header badge updates to `⏸️ PAUSED`.
+    - **Defensive DevPanel & Selection Fallbacks**: `DevPanel` selection falls back cleanly to remaining objects or an empty state rather than referencing removed character instances, guarding all sliders, creator spawning, and inspector displays against null reference crashes.
+24. **Vertical Connector Line Anchors to First Surface Beneath Entity**:
+    - In `Renderer.ts` (`drawVerticalConnectorLine`), the vertical connector line dynamically identifies the physical surface directly beneath the entity's $(x, y)$ coordinates:
+      - **Above Open Ground**: If no wall exists directly beneath the entity's footprint (`arena.getSupportingWall(...) === null`), the line anchors all the way down to `groundY` (ground level), even when the entity is high in the air above wall elevation ($z \ge \text{wallHeight}$). It renders the Layer 1 segment in white, the threshold notch at `layer2BaseY`, and the Layer 2 segment in cyan.
+      - **On or Directly Above a Wall**: If an actual wall exists directly beneath the entity and elevation is at or above wall height ($z \ge \text{wallHeight} - 0.05$), the line anchors to the wall top (`layer2BaseY`) and draws upward to `renderY`. Entities resting on the wall top have zero-length line (suppressed).
+25. **Player Name Tags Render Above Everything in Final Pass**:
+    - Player name tags ("P1", "P2", "Press Space / A") are rendered in a dedicated final render pass (`drawCharacterNameTag`) in `Renderer.ts` after walls, 2.5D wall tops, entities, and trajectory lines are drawn, ensuring name tags are never occluded by wall tops.
+26. **Disabled Blue Outline for Above Layer 2 Threshold**:
+    - In `Renderer.ts` (`drawObjectColliderPositionOutline`), disabled the cyan/blue dashed outline (`rgba(56, 189, 248)`) that was previously rendered for objects elevated above the Layer 2 ceiling ($z \ge 2 \times \text{wallHeight}$).
+27. **JumpModule Addition & 1.5-Unit Apex Height Calibration (Space / Gamepad A)**:
+    - Added `JumpModule.ts` defining modular vertical jumping mechanics with `jumpStrength` (impulse in $\text{N}\cdot\text{s}$) and `maxInitialSpeed` (maximum takeoff velocity cap).
+    - **Default Calibration**: Configured with `jumpStrength = 11.6` and `maxInitialSpeed = 15.0`. Under standard arena gravity ($g = 30.0$) and default character mass ($1.2\text{kg}$), discrete 60Hz Euler integration yields an apex height of exactly **$1.50\text{ units}$** ($1.498\text{u}$), allowing creatures to clear 1.5 wall-height layers unencumbered.
+    - **Encumbered Physics Scaling**: Vertical takeoff velocity scales with combined load ($v_z = \min(\text{maxInitialSpeed}, \text{jumpStrength} / (m_{\text{char}} + m_{\text{held}}))$), reducing jump height realistically when holding rocks, crates, or other creatures.
+    - **Input Binding**: Initiated on non-repeat `Spacebar` (keyboard) and button 0 / `A` button (gamepad), while preserving initial device claiming / join triggers when unassigned.
+28. **WallEdgeAssistModule Decoupling & Disabled-by-Default Edge Guardrail**:
+    - Separated wall platform edge guardrails and clamp states (`preventWalkOff`, `hangDistance`, `isAssistClampArmed`, `hasMovedOntoWall`, mount tracking) out of `ClimbingModule` into an independent `WallEdgeAssistModule.ts`.
+    - **Removed Climbing from Default Character**: Default player characters spawn with `climbingModule = null`, giving them jump capabilities by default without vertical wall adhesion.
+    - **Disabled by Default**: `WallEdgeAssistModule` initializes with `preventWalkOff = false` by default, allowing creatures on wall tops to freely walk off ledges and dismount without being clamped or held back by edge guardrails.
+    - **Optional Toggle in DevPanel**: Players can re-enable edge assist at any time via the DevPanel "🛡️ Wall Edge Assist" card by toggling "Prevent Walk-Off" to Active.
+    - **Optional Addable Behavior**: `ClimbingModule` remains fully supported as an opt-in creature ability; players can re-attach climbing at any time via the DevPanel "➕ Add Behavior" dropdown.
+29. **Directional Jump Impulse When Walking Against Obstacles & Wall Assist**:
+    - When walking against a wall obstacle or against the wall edge assist clamp, horizontal velocity is zeroed by the collision/clamp system, which previously resulted in purely vertical jumps with zero horizontal displacement ("no motion").
+    - In `JumpModule.jump`, when a player jumps while holding a directional movement input (`movementInput` from keyboard WASD or gamepad analog stick), the character is granted one physics step of velocity ($v_{\text{step}} = a_{\text{walk}} \cdot dt \approx 0.486\text{ u/s}$, scaling up to $0.729\text{ u/s}$ when sprinting and scaling with carried mass) in the held direction if current velocity along that direction is lower.
+    - Jumping on wall platforms automatically disarms `wallEdgeAssistModule.isAssistClampArmed` and requires `isRestingOnSurface` for `wasStandingOnWallTop`, allowing creatures to cleanly leap off wall ledges and over obstacles without mid-air clamp interference.
+30. **Omnidirectional Wall Jump Vaulting & Floating-Point Symmetry Fix**:
+    - **Ascending Vaulting (`isAscendingJump`)**: When an entity is ascending in a jump ($v_z > 0$) with sufficient vertical energy to reach or clear the wall top ($z + v_z^2 / (2g) \ge \text{wall.wallHeight} - 0.05$), `resolveWallCollision` separates collider penetration along the normal so the character slides smoothly up the exterior wall face, but skips `resolveWallImpact` (which previously cancelled horizontal forward velocity into the wall on tick 2 of the jump before the character reached wall height).
+    - Preserving horizontal velocity during ascent allows creatures jumping against wall faces from a dead stop to smoothly vault onto the top of the wall platform from all angles (North, South, East, West, and diagonals).
+    - **Floating-Point Epsilon in `testWallOverlap`**: Replaced strict inequality `< (radius * radius)` with `<= (radius * radius) + 1e-6` in `Arena.ts`. Previously, IEEE 754 precision differences ($10^{-16}$) caused West and North boundary tests (which subtract coordinates yielding negative floats) to evaluate to false while East and South evaluated to true, creating artificial directional bias at exact boundary distances.
+31. **Strict Wall Assist Standing Height Invariant**:
+    - In `GameObject.ts`, wall edge assist (`isPreventWalkOffActive`) strictly requires the character to be at exactly wall height standing on top of a wall: `this.standingWall !== null`, `!this.isClimbing`, `Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01`, `Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01`, and `this.isRestingOnSurface`.
+    - If the character is not resting at exactly wall height on top of a wall (e.g. on the ground, climbing, jumping, or airborne at any elevation), `isAssistClampArmed` is disarmed to `false`, `hasLeftClampZoneSinceDismount` is set to `true`, and wall assist is guaranteed inactive.
+32. **Hold-Down Jump & Instant Touchdown Takeoff**:
+    - Supported for both Keyboard (`Space`) and Gamepad (`A` button / Button 0).
+    - In `Character.updateCharacter`, holding the jump input checks for takeoff both pre-physics integration and immediately following `this.updatePosition(dt, arena)`.
+    - The instant a falling or airborne character hits the ground or a supporting wall top (`position.z <= surfaceHeight` resolving to `isRestingOnSurface = true`), `character.jump()` triggers within that same physics tick, immediately relaunching them into the air with initial takeoff velocity without resting or hitching on the ground.
+    - Keyboard jump holding is strictly decoupled via `input.isKeyboardJumpHeld` (`this.keysPressed.has("Space")`), and Spacebar prevents browser scroll during key repeat.
+33. **Consistent Upward Jump Burst & Air Control (Walk in Air)**:
+    - **Consistent Upward Burst**: Jumping produces a clean, consistent upward vertical impulse ($v_z = \text{takeoffSpeed}$) every time, without 45-degree angle deflections or artificial forward launch boosts. Horizontal velocity ($v_x, v_y$) is preserved smoothly without interference.
+    - **Air Control (Walk in Air)**: `WalkingModule` provides directional air control via the `walkInAir` toggle (default: `true`, configurable in `DevPanel.ts` via checkbox). When active, walking force applies in mid-air to steer, accelerate, or curve the jump trajectory naturally. When movement inputs are released in mid-air (`!isMoving`), horizontal momentum is preserved without dead-stop air braking.
+34. **Live Railway Deployment, Building & Crash Notifier (Non-Intrusive)**:
+    - **Real-Time Build Status Polling**:
+      - `server.js` and `vite.config.ts` query GitHub's public commit status API (`/commits/branch1/status`) cached with a 10-second TTL to respect rate limits, providing live Railway deployment state.
+      - `/api/version` (and `/api/deploy-status`) returns running deployment IDs and current build telemetry: `state` (`pending` / `success` / `failure`), `isBuilding`, `isFailed`, `isSuccess`, `description`, and `targetUrl` (linking directly to live Railway build logs).
+    - **In-Progress Deploying Notifications (`isBuilding`)**:
+      - When a new commit is being built or prepared on Railway, displays an amber pulsing header badge (`⚙️ Deploying (commit)...`) and a floating toast (`🔨 Deploying Railway Update...`).
+      - Features a direct `↗ Logs` button to inspect build progress on Railway and plays a soft ascending chime. Auto-fades toast after 10s while keeping badge active.
+    - **Crashed / Failed Build Notifications (`isFailed`)**:
+      - When a Railway build or container crashes, displays a prominent red pulsing header badge (`❌ Build Crashed (commit)`) and an error toast (`🚨 Railway Build Crashed!`).
+      - Directly includes error description and a `🔍 Error Logs` action linking straight to the failed Railway build log, accompanied by an alert warning sound.
+    - **Live Deployed Update (`isSuccess` / New Deploy ID)**:
+      - Strictly **never forces a restart or reload**; gameplay continues uninterrupted.
+      - Cleans up building/crash alerts and displays green/cyan floating toast (`✨ Railway Update Live (commit)`) with `Reload` and dismiss `✕` buttons, pulsing header badge (`✨ Update Live`), and success chime (E5 -> B5).
+35. **Calibrated Jump Strength & Max Initial Velocity Invariant**:
+    - **Physical Context**: Base Character mass is $1.2\text{ kg}$. The light blue box (`stone-1`) has mass $0.7\text{ kg}$ (total mass $1.9\text{ kg}$). The heavy red box (`boulder-1`) has mass $2.6\text{ kg}$ (total mass $3.8\text{ kg}$). Spherical balls (`bouncy-1`, `rolling-1`) have masses $0.5\text{ kg}$ and $0.6\text{ kg}$ (total masses $1.7\text{ kg}$ and $1.8\text{ kg}$).
+    - **Apex Height Equation**: Under gravity $g = 30.0\text{ u/s}^2$, reaching an apex of $h = 1.5\text{ units}$ requires an initial vertical velocity $v_z = \sqrt{2gh} = \sqrt{2 \cdot 30.0 \cdot 1.5} = \sqrt{90} \approx 9.67\text{ u/s}$.
+    - **Calibrated Parameters**: `JumpModule` default parameters are set to `jumpStrength = 18.5 N·s` and `maxInitialSpeed = 9.67 u/s`.
+    - **Jump Invariant**:
+      - Unencumbered ($1.2\text{ kg}$): raw speed $18.5 / 1.2 = 15.42\text{ u/s} \ge 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding blue box ($1.9\text{ kg}$): raw speed $18.5 / 1.9 = 9.74\text{ u/s} \ge 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding bouncy ball or rolling ball ($1.7 - 1.8\text{ kg}$): raw speed $> 9.67 \to$ capped at $9.67\text{ u/s}$ ($1.5\text{ units}$).
+      - Holding heavy red box ($3.8\text{ kg}$): raw speed $18.5 / 3.8 = 4.87\text{ u/s} < 9.67 \to 4.87\text{ u/s}$ (apex $\sim 0.39\text{ units}$, noticeably encumbered).
+36. **Horizontal Mobile Landscape Optimization & Floating Fullscreen Button**:
+    - **Clean Screen Directive**: In horizontal phone/mobile mode and whenever fullscreen is active (`:fullscreen`, `html.fullscreen-active`, `@media (orientation: landscape) and (max-height: 600px)`), literally all UI is hidden: `.top-bar`, `.controls-overlay-bar`, `#quick-sidebar-tab`, and `#dev-sidebar` are hidden.
+    - **Zero Screen Waste & Zero Border Artifacts**: The canvas fills 100% of the viewport (`aspect-ratio: 20 / 14`, `object-fit: contain`), removing all wrapper padding (`padding: 0 !important;`), canvas box-shadows, canvas border-radii, and lighter background margins, ensuring the screen is completely black/seamless (`#090d16`).
+    - **Right Joystick Click (R3 / Button 11) Excluded**: Clicking the right joystick does **never** trigger jump, climb, sprint, or grab. Button 11 is strictly excluded from `rightPaddleButtonIndices`.
+    - **Floating Fullscreen Button (`#mobile-fullscreen-btn`)**:
+      - A sleek glassmorphic pill button (`height: 44px`, `top: max(10px, env(safe-area-inset-top))`, `right: max(68px, calc(env(safe-area-inset-right) + 54px))`) positioned directly adjacent to the hamburger button.
+      - **Visible When Not Fullscreen**: Prominently shown on mobile ratios so players can enter fullscreen mode with a single direct tap.
+      - **Hidden When Maximized**: The moment the screen enters fullscreen mode (`isFullscreenActive()`), the button is completely hidden (`display: none !important;`) so it never clutters gameplay. Reappears immediately upon exiting fullscreen.
+      - **Zero Arbitrary Screen Taps**: Completely eliminated the legacy background `window.addEventListener("touchstart", tryAutoFullscreen)` handler which caused browser gesture rejection toasts and forced users to tap random points on the screen.
+    - **Floating Hamburger Button (`#mobile-menu-btn`)**: A glassmorphic button in the top right corner (`width: 44px; height: 44px`) that animates into an `✕` when the menu is open.
+    - **Expanded Landscape Menu (`#mobile-expanded-menu`)**: Opens a non-stuffed, 3-column landscape card organizing all existing UI options:
+      1. **Game Mode & Public Link**: Single Player vs. Multiplayer pills, persistent nationwide room URL (`https://pcg-arena-teal.loca.lt`), 1-click Copy, Open (`↗`), and `📱 QR` scan modal.
+      2. **Vertical Visuals & Wall Elevation**: Radio buttons for Bigger Sprites, Hover Above Shadow, and Both Modes, plus live Wall Isometric Height slider (0.0 to 1.0).
+      3. **Panels & Controls Reference**: 👥 Players & Controllers (with live active count badge), 🐞 Feedback, 🛠️ Dev Inspector toggle, and a compact Controls guide (WASD/L-Stick, Space/A, L-Click/RT, Shift/LB, B) with live controller connection badge.
+    - **Modals & Overlays**: Modals (`#players-panel`, `#view-settings-panel`, `#phone-modal`) are centered with `max-height: 92vh` scrollable cards, and `#dev-sidebar` acts as a slide-over panel on mobile.
+37. **Bugs & Suggestions Reporting System (Public Shared Log, Local Time & Chronological Sorting)**:
+    - **In-App Submission & Separate Categories**:
+      - Accessed via top bar `🐞 Feedback` button (`#toggle-feedback-btn`) with live uncompleted count badge, or via mobile landscape menu (`#mobile-btn-feedback`).
+      - Expandable submission drawer (`#feedback-form`) with auto-focused description text box and type selector defaulting to **Suggestion** (`<option value="suggestion" selected>`).
+      - Separates open entries into two dedicated category columns/cards with **🐞 Bug Reports** positioned cleanly above **💡 Suggestions**.
+    - **Chronological Sorting & Client Local Time**:
+      - Open Suggestions are strictly ordered from **oldest to newest** (`new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()`) so earlier ideas stay at the top.
+      - Open Bugs are sorted from newest to oldest.
+      - Every entry displays submission date and time formatted in the viewer's **LOCAL timezone and locale** via `Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })`.
+    - **Resolution Checkboxes & Hidden-by-Default Drawers**:
+      - Each card features an interactive checkbox. Checking an item moves it to the bottom of its category into a completed section (`Completed Suggestions` / `Resolved Bugs`).
+      - Both completed sections are collapsed/hidden by default with accordion toggles (`Show Completed Suggestions (N)` / `Show Resolved Bugs (N)`).
+      - Clicking the checkbox sends optimistic `PATCH /api/feedback/:id` updates, instantly toggling completion status across all connected clients via 15s background polling.
+    - **Persistent Store & Railway Database Strategy**:
+      - Server exposes `GET /api/feedback`, `POST /api/feedback`, and `PATCH /api/feedback/:id` in both `server.js` (production) and `vite.config.ts` (dev server & remote localtunnel).
+      - Backed by JSON file store (`data/feedback.json`, `server/feedbackStore.js`).
+      - **Railway DB**: Setting up an external Railway DB (e.g. Postgres) is **not strictly required** to use the feedback system right away. However, because Railway's container filesystem is ephemeral across Git redeployments, data in `data/feedback.json` would reset on redeploy. To persist user feedback permanently across future redeployments, attach a Railway Persistent Volume at `/app/data` (0 code changes) or provision a free Railway PostgreSQL database.
+38. **Text Input Focus Precedence & Game Input Isolation**:
+    - **Focus Detection**: Added `isTextInputFocused()` and `isTargetTextInput(e.target)` to `InputManager.ts`, detecting active `HTMLInputElement`, `HTMLTextAreaElement`, `HTMLSelectElement`, and contenteditable elements.
+    - **Spacebar & Key Isolation**: When any text input/field is focused:
+      - `Spacebar` default browser behavior (inserting a space character) is strictly preserved without calling `e.preventDefault()`. Spacebar jumps and player joins are suppressed.
+      - WASD character movement, climbing, sprint toggles, and drop/pickup (`KeyE`) actions are suppressed, and `movementVector` is zeroed out.
+    - **Focus Reset**: Added a `focusin` listener on `window` that immediately clears `keysPressed` and resets movement whenever a text field receives focus, preventing characters from continuing to run if a text box is clicked while moving.
+    - **Hotkey Guards**: Guarded global hotkeys in `PlayersPanel.ts` (`P`) and `main.ts` (`I`, `V`, `~`) against all form input and contenteditable targets so typing letters inside text areas never triggers panel toggles.
+39. **Feedback Multi-Select & Serialized Clipboard Copying**:
+    - **Individual Copy**: Each feedback card (bug or suggestion) features an individual `📋 Copy` button. Clicking it formats that single item as `${Type} : '${description}'` (e.g. `Suggestion : 'text'` or `Bug : 'text'`), copies it to the clipboard, and temporarily flashes `✓ Copied!`.
+    - **Multi-Select & Bulk Actions**:
+      - Added `.feedback-bulk-bar` featuring `Select All` checkbox, dynamic counter pill (`N selected`), `📋 Copy Selected (N)`, and `📑 Copy All`.
+      - Each card has an independent selection checkbox (`.feedback-item-select`), highlighting the selected cards in cyan (`.feedback-item-card.selected`).
+      - Clicking `Copy Selected` or `Copy All` outputs clean newline-delimited serialized entries:
+        ```text
+        Bug : 'Rocks sometimes clip when falling at terminal velocity'
+        Suggestion : 'Add sprint trails for high speed'
+        ```
+      - Supports dual-mode clipboard engine (`navigator.clipboard.writeText` with legacy `document.execCommand('copy')` fallback) ensuring universal cross-browser, WebView2, and mobile compatibility.
+40. **Keyboard Sprint Persistence, Mobile Controller Sprint & Fullscreen PWA Layout**:
+    - **Keyboard Sprint Persistence Across Direction Changes**:
+      - Pressing or holding `Shift` activates keyboard sprint (`isKeyboardSprintActive = true`).
+      - In `InputManager.ts`, `hasAnyMovementKeyPressed()` checks whether any WASD or Arrow keys are pressed. As long as any movement key is pressed, sprinting remains strictly **ON**, persisting seamlessly across all direction transitions (e.g. W -> D, A -> S).
+      - Sprint only resets to off when the player is **no longer pressing any WASD / arrow keys** (`!hasAnyMovementKeyPressed()`) and Shift is not held.
+      - Removed unilateral sprint cancellation from `WalkingModule.ts` so sprint state is preserved through 1-tick direction changeovers and standing arming.
+    - **Mobile Gamepad Left Bumper & L3 Sprint**:
+      - Checked both Button 4 (Left Bumper / LB / L1) and Button 10 (L3 / Left Stick Click).
+      - Supports both tap-to-arm and hold-to-sprint. If LB or L3 is tapped while stationary, sprint is armed (`slot.sprintArmed = true`), so the character immediately sprints when the analog stick is pushed.
+      - Tracked `slot.wasMoving`; sprint cleanly resets only when the analog stick returns to neutral (`lMag <= deadzone`) and neither LB nor L3 is being held.
+    - **Hidden Mobile Notification Phone UI (Immersive Fullscreen)**:
+      - `public/manifest.webmanifest`: Configured with `"display": "fullscreen"` and `"display_override": ["fullscreen", "standalone", "window-controls-overlay"]`, plus `"orientation": "landscape"`.
+      - `index.html`: Added `<meta name="apple-touch-fullscreen" content="yes" />` and `<meta name="mobile-web-app-capable" content="yes" />` with `black-translucent` status bar style.
+      - `src/main.ts`: Added first-gesture touch/pointer listeners invoking `document.documentElement.requestFullscreen({ navigationUI: "hide" })` and `screen.orientation.lock("landscape")`, completely suppressing Android/iOS notification status bars and system navigation bars during gameplay.
+    - **Elimination of PWA Top/Bottom Blank Bars**:
+      - Expanded the mobile landscape media query in `src/style.css` to cover `@media (max-height: 850px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape), (display-mode: fullscreen) and (orientation: landscape), (display-mode: standalone) and (orientation: landscape)`.
+      - Applied `100%`, `100dvh`, and `100dvw` on `#app-layout`, `.app-body`, `.viewport-container`, `.canvas-wrapper`, and `#game-canvas` with zero margins and padding, eliminating all letterboxing or thick top/bottom blank bars.
+      - Ensured `#dev-sidebar` defaults to collapsed on all mobile/touch devices (`pointer: coarse` or landscape height $< 850\text{px}$), preventing sidebar open state from squeezing the canvas.
+      - Attached `fitCanvas` triggers to `resize`, `orientationchange`, `fullscreenchange`, and `screen.orientation.change`.
+41. **Air Friction, Floating Friction Deceleration & Unclamped Airborne Max Speed**:
+    - **Floating Friction in Mid-Air (`!isMoving`)**:
+      - Removed early exit `if (isAirborne && !isMoving) return;` in `WalkingModule.ts`.
+      - When not holding directional input while jumping/airborne, target velocity is $(0, 0)$ and full symmetrical input friction (`maxAccel = ((effectiveWalkForce * strength) / totalMass) * airFriction`) applies.
+      - Smoothly decelerates horizontal velocity to zero within ~11 ticks, resolving the issue where characters maintained horizontal velocity indefinitely while holding jump.
+    - **Unclamped Airborne Max Speed**:
+      - When airborne (`isAirborne = true`) and providing movement input (`isMoving = true`), target speed is `airTargetSpeed = Math.max(effectiveSpeed, currentSpeed)`.
+      - Avoids clamping high-velocity states (e.g. throws, explosions, speed boosts) down to the base ground walking speed ($5.2\text{ u/s}$) while airborne, while still allowing directional steering and braking.
+    - **Configurable `airFriction`**:
+      - Added `public airFriction = 1.0;` to `WalkingModuleOptions` and `WalkingModule`.
+42. **Strict Trajectory Auto-Lock Gating & Controller LT Isolation**:
+    - **Strict Gating Requirement**: The trajectory arc and landing point **NEVER** snap or lock onto any object unless the player is actively holding **Left Trigger (`LT` / Button 6)** on a controller or **Right Mouse Button** on PC.
+    - **Unsnapped Manual Aim by Default**: When `autoLock` is `false`, `ThrowModule.computeLaunchVelocity` completely bypasses entity lock detection (`hoveredEntity = null`, `isAutoLocked = false`, `targetObject = null`), keeping the aim landing point precisely at the cursor coordinates without magnetic pull or target snapping.
+    - **Controller LT Input Sanitization**:
+      - Strictly isolated Left Trigger detection to `isButtonPressed(6, 0.35)`.
+      - Removed generic non-standard gamepad axis checks (`axes[5] > 0.4`), which caused uncalibrated axes or resting analog sensors on mobile controllers (e.g. Backbone Pro, direct-input pads) to falsely trigger auto-lock continuously.
+      - Integrated interactive "Air / Floating Friction" slider ($0.0 - 3.0$) into the DevPanel Walking Ability card.
+42. **Context-Aware Cursor Visibility & Unified Colored Grab Highlight**:
+    - **Nearby Grab Without Moving Cursor**:
+      - Walking near any grabbable item (`reachable.length > 0`) allows immediate pickup without touching the mouse or right joystick.
+      - Pressing grab (Left Click, hold Left Click, `E` key, Gamepad `RT`, or Gamepad `B`) automatically grabs the nearest reachable object if the cursor is hidden or not actively selecting a specific item.
+    - **Unified Player Theme-Colored Outline & `GRAB` Badge**:
+      - When near an object without moving the cursor, the closest reachable object immediately renders with the player's vibrant theme-colored outline (e.g. amber gold `#f59e0b` for P1) and the prominent `GRAB` / `P1 GRAB` text badge above the object.
+      - This eliminates generic/dim white fallback outlines and provides instant visual feedback of which item is targeted for immediate pickup.
+    - **Cursor Only Appears on Active Aim Movement While in Reach**:
+      - When empty-handed, walking near an item does **not** automatically show the cursor reticle or dotted sightline (keeping screen clean).
+      - The cursor reticle and dotted sightline only unhide when the player actively starts moving the mouse or deflecting the right joystick *while close enough to grab something* (`aimMovedWhileInRange`).
+      - Moving the mouse/stick while far away from items does not prime or show the cursor.
+    - **Immediate Cursor Hiding When Out of Reach**:
+      - As soon as nothing is within physical pickup range anymore (`reachable.length === 0`), both the highlight/badge and cursor reticle immediately hide and reset the aim movement trigger.
+      - When holding an object, the cursor is always visible to aim throws; upon throwing, once the projectile departs physical reach, the cursor immediately hides.
+    - **Cursor Unhide Origin (Visual Position Accounting for Isometric Height)**:
+      - Every time the cursor is unhidden (upon pickup or upon aiming at reachable items), it starts directly at the character's visual position: $(x = \text{char.position.x},\; y = \text{char.position.y} - \text{char.position.z} \times \text{hoverScale})$.
+      - While hidden, the cursor position remains anchored to the character's visual coordinates so aiming deflection always radiates naturally outward from the character.
+43. **Desktop Zoom Prevention & 0.5 Wall Isometric Height Default**:
+    - **Desktop Layout Protection (No Zoom on Desktop)**:
+      - Restricted the full-screen canvas expansion and UI-hiding media query in `src/style.css` strictly to `@media (pointer: coarse) and (orientation: landscape)`.
+      - Desktops and laptops (which have `pointer: fine`) will never match this rule, preserving the full desktop header bar, controls overlay bar, dev sidebar, and framed canvas regardless of window height or display resolution.
+      - Removed `pointerdown` listener from triggering `enterImmersiveFullscreen` in `src/main.ts`; only mobile touch events (`touchstart` on `pointer: coarse`) can trigger immersive fullscreen.
+      - Refined `isMobileOrTouch` in `src/main.ts` to strictly test `(pointer: coarse)`, keeping the inspector sidebar open by default on desktops and laptops.
+    - **Default 0.5 Units Isometric Wall Height**:
+      - Updated the default visual wall height / altitude scale (`visualAltitudeScale`) from `1.0` to `0.5` units across `Renderer.ts`, `main.ts`, and `index.html`.
+      - When opening the View Settings panel or mobile menu, the slider starts positioned at `0.5` with the value displaying `0.50`.
+44. **Mouse Grab Cursor Snap & Controller Relative Aim Preservation**:
+    - **Mouse Controlled Grab Snaps Directly to Mouse Cursor**:
+      - When a character is controlled by mouse and grabs an object, the in-game aim reticle is instantly placed at the player's physical mouse cursor position (`inputManager.actualMousePos`), rather than resetting to the character.
+      - While holding an object with mouse, the throw aim reticle and trajectory continuously follow the mouse cursor with zero lag or character offset.
+    - **Controller Holding Object Preserves Relative Position**:
+      - For gamepad players holding an object, the cursor's relative offset to the character (`slot.aimOffset`) is preserved as the character walks and maneuvers around the arena (`slot.aimPos = visualPos + slot.aimOffset`).
+      - When the cursor hides (e.g. after throwing or when stepping out of reach) and reappears (e.g. upon grabbing another object or deflecting right stick), it is placed at the exact same relative position to the character (`visualPos + slot.aimOffset`).
+45. **Keyboard Sprint Toggle, Shift Untoggle & Movement Release Reset**:
+    - **Shift Key Toggles and Untoggles**:
+      - Pressing Shift while sprint is OFF toggles sprint ON.
+      - Pressing Shift again while sprint is ON (even while holding movement keys) immediately untoggles sprint OFF, returning the character to normal walking speed.
+    - **Movement Release Auto-Reset**:
+      - While moving, sprint does not turn off on its own unless explicitly untoggled with Shift or until all WASD / arrow movement keys are released.
+      - Releasing all movement keys automatically turns sprint OFF, so the next movement begins at normal speed until Shift is pressed again.
+46. **Hovered Object Layer Elevation Targeting & Right-Click / Left-Trigger (LT) Hold Auto-Lock**:
+    - **Strict Gating Requirement (Zero Snapping Without LT / RMB)**:
+      - The trajectory arc and landing point **NEVER** snap or lock onto any object unless the player is actively holding **Left Trigger (`LT` / Button 6)** on a controller or **Right Mouse Button** on PC.
+      - When not holding LT or RMB (`autoLock === false`), `ThrowModule.computeLaunchVelocity` completely bypasses entity locking (`hoveredEntity = null`, `isAutoLocked = false`, `targetObject = null`), keeping the landing point precisely at the cursor coordinates without any magnetic pull or target snapping.
+      - **Controller LT Input Sanitization**: Left Trigger detection is strictly isolated to `isButtonPressed(6, 0.35)`. Generic non-standard axes (`axes[5] > 0.4`) were removed to prevent uncalibrated axes or resting analog triggers on mobile pads (e.g. Backbone Pro) from falsely triggering auto-lock.
+    - **Hold Auto-Lock (Holding RMB on Mouse or LT / Button 6 on Gamepad)**:
+      - **Hold Right Click (Mouse)** or **Hold Left Trigger / LT (Gamepad Button 6)**: Actively engages auto-lock.
+      - **Unclamped Distance (Closest Object Regardless of Range)**: Auto-lock finds the strictly closest entity to the cursor across the entire arena (`lockTolerance = Infinity`), no matter how far away it is.
+      - Snaps the trajectory $(effectiveTargetX, effectiveTargetY)$ directly to that closest object's center coordinates and targets the top of its layer.
+      - **Independent Cursor Stays Visible & Active**: The player's aim cursor reticle ALWAYS remains visible at its exact independent position on the screen, with the player's color and sightline. It never disappears or gets hijacked.
+      - **Locked Object Lockbox & Guide Line**: While holding lock, dedicated amber corner lock brackets `[ ]` and a `[P# LOCKED]` badge appear directly on the targeted closest object, with a dashed amber guide line connecting from your visible cursor to the locked object.
+      - As the player moves their cursor, they clearly see their cursor roaming freely while the lockbox snaps to whichever object is closest to the cursor.
+      - Releasing Right Click or Left Trigger immediately disengages auto-lock, returning to 100% free, unsnapped 2D cursor aiming.
+47. **Top-Bar Responsive Wrapping & Non-Overflowing Navigation**:
+    - `.top-bar` and `.top-bar-right` support `flex-wrap: wrap;` with dynamic `row-gap: 6px;` and `column-gap: 12px;`.
+    - When screen or window width is constrained (e.g. laptop displays, high DPI scaling 125%/150%, or narrow windows), elements wrap onto a clean new line rather than pushing past the screen edge or clipping off the right viewport border.
+    - Updated responsive breakpoint thresholds so `.brand-badge` and `.public-label` hide at $\le 1450\text{px}$, and `.sidebar-btn-text` collapses to icon pills (`👥`, `🐞`, `👁️`, `🛠️`) at $\le 1320\text{px}$, maintaining clean single-line density across standard widescreen displays while wrapping gracefully whenever needed.
+48. **Bug Fixes Across Controls, Mobile Browsers, Roll Visuals & Wall Physics**:
+    - **Controller Joystick Following Player (Bug 1)**:
+      - Gamepad virtual aim reticle position (`slot.aimPos`) is stored and managed directly in absolute world arena coordinates (unanchored from character).
+      - Right stick analog deflection moves `slot.aimPos` across the arena in world space. Moving the character with left stick or WASD leaves the crosshair at its exact world coordinates, behaving like a free mouse cursor rather than dragging along like a leash.
+    - **Mobile Gamepad Left Bumper & Browser Back Navigation (Bug 2)**:
+      - Trapped browser `popstate` via `history.pushState` and intercepted navigation key events (`BrowserBack`, `GoBack`) so Left Bumper (LB / button 4) on mobile controllers triggers sprint cleanly without navigating back or exiting the game.
+    - **Auto-Target Inconsistent Activation (Bug 3)**:
+      - Fixed `InputManager.ts:545` where `gp.axes[2]` (Right Stick X-axis) was erroneously checked as Left Trigger on non-standard gamepads. Nudging right stick or stick drift no longer triggers auto-lock. Auto-lock strictly checks Button 6 (or axis 5).
+    - **Wall Trajectory Collision at 0 Speed (Bug 4)**:
+      - When throwing an object over a wall while standing directly adjacent to the wall face (even at 0 speed), `ThrowModule.ts` elevates the launch altitude (`startZ = Math.max(startZ, arena.wallHeight + 0.05)`). Both trajectory calculation and physical throw release above wall height, preventing the object from colliding into the wall face on frame 1.
+      - In `GameObject.ts`, ascending thrown objects whose vertical apex clears the wall are treated as ascending vaults, preserving forward horizontal velocity.
+    - **Auto-Aiming Character Faces Target (Bug 5)**:
+      - In `Character.ts`, when holding an object with auto-lock active, the character's facing orientation (`facingAngle`) points directly toward the locked target entity's position, aligning character, throw trajectory, and eyes with the locked target.
+    - **Roll Visual Oval Top Hemisphere & Dash Direction Inversion (Bug 6)**:
+      - In `Renderer.ts`, roll indicator oval arcs and triangle alphas are determined in screen space (`sy <= centerY`), ensuring the top hemisphere facing the camera is ALWAYS rendered with the opaque stroke and the underside is semi-transparent, regardless of rolling direction.
+      - Dash offset direction is coupled to the physical surface velocity vector $\vec{v}_{\text{surf}} = (\omega_y R, -\omega_x R)$, ensuring dashes always advance forward in the direction of ground roll.
+    - **Android Stuck Unmaximize Toast (Bug 7)**:
+      - In `src/main.ts`, `enterImmersiveFullscreen` is attached with `{ passive: true, once: true }` and guarded with `hasRequestedFullscreen`. Only fires once on initial user gesture, preventing repeated `requestFullscreen` calls on every touch that caused Android's "Swipe down to exit" system toast to get stuck permanently.
+    - **iPhone Viewport Maximize (Bug 8)**:
+      - Handled iOS Safari's lack of the Fullscreen API by executing scroll collapse (`window.scrollTo(0, 0)`) on first touch gesture, activating full-bleed `100dvh` viewport fitting.
+49. **Wall Roof & Object Cursor Landing Targeting & Orthographic Mode Default**:
+    - **Default View Mode Set to Orthographic (`"hover"`)**:
+      - Updated default `viewSettings.verticalVisuals` from `"bigger"` (sprite scale mode) to `"hover"` (Hover Above Shadow / orthographic mode without sprite scale) across `Renderer.ts`, `main.ts`, and `index.html`.
+      - Added `pcg_view_default_ortho_v1` local storage migration in `main.ts` to seamlessly upgrade existing browser sessions to orthographic mode.
+    - **Mouse Aim Over Wall Lands at Wall Height on Cursor**:
+      - Added `ThrowModule.getWallUnderCursor(aimX, aimY, arena, hoverScale)`: detects if screen coordinates $(aimX, aimY)$ are over a wall's 2.5D visual roof or front face.
+      - Maps screen aim coordinates on the roof back to physical world coordinates:
+        $physX = \text{aimX}$
+        $physY = \text{aimY} + \text{wall.wallHeight} \times \text{hoverScale}$
+        with $\text{targetSurfaceHeight} = \text{wall.wallHeight}$.
+      - Because physical $physY$ is elevated by $\text{wall.wallHeight} \times \text{hoverScale}$, rendering the landing target at $(physX, physY - \text{wall.wallHeight} \times \text{hoverScale})$ places the landing circle **EXACTLY** under the mouse cursor at $(aimX, aimY)$ on the wall top!
+      - Ascending parabolic launch velocities $(vx, vy, vz)$ are computed so the object lands directly on top of the wall at the cursor's position, supported by `standingWall`.
+    - **Clicking / Aiming at Objects**:
+      - When aiming at or clicking on an object (creature, rock, crate, food), `computeLaunchVelocity` sets $(effectiveTargetX, effectiveTargetY)$ directly to the object's coordinates, and sets `targetSurfaceHeight` to match the object's layer (or standing wall height), ensuring throws land directly on that object or on its layer elevation.
+    - **Landing Sightline Alignment**:
+      - In `Renderer.ts`, landing marker position on walls sets `finalGroundY = landY`, so `distToCursor` is measured between screen positions. When aiming on a wall within throw distance, the landing marker sits directly on the reticle with zero dashed sightline; when aiming beyond throw distance, the dashed sightline connects cleanly from the wall top landing circle to the cursor reticle.
+
+50. **Maximize / Fullscreen Restoration & Gamepad Under-Paddle Controls (Sprint & Jump/Climb)**:
+    - **Maximize / Fullscreen Restoration**:
+      - Replaced one-time `{ once: true }` / `pointer: coarse`-blocked logic with a unified, cross-platform `toggleFullscreen` manager supporting standard and vendor-prefixed APIs (`requestFullscreen`, `webkitRequestFullscreen`, `mozRequestFullScreen`, `msRequestFullscreen`, and their exit counterparts).
+      - Added dedicated desktop top-bar button (`#btn-maximize-screen`), mobile navigation drawer button (`#mobile-btn-maximize`), and `F11` hotkey support.
+      - UI buttons dynamically reflect active fullscreen state (`⛶ Maximize` vs `🗗 Restore` / `.active`).
+      - Implemented debounced mobile touch auto-fullscreen (3-second cooldown) to ensure smooth re-entry without getting Android's "Swipe down to exit" system toast stuck permanently.
+      - Added iPhone/iOS fallback executing `window.scrollTo(0, 0)` on user gestures to collapse browser chrome in full-bleed viewport mode (`100dvh`).
+    - **Gamepad Under-Paddle Controls**:
+      - **Left Under-Paddle (Sprint)**:
+        - Mapped standard extended paddle button indices (17, 19, and odd indices $\ge 17$), as well as L3 (10), LB (4), and X (2) to sprinting.
+        - Tapping arms sprint (`slot.sprintArmed = true`); holding maintains sprint directly (`isLeftPaddleDown`).
+        - Releasing movement stick automatically disarms sprint.
+      - **Right Under-Paddle (Jump / Climb)**:
+        - Mapped standard extended paddle button indices (18, 20, and even indices $\ge 18$), as well as R3 (11), A (0), and Y (3) to jumping and wall climbing/dismounting (`slot.isClimbHeld = true`).
+        - When standing next to or facing a wall, pressing the right under-paddle climbs or dismounts.
+        - Supports jumping and climbing across all modern paddle controllers (Xbox Elite Series, DualSense Edge, Razer Kishi/Wolverine, GameSir G8, Scuf, 8BitDo Ultimate).
+      - **Gamepad Join with Under-Paddles**:
+        - Devices can now also claim unassigned player slots by pressing the Right Under-Paddle (in addition to Bottom Button / A / Cross).
+
+51. **Desktop UI Optimization, Aspect-Ratio & Smart Overflow Prevention**:
+    - **Smart Single-Row 48px Top Bar Containment**:
+      - Eliminated horizontal and vertical overflow where buttons and widgets were previously pushed off the right edge of the screen on desktop screens and scaled viewports ($1024\text{px}$ through $1600\text{px}$).
+      - Enforced strict containment on `.top-bar` (`max-width: 100vw; overflow: hidden; height: 48px; flex-wrap: nowrap;`).
+      - Made `.top-bar-right` and `.public-link-widget` flex-shrinkable (`flex-shrink: 1; min-width: 0;`) so they adapt fluidly without pushing action buttons off-screen.
+      - Streamlined `.public-link-widget` to a compact ~105px pill, hiding redundant `PUBLIC:` text and `↗` button by default, while preserving instant 1-click clipboard copy on the URL button and QR code modal.
+      - Added `.sidebar-btn-counter` (`#players-count-pill`) inside `#toggle-players-btn` so that on medium and compact desktop screens ($< 1340\text{px}$), the button displays as `👥 1` rather than needing wide text.
+      - Refined progressive breakpoints ($< 1440\text{px}$, $< 1340\text{px}$, $< 1100\text{px}$, $< 850\text{px}$) guaranteeing that from 4K down to 850px, all top bar elements fit with ample margin.
+    - **Streamlined Top Controls Bar (Above Canvas)**:
+      - Positioned the controls bar on top above the canvas in `.viewport-container` as requested.
+      - Streamlined controls item text (`WASD Move`, `Space Jump`, `L-Click/RT Throw`, `R-Click Lock`, `Shift Sprint`, `B Swap`), cutting the box width by more than half.
+      - Set `max-width: calc(100% - 24px); flex-wrap: wrap; box-sizing: border-box;` so the HUD can never exceed viewport boundaries or be pushed off-screen, even when the Dev Inspector sidebar is open on smaller monitors.
+    - **Game Canvas Viewport Scaling**:
+      - Because the top bar is strictly fixed at 48px and the top controls bar is only 30px high, the total vertical space consumed above the canvas is only 78px (down by over 100px compared to earlier wrapped layouts).
+      - The canvas retains ample height to scale up generously without squishing or letterboxing.
+      - Floating overlay multiplayer relay HUD prevents canvas displacement when online.
+52. **Controller Aim Cursor Dynamic Forward Follow, Seamless Stick Decoupling & Reset Rules**:
+    - **Cursor Sticks in Front of Character Until Right Joystick Input**:
+      - While holding an object, the aim cursor is visible and **sticks directly to the position in front of the character** ($3.0\text{ units}$ in facing/movement direction).
+      - As the player moves around and turns with the left joystick, the cursor dynamically follows in front of the character across the arena.
+    - **Seamless Right Joystick Transition & Decoupling**:
+      - The moment the player deflects the right joystick (`rMag > deadzone`), `hasMovedAimStick` becomes `true`.
+      - The cursor begins moving seamlessly from the exact position where it was following in front of the character (no artificial snapping or jumping).
+      - From this moment onward, the cursor **no longer follows the character**. It stays put at its world coordinates in the arena unless further right joystick input is provided.
+      - The player can run and maneuver around with the left stick while the cursor and throw target remain locked at that world coordinate.
+    - **Cursor Around Grabbables Starts Directly at Character**:
+      - When empty-handed and around something to grab (`hasReachable`), the cursor starts directly at the character (`visualPos.x, visualPos.y`, offset $0, 0$) instead of retaining any previous offset.
+      - Deflecting the right joystick to target a grabbable item begins moving the cursor directly from the character outward towards the item.
+      - Moving out of reach of grabbable objects resets `aimMovedWhileInRange = false` so approaching another grabbable always begins from the character.
+    - **Continuous Cursor Visibility While Holding**:
+      - When holding an object to throw, the cursor is **never hidden** in both keyboard and controller modes.
+    - **Aim Lock While Holding Before Joystick Input**:
+      - If the player holds the aim lock control (`LT` on controller, Right Mouse on keyboard) while holding an object but hasn't yet moved the right joystick, the system automatically locks onto the target entity closest to the cursor.
+      - The character faces the locked target, dedicated lock brackets render around the target, and throw trajectories land directly on it.
+    - **Ground Item Selection & Pickup/Swap With E / B**:
+      - In both controller and keyboard modes, whenever there is an object on the ground within range of the character to grab, the system always selects the closest reachable ground object to the cursor (`targetGrabEntities`).
+      - This applies even when the character is already holding an item, drawing the grab target ring around the ground item.
+      - Pressing `E` on keyboard or `B` on controller drops the currently held item and immediately grabs the selected ground item (or simply drops if no other item is in reach), since trigger controls are dedicated to throwing while holding.
+    - **Automatic Reset on Throw, Drop, or Holding Something Again**:
+      - Throwing or dropping the held object, or picking up an object (`!wasHolding && isHolding`), cleanly resets `hasMovedAimStick = false` and `aimMovedWhileInRange = false`.
+      - Upon holding an object again, the cursor immediately returns to sticking in front of the character and following their movement until the right joystick is used again.
+53. **Bugs & Suggestions: Optional Proposed Solution Field & Strict Description Requirement**:
+    - **Form Architecture & Input Gating**:
+      - Added dedicated `#feedback-form-solution` textarea ("Proposed Solution (Optional)") to the Feedback & Bug submission modal (`index.html`).
+      - The primary feedback text field (`#feedback-form-desc`) strictly remains `required` (enforced via both HTML5 form validation and JS whitespace `.trim()` checking in `FeedbackPanel.ts`).
+      - The proposed solution field is completely optional; users can submit suggestions and bug reports without a proposed solution.
+    - **Store & Server Handling**:
+      - `server/feedbackStore.js`: Updated `createFeedback` to accept and sanitize `proposedSolution: (proposedSolution || '').trim() || ''`.
+      - Both the Vite dev server middleware and production Node server (`server.js`) seamlessly persist the optional field into `data/feedback.json`.
+    - **Card Rendering & Display Rules**:
+      - When viewing cards in the Feedback log (`FeedbackPanel.ts`), if a post does not have a proposed solution (empty or blank), the proposed solution element is completely omitted from the DOM — leaving the card clean with no blank space or empty label.
+      - If a proposed solution is present, it renders inside a distinct styled container (`.feedback-item-solution`) with a highlighted `.solution-label` ("💡 PROPOSED SOLUTION:") and formatted text block (`.solution-text`).
+    - **Clipboard Formatting**:
+      - Single-card copying and bulk copying (`Copy Selected`, `Copy All`) include `Proposed Solution: '<text>'` when present, and omit the line entirely when no solution was submitted.
+
+54. **Movement-Input-Only Cursor & Facing Direction & Continuous Hold-to-Grab**:
+    - **Movement-Input-Only Rule (Zero Velocity Dependency)**:
+      - The character's facing orientation and the forward-facing aim cursor placement are strictly derived from the player's intentional movement input (`movementVector` / `movementInput`), **never** from post-collision `velocity` or actual physical displacement after considering obstacles.
+      - When pressing movement controls, `lastMovementInputAngle = Math.atan2(input.y, input.x)` is tracked. When movement controls are released, or when stopped against a wall or obstacle, facing orientation and cursor placement stay anchored along this `lastMovementInputAngle`.
+      - Eliminated all checks against `velMag` or `char.velocity` that previously caused facing and cursor positions to deflect or redirect when brushing against walls or obstacles.
+      - Fixed angle projection to use true physical coordinates `char.position` rather than visual offset `visualPos` (which previously subtracted $z \times \text{hoverScale}$, causing upward/up-right aim distortions).
+    - **Cursor Visibility and Following Rules**:
+      - **Empty-Handed With Nothing Reachable**: The cursor is **NOT visible** (`isCursorVisible = false`), and does **NOT follow** in front of the player (stays parked at character position).
+      - **Empty-Handed Around Grabbables**: Cursor starts at character position and only becomes visible if the player actively uses the aim stick to target items (`slot.aimMovedWhileInRange && slot.hasMovedAimStick`).
+      - **Holding an Object**: The cursor is **visible**. If the player has NOT used the right aim stick since picking up the object (`!slot.hasMovedAimStick`), the cursor follows directly in front along the character's latest movement input direction. Once the right aim stick is moved, the cursor stays locked at its world coordinates in the arena.
+    - **Continuous Hold-to-Grab**:
+      - Holding the grab control (`RT` or `B` on gamepad, Left Click or `E` on keyboard) before an object enters pickup range continuously checks for reachable objects each tick.
+      - The instant any grabbable object enters pickup reach while holding grab, it immediately grabs the object closest to the cursor (or closest to character if not aiming).
+      - Upon grabbing an object with a controller, the aim cursor is automatically placed 3.0 units directly in front of the character along their latest movement input direction.
+
+55. **Standard Arena Default Map Layout**:
+    - **Default Arena Preset**:
+      - Updated `Arena.currentPresetId = "standard"` and `Arena.loadWallPreset("standard")` in constructor, making 🏛️ Standard Arena the default layout loaded on page load and reset.
+      - Reordered `Arena.WALL_PRESETS` so `standard` is the primary (first) entry in the presets array and inspector dropdown list.
+      - Updated `Arena.resetDefaultWalls()` to restore Standard Arena.
+      - Player spawn at $(4.8, 7.0)$ and initial freebody objects cleanly inhabit the open courtyard areas of Standard Arena without wall collisions.
+
+56. **Player-Colored Trajectory Dots, Cursor PX Text Removal, Always-Visible Keyboard Cursor & Pointer Lock Raw Mouse Input**:
+    - **Player-Colored Trajectory Dots (Curved Flight Arc Only)**:
+      - Trajectory arc dots in `Renderer.ts:drawTrajectory` dynamically inherit the holding character's assigned player theme color (`character.playerColor`), instead of hardcoded white.
+      - Converts hex color to RGBA, rendering Layer 1 ground dots as opaque (`alpha = 0.95`) and Layer 2 elevated dots as transparent (`alpha = 0.38`).
+      - Completely removed the secondary straight shadow dotted lines along the ground, leaving strictly the clean curved parabolic 3D flight trajectory.
+    - **Removal of PX Text Labels Above Cursors & Straight Dotted Sightlines**:
+      - Completely removed the `"P1"`, `"P2"` text label badges that were previously rendered above and next to the aim cursors in `Renderer.ts:drawAimReticle`.
+      - Removed straight dotted guide lines connecting character centers to cursors, leaving a clean independent cursor reticle.
+      - Also removed player number from auto-lock badges, rendering a crisp `[LOCKED]` bracket on the locked target entity.
+    - **Keyboard Cursor Always Visible**:
+      - When playing with keyboard and mouse, the in-game aim reticle cursor is now **always visible** across the arena (`isCursorVisibleNow = true`), allowing continuous orientation and seamless pickup targeting even when empty-handed.
+    - **Free & Visible Mouse Cursor (Pointer Lock & Cursor Hiding Disabled)**:
+      - Pointer lock requests and `cursor: none !important;` have been completely disabled by user instruction.
+      - The mouse cursor remains free, unconstrained, and 100% visible across the entire browser window and arena canvas at all times (`cursor: crosshair` / `default`).
+      - Mouse aim tracking operates cleanly and continuously via direct canvas-relative client coordinates (`e.clientX - rect.left`) without confining or locking the OS mouse.
+    - **Auto-Lock Sightline, Brackets & Reticle Player Color Synchronization**:
+      - The dashed sightline connecting the aim cursor to the auto-locked target now renders dynamically using the locking player's assigned color (`rgba(r, g, b, 0.65)`), rather than hardcoded amber gold (`#f59e0b`).
+      - The 4-corner targeting brackets and `[LOCKED]` label rendered over the locked target entity now dynamically use the locking player's color (`playerHex`).
+      - The precision aim reticle (`drawAimReticle`) retains the player's theme color when auto-locked (`isLocked = true`), keeping visual identity coherent across Player 1, Player 2, etc.
+      - The dashed sightline from clamped landing point to cursor when aiming beyond throw distance is also tinted in the player's color.
+    - **Auto-Aim 3D Target Height Consideration & Max Throw Height Limit**:
+      - Auto-aim now dynamically considers the full 3D physical altitude (`hoveredEntity.position.z`) of airborne, jumping, flying, or elevated targets rather than clamping target surface height to standard wall height (`1.0`) or ground (`0.0`).
+      - As high-up target objects move through the air or across the arena, the trajectory real-time preview continuously tracks their current 3D position and calculates the exact vertical launch velocity ($v_z$) required to reach their altitude.
+      - Introduced `maxThrowHeight` property on `ThrowModule` (default `5.0` units, tunable from `1.0` to `15.0` via a dedicated inspector slider in `DevPanel.ts`), scaled by creature strength (`effectiveMaxHeight = maxThrowHeight * character.strength`).
+      - Trajectory target elevation is safely clamped to `startZ + effectiveMaxHeight`, preventing unbounded throws into the stratosphere while ensuring clean reaching capability for high-altitude objects.
+      - In `Renderer.ts`, airborne target landing footprints are protected from false clipping against lower wall tops, rendering clean elevated target indicators at the object's true altitude.
+    - **Keyboard & Mouse Direct Cursor Aim on Pickup**:
+      - For keyboard and mouse controls, `aimTarget` is always explicitly `inputManager.mousePos` at all times without exception.
+      - Removed the forward-movement direction aim override on pickup (`hasMovedAim`), which was only meant for centering gamepad analog joysticks.
+      - When picking up an object with mouse and keyboard, the trajectory and character facing direction immediately point directly to the mouse cursor position on screen with zero ambiguity.
+
+57. **Phase 9: Remote Player Entity Forward Prediction, Flight Handoff & Split-Screen Client Sims**:
+    - **Multi-Player Server Awareness & Dynamic Registration (`ServerGameSimulation.ts` & `RelayClient.ts`)**:
+      - `ServerGameSimulation` fully manages all connected player avatars (`this.characters: Map<string, Character>`), dynamically registering new players via `syncCharactersFromPacket` and `queueInput` without overwriting Player 1.
+      - `RelayClient.sendInput` streams inputs and physical telemetry for `gameLoop.allCharacters` simultaneously.
+      - `getGhostSnapshot()` outputs authoritative physical transforms for all player avatars in `characters: GhostEntityState[]`.
+      - Whenever players join or leave in `PlayerManager`, `relayClient.syncServerWorld` resyncs all characters on the server world.
+    - **Forward Predictive Leading Remote Avatars (`RemoteEntityInterpolator.ts`)**:
+      - Instead of lagging behind in the past, each client sim predicts where the remote player is on their own machine, projecting forward along their velocity vectors: $\vec{x}_{\text{pred}} = \vec{x}_{\text{server}} + \vec{v} \cdot t_{\text{lead}}$.
+      - In motion, a remote player's visual avatar **always LEADS their server ghost clone**, exactly like a local player leads their own server ghost.
+      - Exponential smoothing filter glides coordinates at ~20x/s to prevent visual jitter.
+      - When a remote player stops ($\vec{v} \to 0$), their avatar smoothly and cleanly settles onto the server ghost position at rest.
+    - **Truly Decoupled Split-Screen Client Predictions**:
+      - Left Viewport (Screen 1): Player 1 is local (immediate input response, leads server ghost). Player 2 is remote (derived from server snapshot forward-predicted, leads server ghost).
+      - Right Viewport (Screen 2): Player 2 is local (immediate input response, leads server ghost). Player 1 is remote (derived from server snapshot forward-predicted, leads server ghost).
+      - Zero instantaneous cross-screen position bleeding: remote players only update via real network round-trip from the authoritative server simulation.
+      - Both viewports display the server ghost clones of all active players simultaneously for real-time validation.
+    - **Independent Viewport Mouse Coordinate Mapping (`CanvasViewport`)**:
+      - `InputManager` tracks `keyboardViewport: CanvasViewport | null`.
+      - When the Keyboard & Mouse player is assigned to any viewport (Screen 1, Screen 2, etc.), physical mouse coordinates map through `(canvasPixel - vp.offsetX) / vp.scale` into arena coordinates $[0 \dots 20, 0 \dots 14]$ without canvas-wide offsets.
+    - **UI Renaming**:
+      - Renamed "Single Player" mode to **"Local Game"** across top bar, mobile menu, and documentation.
+
+58. **Secondary Player / Gamepad Throw Direction & Network Serialization**:
+    - **Premature Aim Reset Prevention (`InputManager.ts`)**:
+      - Removed premature zeroing of `slot.hasMovedAimStick` and `slot.aimMovedWhileInRange` inside `pollGamepadSlots()` on trigger press. Aim stick orientation now cleanly persists into the tick's `PlayerInputPacket`.
+    - **Throw Orientation Prior to Execution (`PlayerManager.ts`)**:
+      - Before invoking `throwHeldObject()`, `char.facingAngle` is explicitly set to `Math.atan2(aimDy, aimDx)` facing the target reticle.
+      - Aim stick flags (`hasMovedAimStick`, `aimMovedWhileInRange`) are safely reset only *after* the throw action is fully resolved.
+    - **Multiplayer Object `heldBy` Serialization (`RelayClient.ts`)**:
+      - Serializes `obj.heldBy` using `(obj.heldBy as Character).playerId` (`"player-2"`, `"gamepad-0"`, etc.) rather than the internal GameObject ID (`char-xxx`). This ensures `ServerGameSimulation` properly attributes the held object to the secondary player on authoritative ticks.
+    - **Automated Verification**:
+      - Created `scratch/test_player2_throw_direction.ts` verifying that Player 2 holding a freebody launches it precisely along the right-stick reticle vector.
+
+59. **Decoupling Ghost Visual Visibility from Authoritative Server State Pipeline**:
+    - **Root Cause**: `RelayClient.getLatestGhost()` was previously gated on `if (!this.showGhostClones) return null;`. Turning off the visual ghost setting stopped all snapshot delivery to `GameLoop`, starving `RemoteEntityInterpolator`, `syncAuthoritativeObjects`, and clock synchronization. In split-screen mode, this caused each player's remote avatar to freeze in place from the other client's perspective.
+    - **Decoupled Architecture**:
+      - `RelayClient.getLatestGhost()` unconditionally returns the latest server simulation snapshot so physical interpolation, clock sync, and object sync never lose data.
+      - Visual suppression is handled strictly at the rendering layer in `Renderer.ts:drawGhostClones` via `renderer.showGhostClones`.
+      - `GameLoop` and `main.ts` propagate `showGhostClones` reactively to the renderer without choking the underlying data stream.
+    - **Automated Verification**:
+      - `scratch/test_ghost_toggle_sync.ts` verifies that when `showGhostClones` is false, `getLatestGhost()` continues providing snapshots, `RemoteEntityInterpolator` computes leading forward-predicted positions for remote players, and simulation sync remains 100% active.
+
+60. **Explicit Remote Player Facing Angle Pipeline & Aim Retention**:
+    - **Root Causes**:
+      1. `GameLoop.ts` previously fed `facingAngle: 0` (hardcoded right) into `RemoteEntityInterpolator` samples instead of reading the real angle from the server snapshot.
+      2. `RemoteEntityInterpolator.ts` ignored the player's explicit facing angle while walking (`speed > 0.1`) and forced `targetAngle = Math.atan2(vy, vx)` (movement direction), overriding aim orientation while carrying objects.
+      3. When stopping (`speed <= 0.1`), `RemoteEntityInterpolator` fell back to `s.facingAngle` which was hardcoded `0`, causing remote players to snap facing right.
+      4. `PlayerInputPacket` and network telemetry did not transmit `facingAngle` explicitly from client to server.
+    - **End-to-End Explicit Pipeline**:
+      - `PlayerInputPacket`: added `facingAngle?: number` populated directly by `PlayerManager.ts` (facing aim when holding, facing move when walking, preserving last angle when stopped).
+      - `RelayClient.ts`: serialized `facingAngle` in `GhostEntityState` and `sendInput` packet payloads.
+      - `ServerGameSimulation.ts`: synchronized `sChar.facingAngle` in `syncCharacterFromPacket`, preserved it during `step()` input consumption and catchup bursts, and serialized it into `GhostEntityState.facingAngle`.
+      - `ServerJitterBuffer.ts`: preserved `lastKnownInput?.facingAngle` during starvation ticks to prevent abrupt snapping.
+      - `GameLoop.ts`: passes `gc.facingAngle ?? 0` into `RemoteEntityInterpolator` samples.
+      - `RemoteEntityInterpolator.ts`: uses `targetAngle = s.facingAngle` unconditionally, never inferring orientation from velocity. Robust `lerpAngle` calculates shortest arc diff.
+    - **Automated Verification**:
+      - `scratch/test_remote_facing_angle.ts`: verified 100% (remote player walking East while aiming North faces North `[-1.5708 rad]`, and when stopping completely preserves West `[3.1416 rad]` without snapping right).
+
+61. **Viewport Grab UI Isolation & Remote Player Nametag Colors**:
+    - **Grab UI Viewport Filtering**: In `Renderer.ts:drawFreebodyObject` and `drawCharacter`, `charactersInReach` and `targetingChars` are filtered against `localHeroCharacter`. In split-screen mode, grab targeting rings (`P1 GRAB`, reach outlines) only render for the client assigned to that viewport, hiding grab UI for remote characters.
+    - **Remote Nametag Colors**: In `Renderer.ts:drawCharacterNameTag`, removed the hardcoded sky blue `#38bdf8` override so that remote player nametag badges preserve their assigned character theme color (`char.playerColor || char.color`).
+
+62. **Classical Snapshot Interpolation (Zero Overshoot & Zero Bobbing)**:
+    - **Motivation**: Forward extrapolation projected remote entities ahead by latency lead time. When a remote character stopped, network latency delayed the stop packet, causing the local client to overshoot past the stop coordinate before snapping/bobbing back when the stop packet arrived.
+    - **Architecture (`src/engine/physics/RemoteEntityInterpolator.ts`)**:
+      - Implemented classical **Snapshot Interpolation** using a configurable delay buffer (`interpDelayMs = 60`, default 60ms).
+      - Renders remote entities at $T_{\text{render}} = \text{nowMs} - \text{interpDelayMs}$, interpolating smoothly between two verified surrounding snapshots $S_0$ and $S_1$ ($S_0.\text{timestamp} \le T_{\text{render}} \le S_1.\text{timestamp}$).
+      - When a remote player stops, $S_1$ has $v=0$ at $X_{\text{stop}}$. As interpolation progress $\alpha \to 1.0$, the entity smoothly decelerates directly onto $X_{\text{stop}}$ and halts dead on $X_{\text{stop}}$. Overshoot is mathematically $0.0000\text{u}$, completely eliminating any reverse bobbing or rubberbanding.
+      - **Shortest Arc Angular Lerp**: Lerps `facingAngle` along shortest angular path across $\pm \pi$ boundaries.
+      - **Teleport Guard**: Jumps $>8.0\text{u}$ snap immediately without lerp-stretching.
+      - **Packet Stall Guard**: If packets stall and $T_{\text{render}} > \text{newest}.\text{timestamp}$, applies bounded extrapolation along velocity up to $100\text{ms}$; if stopped ($v=0$), position remains perfectly stationary.
+      - **Extrapolation Mode Option**: Preserved `mode = "interpolation" | "extrapolation"` for testing comparison.
+    - **Automated Verification**:
+      - `scratch/test_snapshot_interpolation.ts`: verified $0.0000\text{u}$ overshoot, strictly monotonic progression when stopping (no bobbing back), shortest-arc angles, and teleport snap. All passed 100%.
+
+63. **Render-Time Hand Projection Architecture for Held Objects (Eliminating Velocity Offset)**:
+    - **Problem**: When a remote character moved while holding an object, the object was rendered at its pre-override physics position, causing a visual offset from their hands proportional to character velocity ($\Delta x = \vec{v} \cdot \Delta t$).
+    - **Clean Solution Architecture**:
+      - **Render-Time Hand Projection ([Renderer.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/engine/Renderer.ts))**: In `drawFreebodyObject` and `drawObjectGroundShadowFill`, if `obj.isHeld` and a character is holding it (`holder`), the visual render coordinates `(posX, posY, posZ)` are evaluated directly from `holder.calculateHeldObjectPosition(arena)`. When `remoteOverrides` sets the character's render position to the interpolated coordinate `(ovr.x, ovr.y, ovr.facingAngle)`, the held object is drawn directly at the character's interpolated hands with $0.0000\text{u}$ offset. The physics transform (`obj.position`) is never mutated during rendering.
+      - **Uncompromised Local Physics**: The local simulation loop (`GameLoop.ts`, `CollisionResolver.ts`, `PickupModule.ts`) remains 100% untouched. Local players holding objects are never unheld or dropped by incoming server snapshots, completely preventing glitching or collision pushbacks.
+      - **Server Synchronization ([ServerGameSimulation.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/server/ServerGameSimulation.ts))**: The authoritative server simulation locks held freebody positions to holder hands in `step()` and serializes `isHeld: true`, `heldBy`, and relative hand coordinates in snapshots.
+    - **Automated Verification**:
+64. **Unified Held Object Altitude / Shadow Synchronization & Single-Screen Multiplayer GUI Visibility**:
+    - **Held Object Altitude Guide & Shadow Synchronization ([Renderer.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/engine/Renderer.ts))**:
+      - Centralized `Renderer.getEffectiveObjectPosition(obj, arena, characters)` helper that dynamically resolves the 3D position `(x, y, z)` for any held freebody or character from `holder.calculateHeldObjectPosition(arena)`.
+      - Replaced raw un-synced `obj.position` reads across `drawVerticalConnectorLine`, `drawObjectGroundShadowFill`, `drawObjectWallTopShadowFill`, `drawObjectColliderPositionOutline`, and `drawWallTops`.
+      - The vertical dotted altitude connector line and all ground/wall shadows now connect directly from the held object's visual position at the holder's hands down to its ground/wall surface footprint with $0.0000\text{u}$ desync.
+    - **Single-Screen Multiplayer GUI & Cursor Visibility Architecture**:
+      - Fixed bug where exiting split-screen mode caused all local players other than Player 1 (`localHeroCharacter`) to lose their aim cursors, throw trajectories, reach rings, and grab badges.
+      - Introduced `isSplitScreenViewport` parameter in `renderArenaScene`.
+      - **Split-Screen Viewports (`isSplitScreenViewport = true`)**: Only the viewport's owning player (`localHeroCharacter = pv.character`) renders their private aim reticle, throw trajectory, and grab targeting GUI.
+      - **Shared Single-Screen View (`isSplitScreenViewport = false`)**: All local players sharing the screen (keyboard and gamepads) have full aim cursors, throw trajectories, and grab targeting rings/badges rendered. Only actual remote network clients (`remoteOverrides.has(playerId)`) are filtered from drawing local aim reticles and trajectories.
+    - **Automated Verification**:
+      - `scratch/test_single_screen_multiplayer_and_held_connector.ts`: Verified 100% (both local players retain visible cursors and GUI on single-screen mode, vertical connector line connects at holder hands $X=722.5\text{px}$ instead of stale physics $X=525\text{px}$).
+      - `scratch/test_remote_trajectory_isolation.ts`: Verified 100% remote client trajectory isolation.
+
+65. **Phase 10: 3-Tab Game Navigation, Dedicated Online Room Server & Client, and Player Naming**:
+    - **Architectural Clean Separation**:
+      - Restored `RelayClient.ts` to its standalone, self-contained implementation for in-browser echo simulation and split-screen validation.
+      - Developed standalone `UniversalRoomManager.ts` attaching to HTTP server on `/ws` (Vite dev server and production `server.js`). Encapsulates authoritative 60Hz physics world via `ServerGameSimulation.ts`.
+      - Developed standalone `OnlineRoomClient.ts` connecting directly to `/ws` with zero dependency on `RelayClient.ts`.
+    - **3-Tab Game Mode Navigation ([index.html](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/index.html) & [src/main.ts](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/src/main.ts))**:
+      - Top bar and mobile drawer feature a 3-tab segmented control:
+        1. `🏠 Local Game` (`#tab-mode-local`): Multi-controller single-machine simulation.
+        2. `🔄 Boomerang Sim` (`#tab-mode-boomerang`): Isolated 3rd-party WAN echo simulation with ghost clones.
+        3. `🌐 Online Room` (`#tab-mode-online`): Live authoritative multiplayer room on `/ws`.
+      - Top bar includes dedicated `#online-status-pill` displaying live RTT ping, slot badge (e.g. `P1`), and handle with 1-click access to the Online Room HUD (`#online-room-hud`).
+      - Hotkey `O` toggles the Online Room HUD overlay.
+    - **Bidirectional Telemetry & Telemetry-Coupled Inputs**:
+      - `OnlineRoomClient.sendPlayerInput` transmits client inputs coupled with character spatial coordinates and velocity (`x, y, z, vx, vy, vz, surfaceZ, isGrounded, facingAngle`).
+      - `UniversalRoomManager` processes `data.character` via `this.simulation.syncCharacterFromPacket(data.character)` and freebodies via `syncObjectsFromPacket(data.objects)`. This eliminates jitter buffer input starvation drift and locks remote avatars directly to reality.
+      - In `GameLoop.ts`, `renderFrame` iterates over `this.allCharacters` (`[...activeChars, ...remotes]`), populating `remoteOverrides` for every remote client avatar.
+      - In `GameLoop.updatePhysics`, remote player transforms are updated from `interpolator.getInterpolatedState()` each tick so local collisions, raycasts, and grab checks work against remote players.
+      - In `online` mode, ghost clone rendering is suppressed (`gameLoop.showGhostClones = false`), and remote characters render directly with classical snapshot interpolation.
+    - **Player Naming & Live Roster Updates**:
+      - Modal dialog (`#player-name-modal`) allows editing player handle, persisted to `localStorage.pcg_player_handle`.
+      - Real-time `rename_player` network command propagates across server simulation and updates live roster chips and name tags for all clients.
+      - Clean disconnect handling cleans up character from authoritative world and evicts from client remote rosters.
+    - **HTML Tag Nesting Integrity**:
+      - Fixed unclosed `</div>` tags in `#multiplayer-relay-hud` that previously caused the entire `<main class="canvas-wrapper"><canvas id="game-canvas">` to be nested inside `.relay-hud-container.hidden` (`display: none`), rendering a blank black canvas screen. Verified automated DOM tag balance.
+    - **Automated Verification**:
+      - `scratch/test_phase_10_online_room.ts`: Verified 100% (2 clients connecting to UniversalRoomManager, slot allocation P1/P2, bidirectional position sync, live player renaming, and clean disconnection cleanup).
+66. **Production Server Attachment & WebSocket Path Fix (Railway & Docker)**:
+    - **`pathToFileURL` ESM Import**: In `server.js`, imported `pathToFileURL` from `node:url` and added fallback between relative path `./server/dist/UniversalRoomManager.js` and `pathToFileURL(path.join(__dirname, ...))` so dynamic import never fails with `ReferenceError`.
+    - **Diagnostics Endpoint Property**: Updated `/api/room-status` to reference `universalRoomManager.clients.size` instead of non-existent `.sockets.size`.
+    - **Dockerfile Runner Stage Fix**: Added `RUN npm install --omit=dev` and `COPY --from=builder /app/server/dist ./server/dist` in Stage 2 runner of `Dockerfile` to guarantee runtime dependencies (`ws`) and compiled SSR server modules are available in Docker/containerized deployments.
+    - Verified locally with end-to-end server integration test `scratch/test_server_js_ws.ts`.
+67. **Online Room Grab & Carry Synchronization Fix**:
+    - **UniversalRoom Default Scenario Spawning**: Initialized default arena and objects (`initializeDefaultScenario()`) in `UniversalRoomManager` constructor so freebodies exist on server startup, and auto-register any unknown client objects dynamically in `ServerGameSimulation.ts:syncObjectsFromPacket`.
+    - **Multiplayer Object Held Protection**: In `ServerGameSimulation.ts:syncObjectsFromPacket`, guarded against foreign client packets ungrabbing objects held by other players. Only the player holding an object (or authoritative action) can release it.
+    - **Character Telemetry `heldObjectId`**: `OnlineRoomClient.ts:sendPlayerInput` now includes `heldObjectId` and `isHolding` in `charTelemetry`, and maps `heldBy` to `clientId` in `objTelemetry`.
+    - **Server Character Held Synchronization**: `ServerGameSimulation.ts:syncCharacterFromPacket` synchronizes `heldObjectId` and coordinates with the server entity.
+    - **Client-Side Remote Held Object Attaching**: `GameLoop.ts:syncAuthoritativeObjects` attaches remote held objects to the respective remote character (`remoteHolder.heldObject = localObj; localObj.heldBy = remoteHolder; localObj.isHeld = true`), detaches on server release, and continuously updates hands position at 60 FPS in `updatePhysics`.
+    - **Remote Snapshot Held Object Wire**: In `src/main.ts`, fixed line 758 to `heldObjectId: gc.heldObjectId || (gc.isHolding ? "held" : null)` and synchronized `remChar.heldObject` upon snapshot receipt.
+    - **Reliable Pickup Dispatch**: In `PlayerManager.ts`, tracked `lastHeldObjectIds` to dispatch `pickup` reliable actions whenever a player acquires a held object via mouse click, keypress, or gamepad button.
+    - Verified 100% via headless test suite `scratch/test_online_grab_sync.ts`.
+68. **Authoritative Server-Assigned Player Color & Global Perspective Synchronization**:
+    - **Immutable Server Color Assignment**: Clients connecting to Online Mode (`UniversalRoomManager`) no longer have the liberty to choose/dictate their local colors. The server assigns an authoritative color and slot from the standard `PLAYER_COLORS` palette (`#f59e0b` P1 Amber, `#06b6d4` P2 Cyan, `#10b981` P3 Emerald, `#a855f7` P4 Violet, `#f43f5e` P5 Rose, `#3b82f6` P6 Blue).
+    - **Server Override Removal**: In `ServerGameSimulation.ts:syncCharacterFromPacket`, removed incoming client color override (`if (clientChar.color) { sChar.color = clientChar.color; }`). The server maintains its authoritative assignment regardless of client packet payload.
+    - **Local PlayerManager Color Preservation**: In `PlayerManager.ts:spawnKeyboardPlayer` and `spawnGamepadPlayer`, preserved existing `playerColor`, `color`, and `playerNumber` if already assigned to `baseCharacter` (from server `room_joined`), rather than forcibly overwriting them back to P1 Amber `#f59e0b`.
+    - **Aim Cursor & Reticle Synchronization**: `PlayerManager.updatePlayerInputs` now assigns the server-assigned `char.playerColor` to active keyboard/mouse and gamepad aim cursors (`activeAimCursors`), rendering the reticle in the player's true assigned color.
+    - **Sprite & GUI Client Perspective**:
+      - Creature body fill, eyes, and nametag border/fill evaluate `char.playerColor || char.color`.
+      - Ground object grab rings, reach highlights, and `P{N} GRAB` badges dynamically reflect each player's theme color.
+      - Top bar `#online-player-badge`, HUD `#online-my-slot`, and connected roster chips in `#online-roster-list` render with the authoritative assigned colors and translucent theme backgrounds.
+      - Returning to Local Game mode cleanly restores Player 1 to default Amber `#f59e0b`.
+    - Verified 100% via automated test suite `scratch/test_online_player_colors.ts`.
+69. **Keyboard Throw & Input Device Routing Fix**:
+    - **Root Cause**: `onlineClient.onJoined` had set `hero.playerId = info.clientId` (e.g. `client_xxx`), while `InputManager.handleClick` was looking for `c.playerId === "keyboard"`. Because the ID didn't match, `handleClick` exited early before setting `isKeyboardThrowRequested = true`.
+    - **Local Input Device ID Separation**: The client-side `playerId` on local entities represents the hardware device (`"keyboard"`, `"gamepad_0"`), while `clientId` is the WebSocket connection ID. Kept `hero.playerId = "keyboard"` on client.
+    - **Resilient Character Resolution (`getActiveKeyboardChar`)**: In `InputManager.ts`, replaced brittle `c.playerId === "keyboard"` lookups in `handleClick`, `onKeyboardDrop`, and `onKeyboardPickup` with `getActiveKeyboardChar()`, which falls back gracefully to any local character or `character` reference.
+70. **In-Flight Throw Ballistics & Trailing Snapshot Dragdown Protection**:
+    - **Root Cause of Glitchy / Chopped Online Throws**:
+      1. Overloaded `lastThrower` Expiration: `GameObject.ts` cleared `lastThrower` once distance exceeded `1.3 units` (~50ms after launch). However, `GameLoop.ts` ballistic prediction and `GameObject.ts` ascending wall clearance (`isAscendingJump`) relied on `Boolean(this.lastThrower)`. After 1.3 units, the check failed mid-air!
+      2. Trailing WAN Snapshot Dragdown: Because the server snapshot arrived with ~80-120ms latency, it arrived at the client still reporting `sObj.isHeld = true` (or lagging at the start of the arc). Because `sObj.heldBy` was `clientId` while local was `"keyboard"`, `syncAuthoritativeObjects` failed to recognize the local throw, blending the in-flight object's $z$ and $v_z$ downward towards 0 every frame.
+      3. Server Action Reordering: In `UniversalRoomManager.ts`, `syncObjectsFromPacket` executed before `processReliableActions`, wiping `heldObject = null` on the server before `throwHeldObject` could execute.
+    - **Airtight Fix**:
+      - `GameObject.isInFlight`: Added persistent `isInFlight` property that remains `true` from launch until the object physically lands on a surface (`isRestingOnSurface === true`) or is picked up.
+      - Wall Clearance (`isAscendingJump`): Included `this.isInFlight` in lines 990 & 1060 of `GameObject.ts` so ascending projectiles cleanly soar over intermediate walls.
+      - Ballistic Prediction Guard: In `GameLoop.ts:syncAuthoritativeObjects`, passes `onlineClient.clientId` and bypasses convergence while `(isInFlight || lastThrower) && isAirborne`, preventing any dragdown or pullback during the entire parabolic arc.
+      - Action Order in `UniversalRoomManager.ts`: Processed `reliableActions` before `syncObjectsFromPacket`, allowing server `throwHeldObject` to launch identically.
+      - Server Simulation Guard: Guarded `sObj.isInFlight` in `ServerGameSimulation.ts:syncObjectsFromPacket` from being overwritten by lagging client telemetry.
+    - Verified 100% via automated test suite `scratch/test_online_throw_ballistics.ts`.
+71. **Remote Throw Instant Hand-Off & Freebody Authority Isolation**:
+    - **Root Causes of Remote Throw Hesitation & Back-and-Forth Jitter**:
+      1. *Hesitation on Remote Clients*: When a remote player threw, `main.ts` prematurely set `remChar.heldObject = null`. In `syncAuthoritativeObjects`, because `localObj.heldBy` was already cleared, it failed to recognize the release transition and defaulted to a sluggish 30% per-frame position blend from the thrower's hands instead of an instant launch.
+      2. *Back-and-Forth Glitching & Random Settling (Tug-of-War)*: Every client was sending `gameLoop.objects` (including unheld freebodies) in their telemetry packet. The server in `syncObjectsFromPacket` was blindly overwriting `sObj.position` with telemetry from *any* client. Client B (who was 100ms lagged behind) was constantly dragging the server rock back to where it was in Client A's hands, while Client A was pushing it forward. This caused severe back-and-forth jitter and made landing locations seemingly random.
+    - **Airtight Fix**:
+      - **Strict Freebody Authority Isolation**: In `OnlineRoomClient.ts:sendPlayerInput`, clients strictly filter `objTelemetry` so they ONLY transmit telemetry for objects they are actively holding (`obj.isHeld && (obj.heldBy === character || character?.heldObject === obj)`). In `ServerGameSimulation.ts:syncObjectsFromPacket`, the server rejects non-held object telemetry: unheld freebodies on the server are 100% authoritative and simulated by the server's 60Hz physics.
+      - **Instant Launch Hand-off**: In `GameLoop.ts:syncAuthoritativeObjects`, when a remote player holding an object releases it on the server (`!sObj.isHeld && remoteHolder`), the remote client immediately hands off the launch transform and trajectory (`localObj.position = sObj; localObj.velocity = sObj.v; localObj.verticalVelocity = sObj.vz; localObj.isInFlight = true; localObj.wakeUp()`) with zero hesitation.
+      - **Monotonic Snapshot Sequence Guard**: Added `lastAppliedObjectSeq` to `GameLoop.ts` and passed `snapshot.seq` from `main.ts`. Dropping stale or out-of-order snapshots eliminates network-level packet jitter.
+      - **Deferred Remote Release Cleanup**: In `main.ts`, remote character held object detachment is deferred to `syncAuthoritativeObjects`, preserving the holder reference during the hand-off.
+    - Verified 100% via automated integration test `scratch/test_remote_throw_handshake.ts`.
+72. **Multi-Character Single-Machine Support, Custom Nametag Display & Online Map Memory Trashing**:
+    - **Single-Machine Multi-Character Architecture (Keyboard + Controllers on Same Browser Tab)**:
+      - *Root Cause*: Previously, `UniversalRoomManager` mapped 1 WebSocket connection (`clientId`) to exactly 1 server character, and `main.ts` only streamed inputs for `players.get("keyboard")`. When a second player joined locally via a gamepad controller, the server never spawned a character for it, and its inputs were completely ignored.
+      - *UniversalRoomManager Multi-Character Support*: Added `ClientCharacterEntry` interface (`localPlayerId`, `serverCharId`, `playerNumber`, `color`, `name`) and refactored `ConnectedRoomClient.characters` to a `Map<string, ClientCharacterEntry>`. Sequential global `playerNumber` (1 to 16) and authoritative theme colors are allocated across all machines without collisions.
+      - *Input Packet Routing*: Mapped `player_input` packets by `localPlayerId` (e.g., `keyboard`, `gamepad-0`) to `${clientId}:${localPlayerId}`, updating the corresponding server character independently.
+      - *Dynamic Player Lifecycle*: Added `add_player` and `remove_player` protocol handlers. When a local player connects or disconnects, the server immediately adds/removes their character and broadcasts updated rosters.
+      - *Client Input Streaming & Authority*: `OnlineRoomClient` manages `localPlayers` map and hooks `PlayerManager.onPlayerJoined` / `onPlayerRemoved`. In `main.ts`, physics ticks stream telemetry for all active local players (`gameLoop.players.values()`). `GameLoop.ts:render` and `syncAuthoritativeObjects` guard all local player avatars and their held items from `remoteOverrides` and trailing server snapshot dragdown.
+    - **Custom Nametag Display**:
+      - *Root Cause*: `Renderer.ts:drawCharacterNameTag` previously hardcoded `const badgeText = isRemote ? \`P\${char.playerNumber} [REMOTE]\` : \`P\${char.playerNumber}\``, completely ignoring `char.name`.
+      - *Fix*: In `Renderer.ts:drawCharacterNameTag`, evaluates `const chosenName = char.name && char.name.trim().length > 0 ? char.name.trim() : \`P\${char.playerNumber || 1}\``. The name tag renders the player's chosen name in dynamic width, in their assigned theme color pill, preserving the `[REMOTE]` suffix when remote.
+      - *Startup Handle*: In `main.ts`, initialized `baseCharacter.name` and `hero.name` directly from `localStorage.getItem("pcg_player_handle")`.
+    - **Online Map Memory Trashing & Clean Reload**:
+      - *UniversalRoomManager.trashMapMemory()*: Called the moment all players disconnect (`this.clients.size === 0`). Drops all held objects, completely wipes all characters, freebodies, jitter buffers, and entities, resets the accumulator to 0, and flags `needsMapReload = true`. Zero persistent or corrupted physics state is retained when a room is vacant.
+      - *UniversalRoomManager.reloadMap()*: When a new client connects to an empty or reload-flagged room, cleanly calls `initializeDefaultScenario()`, purging placeholder characters and spawning fresh arena objects and geometry.
+    - Verified 100% via automated integration test `scratch/test_online_multichar_and_map_reset.ts`.
+73. **Instant Character Eviction on Lost Connection & Server Watchdog**:
+    - **Server Liveness Watchdog & Silent Disconnect Detection (`UniversalRoomManager.ts`)**:
+      - *Root Cause*: In standard TCP/WebSockets, if a client abruptly loses connection (laptop sleep, killed process, WiFi drop), the OS kernel does not fire `close` or `error` for minutes or hours, leaving orphan characters frozen in the server world.
+      - *Fix*: Added `lastSeen` tracking on `ConnectedRoomClient`. Implemented a 1.0s periodic watchdog (`checkClientLiveness`) in `UniversalRoomManager` that flags any client silent for > 3.5 seconds, forcibly terminates the socket, and evicts all associated characters immediately.
+    - **Immediate Disconnect Protocol & Snapshot Broadcast**:
+      - In `handleDisconnection` and `unregisterCharacter`, any held objects are cleanly unheld and awakened (`wakeUp()`), jitter buffer queues are deleted, and an explicit `player_left` packet is sent to all remaining clients.
+      - An authoritative snapshot is broadcast immediately without waiting for the next physics tick accumulator.
+      - Added graceful `leave_room` packet handling.
+    - **Client-Side Instant Eviction & Interpolator Cleanup (`OnlineRoomClient.ts` & `main.ts`)**:
+      - Added `onPlayerLeft` callback to `OnlineRoomClient`: when received, `main.ts` immediately removes the remote character and calls `interpolator.clearEntity(charId)` on `RemoteEntityInterpolator`, purging historical buffered frames so zero residual ghost frames or shadows remain.
+      - Added client-side server heartbeat watchdog in `OnlineRoomClient:startPingLoop`: if no packets are received from server for > 4.0s, disconnects and triggers local cleanup.
+      - On local disconnect (`status === "disconnected"` or `"error"`), `main.ts` wipes all remote players and calls `interpolator.clearAll()`.
+      - Attached `beforeunload` and `pagehide` listeners in `main.ts` to transmit `leave_room` and close socket cleanly before tab teardown.
+    - Verified 100% via automated integration test `scratch/test_immediate_disconnect_cleanup.ts`.
+74. **Player Name Authority Isolation & Anti-Reversion Guarantee**:
+    - **Root Cause of Name Flicker and Reversion**:
+      - In `main.ts:onSnapshotReceived`, line 896 was blindly executing `localChar.name = c.name` on every snapshot frame.
+      - When a player renamed, trailing server snapshots generated milliseconds earlier were still arriving with the old name, immediately resetting `localChar.name` to the old name.
+      - On the subsequent 16ms tick, `sendPlayerInput` streamed `localChar.name` (now reverted to the old name) in 60Hz input packets to the server.
+      - The server's input handler (`sChar.name = pkt.playerName`) then overwritten the server character back to the old name, permanently locking in the reversion.
+      - Furthermore, `PlayerManager.ts:renamePlayer` had an early return on `baseCharacter`, leaving active player instances with old names.
+    - **Architectural Fix**:
+      - **Local Authority**: Removed `localChar.name = c.name` from `onSnapshotReceived`. The local client is the sole authoritative owner of its chosen name and never adopts stale echo names from trailing snapshots.
+      - **Immediate Local Consistency**: `saveNameHandle` synchronously updates `onlineClient.playerName`, `localStorage`, `hero.name`, `baseCharacter.name`, and all local `PlayerEntry` maps.
+      - **Comprehensive PlayerManager Rename**: `PlayerManager.ts:renamePlayer` updates `player.name`, `player.character.name`, and `baseCharacter.name` without premature returns.
+      - **Consistent Packet Input Name**: `PlayerManager.ts:updatePlayers` sets `pkt.playerName = cChar.name` on every input packet.
+      - **Instant Server Broadcast**: On `rename_player`, `UniversalRoomManager` updates both `charEntry.name` and `sChar.name`, and immediately broadcasts an authoritative snapshot.
+    - Verified 100% via automated integration test `scratch/test_online_rename_no_flicker.ts`.
+75. **Multi-Character Naming Isolation & Phantom Ghost Elimination**:
+    - **Elimination of Rogue Phantom Ghost Characters**:
+      - Removed dynamic `new Character` instantiation from `ServerGameSimulation.ts:queueInput` and `syncCharacterFromPacket`. In authoritative server mode, packets with unknown or unregistered IDs are rejected; characters can only be instantiated through `UniversalRoomManager.registerCharacter()`.
+      - In `UniversalRoomManager.ts:join_room`: When `data.localPlayers` arrives, any characters created during initial connection that are not in the requested active players list are pruned immediately, preventing abandoned ghost avatars from remaining in the world.
+      - Enforced clean serverCharId mapping (`localPlayerId === "keyboard" ? client.id : `${client.id}:${localPlayerId}``) and prevented dummy `"player"` strings before client connection.
+    - **Multi-Character Naming Isolation**:
+      - Added `hasCustomName: boolean` to `Character` and `OnlineRoomClient` to distinguish explicit custom player handles from default numbering template names (`Player X`, `Controller #X`).
+      - In `OnlineRoomClient.ts:sendPlayerInput`: Secondary characters (e.g. gamepads) never inherit `this.playerName`. They retain their own distinct names.
+      - In `OnlineRoomClient.ts:addPlayer`: Uncustomized players pass `undefined` name to the server so the server assigns the authoritative sequential global slot (`Player ${playerNumber}`).
+    - **Authoritative Nametag & Roster Synchronization (Elimination of Duplicate "Player 2" Tags)**:
+      - In `Renderer.ts:drawCharacterNameTag`: Uncustomized characters always display `Player ${char.playerNumber || 1}`, matching the server's authoritative sequential slot (P1, P2, P3, P4).
+      - In `main.ts:onSnapshotReceived`: When the server updates `playerNumber`, uncustomized `localChar.name` updates to `Player ${c.playerNumber}`. Roster list chip rendering checks `hasCustomName` per player, preventing controllers from inheriting the keyboard handle.
+    - Verified 100% via automated integration test `scratch/test_multichar_naming_and_no_phantom.ts`.
+
+76. **Secondary Player Reliable Throw & Authority Fix**:
+    - **Problem**: When secondary characters on a machine (e.g. Gamepad #1 alongside Keyboard) threw freebodies, they experienced kickback locally, but the thrown object immediately stopped and landed on the ground.
+    - **Root Cause & Fixes**:
+      1. `OnlineRoomClient.ts:queueReliableAction`: Overwrote `action.playerId = this.clientId` (keyboard). Fixed to map `rawPlayerId` using `this.getServerCharId(rawPlayerId)` (e.g. `${this.clientId}:gamepad-0`) and attach `serverCharId` and `localPlayerId` to the WebSocket message.
+      2. `PlayerManager.ts:applyPlayerInputs`: Updated reliable action generation to evaluate `entry?.id || char.playerId || playerId || "keyboard"`.
+      3. `UniversalRoomManager.ts`: Added `resolveActionPlayerId(client, act, fallback)` verifying character ownership before overriding, and executed `this.simulation.processReliableActions()` BEFORE `syncCharacterFromPacket(data.character)` so that `isHolding === false` does not prematurely clear `heldObject` on the throw frame.
+      4. `ServerGameSimulation.ts:processReliableActions`: Added suffix matching for secondary character IDs, object recovery on throw/drop if temporarily nullified by packet telemetry, and facing-angle fallback in `step()` for throw aim.
+      5. `GameLoop.ts:syncAuthoritativeObjects`: Strengthened `isLocalChar` to match all players in `this.players`, and protected locally thrown in-flight objects from being dragged down by trailing server rest/sleep snapshots.
+    - Verified 100% via automated integration test `scratch/test_secondary_player_throw.ts`.
+
+77. **Phone / Mobile Controller Phantom Character Elimination**:
+    - **Problem**: Connecting from a mobile device or phone spawned an extra phantom character with the same custom name as the player's controlled character on all remote devices, while remaining completely invisible on the phone itself.
+    - **Root Cause Identified**:
+      1. `UniversalRoomManager.ts` immediately assigned a default `"keyboard"` avatar upon connection (`client.id`), inheriting the custom handle from `localStorage`.
+      2. On mobile/touch devices, `playerManager.players` was empty before controller input.
+      3. When a mobile gamepad or Bluetooth controller joined, `spawnGamepadPlayer(0)` claimed `baseCharacter` and dispatched `add_player("gamepad-0", name)`.
+      4. The server registered `"gamepad-0"` as a second character without pruning or replacing the unsteered placeholder `"keyboard"`.
+      5. The phone's local view filtered out all characters starting with `client.id`, rendering only its local `gamepad-0` player, leaving the phantom `"keyboard"` avatar 100% invisible on the phone. All other connected devices saw both characters with the identical name.
+    - **Architecture Solution**:
+      1. **Default Placeholder Flag (`UniversalRoomManager.ts`)**: Initial `"keyboard"` entry tagged with `isDefaultPlaceholder = true`.
+      2. **Automatic Placeholder Reclamation (`UniversalRoomManager.ts:add_player`)**: When a non-keyboard device (`"gamepad-0"`) joins and only the unsteered placeholder `"keyboard"` exists, the server immediately unregisters `"keyboard"`, allowing the controller to cleanly take the primary P1 slot without leaving any phantom behind.
+      3. **Local Player Query Delegate (`OnlineRoomClient.ts:getLocalPlayers` & `main.ts`)**: When sending `join_room`, delegates directly to `gameLoop.playerManager.players`. If a controller is already active, requests only `"gamepad-0"` and the server immediately drops `"keyboard"`.
+      4. **Active Input Keyboard Promotion (`UniversalRoomManager.ts:player_input`)**: Real keyboard movement (WASD/arrows) clears `isDefaultPlaceholder`, preserving both keyboard and gamepad for true local split-screen multi-device play on PC.
+      5. **Clean Disconnect (`OnlineRoomClient.ts:disconnect`)**: Clears `localPlayers` map and resets `clientId` to prevent stale local registrations across reconnects.
+    - Verified 100% via automated test suite `scratch/test_phone_gamepad_no_phantom.ts` across all 3 scenarios (delayed controller join, direct controller join, and PC keyboard + gamepad multi-device).
+
+---
+
+
+
+
+## 4. Immediate Next Steps
+
+| Priority | Task | Description |
+| :--- | :--- | :--- |
+| **1** | **Continuous Swept Collisions (TOI Rollback)** | Replace discrete overlap separation in `GameLoop.ts` with swept circle-circle and circle-wall collision detection that rewinds to the contact instant before calculating impulses. |
+| **2** | **State Snapshot & History Ring Buffer** | Implement `StateSnapshot` serialization and a 120-tick circular buffer to store past entity positions, velocities, and holding states for rollback replay. |
+| **3** | **Active Islands Graph** | Create an island manager that tags idle freebodies as Sleeping, only simulating and rolling back entities coupled to active players. |
+| **4** | **Authoritative Server Input Queue** | Implement the server-side input buffer with adaptive time dilation hints (`speedUp` / `slowDown`) sent to the client. |
+| **5** | **Client Prediction & Reconciliation** | Implement client state comparison against server snapshots with an error deadzone, selective resimulation, and render-layer smoothing. |
+
+---
+
+## 5. Agent Workflow Rule
+
+> ### ⚠️ Mandatory Instructions for Future Agent Sessions:
+> 1. **Read First**: Always read `AGENTS.md` and `DESIGN_DOC.md` before answering questions, generating plans, or editing code.
+> 2. **Check Current Branch & Status**: Work on the active branch (`branch1` unless specified otherwise) and verify `git status`.
+> 3. **Preserve Modularity**: Never couple features directly into the core loop if they belong in composable modules.
+> 4. **Update Memory Before Concluding**: Whenever you introduce architectural changes, implement new features, or alter project direction, update this `AGENTS.md` file so the next agent (or session on another device) has full context.
+> 5. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously. Browser testing consumes significant credits; only use the browser when the user explicitly asks you to do so.
+> 6. **Avoid Redundant File Inspection Loops**: When diagnosing an issue, do NOT repeatedly call `view_file` on the same file/lines without taking action. If runtime behavior is uncertain, immediately write or execute a targeted scratch script (`scratch/test_*.ts`) to isolate and inspect the variables rather than repeatedly re-reading static code.
+

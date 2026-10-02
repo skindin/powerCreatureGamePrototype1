@@ -4,6 +4,10 @@ import { GameObject } from "../engine/GameObject.js";
 import { WalkingModule } from "../character/WalkingModule.js";
 import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
+import { ClimbingModule } from "../character/ClimbingModule.js";
+import { StrengthModule } from "../character/StrengthModule.js";
+import { JumpModule } from "../character/JumpModule.js";
+import { WallEdgeAssistModule } from "../character/WallEdgeAssistModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ColliderModule } from "../engine/ColliderModule.js";
 import { MassModule } from "../engine/MassModule.js";
@@ -11,11 +15,13 @@ import { FrictionModule } from "../engine/FrictionModule.js";
 import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
+import { RigidbodyModule } from "../engine/RigidbodyModule.js";
 
 export interface CreatorPreset {
   name: string;
   visualShape: "box" | "circle";
   color: string;
+  hasRigidbody: boolean;
   hasCollider: boolean;
   colliderRadius: number;
   hasMass: boolean;
@@ -42,18 +48,23 @@ export class DevPanel {
   private onSpawnObject: (obj: GameObject) => void;
   private onDeleteObject?: (obj: GameObject) => void;
   private onClearObjects: () => void;
+  private getAllCharacters?: () => Character[];
 
   public selectedEntity: GameObject;
   public isEditMode: boolean = false;
-  public isHost: boolean = true;
-  public hostName: string = "Host";
+  public editTool: "entities" | "walls" = "entities";
   public onSelectionChange?: (entity: GameObject | null) => void;
+  public getGameLoop?: () => any;
+  public getRenderer?: () => any;
+  public rollbackDepthTicks: number = 30;
+
 
   // Preserved Creator State
   public creatorState: CreatorPreset = {
     name: "Custom Box",
     visualShape: "box",
     color: "#38bdf8",
+    hasRigidbody: true,
     hasCollider: true,
     colliderRadius: 0.30,
     hasMass: true,
@@ -78,6 +89,7 @@ export class DevPanel {
       name: "Light Blue Box",
       visualShape: "box",
       color: "#38bdf8",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.26,
       hasMass: true,
@@ -99,6 +111,7 @@ export class DevPanel {
       name: "Heavy Red Box",
       visualShape: "box",
       color: "#f87171",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.40,
       hasMass: true,
@@ -120,6 +133,7 @@ export class DevPanel {
       name: "Super Bouncy Ball",
       visualShape: "circle",
       color: "#4ade80",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.24,
       hasMass: true,
@@ -141,6 +155,7 @@ export class DevPanel {
       name: "Rolling Ball",
       visualShape: "circle",
       color: "#a855f7",
+      hasRigidbody: true,
       hasCollider: true,
       colliderRadius: 0.28,
       hasMass: true,
@@ -162,6 +177,7 @@ export class DevPanel {
       name: "Ghost Box (No Collider)",
       visualShape: "box",
       color: "#94a3b8",
+      hasRigidbody: false,
       hasCollider: false,
       colliderRadius: 0.30,
       hasMass: false,
@@ -184,7 +200,7 @@ export class DevPanel {
   // Cached DOM elements
   private inspectorEl!: HTMLElement;
   private entitySelectorEl!: HTMLSelectElement;
-  private characterSpecificControlsEl!: HTMLElement;
+  private characterSpecificControlsEl: HTMLElement | null = null;
   private objectSpecificControlsEl!: HTMLElement;
   private modePlayBtn!: HTMLButtonElement;
   private modeEditBtn!: HTMLButtonElement;
@@ -197,6 +213,7 @@ export class DevPanel {
     onSpawnObject: (obj: GameObject) => void;
     onDeleteObject?: (obj: GameObject) => void;
     onClearObjects: () => void;
+    getAllCharacters?: () => Character[];
   }) {
     this.container = options.container;
     this.character = options.character;
@@ -205,6 +222,7 @@ export class DevPanel {
     this.onSpawnObject = options.onSpawnObject;
     this.onDeleteObject = options.onDeleteObject;
     this.onClearObjects = options.onClearObjects;
+    this.getAllCharacters = options.getAllCharacters;
 
     this.selectedEntity = this.character;
 
@@ -214,16 +232,18 @@ export class DevPanel {
   public setSelectedEntity(entity: GameObject): void {
     this.selectedEntity = entity;
     this.updateSelectorOptions();
+    this.renderEntityModules();
     this.syncEntitySliders();
     this.onSelectionChange?.(entity);
   }
 
   public setMode(editMode: boolean): void {
-    if (!this.isHost && editMode) {
-      // Non-hosts are strictly restricted to Play Mode
-      return;
-    }
     this.isEditMode = editMode;
+    if (this.isEditMode && typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
     if (this.modePlayBtn && this.modeEditBtn) {
       if (this.isEditMode) {
         this.modePlayBtn.classList.remove("active-play");
@@ -233,89 +253,160 @@ export class DevPanel {
         this.modeEditBtn.classList.remove("active-edit");
       }
     }
+    const submodeContainer = this.container.querySelector("#edit-submode-container") as HTMLElement;
+    if (submodeContainer) {
+      submodeContainer.style.display = this.isEditMode ? "flex" : "none";
+    }
+    this.updateToolVisibility();
   }
 
-  public setHost(isHost: boolean, hostName = "Host"): void {
-    this.isHost = isHost;
-    this.hostName = hostName;
-    if (!isHost && this.isEditMode) {
-      this.setMode(false);
+  public setEditTool(tool: "entities" | "walls"): void {
+    this.editTool = tool;
+    const btnEntities = this.container.querySelector("#submode-entities") as HTMLButtonElement;
+    const btnWalls = this.container.querySelector("#submode-walls") as HTMLButtonElement;
+    if (btnEntities && btnWalls) {
+      btnEntities.classList.toggle("active", tool === "entities");
+      btnWalls.classList.toggle("active", tool === "walls");
     }
-    const roleBadge = this.container.querySelector("#role-badge");
-    if (roleBadge) {
-      roleBadge.textContent = isHost ? "👑 Room Host (Dev Tools)" : "🎮 Guest (Play Mode)";
-      roleBadge.className = `badge ${isHost ? 'badge-host' : 'badge-guest'}`;
+    this.updateToolVisibility();
+  }
+
+  private updateToolVisibility(): void {
+    const wallEditorSection = this.container.querySelector("#wall-editor-section") as HTMLElement;
+    if (wallEditorSection) {
+      wallEditorSection.style.display = (this.isEditMode && this.editTool === "walls") ? "block" : "none";
     }
-    const hostLockBanner = this.container.querySelector("#host-lock-banner") as HTMLElement;
-    if (hostLockBanner) {
-      hostLockBanner.style.display = isHost ? "none" : "block";
-      const span = hostLockBanner.querySelector("span");
-      if (span) span.textContent = `🔒 Dev tools restricted to Room Host (${this.hostName}). You are in Play Mode.`;
-    }
-    if (this.modeEditBtn) {
-      if (!isHost) {
-        this.modeEditBtn.setAttribute("disabled", "true");
-        this.modeEditBtn.style.opacity = "0.4";
-        this.modeEditBtn.style.cursor = "not-allowed";
-        this.modeEditBtn.title = "Edit Mode is restricted to Room Host";
+    const hint = this.container.querySelector("#edit-hint-label");
+    if (hint) {
+      if (!this.isEditMode) {
+        hint.textContent = "Right-click in arena to select";
+      } else if (this.editTool === "walls") {
+        hint.textContent = "Left-drag: Draw | Right-drag: Erase";
       } else {
-        this.modeEditBtn.removeAttribute("disabled");
-        this.modeEditBtn.style.opacity = "1";
-        this.modeEditBtn.style.cursor = "pointer";
-        this.modeEditBtn.title = "";
+        hint.textContent = "Click & drag object in arena";
       }
-    }
-    const creatorSection = this.container.querySelector("#section-world-spawner") as HTMLElement;
-    if (creatorSection) {
-      creatorSection.style.display = isHost ? "block" : "none";
-    }
-    const arenaSection = this.container.querySelector("#section-arena-physics") as HTMLElement;
-    if (arenaSection) {
-      arenaSection.style.display = isHost ? "block" : "none";
     }
   }
 
   public updateSelectorOptions(): void {
     if (!this.entitySelectorEl) return;
-    const currentId = this.selectedEntity.id;
 
-    let html = `<option value="${this.character.id}" ${currentId === this.character.id ? "selected" : ""}>⭐ Player Character (${this.character.mass.toFixed(1)}kg)</option>`;
+    const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+
+    // If current selected entity was a character that is no longer active in the arena, switch cleanly
+    if (this.selectedEntity instanceof Character && !chars.includes(this.selectedEntity)) {
+      this.selectedEntity = chars[0] || this.objects[0] || (null as any);
+      this.onSelectionChange?.(this.selectedEntity);
+    } else if (!this.selectedEntity) {
+      this.selectedEntity = chars[0] || this.objects[0] || (null as any);
+      this.onSelectionChange?.(this.selectedEntity);
+    }
+
+    const currentId = this.selectedEntity ? this.selectedEntity.id : "";
+
+    let html = "";
+    for (const char of chars) {
+      const isSel = char.id === currentId ? "selected" : "";
+      const massDesc = char.hasMass ? `${char.mass.toFixed(1)}kg` : "Massless";
+      html += `<option value="${char.id}" ${isSel}>⭐ ${char.name} (${massDesc})</option>`;
+    }
     for (const obj of this.objects) {
       const isSel = obj.id === currentId ? "selected" : "";
       const icon = obj.visualShape === "box" ? "📦" : "⚪";
       const massDesc = obj.hasMass ? `${obj.mass.toFixed(1)}kg` : "Massless";
       html += `<option value="${obj.id}" ${isSel}>${icon} ${obj.name} (${massDesc})</option>`;
     }
+    if (chars.length === 0 && this.objects.length === 0) {
+      html = `<option value="">(No entities in arena)</option>`;
+    }
     this.entitySelectorEl.innerHTML = html;
 
-    const isChar = this.selectedEntity === this.character;
+    const isChar = Boolean(this.selectedEntity && this.selectedEntity instanceof Character);
     if (this.characterSpecificControlsEl) {
       this.characterSpecificControlsEl.style.display = isChar ? "flex" : "none";
     }
     if (this.objectSpecificControlsEl) {
-      this.objectSpecificControlsEl.style.display = isChar ? "none" : "flex";
+      this.objectSpecificControlsEl.style.display = (!isChar && this.selectedEntity) ? "flex" : "none";
     }
+
+    this.renderEntityModules();
+    this.syncEntitySliders();
   }
 
   private renderPanel(): void {
     this.container.innerHTML = `
       <div class="dev-panel-header">
         <div class="header-top-row">
-          <h2>🛠️ Sandbox & Engine</h2>
-          <span id="role-badge" class="badge ${this.isHost ? 'badge-host' : 'badge-guest'}">
-            ${this.isHost ? '👑 Room Host (Dev Tools)' : '🎮 Guest (Play Mode)'}
-          </span>
-        </div>
-        <div id="host-lock-banner" class="host-lock-banner" style="display: ${this.isHost ? 'none' : 'block'};">
-          <span>🔒 Dev tools restricted to Room Host (${this.hostName}). You are in Play Mode.</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2>🛠️ Sandbox & Engine</h2>
+            <span class="badge">1 Wall = 1 Unit</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button id="btn-dev-view-settings" class="btn-secondary-action" style="flex: 0 0 auto; padding: 3px 8px; font-size: 0.74rem; border-color: rgba(56, 189, 248, 0.35); color: #38bdf8;" title="Open 3D View Settings (V)">👁️ View</button>
+            <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
+          </div>
         </div>
         <div class="mode-switcher">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
-          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}" ${!this.isHost ? 'disabled style="opacity: 0.4; cursor: not-allowed;" title="Edit Mode restricted to Room Host"' : ''}>✏️ Edit Mode</button>
+          <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
+        </div>
+        <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode ? 'flex' : 'none'};">
+          <button id="submode-entities" class="submode-btn ${this.editTool === 'entities' ? 'active' : ''}">📦 Move Entities</button>
+          <button id="submode-walls" class="submode-btn ${this.editTool === 'walls' ? 'active' : ''}">🧱 Edit Walls</button>
         </div>
       </div>
 
       <div class="dev-scrollable">
+        <!-- Wall Tile Editor Section (Active when Edit Mode & Edit Walls selected) -->
+        <div id="wall-editor-section" class="dev-section wall-tool-panel" style="display: ${this.isEditMode && this.editTool === 'walls' ? 'block' : 'none'};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3 style="margin: 0;">🧱 Wall Tile Editor</h3>
+            <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);">Grid: 20 × 14</span>
+          </div>
+          <p class="section-desc">Click and drag directly in the arena to paint or erase 1.0 × 1.0 unit wall blocks in real-time.</p>
+
+          <div class="wall-hint-box">
+            <div>🖱️ <strong>Left-Click & Drag:</strong> Draw / place wall tiles</div>
+            <div style="margin-top: 4px;">🖱️ <strong class="danger">Right-Click & Drag:</strong> Erase / remove wall tiles</div>
+            <div style="margin-top: 6px; font-size: 0.72rem; color: #94a3b8;">
+              💡 Drawing a wall under an object on the ground elevates it to wall height. Erasing a wall under an object causes it to fall naturally with gravity.
+            </div>
+          </div>
+
+          <!-- Wall Map Presets Switcher -->
+          <div class="wall-presets-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.78rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 4px;">🗺️ Default Wall Maps</span>
+              <span id="label-wall-map-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem;">
+                ${this.getCurrentWallPresetBadge()}
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-prev-wall-map" class="btn-secondary-action btn-wall-nav" title="Previous Wall Map">◀</button>
+              <select id="select-wall-preset" class="dev-select wall-preset-select">
+                ${this.renderWallPresetOptions()}
+              </select>
+              <button id="btn-next-wall-map" class="btn-secondary-action btn-wall-nav" title="Next Wall Map">▶</button>
+            </div>
+            <p id="desc-wall-map" class="wall-preset-desc">
+              ${this.getCurrentWallPresetDesc()}
+            </p>
+          </div>
+
+          <div class="slider-group" style="margin-top: 12px;">
+            <div class="slider-label">
+              <span>Standard Wall Height (u)</span>
+              <span id="val-editor-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-editor-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button id="btn-reset-walls" class="btn-secondary-action" style="flex: 1;">↺ Reset Layout</button>
+            <button id="btn-clear-walls" class="btn-secondary-action" style="flex: 1; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Clear Walls</button>
+          </div>
+        </div>
+
         <!-- Target Selection -->
         <div class="dev-section">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -339,287 +430,195 @@ export class DevPanel {
           <div id="dev-inspector" class="inspector-grid"></div>
         </div>
 
+        <!-- ⚡ Physics & Collision Simulation (Phase A) -->
+        <div class="dev-section" style="border: 1px solid rgba(6, 182, 212, 0.3); background: rgba(6, 182, 212, 0.04);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h3 style="margin: 0; color: #38bdf8;">⚡ Physics & Collisions</h3>
+            <span id="badge-sim-tick" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.4);">
+              Tick 0 (60Hz)
+            </span>
+          </div>
+          <p class="section-desc">Test Discrete TOI Rollback vs. Continuous Swept CCD vs. Legacy Naive Overlap.</p>
+
+          <!-- Simulation Play / Pause / Step -->
+          <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+            <button id="btn-sim-pause" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600;">
+              ⏸️ Pause Sim
+            </button>
+            <button id="btn-sim-step" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+              ⏭️ Step 1 Tick
+            </button>
+          </div>
+
+          <!-- Global Collision Mode -->
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">Global Collision Solver</label>
+            <select id="select-global-collision-mode" class="dev-select">
+              <option value="dynamic" selected>⚡ Dynamic Adaptive (CCD on Fast, TOI on Slow)</option>
+              <option value="discrete">⏪ Discrete TOI Rollback (Sub-Tick Rewind)</option>
+              <option value="continuous">🔍 Continuous Swept (Always CCD)</option>
+              <option value="naive">⚠️ Naive Push-Out (Legacy Baseline)</option>
+            </select>
+          </div>
+
+          <!-- Dynamic CCD Threshold Ratio Slider -->
+          <div class="slider-group" id="group-ccd-threshold" style="margin-bottom: 10px;">
+            <div class="slider-label">
+              <span>Dynamic CCD Threshold Ratio</span>
+              <span id="val-ccd-threshold">0.50×</span>
+            </div>
+            <input type="range" id="slide-ccd-threshold" min="0.10" max="2.00" step="0.05" value="0.50">
+            <span style="font-size: 0.70rem; color: #94a3b8; display: block; margin-top: 2px;">
+              Triggers Continuous Swept when displacement per tick exceeds (Ratio × Radius).
+            </span>
+          </div>
+
+          <!-- Selected Entity Collision Policy -->
+          <div style="margin-bottom: 10px; padding: 8px; background: rgba(15, 23, 42, 0.6); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 0.76rem; font-weight: 600; color: #e2e8f0;">Target Entity Mode</span>
+              <span id="badge-entity-effective-mode" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; font-size: 0.68rem;">
+                Discrete
+              </span>
+            </div>
+            <select id="select-entity-collision-mode" class="dev-select">
+              <option value="dynamic" selected>Dynamic (Follows Velocity)</option>
+              <option value="discrete">Force Discrete</option>
+              <option value="continuous">Force Continuous Swept</option>
+            </select>
+          </div>
+
+          <!-- Test Cannon / Projectile Launcher -->
+          <div style="margin-bottom: 10px;">
+            <button id="btn-launch-fast-ball" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
+              🚀 Launch High-Speed Ball (40 u/s)
+            </button>
+            <span style="font-size: 0.70rem; color: #94a3b8; display: block; margin-top: 4px;">
+              Fires a small ball at 40 u/s toward walls to test tunneling vs. clean bouncing in real-time.
+            </span>
+          </div>
+
+          <!-- Collision Visuals Toggle -->
+          <div class="toggle-row" style="margin-top: 6px;">
+            <label style="font-size: 0.78rem;">Show CCD / TOI Visuals</label>
+            <button id="toggle-collision-visuals" class="btn-toggle">
+              OFF
+            </button>
+          </div>
+        </div>
+
+        <!-- ⏪ Phase 2: State History & Deterministic Rollback -->
+        <div class="dev-section" id="section-history-rollback">
+          <h3>⏪ History Buffer & Rollback Replay</h3>
+          <p class="section-desc">Test local deterministic rewind, input replay, and desync reconciliation (Phase 2).</p>
+
+          <!-- Live Buffer Telemetry Badge -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 6px 10px; background: rgba(15, 23, 42, 0.65); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <span style="font-size: 0.74rem; color: #94a3b8;">Buffered Memory:</span>
+            <span id="badge-buffer-status" class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; font-weight: 600; font-size: 0.74rem;">
+              60/60 ticks (1.00s)
+            </span>
+          </div>
+
+          <!-- Buffer Capacity Slider (Dynamic live resizing) -->
+          <div class="slider-group" id="group-buffer-capacity" style="margin-bottom: 8px;">
+            <div class="slider-label">
+              <span>Buffer Capacity</span>
+              <span id="val-buffer-capacity">60 ticks (1.0s)</span>
+            </div>
+            <input type="range" id="slide-buffer-capacity" min="15" max="120" step="5" value="60">
+            <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 2px;">
+              Dynamic ring buffer size (15 to 120 ticks, 0.25s to 2.0s).
+            </span>
+          </div>
+
+          <!-- Rollback Replay Depth Slider -->
+          <div class="slider-group" id="group-rollback-depth" style="margin-bottom: 8px;">
+            <div class="slider-label">
+              <span>Test Rollback Depth</span>
+              <span id="val-rollback-depth">30 ticks (0.50s)</span>
+            </div>
+            <input type="range" id="slide-rollback-depth" min="5" max="60" step="5" value="30">
+          </div>
+
+          <!-- Live Buffer Trail Toggle -->
+          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 8px;">
+            <label style="font-size: 0.78rem;">Show Live Buffer Trail</label>
+            <button id="toggle-buffer-trail" class="btn-toggle">
+              OFF
+            </button>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+            <div>
+              <button id="btn-test-rollback" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 600; background: rgba(16, 185, 129, 0.08);">
+                ⏪ Rollback & Verify Replay
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Rewinds world state N ticks, replays recorded inputs forward, and verifies 0.0000u bit-level precision. (Tip: Run, jump, or throw an item, click ⏸️ Pause Sim, then test rollback).
+              </span>
+            </div>
+
+            <div>
+              <button id="btn-test-desync" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 600; background: rgba(245, 158, 11, 0.08);">
+                💥 Simulate Past Tackle & Reconcile
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Simulates an external tackle hitting the selected entity N ticks in the past. Renders the old predicted path (red) vs. re-simulated reconciled path (green) on canvas!
+              </span>
+            </div>
+
+            <div>
+              <button id="btn-test-phase8-reconcile" class="btn-secondary-action" style="width: 100%; padding: 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); font-weight: 600; background: rgba(56, 189, 248, 0.08);">
+                🔄 Test Prediction Reconciliation (Phase 8)
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 3px; line-height: 1.3;">
+                Simulates receiving an authoritative server snapshot with a past perturbation. Rewinds local player, fast-forwards with recorded inputs, and sets visual dampeners (0.000u pop).
+              </span>
+            </div>
+          </div>
+
+          <!-- Rollback Result Banner -->
+          <div id="banner-rollback-result" style="display: none; padding: 8px 10px; border-radius: 6px; font-size: 0.72rem; line-height: 1.4; margin-top: 4px; border: 1px solid transparent;">
+          </div>
+        </div>
+
         <!-- 🧩 Modular Capabilities & Physical Behaviors -->
+
         <div class="dev-section">
           <h3>🧩 Physical Behaviors</h3>
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
 
           <!-- Visual Shape -->
-          <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity === this.character ? 'display:none;' : ''}">
+          <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity instanceof Character ? 'display:none;' : ''}">
             <label>Visual Shape</label>
             <button id="toggle-entity-shape" class="btn-toggle ${this.selectedEntity.visualShape === 'box' ? 'active' : ''}">
               ${this.selectedEntity.visualShape === 'box' ? 'Box 📦' : 'Circle ⚪'}
             </button>
           </div>
 
-          <!-- 1. Collider -->
-          <div class="module-card">
-            <div class="toggle-row">
-              <label>🛡️ Collider</label>
-              <button id="toggle-mod-collider" class="btn-toggle ${this.selectedEntity.hasCollider ? 'active' : ''}">
-                ${this.selectedEntity.hasCollider ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="group-mod-collider" style="display: ${this.selectedEntity.hasCollider ? 'block' : 'none'};">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Collider Radius (u)</span>
-                  <span id="val-entity-radius">${(this.selectedEntity.colliderModule?.radius ?? 0.32).toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-radius" min="0.1" max="1.5" step="0.02" value="${this.selectedEntity.colliderModule?.radius ?? 0.32}">
-              </div>
-            </div>
-            <div id="note-mod-collider" class="module-detached-note" style="display: ${!this.selectedEntity.hasCollider ? 'block' : 'none'};">
-              Passes freely through all walls and objects
-            </div>
+          <!-- Dynamic Module Cards Container -->
+          <div id="entity-modules-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
           </div>
 
-          <!-- 2. Mass -->
-          <div class="module-card">
-            <div class="toggle-row">
-              <label>⚖️ Mass</label>
-              <button id="toggle-mod-mass" class="btn-toggle ${this.selectedEntity.hasMass ? 'active' : ''}">
-                ${this.selectedEntity.hasMass ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="group-mod-mass" style="display: ${this.selectedEntity.hasMass ? 'block' : 'none'};">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Mass (kg)</span>
-                  <span id="val-entity-mass">${(this.selectedEntity.massModule?.mass ?? 1.0).toFixed(1)}</span>
-                </div>
-                <input type="range" id="slide-entity-mass" min="0.1" max="8.0" step="0.1" value="${this.selectedEntity.massModule?.mass ?? 1.0}">
-              </div>
-            </div>
-            <div id="note-mod-mass" class="module-detached-note" style="display: ${!this.selectedEntity.hasMass ? 'block' : 'none'};">
-              Massless: imparts 0 resistance on massive bodies, only inherits velocity
-            </div>
-          </div>
-
-          <!-- 3. Friction (Requires Mass) -->
-          <div class="module-card" id="card-mod-friction">
-            <div class="toggle-row">
-              <label>🛝 Friction</label>
-              <button id="toggle-mod-friction" class="btn-toggle ${this.selectedEntity.frictionModule?.enabled ? 'active' : ''}">
-                ${this.selectedEntity.frictionModule?.enabled ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="warn-friction-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass && this.selectedEntity.frictionModule?.enabled ? 'block' : 'none'};">
-              ⚠️ Inactive without Mass (no normal force)
-            </div>
-            <div id="group-mod-friction" style="display: ${this.selectedEntity.frictionModule?.enabled ? 'flex' : 'none'}; flex-direction: column; gap: 8px;">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Static Friction Mod</span>
-                  <span id="val-entity-static-fric">${(this.selectedEntity.frictionModule?.staticFrictionMod ?? 1.0).toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-static-fric" min="0" max="3.0" step="0.05" value="${this.selectedEntity.frictionModule?.staticFrictionMod ?? 1.0}">
-              </div>
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Dynamic Friction Mod</span>
-                  <span id="val-entity-dynamic-fric">${(this.selectedEntity.frictionModule?.dynamicFrictionMod ?? 1.0).toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${this.selectedEntity.frictionModule?.dynamicFrictionMod ?? 1.0}">
-              </div>
-            </div>
-            <div id="note-mod-friction" class="module-detached-note" style="display: ${!this.selectedEntity.frictionModule?.enabled ? 'block' : 'none'};">
-              Frictionless: glides indefinitely without ground resistance
-            </div>
-          </div>
-
-          <!-- 4. Bounciness (Requires Mass) -->
-          <div class="module-card" id="card-mod-bounce">
-            <div class="toggle-row">
-              <label>🏀 Bounciness</label>
-              <button id="toggle-mod-bounce" class="btn-toggle ${this.selectedEntity.bounceModule?.enabled ? 'active' : ''}">
-                ${this.selectedEntity.bounceModule?.enabled ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="warn-bounce-mass" class="module-dep-warning" style="display: ${!this.selectedEntity.hasMass && this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
-              ⚠️ Inactive without Mass (no restitution calculation)
-            </div>
-            <div id="group-mod-bounce" style="display: ${this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Bounciness (Restitution)</span>
-                  <span id="val-entity-bounce">${(this.selectedEntity.bounceModule?.bounceMod ?? 0.4).toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-bounce" min="0.05" max="1.0" step="0.05" value="${this.selectedEntity.bounceModule?.bounceMod ?? 0.4}">
-              </div>
-              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
-                <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                  <input type="checkbox" id="check-mod-vert-bounce" ${this.selectedEntity.bounceModule?.verticalBounce ? 'checked' : ''}>
-                  <span>Vertical Bounce</span>
-                </label>
-              </div>
-              <div id="warn-bounce-vert-vel" class="module-dep-warning" style="display: ${this.selectedEntity.bounceModule?.enabled && this.selectedEntity.bounceModule?.verticalBounce && !this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'};">
-                ⚠️ Inactive without Vertical Velocity
-              </div>
-            </div>
-            <div id="note-mod-bounce" class="module-detached-note" style="display: ${!this.selectedEntity.bounceModule?.enabled ? 'block' : 'none'};">
-              Zero bounce: impact velocity immediately absorbed
-            </div>
-          </div>
-
-          <!-- 5. Vertical Position & Velocity -->
-          <div class="module-card" id="card-mod-vert-pos">
-            <div class="toggle-row">
-              <label>↕️ Vertical Position</label>
-              <button id="toggle-mod-vert-pos" class="btn-toggle ${this.selectedEntity.hasVerticalPosition ? 'active' : ''}">
-                ${this.selectedEntity.hasVerticalPosition ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="group-mod-vert-pos" style="display: ${this.selectedEntity.hasVerticalPosition ? 'block' : 'none'};">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Elevation (z)</span>
-                  <span id="val-entity-elevation">${this.selectedEntity.position.z.toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-elevation" min="0.0" max="4.0" step="0.05" value="${this.selectedEntity.position.z}">
-              </div>
-
-              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
-                <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
-                <button id="toggle-mod-vert-vel" class="btn-toggle ${this.selectedEntity.hasVerticalVelocity ? 'active' : ''}">
-                  ${this.selectedEntity.hasVerticalVelocity ? 'Enabled' : 'Disabled'}
-                </button>
-              </div>
-
-              <div id="group-mod-vert-vel" style="display: ${this.selectedEntity.hasVerticalVelocity ? 'block' : 'none'}; margin-top: 6px;">
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Vertical Velocity (u/s)</span>
-                    <span id="val-entity-vert-vel">${this.selectedEntity.verticalVelocity.toFixed(2)}</span>
-                  </div>
-                  <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${this.selectedEntity.verticalVelocity}">
-                </div>
-              </div>
-            </div>
-            <div id="note-mod-vert-pos" class="module-detached-note" style="display: ${!this.selectedEntity.hasVerticalPosition ? 'block' : 'none'};">
-              Flat on ground: entity has no vertical position (z = 0)
-            </div>
-          </div>
-
-          <!-- 6. Gravity -->
-          <div class="module-card">
-            <div class="toggle-row">
-              <label>🪐 Gravity</label>
-              <button id="toggle-mod-gravity" class="btn-toggle ${this.selectedEntity.hasGravity ? 'active' : ''}">
-                ${this.selectedEntity.hasGravity ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="note-mod-gravity" class="module-detached-note">
-              ${this.selectedEntity.hasGravity ? "Subject to static world gravity acceleration" : "Zero-G: never falls, flies horizontally in a straight line"}
-            </div>
-          </div>
-
-          <!-- 7. Roll -->
-          <div class="module-card">
-            <div class="toggle-row">
-              <label>🔄 Roll</label>
-              <button id="toggle-mod-roll" class="btn-toggle ${this.selectedEntity.rollModule?.enabled ? 'active' : ''}">
-                ${this.selectedEntity.rollModule?.enabled ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-            <div id="note-roll-friction" class="module-detached-note" style="display: ${this.selectedEntity.rollModule?.enabled && !this.selectedEntity.hasFriction ? 'block' : 'none'}; color: #cbd5e1;">
-              ℹ️ Spin not resisted without Friction
-            </div>
-            <div id="group-mod-roll" style="display: ${this.selectedEntity.rollModule?.enabled ? 'block' : 'none'};">
-              <div class="slider-group">
-                <div class="slider-label">
-                  <span>Roll Resistance (u/s²)</span>
-                  <span id="val-entity-roll-resist">${(this.selectedEntity.rollModule?.rollResistance ?? 0.4).toFixed(2)}</span>
-                </div>
-                <input type="range" id="slide-entity-roll-resist" min="0.0" max="4.0" step="0.05" value="${this.selectedEntity.rollModule?.rollResistance ?? 0.4}">
-              </div>
-            </div>
-          </div>
-
-          <!-- 7. Character Specific Capabilities (Walking, Pickup, Throw) -->
-          <div id="character-specific-controls" style="display: ${this.selectedEntity === this.character ? 'flex' : 'none'}; flex-direction: column; gap: 10px;">
-            <h4 style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8; text-transform: uppercase;">Character Abilities</h4>
-
-            <!-- Walking Ability -->
-            <div class="module-card" id="card-mod-walking">
-              <div class="toggle-row">
-                <label>🚶 Walking Ability</label>
-                <button id="toggle-walk" class="btn-toggle ${this.character.walkingModule?.enabled ? 'active' : ''}">
-                  ${this.character.walkingModule?.enabled ? 'Attached' : 'Detached'}
-                </button>
-              </div>
-              <div id="warn-walk-friction" class="module-dep-warning" style="display: ${!this.character.hasFriction && this.character.walkingModule?.enabled ? 'block' : 'none'};">
-                ⚠️ Feet slip without Friction (cannot push ground)
-              </div>
-              <div id="group-mod-walking" style="display: ${this.character.walkingModule?.enabled ? 'flex' : 'none'}; flex-direction: column; gap: 8px;">
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Max Walk Force (N)</span>
-                    <span id="val-walk-force">${(this.character.walkingModule?.maxWalkForce ?? 35.0).toFixed(0)}</span>
-                  </div>
-                  <input type="range" id="slide-walk-force" min="10" max="200" step="5" value="${this.character.walkingModule?.maxWalkForce ?? 35.0}">
-                </div>
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Max Walk Speed Cap (u/s)</span>
-                    <span id="val-walk-speed">${(this.character.walkingModule?.maxWalkSpeed ?? 5.2).toFixed(1)}</span>
-                  </div>
-                  <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${this.character.walkingModule?.maxWalkSpeed ?? 5.2}">
-                </div>
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Character Strength</span>
-                    <span id="val-strength">${(this.character.strength ?? 1.0).toFixed(1)}</span>
-                  </div>
-                  <input type="range" id="slide-strength" min="0.3" max="4.0" step="0.1" value="${this.character.strength ?? 1.0}">
-                </div>
-              </div>
-            </div>
-
-            <!-- Pickup Ability -->
-            <div class="module-card">
-              <div class="toggle-row">
-                <label>✋ Pickup Ability</label>
-                <button id="toggle-pickup" class="btn-toggle ${this.character.pickupModule?.enabled ? 'active' : ''}">
-                  ${this.character.pickupModule?.enabled ? 'Attached' : 'Detached'}
-                </button>
-              </div>
-              <div id="group-mod-pickup" style="display: ${this.character.pickupModule?.enabled ? 'block' : 'none'};">
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Pickup Reach (u)</span>
-                    <span id="val-pickup-reach">${(this.character.pickupModule?.pickupReach ?? 1.3).toFixed(1)}</span>
-                  </div>
-                  <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${this.character.pickupModule?.pickupReach ?? 1.3}">
-                </div>
-              </div>
-            </div>
-
-            <!-- Throw Ability -->
-            <div class="module-card">
-              <div class="toggle-row">
-                <label>🎯 Throw Ability</label>
-                <button id="toggle-throw" class="btn-toggle ${this.character.throwModule?.enabled ? 'active' : ''}">
-                  ${this.character.throwModule?.enabled ? 'Attached' : 'Detached'}
-                </button>
-              </div>
-              <div id="group-mod-throw" style="display: ${this.character.throwModule?.enabled ? 'block' : 'none'};">
-                <div class="slider-group">
-                  <div class="slider-label">
-                    <span>Base Throw Power (u/s)</span>
-                    <span id="val-throw-force">${(this.character.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
-                  </div>
-                  <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${this.character.throwModule?.baseThrowForce ?? 7.6}">
-                </div>
-              </div>
+          <!-- Add Behavior Button & Dropdown Menu -->
+          <div class="add-behavior-container" id="add-behavior-section" style="margin-top: 12px; position: relative;">
+            <button id="btn-add-behavior" class="btn-add-behavior" type="button">
+              <span>➕</span> Add Behavior
+            </button>
+            <div id="dropdown-add-behavior" class="dropdown-add-behavior" style="display: none;">
             </div>
           </div>
         </div>
 
         <!-- ✨ Add New Object (Creator & Presets) -->
-        <div id="section-world-spawner" class="dev-section" style="display: ${this.isHost ? 'block' : 'none'};">
-          <h3>✨ Add New Object</h3>
-          <p class="section-desc">Pick a preset or configure custom properties. Values remain preserved across spawns.</p>
+        <div class="dev-section">
+          <div class="creator-sticky-header">
+            <h3 style="margin: 0;">✨ Add New Object</h3>
+            <span class="not-live-badge">⚠️ NOT LIVE OBJECT</span>
+          </div>
+          <p class="section-desc">Configure template properties or choose a preset to spawn into the arena.</p>
           
           <div class="presets-container" style="margin-bottom: 10px;">
             <button class="preset-chip" data-preset="Light Blue Box">📦 Light Box</button>
@@ -647,6 +646,25 @@ export class DevPanel {
               <div class="color-input-wrapper">
                 <input type="color" id="creator-color" value="${this.creatorState.color}">
                 <span id="val-creator-color" style="font-size: 0.76rem; font-family: monospace; color: #cbd5e1;">${this.creatorState.color}</span>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <label>Rigidbody</label>
+              <button id="creator-toggle-rigidbody" class="btn-toggle ${this.creatorState.hasRigidbody ? 'active' : ''}">
+                ${this.creatorState.hasRigidbody ? 'Attached' : 'Detached'}
+              </button>
+            </div>
+
+            <div class="slider-group" id="grp-creator-rigidbody" style="display: ${this.creatorState.hasRigidbody ? 'block' : 'none'};">
+              <div class="toggle-subrow" style="display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
+                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'active' : ''}" ${!this.creatorState.hasVerticalPosition ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                  ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <div id="creator-warn-rb-vert-pos" class="module-dep-warning" style="display: ${!this.creatorState.hasVerticalPosition ? 'block' : 'none'}; margin-top: 4px;">
+                ⚠️ Requires Vertical Position behavior
               </div>
             </div>
 
@@ -732,13 +750,6 @@ export class DevPanel {
                 <span id="val-creator-elevation">${this.creatorState.elevation.toFixed(2)}</span>
               </div>
               <input type="range" id="slide-creator-elevation" min="0.0" max="4.0" step="0.05" value="${this.creatorState.elevation}">
-
-              <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
-                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
-                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity ? 'active' : ''}">
-                  ${this.creatorState.hasVerticalVelocity ? 'Enabled' : 'Disabled'}
-                </button>
-              </div>
             </div>
 
             <div class="toggle-row">
@@ -772,7 +783,7 @@ export class DevPanel {
         </div>
 
         <!-- 🌍 World & Arena Physics -->
-        <div id="section-arena-physics" class="dev-section" style="display: ${this.isHost ? 'block' : 'none'};">
+        <div class="dev-section">
           <h3>🌍 World Physics & Environment</h3>
 
           <div class="slider-group">
@@ -780,7 +791,7 @@ export class DevPanel {
               <span>Gravity Force (u/s²)</span>
               <span id="val-gravity">${this.arena.gravity.toFixed(1)}</span>
             </div>
-            <input type="range" id="slide-gravity" min="1.0" max="30.0" step="0.5" value="${this.arena.gravity}">
+            <input type="range" id="slide-gravity" min="1.0" max="100.0" step="0.5" value="${this.arena.gravity}">
           </div>
 
           <div class="slider-group">
@@ -812,18 +823,21 @@ export class DevPanel {
 
     this.inspectorEl = this.container.querySelector("#dev-inspector")!;
     this.entitySelectorEl = this.container.querySelector("#entity-selector")!;
-    this.characterSpecificControlsEl = this.container.querySelector("#character-specific-controls")!;
+    this.characterSpecificControlsEl = this.container.querySelector("#character-specific-controls");
     this.objectSpecificControlsEl = this.container.querySelector("#object-actions-row")!;
     this.modePlayBtn = this.container.querySelector("#mode-play")!;
     this.modeEditBtn = this.container.querySelector("#mode-edit")!;
 
     this.updateSelectorOptions();
     this.bindEvents();
+    this.renderEntityModules();
   }
 
   public syncEntitySliders(): void {
     const e = this.selectedEntity;
-    const isChar = e === this.character;
+    if (!e) return;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
 
     // Visual shape row visibility
     const shapeRow = this.container.querySelector("#row-visual-shape") as HTMLElement;
@@ -840,164 +854,904 @@ export class DevPanel {
       }
     }
 
-    // 1. Collider Module
-    const btnCollider = this.container.querySelector("#toggle-mod-collider") as HTMLButtonElement;
-    const grpCollider = this.container.querySelector("#group-mod-collider") as HTMLElement;
-    const noteCollider = this.container.querySelector("#note-mod-collider") as HTMLElement;
-    if (btnCollider) {
-      btnCollider.textContent = e.hasCollider ? "Attached" : "Detached";
-      btnCollider.classList.toggle("active", e.hasCollider);
-    }
-    if (grpCollider) grpCollider.style.display = e.hasCollider ? "block" : "none";
-    if (noteCollider) noteCollider.style.display = !e.hasCollider ? "block" : "none";
+    // Physical behaviors sliders (only affects elements currently rendered)
     this.setSliderVal("slide-entity-radius", "val-entity-radius", e.colliderModule?.radius ?? 0.32, 2);
-
-    // 2. Mass Module
-    const btnMass = this.container.querySelector("#toggle-mod-mass") as HTMLButtonElement;
-    const grpMass = this.container.querySelector("#group-mod-mass") as HTMLElement;
-    const noteMass = this.container.querySelector("#note-mod-mass") as HTMLElement;
-    if (btnMass) {
-      btnMass.textContent = e.hasMass ? "Attached" : "Detached";
-      btnMass.classList.toggle("active", e.hasMass);
-    }
-    if (grpMass) grpMass.style.display = e.hasMass ? "block" : "none";
-    if (noteMass) noteMass.style.display = !e.hasMass ? "block" : "none";
     this.setSliderVal("slide-entity-mass", "val-entity-mass", e.massModule?.mass ?? 1.0, 1);
-
-    // 3. Friction Module
-    const btnFriction = this.container.querySelector("#toggle-mod-friction") as HTMLButtonElement;
-    const grpFriction = this.container.querySelector("#group-mod-friction") as HTMLElement;
-    const noteFriction = this.container.querySelector("#note-mod-friction") as HTMLElement;
-    const warnFricMass = this.container.querySelector("#warn-friction-mass") as HTMLElement;
-    const hasFricMod = Boolean(e.frictionModule && e.frictionModule.enabled);
-    if (btnFriction) {
-      btnFriction.textContent = hasFricMod ? "Attached" : "Detached";
-      btnFriction.classList.toggle("active", hasFricMod);
-    }
-    if (grpFriction) grpFriction.style.display = hasFricMod ? "flex" : "none";
-    if (noteFriction) noteFriction.style.display = !hasFricMod ? "block" : "none";
-    if (warnFricMass) warnFricMass.style.display = (!e.hasMass && hasFricMod) ? "block" : "none";
     this.setSliderVal("slide-entity-static-fric", "val-entity-static-fric", e.frictionModule?.staticFrictionMod ?? 1.0, 2);
     this.setSliderVal("slide-entity-dynamic-fric", "val-entity-dynamic-fric", e.frictionModule?.dynamicFrictionMod ?? 1.0, 2);
-
-    // 4. Bounciness
-    const btnBounce = this.container.querySelector("#toggle-mod-bounce") as HTMLButtonElement;
-    const grpBounce = this.container.querySelector("#group-mod-bounce") as HTMLElement;
-    const noteBounce = this.container.querySelector("#note-mod-bounce") as HTMLElement;
-    const warnBounceMass = this.container.querySelector("#warn-bounce-mass") as HTMLElement;
-    const hasBounceMod = Boolean(e.bounceModule && e.bounceModule.enabled);
-    if (btnBounce) {
-      btnBounce.textContent = hasBounceMod ? "Attached" : "Detached";
-      btnBounce.classList.toggle("active", hasBounceMod);
-    }
-    if (grpBounce) grpBounce.style.display = hasBounceMod ? "block" : "none";
-    if (noteBounce) noteBounce.style.display = !hasBounceMod ? "block" : "none";
-    if (warnBounceMass) warnBounceMass.style.display = (!e.hasMass && hasBounceMod) ? "block" : "none";
     this.setSliderVal("slide-entity-bounce", "val-entity-bounce", e.bounceModule?.bounceMod ?? 0.4, 2);
-
-    const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
-    const warnBounceVert = this.container.querySelector("#warn-bounce-vert-vel") as HTMLElement;
-    if (checkVertBounce) {
-      checkVertBounce.checked = Boolean(e.bounceModule?.verticalBounce);
-    }
-    if (warnBounceVert) {
-      const showWarn = Boolean(hasBounceMod && e.bounceModule?.verticalBounce && !e.hasVerticalVelocity);
-      warnBounceVert.style.display = showWarn ? "block" : "none";
-    }
-
-    // 5. Vertical Position & Velocity
-    const btnVertPos = this.container.querySelector("#toggle-mod-vert-pos") as HTMLButtonElement;
-    const grpVertPos = this.container.querySelector("#group-mod-vert-pos") as HTMLElement;
-    const noteVertPos = this.container.querySelector("#note-mod-vert-pos") as HTMLElement;
-    const hasVertPos = e.hasVerticalPosition;
-    if (btnVertPos) {
-      btnVertPos.textContent = hasVertPos ? "Attached" : "Detached";
-      btnVertPos.classList.toggle("active", hasVertPos);
-    }
-    if (grpVertPos) grpVertPos.style.display = hasVertPos ? "block" : "none";
-    if (noteVertPos) noteVertPos.style.display = !hasVertPos ? "block" : "none";
     this.setSliderVal("slide-entity-elevation", "val-entity-elevation", e.position.z, 2);
-
-    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
-    const grpVertVel = this.container.querySelector("#group-mod-vert-vel") as HTMLElement;
-    const hasVertVel = e.hasVerticalVelocity;
-    if (btnVertVel) {
-      btnVertVel.textContent = hasVertVel ? "Enabled" : "Disabled";
-      btnVertVel.classList.toggle("active", hasVertVel);
-    }
-    if (grpVertVel) grpVertVel.style.display = hasVertVel ? "block" : "none";
     this.setSliderVal("slide-entity-vert-vel", "val-entity-vert-vel", e.verticalVelocity, 2);
-
-    // 6. Gravity
-    const btnGravity = this.container.querySelector("#toggle-mod-gravity") as HTMLButtonElement;
-    const noteGravity = this.container.querySelector("#note-mod-gravity") as HTMLElement;
-    if (btnGravity) {
-      btnGravity.textContent = e.hasGravity ? "Attached" : "Detached";
-      btnGravity.classList.toggle("active", e.hasGravity);
-    }
-    if (noteGravity) {
-      noteGravity.textContent = e.hasGravity
-        ? "Subject to static world gravity acceleration"
-        : "Zero-G: never falls, flies horizontally in a straight line";
-    }
-
-    // 7. Roll
-    const btnRoll = this.container.querySelector("#toggle-mod-roll") as HTMLButtonElement;
-    const grpRoll = this.container.querySelector("#group-mod-roll") as HTMLElement;
-    const noteRollFric = this.container.querySelector("#note-roll-friction") as HTMLElement;
-    const hasRollMod = Boolean(e.rollModule && e.rollModule.enabled);
-    if (btnRoll) {
-      btnRoll.textContent = hasRollMod ? "Attached" : "Detached";
-      btnRoll.classList.toggle("active", hasRollMod);
-    }
-    if (grpRoll) grpRoll.style.display = hasRollMod ? "block" : "none";
-    if (noteRollFric) noteRollFric.style.display = (hasRollMod && !e.hasFriction) ? "block" : "none";
     if (e.rollModule) {
       this.setSliderVal("slide-entity-roll-resist", "val-entity-roll-resist", e.rollModule.rollResistance, 2);
     }
 
-    // 7. Character Abilities
+    // Sync Collision Mode & CCD Threshold
+    const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+    if (selectEntityCollision) {
+      selectEntityCollision.value = e.collisionMode ?? "dynamic";
+    }
+    const selectRbCollision = this.container.querySelector("#select-rb-collision-mode") as HTMLSelectElement | null;
+    if (selectRbCollision) {
+      selectRbCollision.value = e.collisionMode ?? "dynamic";
+    }
+    const badgeRb = this.container.querySelector("#badge-rb-collision-mode");
+    if (badgeRb) badgeRb.textContent = (e.collisionMode ?? "dynamic").toUpperCase();
+    const velLabel = this.container.querySelector("#val-entity-linear-vel");
+    if (velLabel) velLabel.textContent = `(${e.velocity.x.toFixed(2)}, ${e.velocity.y.toFixed(2)}) u/s`;
+
+    const ccdThreshold = e.colliderModule?.ccdThresholdRatio ?? 0.5;
+    this.setSliderVal("slide-ccd-threshold", "val-ccd-threshold", ccdThreshold, 2);
+
+
+    // Character abilities sliders
+    if (isChar && char) {
+      if (char.walkingModule) {
+        this.setSliderVal("slide-walk-force", "val-walk-force", char.walkingModule.maxWalkForce, 0);
+        this.setSliderVal("slide-walk-speed", "val-walk-speed", char.walkingModule.maxWalkSpeed, 1);
+        this.setSliderVal("slide-air-fric", "val-air-fric", char.walkingModule.airFriction, 2);
+        const checkAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
+        if (checkAir) checkAir.checked = Boolean(char.walkingModule.walkInAir);
+      }
+      if (char.strengthModule) {
+        this.setSliderVal("slide-strength", "val-strength", char.strength, 1);
+      }
+      if (char.pickupModule) {
+        this.setSliderVal("slide-pickup-reach", "val-pickup-reach", char.pickupModule.pickupReach, 1);
+      }
+      if (char.throwModule) {
+        this.setSliderVal("slide-throw-force", "val-throw-force", char.throwModule.baseThrowForce, 1);
+        this.setSliderVal("slide-throw-max-height", "val-throw-max-height", char.throwModule.maxThrowHeight, 1);
+      }
+      if (char.jumpModule) {
+        this.setSliderVal("slide-jump-strength", "val-jump-strength", char.jumpModule.jumpStrength, 1);
+        this.setSliderVal("slide-jump-max-speed", "val-jump-max-speed", char.jumpModule.maxInitialSpeed, 1);
+      }
+      if (char.wallEdgeAssistModule) {
+        this.setSliderVal("slide-edge-hang", "val-edge-hang", char.wallEdgeAssistModule.hangDistance, 2);
+      }
+      if (char.climbingModule) {
+        this.setSliderVal("slide-climb-adhesion", "val-climb-adhesion", char.climbingModule.maxAdhesion, 0);
+        this.setSliderVal("slide-climb-speed", "val-climb-speed", char.climbingModule.maxClimbSpeed, 1);
+      }
+    }
+  }
+
+  /**
+   * Dynamically renders module cards only for modules that exist on the selected entity.
+   * Also populates the Add Behavior dropdown with all behaviors not yet attached.
+   */
+  public renderEntityModules(): void {
+    const container = this.container.querySelector("#entity-modules-container") as HTMLElement;
+    const addBtn = this.container.querySelector("#btn-add-behavior") as HTMLButtonElement;
+    const dropdown = this.container.querySelector("#dropdown-add-behavior") as HTMLElement;
+    if (!container || !addBtn || !dropdown) return;
+
+    const e = this.selectedEntity;
+    if (!e) {
+      container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">No entity currently selected.<br><span style="font-size: 0.75rem; color: #64748b;">Press Spacebar or Controller (A) to spawn a player.</span></div>`;
+      addBtn.style.display = "none";
+      return;
+    }
+    addBtn.style.display = "flex";
+
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
+
+    // Check which modules are currently attached
+    const hasRigidbody = Boolean(e.rigidbodyModule && e.rigidbodyModule.enabled);
+    const hasCollider = Boolean(e.colliderModule && e.colliderModule.enabled);
+    const hasMass = Boolean(e.massModule && e.massModule.enabled);
+    const hasFriction = Boolean(e.frictionModule && e.frictionModule.enabled);
+    const hasBounce = Boolean(e.bounceModule && e.bounceModule.enabled);
+    const hasVertPos = Boolean(e.verticalPositionModule && e.verticalPositionModule.enabled);
+    const hasGravity = Boolean(e.gravityModule && e.gravityModule.enabled);
+    const hasRoll = Boolean(e.rollModule && e.rollModule.enabled);
+
+    const hasWalking = isChar && Boolean(char?.walkingModule && char.walkingModule.enabled);
+    const hasStrength = isChar && Boolean(char?.strengthModule && char.strengthModule.enabled);
+    const hasPickup = isChar && Boolean(char?.pickupModule && char.pickupModule.enabled);
+    const hasThrow = isChar && Boolean(char?.throwModule && char.throwModule.enabled);
+    const hasJump = isChar && Boolean(char?.jumpModule && char.jumpModule.enabled);
+    const hasEdgeAssist = isChar && Boolean(char?.wallEdgeAssistModule && char.wallEdgeAssistModule.enabled);
+    const hasClimbing = isChar && Boolean(char?.climbingModule && char.climbingModule.enabled);
+
+    let html = "";
+    let attachedCount = 0;
+
+    // 1. Rigidbody Module
+    if (hasRigidbody) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="rigidbody">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>⚙️ Rigidbody</label>
+            <button class="btn-remove-module" data-module-id="rigidbody" title="Remove Rigidbody behavior">✕ Remove</button>
+          </div>
+          <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 8px 0; display: flex; justify-content: space-between;">
+            <span>Linear Velocity (vx, vy):</span>
+            <span id="val-entity-linear-vel" style="font-family: monospace; color: #cbd5e1;">(${e.velocity.x.toFixed(2)}, ${e.velocity.y.toFixed(2)}) u/s</span>
+          </div>
+          <div class="slider-group" style="margin-bottom: 8px;">
+            <div class="slider-label">
+              <span>Collision Mode</span>
+              <span id="badge-rb-collision-mode" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.68rem;">${e.collisionMode.toUpperCase()}</span>
+            </div>
+            <select id="select-rb-collision-mode" class="dev-select" style="width: 100%;">
+              <option value="dynamic" ${e.collisionMode === 'dynamic' ? 'selected' : ''}>Dynamic (Follows Velocity)</option>
+              <option value="discrete" ${e.collisionMode === 'discrete' ? 'selected' : ''}>Force Discrete</option>
+              <option value="continuous" ${e.collisionMode === 'continuous' ? 'selected' : ''}>Force Continuous Swept</option>
+            </select>
+          </div>
+          <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
+            <button id="toggle-mod-vert-vel" class="btn-toggle ${e.hasVerticalVelocity && hasVertPos ? 'active' : ''}" ${!hasVertPos ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+              ${e.hasVerticalVelocity && hasVertPos ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+          ${!hasVertPos ? `<div class="module-dep-warning" style="margin-top: 4px;">⚠️ Requires Vertical Position behavior</div>` : ''}
+          <div id="group-mod-vert-vel" style="display: ${e.hasVerticalVelocity && hasVertPos ? 'block' : 'none'}; margin-top: 6px;">
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Vertical Velocity (u/s)</span>
+                <span id="val-entity-vert-vel">${e.verticalVelocity.toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${e.verticalVelocity}">
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Collider Module
+    if (hasCollider) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="collider">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🛡️ Collider</label>
+            <button class="btn-remove-module" data-module-id="collider" title="Remove Collider behavior">✕ Remove</button>
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Collider Radius (u)</span>
+              <span id="val-entity-radius">${(e.colliderModule?.radius ?? 0.32).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-radius" min="0.1" max="1.5" step="0.02" value="${e.colliderModule?.radius ?? 0.32}">
+          </div>
+        </div>
+      `;
+    }
+
+    // 3. Mass Module
+    if (hasMass) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="mass">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>⚖️ Mass</label>
+            <button class="btn-remove-module" data-module-id="mass" title="Remove Mass behavior">✕ Remove</button>
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Mass (kg)</span>
+              <span id="val-entity-mass">${(e.massModule?.mass ?? 1.0).toFixed(1)}</span>
+            </div>
+            <input type="range" id="slide-entity-mass" min="0.1" max="8.0" step="0.1" value="${e.massModule?.mass ?? 1.0}">
+          </div>
+        </div>
+      `;
+    }
+
+    // 4. Friction Module
+    if (hasFriction) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="friction">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🛝 Friction</label>
+            <button class="btn-remove-module" data-module-id="friction" title="Remove Friction behavior">✕ Remove</button>
+          </div>
+          ${!hasMass ? `<div class="module-dep-warning">⚠️ Inactive without Mass (no normal force)</div>` : ''}
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Static Friction Mod</span>
+              <span id="val-entity-static-fric">${(e.frictionModule?.staticFrictionMod ?? 1.0).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-static-fric" min="0" max="3.0" step="0.05" value="${e.frictionModule?.staticFrictionMod ?? 1.0}">
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Dynamic Friction Mod</span>
+              <span id="val-entity-dynamic-fric">${(e.frictionModule?.dynamicFrictionMod ?? 1.0).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${e.frictionModule?.dynamicFrictionMod ?? 1.0}">
+          </div>
+        </div>
+      `;
+    }
+
+    // 5. Bounciness Module
+    if (hasBounce) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="bounce">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🏀 Bounciness</label>
+            <button class="btn-remove-module" data-module-id="bounce" title="Remove Bounciness behavior">✕ Remove</button>
+          </div>
+          ${!hasMass ? `<div class="module-dep-warning">⚠️ Inactive without Mass (no restitution calculation)</div>` : ''}
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Bounciness (Restitution)</span>
+              <span id="val-entity-bounce">${(e.bounceModule?.bounceMod ?? 0.4).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-bounce" min="0.05" max="1.0" step="0.05" value="${e.bounceModule?.bounceMod ?? 0.4}">
+          </div>
+          <div class="toggle-subrow" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="check-mod-vert-bounce" ${e.bounceModule?.verticalBounce ? 'checked' : ''}>
+              <span>Vertical Bounce</span>
+            </label>
+          </div>
+          ${e.bounceModule?.verticalBounce && !e.hasVerticalVelocity ? `<div class="module-dep-warning">⚠️ Inactive without Vertical Velocity</div>` : ''}
+        </div>
+      `;
+    }
+
+    // 6. Vertical Position Module
+    if (hasVertPos) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="verticalPosition">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>↕️ Vertical Position</label>
+            <button class="btn-remove-module" data-module-id="verticalPosition" title="Remove Vertical Position behavior">✕ Remove</button>
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Elevation (z)</span>
+              <span id="val-entity-elevation">${e.position.z.toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-elevation" min="0.0" max="4.0" step="0.05" value="${e.position.z}">
+          </div>
+        </div>
+      `;
+    }
+
+    // 7. Gravity Module
+    if (hasGravity) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="gravity">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🪐 Gravity</label>
+            <button class="btn-remove-module" data-module-id="gravity" title="Remove Gravity behavior">✕ Remove</button>
+          </div>
+          <div class="module-detached-note" style="color: #94a3b8; font-style: normal;">
+            Subject to downward gravitational acceleration (${this.arena.gravity.toFixed(1)} u/s²)
+          </div>
+        </div>
+      `;
+    }
+
+    // 7. Roll Module
+    if (hasRoll) {
+      attachedCount++;
+      html += `
+        <div class="module-card" data-module-id="roll">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🔄 Roll</label>
+            <button class="btn-remove-module" data-module-id="roll" title="Remove Roll behavior">✕ Remove</button>
+          </div>
+          ${!hasFriction ? `<div class="module-dep-warning">ℹ️ Spin not resisted without Friction</div>` : ''}
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Roll Resistance (u/s²)</span>
+              <span id="val-entity-roll-resist">${(e.rollModule?.rollResistance ?? 0.4).toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-entity-roll-resist" min="0.0" max="4.0" step="0.05" value="${e.rollModule?.rollResistance ?? 0.4}">
+          </div>
+        </div>
+      `;
+    }
+
+    // Character Abilities (when character is selected)
+    if (isChar && char) {
+      if (hasWalking) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="walking">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🚶 Walking Ability</label>
+              <button class="btn-remove-module" data-module-id="walking" title="Remove Walking Ability">✕ Remove</button>
+            </div>
+            ${!hasFriction ? `<div class="module-dep-warning">⚠️ Feet slip without Friction (cannot push ground)</div>` : ''}
+            ${!hasStrength ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot propel body)</div>` : ''}
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
+              <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Walk Force (N)</span>
+                <span id="val-walk-force">${(char.walkingModule?.maxWalkForce ?? 45.0).toFixed(0)}</span>
+              </div>
+              <input type="range" id="slide-walk-force" min="5.0" max="100.0" step="1.0" value="${char.walkingModule?.maxWalkForce ?? 45.0}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Walk Speed (u/s)</span>
+                <span id="val-walk-speed">${(char.walkingModule?.maxWalkSpeed ?? 6.0).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${char.walkingModule?.maxWalkSpeed ?? 6.0}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Air / Floating Friction</span>
+                <span id="val-air-fric">${(char.walkingModule?.airFriction ?? 1.0).toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-air-fric" min="0.0" max="3.0" step="0.05" value="${char.walkingModule?.airFriction ?? 1.0}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasStrength) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="strength">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>💪 Strength Ability</label>
+              <button class="btn-remove-module" data-module-id="strength" title="Remove Strength Ability">✕ Remove</button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Muscle Strength Ratio</span>
+                <span id="val-strength">${(char.strengthModule?.strength ?? 1.0).toFixed(1)}×</span>
+              </div>
+              <input type="range" id="slide-strength" min="0.2" max="4.0" step="0.1" value="${char.strengthModule?.strength ?? 1.0}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasPickup) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="pickup">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>✋ Pickup Ability</label>
+              <button class="btn-remove-module" data-module-id="pickup" title="Remove Pickup Ability">✕ Remove</button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Pickup Reach (3D)</span>
+                <span id="val-pickup-reach">${(char.pickupModule?.pickupReach ?? 1.3).toFixed(1)} u</span>
+              </div>
+              <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${char.pickupModule?.pickupReach ?? 1.3}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasThrow) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="throw">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🎯 Throw Ability</label>
+              <button class="btn-remove-module" data-module-id="throw" title="Remove Throw Ability">✕ Remove</button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Base Throw Power (u/s)</span>
+                <span id="val-throw-force">${(char.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${char.throwModule?.baseThrowForce ?? 7.6}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Throw Height (u)</span>
+                <span id="val-throw-max-height">${(char.throwModule?.maxThrowHeight ?? 5.0).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-throw-max-height" min="1.0" max="15.0" step="0.5" value="${char.throwModule?.maxThrowHeight ?? 5.0}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasJump) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="jump">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🦘 Jump Ability</label>
+              <button class="btn-remove-module" data-module-id="jump" title="Remove Jump Ability">✕ Remove</button>
+            </div>
+            ${!hasVertPos ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>` : ''}
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Jump Strength (N·s)</span>
+                <span id="val-jump-strength">${(char.jumpModule?.jumpStrength ?? 18.5).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-jump-strength" min="2.0" max="40.0" step="0.5" value="${char.jumpModule?.jumpStrength ?? 18.5}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Takeoff Speed (u/s)</span>
+                <span id="val-jump-max-speed">${(char.jumpModule?.maxInitialSpeed ?? 9.7).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-jump-max-speed" min="2.0" max="30.0" step="0.1" value="${char.jumpModule?.maxInitialSpeed ?? 9.67}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasEdgeAssist) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="wallEdgeAssist">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🛡️ Wall Edge Assist</label>
+              <button class="btn-remove-module" data-module-id="wallEdgeAssist" title="Remove Wall Edge Assist">✕ Remove</button>
+            </div>
+            <div class="toggle-row" style="margin-bottom: 8px;">
+              <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
+              <button id="toggle-edge-walkoff" class="btn-toggle ${char.wallEdgeAssistModule?.preventWalkOff ? 'active' : ''}">
+                ${char.wallEdgeAssistModule?.preventWalkOff ? 'Active' : 'Inactive'}
+              </button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Ledge Hang Distance (u)</span>
+                <span id="val-edge-hang">${(char.wallEdgeAssistModule?.hangDistance ?? 0.10).toFixed(2)}</span>
+              </div>
+              <input type="range" id="slide-edge-hang" min="0.02" max="0.5" step="0.01" value="${char.wallEdgeAssistModule?.hangDistance ?? 0.10}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasClimbing) {
+        attachedCount++;
+        html += `
+          <div class="module-card" data-module-id="climbing">
+            <div class="toggle-row" style="margin-bottom: 2px;">
+              <label>🧗 Climbing Ability</label>
+              <button class="btn-remove-module" data-module-id="climbing" title="Remove Climbing Ability">✕ Remove</button>
+            </div>
+            ${(!hasVertPos || !hasStrength) ? `<div class="module-dep-warning">${!hasVertPos ? '⚠️ Requires Vertical Position (3D Z-axis)' : '⚠️ Requires Strength Ability to climb'}</div>` : ''}
+            <div class="toggle-row" style="margin-bottom: 8px;">
+              <label style="font-size: 0.8rem;">Sideways Climb</label>
+              <button id="toggle-climb-sideways" class="btn-toggle ${char.climbingModule?.horizontalClimb ? 'active' : ''}">
+                ${char.climbingModule?.horizontalClimb ? 'Active' : 'Inactive'}
+              </button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Adhesion (N)</span>
+                <span id="val-climb-adhesion">${(char.climbingModule?.maxAdhesion ?? 105.0).toFixed(0)}</span>
+              </div>
+              <input type="range" id="slide-climb-adhesion" min="15.0" max="240.0" step="5.0" value="${char.climbingModule?.maxAdhesion ?? 105.0}">
+            </div>
+            <div class="slider-group">
+              <div class="slider-label">
+                <span>Max Climb Speed (u/s)</span>
+                <span id="val-climb-speed">${(char.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
+              </div>
+              <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${char.climbingModule?.maxClimbSpeed ?? 3.0}">
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    if (attachedCount === 0) {
+      html = `
+        <div class="empty-behaviors-msg">
+          No physical behaviors attached to this object.<br>
+          Click <strong>Add Behavior</strong> below to add one.
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+
+    // Available behaviors list (only behaviors NOT yet added)
+    interface ModuleInfo {
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+      isAttached: boolean;
+    }
+
+    const allModules: ModuleInfo[] = [
+      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, vertical velocity, motion integration & collision mode", isAttached: hasRigidbody },
+      { id: "collider", name: "Collider", icon: "🛡️", description: "Solid physical bounds & collision with walls and entities", isAttached: hasCollider },
+      { id: "mass", name: "Mass", icon: "⚖️", description: "Physical mass, weight, inertia, and momentum transfer", isAttached: hasMass },
+      { id: "friction", name: "Friction", icon: "🛝", description: "Ground friction, stopping resistance, and deceleration", isAttached: hasFriction },
+      { id: "bounce", name: "Bounciness", icon: "🏀", description: "Elastic restitution on collisions and impacts", isAttached: hasBounce },
+      { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPos },
+      { id: "gravity", name: "Gravity", icon: "🪐", description: "Downward gravitational acceleration toward ground", isAttached: hasGravity },
+      { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRoll },
+    ];
+
     if (isChar) {
-      const btnWalk = this.container.querySelector("#toggle-walk") as HTMLButtonElement;
-      const grpWalk = this.container.querySelector("#group-mod-walking") as HTMLElement;
-      const warnWalkFric = this.container.querySelector("#warn-walk-friction") as HTMLElement;
-      const hasWalkMod = Boolean(this.character.walkingModule && this.character.walkingModule.enabled);
-      if (btnWalk) {
-        btnWalk.textContent = hasWalkMod ? "Attached" : "Detached";
-        btnWalk.classList.toggle("active", hasWalkMod);
-      }
-      if (grpWalk) grpWalk.style.display = hasWalkMod ? "flex" : "none";
-      if (warnWalkFric) warnWalkFric.style.display = (hasWalkMod && !this.character.hasFriction) ? "block" : "none";
+      allModules.push(
+        { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration and maximum ground speed", isAttached: hasWalking },
+        { id: "strength", name: "Strength Ability", icon: "💪", description: "Muscle power for throw speed and climbing", isAttached: hasStrength },
+        { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickup },
+        { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrow },
+        { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJump },
+        { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssist },
+        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbing }
+      );
+    }
 
-      if (this.character.walkingModule) {
-        this.setSliderVal("slide-walk-force", "val-walk-force", this.character.walkingModule.maxWalkForce, 0);
-        this.setSliderVal("slide-walk-speed", "val-walk-speed", this.character.walkingModule.maxWalkSpeed, 1);
-      }
-      this.setSliderVal("slide-strength", "val-strength", this.character.strength, 1);
+    const unattached = allModules.filter(m => !m.isAttached);
 
-      const btnPickup = this.container.querySelector("#toggle-pickup") as HTMLButtonElement;
-      const grpPickup = this.container.querySelector("#group-mod-pickup") as HTMLElement;
-      const hasPickupMod = Boolean(this.character.pickupModule && this.character.pickupModule.enabled);
-      if (btnPickup) {
-        btnPickup.textContent = hasPickupMod ? "Attached" : "Detached";
-        btnPickup.classList.toggle("active", hasPickupMod);
-      }
-      if (grpPickup) grpPickup.style.display = hasPickupMod ? "block" : "none";
-      if (this.character.pickupModule) {
-        this.setSliderVal("slide-pickup-reach", "val-pickup-reach", this.character.pickupModule.pickupReach, 1);
-      }
+    if (unattached.length === 0) {
+      addBtn.innerHTML = `<span>✓</span> All Behaviors Added`;
+      addBtn.disabled = true;
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
+    } else {
+      addBtn.innerHTML = `<span>➕</span> Add Behavior (${unattached.length} available)`;
+      addBtn.disabled = false;
+      dropdown.innerHTML = unattached.map(m => `
+        <button class="add-behavior-item" data-module-id="${m.id}" type="button">
+          <span class="add-behavior-item-icon">${m.icon}</span>
+          <div style="display: flex; flex-direction: column; text-align: left;">
+            <span style="font-weight: 600; font-size: 0.82rem; color: #e2e8f0;">${m.name}</span>
+            <span class="add-behavior-item-desc">${m.description}</span>
+          </div>
+        </button>
+      `).join("");
+    }
 
-      const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
-      const grpThrow = this.container.querySelector("#group-mod-throw") as HTMLElement;
-      const hasThrowMod = Boolean(this.character.throwModule && this.character.throwModule.enabled);
-      if (btnThrow) {
-        btnThrow.textContent = hasThrowMod ? "Attached" : "Detached";
-        btnThrow.classList.toggle("active", hasThrowMod);
+    // Wire up Remove buttons
+    container.querySelectorAll(".btn-remove-module").forEach((btn) => {
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const modId = (btn as HTMLElement).dataset.moduleId;
+        if (!modId) return;
+        this.removeModuleFromSelectedEntity(modId);
+      });
+    });
+
+    // Wire up Add items
+    dropdown.querySelectorAll(".add-behavior-item").forEach((btn) => {
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const modId = (btn as HTMLElement).dataset.moduleId;
+        if (!modId) return;
+        dropdown.style.display = "none";
+        this.addModuleToSelectedEntity(modId);
+      });
+    });
+
+    // Bind controls on newly rendered cards
+    this.bindDynamicModuleControls();
+  }
+
+  private removeModuleFromSelectedEntity(modId: string): void {
+    const e = this.selectedEntity;
+    switch (modId) {
+      case "rigidbody":
+        e.rigidbodyModule = null;
+        break;
+      case "collider":
+        e.colliderModule = null;
+        break;
+      case "mass":
+        e.massModule = null;
+        break;
+      case "friction":
+        e.frictionModule = null;
+        break;
+      case "bounce":
+        e.bounceModule = null;
+        break;
+      case "verticalPosition":
+        e.verticalPositionModule = null;
+        e.position.z = 0;
+        e.verticalVelocity = 0;
+        e.supportingSurfaceHeight = 0;
+        break;
+      case "gravity":
+        e.gravityModule = null;
+        break;
+      case "roll":
+        e.rollModule = null;
+        break;
+      case "walking":
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.walkingModule = null;
+          char.isActivelyWalking = false;
+          char.isSprinting = false;
+        }
+        break;
+      case "strength":
+        if (e instanceof Character) {
+          (e as Character).strengthModule = null;
+        }
+        break;
+      case "pickup":
+        if (e instanceof Character) {
+          const char = e as Character;
+          if (char.heldObject) {
+            char.pickupModule?.drop(char);
+          }
+          char.pickupModule = null;
+        }
+        break;
+      case "throw":
+        if (e instanceof Character) {
+          (e as Character).throwModule = null;
+        }
+        break;
+      case "jump":
+        if (e instanceof Character) {
+          (e as Character).jumpModule = null;
+        }
+        break;
+      case "wallEdgeAssist":
+        if (e instanceof Character) {
+          (e as Character).wallEdgeAssistModule = null;
+        }
+        break;
+      case "climbing":
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.climbingModule = null;
+          char.isClimbing = false;
+        }
+        break;
+    }
+
+    this.renderEntityModules();
+    this.updateSelectorOptions();
+    this.updateInspector();
+  }
+
+  private addModuleToSelectedEntity(modId: string): void {
+    const e = this.selectedEntity;
+    switch (modId) {
+      case "rigidbody":
+        e.rigidbodyModule = new RigidbodyModule({
+          velocity: { x: 0, y: 0 },
+          hasVerticalVelocity: true,
+          verticalVelocity: 0,
+          collisionMode: "dynamic",
+          enabled: true,
+        });
+        break;
+      case "collider":
+        e.colliderModule = new ColliderModule({ radius: 0.32 });
+        break;
+      case "mass":
+        e.massModule = new MassModule({ mass: 1.0 });
+        break;
+      case "friction":
+        e.frictionModule = new FrictionModule();
+        break;
+      case "bounce":
+        e.bounceModule = new BounceModule({ bounceMod: 0.4 });
+        break;
+      case "verticalPosition":
+        e.verticalPositionModule = new VerticalPositionModule({
+          z: e.position.z,
+          hasVerticalVelocity: true,
+          verticalVelocity: 0,
+          enabled: true,
+        });
+        break;
+      case "gravity":
+        e.gravityModule = new GravityModule();
+        break;
+      case "roll":
+        e.rollModule = new RollModule({ rollResistance: 0.4 });
+        break;
+      case "walking":
+        if (e instanceof Character) {
+          (e as Character).walkingModule = new WalkingModule();
+        }
+        break;
+      case "strength":
+        if (e instanceof Character) {
+          (e as Character).strengthModule = new StrengthModule({ strength: 1.0 });
+        }
+        break;
+      case "pickup":
+        if (e instanceof Character) {
+          (e as Character).pickupModule = new PickupModule();
+        }
+        break;
+      case "throw":
+        if (e instanceof Character) {
+          (e as Character).throwModule = new ThrowModule();
+        }
+        break;
+      case "jump":
+        if (e instanceof Character) {
+          (e as Character).jumpModule = new JumpModule();
+        }
+        break;
+      case "wallEdgeAssist":
+        if (e instanceof Character) {
+          (e as Character).wallEdgeAssistModule = new WallEdgeAssistModule();
+        }
+        break;
+      case "climbing":
+        if (e instanceof Character) {
+          (e as Character).climbingModule = new ClimbingModule();
+        }
+        break;
+    }
+
+    this.renderEntityModules();
+    this.updateSelectorOptions();
+    this.updateInspector();
+  }
+
+  private bindDynamicModuleControls(): void {
+    const e = this.selectedEntity;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
+
+    // Rigidbody
+    const selectRbCollision = this.container.querySelector("#select-rb-collision-mode") as HTMLSelectElement | null;
+    selectRbCollision?.addEventListener("change", () => {
+      e.collisionMode = selectRbCollision.value as "discrete" | "continuous" | "dynamic";
+      const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+      if (selectEntityCollision) selectEntityCollision.value = e.collisionMode;
+      const badge = this.container.querySelector("#badge-rb-collision-mode");
+      if (badge) badge.textContent = e.collisionMode.toUpperCase();
+      this.updateInspector();
+    });
+
+    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
+    btnVertVel?.addEventListener("click", () => {
+      if (!e.hasVerticalPosition) return;
+      if (e.rigidbodyModule) {
+        e.rigidbodyModule.hasVerticalVelocity = !e.rigidbodyModule.hasVerticalVelocity;
+        if (!e.rigidbodyModule.hasVerticalVelocity) {
+          e.verticalVelocity = 0;
+        }
       }
-      if (grpThrow) grpThrow.style.display = hasThrowMod ? "block" : "none";
-      if (this.character.throwModule) {
-        this.setSliderVal("slide-throw-force", "val-throw-force", this.character.throwModule.baseThrowForce, 1);
+      if (e.verticalPositionModule) {
+        e.verticalPositionModule.hasVerticalVelocity = Boolean(e.rigidbodyModule?.hasVerticalVelocity);
       }
+      this.renderEntityModules();
+      this.updateInspector();
+    });
+
+    this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
+      e.verticalVelocity = val;
+    }, 2);
+
+    // Collider
+    this.setupSlider("slide-entity-radius", "val-entity-radius", (val) => {
+      e.colliderRadius = val;
+    }, 2);
+
+    // Mass
+    this.setupSlider("slide-entity-mass", "val-entity-mass", (val) => {
+      e.mass = val;
+      this.updateSelectorOptions();
+    }, 1);
+
+    // Friction
+    this.setupSlider("slide-entity-static-fric", "val-entity-static-fric", (val) => {
+      e.staticGroundFrictionMod = val;
+    }, 2);
+    this.setupSlider("slide-entity-dynamic-fric", "val-entity-dynamic-fric", (val) => {
+      e.dynamicGroundFrictionMod = val;
+    }, 2);
+
+    // Bounce
+    this.setupSlider("slide-entity-bounce", "val-entity-bounce", (val) => {
+      e.bounceMod = val;
+    }, 2);
+    const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
+    checkVertBounce?.addEventListener("change", () => {
+      if (e.bounceModule) {
+        e.bounceModule.verticalBounce = checkVertBounce.checked;
+      }
+      this.syncEntitySliders();
+      this.updateInspector();
+    });
+
+    // Vertical Position
+    this.setupSlider("slide-entity-elevation", "val-entity-elevation", (val) => {
+      if (e.verticalPositionModule) {
+        e.verticalPositionModule.z = val;
+      }
+      e.position.z = val;
+      this.syncEntitySliders();
+      this.updateInspector();
+    }, 2);
+
+    // Roll
+    this.setupSlider("slide-entity-roll-resist", "val-entity-roll-resist", (val) => {
+      if (e.rollModule) {
+        e.rollModule.rollResistance = val;
+      }
+    }, 2);
+
+    // Character Abilities
+    if (isChar && char) {
+      const checkWalkInAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
+      checkWalkInAir?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.walkInAir = checkWalkInAir.checked;
+        }
+      });
+
+      this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
+        if (char.walkingModule) char.walkingModule.maxWalkForce = val;
+      }, 0);
+      this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
+        if (char.walkingModule) char.walkingModule.maxWalkSpeed = val;
+      }, 1);
+      this.setupSlider("slide-air-fric", "val-air-fric", (val) => {
+        if (char.walkingModule) char.walkingModule.airFriction = val;
+      }, 2);
+
+      this.setupSlider("slide-strength", "val-strength", (val) => {
+        char.strength = val;
+      }, 1);
+
+      this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
+        if (char.pickupModule) char.pickupModule.pickupReach = val;
+      }, 1);
+
+      this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
+        if (char.throwModule) char.throwModule.baseThrowForce = val;
+      }, 1);
+      this.setupSlider("slide-throw-max-height", "val-throw-max-height", (val) => {
+        if (char.throwModule) char.throwModule.maxThrowHeight = val;
+      }, 1);
+
+      // Jump Ability
+      this.setupSlider("slide-jump-strength", "val-jump-strength", (val) => {
+        if (char.jumpModule) char.jumpModule.jumpStrength = val;
+      }, 1);
+      this.setupSlider("slide-jump-max-speed", "val-jump-max-speed", (val) => {
+        if (char.jumpModule) char.jumpModule.maxInitialSpeed = val;
+      }, 1);
+
+      // Wall Edge Assist
+      const btnEdgeWalkOff = this.container.querySelector("#toggle-edge-walkoff") as HTMLButtonElement;
+      btnEdgeWalkOff?.addEventListener("click", () => {
+        if (char.wallEdgeAssistModule) {
+          char.wallEdgeAssistModule.preventWalkOff = !char.wallEdgeAssistModule.preventWalkOff;
+          btnEdgeWalkOff.classList.toggle("active", char.wallEdgeAssistModule.preventWalkOff);
+          btnEdgeWalkOff.textContent = char.wallEdgeAssistModule.preventWalkOff ? "Active" : "Inactive";
+        }
+      });
+      this.setupSlider("slide-edge-hang", "val-edge-hang", (val) => {
+        if (char.wallEdgeAssistModule) char.wallEdgeAssistModule.hangDistance = val;
+      }, 2);
+
+      const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
+      btnClimbSideways?.addEventListener("click", () => {
+        if (char.climbingModule) {
+          char.climbingModule.horizontalClimb = !char.climbingModule.horizontalClimb;
+          btnClimbSideways.classList.toggle("active", char.climbingModule.horizontalClimb);
+          btnClimbSideways.textContent = char.climbingModule.horizontalClimb ? "Active" : "Inactive";
+        }
+      });
+
+      this.setupSlider("slide-climb-adhesion", "val-climb-adhesion", (val) => {
+        if (char.climbingModule) char.climbingModule.maxAdhesion = val;
+      }, 0);
+      this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
+        if (char.climbingModule) char.climbingModule.maxClimbSpeed = val;
+      }, 1);
     }
   }
 
@@ -1024,6 +1778,30 @@ export class DevPanel {
     const colorLabel = this.container.querySelector("#val-creator-color") as HTMLElement;
     if (colorInput) colorInput.value = s.color;
     if (colorLabel) colorLabel.textContent = s.color;
+
+    // Rigidbody
+    const rbBtn = this.container.querySelector("#creator-toggle-rigidbody") as HTMLButtonElement;
+    const rbGrp = this.container.querySelector("#grp-creator-rigidbody") as HTMLElement;
+    if (rbBtn) {
+      rbBtn.textContent = s.hasRigidbody ? "Attached" : "Detached";
+      rbBtn.classList.toggle("active", s.hasRigidbody);
+    }
+    if (rbGrp) rbGrp.style.display = s.hasRigidbody ? "block" : "none";
+
+    // Vertical Velocity toggle (depends on Vertical Position)
+    const vertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
+    const warnRbVertPos = this.container.querySelector("#creator-warn-rb-vert-pos") as HTMLElement;
+    if (vertVelBtn) {
+      const isEnabled = s.hasVerticalVelocity && s.hasVerticalPosition;
+      vertVelBtn.textContent = isEnabled ? "Enabled" : "Disabled";
+      vertVelBtn.classList.toggle("active", isEnabled);
+      vertVelBtn.disabled = !s.hasVerticalPosition;
+      vertVelBtn.style.opacity = !s.hasVerticalPosition ? "0.5" : "1";
+      vertVelBtn.style.cursor = !s.hasVerticalPosition ? "not-allowed" : "pointer";
+    }
+    if (warnRbVertPos) {
+      warnRbVertPos.style.display = !s.hasVerticalPosition ? "block" : "none";
+    }
 
     // Collider
     const colBtn = this.container.querySelector("#creator-toggle-collider") as HTMLButtonElement;
@@ -1071,13 +1849,6 @@ export class DevPanel {
     if (vertPosGrp) vertPosGrp.style.display = s.hasVerticalPosition ? "block" : "none";
     this.setSliderVal("slide-creator-elevation", "val-creator-elevation", s.elevation, 2);
 
-    // Vertical Velocity toggle
-    const vertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
-    if (vertVelBtn) {
-      vertVelBtn.textContent = s.hasVerticalVelocity ? "Enabled" : "Disabled";
-      vertVelBtn.classList.toggle("active", s.hasVerticalVelocity);
-    }
-
     // Gravity
     const gravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
     if (gravBtn) { gravBtn.textContent = s.hasGravity ? "Attached" : "Detached"; gravBtn.classList.toggle("active", s.hasGravity); }
@@ -1094,28 +1865,35 @@ export class DevPanel {
     // 1. Mode Switcher
     this.modePlayBtn.addEventListener("click", () => {
       this.setMode(false);
-      const hint = this.container.querySelector("#edit-hint-label");
-      if (hint) hint.textContent = "Right-click in arena to select";
     });
 
     this.modeEditBtn.addEventListener("click", () => {
       this.setMode(true);
-      const hint = this.container.querySelector("#edit-hint-label");
-      if (hint) hint.textContent = "Click & drag object in arena";
+    });
+
+    this.container.querySelector("#submode-entities")?.addEventListener("click", () => {
+      this.setEditTool("entities");
+    });
+
+    this.container.querySelector("#submode-walls")?.addEventListener("click", () => {
+      this.setEditTool("walls");
     });
 
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
       const selectedId = this.entitySelectorEl.value;
-      if (selectedId === this.character.id) {
-        this.selectedEntity = this.character;
+      const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      const foundChar = chars.find((c) => c.id === selectedId);
+      if (foundChar) {
+        this.selectedEntity = foundChar;
       } else {
-        const found = this.objects.find((o) => o.id === selectedId);
-        if (found) {
-          this.selectedEntity = found;
+        const foundObj = this.objects.find((o) => o.id === selectedId);
+        if (foundObj) {
+          this.selectedEntity = foundObj;
         }
       }
       this.updateSelectorOptions();
+      this.renderEntityModules();
       this.syncEntitySliders();
       this.onSelectionChange?.(this.selectedEntity);
     });
@@ -1138,216 +1916,275 @@ export class DevPanel {
       this.updateSelectorOptions();
     });
 
-    // 5. Module Toggles & Sliders
-    // Collider
-    const btnCollider = this.container.querySelector("#toggle-mod-collider") as HTMLButtonElement;
-    btnCollider?.addEventListener("click", () => {
-      if (this.selectedEntity.colliderModule) {
-        this.selectedEntity.colliderModule.enabled = !this.selectedEntity.colliderModule.enabled;
-      } else {
-        this.selectedEntity.colliderModule = new ColliderModule({ radius: 0.32 });
+    // 5. Add Behavior Dropdown Toggle & Click Outside
+    const btnAddBehavior = this.container.querySelector("#btn-add-behavior") as HTMLButtonElement;
+    const dropdownAddBehavior = this.container.querySelector("#dropdown-add-behavior") as HTMLElement;
+    btnAddBehavior?.addEventListener("click", (evt) => {
+      evt.stopPropagation();
+      if (dropdownAddBehavior) {
+        dropdownAddBehavior.style.display = dropdownAddBehavior.style.display === "none" ? "flex" : "none";
       }
-      this.syncEntitySliders();
     });
 
-    this.setupSlider("slide-entity-radius", "val-entity-radius", (val) => {
-      this.selectedEntity.colliderRadius = val;
-    }, 2);
-
-    // Mass
-    const btnMass = this.container.querySelector("#toggle-mod-mass") as HTMLButtonElement;
-    btnMass?.addEventListener("click", () => {
-      if (this.selectedEntity.massModule) {
-        this.selectedEntity.massModule.enabled = !this.selectedEntity.massModule.enabled;
-      } else {
-        this.selectedEntity.massModule = new MassModule({ mass: 1.0 });
+    document.addEventListener("click", (evt) => {
+      const target = evt.target as HTMLElement;
+      if (!target.closest("#add-behavior-section") && dropdownAddBehavior) {
+        dropdownAddBehavior.style.display = "none";
       }
-      this.syncEntitySliders();
-      this.updateSelectorOptions();
     });
 
-    this.setupSlider("slide-entity-mass", "val-entity-mass", (val) => {
-      this.selectedEntity.mass = val;
-      this.updateSelectorOptions();
-    }, 1);
+    // 6b. Simulation & Collision Solver Controls (Phase A)
+    const btnSimPause = this.container.querySelector("#btn-sim-pause") as HTMLButtonElement | null;
+    const btnSimStep = this.container.querySelector("#btn-sim-step") as HTMLButtonElement | null;
+    const selectGlobalCollision = this.container.querySelector("#select-global-collision-mode") as HTMLSelectElement | null;
+    const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
+    const btnLaunchFastBall = this.container.querySelector("#btn-launch-fast-ball") as HTMLButtonElement | null;
+    const toggleCollisionVisuals = this.container.querySelector("#toggle-collision-visuals") as HTMLButtonElement | null;
 
-    // Friction
-    const btnFriction = this.container.querySelector("#toggle-mod-friction") as HTMLButtonElement;
-    btnFriction?.addEventListener("click", () => {
-      if (this.selectedEntity.frictionModule) {
-        this.selectedEntity.frictionModule.enabled = !this.selectedEntity.frictionModule.enabled;
-      } else {
-        this.selectedEntity.frictionModule = new FrictionModule();
+    btnSimPause?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.isPhysicsPaused = !loop.isPhysicsPaused;
+      if (btnSimPause) {
+        btnSimPause.textContent = loop.isPhysicsPaused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
+        btnSimPause.style.color = loop.isPhysicsPaused ? "#10b981" : "#f1f5f9";
       }
-      this.syncEntitySliders();
     });
 
-    this.setupSlider("slide-entity-static-fric", "val-entity-static-fric", (val) => {
-      this.selectedEntity.staticGroundFrictionMod = val;
-    }, 2);
-
-    this.setupSlider("slide-entity-dynamic-fric", "val-entity-dynamic-fric", (val) => {
-      this.selectedEntity.dynamicGroundFrictionMod = val;
-    }, 2);
-
-    // Bounce
-    const btnBounce = this.container.querySelector("#toggle-mod-bounce") as HTMLButtonElement;
-    btnBounce?.addEventListener("click", () => {
-      if (this.selectedEntity.bounceModule) {
-        this.selectedEntity.bounceModule.enabled = !this.selectedEntity.bounceModule.enabled;
-      } else {
-        this.selectedEntity.bounceModule = new BounceModule({ bounceMod: 0.4 });
-      }
-      this.syncEntitySliders();
+    btnSimStep?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.stepSingleTick();
     });
 
-    this.setupSlider("slide-entity-bounce", "val-entity-bounce", (val) => {
-      this.selectedEntity.bounceMod = val;
-    }, 2);
-
-    const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
-    checkVertBounce?.addEventListener("change", () => {
-      if (this.selectedEntity.bounceModule) {
-        this.selectedEntity.bounceModule.verticalBounce = checkVertBounce.checked;
-      }
-      this.syncEntitySliders();
+    selectGlobalCollision?.addEventListener("change", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.globalCollisionMode = selectGlobalCollision.value as any;
       this.updateInspector();
     });
 
-    // Vertical Position
-    const btnVertPos = this.container.querySelector("#toggle-mod-vert-pos") as HTMLButtonElement;
-    btnVertPos?.addEventListener("click", () => {
-      if (this.selectedEntity.verticalPositionModule) {
-        this.selectedEntity.verticalPositionModule.enabled = !this.selectedEntity.verticalPositionModule.enabled;
-        if (!this.selectedEntity.verticalPositionModule.enabled) {
-          this.selectedEntity.position.z = 0;
-          this.selectedEntity.verticalVelocity = 0;
-        }
-      } else {
-        this.selectedEntity.verticalPositionModule = new VerticalPositionModule({
-          z: this.selectedEntity.position.z,
-          hasVerticalVelocity: true,
-          verticalVelocity: 0,
-          enabled: true,
-        });
-      }
-      this.syncEntitySliders();
-      this.updateInspector();
-    });
-
-    this.setupSlider("slide-entity-elevation", "val-entity-elevation", (val) => {
-      if (this.selectedEntity.verticalPositionModule) {
-        this.selectedEntity.verticalPositionModule.z = val;
-      }
-      this.selectedEntity.position.z = val;
-      this.syncEntitySliders();
-      this.updateInspector();
-    }, 2);
-
-    // Vertical Velocity toggle
-    const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
-    btnVertVel?.addEventListener("click", () => {
-      if (this.selectedEntity.verticalPositionModule) {
-        this.selectedEntity.verticalPositionModule.hasVerticalVelocity = !this.selectedEntity.verticalPositionModule.hasVerticalVelocity;
-        if (!this.selectedEntity.verticalPositionModule.hasVerticalVelocity) {
-          this.selectedEntity.verticalVelocity = 0;
-        }
-      }
-      this.syncEntitySliders();
-      this.updateInspector();
-    });
-
-    this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
-      this.selectedEntity.verticalVelocity = val;
-    }, 2);
-
-    // Gravity
-    const btnGravity = this.container.querySelector("#toggle-mod-gravity") as HTMLButtonElement;
-    btnGravity?.addEventListener("click", () => {
-      if (this.selectedEntity.gravityModule) {
-        this.selectedEntity.gravityModule.enabled = !this.selectedEntity.gravityModule.enabled;
-      } else {
-        this.selectedEntity.gravityModule = new GravityModule();
-      }
-      this.syncEntitySliders();
-    });
-
-    // Roll
-    const btnRoll = this.container.querySelector("#toggle-mod-roll") as HTMLButtonElement;
-    btnRoll?.addEventListener("click", () => {
-      if (this.selectedEntity.rollModule) {
-        this.selectedEntity.rollModule.enabled = !this.selectedEntity.rollModule.enabled;
-      } else {
-        this.selectedEntity.rollModule = new RollModule({ rollResistance: 0.4 });
-      }
-      this.syncEntitySliders();
-    });
-
-    this.setupSlider("slide-entity-roll-resist", "val-entity-roll-resist", (val) => {
-      if (this.selectedEntity.rollModule) {
-        this.selectedEntity.rollModule.rollResistance = val;
+    this.setupSlider("slide-ccd-threshold", "val-ccd-threshold", (val) => {
+      if (this.selectedEntity?.colliderModule) {
+        this.selectedEntity.colliderModule.ccdThresholdRatio = val;
       }
     }, 2);
 
-    // 6. Character Ability Sliders & Toggles
-    const btnWalk = this.container.querySelector("#toggle-walk") as HTMLButtonElement;
-    btnWalk?.addEventListener("click", () => {
-      if (this.character.walkingModule) {
-        this.character.walkingModule.enabled = !this.character.walkingModule.enabled;
-      } else {
-        this.character.walkingModule = new WalkingModule();
+    selectEntityCollision?.addEventListener("change", () => {
+      if (this.selectedEntity) {
+        this.selectedEntity.collisionMode = selectEntityCollision.value as any;
+        this.updateInspector();
       }
-      this.syncEntitySliders();
     });
 
-    this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
-      if (this.character.walkingModule) this.character.walkingModule.maxWalkForce = val;
+    btnLaunchFastBall?.addEventListener("click", () => {
+      // Spawn a small projectile moving fast (40 u/s) to test tunneling vs clean collision
+      const cannonBall = new GameObject({
+        name: "Test Cannonball",
+        position: { x: 2.0, y: 7.0, z: 0.1 },
+        velocity: { x: 40.0, y: 0.0 },
+        visualShape: "circle",
+        color: "#f59e0b",
+        colliderRadius: 0.14,
+        mass: 0.5,
+        bounceMod: 0.85,
+        collisionMode: "dynamic",
+        hasGravity: false,
+        hasVerticalPosition: true,
+      });
+      this.onSpawnObject(cannonBall);
+    });
+
+    if (toggleCollisionVisuals) {
+      const rend = this.getRenderer?.();
+      const isShow = rend ? rend.showCollisionDebug : false;
+      toggleCollisionVisuals.textContent = isShow ? "ON" : "OFF";
+      toggleCollisionVisuals.classList.toggle("active", isShow);
+
+      toggleCollisionVisuals.addEventListener("click", () => {
+        const r = this.getRenderer?.();
+        if (!r) return;
+        r.showCollisionDebug = !r.showCollisionDebug;
+        toggleCollisionVisuals.textContent = r.showCollisionDebug ? "ON" : "OFF";
+        toggleCollisionVisuals.classList.toggle("active", r.showCollisionDebug);
+      });
+    }
+
+    // 6c. History Buffer & Rollback Replay Controls (Phase 2)
+    const btnTestRollback = this.container.querySelector("#btn-test-rollback") as HTMLButtonElement | null;
+    const btnTestDesync = this.container.querySelector("#btn-test-desync") as HTMLButtonElement | null;
+    const bannerRollbackResult = this.container.querySelector("#banner-rollback-result") as HTMLElement | null;
+
+    this.setupSlider("slide-buffer-capacity", "val-buffer-capacity", (val) => {
+      const loop = this.getGameLoop?.();
+      if (loop) {
+        loop.historyBuffer.setCapacity(val);
+        const valEl = this.container.querySelector("#val-buffer-capacity");
+        if (valEl) valEl.textContent = `${val} ticks (${(val / 60).toFixed(1)}s)`;
+        this.updateInspector();
+      }
     }, 0);
 
-    this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
-      if (this.character.walkingModule) this.character.walkingModule.maxWalkSpeed = val;
-    }, 1);
+    this.setupSlider("slide-rollback-depth", "val-rollback-depth", (val) => {
+      this.rollbackDepthTicks = Math.round(val);
+      const valEl = this.container.querySelector("#val-rollback-depth");
+      if (valEl) valEl.textContent = `${this.rollbackDepthTicks} ticks (${(this.rollbackDepthTicks / 60).toFixed(2)}s)`;
+    }, 0);
 
-    this.setupSlider("slide-strength", "val-strength", (val) => {
-      this.character.strength = val;
-    }, 1);
+    const toggleBufferTrail = this.container.querySelector("#toggle-buffer-trail") as HTMLButtonElement | null;
+    if (toggleBufferTrail) {
+      const rend = this.getRenderer?.();
+      const isShow = rend ? rend.showBufferTrail : false;
+      toggleBufferTrail.textContent = isShow ? "ON" : "OFF";
+      toggleBufferTrail.classList.toggle("active", isShow);
 
-    const btnPickup = this.container.querySelector("#toggle-pickup") as HTMLButtonElement;
-    btnPickup?.addEventListener("click", () => {
-      if (this.character.pickupModule) {
-        this.character.pickupModule.enabled = !this.character.pickupModule.enabled;
-      } else {
-        this.character.pickupModule = new PickupModule();
+      toggleBufferTrail.addEventListener("click", () => {
+        const r = this.getRenderer?.();
+        if (!r) return;
+        r.showBufferTrail = !r.showBufferTrail;
+        toggleBufferTrail.textContent = r.showBufferTrail ? "ON" : "OFF";
+        toggleBufferTrail.classList.toggle("active", r.showBufferTrail);
+      });
+    }
+
+    btnTestRollback?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const res = loop.simulateRollbackTest(this.rollbackDepthTicks);
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        if (res.diverged) {
+          bannerRollbackResult.style.background = "rgba(239, 68, 68, 0.2)";
+          bannerRollbackResult.style.borderColor = "rgba(239, 68, 68, 0.5)";
+          bannerRollbackResult.style.color = "#f87171";
+          bannerRollbackResult.innerHTML = `<strong>❌ REPLAY DIVERGED:</strong> ${res.message}`;
+        } else {
+          bannerRollbackResult.style.background = "rgba(16, 185, 129, 0.2)";
+          bannerRollbackResult.style.borderColor = "rgba(16, 185, 129, 0.5)";
+          bannerRollbackResult.style.color = "#34d399";
+          bannerRollbackResult.innerHTML = `<strong>✅ PERFECT REPLAY:</strong> ${res.ticksReplayed} ticks replayed in ${res.durationMs.toFixed(2)}ms (0.0000u divergence)`;
+        }
       }
-      this.syncEntitySliders();
+      this.updateInspector();
     });
 
-    this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
-      if (this.character.pickupModule) this.character.pickupModule.pickupReach = val;
-    }, 1);
-
-    const btnThrow = this.container.querySelector("#toggle-throw") as HTMLButtonElement;
-    btnThrow?.addEventListener("click", () => {
-      if (this.character.throwModule) {
-        this.character.throwModule.enabled = !this.character.throwModule.enabled;
-      } else {
-        this.character.throwModule = new ThrowModule();
+    btnTestDesync?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const res = loop.injectPerturbationTest(this.rollbackDepthTicks, this.selectedEntity);
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        bannerRollbackResult.style.background = "rgba(245, 158, 11, 0.2)";
+        bannerRollbackResult.style.borderColor = "rgba(245, 158, 11, 0.5)";
+        bannerRollbackResult.style.color = "#fbbf24";
+        bannerRollbackResult.innerHTML = `<strong>💥 PAST TACKLE RECONCILED:</strong> Simulated tackle at tick #${res.startTick} on <em>${this.selectedEntity?.name || 'entity'}</em>. Re-simulated ${res.ticksReplayed} ticks forward with ${res.maxDeltaPos.toFixed(2)}u trajectory adjustment in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Canvas shows: Red dashed path = Old prediction | Green solid path = Reconciled timeline.</span>`;
       }
-      this.syncEntitySliders();
+      this.updateInspector();
     });
 
-    this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
-      if (this.character.throwModule) this.character.throwModule.baseThrowForce = val;
-    }, 1);
+    const btnTestPhase8 = this.container.querySelector("#btn-test-phase8-reconcile") as HTMLButtonElement | null;
+    btnTestPhase8?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      const char = loop.primaryCharacter;
+      if (!char) return;
+
+      const currentTick = loop.currentTick;
+      const depth = Math.min(this.rollbackDepthTicks, loop.historyBuffer.getCount() - 1);
+      const targetTick = Math.max(loop.historyBuffer.getOldestTick(), currentTick - depth);
+      const targetFrame = loop.historyBuffer.get(targetTick);
+      if (!targetFrame) return;
+
+      const cEnt = targetFrame.snapshot.entities.find((e: any) => e.id === char.id);
+      if (!cEnt) return;
+
+      // Construct a simulated authoritative server snapshot at targetTick with a 0.75u perturbation
+      const fakeServerSnapshot = {
+        tick: targetTick,
+        timestamp: performance.now(),
+        lastProcessedInputTick: { [char.playerId || "keyboard"]: targetTick },
+        entities: [
+          {
+            id: char.id,
+            name: char.name,
+            x: cEnt.x + 0.75, // Server authoritatively nudged player by +0.75u in x
+            y: cEnt.y + 0.40,
+            z: cEnt.z,
+            vx: cEnt.vx + 2.0,
+            vy: cEnt.vy,
+            vz: cEnt.vz,
+            isHeld: false,
+            heldBy: null,
+            isClimbing: false,
+            isSleeping: false,
+          },
+        ],
+      };
+
+      const res = loop.reconcileWorldSnapshot(fakeServerSnapshot as any);
+
+      if (bannerRollbackResult) {
+        bannerRollbackResult.style.display = "block";
+        bannerRollbackResult.style.background = "rgba(56, 189, 248, 0.2)";
+        bannerRollbackResult.style.borderColor = "rgba(56, 189, 248, 0.5)";
+        bannerRollbackResult.style.color = "#38bdf8";
+        bannerRollbackResult.innerHTML = `<strong>🔄 PREDICTION RECONCILED:</strong> Corrected divergence at tick #${res.tick} (${res.maxDeltaPos.toFixed(2)}u offset). Replayed ${res.ticksReplayed} ticks forward in ${res.durationMs.toFixed(2)}ms.<br><span style="color: #cbd5e1; font-size: 0.66rem;">Visual smoothing offset applied (${char.visualOffset.x.toFixed(2)}u, ${char.visualOffset.y.toFixed(2)}u) — 0.000u pop on screen gliding smoothly to zero!</span>`;
+      }
+      this.updateInspector();
+    });
 
     // 7. World Physics Sliders
+
     this.setupSlider("slide-gravity", "val-gravity", (val) => {
       this.arena.gravity = val;
     }, 1);
 
     this.setupSlider("slide-wall-height", "val-wall-height", (val) => {
       this.arena.setStandardWallHeight(val);
+      this.setSliderVal("slide-editor-wall-height", "val-editor-wall-height", val, 1);
     }, 1);
+
+    this.setupSlider("slide-editor-wall-height", "val-editor-wall-height", (val) => {
+      this.arena.setStandardWallHeight(val);
+      this.setSliderVal("slide-wall-height", "val-wall-height", val, 1);
+    }, 1);
+
+    const selectWallPreset = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
+    selectWallPreset?.addEventListener("change", () => {
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(selectWallPreset.value, [...allChars, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-prev-wall-map")?.addEventListener("click", () => {
+      const presets = Arena.WALL_PRESETS;
+      const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
+      const prevIdx = (idx - 1 + presets.length) % presets.length;
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(presets[prevIdx].id, [...allChars, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-next-wall-map")?.addEventListener("click", () => {
+      const presets = Arena.WALL_PRESETS;
+      const idx = presets.findIndex((p) => p.id === this.arena.currentPresetId);
+      const nextIdx = (idx + 1) % presets.length;
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.loadWallPreset(presets[nextIdx].id, [...allChars, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.resetDefaultWalls([...allChars, ...this.objects]);
+      this.updateWallPresetUI();
+    });
+
+    this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
+      const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.arena.clearAllWalls([...allChars, ...this.objects]);
+      this.updateWallPresetUI();
+    });
 
     this.setupSlider("slide-friction", "val-friction", (val) => {
       this.arena.frictionCoeff = val;
@@ -1385,6 +2222,12 @@ export class DevPanel {
     colorInput?.addEventListener("input", () => {
       this.creatorState.color = colorInput.value;
       if (colorLabel) colorLabel.textContent = colorInput.value;
+    });
+
+    const creatorRbBtn = this.container.querySelector("#creator-toggle-rigidbody") as HTMLButtonElement;
+    creatorRbBtn?.addEventListener("click", () => {
+      this.creatorState.hasRigidbody = !this.creatorState.hasRigidbody;
+      this.syncCreatorInputs();
     });
 
     const creatorColBtn = this.container.querySelector("#creator-toggle-collider") as HTMLButtonElement;
@@ -1442,6 +2285,7 @@ export class DevPanel {
 
     const creatorVertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
     creatorVertVelBtn?.addEventListener("click", () => {
+      if (!this.creatorState.hasVerticalPosition) return;
       this.creatorState.hasVerticalVelocity = !this.creatorState.hasVerticalVelocity;
       this.syncCreatorInputs();
     });
@@ -1471,20 +2315,32 @@ export class DevPanel {
     // 11. Clear All Objects
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
       this.onClearObjects();
-      this.setSelectedEntity(this.character);
+      const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+      this.setSelectedEntity(chars[0] || (null as any));
     });
   }
 
   private spawnFromCreator(): void {
     const s = this.creatorState;
-    const spawnX = Math.min(Math.max(this.character.position.x + (Math.random() * 2.0 - 1.0), 1.0), this.arena.width - 1.0);
-    const spawnY = Math.min(Math.max(this.character.position.y + (Math.random() * 2.0 - 1.0), 1.0), this.arena.height - 1.0);
+    const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+    const refChar = chars[0];
+    const centerX = refChar ? refChar.position.x : this.arena.width / 2;
+    const centerY = refChar ? refChar.position.y : this.arena.height / 2;
+    const spawnX = Math.min(Math.max(centerX + (Math.random() * 2.0 - 1.0), 1.0), this.arena.width - 1.0);
+    const spawnY = Math.min(Math.max(centerY + (Math.random() * 2.0 - 1.0), 1.0), this.arena.height - 1.0);
 
     const newObj = new GameObject({
       name: s.name || "Custom Object",
       position: { x: spawnX, y: spawnY, z: s.hasVerticalPosition ? s.elevation : 0 },
       visualShape: s.visualShape,
       color: s.color,
+      hasRigidbody: s.hasRigidbody,
+      rigidbodyModule: s.hasRigidbody ? new RigidbodyModule({
+        velocity: { x: 0, y: 0 },
+        hasVerticalVelocity: s.hasVerticalVelocity,
+        verticalVelocity: 0,
+        collisionMode: "dynamic",
+      }) : null,
       colliderModule: s.hasCollider ? new ColliderModule({ radius: s.colliderRadius }) : null,
       massModule: s.hasMass ? new MassModule({ mass: s.mass }) : null,
       frictionModule: s.hasFriction ? new FrictionModule({ staticFrictionMod: s.staticFrictionMod, dynamicFrictionMod: s.dynamicFrictionMod }) : null,
@@ -1503,7 +2359,7 @@ export class DevPanel {
   }
 
   public duplicateSelectedEntity(): void {
-    if (this.selectedEntity === this.character) return;
+    if (!this.selectedEntity || this.selectedEntity instanceof Character) return;
     const orig = this.selectedEntity;
 
     const spawnX = Math.min(Math.max(orig.position.x + 0.6, 1.0), this.arena.width - 1.0);
@@ -1514,6 +2370,14 @@ export class DevPanel {
       position: { x: spawnX, y: spawnY, z: orig.position.z },
       visualShape: orig.visualShape,
       color: orig.color,
+      hasRigidbody: orig.hasRigidbody,
+      rigidbodyModule: orig.rigidbodyModule ? new RigidbodyModule({
+        velocity: { x: orig.velocity.x, y: orig.velocity.y },
+        hasVerticalVelocity: orig.rigidbodyModule.hasVerticalVelocity,
+        verticalVelocity: orig.verticalVelocity,
+        collisionMode: orig.collisionMode,
+        enabled: orig.rigidbodyModule.enabled,
+      }) : null,
       colliderModule: orig.colliderModule ? new ColliderModule({ radius: orig.colliderModule.radius, enabled: orig.colliderModule.enabled }) : null,
       massModule: orig.massModule ? new MassModule({ mass: orig.massModule.mass, enabled: orig.massModule.enabled }) : null,
       frictionModule: orig.frictionModule ? new FrictionModule({ staticFrictionMod: orig.frictionModule.staticFrictionMod, dynamicFrictionMod: orig.frictionModule.dynamicFrictionMod, enabled: orig.frictionModule.enabled }) : null,
@@ -1533,20 +2397,23 @@ export class DevPanel {
   }
 
   public deleteSelectedEntity(): void {
-    if (this.selectedEntity === this.character) return;
+    if (!this.selectedEntity || this.selectedEntity instanceof Character) return;
     const target = this.selectedEntity;
 
-    if (this.character.heldObject === target) {
-      target.isHeld = false;
-      target.heldBy = null;
-      this.character.heldObject = null;
+    const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+    for (const c of allChars) {
+      if (c.heldObject === target) {
+        target.isHeld = false;
+        target.heldBy = null;
+        c.heldObject = null;
+      }
     }
 
     if (this.onDeleteObject) {
       this.onDeleteObject(target);
     }
 
-    this.setSelectedEntity(this.character);
+    this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
   }
 
   private setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {
@@ -1563,13 +2430,54 @@ export class DevPanel {
 
   public updateInspector(): void {
     const e = this.selectedEntity;
+    if (!e) {
+      this.inspectorEl.innerHTML = `
+        <div class="inspect-item" style="grid-column: span 2; text-align: center; color: var(--text-muted); padding: 12px 0;">
+          <span>⏸️ Simulation Paused — No entity selected</span>
+        </div>
+      `;
+      return;
+    }
     const speed = Math.hypot(e.velocity.x, e.velocity.y).toFixed(2);
-    const isChar = e === this.character;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
+
+    // Update Simulation Tick & Active Mode Badges
+    const loop = this.getGameLoop?.();
+    const simTickBadge = this.container.querySelector("#badge-sim-tick");
+    if (simTickBadge) {
+      const modeLabel = loop ? String(loop.globalCollisionMode).toUpperCase() : "DYNAMIC";
+      const tickNum = loop ? loop.currentTick : 0;
+      const isPaused = loop ? loop.isPhysicsPaused : false;
+      simTickBadge.textContent = isPaused ? `⏸️ PAUSED (Tick ${tickNum})` : `Tick ${tickNum} (${modeLabel})`;
+    }
+    const entityModeBadge = this.container.querySelector("#badge-entity-effective-mode") as HTMLElement | null;
+    if (entityModeBadge && e) {
+      const eff = e.getEffectiveCollisionMode(1 / 60);
+      entityModeBadge.textContent = eff === "continuous" ? "Continuous Swept" : "Discrete TOI";
+      entityModeBadge.style.color = eff === "continuous" ? "#06b6d4" : "#10b981";
+      entityModeBadge.style.background = eff === "continuous" ? "rgba(6, 182, 212, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+    const bufferBadge = this.container.querySelector("#badge-buffer-status") as HTMLElement | null;
+    if (bufferBadge && loop) {
+      const count = loop.historyBuffer.getCount();
+      const cap = loop.historyBuffer.getCapacity();
+      const secs = (count / 60).toFixed(2);
+      bufferBadge.textContent = `${count}/${cap} ticks (${secs}s)`;
+    }
 
     this.inspectorEl.innerHTML = `
       <div class="inspect-item">
         <span class="inspect-k">Selected</span>
         <span class="inspect-v highlight-held">${e.name}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Collision Mode</span>
+        <span class="inspect-v ${e.getEffectiveCollisionMode(1/60) === 'continuous' ? 'highlight-z' : ''}">${e.collisionMode.toUpperCase()} (${e.getEffectiveCollisionMode(1/60) === 'continuous' ? 'CCD' : 'TOI'})</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Last Collision</span>
+        <span class="inspect-v ${e.lastCollisionType !== 'none' ? 'highlight-held' : ''}">${e.lastCollisionType === 'continuous_swept' ? 'Swept CCD' : (e.lastCollisionType === 'discrete_toi' ? 'Discrete TOI' : (e.lastCollisionType === 'naive' ? 'Naive Push' : 'None'))}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Position (X, Y)</span>
@@ -1579,6 +2487,7 @@ export class DevPanel {
         <span class="inspect-k">Height (Z)</span>
         <span class="inspect-v ${e.isAboveGround ? 'highlight-z' : ''}">${e.position.z.toFixed(2)} u</span>
       </div>
+
       <div class="inspect-item">
         <span class="inspect-k">Surface</span>
         <span class="inspect-v ${e.supportingSurfaceHeight > 0.05 && e.isRestingOnSurface ? 'highlight-held' : ''}">${e.isRestingOnSurface ? (e.supportingSurfaceHeight > 0.05 ? `Wall Top (${e.supportingSurfaceHeight.toFixed(1)}u)` : "Ground (0.0u)") : `Airborne (${e.verticalVelocity.toFixed(1)}u/s)`}</span>
@@ -1586,6 +2495,10 @@ export class DevPanel {
       <div class="inspect-item">
         <span class="inspect-k">Linear Speed</span>
         <span class="inspect-v">${speed} u/s</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Rigidbody</span>
+        <span class="inspect-v ${e.hasRigidbody ? '' : 'highlight-held'}">${e.hasRigidbody ? `Dynamic (${e.collisionMode})` : 'Static Body'}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Collider</span>
@@ -1609,7 +2522,7 @@ export class DevPanel {
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Vertical Velocity</span>
-        <span class="inspect-v ${e.hasVerticalVelocity ? '' : 'highlight-held'}">${e.hasVerticalVelocity ? `${e.verticalVelocity.toFixed(2)} u/s` : 'Disabled (0 u/s)'}</span>
+        <span class="inspect-v ${e.hasVerticalVelocity ? '' : 'highlight-held'}">${e.hasVerticalVelocity ? `${e.verticalVelocity.toFixed(2)} u/s` : (!e.hasVerticalPosition ? 'Requires Vert Pos' : 'Disabled (0 u/s)')}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Gravity</span>
@@ -1625,20 +2538,49 @@ export class DevPanel {
         <span class="inspect-v ${e.rollModule.rollResistance === 0 ? 'highlight-held' : ''}">${e.rollModule.rollResistance.toFixed(2)} u/s²</span>
       </div>
       ` : ''}
-      ${isChar ? `
+      ${isChar && char ? `
       <div class="inspect-item">
         <span class="inspect-k">Base / Total Mass</span>
-        <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.baseMass.toFixed(1)}kg ${this.character.heldObject ? `(+${this.character.carriedMass.toFixed(1)}kg = ${this.character.mass.toFixed(1)}kg)` : ''}</span>
+        <span class="inspect-v ${char.heldObject ? 'highlight-held' : ''}">${char.baseMass.toFixed(1)}kg ${char.heldObject ? `(+${char.carriedMass.toFixed(1)}kg = ${char.mass.toFixed(1)}kg)` : ''}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Walk Traction</span>
-        <span class="inspect-v ${this.character.hasFriction ? '' : 'highlight-held'}">${this.character.hasFriction ? 'Grip OK' : 'Slipping (No Friction)'}</span>
+        <span class="inspect-v ${char.hasFriction ? '' : 'highlight-held'}">${char.hasFriction ? 'Grip OK' : 'Slipping (No Friction)'}</span>
       </div>
       <div class="inspect-item">
         <span class="inspect-k">Held Freebody</span>
-        <span class="inspect-v ${this.character.heldObject ? 'highlight-held' : ''}">${this.character.heldObject ? `${this.character.heldObject.name} (${this.character.heldObject.hasMass ? `${this.character.heldObject.mass}kg` : 'Massless'})` : 'None'}</span>
+        <span class="inspect-v ${char.heldObject ? 'highlight-held' : ''}">${char.heldObject ? `${char.heldObject.name} (${char.heldObject.hasMass ? `${char.heldObject.mass}kg` : 'Massless'})` : 'None'}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Ledge Hang Limit</span>
+        <span class="inspect-v">${(char.wallEdgeAssistModule?.hangDistance ?? 0.10).toFixed(2)} u</span>
       </div>
       ` : ''}
     `;
+  }
+
+  private renderWallPresetOptions(): string {
+    return Arena.WALL_PRESETS.map((p) =>
+      `<option value="${p.id}" ${this.arena.currentPresetId === p.id ? "selected" : ""}>${p.name}</option>`
+    ).join("");
+  }
+
+  private getCurrentWallPresetBadge(): string {
+    const preset = Arena.WALL_PRESETS.find((p) => p.id === this.arena.currentPresetId);
+    return preset ? preset.badge : "Custom";
+  }
+
+  private getCurrentWallPresetDesc(): string {
+    const preset = Arena.WALL_PRESETS.find((p) => p.id === this.arena.currentPresetId);
+    return preset ? preset.description : "Custom wall layout painted in the arena.";
+  }
+
+  public updateWallPresetUI(): void {
+    const select = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
+    if (select) select.value = this.arena.currentPresetId;
+    const badge = this.container.querySelector("#label-wall-map-badge");
+    if (badge) badge.textContent = this.getCurrentWallPresetBadge();
+    const desc = this.container.querySelector("#desc-wall-map");
+    if (desc) desc.textContent = this.getCurrentWallPresetDesc();
   }
 }

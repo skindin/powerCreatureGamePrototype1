@@ -2,34 +2,897 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#090d16" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-touch-fullscreen" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Power Creature" />
+    <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <div id="app-layout">
-      <!-- Left Arena Viewport -->
-      <div class="viewport-container">
-        <header class="top-bar">
-          <div class="brand-title">
-            <span>⚡ Power Creature Game</span>
-            <span class="brand-badge">Phase 1.1 Sandbox</span>
-          </div>
-          <div class="controls-hint">
-            <span><span class="key-tag">W</span><span class="key-tag">A</span><span class="key-tag">S</span><span class="key-tag">D</span> Move</span>
-            <span><span class="key-tag">Mouse Click</span> Pick Up / Aim & Throw</span>
-            <span><span class="key-tag">E</span> Drop Item</span>
-          </div>
-        </header>
+      <!-- Full-Width Top Bar -->
+      <header class="top-bar">
+        <div class="brand-title">
+          <span>⚡ Power Creature Game</span>
+          <span class="brand-badge">Phase 1.1 Sandbox</span>
+        </div>
 
-        <main class="canvas-wrapper">
-          <canvas id="game-canvas"></canvas>
-        </main>
+        <div class="top-bar-center">
+          <div class="mode-pill-group">
+            <button id="tab-mode-local" class="mode-btn active" title="Local multi-controller / single-machine simulation">
+              <span>🏠 Local Game</span>
+            </button>
+            <button id="tab-mode-boomerang" class="mode-btn" title="Multiplayer relay test with ghost echo (WAN loopback)">
+              <span>🔄 Boomerang Sim</span>
+            </button>
+            <button id="tab-mode-online" class="mode-btn" title="Live online multiplayer room (/ws)">
+              <span>🌐 Online Room</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="top-bar-right">
+          <div id="online-status-pill" class="relay-pill online-pill hidden" title="Toggle Online Room Settings overlay (Hotkey: O)" role="button" tabindex="0">
+            <span class="status-dot"></span>
+            <span id="online-ping-display">-- ms</span>
+            <span id="online-player-badge" class="online-pill-badge" style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-weight: 600;">1P</span>
+            <span id="online-name-display" class="online-pill-name" style="font-size: 11px; color: #f1f5f9; font-weight: 500; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Player 1</span>
+          </div>
+          <div id="relay-status-pill" class="relay-pill hidden" title="Toggle Multiplayer Relay Settings overlay (Hotkey: M)" role="button" tabindex="0">
+            <span class="status-dot"></span>
+            <span id="relay-ping-display">-- ms</span>
+            <span class="relay-pill-key" style="font-size: 9px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-left: 2px; color: #94a3b8;">M</span>
+          </div>
+          <div class="public-link-widget" id="public-link-widget" title="Live nationwide public URL">
+            <span class="status-dot" id="public-status-dot"></span>
+            <span class="public-label">PUBLIC:</span>
+            <button id="btn-public-url-display" class="public-url-btn" title="Click to copy public link">https://pcg-arena-teal.loca.lt</button>
+            <button id="btn-copy-public-url" class="btn-mini-action" title="Copy public link to clipboard">📋 Copy</button>
+            <a href="https://pcg-arena-teal.loca.lt" target="_blank" id="btn-open-public-url" class="btn-mini-action" title="Open public link in new browser tab">↗</a>
+            <button id="btn-phone-connect" class="btn-mini-action btn-qr-action" title="Scan QR code on phone">📱 QR</button>
+          </div>
+          <button id="toggle-players-btn" class="sidebar-toggle-btn" title="Arena Players & Controllers (P)">
+            <span class="sidebar-btn-icon">👥</span>
+            <span class="sidebar-btn-text" id="players-badge-text">Players (1)</span>
+            <span class="sidebar-btn-counter" id="players-count-pill">1</span>
+          </button>
+          <button id="toggle-feedback-btn" class="sidebar-toggle-btn" title="Bugs & Suggestions Log">
+            <span class="sidebar-btn-icon">🐞</span>
+            <span class="sidebar-btn-text" id="feedback-badge-text">Feedback</span>
+          </button>
+          <button id="toggle-view-settings-btn" class="sidebar-toggle-btn" title="Toggle View Settings (V)">
+            <span class="sidebar-btn-icon">👁️</span>
+            <span class="sidebar-btn-text">View</span>
+          </button>
+          <button id="toggle-sidebar-btn" class="sidebar-toggle-btn active" title="Toggle Inspector Sidebar (I or `)">
+            <span class="sidebar-btn-icon">🛠️</span>
+            <span class="sidebar-btn-text">Inspector</span>
+          </button>
+          <button id="btn-maximize-screen" class="sidebar-toggle-btn" title="Toggle Maximize / Fullscreen (F11)">
+            <span class="sidebar-btn-icon" id="maximize-btn-icon">⛶</span>
+            <span class="sidebar-btn-text" id="maximize-btn-text">Maximize</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Floating Mobile Quick Reload Button (shown when update is live) -->
+      <button id="mobile-reload-float-btn" class="mobile-reload-btn hidden" aria-label="Game Update Live - Tap to Reload" title="Game Update Live - Tap to Reload">
+        <span class="reload-dot"></span>
+        <span class="reload-icon">🔄</span>
+        <span class="reload-text">Update Live</span>
+      </button>
+
+      <!-- Floating Fullscreen Button (Mobile Ratio & Small Screens) -->
+      <button id="mobile-fullscreen-btn" class="mobile-fullscreen-btn" aria-label="Enter Fullscreen" title="Maximize Fullscreen">
+        <span class="fs-icon">⛶</span>
+        <span class="fs-text">Fullscreen</span>
+      </button>
+
+      <!-- Floating Hamburger Button (Mobile Horizontal & Small Screens) -->
+      <button id="mobile-menu-btn" class="mobile-hamburger-btn" aria-label="Toggle Game Menu" title="Game Menu">
+        <span class="hamburger-box">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+      </button>
+
+      <!-- Mobile Expanded Landscape Menu -->
+      <div id="mobile-expanded-menu" class="mobile-expanded-menu hidden">
+        <div class="mobile-menu-card">
+          <div class="mobile-menu-header">
+            <div class="mobile-menu-brand">
+              <span class="mobile-menu-logo">⚡ Power Creature</span>
+              <span class="brand-badge">Phase 1.1 Sandbox</span>
+            </div>
+            <div class="mobile-menu-header-actions">
+              <div id="mobile-deploy-badge" class="header-deploy-badge live hidden" title="Update Live - Tap to Reload">
+                <span class="deploy-dot live"></span>
+                <span class="deploy-text">Update Live</span>
+              </div>
+              <div id="mobile-relay-status" class="relay-pill hidden">
+                <span class="status-dot"></span>
+                <span id="mobile-ping-display">-- ms</span>
+              </div>
+              <button id="btn-close-mobile-menu" class="btn-close-panel" title="Close Menu (Esc)">✕</button>
+            </div>
+          </div>
+
+          <div class="mobile-menu-body">
+            <!-- Column 1: Game Mode & Public Nationwide Link -->
+            <div class="mobile-menu-col">
+              <!-- Dynamic Mobile Update Card (Visible when update live, building or crashed) -->
+              <div id="mobile-menu-update-card" class="mobile-menu-section mobile-update-card hidden">
+                <div class="section-title-row" style="justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="section-icon" id="mobile-update-icon">✨</span>
+                    <h3 id="mobile-update-title" style="color: #4ade80;">Update Live</h3>
+                  </div>
+                  <span id="mobile-update-commit-badge" class="badge" style="background: rgba(34,197,94,0.2); color: #4ade80;">vLatest</span>
+                </div>
+                <p id="mobile-update-desc" class="section-desc" style="color: #cbd5e1; font-size: 0.74rem;">A new version is ready. Reload whenever you are ready!</p>
+                <div class="mobile-update-actions" style="display: flex; gap: 8px; margin-top: 2px;">
+                  <button id="mobile-btn-menu-reload" class="btn-deploy-action reload" style="flex: 1; justify-content: center; min-height: 38px; display: inline-flex;">
+                    🔄 Reload Game Now
+                  </button>
+                  <a id="mobile-link-menu-logs" href="#" target="_blank" rel="noopener noreferrer" class="btn-deploy-action view-logs hidden" style="flex: 1; justify-content: center; min-height: 38px; text-decoration: none;">
+                    ↗ View Logs
+                  </a>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🎮</span>
+                  <h3>Game Mode</h3>
+                </div>
+                <div class="mobile-mode-switcher">
+                  <button id="mobile-mode-local-btn" class="mobile-mode-btn active">
+                    <span>🏠 Local</span>
+                  </button>
+                  <button id="mobile-mode-boomerang-btn" class="mobile-mode-btn">
+                    <span>🔄 Boomerang</span>
+                  </button>
+                  <button id="mobile-mode-online-btn" class="mobile-mode-btn">
+                    <span>🌐 Online</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🌐</span>
+                  <h3>Public Nationwide Room</h3>
+                </div>
+                <div class="mobile-public-card">
+                  <div class="mobile-url-row">
+                    <span class="status-dot" id="mobile-public-dot"></span>
+                    <span class="mobile-public-url" id="mobile-public-url-text">https://pcg-arena-teal.loca.lt</span>
+                  </div>
+                  <div class="mobile-url-actions">
+                    <button id="mobile-btn-copy-url" class="btn-action-pill">📋 Copy</button>
+                    <a href="https://pcg-arena-teal.loca.lt" target="_blank" id="mobile-btn-open-url" class="btn-action-pill">↗ Open</a>
+                    <button id="mobile-btn-qr" class="btn-action-pill btn-qr-accent">📱 QR</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 2: Visuals & Wall Elevation Settings -->
+            <div class="mobile-menu-col">
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">👁️</span>
+                  <h3>Vertical Visuals</h3>
+                </div>
+                <div class="mobile-visual-options">
+                  <button type="button" class="mobile-visual-btn" data-visual-mode="bigger">
+                    <span class="vis-dot"></span>
+                    <span>Bigger Sprites</span>
+                  </button>
+                  <button type="button" class="mobile-visual-btn active" data-visual-mode="hover">
+                    <span class="vis-dot"></span>
+                    <span>Hover Above Shadow</span>
+                  </button>
+                  <button type="button" class="mobile-visual-btn" data-visual-mode="both">
+                    <span class="vis-dot"></span>
+                    <span>Both Modes</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row" style="justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="section-icon">🧱</span>
+                    <h3>Wall Isometric Height</h3>
+                  </div>
+                  <span id="mobile-val-wall-height" class="mobile-num-val">0.50</span>
+                </div>
+                <div class="mobile-slider-wrapper">
+                  <span>0.0</span>
+                  <input type="range" id="mobile-slide-wall-height" min="0.0" max="1.0" step="0.05" value="0.5" />
+                  <span>1.0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 3: Panels, Tools & Controls Reference -->
+            <div class="mobile-menu-col">
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🛠️</span>
+                  <h3>Panels & Tools</h3>
+                </div>
+                <div class="mobile-panel-buttons">
+                  <button id="mobile-btn-players" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">👥</span>
+                    <span class="nav-btn-text">Players & Controllers</span>
+                    <span id="mobile-players-badge" class="badge">1 Active</span>
+                  </button>
+                  <button id="mobile-btn-feedback" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🐞</span>
+                    <span class="nav-btn-text">Bugs & Suggestions</span>
+                    <span id="mobile-feedback-badge" class="badge">0</span>
+                  </button>
+                  <button id="mobile-btn-inspector" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🛠️</span>
+                    <span class="nav-btn-text">Dev Inspector</span>
+                    <span class="badge" style="background: rgba(56,189,248,0.2); color: var(--accent-cyan);">Open</span>
+                  </button>
+                  <button id="mobile-btn-maximize" class="mobile-nav-btn">
+                    <span class="nav-btn-icon" id="mobile-maximize-icon">⛶</span>
+                    <span class="nav-btn-text" id="mobile-maximize-text">Maximize Screen</span>
+                    <span class="badge" id="mobile-maximize-badge">Full</span>
+                  </button>
+                  <button id="mobile-btn-relay-hud" class="mobile-nav-btn">
+                    <span class="nav-btn-icon">🛰️</span>
+                    <span class="nav-btn-text">Relay Settings</span>
+                    <span class="badge" id="mobile-relay-hud-badge">HUD</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mobile-menu-section">
+                <div class="section-title-row">
+                  <span class="section-icon">🎮</span>
+                  <h3>Controls Reference</h3>
+                </div>
+                <div class="mobile-controls-list">
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">WASD</span> / <span class="key-badge pad-badge">L-Stick</span></span>
+                    <span class="ctrl-v">Move Character</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Mouse</span> / <span class="key-badge pad-badge">R-Stick</span></span>
+                    <span class="ctrl-v">Aim Reticle / Throw Arc</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Space</span> / <span class="key-badge pad-badge">A</span> / <span class="key-badge pad-badge">R-Paddle</span></span>
+                    <span class="ctrl-v">Jump / Scale Wall / Dismount</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">E</span> / <span class="key-badge pad-badge">B</span></span>
+                    <span class="ctrl-v">Pick Up / Swap with Target</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Q</span> / <span class="key-badge pad-badge">Y</span></span>
+                    <span class="ctrl-v">Drop Held Item</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> / <span class="key-badge pad-badge">RB</span></span>
+                    <span class="ctrl-v">Throw Item / Grab Target</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">R-Click</span> / <span class="key-badge pad-badge">LT</span></span>
+                    <span class="ctrl-v">Lock Aim</span>
+                  </div>
+                  <div class="mobile-ctrl-row">
+                    <span class="ctrl-k"><span class="key-badge kb-badge">Shift</span> / <span class="key-badge pad-badge">LB</span> / <span class="key-badge pad-badge">L-Paddle</span></span>
+                    <span class="ctrl-v">Sprint (1.55x Speed)</span>
+                  </div>
+                </div>
+                <div id="mobile-gamepad-status" class="mobile-gamepad-badge hidden">
+                  <span>🎮 Controller Connected</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Right Dev Sidebar -->
-      <aside id="dev-sidebar"></aside>
+      <!-- Phone Connect Modal -->
+      <div id="phone-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card phone-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">📱</span>
+              <span>Connect Phone</span>
+            </div>
+            <button id="btn-close-phone-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+          <div class="phone-modal-body">
+            <p class="phone-modal-desc" id="phone-modal-desc">Scan with your phone camera to play from anywhere in the country:</p>
+            <div class="qr-canvas-wrapper">
+              <canvas id="qr-canvas"></canvas>
+            </div>
+            <div class="phone-url-row">
+              <input type="text" id="phone-url-input" class="relay-url-input" readonly value="https://pcg-arena-teal.loca.lt" />
+              <button id="btn-copy-phone-url" class="btn-preset">Copy</button>
+            </div>
+            <div class="phone-modal-status-box" id="phone-modal-tip">
+              <span>💡 Run <code>npm run share</code> in terminal to create an instant worldwide tunnel!</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Player Name Prompt Modal -->
+      <div id="player-name-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card phone-modal-card" style="max-width: 380px;">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👤</span>
+              <span>Player Name</span>
+            </div>
+            <button id="btn-close-name-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+          <div class="phone-modal-body" style="padding: 16px 20px;">
+            <p class="phone-modal-desc" style="margin-bottom: 12px;">Choose how other players will see you in the online arena:</p>
+            <div style="display: flex; gap: 8px;">
+              <input id="input-player-handle" type="text" maxlength="20" placeholder="e.g. TealBeast" style="flex: 1; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 8px 12px; color: #f8fafc; font-size: 0.95rem;" />
+              <button id="btn-save-player-handle" class="btn-preset" style="padding: 8px 16px; background: var(--accent-cyan); color: #090d16; font-weight: 700;">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arena Players & Controllers Floating Panel -->
+      <div id="players-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card players-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👥</span>
+              <span>Arena Players & Controllers</span>
+              <span id="players-header-count" class="brand-badge">1 Active</span>
+            </div>
+            <button id="btn-close-players-panel" class="btn-close-panel" title="Close Players Panel (P or Esc)">✕</button>
+          </div>
+
+          <div class="view-settings-body">
+            <!-- Active Players Section -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Active Characters</h3>
+                <p class="settings-section-desc">Remove any character from the arena using the button next to their name.</p>
+              </div>
+              <div id="active-players-list" class="players-list-container"></div>
+            </div>
+
+            <!-- Available / Inactive Controllers Section -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Available / Inactive Devices</h3>
+                <p class="settings-section-desc">Join on demand: press <code>Space</code> for Keyboard or <code>A</code> on Xbox controller.</p>
+              </div>
+              <div id="inactive-players-list" class="players-list-container"></div>
+            </div>
+
+            <!-- Quick Instructions Box -->
+            <div class="players-join-banner">
+              <div class="join-banner-item">
+                <span class="key-badge">Space</span>
+                <span>Keyboard: Join / Jump</span>
+              </div>
+              <div class="join-banner-item">
+                <span class="key-badge">A</span>
+                <span>Gamepad: Join / Jump</span>
+              </div>
+            </div>
+
+            <!-- Live Controller Diagnostics -->
+            <div id="gamepad-diagnostic-box" class="gamepad-diagnostic-box">
+              <div class="diag-header">
+                <span class="diag-title">🎮 Live Button Tester</span>
+                <span id="diag-active-gamepad-name" class="diag-gamepad-name">No controller detected</span>
+              </div>
+              <div id="diag-buttons-container" class="diag-buttons-container">
+                <span class="diag-hint">Press any button or paddle on your controller to test</span>
+              </div>
+            </div>
+
+            <!-- Backbone Pro Setup Guide -->
+            <div class="backbone-pro-tip">
+              <div class="tip-header">
+                <span class="tip-icon">💡</span>
+                <strong>Backbone Pro M1 & M2 Notice:</strong>
+              </div>
+              <p class="tip-body">
+                On Backbone Pro, rear buttons <strong>M1 (Right)</strong> and <strong>M2 (Left)</strong> are <em>unassigned by default</em> in hardware firmware:
+              </p>
+              <div class="tip-steps">
+                <div>1. Open the <strong>Backbone App</strong> on your phone</div>
+                <div>2. <strong>Settings ⚙️ &gt; Controller &gt; Controller Profiles &gt; Button Assignments</strong></div>
+                <div>3. Map <strong>M1 (Right)</strong> &rarr; <kbd>A</kbd> (Jump)</div>
+                <div>4. Map <strong>M2 (Left)</strong> &rarr; <kbd>LB</kbd> or <kbd>L3</kbd> (Sprint)</div>
+              </div>
+              <p class="tip-sub">Saved directly to controller memory & works immediately!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bugs & Suggestions Floating Panel -->
+      <div id="feedback-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card feedback-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">🐞</span>
+              <span>Bugs & Suggestions</span>
+              <span id="feedback-header-count" class="brand-badge">0 Open</span>
+            </div>
+            <button id="btn-close-feedback-panel" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+
+          <div class="feedback-modal-body">
+            <!-- Top Action / Add Report Button & Collapsible Form -->
+            <div class="feedback-submission-area">
+              <button type="button" id="btn-toggle-add-feedback" class="btn-add-feedback-toggle">
+                <span id="add-feedback-toggle-icon">➕</span>
+                <span id="add-feedback-toggle-label">Add Bug / Suggestion</span>
+              </button>
+
+              <form id="feedback-form" class="feedback-form hidden">
+                <div class="feedback-form-row">
+                  <div class="form-group type-group">
+                    <label for="feedback-form-type">Category</label>
+                    <select id="feedback-form-type" class="feedback-select">
+                      <option value="suggestion" selected>💡 Suggestion</option>
+                      <option value="bug">🐞 Bug Report</option>
+                    </select>
+                  </div>
+                  <div class="form-group author-group">
+                    <label for="feedback-form-author">Your Name (Optional)</label>
+                    <input type="text" id="feedback-form-author" class="feedback-input" placeholder="Anonymous Creature" maxlength="32" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="feedback-form-desc">Description</label>
+                  <textarea id="feedback-form-desc" class="feedback-textarea" rows="3" placeholder="Describe the suggestion or bug in detail..." required></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="feedback-form-solution">Proposed Solution (Optional)</label>
+                  <textarea id="feedback-form-solution" class="feedback-textarea" rows="2" placeholder="Describe a potential fix, idea, or how you'd like it solved..."></textarea>
+                </div>
+                <div class="feedback-form-actions">
+                  <span id="feedback-form-msg" class="feedback-form-msg"></span>
+                  <button type="submit" id="btn-submit-feedback" class="btn-submit-feedback">Submit</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Bulk Selection & Copy Actions Bar -->
+            <div class="feedback-bulk-bar">
+              <div class="bulk-select-group">
+                <label class="bulk-checkbox-label">
+                  <input type="checkbox" id="btn-feedback-select-all" class="feedback-select-box" title="Select all items" />
+                  <span id="label-feedback-select-all">Select All</span>
+                </label>
+                <span id="feedback-selected-counter" class="bulk-count-pill hidden">0 selected</span>
+              </div>
+              <div class="bulk-actions-group">
+                <button type="button" id="btn-copy-selected-feedback" class="btn-bulk-action" disabled title="Copy selected reports to clipboard">
+                  <span class="btn-icon">📋</span>
+                  <span id="label-copy-selected">Copy Selected</span>
+                </button>
+                <button type="button" id="btn-copy-all-feedback" class="btn-bulk-action secondary" title="Copy all reports to clipboard">
+                  <span class="btn-icon">📑</span>
+                  <span id="label-copy-all">Copy All</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Public Log Content (Separated Bugs & Suggestions) -->
+            <div class="feedback-sections-container">
+              <!-- Bugs Section -->
+              <div class="feedback-category-card">
+                <div class="category-header">
+                  <div class="category-title">
+                    <span class="cat-icon">🐞</span>
+                    <h3>Bug Reports</h3>
+                    <span id="count-open-bugs" class="category-count-badge">0 Open</span>
+                  </div>
+                </div>
+                <div id="list-open-bugs" class="feedback-items-list"></div>
+                <div class="resolved-accordion">
+                  <button type="button" id="btn-toggle-resolved-bugs" class="btn-resolved-toggle">
+                    <span class="toggle-arrow">▶</span>
+                    <span class="toggle-text">Show Resolved Bugs (0)</span>
+                  </button>
+                  <div id="list-resolved-bugs" class="feedback-items-list resolved hidden"></div>
+                </div>
+              </div>
+
+              <!-- Suggestions Section (Oldest to Newest) -->
+              <div class="feedback-category-card">
+                <div class="category-header">
+                  <div class="category-title">
+                    <span class="cat-icon">💡</span>
+                    <h3>Suggestions</h3>
+                    <span id="count-open-suggestions" class="category-count-badge">0 Open</span>
+                  </div>
+                  <span class="category-sort-hint">Oldest first</span>
+                </div>
+                <div id="list-open-suggestions" class="feedback-items-list"></div>
+                <div class="resolved-accordion">
+                  <button type="button" id="btn-toggle-resolved-suggestions" class="btn-resolved-toggle">
+                    <span class="toggle-arrow">▶</span>
+                    <span class="toggle-text">Show Completed Suggestions (0)</span>
+                  </button>
+                  <div id="list-resolved-suggestions" class="feedback-items-list resolved hidden"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Controls & Mechanics Modal -->
+      <div id="controls-modal" class="view-settings-panel hidden">
+        <div class="view-settings-card controls-modal-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">🎮</span>
+              <span>Full Controls & Mechanics Guide</span>
+            </div>
+            <button id="btn-close-controls-modal" class="btn-close-panel" title="Close (Esc)">✕</button>
+          </div>
+
+          <div class="controls-modal-body">
+            <div class="controls-guide-grid">
+              <!-- Keyboard & Mouse Column -->
+              <div class="controls-guide-col">
+                <h4 class="guide-col-title"><span class="key-badge kb-badge">⌨️</span> Keyboard & Mouse</h4>
+                <div class="guide-rows">
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">WASD</span></span>
+                    <div class="guide-desc"><strong>Move Character</strong><span>8-directional ground navigation</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Mouse</span></span>
+                    <div class="guide-desc"><strong>Aim Cursor</strong><span>Directs throw arc, target highlight & facing direction</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Space</span></span>
+                    <div class="guide-desc"><strong>Jump / Climb</strong><span>Jump, scale walls, or steer toward ground to dismount</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">E</span></span>
+                    <div class="guide-desc"><strong>Pick Up / Swap</strong><span>Grabs target; if holding, swaps with targeted ground item</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Q</span></span>
+                    <div class="guide-desc"><strong>Drop Item</strong><span>Drops held item onto the ground</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">L-Click</span></span>
+                    <div class="guide-desc"><strong>Throw / Grab</strong><span>Throws held item; grabs reachable object if empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">R-Click</span></span>
+                    <div class="guide-desc"><strong>Lock Aim</strong><span>Snaps aim cursor directly to closest reachable target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Shift</span></span>
+                    <div class="guide-desc"><strong>Sprint</strong><span>1.55x speed boost; auto-resets when releasing movement</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gamepad / Controller Column -->
+              <div class="controls-guide-col">
+                <h4 class="guide-col-title"><span class="key-badge pad-badge">🎮</span> Controller / Gamepad</h4>
+                <div class="guide-rows">
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LS</span></span>
+                    <div class="guide-desc"><strong>Left Joystick</strong><span>Analog 360° proportional character movement</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">RS</span></span>
+                    <div class="guide-desc"><strong>Virtual Aim Cursor</strong><span>Free-floating cursor across arena; guides throw target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">A</span> / <span class="key-badge pad-badge">M1</span></span>
+                    <div class="guide-desc"><strong>Jump / Climb</strong><span>Jump, scale walls, or dismount into arena (Right Paddle M1)</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">B</span></span>
+                    <div class="guide-desc"><strong>Pick Up / Swap</strong><span>Grabs target; if holding, swaps with targeted ground item</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">Y</span></span>
+                    <div class="guide-desc"><strong>Drop Item</strong><span>Drops held item onto the ground</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">RT</span> / <span class="key-badge pad-badge">RB</span></span>
+                    <div class="guide-desc"><strong>Throw / Grab</strong><span>RT throws held item (or grabs); RB is dedicated instant throw</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LT</span></span>
+                    <div class="guide-desc"><strong>Lock Aim</strong><span>Snaps aim reticle directly to closest reachable target</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">LB</span> / <span class="key-badge pad-badge">M2</span></span>
+                    <div class="guide-desc"><strong>Sprint</strong><span>Hold or tap bumper / paddle (M2) for 1.55x sprint speed</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls-guide-footer-tip">
+              💡 <strong>Pro-Tip:</strong> While holding an object, your creature dynamically aims toward your cursor and highlights reachable ground items in your player color. Press <strong>E</strong> (Keyboard) or <strong>B</strong> (Gamepad) to instantly swap items!
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="view-settings-panel" class="view-settings-panel hidden">
+        <div class="view-settings-card">
+          <div class="view-settings-header">
+            <div class="view-settings-title">
+              <span class="view-settings-icon">👁️</span>
+              <span>View Settings</span>
+            </div>
+            <button id="btn-close-view-settings" class="btn-close-panel" title="Close View Settings (V or Esc)">✕</button>
+          </div>
+
+          <div class="view-settings-body">
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3>Vertical Visuals</h3>
+                <p class="settings-section-desc">Choose how pseudo-3D altitude and physical elevation are rendered.</p>
+              </div>
+
+              <div class="visual-mode-options" role="radiogroup" aria-label="Vertical Visuals Mode">
+                <button type="button" class="visual-option-btn" data-mode="bigger">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Bigger Sprites</span>
+                  </div>
+                  <p class="option-desc">Sprites scale larger with altitude while staying on the ground plane. Internal outlines show elevation layers.</p>
+                </button>
+
+                <button type="button" class="visual-option-btn active" data-mode="hover">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Hover Above Shadow</span>
+                  </div>
+                  <p class="option-desc">Sprites hover upward at (y - z) above a ground collider shadow, with a vertical dotted line that transitions to transparent at Layer 2.</p>
+                </button>
+
+                <button type="button" class="visual-option-btn" data-mode="both">
+                  <div class="option-header">
+                    <span class="option-radio"></span>
+                    <span class="option-title">Both</span>
+                  </div>
+                  <p class="option-desc">Combines both modes: sprites scale larger with altitude AND hover upward above their ground shadow placeholder.</p>
+                </button>
+              </div>
+            </div>
+
+            <!-- Wall Height & Isometric Depth Slider -->
+            <div class="settings-section" id="visual-wall-height-section">
+              <div class="settings-section-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <h3>Wall Isometric Height</h3>
+                  <span id="val-visual-wall-height" style="font-family: monospace; font-size: 0.82rem; color: var(--accent-cyan); font-weight: 700;">0.50</span>
+                </div>
+                <p class="settings-section-desc">Adjust isometric wall height & hover altitude (0 = flat 2D; 1 = full 1:1 isometric height).</p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">0.0</span>
+                <input type="range" id="slide-visual-wall-height" min="0.0" max="1.0" step="0.05" value="0.5" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;" />
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">1.0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Application Body (Viewport & Dockable Sidebar) -->
+      <div class="app-body">
+        <!-- Left Arena Viewport -->
+        <div class="viewport-container">
+          <!-- Multiplayer Relay HUD (Visible when Multiplayer mode is active) -->
+          <div id="multiplayer-relay-hud" class="relay-hud-container hidden">
+            <div class="relay-hud-card">
+              <div class="relay-hud-header">
+                <div class="relay-title">
+                  <span class="relay-icon">🛰️</span>
+                  <span class="relay-name">3rd-Party Relay Echo</span>
+                  <span id="relay-badge-status" class="relay-badge-status disconnected">Disconnected</span>
+                </div>
+                <div class="relay-hud-actions">
+                  <button id="relay-toggle-server-mode-btn" class="btn-server-mode-toggle active" title="Toggle between Authoritative Physics Sim and Positional Echo">🤖 Sim: Physics</button>
+                  <button id="relay-resync-world-btn" class="btn-preset" title="Re-synchronize authoritative server world transforms with current client positions" style="height: 24px; padding: 2px 8px; font-size: 11px;">🔄 Resync</button>
+                  <button id="relay-toggle-split-sims-btn" class="btn-split-toggle off" title="Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)">👥 Split Sims: OFF</button>
+                  <button id="relay-toggle-ghosts-btn" class="btn-ghost-toggle active">👻 Ghosts: ON</button>
+                  <button id="relay-connect-btn" class="btn-relay-connect">Connect</button>
+                  <button id="btn-minimize-relay-hud" class="btn-relay-tool" title="Minimize / Collapse Relay Settings (M)" aria-label="Minimize Relay Settings">➖</button>
+                  <button id="btn-close-relay-hud" class="btn-relay-tool close" title="Hide Relay Card (keeps connection active in background, click pill in top bar to reopen)" aria-label="Hide Relay Settings">✕</button>
+                </div>
+              </div>
+
+              <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Server Physics</span>
+                  <span class="stat-value" id="server-physics-stats">Tick: #0 (Live 60Hz)</span>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Public Game Room</span>
+                  <div class="url-input-wrapper">
+                    <input id="public-room-url-input" class="relay-url-input" type="text" readonly value="https://pcg-arena-teal.loca.lt" />
+                    <button id="btn-copy-room-url" class="btn-preset" title="Copy public game link">📋 Copy</button>
+                    <a href="https://pcg-arena-teal.loca.lt" target="_blank" class="btn-preset" style="text-decoration:none; display:inline-flex; align-items:center;" title="Open in browser">↗ Open</a>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Relay URL</span>
+                  <div class="url-input-wrapper">
+                    <input id="relay-url-input" class="relay-url-input" type="text" value="wss://ws.postman-echo.com/raw" />
+                    <button id="btn-preset-postman" class="btn-preset" title="Use Postman Echo">Postman</button>
+                    <button id="btn-preset-org" class="btn-preset" title="Use Websocket.org">Echo.ws</button>
+                  </div>
+                </div>
+                <div class="relay-stat-item rtt-item">
+                  <span class="stat-label">Round-Trip Latency (RTT)</span>
+                  <div class="rtt-metrics">
+                    <span class="rtt-current" id="rtt-current">-- ms</span>
+                    <span class="rtt-sub" id="rtt-sub">min: -- ms | max: -- ms | avg: -- ms</span>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Telemetry Packets</span>
+                  <span class="stat-value" id="relay-packet-counts">Sent: 0 | Echoed: 0</span>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Send Rate</span>
+                  <div class="rate-toggle-group">
+                    <button id="rate-30hz-btn" class="rate-btn active">30 Hz</button>
+                    <button id="rate-60hz-btn" class="rate-btn">60 Hz</button>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Ghost Lerp</span>
+                  <div class="lerp-control-group">
+                    <button id="relay-toggle-lerp-btn" class="btn-lerp-toggle active" title="Toggle Ghost Interpolation Smoothing">⚡ Lerp: ON</button>
+                    <div class="lerp-input-wrapper" title="Percent of distance to move per frame at 60 FPS (100% = instant snap)">
+                      <input id="relay-lerp-rate-input" class="relay-number-input" type="number" step="any" min="0" max="100" value="35.0" />
+                      <span class="lerp-unit-label">% / frame</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="relay-stat-item">
+                  <span class="stat-label">Split Client Sims</span>
+                  <div class="split-sim-control-group">
+                    <button id="relay-toggle-split-sims-body-btn" class="btn-split-toggle off" title="Run separate client prediction sims for each local player and split canvas side-by-side (requires 2+ players)">👥 Split Sims: OFF</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Online Room HUD (Visible when Online Room mode is active) -->
+          <div id="online-room-hud" class="relay-hud-container online-hud-container hidden">
+            <div class="relay-hud-card">
+              <div class="relay-hud-header">
+                <div class="relay-title">
+                  <span class="relay-icon">🌐</span>
+                  <span class="relay-name">Universal Online Room</span>
+                  <span id="online-badge-status" class="relay-badge-status disconnected">Disconnected</span>
+                </div>
+                <div class="relay-hud-actions">
+                  <button id="online-btn-edit-name" class="btn-preset" title="Change your player name" style="height: 24px; padding: 2px 8px; font-size: 11px;">👤 Edit Name</button>
+                  <button id="online-connect-btn" class="btn-relay-connect">Connect</button>
+                  <button id="btn-minimize-online-hud" class="btn-relay-tool" title="Minimize / Collapse Online Settings (O)" aria-label="Minimize Online Settings">➖</button>
+                  <button id="btn-close-online-hud" class="btn-relay-tool close" title="Hide Online Room Card (keeps connection active in background, click pill in top bar to reopen)" aria-label="Hide Online Room Settings">✕</button>
+                </div>
+              </div>
+
+              <div class="relay-hud-body">
+                <div class="relay-stat-item">
+                  <span class="stat-label">Your Slot & Name</span>
+                  <div class="url-input-wrapper">
+                    <span id="online-my-slot" class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 3px 8px; border-radius: 4px; font-weight: 600;">P1</span>
+                    <span id="online-my-name" style="color: #f1f5f9; font-weight: 600; margin-left: 6px;">Player 1</span>
+                    <button id="btn-prompt-rename" class="btn-preset" style="margin-left: 8px; height: 24px; padding: 2px 8px; font-size: 11px;" title="Change display name">✏️ Rename</button>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item">
+                  <span class="stat-label">Server Connection</span>
+                  <div class="url-input-wrapper">
+                    <input id="online-url-input" class="relay-url-input" type="text" readonly value="/ws" />
+                    <button id="btn-copy-online-url" class="btn-preset" title="Copy public game link">📋 Copy Invite</button>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item rtt-item">
+                  <span class="stat-label">Round-Trip Latency (RTT)</span>
+                  <div class="rtt-metrics">
+                    <span class="rtt-current" id="online-rtt-current">-- ms</span>
+                    <span class="rtt-sub" id="online-rtt-sub">Authoritative 60Hz Server Simulation on /ws</span>
+                  </div>
+                </div>
+
+                <div class="relay-stat-item">
+                  <span class="stat-label">Room Capacity</span>
+                  <span class="stat-value" id="online-players-count">1 Connected</span>
+                </div>
+
+                <div class="relay-stat-item" style="grid-column: 1 / -1;">
+                  <span class="stat-label">Player Roster</span>
+                  <div id="online-roster-list" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+                    <!-- Dynamically populated roster chips -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls Box above game view -->
+          <div class="controls-overlay-bar">
+            <div class="controls-box" id="game-controls-box">
+              <button class="controls-box-label" id="btn-controls-guide" title="Click to view Full Controls & Mechanics Guide (H)">
+                <span class="ctrl-label-icon">🎮</span>
+                <span>Controls</span>
+                <span class="ctrl-help-icon">ℹ️</span>
+              </button>
+              <div class="controls-box-items">
+                <span class="ctrl-item" title="Move: WASD keys or Gamepad Left Joystick (LS)"><span class="key-badge kb-badge">WASD</span> / <span class="key-badge pad-badge">LS</span> Move</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Aim: Mouse cursor or Gamepad Right Joystick (RS)"><span class="key-badge kb-badge">Mouse</span> / <span class="key-badge pad-badge">RS</span> Aim</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Jump / Climb: Space key or Gamepad A button (or Right Paddle M1)"><span class="key-badge kb-badge">Space</span> / <span class="key-badge pad-badge">A</span> Jump</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Pick Up / Swap: E key or Gamepad B button. Pick up reachable items; when holding, swaps with targeted ground item"><span class="key-badge kb-badge">E</span> / <span class="key-badge pad-badge">B</span> Pick/Swap</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Drop: Q key or Gamepad Y button. Drops held item onto the ground"><span class="key-badge kb-badge">Q</span> / <span class="key-badge pad-badge">Y</span> Drop</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Throw / Quick Grab: Left Click, Gamepad Right Trigger (RT), or Right Bumper (RB). Throws held item or grabs target when empty-handed"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> Throw</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Aim Lock: Right Click or Gamepad Left Trigger (LT) locks aim reticle onto target"><span class="key-badge kb-badge">R-Click</span> / <span class="key-badge pad-badge">LT</span> Lock</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Sprint: Shift key, Gamepad Left Bumper (LB), or Left Paddle M2 (1.55x speed)"><span class="key-badge kb-badge">Shift</span> / <span class="key-badge pad-badge">LB</span> Sprint</span>
+              </div>
+              <div class="controls-box-status">
+                <button class="controller-status-badge" id="btn-quick-players" title="Arena Players & Controllers (P)" style="cursor: pointer; border: 1px solid var(--border-glass);">👥 0 PLAYERS</button>
+                <span class="controller-status-badge hidden" id="controller-badge" title="Gamepad Connected">🎮 GAMEPAD</span>
+              </div>
+            </div>
+          </div>
+
+          <main class="canvas-wrapper">
+            <canvas id="game-canvas"></canvas>
+          </main>
+
+          <!-- Quick Sidebar Tab (Shown when inspector is collapsed) -->
+          <button id="quick-sidebar-tab" class="quick-sidebar-tab hidden" title="Open Inspector (I or `)">
+            <span>🛠️</span>
+            <span>Inspector</span>
+          </button>
+        </div>
+
+        <!-- Right Dev Sidebar -->
+        <aside id="dev-sidebar"></aside>
+      </div>
     </div>
 
     <script type="module" src="./src/main.ts"></script>

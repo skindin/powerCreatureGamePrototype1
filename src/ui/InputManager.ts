@@ -4,15 +4,153 @@ import { Arena } from "../engine/Arena.js";
 import { GameObject } from "../engine/GameObject.js";
 import type { DevPanel } from "./DevPanel.js";
 
+export interface GamepadSlotState {
+  index: number;
+  connected: boolean;
+  id: string;
+  isActive: boolean;
+  movementVector: Vector2D;
+  aimPos: Vector2D;
+  isClimbHeld: boolean;
+  prevButtons: boolean[];
+  rtGrabbed: boolean;
+  rtHeld: boolean;
+  bHeld: boolean;
+  aimOffsetInitialized: boolean;
+  sprintArmed?: boolean;
+  wasMoving?: boolean;
+  lastAimMoveTime: number;
+  isCursorVisible?: boolean;
+  aimMovedWhileInRange?: boolean;
+  aimOffset?: Vector2D;
+  isLockHeld?: boolean;
+  leftPaddlePressTime?: number;
+  hasMovedAimStick?: boolean;
+  wasHoldingObject?: boolean;
+  lastMovementInputAngle?: number;
+  isThrowRequested?: boolean;
+  isDropRequested?: boolean;
+}
+
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export class InputManager {
   private canvas: HTMLCanvasElement;
   private arena: Arena;
+  public keyboardViewport: CanvasViewport | null = null;
   private keysPressed: Set<string> = new Set();
+  private isEKeyDepressed = false;
+  private isQKeyDepressed = false;
+  public isKeyboardSprintActive = false;
   
+  // Keyboard player active state (true when keyboard & mouse character is in arena)
+  public isKeyboardActive = true;
+  public isKeyboardThrowRequested = false;
+  public isKeyboardDropRequested = false;
+
   public mousePos: Vector2D = { x: 0, y: 0 };
+  public actualMousePos: Vector2D = { x: 0, y: 0 };
+  public lastMouseMoveTime = 0;
+  public isCursorVisible = false;
   public isMouseDown = false;
+  public isRightMouseDown = false;
+  public hoverWallTile: { col: number; row: number } | null = null;
   public movementVector: Vector2D = { x: 0, y: 0 };
   public justPickedUp = false;
+
+  // Pointer lock state (disabled: free and visible cursor)
+  public isPointerLocked = false;
+  public devPanel?: DevPanel;
+
+  // Whether keyboard and mouse input to the character is suspended (e.g. after pressing Escape)
+  // until the user clicks the game view again
+  public isKeyboardSuspended = false;
+
+  public requestPointerLock(): void {
+    // Disabled: keep cursor free and visible at all times
+  }
+
+  public exitPointerLock(): void {
+    if (typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
+    this.isPointerLocked = false;
+    if (typeof document !== "undefined") {
+      document.body.classList.remove("pointer-locked");
+      this.canvas.classList.remove("pointer-locked");
+    }
+  }
+
+  public isThrowingPress = false;
+
+  // Gamepad controller slots (multi-gamepad support)
+  public gamepadSlots: Map<number, GamepadSlotState> = new Map();
+  public gamepadConnected = false;
+  public gamepadName = "";
+  public isGamepadClimbHeld = false;
+  public isGamepadAiming = false;
+  public isGamepadAimActive = false;
+  public activeInputDevice: "keyboard" | "gamepad" = "keyboard";
+  public gamepadAimPos: Vector2D = { x: 0, y: 0 };
+  public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
+
+  public get isGrabHeld(): boolean {
+    return (
+      this.isKeyboardActive &&
+      !this.isKeyboardSuspended &&
+      !this.isThrowingPress &&
+      (this.isMouseDown || this.isEKeyDepressed || this.keysPressed.has("KeyE"))
+    );
+  }
+
+  public get isUsingGamepad(): boolean {
+    return this.gamepadConnected && this.activeInputDevice === "gamepad";
+  }
+
+  public isTextInputFocused(): boolean {
+    if (typeof document === "undefined") return false;
+    const active = document.activeElement;
+    if (!active) return false;
+    const tagName = active.tagName.toLowerCase();
+    if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+      return true;
+    }
+    if ((active as HTMLElement).isContentEditable) {
+      return true;
+    }
+    return false;
+  }
+
+  private isTargetTextInput(target: EventTarget | null): boolean {
+    if (!target) return false;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      Boolean((target as HTMLElement)?.isContentEditable)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  public get isKeyboardJumpHeld(): boolean {
+    return this.isKeyboardActive && !this.isTextInputFocused() && this.keysPressed.has("Space");
+  }
+
+  public get isClimbHeld(): boolean {
+    return this.isKeyboardJumpHeld || this.isGamepadClimbHeld;
+  }
 
   // Selection & dragging state
   public hoverEntity: GameObject | null = null;
@@ -23,51 +161,201 @@ export class InputManager {
   // Action callback hooks
   public handleClick?: (clickX: number, clickY: number) => void;
   public onMouseDown?: (clickX: number, clickY: number) => void;
+  public onRightMouseDown?: (clickX: number, clickY: number) => void;
   public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
   public onDropAttempt?: () => void;
+  public onKeyboardPickup?: () => void;
+  public onKeyboardDrop?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
-  public onActionAttempt?: (action: "pickup" | "throw" | "drop", targetObjectId?: string, aimX?: number, aimY?: number) => void;
+  public onToggleSprint?: (active?: boolean) => void;
+  public onStopKeyboardSprint?: () => void;
+  public onGamepadStatusChange?: (connected: boolean, name: string) => void;
+  public onKeyboardJoin?: () => void;
+  public onKeyboardJump?: () => void;
+  public onGamepadJoin?: (slotIndex: number) => void;
+  public onGamepadDisconnected?: (slotIndex: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
     this.arena = arena;
+    this.mousePos = { x: arena.width / 2, y: arena.height / 2 };
+    this.actualMousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.setupListeners();
   }
 
   private setupListeners(): void {
+    if (typeof window === "undefined") return;
+
+    // When an input/textarea/select receives focus, immediately release any active game keys
+    // so the character doesn't keep running or jumping while the user types.
+    window.addEventListener("focusin", (e) => {
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        this.keysPressed.clear();
+        this.isEKeyDepressed = false;
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
+        this.updateMovementVector();
+      }
+    });
+
     window.addEventListener("keydown", (e) => {
+      // If user is focused on or typing into ANY text box or form input,
+      // allow default browser behavior (typing characters, spaces, backspaces)
+      // and do NOT hijack input or trigger game actions!
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        return;
+      }
+
+      // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
+      if (e.code === "Space") {
+        if (!this.isKeyboardActive) {
+          this.onKeyboardJoin?.();
+          return;
+        } else if (!e.repeat) {
+          this.onKeyboardJump?.();
+        }
+      }
+
+      if (e.code === "Escape") {
+        this.isKeyboardSuspended = true;
+        this.keysPressed.clear();
+        this.isQKeyDepressed = false;
+        this.isEKeyDepressed = false;
+        this.isKeyboardSprintActive = false;
+        this.isMouseDown = false;
+        this.isRightMouseDown = false;
+        this.updateMovementVector();
+        this.exitPointerLock();
+        return;
+      }
+
+      // If suspended from Escape, ignore all game key inputs until user clicks the game view again
+      if (this.isKeyboardSuspended) {
+        return;
+      }
+
+      this.activeInputDevice = "keyboard";
       this.keysPressed.add(e.code);
       this.updateMovementVector();
 
-      if (e.code === "KeyE") {
-        // Alternative interact / drop key
-        if (this.onDropAttempt) {
-          this.onDropAttempt();
+      // Shift toggles sprinting on / off (pressing Shift untoggles sprinting)
+      if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat) {
+        this.isKeyboardSprintActive = !this.isKeyboardSprintActive;
+        if (this.isKeyboardSprintActive) {
+          this.onToggleSprint?.(true);
+        } else {
+          this.onStopKeyboardSprint?.();
         }
+      }
+
+      if (e.code === "KeyQ") {
+        // Q key drops currently held item
+        if (e.repeat || this.isQKeyDepressed) return;
+        this.isQKeyDepressed = true;
+
+        this.onKeyboardDrop?.();
+      }
+
+      if (e.code === "KeyE") {
+        // E key picks up ground item or swaps held item with targeted ground item
+        if (e.repeat || this.isEKeyDepressed) return;
+        this.isEKeyDepressed = true;
+
+        this.onKeyboardPickup?.();
       }
     });
 
     window.addEventListener("keyup", (e) => {
+      if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
+        this.keysPressed.delete(e.code);
+        return;
+      }
+
       this.keysPressed.delete(e.code);
+
+      if (this.isKeyboardSuspended) {
+        this.updateMovementVector();
+        return;
+      }
+
+      this.updateMovementVector();
+
+      if (e.code === "KeyQ") {
+        this.isQKeyDepressed = false;
+      }
+
+      if (e.code === "KeyE") {
+        this.isEKeyDepressed = false;
+      }
+
+      // Automatically turn off sprint when all movement keys are released!
+      if (!this.hasAnyMovementKeyPressed()) {
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
+      }
+    });
+
+    window.addEventListener("blur", () => {
+      this.isKeyboardSuspended = true;
+      this.isQKeyDepressed = false;
+      this.isEKeyDepressed = false;
+      this.keysPressed.clear();
+      this.isKeyboardSprintActive = false;
+      this.onStopKeyboardSprint?.();
       this.updateMovementVector();
     });
 
-    this.canvas.addEventListener("mousemove", (e) => {
+    // Track mouse position globally so the aim cursor NEVER goes stale when the
+    // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
+    window.addEventListener("mousemove", (e) => {
+      if (this.isKeyboardSuspended) {
+        return;
+      }
+      this.lastMouseMoveTime = performance.now();
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
       }
     });
 
+    document.addEventListener("pointerlockchange", () => {
+      this.isPointerLocked = false;
+      if (typeof document !== "undefined") {
+        document.body.classList.remove("pointer-locked");
+        this.canvas.classList.remove("pointer-locked");
+      }
+    });
+
     this.canvas.addEventListener("mousedown", (e) => {
+      this.activeInputDevice = "keyboard";
+      this.lastMouseMoveTime = performance.now();
+
+      // On-demand join if keyboard player is not yet active
+      if (!this.isKeyboardActive) {
+        this.onKeyboardJoin?.();
+      }
+
+      // Resume keyboard/mouse control when clicking on the game view
+      const wasSuspended = this.isKeyboardSuspended;
+      this.isKeyboardSuspended = false;
+
+      this.updateMousePos(e);
+
+      // If we just clicked to refocus/unpause the game view from Escape, don't trigger an accidental throw or grab
+      if (wasSuspended) {
+        return;
+      }
+
       if (e.button === 2) {
-        // Right click handles selection
+        this.isRightMouseDown = true;
+        if (this.onRightMouseDown) {
+          this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
+        }
         return;
       }
       if (e.button !== 0) return; // Only primary left click
       this.isMouseDown = true;
-      this.updateMousePos(e);
 
       if (this.onMouseDown) {
         this.onMouseDown(this.mousePos.x, this.mousePos.y);
@@ -80,6 +368,9 @@ export class InputManager {
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // Prevent browser context menu
+      if (this.isKeyboardSuspended) {
+        return;
+      }
       this.updateMousePos(e);
       if (this.onRightClick) {
         this.onRightClick(this.mousePos.x, this.mousePos.y);
@@ -87,9 +378,15 @@ export class InputManager {
     });
 
     window.addEventListener("mouseup", (e) => {
+      if (e.button === 2) {
+        this.isRightMouseDown = false;
+        return;
+      }
       if (e.button !== 0) return;
       this.isMouseDown = false;
       this.justPickedUp = false;
+      this.isThrowingPress = false;
+      if (this.isKeyboardSuspended) return;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
@@ -99,6 +396,7 @@ export class InputManager {
     this.canvas.addEventListener("touchstart", (e) => {
       if (e.touches.length > 0) {
         this.isMouseDown = true;
+        this.lastMouseMoveTime = performance.now();
         this.updateTouchPos(e.touches[0]);
         if (this.onMouseDown) {
           this.onMouseDown(this.mousePos.x, this.mousePos.y);
@@ -111,6 +409,7 @@ export class InputManager {
 
     this.canvas.addEventListener("touchmove", (e) => {
       if (e.touches.length > 0) {
+        this.lastMouseMoveTime = performance.now();
         this.updateTouchPos(e.touches[0]);
         if (this.onMouseMove) {
           this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -121,29 +420,110 @@ export class InputManager {
     window.addEventListener("touchend", () => {
       this.isMouseDown = false;
       this.justPickedUp = false;
+      this.isThrowingPress = false;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
     });
+
+    window.addEventListener("gamepadconnected", (e) => {
+      this.gamepadConnected = true;
+      this.gamepadName = e.gamepad.id;
+      this.activeInputDevice = "gamepad";
+      this.isGamepadAiming = true;
+      this.isGamepadAimActive = true;
+      if (this.onGamepadStatusChange) {
+        this.onGamepadStatusChange(true, this.gamepadName);
+      }
+    });
+
+    window.addEventListener("gamepaddisconnected", () => {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const hasAny = Array.from(gamepads).some((gp) => gp && gp.connected);
+      this.gamepadConnected = hasAny;
+      if (!hasAny) {
+        this.gamepadName = "";
+        this.isGamepadClimbHeld = false;
+        this.isGamepadAiming = false;
+        this.isGamepadAimActive = false;
+      }
+      if (this.onGamepadStatusChange) {
+        this.onGamepadStatusChange(this.gamepadConnected, this.gamepadName);
+      }
+    });
+  }
+
+  public setKeyboardViewport(vp: CanvasViewport | null): void {
+    this.keyboardViewport = vp;
   }
 
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.arena.width / rect.width;
-    const scaleY = this.arena.height / rect.height;
-    this.mousePos.x = (e.clientX - rect.left) * scaleX;
-    this.mousePos.y = (e.clientY - rect.top) * scaleY;
+    if (this.keyboardViewport) {
+      const vp = this.keyboardViewport;
+      const canvasPixelX = (e.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
+      const canvasPixelY = (e.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
+      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
+      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    } else {
+      const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
+      const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    }
   }
 
   private updateTouchPos(touch: Touch): void {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.arena.width / rect.width;
-    const scaleY = this.arena.height / rect.height;
-    this.mousePos.x = (touch.clientX - rect.left) * scaleX;
-    this.mousePos.y = (touch.clientY - rect.top) * scaleY;
+    if (this.keyboardViewport) {
+      const vp = this.keyboardViewport;
+      const canvasPixelX = (touch.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
+      const canvasPixelY = (touch.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
+      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
+      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    } else {
+      const mx = Math.max(0, Math.min(this.arena.width, (touch.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
+      const my = Math.max(0, Math.min(this.arena.height, (touch.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
+      this.actualMousePos.x = mx;
+      this.actualMousePos.y = my;
+      this.mousePos.x = mx;
+      this.mousePos.y = my;
+    }
+  }
+
+  /**
+   * Helper to check if any directional movement key (WASD or Arrow keys) is currently pressed.
+   */
+  public hasAnyMovementKeyPressed(): boolean {
+    return (
+      this.keysPressed.has("KeyW") ||
+      this.keysPressed.has("KeyA") ||
+      this.keysPressed.has("KeyS") ||
+      this.keysPressed.has("KeyD") ||
+      this.keysPressed.has("ArrowUp") ||
+      this.keysPressed.has("ArrowLeft") ||
+      this.keysPressed.has("ArrowDown") ||
+      this.keysPressed.has("ArrowRight")
+    );
   }
 
   private updateMovementVector(): void {
+    if (!this.isKeyboardActive || this.isTextInputFocused()) {
+      this.movementVector.x = 0;
+      this.movementVector.y = 0;
+      return;
+    }
+
     let dx = 0;
     let dy = 0;
 
@@ -162,37 +542,599 @@ export class InputManager {
     }
   }
 
+  /**
+   * Polls all connected Gamepad slots deterministically.
+   * If a connected gamepad's character was removed, pressing the 'A' button (button 0) adds their character back.
+   * If a gamepad is active, processes analog movement, virtual aim reticle travel, climbing, sprint, grab, and throw.
+   */
+  public pollGamepadSlots(
+    playersMap: Map<string, { character: Character; slotIndex?: number; isKeyboard?: boolean }>,
+    objects: GameObject[],
+    arena: Arena,
+    allCharacters?: Character[],
+    _getVisualPosition?: (entity: GameObject) => Vector2D
+  ): void {
+    if (!navigator.getGamepads) return;
+    const gamepads = navigator.getGamepads();
+    const deadzone = 0.18;
+    const dt = 1 / 60;
+    let anyConnected = false;
+
+    for (let i = 0; i < gamepads.length; i++) {
+      const gp = gamepads[i];
+      if (!gp || !gp.connected) {
+        const existingSlot = this.gamepadSlots.get(i);
+        if (existingSlot && existingSlot.connected) {
+          existingSlot.connected = false;
+          if (existingSlot.isActive) {
+            existingSlot.isActive = false;
+            this.onGamepadDisconnected?.(i);
+          }
+        }
+        continue;
+      }
+
+      anyConnected = true;
+      let slot = this.gamepadSlots.get(i);
+      if (!slot) {
+        slot = {
+          index: i,
+          connected: true,
+          id: gp.id,
+          isActive: false,
+          movementVector: { x: 0, y: 0 },
+          aimPos: { x: arena.width / 2, y: arena.height / 2 },
+          isClimbHeld: false,
+          prevButtons: [],
+          rtGrabbed: false,
+          rtHeld: false,
+          bHeld: false,
+          aimOffsetInitialized: false,
+          sprintArmed: false,
+          wasMoving: false,
+          lastAimMoveTime: 0,
+          aimOffset: { x: 0, y: 0 },
+          leftPaddlePressTime: 0,
+          hasMovedAimStick: false,
+          wasHoldingObject: false,
+        };
+        this.gamepadSlots.set(i, slot);
+      } else {
+        slot.connected = true;
+        slot.id = gp.id;
+      }
+
+      const isButtonPressed = (btnIndex: number, threshold = 0.3): boolean => {
+        const b = gp.buttons[btnIndex];
+        if (!b) return false;
+        return typeof b === "object" ? b.pressed || b.value > threshold : (b as unknown as number) > threshold;
+      };
+
+      const isPrevPressed = (btnIndex: number): boolean => slot.prevButtons[btnIndex] === true;
+
+      // Check if this controller currently has an active character in arena
+      const playerEntry = playersMap.get(`gamepad-${i}`);
+      const char = playerEntry ? playerEntry.character : null;
+      slot.isActive = char !== null;
+
+      // Helper to test if any button in an array is pressed
+      const isAnyButtonPressed = (indices: number[]): boolean => {
+        return indices.some((idx) => isButtonPressed(idx));
+      };
+      const isAnyButtonPrevPressed = (indices: number[]): boolean => {
+        return indices.some((idx) => isPrevPressed(idx));
+      };
+
+      // Check extended paddle buttons:
+      // On mobile gamepads (e.g. GameSir G8, Razer, Flydigi), back paddles are explicitly labelled:
+      // - Right Paddle = M1
+      // - Left Paddle = M2
+      // In the Gamepad API:
+      // - If controller has 17 buttons (indices 0..16): Button 16 is M1 (Right Paddle)
+      // - If controller has 18 buttons (indices 0..17): Button 16 is M1 (Right Paddle / Jump), Button 17 is M2 (Left Paddle / Sprint)
+      // - If controller has 19+ buttons (indices 0..18+):
+      //   Odd indices (17, 19, 21...) = M1 / M3 (Right side paddles)
+      //   Even indices (18, 20, 22...) = M2 / M4 (Left side paddles)
+      //   Button 16 is also M1 if present.
+      let extendedLeftPaddle = false;
+      let extendedPrevLeftPaddle = false;
+      let extendedRightPaddle = false;
+      let extendedPrevRightPaddle = false;
+
+      const numButtons = gp.buttons.length;
+      if (numButtons === 17) {
+        // Button 16 = M1 (Right Paddle / Jump)
+        if (isButtonPressed(16)) extendedRightPaddle = true;
+        if (isPrevPressed(16)) extendedPrevRightPaddle = true;
+      } else if (numButtons === 18) {
+        // Button 16 = M1 (Right Paddle / Jump), Button 17 = M2 (Left Paddle / Sprint)
+        if (isButtonPressed(16)) extendedRightPaddle = true;
+        if (isPrevPressed(16)) extendedPrevRightPaddle = true;
+        if (isButtonPressed(17)) extendedLeftPaddle = true;
+        if (isPrevPressed(17)) extendedPrevLeftPaddle = true;
+      } else if (numButtons > 18) {
+        for (let bIdx = 16; bIdx < numButtons; bIdx++) {
+          if (bIdx === 16) {
+            // Button 16 on 19+ pads can be M1
+            if (isButtonPressed(16)) extendedRightPaddle = true;
+            if (isPrevPressed(16)) extendedPrevRightPaddle = true;
+            continue;
+          }
+          if (bIdx % 2 === 1) {
+            // 17, 19, 21... = M1 / M3 (Right side paddles -> Jump)
+            if (isButtonPressed(bIdx)) extendedRightPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
+          } else {
+            // 18, 20, 22... = M2 / M4 (Left side paddles -> Sprint)
+            if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
+          }
+        }
+      }
+
+      // Check extra axes for paddles if available (e.g. axes[4], axes[6])
+      let axisLeftPaddle = false;
+      let axisRightPaddle = false;
+      if (gp.axes && gp.axes.length > 4) {
+        if (gp.axes.length > 5 && Math.abs(gp.axes[4]) > 0.5) {
+          if (gp.axes[4] < -0.5) axisLeftPaddle = true;
+          else if (gp.axes[4] > 0.5) axisRightPaddle = true;
+        }
+      }
+
+      // Left Under-Paddle (M2) / Sprint buttons:
+      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended M2 paddles & axes
+      const leftPaddleButtonIndices = [4, 10, 2, 8, 14, 13, 12];
+      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
+      const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
+      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
+      const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
+
+      // Right Under-Paddle (M1) / Jump & Climb buttons:
+      // A (0), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
+      // NOTE: Button 11 (R3 / right stick click) is explicitly EXCLUDED so clicking the right joystick never triggers climb/jump!
+      const rightPaddleButtonIndices = [0, 9, 15];
+      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
+      const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
+      const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
+
+      // 1. Controller is connected but its character is NOT currently in the arena:
+      // Pressing A (Xbox button 0 / Cross) or Right Under-Paddle adds their character back in!
+      if (!slot.isActive || !char) {
+        if (rightPaddleJustPressed) {
+          this.onGamepadJoin?.(i);
+        }
+        slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+        continue;
+      }
+
+      // 2. Controller is active in arena: process all inputs for char
+      const lx = gp.axes[0] ?? 0;
+      const ly = gp.axes[1] ?? 0;
+      const rx = gp.axes[2] ?? 0;
+      const ry = gp.axes[3] ?? 0;
+      const lMag = Math.hypot(lx, ly);
+      const rMag = Math.hypot(rx, ry);
+
+      if (lMag > deadzone || rMag > deadzone || gp.buttons.some((b) => (typeof b === "object" ? b.pressed || b.value > 0.25 : (b as unknown as number) > 0.25))) {
+        this.activeInputDevice = "gamepad";
+      }
+
+      // Left Joystick for movement
+      if (lMag > deadzone) {
+        const normalizedMag = Math.min(1.0, (lMag - deadzone) / (1.0 - deadzone));
+        slot.movementVector.x = (lx / lMag) * normalizedMag;
+        slot.movementVector.y = (ly / lMag) * normalizedMag;
+        slot.lastMovementInputAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
+        char.lastMovementInputAngle = slot.lastMovementInputAngle;
+      } else {
+        slot.movementVector.x = 0;
+        slot.movementVector.y = 0;
+      }
+
+      // Right Joystick for absolute arena aim reticle:
+      // Operates like a free-floating mouse cursor in world coordinates (unleashed from character)
+      const isHolding = char.heldObject !== null;
+      if (isHolding && !slot.wasHoldingObject) {
+        // Just picked up an object: place cursor directly in front in latest movement input direction
+        if (rMag <= deadzone) {
+          slot.hasMovedAimStick = false;
+        }
+        slot.aimMovedWhileInRange = false;
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        const inputAngle = moveMag > 0.05
+          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
+          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+        slot.lastMovementInputAngle = inputAngle;
+        char.lastMovementInputAngle = inputAngle;
+        char.facingAngle = inputAngle;
+        const forwardDist = 3.0;
+        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
+        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
+        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
+        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
+      }
+      slot.wasHoldingObject = isHolding;
+
+      if (!slot.aimOffset) {
+        slot.aimOffset = { x: 0, y: 0 };
+      }
+      if (!slot.aimPos) {
+        slot.aimPos = { x: char.position.x, y: char.position.y };
+      }
+
+      if (!slot.aimOffsetInitialized) {
+        slot.aimPos = {
+          x: char.position.x,
+          y: char.position.y,
+        };
+        slot.aimOffset = {
+          x: 0,
+          y: 0,
+        };
+        slot.aimOffsetInitialized = true;
+        slot.hasMovedAimStick = false;
+      }
+
+      // Grabbable target candidates include freebody objects and other characters
+      const grabbableTargets = allCharacters
+        ? [...allCharacters.filter((c) => c !== char), ...objects]
+        : objects;
+
+      const hasReachable = !isHolding && Boolean(
+        char.pickupModule &&
+        char.pickupModule.enabled &&
+        grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
+      );
+
+      if (isHolding) {
+        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character in latest movement input direction
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            char.lastMovementInputAngle = slot.lastMovementInputAngle;
+          } else {
+            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
+          }
+          const forwardDist = 3.0;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
+        }
+      } else {
+        // Empty-handed:
+        if (!hasReachable) {
+          // Out of range: reset aimMovedWhileInRange and keep cursor at character
+          slot.aimMovedWhileInRange = false;
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        } else if (!slot.aimMovedWhileInRange) {
+          // Around something to grab: start cursor AT character instead of latest offset!
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        }
+      }
+
+      if (rMag > deadzone) {
+        const cursorSpeed = 17.0;
+        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
+          // Starting to aim around grabbables: start directly at the character!
+          slot.aimPos.x = char.position.x;
+          slot.aimPos.y = char.position.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = 0;
+          slot.aimOffset.y = 0;
+        }
+        slot.hasMovedAimStick = true;
+        slot.aimPos.x += rx * cursorSpeed * dt;
+        slot.aimPos.y += ry * cursorSpeed * dt;
+        slot.lastAimMoveTime = performance.now();
+        slot.aimMovedWhileInRange = true;
+      }
+
+      const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
+      const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
+      slot.aimPos.x = clampedX;
+      slot.aimPos.y = clampedY;
+      slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+      slot.aimOffset.x = clampedX - char.position.x;
+      slot.aimOffset.y = clampedY - char.position.y;
+
+      // Button 6 (LT / L2): Auto-lock aiming
+      // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
+      const isLtPressed = isButtonPressed(6, 0.2);
+      slot.isLockHeld = isLtPressed;
+
+      // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
+      slot.isClimbHeld = rightPaddleCurrent;
+      if (rightPaddleJustPressed) {
+        char.jump(arena, slot.movementVector);
+      }
+
+      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint
+      // Supports BOTH Hold-to-Sprint AND Tap-to-Sprint seamlessly!
+      const isStickMoving = lMag > deadzone;
+
+      if (leftPaddleJustPressed) {
+        slot.leftPaddlePressTime = performance.now();
+        // If already sprinting and moving, tapping it again toggles sprint off. Otherwise activate sprint!
+        if (char.isSprinting && isStickMoving) {
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        } else {
+          slot.sprintArmed = true;
+          char.setSprinting(true);
+        }
+      } else if (leftPaddleCurrent) {
+        // Actively holding paddle down guarantees sprinting
+        slot.sprintArmed = true;
+        char.setSprinting(true);
+      } else if (leftPaddleJustReleased) {
+        const pressDuration = performance.now() - (slot.leftPaddlePressTime ?? 0);
+        if (pressDuration > 220) {
+          // Dedicated hold-to-sprint: releasing the paddle immediately returns to normal walk speed
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
+        // If it was a quick tap (< 220ms), slot.sprintArmed remains true so player continues sprinting while moving stick!
+      }
+
+      if (isStickMoving) {
+        if (slot.sprintArmed || leftPaddleCurrent) {
+          char.setSprinting(true);
+        }
+      } else {
+        // Left stick is in neutral deadzone: disarm sprint when motion stops (unless paddle is actively held)
+        if (slot.wasMoving && !leftPaddleCurrent) {
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
+      }
+      slot.wasMoving = isStickMoving;
+
+      const isCursorVis = slot.isCursorVisible ?? false;
+      const aimX = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.x : undefined;
+      const aimY = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.y : undefined;
+
+      const onGrabSuccess = () => {
+        slot.hasMovedAimStick = false;
+        slot.aimMovedWhileInRange = false;
+        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+        const inputAngle = moveMag > 0.05
+          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
+          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+        slot.lastMovementInputAngle = inputAngle;
+        char.lastMovementInputAngle = inputAngle;
+        char.facingAngle = inputAngle;
+        const forwardDist = 3.0;
+        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
+        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
+        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
+        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
+      };
+
+      // Button 1 (B on Xbox / Circle on PS): Pickup & Swap
+      const bCurrent = isButtonPressed(1);
+      const bJustReleased = !bCurrent && isPrevPressed(1);
+      if (bJustReleased) {
+        slot.bHeld = false;
+      }
+      if (bCurrent) {
+        if (!char.heldObject && char.pickupModule) {
+          if (!isPrevPressed(1) || slot.bHeld) {
+            char.pickupModule.pickupAndSwap(
+              char,
+              grabbableTargets,
+              arena.wallHeight,
+              aimX,
+              aimY
+            );
+            if (char.heldObject) {
+              slot.bHeld = false;
+              onGrabSuccess();
+            } else {
+              slot.bHeld = true;
+            }
+          }
+        } else if (char.heldObject) {
+          slot.bHeld = false;
+          if (!isPrevPressed(1) && char.pickupModule) {
+            const swapped = char.pickupModule.pickupAndSwap(
+              char,
+              grabbableTargets,
+              arena.wallHeight,
+              aimX,
+              aimY
+            );
+            if (swapped) {
+              onGrabSuccess();
+            }
+          }
+        }
+      }
+
+      // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item
+      const yCurrent = isButtonPressed(3);
+      if (yCurrent && !isPrevPressed(3) && char.pickupModule) {
+        if (char.heldObject) {
+          slot.isDropRequested = true;
+          char.pickupModule.drop(char);
+        }
+      }
+
+      // Button 7 (RT / R2) & Button 5 (RB / R1): Grab & Throw
+      const rbCurrent = isButtonPressed(5);
+      const rbJustPressed = rbCurrent && !isPrevPressed(5);
+      const rtCurrent = isButtonPressed(7);
+      const rtJustReleased = !rtCurrent && isPrevPressed(7);
+
+      if (rtJustReleased) {
+        slot.rtGrabbed = false;
+        slot.rtHeld = false;
+      }
+
+      if (!char.heldObject) {
+        if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
+          char.pickupModule.pickupAndSwap(
+            char,
+            grabbableTargets,
+            arena.wallHeight,
+            aimX,
+            aimY
+          );
+          if (char.heldObject) {
+            slot.rtGrabbed = true;
+            slot.rtHeld = false;
+            onGrabSuccess();
+          } else {
+            slot.rtHeld = true;
+          }
+        }
+      } else {
+        slot.rtHeld = false;
+
+        if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
+          slot.isThrowRequested = true;
+        }
+        if (rbJustPressed && char.throwModule) {
+          slot.isThrowRequested = true;
+        }
+      }
+
+      // Record buttons for edge detection
+      slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+    }
+
+    if (this.gamepadConnected !== anyConnected) {
+      this.gamepadConnected = anyConnected;
+      const firstConnected = Array.from(this.gamepadSlots.values()).find((s) => s.connected);
+      this.gamepadName = firstConnected ? firstConnected.id : "";
+      this.onGamepadStatusChange?.(anyConnected, this.gamepadName);
+    }
+  }
+
+  /**
+   * Backward-compatible singleplayer gamepad poll adapter
+   */
+  public pollGamepad(
+    character: Character,
+    objects: GameObject[],
+    arena: Arena
+  ): void {
+    const singleMap = new Map<string, { character: Character; slotIndex?: number }>();
+    singleMap.set("gamepad-0", { character, slotIndex: 0 });
+    this.pollGamepadSlots(singleMap, objects, arena);
+
+    const slot0 = this.gamepadSlots.get(0);
+    if (slot0 && slot0.connected) {
+      this.isGamepadClimbHeld = slot0.isClimbHeld;
+      this.isGamepadAiming = true;
+      this.isGamepadAimActive = true;
+      this.gamepadAimPos.x = slot0.aimPos.x;
+      this.gamepadAimPos.y = slot0.aimPos.y;
+      if (slot0.aimOffset) {
+        this.gamepadAimOffset.x = slot0.aimOffset.x;
+        this.gamepadAimOffset.y = slot0.aimOffset.y;
+      }
+    } else {
+      this.isGamepadClimbHeld = false;
+      this.isGamepadAiming = false;
+      this.isGamepadAimActive = false;
+    }
+  }
+
   public handleInteractions(
     character: Character,
     arena: Arena,
     objects: GameObject[],
-    devPanel?: DevPanel
+    devPanel?: DevPanel,
+    getAllCharacters?: () => Character[]
   ): void {
+    this.devPanel = devPanel;
     if (devPanel) {
       this.selectedCanvasEntity = devPanel.selectedEntity;
     }
 
     const findEntityAt = (x: number, y: number, tolerance = 0.35): GameObject | null => {
+      const scale = arena.visualAltitudeScale ?? 0.5;
       // Check objects first (so objects on top or near player can be picked)
       for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
         const r = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32);
-        const dist = Math.hypot(obj.position.x - x, obj.position.y - y);
-        if (dist <= r + tolerance) {
+        // Check physical ground collider position
+        const distGround = Math.hypot(obj.position.x - x, obj.position.y - y);
+        // Check hovering visual position (if elevated above ground)
+        const distHover = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z * scale) - y);
+        const distHover1to1 = Math.hypot(obj.position.x - x, (obj.position.y - obj.position.z) - y);
+        if (distGround <= r + tolerance || distHover <= r + tolerance || distHover1to1 <= r + tolerance) {
           return obj;
         }
       }
-      // Check character
-      const charR = character.hasCollider ? character.colliderRadius : 0.44;
-      const distChar = Math.hypot(character.position.x - x, character.position.y - y);
-      if (distChar <= charR + tolerance) {
-        return character;
+      // Check all active player characters (Player 1, Player 2, etc.)
+      const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+      for (let i = chars.length - 1; i >= 0; i--) {
+        const c = chars[i];
+        const charR = c.hasCollider ? c.colliderRadius : 0.44;
+        const distCharGround = Math.hypot(c.position.x - x, c.position.y - y);
+        const distCharHover = Math.hypot(c.position.x - x, (c.position.y - c.position.z * scale) - y);
+        const distCharHover1to1 = Math.hypot(c.position.x - x, (c.position.y - c.position.z) - y);
+        if (distCharGround <= charR + tolerance || distCharHover <= charR + tolerance || distCharHover1to1 <= charR + tolerance) {
+          return c;
+        }
       }
       return null;
     };
 
+    const applyWallDraw = (col: number, row: number) => {
+      if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
+      const changed = arena.setWallTile(col, row, true);
+      if (changed) {
+        const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+        const allEntities = [...chars, ...objects];
+        arena.syncEntitiesWithWalls(allEntities);
+        arena.currentPresetId = "custom";
+        devPanel?.updateWallPresetUI();
+      }
+    };
+
+    const applyWallErase = (col: number, row: number) => {
+      if (col < 0 || col >= arena.cols || row < 0 || row >= arena.rows) return;
+      if (arena.tileGrid[row][col] === 1) {
+        arena.setWallTile(col, row, false);
+        const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+        const allEntities = [...chars, ...objects];
+        arena.syncEntitiesWithWalls(allEntities);
+        arena.currentPresetId = "custom";
+        devPanel?.updateWallPresetUI();
+      }
+    };
+
     this.onMouseDown = (x: number, y: number) => {
       if (devPanel?.isEditMode) {
+        if (devPanel.editTool === "walls") {
+          const col = Math.floor(x / arena.tileSize);
+          const row = Math.floor(y / arena.tileSize);
+          applyWallDraw(col, row);
+          return;
+        }
+
         const found = findEntityAt(x, y, 0.35);
         if (found) {
           this.selectedCanvasEntity = found;
@@ -209,9 +1151,41 @@ export class InputManager {
       }
     };
 
+    this.onRightMouseDown = (x: number, y: number) => {
+      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
+        const col = Math.floor(x / arena.tileSize);
+        const row = Math.floor(y / arena.tileSize);
+        applyWallErase(col, row);
+      }
+    };
+
     // Hover & drag tracking in Edit Mode
     this.onMouseMove = (x: number, y: number) => {
+      if (arena && arena.tileSize) {
+        const col = Math.floor(x / arena.tileSize);
+        const row = Math.floor(y / arena.tileSize);
+        if (col >= 0 && col < arena.cols && row >= 0 && row < arena.rows) {
+          this.hoverWallTile = { col, row };
+        } else {
+          this.hoverWallTile = null;
+        }
+      } else {
+        this.hoverWallTile = null;
+      }
+
       if (devPanel?.isEditMode) {
+        if (devPanel.editTool === "walls") {
+          this.hoverEntity = null;
+          this.draggedEntity = null;
+          this.canvas.style.cursor = "cell";
+          if (this.isMouseDown && this.hoverWallTile) {
+            applyWallDraw(this.hoverWallTile.col, this.hoverWallTile.row);
+          } else if (this.isRightMouseDown && this.hoverWallTile) {
+            applyWallErase(this.hoverWallTile.col, this.hoverWallTile.row);
+          }
+          return;
+        }
+
         if (this.isMouseDown && this.draggedEntity) {
           // Drag object wherever the user moves the mouse
           const targetX = x + this.dragOffset.x;
@@ -244,13 +1218,32 @@ export class InputManager {
 
     this.onMouseUp = (_x: number, _y: number) => {
       if (this.draggedEntity) {
+        arena.syncEntitiesWithWalls([this.draggedEntity]);
         this.draggedEntity = null;
       }
       if (devPanel?.isEditMode) {
-        const found = findEntityAt(this.mousePos.x, this.mousePos.y, 0.3);
-        this.hoverEntity = found;
-        this.canvas.style.cursor = found ? "grab" : "crosshair";
+        if (devPanel.editTool === "walls") {
+          this.canvas.style.cursor = "cell";
+        } else {
+          const found = findEntityAt(this.mousePos.x, this.mousePos.y, 0.3);
+          this.hoverEntity = found;
+          this.canvas.style.cursor = found ? "grab" : "crosshair";
+        }
       }
+    };
+
+    const getActiveKeyboardChar = (): Character | null => {
+      if (getAllCharacters) {
+        const chars = getAllCharacters();
+        // Priority 1: explicitly marked with playerId === "keyboard"
+        const kbChar = chars.find((c) => c.playerId === "keyboard");
+        if (kbChar) return kbChar;
+        // Priority 2: local character not assigned to a gamepad or marked as remote
+        const localChar = chars.find((c) => !c.playerId?.startsWith("gamepad") && !c.playerId?.startsWith("remote"));
+        if (localChar) return localChar;
+        if (chars.length > 0) return chars[0];
+      }
+      return character;
     };
 
     this.handleClick = (clickX: number, clickY: number) => {
@@ -259,28 +1252,36 @@ export class InputManager {
         return;
       }
 
+      if (!this.isKeyboardActive) return;
+      const activeChar = getActiveKeyboardChar();
+      if (!activeChar) return;
+
       // Play Mode:
       // 1. If holding an object and ready to throw (and not the same click as pickup):
-      if (character.heldObject && character.throwModule && !this.justPickedUp) {
-        const thrownObj = character.heldObject;
-        character.throwModule.throwHeldObject(character, clickX, clickY, arena);
-        this.onActionAttempt?.("throw", thrownObj.id, clickX, clickY);
+      if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
+        this.isKeyboardThrowRequested = true;
+        this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
         return;
       }
 
       // 2. If NOT holding an object: attempt pickup
-      if (!character.heldObject && character.pickupModule) {
-        const target = character.pickupModule.findTargetObject(character, clickX, clickY, objects);
-        if (target) {
-          character.pickupModule.pickup(character, target);
+      if (!activeChar.heldObject && activeChar.pickupModule) {
+        const grabbableTargets = getAllCharacters
+          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
+          : objects;
+        const aimX = clickX;
+        const aimY = clickY;
+        if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
           this.justPickedUp = true;
-          this.onActionAttempt?.("pickup", target.id);
         }
       }
     };
 
-    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes)
+    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes, except Wall Tool)
     this.onRightClick = (clickX: number, clickY: number) => {
+      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
+        return; // Wall erasing is handled via onRightMouseDown & drag
+      }
       if (!devPanel) return;
       const found = findEntityAt(clickX, clickY, 0.4);
       if (found) {
@@ -290,12 +1291,28 @@ export class InputManager {
       // If clicked empty space, keep the last focused entity in devPanel!
     };
 
-    this.onDropAttempt = () => {
-      if (character.heldObject && character.pickupModule) {
-        const droppedObj = character.heldObject;
-        character.pickupModule.drop(character);
-        this.onActionAttempt?.("drop", droppedObj.id);
+    this.onKeyboardDrop = () => {
+      if (!this.isKeyboardActive) return;
+      const activeChar = getActiveKeyboardChar();
+      if (!activeChar || !activeChar.pickupModule) return;
+      if (activeChar.heldObject) {
+        this.isKeyboardDropRequested = true;
+        activeChar.pickupModule.drop(activeChar);
       }
     };
+
+    this.onKeyboardPickup = () => {
+      if (!this.isKeyboardActive) return;
+      const activeChar = getActiveKeyboardChar();
+      if (!activeChar || !activeChar.pickupModule) return;
+      const grabbableTargets = getAllCharacters
+        ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
+        : objects;
+      const aimX = this.actualMousePos.x;
+      const aimY = this.actualMousePos.y;
+      activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
+    };
+
+    this.onDropAttempt = this.onKeyboardPickup;
   }
 }

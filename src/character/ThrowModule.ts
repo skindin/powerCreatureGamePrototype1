@@ -14,10 +14,17 @@ export interface TrajectoryPoint {
 
 export interface TrajectoryCalculation {
   points: TrajectoryPoint[];
-  landPoint: { x: number; y: number };
+  landPoint: { x: number; y: number; z?: number };
   isBlockedByWall: boolean;
   blockedAtWallId?: string;
   isLandingOnWallTop?: boolean;
+  targetObject?: GameObject | null;
+  targetSurfaceHeight?: number;
+  isAutoLocked?: boolean;
+  peakHeight?: number;
+  flightTime?: number;
+  colliderRadius?: number;
+  visualShape?: "circle" | "box";
 }
 
 export class ThrowModule {
@@ -28,6 +35,7 @@ export class ThrowModule {
   // Tunable throw physics in wall-based units
   public baseThrowForce = 7.6; // Base throw power in u/s
   public maxThrowAimDistance = 13.0; // Max throw aim distance in units (~13 wall tiles)
+  public maxThrowHeight = 5.0; // Max throw height reach in units above release point (~5 wall heights)
 
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
@@ -41,9 +49,189 @@ export class ThrowModule {
   }
 
   /**
+   * Clamps an object's start position so that it does not overlap any wall if starting on the ground.
+   * If overlapping, pushes it out to the closest valid position outside the wall.
+   * Also exposes a near-wall check: if the clamped position is within `safeDistance` of any wall
+   * face, the caller should pull the start back to the character's own position.
+   */
+  public static clampStartOutsideWalls(
+    x: number,
+    y: number,
+    radius: number,
+    arena: Arena,
+    charZ: number,
+    charX: number,
+    charY: number
+  ): { x: number; y: number; nearWall: boolean } {
+    if (charZ >= arena.wallHeight) {
+      return { x, y, nearWall: false }; // On or above walls
+    }
+
+    let clampedX = x;
+    let clampedY = y;
+    const r = radius > 0 ? radius : 0.3;
+    const requiredClearance = r + 0.04;
+    // "near wall" threshold: within 1 physics step of clearance (vMax * fixedDt ≈ 16 * 1/60 ≈ 0.27u)
+    const nearWallThreshold = r + 0.30;
+
+    // Up to 3 iterations to resolve adjacent corners/walls
+    for (let iter = 0; iter < 3; iter++) {
+      let collided = false;
+      for (const wall of arena.walls) {
+        const closestX = Math.max(wall.x, Math.min(clampedX, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(clampedY, wall.y + wall.height));
+        const dx = clampedX - closestX;
+        const dy = clampedY - closestY;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < requiredClearance * requiredClearance) {
+          collided = true;
+          const dist = Math.sqrt(distSq);
+          if (dist > 0.0001) {
+            const pushDist = (requiredClearance + 0.01) - dist;
+            clampedX += (dx / dist) * pushDist;
+            clampedY += (dy / dist) * pushDist;
+          } else {
+            const cdx = charX - closestX;
+            const cdy = charY - closestY;
+            const cdist = Math.hypot(cdx, cdy);
+            if (cdist > 0.0001) {
+              clampedX = closestX + (cdx / cdist) * (requiredClearance + 0.01);
+              clampedY = closestY + (cdy / cdist) * (requiredClearance + 0.01);
+            } else {
+              const dL = clampedX - wall.x;
+              const dR = wall.x + wall.width - clampedX;
+              const dT = clampedY - wall.y;
+              const dB = wall.y + wall.height - clampedY;
+              const minD = Math.min(dL, dR, dT, dB);
+              if (minD === dL) clampedX = wall.x - requiredClearance - 0.01;
+              else if (minD === dR) clampedX = wall.x + wall.width + requiredClearance + 0.01;
+              else if (minD === dT) clampedY = wall.y - requiredClearance - 0.01;
+              else clampedY = wall.y + wall.height + requiredClearance + 0.01;
+            }
+          }
+        }
+      }
+      if (!collided) break;
+    }
+
+    // Check if the clamped position is still dangerously close to any wall face
+    let nearWall = false;
+    for (const wall of arena.walls) {
+      const closestX = Math.max(wall.x, Math.min(clampedX, wall.x + wall.width));
+      const closestY = Math.max(wall.y, Math.min(clampedY, wall.y + wall.height));
+      const dx = clampedX - closestX;
+      const dy = clampedY - closestY;
+      if (dx * dx + dy * dy < nearWallThreshold * nearWallThreshold) {
+        nearWall = true;
+        break;
+      }
+    }
+
+    return { x: clampedX, y: clampedY, nearWall };
+  }
+
+  /**
+   * Finds the entity directly under the aim target cursor (x, y), if any.
+   * Excludes the thrower and the thrower's held object.
+   * Checks both physical 2D ground footprint and pseudo-3D isometric visual position.
+   */
+  public findHoveredEntity(
+    aimX: number,
+    aimY: number,
+    arena: Arena,
+    exclude?: GameObject | null,
+    heldObject?: GameObject | null,
+    entities?: GameObject[],
+    hoverScale?: number,
+    tolerance = 0.35
+  ): GameObject | null {
+    const list = entities ?? arena.entities ?? [];
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
+    let bestEntity: GameObject | null = null;
+    let bestDist = Infinity;
+
+    for (let i = list.length - 1; i >= 0; i--) {
+      const ent = list[i];
+      if (ent === exclude || ent === heldObject || ent.isHeld) continue;
+
+      const r = ent.hasCollider ? ent.colliderRadius : (ent.colliderModule?.radius ?? 0.35);
+      const effectiveR = r > 0 ? r : 0.35;
+
+      // Check ground footprint distance
+      const distGround = Math.hypot(ent.position.x - aimX, ent.position.y - aimY);
+
+      // Check pseudo-3D visual position distance
+      const z = ent.position.z ?? 0;
+      const visualY = ent.position.y - z * scale;
+      const distVisual = Math.hypot(ent.position.x - aimX, visualY - aimY);
+
+      // Also check 1:1 isometric distance in case scale is 1.0 or user clicks near top
+      const dist1to1 = Math.hypot(ent.position.x - aimX, (ent.position.y - z) - aimY);
+
+      const minDist = Math.min(distGround, distVisual, dist1to1);
+      if (minDist <= effectiveR + tolerance) {
+        if (minDist < bestDist) {
+          bestDist = minDist;
+          bestEntity = ent;
+        }
+      }
+    }
+
+    return bestEntity;
+  }
+
+  /**
+   * Helper: tests if (aimX, aimY) in screen space is over a wall's pseudo-3D roof or front face.
+   * If found, maps the screen aim point back to physical 3D world coordinates (physX, physY)
+   * on top of the wall so that rendering at (physX, physY - wallHeight * hoverScale) aligns
+   * EXACTLY with (aimX, aimY) on screen!
+   */
+  public static getWallUnderCursor(
+    aimX: number,
+    aimY: number,
+    arena: Arena,
+    hoverScale = 0
+  ): { wall: Wall; physX: number; physY: number } | null {
+    const hScale = hoverScale > 0 ? hoverScale : 0;
+    // Check foreground walls first (descending Y in arena)
+    const sortedWalls = [...arena.walls].sort((a, b) => b.y - a.y);
+    for (const wall of sortedWalls) {
+      const roofTopY = wall.y - wall.wallHeight * hScale;
+      const roofBottomY = wall.y + wall.height - wall.wallHeight * hScale;
+      const baseBottomY = wall.y + wall.height;
+
+      // Check horizontal bounds with a small margin
+      if (aimX >= wall.x - 0.05 && aimX <= wall.x + wall.width + 0.05) {
+        // 1. Mouse is over the visual roof of the wall:
+        if (aimY >= roofTopY && aimY <= roofBottomY) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, aimY + wall.wallHeight * hScale));
+          return { wall, physX, physY };
+        }
+        // 2. Mouse is over the front face / base:
+        if (aimY > roofBottomY && aimY <= baseBottomY + 0.05) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, wall.y + wall.height - 0.15));
+          return { wall, physX, physY };
+        }
+        // 3. Fallback when hScale is 0 (pure 2D flat mode):
+        if (hScale === 0 && aimY >= wall.y && aimY <= wall.y + wall.height) {
+          const physX = Math.max(wall.x + 0.05, Math.min(wall.x + wall.width - 0.05, aimX));
+          const physY = Math.max(wall.y + 0.05, Math.min(wall.y + wall.height - 0.05, aimY));
+          return { wall, physX, physY };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
-   * whether on the ground or on top of an elevated wall.
+   * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
+   * If autoLock is true (e.g. holding right click), locks 2D coordinates to the overlapped object center.
    */
   private computeLaunchVelocity(
     startX: number,
@@ -54,10 +242,84 @@ export class ThrowModule {
     arena: Arena,
     throwPower: number,
     hasGravity = true,
-    hasVerticalVelocity = true
-  ): { vx: number; vy: number; vz: number; totalTime: number; finalTargetX: number; finalTargetY: number; targetSurfaceHeight: number } | null {
-    const dx = targetX - startX;
-    const dy = targetY - startY;
+    hasVerticalVelocity = true,
+    colliderRadius = 0.35,
+    charVel?: { x: number; y: number; z?: number },
+    candidateEntities?: GameObject[],
+    hoverScale?: number,
+    thrower?: Character,
+    heldObject?: GameObject | null,
+    autoLock = false
+  ): {
+    vx: number;
+    vy: number;
+    vz: number;
+    totalTime: number;
+    finalTargetX: number;
+    finalTargetY: number;
+    targetSurfaceHeight: number;
+    targetObject?: GameObject | null;
+    isAutoLocked?: boolean;
+  } | null {
+    // STRICT RULE: IT SHOULD NOT LOCK THE TRAJECTORY ONTO ANYTHING UNLESS autoLock IS TRUE (holding Left Trigger / Right Click)!
+    let hoveredEntity: GameObject | null = null;
+    let effectiveTargetX = targetX;
+    let effectiveTargetY = targetY;
+    let isLocked = false;
+    let targetSurfaceHeight = 0;
+
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
+    // Only search for lock target if autoLock is explicitly active
+    if (autoLock) {
+      hoveredEntity = this.findHoveredEntity(
+        targetX,
+        targetY,
+        arena,
+        thrower,
+        heldObject,
+        candidateEntities,
+        hoverScale,
+        Infinity
+      );
+
+      if (hoveredEntity) {
+        effectiveTargetX = hoveredEntity.position.x;
+        effectiveTargetY = hoveredEntity.position.y;
+        isLocked = true;
+        // Consider the actual physical altitude of the target object (e.g. airborne, climbing, or elevated)
+        const entZ = Math.max(
+          0,
+          hoveredEntity.position.z ?? 0,
+          hoveredEntity.supportingSurfaceHeight ?? 0,
+          hoveredEntity.standingWall ? (hoveredEntity.standingWall.wallHeight ?? arena.wallHeight) : 0
+        );
+        targetSurfaceHeight = entZ;
+      }
+    }
+
+    if (!isLocked) {
+      // 2. If mouse is over a wall (including 2.5D visual roof and front face):
+      const wallUnderCursor = ThrowModule.getWallUnderCursor(targetX, targetY, arena, scale);
+      if (wallUnderCursor) {
+        effectiveTargetX = wallUnderCursor.physX;
+        effectiveTargetY = wallUnderCursor.physY;
+        targetSurfaceHeight = wallUnderCursor.wall.wallHeight;
+      } else {
+        // 3. Fallback to open ground:
+        targetSurfaceHeight = arena.getSupportingSurfaceHeight(targetX, targetY);
+      }
+    }
+
+    // Limit how high the player can throw objects (effective max vertical target height above release)
+    const effectiveMaxHeight = this.maxThrowHeight * (thrower?.strength ?? 1.0);
+    const maxAllowedTargetZ = startZ + effectiveMaxHeight;
+    if (targetSurfaceHeight > maxAllowedTargetZ) {
+      targetSurfaceHeight = maxAllowedTargetZ;
+    }
+
+    const dx = effectiveTargetX - startX;
+    const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
 
@@ -68,57 +330,101 @@ export class ThrowModule {
     const finalTargetX = startX + dirX * actualDist;
     const finalTargetY = startY + dirY * actualDist;
 
-    // Straight-line horizontal flight if zero-G or no vertical velocity module
-    if (!hasGravity || !hasVerticalVelocity) {
-      const maxThrowSpeed = Math.max(3.0, throwPower);
-      const totalTime = Math.max(0.14, actualDist / maxThrowSpeed);
-      const vx = dirX * maxThrowSpeed;
-      const vy = dirY * maxThrowSpeed;
-      const vz = 0;
-      return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ };
+    // If aim distance was clamped, verify what surface is beneath finalTarget
+    if (actualDist < dist) {
+      if (isLocked) {
+        // Proportionally scale target height along the clamped ray toward the locked target
+        targetSurfaceHeight = startZ + (targetSurfaceHeight - startZ) * (actualDist / dist);
+      } else {
+        const clampedWall = arena.getSupportingWall(finalTargetX, finalTargetY, colliderRadius > 0 ? colliderRadius : 0.35);
+        if (clampedWall) {
+          targetSurfaceHeight = clampedWall.wallHeight;
+        } else {
+          targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+        }
+      }
     }
 
-    // Target surface elevation (wall top height if target aim position is on a wall, otherwise 0)
-    const targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    // Inertial velocity integration:
+    // When moving, the character's velocity vector influences the throw.
+    // To land on target, the arm cancels sideways drift while contributing forward throw power,
+    // altering the flight time, vertical arc, and launch velocity.
+    const vxChar = charVel?.x ?? 0;
+    const vyChar = charVel?.y ?? 0;
+    const vAlong = vxChar * dirX + vyChar * dirY;
+    const vPerp = vxChar * (-dirY) + vyChar * dirX;
 
-    // Fastest trajectory calculation:
-    // Uses character throw power to reach the target as quickly as possible with a flat, minimal arc.
-    // The trajectory arc is identical for all objects regardless of mass.
-    const maxThrowSpeed = Math.max(3.0, throwPower);
-    // Minimum flight time based on maximum horizontal launch speed
-    const minFlightTime = Math.max(0.14, actualDist / maxThrowSpeed);
+    // Arm velocity available in target direction after countering perpendicular momentum
+    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
+    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+
+    // Straight-line horizontal flight if zero-G or no vertical velocity module
+    if (!hasGravity || !hasVerticalVelocity) {
+      const totalTime = Math.max(0.14, actualDist / maxForwardSpeed);
+      const vx = dirX * maxForwardSpeed;
+      const vy = dirY * maxForwardSpeed;
+      const vz = 0;
+      return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
+    }
+
+    const deltaZ = targetSurfaceHeight - startZ;
+
+    // Minimum angle trajectory calculation:
+    // Moving towards the target enables faster, flatter throws; backpedaling results in a higher lob.
+    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
     let totalTime = minFlightTime;
 
-    // Scan dense samples along trajectory to ensure clearance over any intermediate walls
-    const sampleCount = 35;
-    const colliderRadiusCheck = 0.35;
-    for (let i = 1; i < sampleCount; i++) {
-      const s = i / sampleCount;
+    // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
+    if (deltaZ > 0) {
+      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / arena.gravity));
+    }
+
+    // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
+    // If the flat trajectory would collide with an intermediate wall, increase totalTime to the minimum
+    // required to clear the wall top with a tight, minimal clearance arc.
+    const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
+    const clearance = 0.25; // Clean clearance over intermediate walls
+
+    // Dense sampling near the start (s < 0.1) ensures walls directly in front of the thrower are detected immediately
+    const sampleRatios: number[] = [];
+    for (let s = 0.005; s < 0.1; s += 0.005) {
+      sampleRatios.push(s);
+    }
+    for (let i = 4; i <= 40; i++) {
+      sampleRatios.push(i / 40);
+    }
+
+    for (const s of sampleRatios) {
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
 
       // Check if sample intersects any wall
       for (const wall of arena.walls) {
         if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
-          // If the target itself is on top of this wall and we are near the end of the trajectory, skip (it's landing)
-          const isTargetOnThisWall = targetSurfaceHeight > 0 &&
-            finalTargetX >= wall.x && finalTargetX <= wall.x + wall.width &&
-            finalTargetY >= wall.y && finalTargetY <= wall.y + wall.height;
+          // If the target itself is on top of this wall (or destination is on this wall) and we are near the end of the trajectory, skip (it's landing)
+          const isTargetOnThisWall = (targetSurfaceHeight > 0 || (hoveredEntity && hoveredEntity.standingWall === wall)) &&
+            finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
+            finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
           if (isTargetOnThisWall && s > 0.65) {
             continue;
           }
 
           // Intermediate wall that must be cleared!
-          // We require z(s) >= wall.wallHeight + clearance with minimal tight arc
+          // Direct chord height: baselineZ = (1 - s) * startZ + s * targetSurfaceHeight
+          // Trajectory arc height: z(s) = baselineZ + 0.5 * g * totalTime^2 * s * (1 - s)
+          // We require z(s) >= wall.wallHeight + clearance
           const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const clearance = 0.30; // Tight, clean clearance over wall
-          const requiredDeltaZ = (wall.wallHeight + clearance) - baselineZ;
+          const requiredHeight = wall.wallHeight + clearance;
+          const requiredDeltaZ = requiredHeight - baselineZ;
           if (requiredDeltaZ > 0) {
-            const minTimeSq = (2 * requiredDeltaZ) / (arena.gravity * s * (1 - s));
-            if (minTimeSq > 0) {
-              const minTime = Math.sqrt(minTimeSq);
-              if (minTime > totalTime) {
-                totalTime = minTime;
+            const denom = arena.gravity * s * (1 - s);
+            if (denom > 0.0001) {
+              const reqTimeSq = (2 * requiredDeltaZ) / denom;
+              if (reqTimeSq > 0) {
+                const reqTime = Math.sqrt(reqTimeSq);
+                if (reqTime > totalTime) {
+                  totalTime = reqTime;
+                }
               }
             }
           }
@@ -128,17 +434,17 @@ export class ThrowModule {
 
     if (totalTime <= 0.05) return null;
 
-    // From totalTime and targetSurfaceHeight, compute the exact vz to hit targetSurfaceHeight at totalTime:
+    // From totalTime and deltaZ, compute the exact vz to hit targetSurfaceHeight at totalTime:
     // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
-    // vz = (targetSurfaceHeight - startZ + 0.5 * g * totalTime^2) / totalTime
-    const vz = (targetSurfaceHeight - startZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    // vz = (deltaZ + 0.5 * g * totalTime^2) / totalTime
+    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
 
     // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
 
-    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight };
+    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject: hoveredEntity, isAutoLocked: isLocked };
   }
 
   /**
@@ -148,23 +454,57 @@ export class ThrowModule {
     character: Character,
     aimTargetX: number,
     aimTargetY: number,
-    arena: Arena
+    arena: Arena,
+    entities?: GameObject[],
+    hoverScale?: number,
+    autoLock = false
   ): TrajectoryCalculation | null {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    const startX = held.position.x;
-    const startY = held.position.y;
-    const startZ = held.position.z;
+    let startX = held.position.x;
+    let startY = held.position.y;
+    let startZ = held.position.z;
+
+    // If starting on the ground, clamp start position outside walls.
+    // If the clamped start is near an adjacent wall, elevate startZ when throwing
+    // over or onto the wall so the item clears the top without clipping the rim!
+    if (character.position.z < arena.wallHeight) {
+      const clamped = ThrowModule.clampStartOutsideWalls(
+        startX,
+        startY,
+        held.colliderRadius,
+        arena,
+        character.position.z,
+        character.position.x,
+        character.position.y
+      );
+      startX = clamped.x;
+      startY = clamped.y;
+      if (clamped.nearWall) {
+        startZ = Math.max(startZ, arena.wallHeight + 0.05);
+      }
+    }
 
     const throwPower = this.baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+
+    const charVel = {
+      x: character.velocity.x,
+      y: character.velocity.y,
+      z: character.isAboveGround ? character.verticalVelocity : 0,
+    };
+
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+      candidateEntities, scale, character, held, autoLock
     );
     if (!launch) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight } = launch;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
 
     // Fine simulation steps matching 120Hz physics precision
     const steps = 90;
@@ -174,6 +514,7 @@ export class ThrowModule {
     let isBlocked = false;
     let isLandingOnWallTop = targetSurfaceHeight > 0;
     let blockedWallId: string | undefined;
+    let peakHeight = startZ;
 
     for (let step = 0; step <= steps; step++) {
       const t = step * dtStep;
@@ -181,8 +522,12 @@ export class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
-      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : Math.max(targetSurfaceHeight, calculatedZ)) : startZ;
+      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : (step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
       const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
+
+      if (currentZ > peakHeight) {
+        peakHeight = currentZ;
+      }
 
       // Blue section: height > standard wall height
       const couldClearWall = currentZ > arena.wallHeight;
@@ -198,7 +543,11 @@ export class ThrowModule {
             const wasAbove = points.length > 0 && points[points.length - 1].z >= wall.wallHeight - 0.05;
             if (wasAbove && currentVz <= 0) {
               // Descending onto top of wall
-              if (targetSurfaceHeight > 0 && (step >= steps - 2 || Math.hypot(currentX - finalTargetX, currentY - finalTargetY) < 0.2)) {
+              const isTargetedWall = targetSurfaceHeight > 0 &&
+                finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
+                finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
+
+              if (isTargetedWall || (targetSurfaceHeight > 0 && step >= steps - 3)) {
                 // This is the intended landing on top of the targeted wall!
                 isLandingOnWallTop = true;
                 break;
@@ -211,11 +560,13 @@ export class ThrowModule {
                 break;
               }
             } else if (currentZ < wall.wallHeight - 0.05) {
-              // Side wall collision
-              collidesWall = true;
-              isBlocked = true;
-              blockedWallId = wall.id;
-              break;
+              // Side wall collision (ignore departure at step <= 1 if starting in contact)
+              if (step > 1) {
+                collidesWall = true;
+                isBlocked = true;
+                blockedWallId = wall.id;
+                break;
+              }
             }
           }
         }
@@ -242,10 +593,18 @@ export class ThrowModule {
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
+        z: isBlocked ? lastPoint.z : targetSurfaceHeight,
       },
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : (targetSurfaceHeight > 0),
       blockedAtWallId: blockedWallId,
+      targetObject,
+      targetSurfaceHeight,
+      isAutoLocked,
+      peakHeight,
+      flightTime: totalTime,
+      colliderRadius: held.colliderRadius,
+      visualShape: held.visualShape,
     };
   }
 
@@ -256,29 +615,72 @@ export class ThrowModule {
     character: Character,
     aimTargetX: number,
     aimTargetY: number,
-    arena: Arena
+    arena: Arena,
+    entities?: GameObject[],
+    hoverScale?: number,
+    autoLock = false
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    const startX = held.position.x;
-    const startY = held.position.y;
-    const startZ = held.position.z;
+    let startX = held.position.x;
+    let startY = held.position.y;
+    let startZ = held.position.z;
+
+    // If starting on the ground, clamp start position outside walls.
+    // If the clamped start is near an adjacent wall, elevate startZ when throwing
+    // over or onto the wall so the item clears the top without clipping the rim!
+    if (character.position.z < arena.wallHeight) {
+      const clamped = ThrowModule.clampStartOutsideWalls(
+        startX,
+        startY,
+        held.colliderRadius,
+        arena,
+        character.position.z,
+        character.position.x,
+        character.position.y
+      );
+      startX = clamped.x;
+      startY = clamped.y;
+      if (clamped.nearWall) {
+        startZ = Math.max(startZ, arena.wallHeight + 0.05);
+      }
+    }
 
     const throwPower = this.baseThrowForce * character.strength;
+    const charVel = {
+      x: character.velocity.x,
+      y: character.velocity.y,
+      z: character.isAboveGround ? character.verticalVelocity : 0,
+    };
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+      candidateEntities, scale, character, held, autoLock
     );
     if (!launch) return null;
 
+    if (launch.isAutoLocked && launch.targetObject) {
+      const dx = launch.targetObject.position.x - character.position.x;
+      const dy = launch.targetObject.position.y - character.position.y;
+      if (Math.hypot(dx, dy) > 0.05) {
+        character.facingAngle = Math.atan2(dy, dx);
+      }
+    }
+
     held.isHeld = false;
     held.heldBy = null;
+    held.lastThrower = character;
+    held.isInFlight = true;
+    held.wakeUp();
+    held.position.x = startX;
+    held.position.y = startY;
     held.velocity.x = launch.vx;
     held.velocity.y = launch.vy;
     held.verticalVelocity = launch.vz;
-    held.position.z = held.hasVerticalPosition ? Math.max(0.3, held.position.z) : 0;
-    held.throwImmunityPlayerId = character.playerId ?? "local";
-    held.throwImmunityUntil = performance.now() + 450;
+    held.position.z = held.hasVerticalPosition ? Math.max(startZ, held.position.z) : 0;
 
     // If held object is rollable and has friction, impart rolling motion along throw direction
     if (held.hasFriction && held.rollModule && held.rollModule.enabled) {
@@ -288,9 +690,11 @@ export class ThrowModule {
     }
 
     // Apply opposite recoil velocity to character based on linear momentum conservation
-    // Released object momentum: p_held = m_held * v_launch
-    // Recoil momentum on character: p_char = -p_held -> v_recoil = -(m_held / m_char) * v_launch
-    // Massless objects impart ZERO recoil!
+    // Released object velocity change: deltaV = v_launch - v_initial (where v_initial = character.velocity)
+    // Impulse on object: J_obj = m_held * deltaV
+    // Recoil on character: J_char = -J_obj -> v_recoil = -(m_held / m_char) * (v_launch - character.velocity)
+    // When throwing perpendicular to movement, countering the object's current velocity in hand
+    // applies an additional forward reaction boost in the movement direction!
     const carriedMass = (held.hasMass) ? held.mass : 0;
     const charBaseMass = (character.hasMass) ? Math.max(0.2, character.baseMass) : 0;
     const recoilRatio = (carriedMass > 0 && charBaseMass > 0) ? (carriedMass / charBaseMass) : 0;
@@ -298,8 +702,17 @@ export class ThrowModule {
     // Detach from hands
     character.heldObject = null;
 
-    character.velocity.x -= launch.vx * recoilRatio;
-    character.velocity.y -= launch.vy * recoilRatio;
+    const deltaVx = launch.vx - character.velocity.x;
+    const deltaVy = launch.vy - character.velocity.y;
+
+    character.velocity.x -= deltaVx * recoilRatio;
+    character.velocity.y -= deltaVy * recoilRatio;
+
+    if (character.isAboveGround && held.hasVerticalVelocity) {
+      const deltaVz = launch.vz - character.verticalVelocity;
+      character.verticalVelocity -= deltaVz * recoilRatio;
+    }
+
     return held;
   }
 }
