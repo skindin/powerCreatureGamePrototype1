@@ -567,7 +567,9 @@ export class UniversalRoomManager {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
             }
-            this.simulation.syncCharacterFromPacket(data.character);
+            // In authoritative 60Hz server mode, the server's physics engine simulates position & velocity
+            // from queued inputs. Client telemetry packets must NOT overwrite server coordinates,
+            // which erases collisions, pushes, and causes reverse-tethering / rubberbanding.
           }
 
           if (Array.isArray(data.objects) && data.objects.length > 0) {
