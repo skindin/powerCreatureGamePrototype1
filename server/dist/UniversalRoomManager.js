@@ -4182,6 +4182,11 @@ class GameObject {
     // Number of consecutive ticks with near-zero kinetic energy
     // Phase 8: Client Prediction Reconciliation & Visual Smoothing Dampener
     __publicField(this, "visualOffset", { x: 0, y: 0 });
+    // Phase 9 & 10: Remote Entity Proxy & Immovable Solver Flag
+    // When true (e.g. for remote characters on client simulation), the entity acts as a kinematic/immovable obstacle,
+    // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
+    __publicField(this, "isImmovable", false);
+    __publicField(this, "serverCharId");
     __publicField(this, "_staticVelocity", { x: 0, y: 0 });
     // Modular behavior components
     __publicField(this, "rigidbodyModule", null);
@@ -6381,12 +6386,15 @@ class CollisionResolver {
     if (distSq >= minDist * minDist || distSq <= 1e-8) {
       return false;
     }
+    if (a.isImmovable && b.isImmovable) {
+      return false;
+    }
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
     const normX = dx / dist;
     const normY = dy / dist;
-    const relVx = b.velocity.x - a.velocity.x;
-    const relVy = b.velocity.y - a.velocity.y;
+    const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
+    const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
     const relSpeed = Math.hypot(relVx, relVy);
     let alpha = 0;
@@ -6394,31 +6402,48 @@ class CollisionResolver {
       alpha = Math.min(1, Math.max(0, overlap / (relSpeed * dt)));
     }
     const rewindDt = alpha * dt;
-    a.position.x -= a.velocity.x * rewindDt;
-    a.position.y -= a.velocity.y * rewindDt;
-    b.position.x -= b.velocity.x * rewindDt;
-    b.position.y -= b.velocity.y * rewindDt;
+    if (!a.isImmovable) {
+      a.position.x -= a.velocity.x * rewindDt;
+      a.position.y -= a.velocity.y * rewindDt;
+    }
+    if (!b.isImmovable) {
+      b.position.x -= b.velocity.x * rewindDt;
+      b.position.y -= b.velocity.y * rewindDt;
+    }
     const contactDx = b.position.x - a.position.x;
     const contactDy = b.position.y - a.position.y;
     const contactDist = Math.hypot(contactDx, contactDy);
     if (contactDist < minDist && contactDist > 1e-5) {
-      const fix = (minDist - contactDist) * 0.5;
+      const penetration = minDist - contactDist;
       const cNormX = contactDx / contactDist;
       const cNormY = contactDy / contactDist;
-      a.position.x -= cNormX * fix;
-      a.position.y -= cNormY * fix;
-      b.position.x += cNormX * fix;
-      b.position.y += cNormY * fix;
+      if (b.isImmovable) {
+        a.position.x -= cNormX * penetration;
+        a.position.y -= cNormY * penetration;
+      } else if (a.isImmovable) {
+        b.position.x += cNormX * penetration;
+        b.position.y += cNormY * penetration;
+      } else {
+        const fix = penetration * 0.5;
+        a.position.x -= cNormX * fix;
+        a.position.y -= cNormY * fix;
+        b.position.x += cNormX * fix;
+        b.position.y += cNormY * fix;
+      }
     }
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
     this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
     const remDt = (1 - alpha) * dt;
-    a.position.x += a.velocity.x * remDt;
-    a.position.y += a.velocity.y * remDt;
-    b.position.x += b.velocity.x * remDt;
-    b.position.y += b.velocity.y * remDt;
+    if (!a.isImmovable) {
+      a.position.x += a.velocity.x * remDt;
+      a.position.y += a.velocity.y * remDt;
+    }
+    if (!b.isImmovable) {
+      b.position.x += b.velocity.x * remDt;
+      b.position.y += b.velocity.y * remDt;
+    }
     return true;
   }
   /**
@@ -6428,14 +6453,21 @@ class CollisionResolver {
    */
   static resolvePairContinuousSwept(a, b, _arena, dt) {
     const minDist = a.colliderRadius + b.colliderRadius;
-    const pA0x = a.position.x - a.velocity.x * dt;
-    const pA0y = a.position.y - a.velocity.y * dt;
-    const pB0x = b.position.x - b.velocity.x * dt;
-    const pB0y = b.position.y - b.velocity.y * dt;
+    if (a.isImmovable && b.isImmovable) {
+      return false;
+    }
+    const pA0x = a.isImmovable ? a.position.x : a.position.x - a.velocity.x * dt;
+    const pA0y = a.isImmovable ? a.position.y : a.position.y - a.velocity.y * dt;
+    const pB0x = b.isImmovable ? b.position.x : b.position.x - b.velocity.x * dt;
+    const pB0y = b.isImmovable ? b.position.y : b.position.y - b.velocity.y * dt;
+    const vAx = a.isImmovable ? 0 : a.velocity.x;
+    const vAy = a.isImmovable ? 0 : a.velocity.y;
+    const vBx = b.isImmovable ? 0 : b.velocity.x;
+    const vBy = b.isImmovable ? 0 : b.velocity.y;
     const r0x = pB0x - pA0x;
     const r0y = pB0y - pA0y;
-    const vRelX = b.velocity.x - a.velocity.x;
-    const vRelY = b.velocity.y - a.velocity.y;
+    const vRelX = vBx - vAx;
+    const vRelY = vBy - vAy;
     const aQuad = vRelX * vRelX + vRelY * vRelY;
     const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
     const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
@@ -6453,10 +6485,14 @@ class CollisionResolver {
     if (tHit > dt) {
       return false;
     }
-    a.position.x = pA0x + a.velocity.x * tHit;
-    a.position.y = pA0y + a.velocity.y * tHit;
-    b.position.x = pB0x + b.velocity.x * tHit;
-    b.position.y = pB0y + b.velocity.y * tHit;
+    if (!a.isImmovable) {
+      a.position.x = pA0x + a.velocity.x * tHit;
+      a.position.y = pA0y + a.velocity.y * tHit;
+    }
+    if (!b.isImmovable) {
+      b.position.x = pB0x + b.velocity.x * tHit;
+      b.position.y = pB0y + b.velocity.y * tHit;
+    }
     const contactDx = b.position.x - a.position.x;
     const contactDy = b.position.y - a.position.y;
     const contactDist = Math.hypot(contactDx, contactDy);
@@ -6468,10 +6504,14 @@ class CollisionResolver {
     const restitution = Math.max(bounceA, bounceB);
     this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "continuous_swept");
     const remDt = dt - tHit;
-    a.position.x += a.velocity.x * remDt;
-    a.position.y += a.velocity.y * remDt;
-    b.position.x += b.velocity.x * remDt;
-    b.position.y += b.velocity.y * remDt;
+    if (!a.isImmovable) {
+      a.position.x += a.velocity.x * remDt;
+      a.position.y += a.velocity.y * remDt;
+    }
+    if (!b.isImmovable) {
+      b.position.x += b.velocity.x * remDt;
+      b.position.y += b.velocity.y * remDt;
+    }
     return true;
   }
   /**
@@ -6548,6 +6588,35 @@ class CollisionResolver {
     b.lastCollisionType = collisionType;
     a.lastCollisionTime = now;
     b.lastCollisionTime = now;
+    if (a.isImmovable && b.isImmovable) return;
+    if (b.isImmovable) {
+      if (isMasslessA) {
+        const closingSpeed = Math.abs(velAlongNormal);
+        a.velocity.x -= normX * closingSpeed * (1 + restitution);
+        a.velocity.y -= normY * closingSpeed * (1 + restitution);
+      } else {
+        const mA2 = a.mass;
+        const invMassA2 = 1 / mA2;
+        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassA2;
+        a.velocity.x -= normalImpulse2 * invMassA2 * normX;
+        a.velocity.y -= normalImpulse2 * invMassA2 * normY;
+      }
+      return;
+    }
+    if (a.isImmovable) {
+      if (isMasslessB) {
+        const closingSpeed = Math.abs(velAlongNormal);
+        b.velocity.x += normX * closingSpeed * (1 + restitution);
+        b.velocity.y += normY * closingSpeed * (1 + restitution);
+      } else {
+        const mB2 = b.mass;
+        const invMassB2 = 1 / mB2;
+        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassB2;
+        b.velocity.x += normalImpulse2 * invMassB2 * normX;
+        b.velocity.y += normalImpulse2 * invMassB2 * normY;
+      }
+      return;
+    }
     if (isMasslessA && isMasslessB) {
       const impulse = -velAlongNormal * 0.5 * (1 + restitution);
       a.velocity.x -= impulse * normX;
@@ -6630,8 +6699,8 @@ class CollisionResolver {
             const overlap = minDist - dist;
             const normX = dx / dist;
             const normY = dy / dist;
-            const relVx = b.velocity.x - a.velocity.x;
-            const relVy = b.velocity.y - a.velocity.y;
+            const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
+            const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
             const velAlongNormal = relVx * normX + relVy * normY;
             const nowNaive = performance.now();
             a.lastCollisionType = "naive";
@@ -6644,6 +6713,31 @@ class CollisionResolver {
             b.lastContactPoint = { x: midX, y: midY };
             a.lastContactNormal = { x: -normX, y: -normY };
             b.lastContactNormal = { x: normX, y: normY };
+            if (a.isImmovable && b.isImmovable) continue;
+            if (b.isImmovable) {
+              a.position.x -= normX * overlap;
+              a.position.y -= normY * overlap;
+              if (velAlongNormal < 0) {
+                const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+                const restitution = bounceA;
+                const closingSpeed = Math.abs(velAlongNormal);
+                a.velocity.x -= normX * closingSpeed * (1 + restitution);
+                a.velocity.y -= normY * closingSpeed * (1 + restitution);
+              }
+              continue;
+            }
+            if (a.isImmovable) {
+              b.position.x += normX * overlap;
+              b.position.y += normY * overlap;
+              if (velAlongNormal < 0) {
+                const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
+                const restitution = bounceB;
+                const closingSpeed = Math.abs(velAlongNormal);
+                b.velocity.x += normX * closingSpeed * (1 + restitution);
+                b.velocity.y += normY * closingSpeed * (1 + restitution);
+              }
+              continue;
+            }
             const isMasslessA = !a.hasMass;
             const isMasslessB = !b.hasMass;
             if (isMasslessA && isMasslessB) {
@@ -7694,14 +7788,39 @@ class ServerGameSimulation {
     if (!sChar) {
       return;
     }
-    sChar.velocity.x = clientChar.vx;
-    sChar.velocity.y = clientChar.vy;
-    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
-      sChar.verticalVelocity = clientChar.vz;
+    const now = performance.now();
+    const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
+    if (hasRecentImpact) {
+      const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+      if (isClientMoving) {
+        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
+      }
+    } else {
+      sChar.velocity.x = clientChar.vx;
+      sChar.velocity.y = clientChar.vy;
     }
-    sChar.position.x = clientChar.x;
-    sChar.position.y = clientChar.y;
-    sChar.position.z = clientChar.z;
+    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
+      if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
+        sChar.verticalVelocity = clientChar.vz;
+      }
+    }
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 2.5) {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (hasRecentImpact) {
+      sChar.position.x += dx * 0.25;
+      sChar.position.y += dy * 0.25;
+      sChar.position.z = clientChar.z;
+    } else {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;
     }

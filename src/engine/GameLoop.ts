@@ -438,18 +438,54 @@ export class GameLoop {
     // Synchronize remote characters from interpolation so local physics & queries reflect real positions
     const nowPhys = performance.now();
     for (const rc of this.playerManager.remotePlayers.values()) {
+      rc.isImmovable = false;
       const interp = this.interpolator.getInterpolatedState(rc.playerId, nowPhys);
       if (interp) {
-        rc.position.x = interp.x;
-        rc.position.y = interp.y;
-        rc.position.z = interp.z;
-        rc.velocity.x = interp.vx;
-        rc.velocity.y = interp.vy;
+        const dx = interp.x - rc.position.x;
+        const dy = interp.y - rc.position.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 2.5) {
+          // Large difference (teleport or initial join): snap directly
+          rc.position.x = interp.x;
+          rc.position.y = interp.y;
+          rc.position.z = interp.z;
+          rc.velocity.x = interp.vx;
+          rc.velocity.y = interp.vy;
+        } else if (nowPhys - rc.lastCollisionTime < 400) {
+          // ACTIVE RECENT COLLISION:
+          // The character was just pushed or struck! Integrate physics so the impulse carries through.
+          rc.updatePosition(dt, this.arena);
+          // Smoothly blend toward network position so it doesn't drift, without snapping back into the pusher
+          const blend = 0.25;
+          rc.position.x += dx * blend;
+          rc.position.y += dy * blend;
+          rc.position.z += (interp.z - rc.position.z) * blend;
+          rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
+          rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
+        } else {
+          // Normal state: follow interpolated network position smoothly
+          if (dist > 0.02) {
+            rc.position.x = interp.x;
+            rc.position.y = interp.y;
+            rc.position.z = interp.z;
+            rc.velocity.x = interp.vx;
+            rc.velocity.y = interp.vy;
+          } else {
+            // Deadzone: if player is standing still, zero out velocity to prevent micro-jitter
+            if (Math.hypot(interp.vx, interp.vy) < 0.05) {
+              rc.velocity.x = 0;
+              rc.velocity.y = 0;
+            }
+          }
+        }
+
         if (interp.facingAngle !== undefined) rc.facingAngle = interp.facingAngle;
         if (interp.isClimbing !== undefined) rc.isClimbing = interp.isClimbing;
       }
       // If remote character is holding an object, update the held object's transform to match hands!
       if (rc.heldObject) {
+        rc.heldObject.isImmovable = false;
         const heldPos = rc.calculateHeldObjectPosition(this.arena);
         rc.heldObject.position.x = heldPos.x;
         rc.heldObject.position.y = heldPos.y;
@@ -610,11 +646,14 @@ export class GameLoop {
       }
 
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
-      // While a thrown object is in ballistic flight from local player, client predicts 100% locally
+      // While a thrown object is in ballistic flight from local player, allow local prediction
+      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
-      if (wasThrownByLocal && (localObj.isInFlight || localObj.lastThrower) && (isAirborne || localObj.isInFlight)) {
-        if (sObj.isSleeping || Math.hypot(sObj.vx, sObj.vy) < 0.1) {
+      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
+        const flightDx = sObj.x - localObj.position.x;
+        const flightDy = sObj.y - localObj.position.y;
+        if (Math.hypot(flightDx, flightDy) < 0.6) {
           continue;
         }
       }
@@ -688,7 +727,8 @@ export class GameLoop {
    * If diverged, rewinds local player, re-simulates to present, and applies visual smoothing dampeners.
    */
   public reconcileWorldSnapshot(snapshot: AuthoritativeWorldSnapshot): ReconciliationResult {
-    const localPlayerId = this.primaryCharacter?.playerId || "keyboard";
+    const localChar = this.primaryCharacter;
+    const localPlayerId = localChar?.serverCharId || localChar?.playerId || "keyboard";
     return PredictionReconciliation.reconcile(
       snapshot,
       this.historyBuffer,

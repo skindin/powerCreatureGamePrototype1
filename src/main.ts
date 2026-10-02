@@ -832,12 +832,13 @@ function bootstrap(): void {
   };
 
   onlineClient.onPlayerRegistered = (info) => {
-    console.log(`🌐 [OnlineRoom] Local player ${info.localPlayerId} registered as P${info.playerNumber} (${info.color}, "${info.name}")`);
+    console.log(`🌐 [OnlineRoom] Local player ${info.localPlayerId} registered as P${info.playerNumber} (${info.color}, "${info.name}") serverId=${info.serverCharId}`);
     const p = gameLoop?.playerManager.players.get(info.localPlayerId);
     if (p) {
       p.character.playerNumber = info.playerNumber;
       p.character.color = info.color;
       p.character.playerColor = info.color;
+      p.character.serverCharId = info.serverCharId;
       if (!p.character.hasCustomName) {
         p.character.name = info.name || `Player ${info.playerNumber}`;
       }
@@ -849,6 +850,7 @@ function bootstrap(): void {
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;
+      base.serverCharId = info.serverCharId;
       if (!base.hasCustomName) {
         base.name = info.name || `Player ${info.playerNumber}`;
       }
@@ -1041,10 +1043,10 @@ function bootstrap(): void {
     }
   };
 
-  onlineClient.onWorldSnapshotReceived = (worldSnapshot) => {
-    if (activeGameMode === "online" && gameLoop) {
-      gameLoop.reconcileWorldSnapshot(worldSnapshot);
-    }
+  onlineClient.onWorldSnapshotReceived = (_worldSnapshot) => {
+    // In live online multiplayer, voluntary player locomotion is authoritatively simulated by the local client at 60fps.
+    // Unconditional rewind/re-simulation against WAN-delayed network snapshots caused 60Hz re-simulation fighting (movement jitter)
+    // and burst re-simulation (initial spawn super-speed). ReconcileWorldSnapshot is retained for DevPanel tackle tests.
   };
 
   onlineClient.onClockSync = (sync) => {

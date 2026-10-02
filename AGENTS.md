@@ -1262,6 +1262,40 @@ powerCreatureGamePrototype1/
 
 
 
+78. **Dynamic Push & Throw Physics Authority, Reverse-Tethering Elimination & Immovable Remote Proxy Architecture**:
+    - **Problem**: When pushing a character or throwing an object at them in online multiplayer, the character moved in the opposite direction, glitched around as if tethered to something, and idle players suffered subtle jittering in place.
+    - **Root Causes Identified**:
+      1. **Server Overwrites its Own Simulation with Stale Client Telemetry (`UniversalRoomManager.ts`)**:
+         - Incoming client packets called `this.simulation.syncCharacterFromPacket(data.character)`, directly overwriting server-simulated positions with client-reported coordinates.
+         - When the server applied a collision impulse (pushing P2 forward), P2's client (which hadn't processed the push yet) sent older unpushed coordinates. The server wiped out its own impulse and snapped P2 back to the pre-collision position.
+         - The pusher or rock was now on the other side of P2, inverting the contact normal and pushing P2 in the OPPOSITE direction!
+      2. **Double Physics Simulation on Remote Characters (`GameLoop.ts` & `CollisionResolver.ts`)**:
+         - On the local client, `CollisionResolver.resolveEntityCollisions` pushed remote characters locally.
+         - On the next frame, `interpolator.getInterpolatedState` reset the remote character back to server-interpolated coordinates.
+         - This 60Hz ping-pong fight between local collision resolution and remote interpolation created continuous micro-vibrations, subtle jitter in place, and tethering artifacts.
+      3. **Client Prediction Reconciliation ID Mismatch (`PredictionReconciliation.ts` & `main.ts`)**:
+         - Local characters had local IDs (`char_xxx` or `keyboard`), while the server authored snapshots keyed by `serverCharId` (`client_xxx`).
+         - `checkDivergence` and `reconcile` failed to match the local player entity, causing prediction reconciliation to no-op when the local player was pushed on the server.
+      4. **Airborne Thrown Object Sync Skip (`GameLoop.ts:syncAuthoritativeObjects`)**:
+         - The client skipped server sync for airborne local throws even after the server rock had already impacted a character or wall.
+    - **Architecture Solutions**:
+      1. **Pure 60Hz Server Authoritative Physics (`UniversalRoomManager.ts`)**:
+         - Disabled client telemetry coordinate overwrites in `syncCharacterFromPacket`. The server physics engine deterministically simulates all character movements from queued input packets and full collision impulses.
+             2. **Dynamic Players Architecture & Smooth Collision Convergence (`GameLoop.ts`, `ServerGameSimulation.ts`, `PlayerManager.ts`)**:
+          - Removed `isImmovable` solid obstacle constraints from remote players. All players are dynamic freebodies with mass (1.2), restitution, momentum exchange, and push response.
+          - In `GameLoop.ts`, remote player positions synchronize with `interp` through smooth convergence:
+            - When `nowPhys - rc.lastCollisionTime < 400ms` (active impact/push), `rc.updatePosition(dt, arena)` carries the physical push through with ground friction, and exponential blending (`blend = 0.25`) gently converges with network positions without snapping back into the pusher or inverting the normal.
+            - When idle/non-colliding, a small deadzone filter prevents micro-fluttering in place.
+          - In `ServerGameSimulation.ts:syncCharacterFromPacket`, when `hasRecentImpact` is active (`now - sChar.lastCollisionTime < 400ms`), server preserves collision impulses from external pushes and thrown objects rather than zeroing them out with stale client telemetry.
+       3. **Server Entity ID Linking (`GameObject.ts`, `main.ts`, `PredictionReconciliation.ts`)**:
+         - Added `serverCharId` on `GameObject` and linked it via `onlineClient.onPlayerRegistered`.
+         - `PredictionReconciliation` matches entities by `serverCharId`, ensuring local players smoothly reconcile and decay visual offsets when pushed externally on the server.
+      4. **Refined Ballistic In-Flight Prediction (`GameLoop.ts`)**:
+         - Ballistic prediction smoothly transitions to authoritative server trajectory if divergence exceeds 0.6u or when the server object impacts/rests.
+    - Verified 100% via automated test suite `scratch/test_online_push_and_throw_repro.ts`.
+
+---
+
 ## 4. Immediate Next Steps
 
 | Priority | Task | Description |

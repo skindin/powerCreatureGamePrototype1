@@ -44,6 +44,12 @@ export class GameObject {
   // Phase 8: Client Prediction Reconciliation & Visual Smoothing Dampener
   public visualOffset: Vector2D = { x: 0, y: 0 };
 
+  // Phase 9 & 10: Remote Entity Proxy & Immovable Solver Flag
+  // When true (e.g. for remote characters on client simulation), the entity acts as a kinematic/immovable obstacle,
+  // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
+  public isImmovable: boolean = false;
+  public serverCharId?: string;
+
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
    * Eliminates visual popping when physical prediction reconciles.

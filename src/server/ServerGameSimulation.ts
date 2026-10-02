@@ -393,17 +393,50 @@ export class ServerGameSimulation {
       return;
     }
 
+    const now = performance.now();
+    const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
+
     // 1. Synchronize Linear and Vertical Velocity
-    sChar.velocity.x = clientChar.vx;
-    sChar.velocity.y = clientChar.vy;
-    if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
-      sChar.verticalVelocity = clientChar.vz;
+    if (hasRecentImpact) {
+      // Character has an active collision impulse on the server (e.g. was pushed or hit by thrown object).
+      // Blend voluntary client velocity with impulse velocity instead of wiping out the impulse!
+      const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+      if (isClientMoving) {
+        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
+      }
+    } else {
+      sChar.velocity.x = clientChar.vx;
+      sChar.velocity.y = clientChar.vy;
     }
 
-    // 2. Synchronize Physical Coordinates directly
-    sChar.position.x = clientChar.x;
-    sChar.position.y = clientChar.y;
-    sChar.position.z = clientChar.z;
+    if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
+      if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
+        sChar.verticalVelocity = clientChar.vz;
+      }
+    }
+
+    // 2. Synchronize Physical Coordinates
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 2.5) {
+      // Large difference (teleport or initial join): snap
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (hasRecentImpact) {
+      // During active collision on the server, smoothly blend position to absorb the push
+      sChar.position.x += dx * 0.25;
+      sChar.position.y += dy * 0.25;
+      sChar.position.z = clientChar.z;
+    } else {
+      // When not colliding, sync directly to eliminate drift
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    }
 
     // 3. Synchronize Surface & Elevation States
     if (clientChar.surfaceZ !== undefined) {

@@ -56,7 +56,8 @@ export class PredictionReconciliation {
     serverEntities: CompressedEntityState[],
     clientSnapshot: WorldSnapshot,
     targetEntityId: string,
-    config: ReconciliationConfig = this.config
+    config: ReconciliationConfig = this.config,
+    serverCharId?: string
   ): {
     diverged: boolean;
     divergedEntityIds: string[];
@@ -67,8 +68,8 @@ export class PredictionReconciliation {
     let maxDeltaVel = 0;
     const divergedEntityIds: string[] = [];
 
-    const sEnt = serverEntities.find((e) => e.id === targetEntityId);
-    const cEnt = clientSnapshot.entities.find((e) => e.id === targetEntityId);
+    const sEnt = serverEntities.find((e) => e.id === targetEntityId || (serverCharId && e.id === serverCharId));
+    const cEnt = clientSnapshot.entities.find((e) => e.id === targetEntityId || (serverCharId && e.id === serverCharId));
 
     if (sEnt && cEnt) {
       const deltaX = Math.abs(sEnt.x - cEnt.x);
@@ -123,11 +124,21 @@ export class PredictionReconciliation {
   ): ReconciliationResult {
     const startTime = performance.now();
 
+    // 0. Find the local player character
+    const localChar = characters.find((c) =>
+      (localPlayerId && (c.serverCharId === localPlayerId || c.playerId === localPlayerId || c.id === localPlayerId))
+    ) || characters[0];
+
     // 1. Identify the exact client input tick acknowledged by the server
     let clientTick: number | undefined;
     if (serverSnapshot.lastProcessedInputTick) {
-      clientTick = serverSnapshot.lastProcessedInputTick[localPlayerId];
-      if (clientTick === undefined && Object.keys(serverSnapshot.lastProcessedInputTick).length > 0) {
+      if (localPlayerId && serverSnapshot.lastProcessedInputTick[localPlayerId] !== undefined) {
+        clientTick = serverSnapshot.lastProcessedInputTick[localPlayerId];
+      } else if (localChar?.serverCharId && serverSnapshot.lastProcessedInputTick[localChar.serverCharId] !== undefined) {
+        clientTick = serverSnapshot.lastProcessedInputTick[localChar.serverCharId];
+      } else if (localChar?.playerId && serverSnapshot.lastProcessedInputTick[localChar.playerId] !== undefined) {
+        clientTick = serverSnapshot.lastProcessedInputTick[localChar.playerId];
+      } else if (Object.keys(serverSnapshot.lastProcessedInputTick).length > 0) {
         clientTick = Object.values(serverSnapshot.lastProcessedInputTick)[0];
       }
     }
@@ -164,8 +175,6 @@ export class PredictionReconciliation {
       };
     }
 
-    // 3. Find the local player character
-    const localChar = characters.find((c) => c.playerId === localPlayerId) || characters[0];
     if (!localChar) {
       return {
         tick: clientTick,
@@ -180,7 +189,7 @@ export class PredictionReconciliation {
     }
 
     // 4. Check for divergence against deadzone tolerances
-    const check = this.checkDivergence(serverSnapshot.entities, historicalFrame.snapshot, localChar.id, config);
+    const check = this.checkDivergence(serverSnapshot.entities, historicalFrame.snapshot, localChar.id, config, localChar.serverCharId);
 
     if (!check.diverged) {
       // PREDICTION SUCCESS: client predicted physics accurately within deadzones!
@@ -209,7 +218,11 @@ export class PredictionReconciliation {
     const prePos = { x: localChar.position.x, y: localChar.position.y };
 
     // Step B: Snap local character state to authoritative server snapshot state at clientTick
-    const sEnt = serverSnapshot.entities.find((e) => e.id === localChar.id);
+    const sEnt = serverSnapshot.entities.find((e) =>
+      e.id === localChar.id ||
+      (localChar.serverCharId && e.id === localChar.serverCharId) ||
+      (localPlayerId && e.id === localPlayerId)
+    );
     if (sEnt) {
       localChar.position.x = sEnt.x;
       localChar.position.y = sEnt.y;
