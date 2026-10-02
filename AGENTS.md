@@ -1306,6 +1306,12 @@ powerCreatureGamePrototype1/
 | **4** | **Authoritative Server Input Queue** | Implement the server-side input buffer with adaptive time dilation hints (`speedUp` / `slowDown`) sent to the client. |
 | **5** | **Client Prediction & Reconciliation** | Implement client state comparison against server snapshots with an error deadzone, selective resimulation, and render-layer smoothing. |
 
+### Phase 10.3 — 3D Airborne Thrown Collisions & Zero-Perpendicular Push Alignment
+- **Problem 1 (Thrown Objects Missing)**: Thrown objects flying in parabolic arcs reached Layer 2 (z >= 1.0), while ground creatures stood on Layer 1 (z = 0). The layer check (layerA !== layerB) rejected airborne collisions, causing rocks to pass right through creatures.
+- **Fix 1**: In CollisionResolver.ts, layer gating (layerA !== layerB) is strictly restricted to when BOTH entities are resting on static surfaces. For airborne entities, a true 3D vertical span overlap check ([zMinA, zMaxA] vs [zMinB, zMaxB]) detects impacts with creature bodies.
+- **Problem 2 (Perpendicular Sliding / Squirting)**: Pushed idle characters had their positions pulled backward by stale incoming client telemetry on the server, acting like a rubber band anchor. Under continuous contact, normal forces slipped sideways, causing the pushed character to squirt out perpendicularly.
+- **Fix 2**: On the server (ServerGameSimulation.ts), stale idle telemetry is ignored during active collision impact (hasRecentImpact). On the client (main.ts), external server displacements > 0.06u are smoothly absorbed into the local character so the pushed player moves forward on their own screen, eliminating the rubber-band anchor.
+
 ---
 
 ## 5. Agent Workflow Rule

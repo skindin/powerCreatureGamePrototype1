@@ -1037,6 +1037,29 @@ function bootstrap(): void {
     }
     gameLoop.interpolator.pushSnapshot(snapshot.seq, samples, performance.now());
 
+    // 2b. Synchronize external server pushes & impulses on the local character
+    const localChar = gameLoop.primaryCharacter;
+    const localServerId = localChar?.serverCharId || onlineClient.clientId;
+    if (localChar && localServerId) {
+      const myServerState = ghostChars.find((gc) => gc.id === localServerId);
+      if (myServerState) {
+        const dx = myServerState.x - localChar.position.x;
+        const dy = myServerState.y - localChar.position.y;
+        const dist = Math.hypot(dx, dy);
+
+        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
+        if (dist > 0.06) {
+          const blend = dist > 2.0 ? 1.0 : 0.35;
+          localChar.position.x += dx * blend;
+          localChar.position.y += dy * blend;
+          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
+            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
+            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+          }
+        }
+      }
+    }
+
     // 3. Sync authoritative freebody objects
     if (Array.isArray(snapshot.objects)) {
       gameLoop.syncAuthoritativeObjects(snapshot.objects, onlineClient.clientId || undefined, snapshot.seq);

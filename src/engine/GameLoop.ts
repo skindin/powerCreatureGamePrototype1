@@ -461,8 +461,11 @@ export class GameLoop {
           rc.position.x += dx * blend;
           rc.position.y += dy * blend;
           rc.position.z += (interp.z - rc.position.z) * blend;
-          rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
-          rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
+          const isInterpMoving = Math.hypot(interp.vx, interp.vy) > 0.1;
+          if (isInterpMoving) {
+            rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
+            rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
+          }
         } else {
           // Normal state: follow interpolated network position smoothly
           if (dist > 0.02) {

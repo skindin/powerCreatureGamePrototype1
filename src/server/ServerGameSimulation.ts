@@ -396,11 +396,12 @@ export class ServerGameSimulation {
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
 
+    const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+
     // 1. Synchronize Linear and Vertical Velocity
     if (hasRecentImpact) {
       // Character has an active collision impulse on the server (e.g. was pushed or hit by thrown object).
       // Blend voluntary client velocity with impulse velocity instead of wiping out the impulse!
-      const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
       if (isClientMoving) {
         sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
         sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
@@ -427,9 +428,12 @@ export class ServerGameSimulation {
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
     } else if (hasRecentImpact) {
-      // During active collision on the server, smoothly blend position to absorb the push
-      sChar.position.x += dx * 0.25;
-      sChar.position.y += dy * 0.25;
+      // During active collision on the server, preserve the physical push!
+      // Only blend client position if the client is actively steering/walking:
+      if (isClientMoving) {
+        sChar.position.x += dx * 0.25;
+        sChar.position.y += dy * 0.25;
+      }
       sChar.position.z = clientChar.z;
     } else {
       // When not colliding, sync directly to eliminate drift
