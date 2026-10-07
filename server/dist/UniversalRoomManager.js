@@ -7934,6 +7934,27 @@ class ServerGameSimulation {
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
     }
+    for (const obj of this.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = sChar.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - sChar.position.x;
+      const oy = obj.position.y - sChar.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = sChar.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.03;
+          const nx = oDist > 1e-3 ? ox / oDist : 1;
+          const ny = oDist > 1e-3 ? oy / oDist : 0;
+          sChar.position.x -= nx * (overlap * 0.5);
+          sChar.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;
     }
@@ -8644,6 +8665,27 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       hasCustomName: isExplicitCustom
     });
     character.position.z = spawnZ;
+    for (const obj of this.simulation.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = character.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - character.position.x;
+      const oy = obj.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          const nx = oDist > 1e-3 ? ox / oDist : 1;
+          const ny = oDist > 1e-3 ? oy / oDist : 0;
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     const entry = {

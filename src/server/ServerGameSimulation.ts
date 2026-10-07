@@ -442,6 +442,33 @@ export class ServerGameSimulation {
       sChar.position.z = clientChar.z;
     }
 
+    // 2b. Gentle Overlap Relaxation:
+    // If the character is overlapping any dynamic freebody object, gently move
+    // the overlapping object and character away from each other so they no longer overlap.
+    // This prevents 60Hz push/re-assert oscillations when a player was touching an object before joining.
+    for (const obj of this.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = sChar.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - sChar.position.x;
+      const oy = obj.position.y - sChar.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = sChar.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.03;
+          const nx = oDist > 0.001 ? ox / oDist : 1;
+          const ny = oDist > 0.001 ? oy / oDist : 0;
+          // Gently ease apart: move each body by half the overlap
+          sChar.position.x -= nx * (overlap * 0.5);
+          sChar.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
+
     // 3. Synchronize Surface & Elevation States
     if (clientChar.surfaceZ !== undefined) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;

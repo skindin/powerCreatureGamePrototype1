@@ -1090,6 +1090,28 @@ function bootstrap(): void {
             }
           }
         }
+
+        // Gentle local overlap relaxation: if local character is overlapping an object,
+        // gently push them apart so local collision resolver and server sync don't fight
+        for (const obj of gameLoop.objects) {
+          if (obj.isHeld) continue;
+          const minDistance = localChar.colliderRadius + obj.colliderRadius;
+          const ox = obj.position.x - localChar.position.x;
+          const oy = obj.position.y - localChar.position.y;
+          const oDist = Math.hypot(ox, oy);
+          if (oDist < minDistance) {
+            if (Math.abs(localChar.position.z - obj.position.z) < 0.8) {
+              const overlap = minDistance - oDist + 0.03;
+              const nx = oDist > 0.001 ? ox / oDist : 1;
+              const ny = oDist > 0.001 ? oy / oDist : 0;
+              localChar.position.x -= nx * (overlap * 0.5);
+              localChar.position.y -= ny * (overlap * 0.5);
+              obj.position.x += nx * (overlap * 0.5);
+              obj.position.y += ny * (overlap * 0.5);
+              obj.wakeUp();
+            }
+          }
+        }
       }
     }
 

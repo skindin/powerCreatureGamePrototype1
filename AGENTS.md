@@ -1347,6 +1347,15 @@ powerCreatureGamePrototype1/
   - Added real-time visual banners indicating when behaviors are disabled or when dependent behaviors are disabled or missing (e.g. `⚠️ Inactive: [Behavior] is currently disabled`).
   - Strict dependency enforcement in character execution: walking requires Friction & Strength; jumping requires Vertical Position; climbing requires Vertical Position & Strength; throwing requires Strength.
 
+### Phase 10.5 — Gentle Overlap Relaxation on Spawn & Telemetry Sync
+- **Root Cause of Join Oscillation When Touching Objects**:
+  - When switching from Local Mode to Online Mode while touching/overlapping a freebody object, the server spawned the character at that position without tangent relaxation.
+  - Server physics `CollisionResolver` resolved the contact and pushed the character, triggering `hasRecentImpact` which froze idle client position telemetry on the server.
+  - Simultaneously, client snapshot synchronization saw the server displacement and blended the local character toward the server position, while client-side local physics and object sync pushed back in the opposing direction, creating a 60Hz push/re-assert ping-pong flutter.
+- **Gentle Overlap Separation Fix (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`, `main.ts`)**:
+  - In `UniversalRoomManager.ts` on character spawn: if the newly registered character overlaps an existing freebody object in 3D space, both bodies are gently separated along their center-to-center normal (50/50 split plus 0.04u clearance) and the object is woken up before the simulation begins.
+  - In `ServerGameSimulation.ts` during telemetry coordinate sync: when character telemetry is received while overlapping any dynamic object, gentle overlap relaxation eases both bodies apart along their normal, preventing deep overlap penetration and eliminating 60Hz push/re-assert loops.
+  - In `main.ts` during snapshot reconciliation: if a local character and an object are in contact, gentle relaxation shifts both bodies so local collision resolution and server ghost alignment converge smoothly without fighting.
 
 ---
 

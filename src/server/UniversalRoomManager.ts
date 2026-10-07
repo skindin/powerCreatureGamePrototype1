@@ -326,6 +326,33 @@ export class UniversalRoomManager {
       hasCustomName: isExplicitCustom,
     });
     character.position.z = spawnZ;
+
+    // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
+    // gently separate character and object away from each other so they no longer overlap.
+    for (const obj of this.simulation.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = character.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - character.position.x;
+      const oy = obj.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const objZ = obj.position.z;
+        // Check 3D vertical overlap
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          const nx = oDist > 0.001 ? ox / oDist : 1;
+          const ny = oDist > 0.001 ? oy / oDist : 0;
+          // Displace 50/50 away from each other
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
+
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
 
