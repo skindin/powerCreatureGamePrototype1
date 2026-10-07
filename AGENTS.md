@@ -7,10 +7,13 @@
 
 ---
 
-## 🔒 Sealed & Read-Only Files ("Complete" Modules)
+## 🔒 Sealed & Protected Code Tiers (Agent Rules)
+
+### Tier 1: 🔒 Sealed & Read-Only Files ("Complete" Modules)
 > **CRITICAL AGENT CONSTRAINT**:  
-> The following files have been audited, fully verified, and deemed feature-complete.  
-> Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless the USER explicitly names the file and gives an direct instruction to modify it:
+> The following 14 files have been audited, fully verified, and deemed feature-complete.  
+> Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless you explicitly ask the USER for permission first and receive their direct approval.
+> - **Avoid asking for permission for Tier 1 files unless truly necessary.** If you encounter an issue that legitimately requires editing a Tier 1 file, you **MUST ask for permission before touching it**. In your request, explicitly state: **"This is a Tier 1 (Sealed) file: [filename]"**, and concisely explain the exact reason for the edit in plain English without excessive technical jargon. Never use convoluted workarounds to bypass a clean fix, but treat Tier 1 changes with high scrutiny.
 >
 > 1. `src/engine/MassModule.ts` — Mass, inertia, inverse mass calculations.
 > 2. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
@@ -19,12 +22,33 @@
 > 5. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
 > 6. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
 > 7. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
->
-> If a new feature requires interacting with these systems, interact strictly through their existing public APIs. Do not modify the source files.
+> 8. `src/engine/ColliderModule.ts` — Physical collider radius, CCD sweep eligibility (`canSweep`), and dynamic threshold.
+> 9. `src/engine/RigidbodyModule.ts` — Kinematic 2D linear velocity, vertical velocity, and collision policy (`discrete`/`continuous`/`dynamic`).
+> 10. `src/character/StrengthModule.ts` — Creature strength multiplier for carrying capacity and throw power.
+> 11. `src/character/JumpModule.ts` — Vertical jump impulse, landing buffers, and dismount hop calculations.
+> 12. `src/character/WallEdgeAssistModule.ts` — Geometric math helper preventing creature sticking on corner wall vertices.
+> 13. `src/engine/physics/StateHistoryBuffer.ts` — Zero-allocation circular ring buffer for historical physical snapshots.
+> 14. `src/engine/physics/IslandManager.ts` — Connected graph discovery of dormant sleeping bodies and active physical islands.
 >
 > **Enforcement Mechanics**:
 > - **OS-Level Lock**: Marked with Windows file system `attrib +r` (IsReadOnly = True). Any write attempt triggers an immediate OS `Access is denied` / `EPERM` error.
 > - **Git Pre-Commit Hook**: Enforced via `.githooks/pre-commit`. Any commit attempting to stage these files will be aborted automatically.
+
+### Tier 2: 🛡️ Protected Modules (Solid Foundation — Permission Required)
+> **TIER 2 AGENT CONSTRAINT**:  
+> The following modules represent solid core systems that are expected to grow with the game:
+> - `src/character/WalkingModule.ts` (Ground locomotion, acceleration, sprint state)
+> - `src/character/ClimbingModule.ts` (Wall mounting, vertical climbing, open-ground dismount)
+> - `src/character/PickupModule.ts` (3D grab reach detection and item attachments)
+> - `src/character/ThrowModule.ts` (Parabolic trajectory math, auto-lock target discovery, recoil momentum)
+> - `src/engine/physics/Snapshot.ts` (Deterministic state serialization & restore)
+> - `src/engine/physics/RemoteEntityInterpolator.ts` (Hermite/linear snapshot interpolation & jitter buffers)
+> - `src/engine/physics/PredictionReconciliation.ts` (Historical rollback reconciliation & divergence checks)
+>
+> **Permission Protocol**:
+> 1. Any agent noticing that a change is needed in a **Tier 2 file MUST ask the USER for permission before modifying it**.
+> 2. **Do NOT use messy workarounds** or hacky side-effects elsewhere to avoid editing a Tier 2 file if a clean modification to that file is the proper architectural solution.
+> 3. When asking for permission, clarify that **"This is a Tier 2 (Protected) file: [filename]"** and concisely state the exact reason in plain English without confusing technical jargon.
 
 ---
 

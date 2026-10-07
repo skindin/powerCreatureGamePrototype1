@@ -9,6 +9,13 @@ src/engine/RollModule.ts
 src/engine/GravityModule.ts
 src/engine/VerticalPositionModule.ts
 src/engine/Arena.ts
+src/engine/ColliderModule.ts
+src/engine/RigidbodyModule.ts
+src/character/StrengthModule.ts
+src/character/JumpModule.ts
+src/character/WallEdgeAssistModule.ts
+src/engine/physics/StateHistoryBuffer.ts
+src/engine/physics/IslandManager.ts
 "
 
 STAGED_FILES=$(git diff --cached --name-only)

@@ -1,5 +1,6 @@
 import { Arena, Wall } from "../Arena.js";
 import { GameObject } from "../GameObject.js";
+import { SweptMath } from "./SweptMath.js";
 
 export type CollisionMode = "dynamic" | "discrete" | "continuous" | "naive";
 
@@ -207,73 +208,55 @@ export class CollisionResolver {
     _arena: Arena,
     dt: number
   ): boolean {
-    const minDist = a.colliderRadius + b.colliderRadius;
-
     if (a.isImmovable && b.isImmovable) {
       return false;
     }
 
     // Start positions (at beginning of tick dt)
-    const pA0x = a.isImmovable ? a.position.x : (a.position.x - a.velocity.x * dt);
-    const pA0y = a.isImmovable ? a.position.y : (a.position.y - a.velocity.y * dt);
-    const pB0x = b.isImmovable ? b.position.x : (b.position.x - b.velocity.x * dt);
-    const pB0y = b.isImmovable ? b.position.y : (b.position.y - b.velocity.y * dt);
+    const pA0 = {
+      x: a.isImmovable ? a.position.x : (a.position.x - a.velocity.x * dt),
+      y: a.isImmovable ? a.position.y : (a.position.y - a.velocity.y * dt),
+    };
+    const pB0 = {
+      x: b.isImmovable ? b.position.x : (b.position.x - b.velocity.x * dt),
+      y: b.isImmovable ? b.position.y : (b.position.y - b.velocity.y * dt),
+    };
 
-    const vAx = a.isImmovable ? 0 : a.velocity.x;
-    const vAy = a.isImmovable ? 0 : a.velocity.y;
-    const vBx = b.isImmovable ? 0 : b.velocity.x;
-    const vBy = b.isImmovable ? 0 : b.velocity.y;
+    const vA = { x: a.isImmovable ? 0 : a.velocity.x, y: a.isImmovable ? 0 : a.velocity.y };
+    const vB = { x: b.isImmovable ? 0 : b.velocity.x, y: b.isImmovable ? 0 : b.velocity.y };
 
-    // Relative start position and relative velocity
-    const r0x = pB0x - pA0x;
-    const r0y = pB0y - pA0y;
-    const vRelX = vBx - vAx;
-    const vRelY = vBy - vAy;
+    const sweptHit = SweptMath.sweepCircleVsCircle(
+      pA0,
+      vA,
+      a.colliderRadius,
+      pB0,
+      vB,
+      b.colliderRadius,
+      dt
+    );
 
-    // Quadratic equation: |r0 + vRel * t|^2 = minDist^2
-    const aQuad = vRelX * vRelX + vRelY * vRelY;
-    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
-    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
-
-    // If deeply penetrating at start of frame, fallback to tangent separation
-    if (cQuad < -0.0001) {
-      return this.resolvePairDiscreteTOI(a, b, _arena, dt);
-    }
-
-    if (aQuad < 0.0000001) {
-      // Relative velocity is zero: no collision can occur during frame
+    if (!sweptHit) {
+      // If bodies were penetrating at start of frame, fallback to discrete TOI
+      const r0x = pB0.x - pA0.x;
+      const r0y = pB0.y - pA0.y;
+      const minDist = a.colliderRadius + b.colliderRadius;
+      if (r0x * r0x + r0y * r0y < minDist * minDist) {
+        return this.resolvePairDiscreteTOI(a, b, _arena, dt);
+      }
       return false;
     }
 
-    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-    if (disc < 0) {
-      return false; // Trajectories miss each other
-    }
+    const { tHit, normX, normY, velAlongNormal } = sweptHit;
 
-    // Earliest impact time
-    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
-    if (tHit > dt) {
-      return false; // Impact is outside this time step
-    }
-
-    // Advance bodies to the exact instant of impact tHit
+    // Advance bodies to exact instant of impact tHit
     if (!a.isImmovable) {
-      a.position.x = pA0x + a.velocity.x * tHit;
-      a.position.y = pA0y + a.velocity.y * tHit;
+      a.position.x = pA0.x + a.velocity.x * tHit;
+      a.position.y = pA0.y + a.velocity.y * tHit;
     }
     if (!b.isImmovable) {
-      b.position.x = pB0x + b.velocity.x * tHit;
-      b.position.y = pB0y + b.velocity.y * tHit;
+      b.position.x = pB0.x + b.velocity.x * tHit;
+      b.position.y = pB0.y + b.velocity.y * tHit;
     }
-
-    // Contact normal
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    const normX = contactDist > 0.0001 ? contactDx / contactDist : 1;
-    const normY = contactDist > 0.0001 ? contactDy / contactDist : 0;
-
-    const velAlongNormal = vRelX * normX + vRelY * normY;
 
     // Combined restitution
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
@@ -319,21 +302,24 @@ export class CollisionResolver {
           ? "continuous"
           : (globalMode === "discrete" ? "discrete" : entity.getEffectiveCollisionMode(dt)));
 
-    // Closest point on wall AABB
-    const cx = Math.max(wall.x, Math.min(entity.position.x, wall.x + wall.width));
-    const cy = Math.max(wall.y, Math.min(entity.position.y, wall.y + wall.height));
-    const dx = entity.position.x - cx;
-    const dy = entity.position.y - cy;
-    const distSq = dx * dx + dy * dy;
+    const wallHit = SweptMath.testCircleVsWall(
+      entity.position.x,
+      entity.position.y,
+      r,
+      entity.velocity.x,
+      entity.velocity.y,
+      wall.x,
+      wall.y,
+      wall.width,
+      wall.height,
+      dt
+    );
 
-    if (distSq >= r * r) {
+    if (!wallHit) {
       return false;
     }
 
-    const dist = Math.sqrt(distSq);
-    const normX = dist > 0.0001 ? dx / dist : (entity.velocity.x < 0 ? 1 : -1);
-    const normY = dist > 0.0001 ? dy / dist : (entity.velocity.y < 0 ? 1 : -1);
-
+    const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
     const bRestitution = entity.isCharacter ? 0 : (entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0);
 
     if (mode === "naive") {
@@ -347,14 +333,6 @@ export class CollisionResolver {
       }
       entity.lastCollisionType = "naive";
       return true;
-    }
-
-    // Rollback / Swept contact rewind:
-    const overlap = r - dist;
-    const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
-    let alpha = 0;
-    if (speed > 0.0001) {
-      alpha = Math.min(1.0, Math.max(0.0, overlap / (speed * dt)));
     }
 
     // Place at tangent touch

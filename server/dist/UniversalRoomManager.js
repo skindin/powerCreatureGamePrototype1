@@ -6327,6 +6327,89 @@ class Character extends GameObject {
     return { x: targetX, y: targetY, z: heldZ };
   }
 }
+class SweptMath {
+  /**
+   * Solves quadratic earliest Time-of-Impact for two moving spheres over interval dt.
+   * Tests: || (pB0 + vB * t) - (pA0 + vA * t) ||^2 = (rA + rB)^2 for t in [0, dt].
+   * Returns hit details if an impact occurs, or null if trajectories miss or separate.
+   */
+  static sweepCircleVsCircle(pA0, vA, rA, pB0, vB, rB, dt) {
+    const minDist = rA + rB;
+    const r0x = pB0.x - pA0.x;
+    const r0y = pB0.y - pA0.y;
+    const vRelX = vB.x - vA.x;
+    const vRelY = vB.y - vA.y;
+    const aQuad = vRelX * vRelX + vRelY * vRelY;
+    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
+    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
+    if (cQuad < -1e-4) {
+      return null;
+    }
+    if (aQuad < 1e-7) {
+      return null;
+    }
+    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+    if (disc < 0) {
+      return null;
+    }
+    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
+    if (tHit > dt) {
+      return null;
+    }
+    const pAtX = pA0.x + vA.x * tHit;
+    const pAtY = pA0.y + vA.y * tHit;
+    const pBtX = pB0.x + vB.x * tHit;
+    const pBtY = pB0.y + vB.y * tHit;
+    const contactDx = pBtX - pAtX;
+    const contactDy = pBtY - pAtY;
+    const contactDist = Math.hypot(contactDx, contactDy);
+    const normX = contactDist > 1e-4 ? contactDx / contactDist : 1;
+    const normY = contactDist > 1e-4 ? contactDy / contactDist : 0;
+    const velAlongNormal = vRelX * normX + vRelY * normY;
+    if (velAlongNormal >= -1e-4) {
+      return null;
+    }
+    return {
+      tHit,
+      contactDx,
+      contactDy,
+      contactDist,
+      normX,
+      normY,
+      velAlongNormal
+    };
+  }
+  /**
+   * Tests contact between a moving circle and an axis-aligned bounding box wall.
+   */
+  static testCircleVsWall(posX, posY, radius, velX, velY, wallX, wallY, wallWidth, wallHeight, dt) {
+    const cx = Math.max(wallX, Math.min(posX, wallX + wallWidth));
+    const cy = Math.max(wallY, Math.min(posY, wallY + wallHeight));
+    const dx = posX - cx;
+    const dy = posY - cy;
+    const distSq = dx * dx + dy * dy;
+    if (distSq >= radius * radius) {
+      return null;
+    }
+    const dist = Math.sqrt(distSq);
+    const normX = dist > 1e-4 ? dx / dist : velX < 0 ? 1 : -1;
+    const normY = dist > 1e-4 ? dy / dist : velY < 0 ? 1 : -1;
+    const overlap = radius - dist;
+    const speed = Math.hypot(velX, velY);
+    let alpha = 0;
+    if (speed > 1e-4) {
+      alpha = Math.min(1, Math.max(0, overlap / (speed * dt)));
+    }
+    return {
+      tHitFraction: alpha,
+      cx,
+      cy,
+      normX,
+      normY,
+      overlap
+    };
+  }
+}
 class CollisionResolver {
   /**
    * Resolves all pairwise freebody-to-freebody collisions across characters and dynamic objects.
@@ -6462,53 +6545,46 @@ class CollisionResolver {
    * advances to exact time of impact, reflects velocities, and steps remainder.
    */
   static resolvePairContinuousSwept(a, b, _arena, dt) {
-    const minDist = a.colliderRadius + b.colliderRadius;
     if (a.isImmovable && b.isImmovable) {
       return false;
     }
-    const pA0x = a.isImmovable ? a.position.x : a.position.x - a.velocity.x * dt;
-    const pA0y = a.isImmovable ? a.position.y : a.position.y - a.velocity.y * dt;
-    const pB0x = b.isImmovable ? b.position.x : b.position.x - b.velocity.x * dt;
-    const pB0y = b.isImmovable ? b.position.y : b.position.y - b.velocity.y * dt;
-    const vAx = a.isImmovable ? 0 : a.velocity.x;
-    const vAy = a.isImmovable ? 0 : a.velocity.y;
-    const vBx = b.isImmovable ? 0 : b.velocity.x;
-    const vBy = b.isImmovable ? 0 : b.velocity.y;
-    const r0x = pB0x - pA0x;
-    const r0y = pB0y - pA0y;
-    const vRelX = vBx - vAx;
-    const vRelY = vBy - vAy;
-    const aQuad = vRelX * vRelX + vRelY * vRelY;
-    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
-    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
-    if (cQuad < -1e-4) {
-      return this.resolvePairDiscreteTOI(a, b, _arena, dt);
-    }
-    if (aQuad < 1e-7) {
+    const pA0 = {
+      x: a.isImmovable ? a.position.x : a.position.x - a.velocity.x * dt,
+      y: a.isImmovable ? a.position.y : a.position.y - a.velocity.y * dt
+    };
+    const pB0 = {
+      x: b.isImmovable ? b.position.x : b.position.x - b.velocity.x * dt,
+      y: b.isImmovable ? b.position.y : b.position.y - b.velocity.y * dt
+    };
+    const vA = { x: a.isImmovable ? 0 : a.velocity.x, y: a.isImmovable ? 0 : a.velocity.y };
+    const vB = { x: b.isImmovable ? 0 : b.velocity.x, y: b.isImmovable ? 0 : b.velocity.y };
+    const sweptHit = SweptMath.sweepCircleVsCircle(
+      pA0,
+      vA,
+      a.colliderRadius,
+      pB0,
+      vB,
+      b.colliderRadius,
+      dt
+    );
+    if (!sweptHit) {
+      const r0x = pB0.x - pA0.x;
+      const r0y = pB0.y - pA0.y;
+      const minDist = a.colliderRadius + b.colliderRadius;
+      if (r0x * r0x + r0y * r0y < minDist * minDist) {
+        return this.resolvePairDiscreteTOI(a, b, _arena, dt);
+      }
       return false;
     }
-    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-    if (disc < 0) {
-      return false;
-    }
-    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
-    if (tHit > dt) {
-      return false;
-    }
+    const { tHit, normX, normY, velAlongNormal } = sweptHit;
     if (!a.isImmovable) {
-      a.position.x = pA0x + a.velocity.x * tHit;
-      a.position.y = pA0y + a.velocity.y * tHit;
+      a.position.x = pA0.x + a.velocity.x * tHit;
+      a.position.y = pA0.y + a.velocity.y * tHit;
     }
     if (!b.isImmovable) {
-      b.position.x = pB0x + b.velocity.x * tHit;
-      b.position.y = pB0y + b.velocity.y * tHit;
+      b.position.x = pB0.x + b.velocity.x * tHit;
+      b.position.y = pB0.y + b.velocity.y * tHit;
     }
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    const normX = contactDist > 1e-4 ? contactDx / contactDist : 1;
-    const normY = contactDist > 1e-4 ? contactDy / contactDist : 0;
-    const velAlongNormal = vRelX * normX + vRelY * normY;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
@@ -6532,17 +6608,22 @@ class CollisionResolver {
     if (entity.position.z > wall.wallHeight) return false;
     const r = entity.colliderRadius;
     const mode = globalMode === "naive" ? "naive" : globalMode === "continuous" ? "continuous" : globalMode === "discrete" ? "discrete" : entity.getEffectiveCollisionMode(dt);
-    const cx = Math.max(wall.x, Math.min(entity.position.x, wall.x + wall.width));
-    const cy = Math.max(wall.y, Math.min(entity.position.y, wall.y + wall.height));
-    const dx = entity.position.x - cx;
-    const dy = entity.position.y - cy;
-    const distSq = dx * dx + dy * dy;
-    if (distSq >= r * r) {
+    const wallHit = SweptMath.testCircleVsWall(
+      entity.position.x,
+      entity.position.y,
+      r,
+      entity.velocity.x,
+      entity.velocity.y,
+      wall.x,
+      wall.y,
+      wall.width,
+      wall.height,
+      dt
+    );
+    if (!wallHit) {
       return false;
     }
-    const dist = Math.sqrt(distSq);
-    const normX = dist > 1e-4 ? dx / dist : entity.velocity.x < 0 ? 1 : -1;
-    const normY = dist > 1e-4 ? dy / dist : entity.velocity.y < 0 ? 1 : -1;
+    const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
     const bRestitution = entity.isCharacter ? 0 : entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0;
     if (mode === "naive") {
       entity.position.x = cx + normX * r;
@@ -6554,12 +6635,6 @@ class CollisionResolver {
       }
       entity.lastCollisionType = "naive";
       return true;
-    }
-    const overlap = r - dist;
-    const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
-    let alpha = 0;
-    if (speed > 1e-4) {
-      alpha = Math.min(1, Math.max(0, overlap / (speed * dt)));
     }
     entity.position.x = cx + normX * (r + 1e-3);
     entity.position.y = cy + normY * (r + 1e-3);
