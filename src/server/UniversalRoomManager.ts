@@ -204,6 +204,13 @@ export class UniversalRoomManager {
         used.add(char.playerNumber);
       }
     }
+    for (const client of this.clients.values()) {
+      for (const entry of client.characters.values()) {
+        if (entry.playerNumber && entry.playerNumber > 0) {
+          used.add(entry.playerNumber);
+        }
+      }
+    }
     for (let i = 1; i <= 16; i++) {
       if (!used.has(i)) return i;
     }

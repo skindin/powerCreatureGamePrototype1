@@ -108,7 +108,8 @@ powerCreatureGamePrototype1/
 │   │   ├── RollModule.ts  # 3D angular velocity, rolling resistance, indicators
 │   ├── network/           # Networking and telemetry
 │   │   ├── RelayClient.ts # Standalone WebSocket echo relay simulator, RTT tracking & ghost clones
-│   │   └── OnlineRoomClient.ts # Standalone WebSocket client for real live online rooms (/ws)
+│   │   ├── OnlineRoomClient.ts # Standalone WebSocket client for real live online rooms (/ws)
+│   │   └── OnlineSessionManager.ts # Encapsulated online multiplayer session lifecycle, DOM updates & telemetry coordinator
 │   ├── server/            # Authoritative server simulation core
 │   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world, contested grab arbiter
 │   │   ├── ServerJitterBuffer.ts   # Per-player priority jitter queues & starvation guards

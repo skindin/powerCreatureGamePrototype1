@@ -345,13 +345,29 @@ export class OnlineRoomClient {
    * Enables the authoritative server to maintain locked coordinates and velocity for each local character.
    */
   public sendPlayerInput(
-    localPlayerId: string,
-    packet: PlayerInputPacket,
-    character?: any,
+    localPlayerIdOrPacket: string | PlayerInputPacket,
+    packetOrCharacter?: PlayerInputPacket | any,
+    characterOrObjects?: any,
     objects?: any[]
   ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
+      let localPlayerId: string;
+      let packet: PlayerInputPacket;
+      let character: any;
+      let actualObjects: any[] | undefined = objects;
+
+      if (typeof localPlayerIdOrPacket === "string") {
+        localPlayerId = localPlayerIdOrPacket;
+        packet = packetOrCharacter;
+        character = characterOrObjects;
+      } else {
+        localPlayerId = "keyboard";
+        packet = localPlayerIdOrPacket;
+        character = packetOrCharacter;
+        actualObjects = characterOrObjects;
+      }
+
       const serverCharId = this.getServerCharId(localPlayerId);
       packet.playerId = serverCharId;
 
@@ -391,8 +407,8 @@ export class OnlineRoomClient {
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)
-      const myHeldObjects = (Array.isArray(objects) && objects.length > 0)
-        ? objects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
+      const myHeldObjects = (Array.isArray(actualObjects) && actualObjects.length > 0)
+        ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
         : [];
 
       const objTelemetry = myHeldObjects.length > 0 ? myHeldObjects.map((obj) => ({
