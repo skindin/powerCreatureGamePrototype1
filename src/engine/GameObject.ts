@@ -7,6 +7,8 @@ import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
 import { VerticalPositionModule } from "./VerticalPositionModule.js";
 import { RigidbodyModule } from "./RigidbodyModule.js";
+import { SurfaceSupportModule } from "./SurfaceSupportModule.js";
+import { MotionIntegrator } from "./MotionIntegrator.js";
 
 export interface Vector2D {
   x: number;
@@ -481,268 +483,22 @@ export class GameObject {
       this.supportingSurfaceHeight = 0;
     }
 
-    // 0. Supporting surface:
-    // Only check wall support if entity has a collider and vertical position
-    let surfaceHeight = 0;
+    // 0. Supporting surface evaluation (delegated to SurfaceSupportModule)
+    const { surfaceHeight, standingWall } = SurfaceSupportModule.evaluateSupportingSurface(this, arena);
+    let effectiveSurfaceHeight = surfaceHeight;
+    this.standingWall = standingWall;
 
-    if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
-      // Layer 2 threshold: entity is elevated to or resting on layer 2 (wall height)
-      const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 ||
-        (this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2) ||
-        this.standingWall !== null;
-
-      if (isAtWallLayer) {
-        const char = this.isCharacter ? (this as any) : null;
-        const isDismountFalling = Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
-
-        if (isDismountFalling) {
-          // While in dismount freefall into gap or off wall: entity must fall down to ground!
-          this.standingWall = null;
-          surfaceHeight = 0;
-        } else if (!this.isCharacter) {
-          // Freebody object: supported if and only if its collider overlaps an active wall in arena
-          const supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-          if (supportingWall) {
-            this.standingWall = supportingWall;
-            surfaceHeight = supportingWall.wallHeight;
-          } else {
-            this.standingWall = null;
-            surfaceHeight = 0;
-          }
-        } else if (this.standingWall) {
-          // Character standing on wall top:
-          // Check if this.standingWall still exists in arena (was not deleted)
-          const wallStillExists = arena.walls.find(w => w.id === this.standingWall!.id);
-          const supportRadius = this.colliderRadius;
-          const touchesCurrent = wallStillExists ? arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wallStillExists) : false;
-
-          if (touchesCurrent && wallStillExists) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else if (wallStillExists && char?.climbingModule?.dismountSuppressedUntilRelease) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else {
-            let nextSupport: Wall | null = null;
-            if (wallStillExists) {
-              for (const wall of arena.walls) {
-                if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
-                  nextSupport = wall;
-                  break;
-                }
-              }
-            } else {
-              // The wall the character was on was deleted! Find any other active wall overlapping the collider
-              nextSupport = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
-            }
-
-            if (nextSupport) {
-              this.standingWall = nextSupport;
-              surfaceHeight = nextSupport.wallHeight;
-            } else {
-              // Left the contiguous platform or all supporting walls were deleted! Fall into gap
-              this.standingWall = null;
-              surfaceHeight = 0;
-              if (char?.climbingModule) {
-                char.climbingModule.isDismountFreefall = true;
-              }
-            }
-          }
-        } else {
-          // standingWall not set yet: acquire if resting at wall height and not climbing
-          if (!this.isClimbing && this.verticalVelocity <= 0.5 && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
-            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-            if (wall) {
-              this.standingWall = wall;
-              surfaceHeight = wall.wallHeight;
-            }
-          }
-        }
-      } else {
-        this.standingWall = null;
-      }
-    } else {
-      this.standingWall = null;
-      surfaceHeight = 0;
-    }
     if (this.isClimbing) {
-      surfaceHeight = Math.max(surfaceHeight, this.position.z);
+      effectiveSurfaceHeight = Math.max(effectiveSurfaceHeight, this.position.z);
       this.verticalVelocity = 0;
     }
-    this.supportingSurfaceHeight = surfaceHeight;
+    this.supportingSurfaceHeight = effectiveSurfaceHeight;
 
-    // 1. Vertical & Surface Physics
-    if (this.hasGravity && this.hasVerticalVelocity) {
-      // Gravity acceleration active
-      if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
-        this.verticalVelocity -= arena.gravity * dt;
-        this.position.z += this.verticalVelocity * dt;
+    // 1. Vertical Motion & Gravity (delegated to MotionIntegrator)
+    MotionIntegrator.integrateVerticalMotion(this, effectiveSurfaceHeight, dt, arena);
 
-        // Surface impact (hitting floor or top of wall from above)
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          // Bounce vertically only if impact speed exceeds the single-step gravity increment (prevents infinite micro-bouncing)
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            const impactVz = Math.abs(this.verticalVelocity);
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-
-            // Vertical bounce couples into rolling dynamics only if surface friction is present
-            if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
-              const roll = this.rollModule;
-              const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-              const beta = 0.4;
-              const e = this.bounceMod;
-              const normalImpulse = (1 + e) * this.mass * impactVz;
-
-              const muBounce = arena.frictionCoeff * this.dynamicGroundFrictionMod * 0.05;
-              const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-              const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-              const slipSpeed = Math.hypot(vSlipX, vSlipY);
-
-              if (slipSpeed > 0.001 && muBounce > 0) {
-                const maxFricImpulse = muBounce * normalImpulse;
-                const stickImpulse = (slipSpeed * this.mass) / (1 + 1 / beta);
-                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
-
-                const impX = (vSlipX / slipSpeed) * actualImpulse;
-                const impY = (vSlipY / slipSpeed) * actualImpulse;
-
-                this.velocity.x -= impX / this.mass;
-                this.velocity.y -= impY / this.mass;
-
-                roll.angularVelocity.y += impX / (beta * this.mass * R);
-                roll.angularVelocity.x -= impY / (beta * this.mass * R);
-              }
-
-              const spinDamp = Math.max(0.65, 1.0 - (1 - e) * 0.35);
-              roll.angularVelocity.x *= spinDamp;
-              roll.angularVelocity.y *= spinDamp;
-              roll.angularVelocity.z *= spinDamp;
-            }
-          } else {
-            // No bounce: dead stick impact
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    } else {
-      // Zero Gravity: maintains elevation unless vertical velocity is present
-      if (this.hasVerticalVelocity && this.verticalVelocity !== 0) {
-        this.position.z += this.verticalVelocity * dt;
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-          } else {
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    }
-
-    // 2. Surface Friction & Rolling Behavior (applies only if resting on surface and has friction)
-    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
-    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
-    if (isResting && this.hasFriction) {
-      const hasActiveWalkingModule = this.isCharacter && (this as any).walkingModule?.enabled;
-      if (!hasActiveWalkingModule) {
-        if (this.rollModule && this.rollModule.enabled) {
-          const roll = this.rollModule;
-          const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-          const muG = arena.frictionCoeff * this.dynamicGroundFrictionMod;
-          const beta = 0.4;
-
-          const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-          const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-          const slipSpeed = Math.hypot(vSlipX, vSlipY);
-
-          if (muG > 0 && slipSpeed > 0.001) {
-            const maxSlipDelta = muG * (1 + 1 / beta) * dt;
-            if (slipSpeed <= maxSlipDelta) {
-              const totalMomX = this.velocity.x + beta * roll.angularVelocity.y * R;
-              const totalMomY = this.velocity.y - beta * roll.angularVelocity.x * R;
-              const rollVx = totalMomX / (1 + beta);
-              const rollVy = totalMomY / (1 + beta);
-              this.velocity.x = rollVx;
-              this.velocity.y = rollVy;
-              roll.angularVelocity.y = rollVx / R;
-              roll.angularVelocity.x = -rollVy / R;
-            } else {
-              const fx = (vSlipX / slipSpeed) * muG * dt;
-              const fy = (vSlipY / slipSpeed) * muG * dt;
-              this.velocity.x -= fx;
-              this.velocity.y -= fy;
-              roll.angularVelocity.y += fx / (beta * R);
-              roll.angularVelocity.x -= fy / (beta * R);
-            }
-          }
-
-          // Roll Resistance
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            if (roll.rollResistance > 0) {
-              const decel = roll.rollResistance * dt;
-              const newSpeed = Math.max(0, speed - decel);
-              if (newSpeed < 0.005) {
-                this.velocity.x = 0;
-                this.velocity.y = 0;
-                roll.angularVelocity.x = 0;
-                roll.angularVelocity.y = 0;
-              } else {
-                const ratio = newSpeed / speed;
-                this.velocity.x *= ratio;
-                this.velocity.y *= ratio;
-                roll.angularVelocity.x *= ratio;
-                roll.angularVelocity.y *= ratio;
-              }
-            }
-          } else {
-            const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
-            if (spinSpeed > 0 && muG > 0) {
-              const spinDecel = (muG / (beta * R)) * dt;
-              const newSpin = Math.max(0, spinSpeed - spinDecel);
-              const ratio = spinSpeed > 0 ? newSpin / spinSpeed : 0;
-              roll.angularVelocity.x *= ratio;
-              roll.angularVelocity.y *= ratio;
-            }
-          }
-
-          if (Math.abs(roll.angularVelocity.z) > 0.001) {
-            if (roll.rollResistance > 0) {
-              const zDecel = (roll.rollResistance / (beta * R)) * dt;
-              const signZ = Math.sign(roll.angularVelocity.z);
-              const magZ = Math.abs(roll.angularVelocity.z);
-              roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
-            }
-          }
-
-          roll.updateVisualPhase(dt);
-        } else {
-          // Standard sliding ground friction
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            const staticThreshold = arena.staticFrictionThreshold * this.staticGroundFrictionMod;
-            if (speed < staticThreshold) {
-              this.velocity.x = 0;
-              this.velocity.y = 0;
-            } else {
-              const frictionForce = arena.frictionCoeff * this.dynamicGroundFrictionMod * dt;
-              const newSpeed = Math.max(0, speed - frictionForce);
-              const ratio = newSpeed / speed;
-              this.velocity.x *= ratio;
-              this.velocity.y *= ratio;
-            }
-          }
-        }
-      }
-    } else {
-      // Frictionless or airborne or no mass: spin is NOT affected by ground!
-      if (this.rollModule && this.rollModule.enabled) {
-        this.rollModule.updateVisualPhase(dt);
-      }
-    }
+    // 2. Surface Friction & Rolling Dynamics (delegated to MotionIntegrator)
+    MotionIntegrator.integrateGroundFrictionAndRoll(this, effectiveSurfaceHeight, dt, arena);
 
     // 3. Horizontal Position Integration
     // Assist Clamp (Ledge Guard) Lifecycle:

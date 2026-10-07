@@ -4158,6 +4158,232 @@ class RigidbodyModule {
     this.enabled = options.enabled !== void 0 ? options.enabled : true;
   }
 }
+class SurfaceSupportModule {
+  /**
+   * Determines the supporting surface elevation (floor z=0 or wall top z=wallHeight)
+   * and current standing wall for an entity.
+   */
+  static evaluateSupportingSurface(entity, arena) {
+    var _a, _b, _c;
+    if (!entity.hasCollider || !entity.hasVerticalPosition || !arena.walls || arena.walls.length === 0) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    const isAtWallLayer = entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05 && entity.position.z >= arena.wallHeight - 0.2 || entity.standingWall !== null;
+    if (!isAtWallLayer) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    const char = entity.isCharacter ? entity : null;
+    const isDismountFalling = Boolean(
+      ((_a = char == null ? void 0 : char.climbingModule) == null ? void 0 : _a.isDismountFreefall) || ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.climbSuppressedUntilRePress)
+    );
+    if (isDismountFalling) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (!entity.isCharacter) {
+      const supportingWall = arena.getSupportingWall(entity.position.x, entity.position.y, entity.colliderRadius);
+      if (supportingWall) {
+        return { surfaceHeight: supportingWall.wallHeight, standingWall: supportingWall };
+      }
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (entity.standingWall) {
+      const wallStillExists = arena.walls.find((w) => w.id === entity.standingWall.id);
+      const supportRadius = entity.colliderRadius;
+      const touchesCurrent = wallStillExists ? arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wallStillExists) : false;
+      if (touchesCurrent && wallStillExists) {
+        return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
+      }
+      if (wallStillExists && ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.dismountSuppressedUntilRelease)) {
+        return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
+      }
+      let nextSupport = null;
+      if (wallStillExists) {
+        for (const wall of arena.walls) {
+          if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
+            nextSupport = wall;
+            break;
+          }
+        }
+      } else {
+        nextSupport = arena.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
+      }
+      if (nextSupport) {
+        return { surfaceHeight: nextSupport.wallHeight, standingWall: nextSupport };
+      }
+      if (char == null ? void 0 : char.climbingModule) {
+        char.climbingModule.isDismountFreefall = true;
+      }
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (!entity.isClimbing && entity.verticalVelocity <= 0.5 && (entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05)) {
+      const wall = arena.getSupportingWall(entity.position.x, entity.position.y, entity.colliderRadius);
+      if (wall) {
+        return { surfaceHeight: wall.wallHeight, standingWall: wall };
+      }
+    }
+    return { surfaceHeight: 0, standingWall: null };
+  }
+}
+class MotionIntegrator {
+  /**
+   * Integrates vertical velocity and position under gravity, resolving surface contact and bounces.
+   */
+  static integrateVerticalMotion(entity, surfaceHeight, dt, arena) {
+    if (entity.hasGravity && entity.hasVerticalVelocity) {
+      if (entity.position.z > surfaceHeight || entity.verticalVelocity !== 0) {
+        entity.verticalVelocity -= arena.gravity * dt;
+        entity.position.z += entity.verticalVelocity * dt;
+        if (entity.position.z <= surfaceHeight) {
+          entity.position.z = surfaceHeight;
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (!entity.isCharacter && entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
+            const impactVz = Math.abs(entity.verticalVelocity);
+            entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
+            if (entity.hasFriction && entity.rollModule && entity.rollModule.enabled) {
+              const roll = entity.rollModule;
+              const R = entity.colliderRadius > 0 ? entity.colliderRadius : 0.3;
+              const beta = 0.4;
+              const e = entity.bounceMod;
+              const normalImpulse = (1 + e) * entity.mass * impactVz;
+              const muBounce = arena.frictionCoeff * entity.dynamicGroundFrictionMod * 0.05;
+              const vSlipX = entity.velocity.x - roll.angularVelocity.y * R;
+              const vSlipY = entity.velocity.y + roll.angularVelocity.x * R;
+              const slipSpeed = Math.hypot(vSlipX, vSlipY);
+              if (slipSpeed > 1e-3 && muBounce > 0) {
+                const maxFricImpulse = muBounce * normalImpulse;
+                const stickImpulse = slipSpeed * entity.mass / (1 + 1 / beta);
+                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
+                const impX = vSlipX / slipSpeed * actualImpulse;
+                const impY = vSlipY / slipSpeed * actualImpulse;
+                entity.velocity.x -= impX / entity.mass;
+                entity.velocity.y -= impY / entity.mass;
+                roll.angularVelocity.y += impX / (beta * entity.mass * R);
+                roll.angularVelocity.x -= impY / (beta * entity.mass * R);
+              }
+              const spinDamp = Math.max(0.65, 1 - (1 - e) * 0.35);
+              roll.angularVelocity.x *= spinDamp;
+              roll.angularVelocity.y *= spinDamp;
+              roll.angularVelocity.z *= spinDamp;
+            }
+          } else {
+            entity.verticalVelocity = 0;
+          }
+        }
+      }
+    } else {
+      if (entity.hasVerticalVelocity && entity.verticalVelocity !== 0) {
+        entity.position.z += entity.verticalVelocity * dt;
+        if (entity.position.z <= surfaceHeight) {
+          entity.position.z = surfaceHeight;
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
+            entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
+          } else {
+            entity.verticalVelocity = 0;
+          }
+        }
+      }
+    }
+  }
+  /**
+   * Applies ground friction, roll resistance, and rolling angular coupling to an entity resting on a surface.
+   */
+  static integrateGroundFrictionAndRoll(entity, surfaceHeight, dt, arena) {
+    var _a;
+    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
+    const isResting = Math.abs(entity.position.z - surfaceHeight) <= 0.02 && Math.abs(entity.verticalVelocity) <= restVzThreshold;
+    if (isResting && entity.hasFriction) {
+      const isActivelyWalking = entity.isCharacter && ((_a = entity.walkingModule) == null ? void 0 : _a.enabled) && entity.isActivelyWalking;
+      if (!isActivelyWalking) {
+        if (entity.rollModule && entity.rollModule.enabled) {
+          const roll = entity.rollModule;
+          const R = entity.colliderRadius > 0 ? entity.colliderRadius : 0.3;
+          const muG = arena.frictionCoeff * entity.dynamicGroundFrictionMod;
+          const beta = 0.4;
+          const vSlipX = entity.velocity.x - roll.angularVelocity.y * R;
+          const vSlipY = entity.velocity.y + roll.angularVelocity.x * R;
+          const slipSpeed = Math.hypot(vSlipX, vSlipY);
+          if (muG > 0 && slipSpeed > 1e-3) {
+            const maxSlipDelta = muG * (1 + 1 / beta) * dt;
+            if (slipSpeed <= maxSlipDelta) {
+              const totalMomX = entity.velocity.x + beta * roll.angularVelocity.y * R;
+              const totalMomY = entity.velocity.y - beta * roll.angularVelocity.x * R;
+              const rollVx = totalMomX / (1 + beta);
+              const rollVy = totalMomY / (1 + beta);
+              entity.velocity.x = rollVx;
+              entity.velocity.y = rollVy;
+              roll.angularVelocity.y = rollVx / R;
+              roll.angularVelocity.x = -rollVy / R;
+            } else {
+              const fx = vSlipX / slipSpeed * muG * dt;
+              const fy = vSlipY / slipSpeed * muG * dt;
+              entity.velocity.x -= fx;
+              entity.velocity.y -= fy;
+              roll.angularVelocity.y += fx / (beta * R);
+              roll.angularVelocity.x -= fy / (beta * R);
+            }
+          }
+          const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (speed > 0) {
+            if (roll.rollResistance > 0) {
+              const decel = roll.rollResistance * dt;
+              const newSpeed = Math.max(0, speed - decel);
+              if (newSpeed < 5e-3) {
+                entity.velocity.x = 0;
+                entity.velocity.y = 0;
+                roll.angularVelocity.x = 0;
+                roll.angularVelocity.y = 0;
+              } else {
+                const ratio = newSpeed / speed;
+                entity.velocity.x *= ratio;
+                entity.velocity.y *= ratio;
+                roll.angularVelocity.x *= ratio;
+                roll.angularVelocity.y *= ratio;
+              }
+            }
+          } else {
+            const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
+            if (spinSpeed > 0 && muG > 0) {
+              const spinDecel = muG / (beta * R) * dt;
+              const newSpin = Math.max(0, spinSpeed - spinDecel);
+              const ratio = spinSpeed > 0 ? newSpin / spinSpeed : 0;
+              roll.angularVelocity.x *= ratio;
+              roll.angularVelocity.y *= ratio;
+            }
+          }
+          if (Math.abs(roll.angularVelocity.z) > 1e-3) {
+            if (roll.rollResistance > 0) {
+              const zDecel = roll.rollResistance / (beta * R) * dt;
+              const signZ = Math.sign(roll.angularVelocity.z);
+              const magZ = Math.abs(roll.angularVelocity.z);
+              roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
+            }
+          }
+          roll.updateVisualPhase(dt);
+        } else {
+          const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (speed > 0) {
+            const staticThreshold = arena.staticFrictionThreshold * entity.staticGroundFrictionMod;
+            if (speed < staticThreshold) {
+              entity.velocity.x = 0;
+              entity.velocity.y = 0;
+            } else {
+              const frictionForce = arena.frictionCoeff * entity.dynamicGroundFrictionMod * dt;
+              const newSpeed = Math.max(0, speed - frictionForce);
+              const ratio = newSpeed / speed;
+              entity.velocity.x *= ratio;
+              entity.velocity.y *= ratio;
+            }
+          }
+        }
+      }
+    } else {
+      if (entity.rollModule && entity.rollModule.enabled) {
+        entity.rollModule.updateVisualPhase(dt);
+      }
+    }
+  }
+}
 class GameObject {
   constructor(options = {}) {
     __publicField(this, "id");
@@ -4455,7 +4681,7 @@ class GameObject {
   }
   /** Update physics, gravity, friction, and ground/wall collision */
   updatePosition(dt, arena) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    var _a, _b, _c, _d, _e, _f;
     if (this.isHeld) {
       return;
     }
@@ -4499,225 +4725,16 @@ class GameObject {
       this.verticalVelocity = 0;
       this.supportingSurfaceHeight = 0;
     }
-    let surfaceHeight = 0;
-    if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
-      const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2 || this.standingWall !== null;
-      if (isAtWallLayer) {
-        const char2 = this.isCharacter ? this : null;
-        const isDismountFalling = Boolean(((_b = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _b.isDismountFreefall) || ((_c = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _c.climbSuppressedUntilRePress));
-        if (isDismountFalling) {
-          this.standingWall = null;
-          surfaceHeight = 0;
-        } else if (!this.isCharacter) {
-          const supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-          if (supportingWall) {
-            this.standingWall = supportingWall;
-            surfaceHeight = supportingWall.wallHeight;
-          } else {
-            this.standingWall = null;
-            surfaceHeight = 0;
-          }
-        } else if (this.standingWall) {
-          const wallStillExists = arena.walls.find((w) => w.id === this.standingWall.id);
-          const supportRadius = this.colliderRadius;
-          const touchesCurrent = wallStillExists ? arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wallStillExists) : false;
-          if (touchesCurrent && wallStillExists) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else if (wallStillExists && ((_d = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _d.dismountSuppressedUntilRelease)) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else {
-            let nextSupport = null;
-            if (wallStillExists) {
-              for (const wall of arena.walls) {
-                if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
-                  nextSupport = wall;
-                  break;
-                }
-              }
-            } else {
-              nextSupport = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
-            }
-            if (nextSupport) {
-              this.standingWall = nextSupport;
-              surfaceHeight = nextSupport.wallHeight;
-            } else {
-              this.standingWall = null;
-              surfaceHeight = 0;
-              if (char2 == null ? void 0 : char2.climbingModule) {
-                char2.climbingModule.isDismountFreefall = true;
-              }
-            }
-          }
-        } else {
-          if (!this.isClimbing && this.verticalVelocity <= 0.5 && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
-            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-            if (wall) {
-              this.standingWall = wall;
-              surfaceHeight = wall.wallHeight;
-            }
-          }
-        }
-      } else {
-        this.standingWall = null;
-      }
-    } else {
-      this.standingWall = null;
-      surfaceHeight = 0;
-    }
+    const { surfaceHeight, standingWall } = SurfaceSupportModule.evaluateSupportingSurface(this, arena);
+    let effectiveSurfaceHeight = surfaceHeight;
+    this.standingWall = standingWall;
     if (this.isClimbing) {
-      surfaceHeight = Math.max(surfaceHeight, this.position.z);
+      effectiveSurfaceHeight = Math.max(effectiveSurfaceHeight, this.position.z);
       this.verticalVelocity = 0;
     }
-    this.supportingSurfaceHeight = surfaceHeight;
-    if (this.hasGravity && this.hasVerticalVelocity) {
-      if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
-        this.verticalVelocity -= arena.gravity * dt;
-        this.position.z += this.verticalVelocity * dt;
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            const impactVz = Math.abs(this.verticalVelocity);
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-            if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
-              const roll = this.rollModule;
-              const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-              const beta = 0.4;
-              const e = this.bounceMod;
-              const normalImpulse = (1 + e) * this.mass * impactVz;
-              const muBounce = arena.frictionCoeff * this.dynamicGroundFrictionMod * 0.05;
-              const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-              const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-              const slipSpeed = Math.hypot(vSlipX, vSlipY);
-              if (slipSpeed > 1e-3 && muBounce > 0) {
-                const maxFricImpulse = muBounce * normalImpulse;
-                const stickImpulse = slipSpeed * this.mass / (1 + 1 / beta);
-                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
-                const impX = vSlipX / slipSpeed * actualImpulse;
-                const impY = vSlipY / slipSpeed * actualImpulse;
-                this.velocity.x -= impX / this.mass;
-                this.velocity.y -= impY / this.mass;
-                roll.angularVelocity.y += impX / (beta * this.mass * R);
-                roll.angularVelocity.x -= impY / (beta * this.mass * R);
-              }
-              const spinDamp = Math.max(0.65, 1 - (1 - e) * 0.35);
-              roll.angularVelocity.x *= spinDamp;
-              roll.angularVelocity.y *= spinDamp;
-              roll.angularVelocity.z *= spinDamp;
-            }
-          } else {
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    } else {
-      if (this.hasVerticalVelocity && this.verticalVelocity !== 0) {
-        this.position.z += this.verticalVelocity * dt;
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-          } else {
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    }
-    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
-    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
-    if (isResting && this.hasFriction) {
-      const hasActiveWalkingModule = this.isCharacter && ((_e = this.walkingModule) == null ? void 0 : _e.enabled);
-      if (!hasActiveWalkingModule) {
-        if (this.rollModule && this.rollModule.enabled) {
-          const roll = this.rollModule;
-          const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-          const muG = arena.frictionCoeff * this.dynamicGroundFrictionMod;
-          const beta = 0.4;
-          const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-          const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-          const slipSpeed = Math.hypot(vSlipX, vSlipY);
-          if (muG > 0 && slipSpeed > 1e-3) {
-            const maxSlipDelta = muG * (1 + 1 / beta) * dt;
-            if (slipSpeed <= maxSlipDelta) {
-              const totalMomX = this.velocity.x + beta * roll.angularVelocity.y * R;
-              const totalMomY = this.velocity.y - beta * roll.angularVelocity.x * R;
-              const rollVx = totalMomX / (1 + beta);
-              const rollVy = totalMomY / (1 + beta);
-              this.velocity.x = rollVx;
-              this.velocity.y = rollVy;
-              roll.angularVelocity.y = rollVx / R;
-              roll.angularVelocity.x = -rollVy / R;
-            } else {
-              const fx = vSlipX / slipSpeed * muG * dt;
-              const fy = vSlipY / slipSpeed * muG * dt;
-              this.velocity.x -= fx;
-              this.velocity.y -= fy;
-              roll.angularVelocity.y += fx / (beta * R);
-              roll.angularVelocity.x -= fy / (beta * R);
-            }
-          }
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            if (roll.rollResistance > 0) {
-              const decel = roll.rollResistance * dt;
-              const newSpeed = Math.max(0, speed - decel);
-              if (newSpeed < 5e-3) {
-                this.velocity.x = 0;
-                this.velocity.y = 0;
-                roll.angularVelocity.x = 0;
-                roll.angularVelocity.y = 0;
-              } else {
-                const ratio = newSpeed / speed;
-                this.velocity.x *= ratio;
-                this.velocity.y *= ratio;
-                roll.angularVelocity.x *= ratio;
-                roll.angularVelocity.y *= ratio;
-              }
-            }
-          } else {
-            const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
-            if (spinSpeed > 0 && muG > 0) {
-              const spinDecel = muG / (beta * R) * dt;
-              const newSpin = Math.max(0, spinSpeed - spinDecel);
-              const ratio = spinSpeed > 0 ? newSpin / spinSpeed : 0;
-              roll.angularVelocity.x *= ratio;
-              roll.angularVelocity.y *= ratio;
-            }
-          }
-          if (Math.abs(roll.angularVelocity.z) > 1e-3) {
-            if (roll.rollResistance > 0) {
-              const zDecel = roll.rollResistance / (beta * R) * dt;
-              const signZ = Math.sign(roll.angularVelocity.z);
-              const magZ = Math.abs(roll.angularVelocity.z);
-              roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
-            }
-          }
-          roll.updateVisualPhase(dt);
-        } else {
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            const staticThreshold = arena.staticFrictionThreshold * this.staticGroundFrictionMod;
-            if (speed < staticThreshold) {
-              this.velocity.x = 0;
-              this.velocity.y = 0;
-            } else {
-              const frictionForce = arena.frictionCoeff * this.dynamicGroundFrictionMod * dt;
-              const newSpeed = Math.max(0, speed - frictionForce);
-              const ratio = newSpeed / speed;
-              this.velocity.x *= ratio;
-              this.velocity.y *= ratio;
-            }
-          }
-        }
-      }
-    } else {
-      if (this.rollModule && this.rollModule.enabled) {
-        this.rollModule.updateVisualPhase(dt);
-      }
-    }
+    this.supportingSurfaceHeight = effectiveSurfaceHeight;
+    MotionIntegrator.integrateVerticalMotion(this, effectiveSurfaceHeight, dt, arena);
+    MotionIntegrator.integrateGroundFrictionAndRoll(this, effectiveSurfaceHeight, dt, arena);
     const char = this.isCharacter ? this : null;
     const edgeMod = (char == null ? void 0 : char.wallEdgeAssistModule) ?? (char == null ? void 0 : char.climbingModule);
     const isStandingOnWallTop = Boolean(
@@ -4891,7 +4908,7 @@ class GameObject {
           }
           this.position.x = candX;
           this.position.y = candY;
-          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(((_f = char == null ? void 0 : char.climbingModule) == null ? void 0 : _f.isDismountFreefall) || ((_g = char == null ? void 0 : char.climbingModule) == null ? void 0 : _g.climbSuppressedUntilRePress)));
+          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.isDismountFreefall) || ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.climbSuppressedUntilRePress)));
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
@@ -4941,11 +4958,11 @@ class GameObject {
         this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, -1, bRestitution);
       }
-      const isDismountFallingNow = Boolean(((_h = char == null ? void 0 : char.climbingModule) == null ? void 0 : _h.isDismountFreefall) || ((_i = char == null ? void 0 : char.climbingModule) == null ? void 0 : _i.climbSuppressedUntilRePress));
+      const isDismountFallingNow = Boolean(((_d = char == null ? void 0 : char.climbingModule) == null ? void 0 : _d.isDismountFreefall) || ((_e = char == null ? void 0 : char.climbingModule) == null ? void 0 : _e.climbSuppressedUntilRePress));
       for (const wall of arena.walls) {
         if (this.position.z <= wall.wallHeight) {
           const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
-          if (isAtWallTop && (((_j = this.standingWall) == null ? void 0 : _j.id) === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
+          if (isAtWallTop && (((_f = this.standingWall) == null ? void 0 : _f.id) === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
             continue;
           }
           if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
@@ -4982,8 +4999,8 @@ class GameObject {
     if (!this.isCharacter && !this.isHeld && this.heldBy === null) {
       const speed = Math.hypot(this.velocity.x, this.velocity.y);
       const angSpeed = this.rollModule && this.rollModule.enabled ? this.rollModule.angularSpeed : 0;
-      const isResting2 = this.isRestingOnSurface;
-      if (isResting2 && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
+      const isResting = this.isRestingOnSurface;
+      if (isResting && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
         this.sleepTimer++;
         if (this.sleepTimer >= 15) {
           this.putToSleep();
