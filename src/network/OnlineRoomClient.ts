@@ -37,7 +37,7 @@ export class OnlineRoomClient {
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
-  public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }>();
+  public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
@@ -48,7 +48,7 @@ export class OnlineRoomClient {
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
-  public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string }>;
+  public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }>;
 
   constructor(initialName?: string) {
     if (initialName) {
@@ -133,7 +133,7 @@ export class OnlineRoomClient {
         this.notifyStats();
 
         // Send join room request with all local players currently active on this client
-        let activeLocalPlayers: Array<{ localPlayerId: string; name?: string }> = [];
+        let activeLocalPlayers: Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }> = [];
         if (this.getLocalPlayers) {
           activeLocalPlayers = this.getLocalPlayers();
         } else {
@@ -142,12 +142,16 @@ export class OnlineRoomClient {
             name: (p.name && !/^Player(\s+\d+)?$/i.test(p.name.trim()) && !/^Controller\s+#\d+$/i.test(p.name.trim()))
               ? p.name
               : (p.localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : undefined),
+            spawnPos: p.spawnPos,
           }));
         }
+
+        const primarySpawnPos = activeLocalPlayers.find(p => p.localPlayerId === "keyboard")?.spawnPos || activeLocalPlayers[0]?.spawnPos;
 
         this.ws?.send(JSON.stringify({
           type: "join_room",
           name: this.hasCustomName ? this.playerName : undefined,
+          spawnPos: primarySpawnPos,
           localPlayers: activeLocalPlayers.length > 0
             ? activeLocalPlayers
             : [{ localPlayerId: "keyboard", name: this.hasCustomName ? this.playerName : undefined }],
@@ -307,7 +311,7 @@ export class OnlineRoomClient {
     return this.clientId ? `${this.clientId}:${localPlayerId}` : localPlayerId;
   }
 
-  public addPlayer(localPlayerId: string, name?: string): void {
+  public addPlayer(localPlayerId: string, name?: string, spawnPos?: { x: number; y: number; z?: number }): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       const isCustom = Boolean(
@@ -320,6 +324,7 @@ export class OnlineRoomClient {
         type: "add_player",
         localPlayerId,
         name: isCustom ? name!.trim() : undefined,
+        spawnPos,
       }));
     } catch (_) {}
   }

@@ -199,11 +199,15 @@ export class ClimbingModule {
           character.isClimbing = false;
           this.dismountSuppressedUntilRelease = false;
 
-          // Pull onto wall platform slightly so character is firmly on top of the wall
+          // Smoothly finish climb onto wall platform without forward jump/pop
+          character.velocity.x = 0;
+          character.velocity.y = 0;
           if (shortestDist > 0.001) {
-            const mountNudge = Math.min(r * 0.5, 0.18);
-            character.position.x = (character.position.x + targetDx) - wallNormalX * (r - mountNudge);
-            character.position.y = (character.position.y + targetDy) - wallNormalY * (r - mountNudge);
+            // Place character flush against the wall edge without launching inward
+            const surfaceX = character.position.x + targetDx;
+            const surfaceY = character.position.y + targetDy;
+            character.position.x = surfaceX - wallNormalX * r;
+            character.position.y = surfaceY - wallNormalY * r;
           }
           if (character.wallEdgeAssistModule) {
             character.wallEdgeAssistModule.hasMovedOntoWall = false;

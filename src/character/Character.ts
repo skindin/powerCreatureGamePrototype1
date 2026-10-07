@@ -151,7 +151,7 @@ export class Character extends GameObject {
    * Attempts to jump using the attached JumpModule.
    */
   public jump(arena?: Arena, movementInput?: Vector2D): boolean {
-    if (this.jumpModule) {
+    if (this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition) {
       return this.jumpModule.jump(this, arena, movementInput);
     }
     return false;
@@ -227,25 +227,40 @@ export class Character extends GameObject {
     this.isClimbInputHeld = isClimbInput;
 
     // 0. Process modular climbing if pressing into wall and holding climb input
-    if (this.climbingModule) {
-      this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
+    // Requires: climbingModule enabled, Vertical Position enabled, and Strength enabled
+    const canClimb = Boolean(
+      this.climbingModule &&
+      this.climbingModule.enabled &&
+      this.hasVerticalPosition &&
+      this.hasStrength
+    );
+    if (canClimb) {
+      this.climbingModule!.update(this, movementInput, isClimbInput, dt, arena);
+    } else if (this.isClimbing) {
+      this.isClimbing = false;
     }
 
     // Process modular jumping if holding jump input (Space / A) and not climbing
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    // Requires: jumpModule enabled and Vertical Position enabled
+    const canJump = Boolean(this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition);
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
 
     // 1. Process modular walking
-    if (this.walkingModule) {
-      this.walkingModule.update(this, movementInput, dt, arena);
+    // Requires: walkingModule enabled and Friction enabled
+    const canWalk = Boolean(this.walkingModule && this.walkingModule.enabled && this.hasFriction);
+    if (canWalk) {
+      this.walkingModule!.update(this, movementInput, dt, arena);
+    } else {
+      this.isActivelyWalking = false;
     }
 
     // 2. Update base physics & collisions
     this.updatePosition(dt, arena);
 
     // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
 
@@ -290,7 +305,7 @@ export class Character extends GameObject {
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
 
-    if (this.heldObject && this.throwModule && isAimingInput && aimTargetPos) {
+    if (this.heldObject && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

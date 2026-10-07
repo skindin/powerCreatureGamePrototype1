@@ -1336,6 +1336,18 @@ powerCreatureGamePrototype1/
 - **Problem 2 (Perpendicular Sliding / Squirting)**: Pushed idle characters had their positions pulled backward by stale incoming client telemetry on the server, acting like a rubber band anchor. Under continuous contact, normal forces slipped sideways, causing the pushed character to squirt out perpendicularly.
 - **Fix 2**: On the server (ServerGameSimulation.ts), stale idle telemetry is ignored during active collision impact (hasRecentImpact). On the client (main.ts), external server displacements > 0.06u are smoothly absorbed into the local character so the pushed player moves forward on their own screen, eliminating the rubber-band anchor.
 
+### Phase 10.4 — Smooth Wall Mount, Spawn Position Handshake & Behavior Dependency Lifecycle
+- **Climbing Top Mount Lurch Fix (`ClimbingModule.ts`)**:
+  - Replaced the sudden forward pop (`mountNudge`) at the top of wall climbing with smooth tangent surface placement and zeroed linear velocity (`velocity.x = 0; velocity.y = 0`), allowing standard ground locomotion to accelerate naturally from 0 without lurching forward.
+- **Online Mode Spawn Position Handshake (`UniversalRoomManager.ts`, `OnlineRoomClient.ts`, `main.ts`)**:
+  - Resolved local-to-online switching position flashing: client now passes `spawnPos` (`x, y, z`) in `join_room` and `add_player` messages, allowing the server to spawn characters at their current local position instead of snapping to a default coordinate.
+  - Snapshot displacement resolution on client snaps cleanly for large distances (>2.5u) and converges smoothly (0.25 blend) without rapid ping-pong oscillation.
+- **Behavior Enable / Disable Toggles & Dependency Lifecycle (`DevPanel.ts`, `style.css`, `Character.ts`)**:
+  - Restored Enable / Disable toggle buttons on all behavior cards in `DevPanel.ts` alongside "✕ Remove".
+  - Added real-time visual banners indicating when behaviors are disabled or when dependent behaviors are disabled or missing (e.g. `⚠️ Inactive: [Behavior] is currently disabled`).
+  - Strict dependency enforcement in character execution: walking requires Friction & Strength; jumping requires Vertical Position; climbing requires Vertical Position & Strength; throwing requires Strength.
+
+
 ---
 
 ## 5. Agent Workflow Rule

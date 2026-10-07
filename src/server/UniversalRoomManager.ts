@@ -276,7 +276,8 @@ export class UniversalRoomManager {
   public registerCharacter(
     client: ConnectedRoomClient,
     localPlayerId: string,
-    name?: string
+    name?: string,
+    spawnPos?: { x: number; y: number; z?: number }
   ): ClientCharacterEntry {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
@@ -305,8 +306,12 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    const spawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
-    const spawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const defaultSpawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
+    const defaultSpawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
+
+    const spawnX = (spawnPos && typeof spawnPos.x === "number" && !isNaN(spawnPos.x)) ? spawnPos.x : defaultSpawnX;
+    const spawnY = (spawnPos && typeof spawnPos.y === "number" && !isNaN(spawnPos.y)) ? spawnPos.y : defaultSpawnY;
+    const spawnZ = (spawnPos && typeof spawnPos.z === "number" && !isNaN(spawnPos.z)) ? spawnPos.z : 0;
 
     const character = new Character({
       x: spawnX,
@@ -320,6 +325,7 @@ export class UniversalRoomManager {
       name: charName,
       hasCustomName: isExplicitCustom,
     });
+    character.position.z = spawnZ;
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
 
@@ -431,7 +437,7 @@ export class UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name, lp.spawnPos);
                 if (lp.localPlayerId !== "keyboard") {
                   reg.isDefaultPlaceholder = false;
                 }
@@ -440,7 +446,7 @@ export class UniversalRoomManager {
           } else {
             // Default: ensure "keyboard" is registered
             if (!client.characters.has("keyboard")) {
-              this.registerCharacter(client, "keyboard", data.name);
+              this.registerCharacter(client, "keyboard", data.name, data.spawnPos);
             } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
               const entry = client.characters.get("keyboard")!;
               if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
@@ -492,7 +498,7 @@ export class UniversalRoomManager {
             this.unregisterCharacter(client, "keyboard");
           }
 
-          const entry = this.registerCharacter(client, localPlayerId, data.name);
+          const entry = this.registerCharacter(client, localPlayerId, data.name, data.spawnPos);
           entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",

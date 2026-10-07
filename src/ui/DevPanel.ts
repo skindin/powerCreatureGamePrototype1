@@ -938,36 +938,79 @@ export class DevPanel {
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
-    // Check which modules are currently attached
-    const hasRigidbody = Boolean(e.rigidbodyModule && e.rigidbodyModule.enabled);
-    const hasCollider = Boolean(e.colliderModule && e.colliderModule.enabled);
-    const hasMass = Boolean(e.massModule && e.massModule.enabled);
-    const hasFriction = Boolean(e.frictionModule && e.frictionModule.enabled);
-    const hasBounce = Boolean(e.bounceModule && e.bounceModule.enabled);
-    const hasVertPos = Boolean(e.verticalPositionModule && e.verticalPositionModule.enabled);
-    const hasGravity = Boolean(e.gravityModule && e.gravityModule.enabled);
-    const hasRoll = Boolean(e.rollModule && e.rollModule.enabled);
+    // Check which modules are attached and their enabled states
+    const hasRigidbodyModule = Boolean(e.rigidbodyModule);
+    const rbEnabled = Boolean(e.rigidbodyModule?.enabled);
 
-    const hasWalking = isChar && Boolean(char?.walkingModule && char.walkingModule.enabled);
-    const hasStrength = isChar && Boolean(char?.strengthModule && char.strengthModule.enabled);
-    const hasPickup = isChar && Boolean(char?.pickupModule && char.pickupModule.enabled);
-    const hasThrow = isChar && Boolean(char?.throwModule && char.throwModule.enabled);
-    const hasJump = isChar && Boolean(char?.jumpModule && char.jumpModule.enabled);
-    const hasEdgeAssist = isChar && Boolean(char?.wallEdgeAssistModule && char.wallEdgeAssistModule.enabled);
-    const hasClimbing = isChar && Boolean(char?.climbingModule && char.climbingModule.enabled);
+    const hasColliderModule = Boolean(e.colliderModule);
+    const colEnabled = Boolean(e.colliderModule?.enabled);
+
+    const hasMassModule = Boolean(e.massModule);
+    const massEnabled = Boolean(e.massModule?.enabled);
+
+    const hasFrictionModule = Boolean(e.frictionModule);
+    const fricEnabled = Boolean(e.frictionModule?.enabled);
+
+    const hasBounceModule = Boolean(e.bounceModule);
+    const bounceEnabled = Boolean(e.bounceModule?.enabled);
+
+    const hasVertPosModule = Boolean(e.verticalPositionModule);
+    const vertPosEnabled = Boolean(e.verticalPositionModule?.enabled);
+
+    const hasGravityModule = Boolean(e.gravityModule);
+    const gravEnabled = Boolean(e.gravityModule?.enabled);
+
+    const hasRollModule = Boolean(e.rollModule);
+    const rollEnabled = Boolean(e.rollModule?.enabled);
+
+    const hasWalkingModule = isChar && Boolean(char?.walkingModule);
+    const walkEnabled = isChar && Boolean(char?.walkingModule?.enabled);
+
+    const hasStrengthModule = isChar && Boolean(char?.strengthModule);
+    const strEnabled = isChar && Boolean(char?.strengthModule?.enabled);
+
+    const hasPickupModule = isChar && Boolean(char?.pickupModule);
+    const pickupEnabled = isChar && Boolean(char?.pickupModule?.enabled);
+
+    const hasThrowModule = isChar && Boolean(char?.throwModule);
+    const throwEnabled = isChar && Boolean(char?.throwModule?.enabled);
+
+    const hasJumpModule = isChar && Boolean(char?.jumpModule);
+    const jumpEnabled = isChar && Boolean(char?.jumpModule?.enabled);
+
+    const hasEdgeAssistModule = isChar && Boolean(char?.wallEdgeAssistModule);
+    const edgeAssistEnabled = isChar && Boolean(char?.wallEdgeAssistModule?.enabled);
+
+    const hasClimbingModule = isChar && Boolean(char?.climbingModule);
+    const climbEnabled = isChar && Boolean(char?.climbingModule?.enabled);
 
     let html = "";
     let attachedCount = 0;
 
+    // Helper to generate toggle button HTML
+    const renderToggleBtn = (modId: string, isEnabled: boolean) => `
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button class="btn-toggle-module ${isEnabled ? 'active' : 'disabled'}" data-module-id="${modId}" title="${isEnabled ? 'Disable' : 'Enable'} this behavior">
+          ${isEnabled ? '✓ Enabled' : '✕ Disabled'}
+        </button>
+        <button class="btn-remove-module" data-module-id="${modId}" title="Remove behavior from object">✕ Remove</button>
+      </div>
+    `;
+
     // 1. Rigidbody Module
-    if (hasRigidbody) {
+    if (hasRigidbodyModule) {
       attachedCount++;
+      const vertPosWarning = !hasVertPosModule
+        ? `<div class="module-dep-warning" style="margin-top: 4px;">⚠️ Requires Vertical Position behavior</div>`
+        : (!vertPosEnabled ? `<div class="module-dep-warning" style="margin-top: 4px;">⚠️ Inactive: Vertical Position behavior is disabled</div>` : '');
+
       html += `
-        <div class="module-card" data-module-id="rigidbody">
+        <div class="module-card ${!rbEnabled ? 'module-disabled' : ''}" data-module-id="rigidbody">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>⚙️ Rigidbody</label>
-            <button class="btn-remove-module" data-module-id="rigidbody" title="Remove Rigidbody behavior">✕ Remove</button>
+            ${renderToggleBtn("rigidbody", rbEnabled)}
           </div>
+          ${!rbEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Rigidbody behavior is disabled</div>` : ''}
           <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 8px 0; display: flex; justify-content: space-between;">
             <span>Linear Velocity (vx, vy):</span>
             <span id="val-entity-linear-vel" style="font-family: monospace; color: #cbd5e1;">(${e.velocity.x.toFixed(2)}, ${e.velocity.y.toFixed(2)}) u/s</span>
@@ -985,12 +1028,12 @@ export class DevPanel {
           </div>
           <div class="toggle-subrow" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
             <label style="font-size: 0.8rem; color: #e2e8f0;">Vertical Velocity</label>
-            <button id="toggle-mod-vert-vel" class="btn-toggle ${e.hasVerticalVelocity && hasVertPos ? 'active' : ''}" ${!hasVertPos ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-              ${e.hasVerticalVelocity && hasVertPos ? 'Enabled' : 'Disabled'}
+            <button id="toggle-mod-vert-vel" class="btn-toggle ${e.hasVerticalVelocity && vertPosEnabled ? 'active' : ''}" ${!vertPosEnabled ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+              ${e.hasVerticalVelocity && vertPosEnabled ? 'Enabled' : 'Disabled'}
             </button>
           </div>
-          ${!hasVertPos ? `<div class="module-dep-warning" style="margin-top: 4px;">⚠️ Requires Vertical Position behavior</div>` : ''}
-          <div id="group-mod-vert-vel" style="display: ${e.hasVerticalVelocity && hasVertPos ? 'block' : 'none'}; margin-top: 6px;">
+          ${vertPosWarning}
+          <div id="group-mod-vert-vel" style="display: ${e.hasVerticalVelocity && vertPosEnabled ? 'block' : 'none'}; margin-top: 6px;">
             <div class="slider-group">
               <div class="slider-label">
                 <span>Vertical Velocity (u/s)</span>
@@ -1004,14 +1047,15 @@ export class DevPanel {
     }
 
     // 2. Collider Module
-    if (hasCollider) {
+    if (hasColliderModule) {
       attachedCount++;
       html += `
-        <div class="module-card" data-module-id="collider">
+        <div class="module-card ${!colEnabled ? 'module-disabled' : ''}" data-module-id="collider">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>🛡️ Collider</label>
-            <button class="btn-remove-module" data-module-id="collider" title="Remove Collider behavior">✕ Remove</button>
+            ${renderToggleBtn("collider", colEnabled)}
           </div>
+          ${!colEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Collider behavior is disabled (passes through objects)</div>` : ''}
           <div class="slider-group">
             <div class="slider-label">
               <span>Collider Radius (u)</span>
@@ -1024,14 +1068,15 @@ export class DevPanel {
     }
 
     // 3. Mass Module
-    if (hasMass) {
+    if (hasMassModule) {
       attachedCount++;
       html += `
-        <div class="module-card" data-module-id="mass">
+        <div class="module-card ${!massEnabled ? 'module-disabled' : ''}" data-module-id="mass">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>⚖️ Mass</label>
-            <button class="btn-remove-module" data-module-id="mass" title="Remove Mass behavior">✕ Remove</button>
+            ${renderToggleBtn("mass", massEnabled)}
           </div>
+          ${!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled (body is massless)</div>` : ''}
           <div class="slider-group">
             <div class="slider-label">
               <span>Mass (kg)</span>
@@ -1044,15 +1089,20 @@ export class DevPanel {
     }
 
     // 4. Friction Module
-    if (hasFriction) {
+    if (hasFrictionModule) {
       attachedCount++;
+      const fricMassWarning = !hasMassModule
+        ? `<div class="module-dep-warning">⚠️ Requires Mass behavior (no normal force calculation)</div>`
+        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled</div>` : '');
+
       html += `
-        <div class="module-card" data-module-id="friction">
+        <div class="module-card ${!fricEnabled ? 'module-disabled' : ''}" data-module-id="friction">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>🛝 Friction</label>
-            <button class="btn-remove-module" data-module-id="friction" title="Remove Friction behavior">✕ Remove</button>
+            ${renderToggleBtn("friction", fricEnabled)}
           </div>
-          ${!hasMass ? `<div class="module-dep-warning">⚠️ Inactive without Mass (no normal force)</div>` : ''}
+          ${!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : ''}
+          ${fricMassWarning}
           <div class="slider-group">
             <div class="slider-label">
               <span>Static Friction Mod</span>
@@ -1072,15 +1122,24 @@ export class DevPanel {
     }
 
     // 5. Bounciness Module
-    if (hasBounce) {
+    if (hasBounceModule) {
       attachedCount++;
+      const bounceMassWarning = !hasMassModule
+        ? `<div class="module-dep-warning">⚠️ Requires Mass behavior (no restitution calculation)</div>`
+        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled</div>` : '');
+
+      const bounceVertWarning = e.bounceModule?.verticalBounce && (!e.hasVerticalVelocity || !vertPosEnabled)
+        ? `<div class="module-dep-warning">⚠️ Vertical bounce inactive without Vertical Velocity / Vertical Position</div>`
+        : '';
+
       html += `
-        <div class="module-card" data-module-id="bounce">
+        <div class="module-card ${!bounceEnabled ? 'module-disabled' : ''}" data-module-id="bounce">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>🏀 Bounciness</label>
-            <button class="btn-remove-module" data-module-id="bounce" title="Remove Bounciness behavior">✕ Remove</button>
+            ${renderToggleBtn("bounce", bounceEnabled)}
           </div>
-          ${!hasMass ? `<div class="module-dep-warning">⚠️ Inactive without Mass (no restitution calculation)</div>` : ''}
+          ${!bounceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Bounciness behavior is disabled</div>` : ''}
+          ${bounceMassWarning}
           <div class="slider-group">
             <div class="slider-label">
               <span>Bounciness (Restitution)</span>
@@ -1094,20 +1153,21 @@ export class DevPanel {
               <span>Vertical Bounce</span>
             </label>
           </div>
-          ${e.bounceModule?.verticalBounce && !e.hasVerticalVelocity ? `<div class="module-dep-warning">⚠️ Inactive without Vertical Velocity</div>` : ''}
+          ${bounceVertWarning}
         </div>
       `;
     }
 
     // 6. Vertical Position Module
-    if (hasVertPos) {
+    if (hasVertPosModule) {
       attachedCount++;
       html += `
-        <div class="module-card" data-module-id="verticalPosition">
+        <div class="module-card ${!vertPosEnabled ? 'module-disabled' : ''}" data-module-id="verticalPosition">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>↕️ Vertical Position</label>
-            <button class="btn-remove-module" data-module-id="verticalPosition" title="Remove Vertical Position behavior">✕ Remove</button>
+            ${renderToggleBtn("verticalPosition", vertPosEnabled)}
           </div>
+          ${!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : ''}
           <div class="slider-group">
             <div class="slider-label">
               <span>Elevation (z)</span>
@@ -1120,14 +1180,20 @@ export class DevPanel {
     }
 
     // 7. Gravity Module
-    if (hasGravity) {
+    if (hasGravityModule) {
       attachedCount++;
+      const gravVertWarning = !hasVertPosModule
+        ? `<div class="module-dep-warning">⚠️ Requires Vertical Position behavior</div>`
+        : (!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : '');
+
       html += `
-        <div class="module-card" data-module-id="gravity">
+        <div class="module-card ${!gravEnabled ? 'module-disabled' : ''}" data-module-id="gravity">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>🪐 Gravity</label>
-            <button class="btn-remove-module" data-module-id="gravity" title="Remove Gravity behavior">✕ Remove</button>
+            ${renderToggleBtn("gravity", gravEnabled)}
           </div>
+          ${!gravEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Gravity behavior is disabled</div>` : ''}
+          ${gravVertWarning}
           <div class="module-detached-note" style="color: #94a3b8; font-style: normal;">
             Subject to downward gravitational acceleration (${this.arena.gravity.toFixed(1)} u/s²)
           </div>
@@ -1135,16 +1201,21 @@ export class DevPanel {
       `;
     }
 
-    // 7. Roll Module
-    if (hasRoll) {
+    // 8. Roll Module
+    if (hasRollModule) {
       attachedCount++;
+      const rollFricWarning = !hasFrictionModule
+        ? `<div class="module-dep-warning">ℹ️ Spin not resisted without Friction behavior</div>`
+        : (!fricEnabled ? `<div class="module-dep-warning">ℹ️ Spin not resisted: Friction behavior is disabled</div>` : '');
+
       html += `
-        <div class="module-card" data-module-id="roll">
+        <div class="module-card ${!rollEnabled ? 'module-disabled' : ''}" data-module-id="roll">
           <div class="toggle-row" style="margin-bottom: 2px;">
             <label>🔄 Roll</label>
-            <button class="btn-remove-module" data-module-id="roll" title="Remove Roll behavior">✕ Remove</button>
+            ${renderToggleBtn("roll", rollEnabled)}
           </div>
-          ${!hasFriction ? `<div class="module-dep-warning">ℹ️ Spin not resisted without Friction</div>` : ''}
+          ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
+          ${rollFricWarning}
           <div class="slider-group">
             <div class="slider-label">
               <span>Roll Resistance (u/s²)</span>
@@ -1158,16 +1229,25 @@ export class DevPanel {
 
     // Character Abilities (when character is selected)
     if (isChar && char) {
-      if (hasWalking) {
+      if (hasWalkingModule) {
         attachedCount++;
+        const walkFricWarning = !hasFrictionModule
+          ? `<div class="module-dep-warning">⚠️ Requires Friction behavior (feet slip without ground traction)</div>`
+          : (!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : '');
+
+        const walkStrWarning = !hasStrengthModule
+          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot propel body)</div>`
+          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+
         html += `
-          <div class="module-card" data-module-id="walking">
+          <div class="module-card ${!walkEnabled ? 'module-disabled' : ''}" data-module-id="walking">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>🚶 Walking Ability</label>
-              <button class="btn-remove-module" data-module-id="walking" title="Remove Walking Ability">✕ Remove</button>
+              ${renderToggleBtn("walking", walkEnabled)}
             </div>
-            ${!hasFriction ? `<div class="module-dep-warning">⚠️ Feet slip without Friction (cannot push ground)</div>` : ''}
-            ${!hasStrength ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot propel body)</div>` : ''}
+            ${!walkEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Walking Ability is disabled</div>` : ''}
+            ${walkFricWarning}
+            ${walkStrWarning}
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
               <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
@@ -1197,14 +1277,15 @@ export class DevPanel {
         `;
       }
 
-      if (hasStrength) {
+      if (hasStrengthModule) {
         attachedCount++;
         html += `
-          <div class="module-card" data-module-id="strength">
+          <div class="module-card ${!strEnabled ? 'module-disabled' : ''}" data-module-id="strength">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>💪 Strength Ability</label>
-              <button class="btn-remove-module" data-module-id="strength" title="Remove Strength Ability">✕ Remove</button>
+              ${renderToggleBtn("strength", strEnabled)}
             </div>
+            ${!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : ''}
             <div class="slider-group">
               <div class="slider-label">
                 <span>Muscle Strength Ratio</span>
@@ -1216,14 +1297,15 @@ export class DevPanel {
         `;
       }
 
-      if (hasPickup) {
+      if (hasPickupModule) {
         attachedCount++;
         html += `
-          <div class="module-card" data-module-id="pickup">
+          <div class="module-card ${!pickupEnabled ? 'module-disabled' : ''}" data-module-id="pickup">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>✋ Pickup Ability</label>
-              <button class="btn-remove-module" data-module-id="pickup" title="Remove Pickup Ability">✕ Remove</button>
+              ${renderToggleBtn("pickup", pickupEnabled)}
             </div>
+            ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div class="slider-group">
               <div class="slider-label">
                 <span>Pickup Reach (3D)</span>
@@ -1235,14 +1317,20 @@ export class DevPanel {
         `;
       }
 
-      if (hasThrow) {
+      if (hasThrowModule) {
         attachedCount++;
+        const throwStrWarning = !hasStrengthModule
+          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot launch objects)</div>`
+          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+
         html += `
-          <div class="module-card" data-module-id="throw">
+          <div class="module-card ${!throwEnabled ? 'module-disabled' : ''}" data-module-id="throw">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>🎯 Throw Ability</label>
-              <button class="btn-remove-module" data-module-id="throw" title="Remove Throw Ability">✕ Remove</button>
+              ${renderToggleBtn("throw", throwEnabled)}
             </div>
+            ${!throwEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Throw Ability is disabled</div>` : ''}
+            ${throwStrWarning}
             <div class="slider-group">
               <div class="slider-label">
                 <span>Base Throw Power (u/s)</span>
@@ -1261,15 +1349,20 @@ export class DevPanel {
         `;
       }
 
-      if (hasJump) {
+      if (hasJumpModule) {
         attachedCount++;
+        const jumpVertWarning = !hasVertPosModule
+          ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>`
+          : (!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : '');
+
         html += `
-          <div class="module-card" data-module-id="jump">
+          <div class="module-card ${!jumpEnabled ? 'module-disabled' : ''}" data-module-id="jump">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>🦘 Jump Ability</label>
-              <button class="btn-remove-module" data-module-id="jump" title="Remove Jump Ability">✕ Remove</button>
+              ${renderToggleBtn("jump", jumpEnabled)}
             </div>
-            ${!hasVertPos ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>` : ''}
+            ${!jumpEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Jump Ability is disabled</div>` : ''}
+            ${jumpVertWarning}
             <div class="slider-group">
               <div class="slider-label">
                 <span>Jump Strength (N·s)</span>
@@ -1288,14 +1381,15 @@ export class DevPanel {
         `;
       }
 
-      if (hasEdgeAssist) {
+      if (hasEdgeAssistModule) {
         attachedCount++;
         html += `
-          <div class="module-card" data-module-id="wallEdgeAssist">
+          <div class="module-card ${!edgeAssistEnabled ? 'module-disabled' : ''}" data-module-id="wallEdgeAssist">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>🛡️ Wall Edge Assist</label>
-              <button class="btn-remove-module" data-module-id="wallEdgeAssist" title="Remove Wall Edge Assist">✕ Remove</button>
+              ${renderToggleBtn("wallEdgeAssist", edgeAssistEnabled)}
             </div>
+            ${!edgeAssistEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Wall Edge Assist is disabled</div>` : ''}
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
               <button id="toggle-edge-walkoff" class="btn-toggle ${char.wallEdgeAssistModule?.preventWalkOff ? 'active' : ''}">
@@ -1313,15 +1407,25 @@ export class DevPanel {
         `;
       }
 
-      if (hasClimbing) {
+      if (hasClimbingModule) {
         attachedCount++;
+        const climbVertWarning = !hasVertPosModule
+          ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>`
+          : (!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : '');
+
+        const climbStrWarning = !hasStrengthModule
+          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability to climb</div>`
+          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+
         html += `
-          <div class="module-card" data-module-id="climbing">
+          <div class="module-card ${!climbEnabled ? 'module-disabled' : ''}" data-module-id="climbing">
             <div class="toggle-row" style="margin-bottom: 2px;">
               <label>🧗 Climbing Ability</label>
-              <button class="btn-remove-module" data-module-id="climbing" title="Remove Climbing Ability">✕ Remove</button>
+              ${renderToggleBtn("climbing", climbEnabled)}
             </div>
-            ${(!hasVertPos || !hasStrength) ? `<div class="module-dep-warning">${!hasVertPos ? '⚠️ Requires Vertical Position (3D Z-axis)' : '⚠️ Requires Strength Ability to climb'}</div>` : ''}
+            ${!climbEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Climbing Ability is disabled</div>` : ''}
+            ${climbVertWarning}
+            ${climbStrWarning}
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Sideways Climb</label>
               <button id="toggle-climb-sideways" class="btn-toggle ${char.climbingModule?.horizontalClimb ? 'active' : ''}">
@@ -1368,25 +1472,25 @@ export class DevPanel {
     }
 
     const allModules: ModuleInfo[] = [
-      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, vertical velocity, motion integration & collision mode", isAttached: hasRigidbody },
-      { id: "collider", name: "Collider", icon: "🛡️", description: "Solid physical bounds & collision with walls and entities", isAttached: hasCollider },
-      { id: "mass", name: "Mass", icon: "⚖️", description: "Physical mass, weight, inertia, and momentum transfer", isAttached: hasMass },
-      { id: "friction", name: "Friction", icon: "🛝", description: "Ground friction, stopping resistance, and deceleration", isAttached: hasFriction },
-      { id: "bounce", name: "Bounciness", icon: "🏀", description: "Elastic restitution on collisions and impacts", isAttached: hasBounce },
-      { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPos },
-      { id: "gravity", name: "Gravity", icon: "🪐", description: "Downward gravitational acceleration toward ground", isAttached: hasGravity },
-      { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRoll },
+      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, vertical velocity, motion integration & collision mode", isAttached: hasRigidbodyModule },
+      { id: "collider", name: "Collider", icon: "🛡️", description: "Solid physical bounds & collision with walls and entities", isAttached: hasColliderModule },
+      { id: "mass", name: "Mass", icon: "⚖️", description: "Physical mass, weight, inertia, and momentum transfer", isAttached: hasMassModule },
+      { id: "friction", name: "Friction", icon: "🛝", description: "Ground friction, stopping resistance, and deceleration", isAttached: hasFrictionModule },
+      { id: "bounce", name: "Bounciness", icon: "🏀", description: "Elastic restitution on collisions and impacts", isAttached: hasBounceModule },
+      { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPosModule },
+      { id: "gravity", name: "Gravity", icon: "🪐", description: "Downward gravitational acceleration toward ground", isAttached: hasGravityModule },
+      { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRollModule },
     ];
 
     if (isChar) {
       allModules.push(
-        { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration and maximum ground speed", isAttached: hasWalking },
-        { id: "strength", name: "Strength Ability", icon: "💪", description: "Muscle power for throw speed and climbing", isAttached: hasStrength },
-        { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickup },
-        { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrow },
-        { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJump },
-        { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssist },
-        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbing }
+        { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration and maximum ground speed", isAttached: hasWalkingModule },
+        { id: "strength", name: "Strength Ability", icon: "💪", description: "Muscle power for throw speed and climbing", isAttached: hasStrengthModule },
+        { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickupModule },
+        { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrowModule },
+        { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },
+        { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssistModule },
+        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule }
       );
     }
 
@@ -1421,6 +1525,16 @@ export class DevPanel {
       });
     });
 
+    // Wire up Enable/Disable toggle buttons
+    container.querySelectorAll(".btn-toggle-module").forEach((btn) => {
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const modId = (btn as HTMLElement).dataset.moduleId;
+        if (!modId) return;
+        this.toggleModuleEnabled(modId);
+      });
+    });
+
     // Wire up Add items
     dropdown.querySelectorAll(".add-behavior-item").forEach((btn) => {
       btn.addEventListener("click", (evt) => {
@@ -1434,6 +1548,65 @@ export class DevPanel {
 
     // Bind controls on newly rendered cards
     this.bindDynamicModuleControls();
+  }
+
+  private toggleModuleEnabled(modId: string): void {
+    const e = this.selectedEntity;
+    if (!e) return;
+    const isChar = e instanceof Character;
+    const char = isChar ? (e as Character) : null;
+
+    switch (modId) {
+      case "rigidbody":
+        if (e.rigidbodyModule) e.rigidbodyModule.enabled = !e.rigidbodyModule.enabled;
+        break;
+      case "collider":
+        if (e.colliderModule) e.colliderModule.enabled = !e.colliderModule.enabled;
+        break;
+      case "mass":
+        if (e.massModule) e.massModule.enabled = !e.massModule.enabled;
+        break;
+      case "friction":
+        if (e.frictionModule) e.frictionModule.enabled = !e.frictionModule.enabled;
+        break;
+      case "bounce":
+        if (e.bounceModule) e.bounceModule.enabled = !e.bounceModule.enabled;
+        break;
+      case "verticalPosition":
+        if (e.verticalPositionModule) e.verticalPositionModule.enabled = !e.verticalPositionModule.enabled;
+        break;
+      case "gravity":
+        if (e.gravityModule) e.gravityModule.enabled = !e.gravityModule.enabled;
+        break;
+      case "roll":
+        if (e.rollModule) e.rollModule.enabled = !e.rollModule.enabled;
+        break;
+      case "walking":
+        if (char?.walkingModule) char.walkingModule.enabled = !char.walkingModule.enabled;
+        break;
+      case "strength":
+        if (char?.strengthModule) char.strengthModule.enabled = !char.strengthModule.enabled;
+        break;
+      case "pickup":
+        if (char?.pickupModule) char.pickupModule.enabled = !char.pickupModule.enabled;
+        break;
+      case "throw":
+        if (char?.throwModule) char.throwModule.enabled = !char.throwModule.enabled;
+        break;
+      case "jump":
+        if (char?.jumpModule) char.jumpModule.enabled = !char.jumpModule.enabled;
+        break;
+      case "wallEdgeAssist":
+        if (char?.wallEdgeAssistModule) char.wallEdgeAssistModule.enabled = !char.wallEdgeAssistModule.enabled;
+        break;
+      case "climbing":
+        if (char?.climbingModule) char.climbingModule.enabled = !char.climbingModule.enabled;
+        break;
+    }
+
+    this.renderEntityModules();
+    this.updateSelectorOptions();
+    this.updateInspector();
   }
 
   private removeModuleFromSelectedEntity(modId: string): void {

@@ -699,6 +699,11 @@ function bootstrap(): void {
             playerNumber: p.playerNumber,
             color: p.color,
             name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
+            spawnPos: {
+              x: Number(p.character.position.x.toFixed(3)),
+              y: Number(p.character.position.y.toFixed(3)),
+              z: Number((p.character.position.z ?? 0).toFixed(3)),
+            },
           });
         }
       }
@@ -712,7 +717,15 @@ function bootstrap(): void {
           onlineClient.localPlayers.delete("keyboard");
         }
         for (const p of gameLoop.playerManager.players.values()) {
-          onlineClient.addPlayer(p.id, p.character.hasCustomName ? p.character.name : undefined);
+          onlineClient.addPlayer(
+            p.id,
+            p.character.hasCustomName ? p.character.name : undefined,
+            {
+              x: Number(p.character.position.x.toFixed(3)),
+              y: Number(p.character.position.y.toFixed(3)),
+              z: Number((p.character.position.z ?? 0).toFixed(3)),
+            }
+          );
         }
       }
     }
@@ -1037,24 +1050,44 @@ function bootstrap(): void {
     }
     gameLoop.interpolator.pushSnapshot(snapshot.seq, samples, performance.now());
 
-    // 2b. Synchronize external server pushes & impulses on the local character
-    const localChar = gameLoop.primaryCharacter;
-    const localServerId = localChar?.serverCharId || onlineClient.clientId;
-    if (localChar && localServerId) {
+    // 2b. Synchronize external server pushes & impulses on local characters
+    const allLocalChars: Array<{ char: Character; serverId: string }> = [];
+    if (gameLoop.playerManager) {
+      for (const p of gameLoop.playerManager.players.values()) {
+        const sid = p.character.serverCharId || (p.id === "keyboard" ? (onlineClient.clientId || "keyboard") : `${onlineClient.clientId}:${p.id}`);
+        allLocalChars.push({ char: p.character, serverId: sid });
+      }
+    }
+    if (allLocalChars.length === 0 && gameLoop.primaryCharacter) {
+      const localChar = gameLoop.primaryCharacter;
+      const localServerId = localChar.serverCharId || onlineClient.clientId || "keyboard";
+      allLocalChars.push({ char: localChar, serverId: localServerId });
+    }
+
+    for (const { char: localChar, serverId: localServerId } of allLocalChars) {
       const myServerState = ghostChars.find((gc) => gc.id === localServerId);
       if (myServerState) {
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
+        // If server reports significant displacement (e.g. initial join sync, external tackle, or hit by thrown rock):
         if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+          // If displacement is large (> 2.5u), snap completely to prevent oscillation
+          if (dist > 2.5) {
+            localChar.position.x = myServerState.x;
+            localChar.position.y = myServerState.y;
+            localChar.velocity.x = myServerState.vx;
+            localChar.velocity.y = myServerState.vy;
+          } else {
+            // Smoothly converge without ping-ponging
+            const blend = 0.25;
+            localChar.position.x += dx * blend;
+            localChar.position.y += dy * blend;
+            if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
+              localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
+              localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+            }
           }
         }
       }

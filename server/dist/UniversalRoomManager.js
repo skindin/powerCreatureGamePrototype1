@@ -6098,7 +6098,7 @@ class Character extends GameObject {
    * Attempts to jump using the attached JumpModule.
    */
   jump(arena, movementInput) {
-    if (this.jumpModule) {
+    if (this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition) {
       return this.jumpModule.jump(this, arena, movementInput);
     }
     return false;
@@ -6154,17 +6154,26 @@ class Character extends GameObject {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
-    if (this.climbingModule) {
+    const canClimb = Boolean(
+      this.climbingModule && this.climbingModule.enabled && this.hasVerticalPosition && this.hasStrength
+    );
+    if (canClimb) {
       this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
+    } else if (this.isClimbing) {
+      this.isClimbing = false;
     }
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    const canJump = Boolean(this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition);
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
-    if (this.walkingModule) {
+    const canWalk = Boolean(this.walkingModule && this.walkingModule.enabled && this.hasFriction);
+    if (canWalk) {
       this.walkingModule.update(this, movementInput, dt, arena);
+    } else {
+      this.isActivelyWalking = false;
     }
     this.updatePosition(dt, arena);
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
     let lockedTarget = null;
@@ -6200,7 +6209,7 @@ class Character extends GameObject {
     }
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
-    if (this.heldObject && this.throwModule && isAimingInput && aimTargetPos) {
+    if (this.heldObject && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,
@@ -8597,7 +8606,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.needsMapReload = false;
     console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
-  registerCharacter(client, localPlayerId, name) {
+  registerCharacter(client, localPlayerId, name, spawnPos) {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
       if (name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())) {
@@ -8617,8 +8626,11 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const spawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
-    const spawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const defaultSpawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
+    const defaultSpawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const spawnX = spawnPos && typeof spawnPos.x === "number" && !isNaN(spawnPos.x) ? spawnPos.x : defaultSpawnX;
+    const spawnY = spawnPos && typeof spawnPos.y === "number" && !isNaN(spawnPos.y) ? spawnPos.y : defaultSpawnY;
+    const spawnZ = spawnPos && typeof spawnPos.z === "number" && !isNaN(spawnPos.z) ? spawnPos.z : 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -8631,6 +8643,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name: charName,
       hasCustomName: isExplicitCustom
     });
+    character.position.z = spawnZ;
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     const entry = {
@@ -8727,7 +8740,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name, lp.spawnPos);
                 if (lp.localPlayerId !== "keyboard") {
                   reg.isDefaultPlaceholder = false;
                 }
@@ -8735,7 +8748,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           } else {
             if (!client.characters.has("keyboard")) {
-              this.registerCharacter(client, "keyboard", data.name);
+              this.registerCharacter(client, "keyboard", data.name, data.spawnPos);
             } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
               const entry = client.characters.get("keyboard");
               if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
@@ -8773,7 +8786,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             console.log(`🌐 [UniversalRoom] Replacing unused default placeholder "keyboard" with first real player "${localPlayerId}" for client ${clientId}`);
             this.unregisterCharacter(client, "keyboard");
           }
-          const entry = this.registerCharacter(client, localPlayerId, data.name);
+          const entry = this.registerCharacter(client, localPlayerId, data.name, data.spawnPos);
           entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",
