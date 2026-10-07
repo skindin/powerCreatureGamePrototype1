@@ -111,7 +111,9 @@ powerCreatureGamePrototype1/
 │   │   ├── OnlineRoomClient.ts # Standalone WebSocket client for real live online rooms (/ws)
 │   │   └── OnlineSessionManager.ts # Encapsulated online multiplayer session lifecycle, DOM updates & telemetry coordinator
 │   ├── server/            # Authoritative server simulation core
-│   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world, contested grab arbiter
+│   │   ├── ServerGameSimulation.ts # Headless 60Hz physics world simulation runner
+│   │   ├── ContestedGrabArbiter.ts # Strength, distance, and ID tiebreaker grab resolution
+│   │   ├── ServerTelemetryBroadcaster.ts # Authoritative snapshot & ghost telemetry generator
 │   │   ├── ServerJitterBuffer.ts   # Per-player priority jitter queues & starvation guards
 │   │   ├── UniversalRoomManager.ts # Standalone 60Hz WebSocket server on /ws
 │   │   └── GameServer.ts  # Standalone Node.js 60Hz tick runner with hrtime drift correction

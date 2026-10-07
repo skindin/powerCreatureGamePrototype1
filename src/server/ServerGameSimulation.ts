@@ -12,6 +12,10 @@ import {
   AuthoritativeSnapshotManager,
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
+import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
+import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
+
+export type { ContestedGrabResult };
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -22,14 +26,6 @@ export interface ServerSimConfig {
   jitterTargetDepth?: number;
   broadcastRateHz?: 30 | 60;
   deltaCompression?: boolean;
-}
-
-export interface ContestedGrabResult {
-  tick: number;
-  targetObjectId: string;
-  winnerPlayerId: string;
-  loserPlayerIds: string[];
-  reason: "strength" | "proximity" | "id_priority";
 }
 
 /**
@@ -612,83 +608,7 @@ export class ServerGameSimulation {
   private arbitrateContestedGrabs(
     grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[]
   ): void {
-    // Group requests by target object ID
-    const targetGroups = new Map<string, { char: Character; target: GameObject; pkt: PlayerInputPacket }[]>();
-    for (const req of grabRequests) {
-      const objId = req.target.id;
-      let group = targetGroups.get(objId);
-      if (!group) {
-        group = [];
-        targetGroups.set(objId, group);
-      }
-      group.push(req);
-    }
-
-    for (const [objId, requests] of targetGroups) {
-      if (requests.length === 1) {
-        // Uncontested grab
-        const req = requests[0];
-        req.char.pickupModule?.pickup(req.char, req.target);
-        continue;
-      }
-
-      // CONTESTED GRAB TIEBREAKER:
-      // 1) Higher creature strength wins
-      // 2) Closest 3D distance wins
-      // 3) Lower playerId string hash wins
-      requests.sort((a, b) => {
-        if (Math.abs(b.char.strength - a.char.strength) > 0.001) {
-          return b.char.strength - a.char.strength;
-        }
-        const distA = Math.hypot(
-          a.target.position.x - a.char.position.x,
-          a.target.position.y - a.char.position.y,
-          a.target.position.z - a.char.position.z
-        );
-        const distB = Math.hypot(
-          b.target.position.x - b.char.position.x,
-          b.target.position.y - b.char.position.y,
-          b.target.position.z - b.char.position.z
-        );
-        if (Math.abs(distA - distB) > 0.001) {
-          return distA - distB;
-        }
-        return a.char.playerId.localeCompare(b.char.playerId);
-      });
-
-      const winner = requests[0];
-      const losers = requests.slice(1);
-
-      let reason: "strength" | "proximity" | "id_priority" = "id_priority";
-      if (Math.abs(winner.char.strength - losers[0].char.strength) > 0.001) {
-        reason = "strength";
-      } else {
-        const distWin = Math.hypot(
-          winner.target.position.x - winner.char.position.x,
-          winner.target.position.y - winner.char.position.y,
-          winner.target.position.z - winner.char.position.z
-        );
-        const distLose = Math.hypot(
-          losers[0].target.position.x - losers[0].char.position.x,
-          losers[0].target.position.y - losers[0].char.position.y,
-          losers[0].target.position.z - losers[0].char.position.z
-        );
-        if (Math.abs(distWin - distLose) > 0.001) {
-          reason = "proximity";
-        }
-      }
-
-      this.contestedGrabEvents.push({
-        tick: this.currentTick,
-        targetObjectId: objId,
-        winnerPlayerId: winner.char.playerId,
-        loserPlayerIds: losers.map((l) => l.char.playerId),
-        reason,
-      });
-
-      // Winner claims the item; losers fail to grab
-      winner.char.pickupModule?.pickup(winner.char, winner.target);
-    }
+    ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
   }
 
   /**
@@ -877,26 +797,7 @@ export class ServerGameSimulation {
    * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast (Phase 7).
    */
   public getAuthoritativeWorldSnapshot(forceKeyframe: boolean = false): AuthoritativeWorldSnapshot {
-    const lastProcessedInputTick: { [playerId: string]: number } = {};
-    for (const [pId] of this.characters) {
-      const stats = this.jitterBuffer.getStats(pId);
-      if (stats && stats.lastConsumedTick !== null) {
-        lastProcessedInputTick[pId] = stats.lastConsumedTick;
-      }
-    }
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = primaryChar ? primaryChar.playerId : "keyboard";
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard") || undefined;
-
-    return this.snapshotManager.createSnapshot(
-      this.currentTick,
-      this.allCharacters,
-      this.objects,
-      lastProcessedInputTick,
-      this.getRecentAckedActionIds(),
-      clockSync,
-      forceKeyframe
-    );
+    return ServerTelemetryBroadcaster.createAuthoritativeWorldSnapshot(this, forceKeyframe);
   }
 
   /**
@@ -904,96 +805,16 @@ export class ServerGameSimulation {
    * Directly reflects the true physical state of the authoritative simulation.
    */
   public getGhostSnapshot(rttMs: number = 0, forPlayerId?: string): GhostSnapshot {
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard");
-
-    const ghostChar: GhostEntityState = {
-      id: primaryChar ? primaryChar.playerId : "player",
-      x: primaryChar ? Number(primaryChar.position.x.toFixed(3)) : 0,
-      y: primaryChar ? Number(primaryChar.position.y.toFixed(3)) : 0,
-      z: primaryChar ? Number(primaryChar.position.z.toFixed(3)) : 0,
-      vx: primaryChar ? Number(primaryChar.velocity.x.toFixed(3)) : 0,
-      vy: primaryChar ? Number(primaryChar.velocity.y.toFixed(3)) : 0,
-      vz: primaryChar ? Number((primaryChar.hasVerticalVelocity ? primaryChar.verticalVelocity : 0).toFixed(3)) : 0,
-      surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
-      isGrounded: primaryChar ? (primaryChar.isRestingOnSurface || primaryChar.position.z <= 0.005) : true,
-      radius: primaryChar ? primaryChar.colliderRadius : 0.44,
-      color: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
-      playerColor: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
-      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
-      isClimbing: primaryChar ? primaryChar.isClimbing : false,
-      isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
-      facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0,
-    };
-
-    const ghostObjects: GhostEntityState[] = this.objects.map((obj) => {
-      const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || this.allCharacters.find((c) => c.heldObject === obj);
-      let posX = obj.position.x;
-      let posY = obj.position.y;
-      let posZ = obj.position.z;
-      if ((obj.isHeld || holder) && holder) {
-        const relPos = holder.calculateHeldObjectPosition(this.arena);
-        posX = relPos.x;
-        posY = relPos.y;
-        posZ = relPos.z;
-      }
-      return {
-        id: obj.id,
-        name: obj.name,
-        x: Number(posX.toFixed(3)),
-        y: Number(posY.toFixed(3)),
-        z: Number(posZ.toFixed(3)),
-        vx: Number(obj.velocity.x.toFixed(3)),
-        vy: Number(obj.velocity.y.toFixed(3)),
-        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
-        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
-        isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
-        radius: obj.colliderRadius,
-        color: obj.color,
-        shape: obj.visualShape,
-        isHeld: obj.isHeld || Boolean(holder),
-        heldBy: holder ? (holder.playerId || (holder === primaryChar ? "player" : holder.id)) : (obj.heldBy ? ((obj.heldBy as Character).playerId || obj.heldBy.id) : null),
-        isAboveWalls: obj.isAboveWalls,
-        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
-        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
-        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
-        isSleeping: obj.isSleeping,
-      };
-    });
-
-    const ghostCharacters: GhostEntityState[] = this.allCharacters.map((c) => ({
-      id: c.playerId || c.id || "player",
-      name: c.name,
-      x: Number(c.position.x.toFixed(3)),
-      y: Number(c.position.y.toFixed(3)),
-      z: Number(c.position.z.toFixed(3)),
-      vx: Number(c.velocity.x.toFixed(3)),
-      vy: Number(c.velocity.y.toFixed(3)),
-      vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
-      surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
-      isGrounded: c.isRestingOnSurface || c.position.z <= 0.005,
-      radius: c.colliderRadius,
-      color: c.playerColor || c.color,
-      playerColor: c.playerColor || c.color,
-      playerNumber: c.playerNumber,
-      isClimbing: c.isClimbing,
-      isAboveWalls: c.isAboveWalls,
-      facingAngle: Number(c.facingAngle.toFixed(4)),
-      heldObjectId: c.heldObject ? c.heldObject.id : null,
-      isHolding: Boolean(c.heldObject),
-    }));
-
-    return {
-      seq: this.currentTick,
-      sentAt: performance.now(),
-      receivedAt: performance.now(),
+    return ServerTelemetryBroadcaster.createGhostSnapshot(
+      this.currentTick,
+      this.allCharacters,
+      this.characters,
+      this.objects,
+      this.arena,
+      this.latestClockSync,
+      this.getRecentAckedActionIds(),
       rttMs,
-      character: ghostChar,
-      characters: ghostCharacters,
-      objects: ghostObjects,
-      ackActionIds: this.getRecentAckedActionIds(),
-      clockSync,
-    };
+      forPlayerId
+    );
   }
 }
