@@ -890,12 +890,17 @@ function bootstrap(): void {
   }
 
   onlineClient.getLocalPlayers = () => {
-    const list: Array<{ localPlayerId: string; name?: string }> = [];
+    const list: Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }> = [];
     if (gameLoop?.playerManager) {
       for (const p of gameLoop.playerManager.players.values()) {
         list.push({
           localPlayerId: p.id,
           name: p.character.hasCustomName ? p.character.name : undefined,
+          spawnPos: {
+            x: Number(p.character.position.x.toFixed(3)),
+            y: Number(p.character.position.y.toFixed(3)),
+            z: Number((p.character.position.z ?? 0).toFixed(3)),
+          },
         });
       }
     }
@@ -1067,28 +1072,18 @@ function bootstrap(): void {
     for (const { char: localChar, serverId: localServerId } of allLocalChars) {
       const myServerState = ghostChars.find((gc) => gc.id === localServerId);
       if (myServerState) {
+        // Local character position is dictated authoritatively by local simulation.
+        // We do NOT pull or blend the local player's position toward the delayed server ghost,
+        // which completely eliminates position fighting and join oscillations.
+        // Only adopt vertical surface/grounding height or extreme server teleports (> 8.0u) if needed.
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
-
-        // If server reports significant displacement (e.g. initial join sync, external tackle, or hit by thrown rock):
-        if (dist > 0.06) {
-          // If displacement is large (> 2.5u), snap completely to prevent oscillation
-          if (dist > 2.5) {
-            localChar.position.x = myServerState.x;
-            localChar.position.y = myServerState.y;
-            localChar.velocity.x = myServerState.vx;
-            localChar.velocity.y = myServerState.vy;
-          } else {
-            // Smoothly converge without ping-ponging
-            const blend = 0.25;
-            localChar.position.x += dx * blend;
-            localChar.position.y += dy * blend;
-            if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-              localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-              localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
-            }
-          }
+        if (dist > 8.0) {
+          localChar.position.x = myServerState.x;
+          localChar.position.y = myServerState.y;
+          localChar.velocity.x = myServerState.vx;
+          localChar.velocity.y = myServerState.vy;
         }
 
         // Gentle local overlap relaxation: if local character is overlapping an object,

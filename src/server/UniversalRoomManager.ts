@@ -306,55 +306,60 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    const defaultSpawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
-    const defaultSpawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const hasValidSpawnPos = Boolean(
+      spawnPos &&
+      typeof spawnPos.x === "number" &&
+      !isNaN(spawnPos.x) &&
+      typeof spawnPos.y === "number" &&
+      !isNaN(spawnPos.y)
+    );
 
-    const spawnX = (spawnPos && typeof spawnPos.x === "number" && !isNaN(spawnPos.x)) ? spawnPos.x : defaultSpawnX;
-    const spawnY = (spawnPos && typeof spawnPos.y === "number" && !isNaN(spawnPos.y)) ? spawnPos.y : defaultSpawnY;
-    const spawnZ = (spawnPos && typeof spawnPos.z === "number" && !isNaN(spawnPos.z)) ? spawnPos.z : 0;
+    if (hasValidSpawnPos) {
+      const spawnX = spawnPos!.x;
+      const spawnY = spawnPos!.y;
+      const spawnZ = (typeof spawnPos!.z === "number" && !isNaN(spawnPos!.z)) ? spawnPos!.z : 0;
 
-    const character = new Character({
-      x: spawnX,
-      y: spawnY,
-      color,
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1.0,
-      playerId: serverCharId,
-      playerNumber,
-      name: charName,
-      hasCustomName: isExplicitCustom,
-    });
-    character.position.z = spawnZ;
+      const character = new Character({
+        x: spawnX,
+        y: spawnY,
+        color,
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: serverCharId,
+        playerNumber,
+        name: charName,
+        hasCustomName: isExplicitCustom,
+      });
+      character.position.z = spawnZ;
 
-    // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
-    // gently separate character and object away from each other so they no longer overlap.
-    for (const obj of this.simulation.objects) {
-      if (obj.isHeld) continue;
-      const minDistance = character.colliderRadius + obj.colliderRadius;
-      const ox = obj.position.x - character.position.x;
-      const oy = obj.position.y - character.position.y;
-      const oDist = Math.hypot(ox, oy);
-      if (oDist < minDistance) {
-        const charZ = character.position.z;
-        const objZ = obj.position.z;
-        // Check 3D vertical overlap
-        if (Math.abs(charZ - objZ) < 0.8) {
-          const overlap = minDistance - oDist + 0.04;
-          const nx = oDist > 0.001 ? ox / oDist : 1;
-          const ny = oDist > 0.001 ? oy / oDist : 0;
-          // Displace 50/50 away from each other
-          character.position.x -= nx * (overlap * 0.5);
-          character.position.y -= ny * (overlap * 0.5);
-          obj.position.x += nx * (overlap * 0.5);
-          obj.position.y += ny * (overlap * 0.5);
-          obj.wakeUp();
+      // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
+      // gently separate character and object away from each other so they no longer overlap.
+      for (const obj of this.simulation.objects) {
+        if (obj.isHeld) continue;
+        const minDistance = character.colliderRadius + obj.colliderRadius;
+        const ox = obj.position.x - character.position.x;
+        const oy = obj.position.y - character.position.y;
+        const oDist = Math.hypot(ox, oy);
+        if (oDist < minDistance) {
+          const charZ = character.position.z;
+          const objZ = obj.position.z;
+          if (Math.abs(charZ - objZ) < 0.8) {
+            const overlap = minDistance - oDist + 0.04;
+            const nx = oDist > 0.001 ? ox / oDist : 1;
+            const ny = oDist > 0.001 ? oy / oDist : 0;
+            character.position.x -= nx * (overlap * 0.5);
+            character.position.y -= ny * (overlap * 0.5);
+            obj.position.x += nx * (overlap * 0.5);
+            obj.position.y += ny * (overlap * 0.5);
+            obj.wakeUp();
+          }
         }
       }
-    }
 
-    this.simulation.characters.set(serverCharId, character);
-    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+      this.simulation.characters.set(serverCharId, character);
+      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+    }
 
     const entry: ClientCharacterEntry = {
       localPlayerId,
@@ -428,16 +433,8 @@ export class UniversalRoomManager {
 
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
 
-    // Remove dummy placeholder character if present
-    if (this.simulation.characters.has("player-1")) {
-      const p1 = this.simulation.characters.get("player-1");
-      p1?.cleanupBeforeRemoval();
-      this.simulation.characters.delete("player-1");
-    }
-
-    // Register initial default player for this connection
-    const primaryEntry = this.registerCharacter(client, "keyboard");
-    primaryEntry.isDefaultPlaceholder = true;
+    // Note: Do NOT register or spawn any character on raw WebSocket connection.
+    // The server waits until the client sends join_room with its chosen spawn position.
 
     // Listen for incoming messages
     ws.on("message", (raw) => {
@@ -487,14 +484,17 @@ export class UniversalRoomManager {
             }
           }
 
-          const primary = client.characters.get("keyboard") || client.characters.values().next().value || primaryEntry;
+          const primary = client.characters.get("keyboard") || client.characters.values().next().value;
+          const playerNumber = primary ? primary.playerNumber : 1;
+          const name = primary ? primary.name : "Player 1";
+          const color = primary ? primary.color : PLAYER_COLORS[0];
 
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber: primary.playerNumber,
-            name: primary.name,
-            color: primary.color,
+            playerNumber,
+            name,
+            color,
             registeredPlayers: Array.from(client.characters.values()),
             arena: {
               width: this.simulation.arena.width,
@@ -574,7 +574,27 @@ export class UniversalRoomManager {
             }
           }
 
-          const sChar = this.simulation.characters.get(serverCharId);
+          let sChar = this.simulation.characters.get(serverCharId);
+          if (!sChar && data.character && typeof data.character.x === "number" && typeof data.character.y === "number") {
+            // Client provided its true coordinates; instantiate physical character now!
+            const newChar = new Character({
+              x: data.character.x,
+              y: data.character.y,
+              color: charEntry.color,
+              colliderRadius: 0.44,
+              mass: 1.2,
+              strength: 1.0,
+              playerId: serverCharId,
+              playerNumber: charEntry.playerNumber,
+              name: charEntry.name,
+              hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim()),
+            });
+            newChar.position.z = data.character.z || 0;
+            this.simulation.characters.set(serverCharId, newChar);
+            this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+            sChar = newChar;
+          }
+
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
             // Only adopt explicit custom name from packet, never overwrite with default template name
             if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {
@@ -670,9 +690,6 @@ export class UniversalRoomManager {
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber: primaryEntry.playerNumber,
-      name: primaryEntry.name,
-      color: primaryEntry.color,
     }));
   }
 
