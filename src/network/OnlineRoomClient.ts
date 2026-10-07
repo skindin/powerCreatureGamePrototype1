@@ -165,7 +165,12 @@ export class OnlineRoomClient {
           const raw = typeof event.data === "string" ? event.data : event.data.toString();
           const msg = JSON.parse(raw);
 
-          if (msg.type === "room_welcome" || msg.type === "room_joined") {
+          if (msg.type === "room_welcome") {
+            this.clientId = msg.clientId;
+            return;
+          }
+
+          if (msg.type === "room_joined") {
             this.clientId = msg.clientId;
             this.playerNumber = msg.playerNumber || 1;
             if (msg.color) this.assignedColor = msg.color;
@@ -345,13 +350,24 @@ export class OnlineRoomClient {
    * Enables the authoritative server to maintain locked coordinates and velocity for each local character.
    */
   public sendPlayerInput(
-    localPlayerId: string,
-    packet: PlayerInputPacket,
+    localPlayerIdOrPacket: string | PlayerInputPacket,
+    packetOrChar?: PlayerInputPacket | any,
     character?: any,
     objects?: any[]
   ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
+      let localPlayerId: string;
+      let packet: PlayerInputPacket;
+      if (typeof localPlayerIdOrPacket === "string") {
+        localPlayerId = localPlayerIdOrPacket;
+        packet = packetOrChar as PlayerInputPacket;
+      } else {
+        packet = localPlayerIdOrPacket as PlayerInputPacket;
+        character = packetOrChar;
+        localPlayerId = "keyboard";
+      }
+
       const serverCharId = this.getServerCharId(localPlayerId);
       packet.playerId = serverCharId;
 

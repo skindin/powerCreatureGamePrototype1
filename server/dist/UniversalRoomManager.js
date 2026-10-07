@@ -8570,10 +8570,17 @@ const _UniversalRoomManager = class _UniversalRoomManager {
         used.add(char.playerNumber);
       }
     }
+    for (const client of this.clients.values()) {
+      for (const entry of client.characters.values()) {
+        if (entry.playerNumber && entry.playerNumber > 0) {
+          used.add(entry.playerNumber);
+        }
+      }
+    }
     for (let i = 1; i <= 16; i++) {
       if (!used.has(i)) return i;
     }
-    return this.simulation.characters.size + 1;
+    return used.size + 1;
   }
   resolveActionPlayerId(client, act, fallbackServerCharId) {
     if (!act.playerId) return fallbackServerCharId;
@@ -8966,9 +8973,14 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       console.warn(`[UniversalRoom] Socket error for ${clientId}:`, err.message);
       this.handleDisconnection(clientId);
     });
+    const previewPlayerNumber = this.allocatePlayerNumber();
+    const previewColor = PLAYER_COLORS[(previewPlayerNumber - 1) % PLAYER_COLORS.length];
     ws.send(JSON.stringify({
       type: "room_welcome",
-      clientId
+      clientId,
+      playerNumber: previewPlayerNumber,
+      color: previewColor,
+      name: `Player ${previewPlayerNumber}`
     }));
   }
   handleDisconnection(clientId) {
