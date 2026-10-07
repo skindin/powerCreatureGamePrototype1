@@ -204,17 +204,10 @@ export class UniversalRoomManager {
         used.add(char.playerNumber);
       }
     }
-    for (const client of this.clients.values()) {
-      for (const entry of client.characters.values()) {
-        if (entry.playerNumber && entry.playerNumber > 0) {
-          used.add(entry.playerNumber);
-        }
-      }
-    }
     for (let i = 1; i <= 16; i++) {
       if (!used.has(i)) return i;
     }
-    return used.size + 1;
+    return this.simulation.characters.size + 1;
   }
 
   public resolveActionPlayerId(
@@ -693,15 +686,10 @@ export class UniversalRoomManager {
       this.handleDisconnection(clientId);
     });
 
-    // Send immediate welcome packet with client ID and slot assignment preview
-    const previewPlayerNumber = this.allocatePlayerNumber();
-    const previewColor = PLAYER_COLORS[(previewPlayerNumber - 1) % PLAYER_COLORS.length];
+    // Send immediate welcome packet
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber: previewPlayerNumber,
-      color: previewColor,
-      name: `Player ${previewPlayerNumber}`,
     }));
   }
 
