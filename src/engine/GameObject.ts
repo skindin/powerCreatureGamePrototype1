@@ -1,7 +1,6 @@
 import { Arena, Wall } from "./Arena.js";
 import { RollModule } from "./RollModule.js";
 import { ColliderModule } from "./ColliderModule.js";
-import { MassModule } from "./MassModule.js";
 import { FrictionModule } from "./FrictionModule.js";
 import { BounceModule } from "./BounceModule.js";
 import { GravityModule } from "./GravityModule.js";
@@ -101,7 +100,6 @@ export class GameObject {
   // Modular behavior components
   public rigidbodyModule: RigidbodyModule | null = null;
   public colliderModule: ColliderModule | null = null;
-  public massModule: MassModule | null = null;
   public frictionModule: FrictionModule | null = null;
   public bounceModule: BounceModule | null = null;
   public verticalPositionModule: VerticalPositionModule | null = null;
@@ -120,7 +118,6 @@ export class GameObject {
     rigidbodyModule?: RigidbodyModule | null;
     hasRigidbody?: boolean;
     colliderModule?: ColliderModule | null;
-    massModule?: MassModule | null;
     frictionModule?: FrictionModule | null;
     bounceModule?: BounceModule | null;
     verticalPositionModule?: VerticalPositionModule | null;
@@ -154,6 +151,7 @@ export class GameObject {
       : (options.hasRigidbody === false
           ? null
           : new RigidbodyModule({
+              mass: options.mass ?? 1.0,
               velocity: options.velocity ? { x: options.velocity.x ?? 0, y: options.velocity.y ?? 0 } : undefined,
               hasVerticalVelocity: options.hasVerticalVelocity !== false,
               verticalVelocity: options.verticalVelocity ?? 0,
@@ -166,12 +164,6 @@ export class GameObject {
       : (options.colliderRadius !== undefined
           ? new ColliderModule({ radius: options.colliderRadius })
           : new ColliderModule({ radius: 0.35 }));
-
-    this.massModule = options.massModule !== undefined
-      ? options.massModule
-      : (options.mass !== undefined
-          ? new MassModule({ mass: options.mass })
-          : new MassModule({ mass: 1.0 }));
 
     this.frictionModule = options.frictionModule !== undefined
       ? options.frictionModule
@@ -271,20 +263,20 @@ export class GameObject {
   }
 
   public get hasMass(): boolean {
-    return Boolean(this.massModule && this.massModule.enabled && this.mass > 0);
+    return Boolean(this.hasRigidbody && this.rigidbodyModule!.enabled && this.mass > 0);
   }
 
   public get mass(): number {
-    return this.massModule && this.massModule.enabled
-      ? this.massModule.massProp.get(this.properties)
+    return this.hasRigidbody && this.rigidbodyModule!.enabled
+      ? this.rigidbodyModule!.massProp.get(this.properties)
       : 0;
   }
 
   public set mass(val: number) {
-    if (this.massModule) {
-      this.massModule.massProp.set(val, this.properties);
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(val, this.properties);
     } else {
-      this.massModule = new MassModule({ mass: val });
+      this.rigidbodyModule = new RigidbodyModule({ mass: val });
     }
   }
 

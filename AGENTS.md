@@ -12,24 +12,22 @@
 
 ### Tier 1: 🔒 Sealed & Read-Only Files ("Complete" Modules)
 > **CRITICAL AGENT CONSTRAINT**:  
-> The following 14 files have been audited, fully verified, and deemed feature-complete.  
+> The following 12 files have been audited, fully verified, and deemed feature-complete.  
 > Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless you explicitly ask the USER for permission first and receive their direct approval.
 > - **Avoid asking for permission for Tier 1 files unless truly necessary.** If you encounter an issue that legitimately requires editing a Tier 1 file, you **MUST ask for permission before touching it**. State: **"This is a Tier 1 (Sealed) file: [filename]"**, and concisely explain the reason in plain English.
 >
-> 1. `src/engine/MassModule.ts` — Mass, inertia, inverse mass calculations.
-> 2. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
-> 3. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
-> 4. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
-> 5. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
-> 6. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
-> 7. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
-> 8. `src/engine/ColliderModule.ts` — Physical collider radius, CCD sweep eligibility (`canSweep`), and dynamic threshold.
-> 9. `src/engine/RigidbodyModule.ts` — Kinematic 2D linear velocity, vertical velocity, and collision policy (`discrete`/`continuous`/`dynamic`).
-> 10. `src/character/StrengthModule.ts` — Creature strength multiplier for carrying capacity and throw power.
-> 11. `src/character/JumpModule.ts` — Vertical jump impulse, landing buffers, and dismount hop calculations.
-> 12. `src/character/WallEdgeAssistModule.ts` — Geometric math helper preventing creature sticking on corner wall vertices.
-> 13. `src/engine/physics/StateHistoryBuffer.ts` — Zero-allocation circular ring buffer for historical physical snapshots.
-> 14. `src/engine/physics/IslandManager.ts` — Connected graph discovery of dormant sleeping bodies and active physical islands.
+> 1. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
+> 2. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
+> 3. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
+> 4. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
+> 5. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
+> 6. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
+> 7. `src/engine/ColliderModule.ts` — Physical collider radius, CCD sweep eligibility (`canSweep`), and dynamic threshold.
+> 8. `src/engine/RigidbodyModule.ts` — Kinematic 2D linear velocity, mass property (`massProp`), vertical velocity, and collision policy (`discrete`/`continuous`/`dynamic`).
+> 9. `src/character/JumpModule.ts` — Vertical jump impulse, landing buffers, and dismount hop calculations.
+> 10. `src/character/WallEdgeAssistModule.ts` — Geometric math helper preventing creature sticking on corner wall vertices.
+> 11. `src/engine/physics/StateHistoryBuffer.ts` — Zero-allocation circular ring buffer for historical physical snapshots.
+> 12. `src/engine/physics/IslandManager.ts` — Connected graph discovery of dormant sleeping bodies and active physical islands.
 >
 > **Enforcement Mechanics**: Marked with OS read-only `attrib +r` and Git pre-commit hook `.githooks/pre-commit`.
 

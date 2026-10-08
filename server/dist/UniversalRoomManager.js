@@ -4104,6 +4104,32 @@ class ColliderModule {
     this.ccdThresholdRatio = options.ccdThresholdRatio ?? 0.5;
   }
 }
+class FrictionModule {
+  constructor(options = {}) {
+    __publicField(this, "staticFrictionMod");
+    __publicField(this, "dynamicFrictionMod");
+    __publicField(this, "enabled");
+    this.staticFrictionMod = options.staticFrictionMod ?? 1;
+    this.dynamicFrictionMod = options.dynamicFrictionMod ?? 1;
+    this.enabled = options.enabled ?? true;
+  }
+}
+class BounceModule {
+  constructor(options = {}) {
+    __publicField(this, "bounceMod");
+    __publicField(this, "verticalBounce");
+    __publicField(this, "enabled");
+    this.bounceMod = options.bounceMod ?? 0.4;
+    this.verticalBounce = options.verticalBounce ?? true;
+    this.enabled = options.enabled ?? true;
+  }
+}
+class GravityModule {
+  constructor(options = {}) {
+    __publicField(this, "enabled");
+    this.enabled = options.enabled ?? true;
+  }
+}
 class DynamicProperty {
   constructor(initialValue = 0, isReference = false, referenceKey = "") {
     __publicField(this, "isReference", false);
@@ -4277,53 +4303,9 @@ class ObjectPropertiesRegistry {
     return new ObjectPropertiesRegistry(data);
   }
 }
-class MassModule {
-  constructor(options = {}) {
-    __publicField(this, "massProp");
-    __publicField(this, "enabled");
-    if (options.mass instanceof DynamicProperty) {
-      this.massProp = options.mass;
-    } else {
-      this.massProp = new DynamicProperty(options.mass ?? 1);
-    }
-    this.enabled = options.enabled ?? true;
-  }
-  get mass() {
-    return this.massProp.literalValue;
-  }
-  set mass(val) {
-    this.massProp.literalValue = val;
-    this.massProp.notify();
-  }
-}
-class FrictionModule {
-  constructor(options = {}) {
-    __publicField(this, "staticFrictionMod");
-    __publicField(this, "dynamicFrictionMod");
-    __publicField(this, "enabled");
-    this.staticFrictionMod = options.staticFrictionMod ?? 1;
-    this.dynamicFrictionMod = options.dynamicFrictionMod ?? 1;
-    this.enabled = options.enabled ?? true;
-  }
-}
-class BounceModule {
-  constructor(options = {}) {
-    __publicField(this, "bounceMod");
-    __publicField(this, "verticalBounce");
-    __publicField(this, "enabled");
-    this.bounceMod = options.bounceMod ?? 0.4;
-    this.verticalBounce = options.verticalBounce ?? true;
-    this.enabled = options.enabled ?? true;
-  }
-}
-class GravityModule {
-  constructor(options = {}) {
-    __publicField(this, "enabled");
-    this.enabled = options.enabled ?? true;
-  }
-}
 class RigidbodyModule {
   constructor(options = {}) {
+    __publicField(this, "massProp");
     __publicField(this, "velocity");
     __publicField(this, "hasVerticalVelocity");
     __publicField(this, "verticalVelocity");
@@ -4331,6 +4313,11 @@ class RigidbodyModule {
     __publicField(this, "isKinematic");
     __publicField(this, "enabled");
     var _a, _b;
+    if (options.mass instanceof DynamicProperty) {
+      this.massProp = options.mass;
+    } else {
+      this.massProp = new DynamicProperty(options.mass ?? 1);
+    }
     this.velocity = {
       x: ((_a = options.velocity) == null ? void 0 : _a.x) ?? 0,
       y: ((_b = options.velocity) == null ? void 0 : _b.y) ?? 0
@@ -4340,6 +4327,13 @@ class RigidbodyModule {
     this.collisionMode = options.collisionMode ?? "dynamic";
     this.isKinematic = options.isKinematic ?? false;
     this.enabled = options.enabled !== void 0 ? options.enabled : true;
+  }
+  get mass() {
+    return this.massProp.literalValue;
+  }
+  set mass(val) {
+    this.massProp.literalValue = val;
+    this.massProp.notify();
   }
 }
 class SurfaceSupportModule {
@@ -4603,7 +4597,6 @@ class GameObject {
     // Modular behavior components
     __publicField(this, "rigidbodyModule", null);
     __publicField(this, "colliderModule", null);
-    __publicField(this, "massModule", null);
     __publicField(this, "frictionModule", null);
     __publicField(this, "bounceModule", null);
     __publicField(this, "verticalPositionModule", null);
@@ -4626,13 +4619,13 @@ class GameObject {
     this.heldBy = null;
     this.visualShape = options.visualShape ?? "circle";
     this.rigidbodyModule = options.rigidbodyModule !== void 0 ? options.rigidbodyModule : options.hasRigidbody === false ? null : new RigidbodyModule({
+      mass: options.mass ?? 1,
       velocity: options.velocity ? { x: options.velocity.x ?? 0, y: options.velocity.y ?? 0 } : void 0,
       hasVerticalVelocity: options.hasVerticalVelocity !== false,
       verticalVelocity: options.verticalVelocity ?? 0,
       collisionMode: options.collisionMode ?? "dynamic"
     });
     this.colliderModule = options.colliderModule !== void 0 ? options.colliderModule : options.colliderRadius !== void 0 ? new ColliderModule({ radius: options.colliderRadius }) : new ColliderModule({ radius: 0.35 });
-    this.massModule = options.massModule !== void 0 ? options.massModule : options.mass !== void 0 ? new MassModule({ mass: options.mass }) : new MassModule({ mass: 1 });
     this.frictionModule = options.frictionModule !== void 0 ? options.frictionModule : new FrictionModule({
       staticFrictionMod: options.staticGroundFrictionMod ?? 1,
       dynamicFrictionMod: options.dynamicGroundFrictionMod ?? 1
@@ -4739,16 +4732,16 @@ class GameObject {
     }
   }
   get hasMass() {
-    return Boolean(this.massModule && this.massModule.enabled && this.mass > 0);
+    return Boolean(this.hasRigidbody && this.rigidbodyModule.enabled && this.mass > 0);
   }
   get mass() {
-    return this.massModule && this.massModule.enabled ? this.massModule.massProp.get(this.properties) : 0;
+    return this.hasRigidbody && this.rigidbodyModule.enabled ? this.rigidbodyModule.massProp.get(this.properties) : 0;
   }
   set mass(val) {
-    if (this.massModule) {
-      this.massModule.massProp.set(val, this.properties);
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(val, this.properties);
     } else {
-      this.massModule = new MassModule({ mass: val });
+      this.rigidbodyModule = new RigidbodyModule({ mass: val });
     }
   }
   /**
@@ -6087,28 +6080,6 @@ class ThrowModule {
     return held;
   }
 }
-class StrengthModule {
-  constructor(options = {}) {
-    __publicField(this, "id", "strength");
-    __publicField(this, "name", "Strength Module");
-    __publicField(this, "enabled", true);
-    // Dynamic property socket for strength
-    __publicField(this, "strengthProp");
-    if (options.strength instanceof DynamicProperty) {
-      this.strengthProp = options.strength;
-    } else {
-      this.strengthProp = new DynamicProperty(options.strength ?? 1);
-    }
-    this.enabled = options.enabled ?? true;
-  }
-  get strength() {
-    return this.strengthProp.literalValue;
-  }
-  set strength(val) {
-    this.strengthProp.literalValue = val;
-    this.strengthProp.notify();
-  }
-}
 class JumpModule {
   constructor(options) {
     __publicField(this, "id", "jump");
@@ -6196,7 +6167,7 @@ class Character extends GameObject {
       color: initialColor,
       bounceMod: 0.1
     });
-    __publicField(this, "strengthModule");
+    __publicField(this, "strengthProp");
     __publicField(this, "facingAngle");
     // Angle in radians
     __publicField(this, "lastMovementInputAngle", 0);
@@ -6232,13 +6203,13 @@ class Character extends GameObject {
     const isExplicitCustom = options.name ? !/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()) : false;
     this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
     this.baseMass = options.mass ?? 1.2;
-    this.strength = options.strength ?? 1;
     this.facingAngle = 0;
     this.heldObject = null;
     this.isAiming = false;
     this.aimTarget = null;
     this.activeTrajectory = null;
-    this.strengthModule = new StrengthModule({ strength: options.strength ?? 1 });
+    this.strengthProp = new DynamicProperty(options.strength ?? 1);
+    this.properties.add("strength", this.strengthProp.literalValue);
     this.walkingModule = new WalkingModule();
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();
@@ -6247,17 +6218,13 @@ class Character extends GameObject {
     this.climbingModule = null;
   }
   get hasStrength() {
-    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strength > 0);
+    return this.strength > 0;
   }
   get strength() {
-    return this.hasStrength ? this.strengthModule.strengthProp.get(this.properties) : 0;
+    return this.strengthProp.get(this.properties);
   }
   set strength(val) {
-    if (this.strengthModule) {
-      this.strengthModule.strengthProp.set(Math.max(0.1, val), this.properties);
-    } else {
-      this.strengthModule = new StrengthModule({ strength: val });
-    }
+    this.strengthProp.set(Math.max(0.1, val), this.properties);
   }
   setSprinting(sprint) {
     var _a;
@@ -6270,14 +6237,14 @@ class Character extends GameObject {
    * Effective mass: base character mass plus the mass of any currently carried object.
    */
   get mass() {
-    const base = this.hasMass ? this.baseMass : 0;
+    const base = this.hasMass && this.rigidbodyModule ? this.rigidbodyModule.massProp.get(this.properties) : 0;
     const carried = this.heldObject && this.heldObject.hasMass ? this.heldObject.mass : 0;
     return base + carried;
   }
   set mass(val) {
     this.baseMass = Math.max(0.1, val);
-    if (this.massModule) {
-      this.massModule.mass = this.baseMass;
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(this.baseMass, this.properties);
     }
   }
   get carriedMass() {

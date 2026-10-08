@@ -5,12 +5,10 @@ import { WalkingModule } from "../character/WalkingModule.js";
 import { PickupModule } from "../character/PickupModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
 import { ClimbingModule } from "../character/ClimbingModule.js";
-import { StrengthModule } from "../character/StrengthModule.js";
 import { JumpModule } from "../character/JumpModule.js";
 import { WallEdgeAssistModule } from "../character/WallEdgeAssistModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ColliderModule } from "../engine/ColliderModule.js";
-import { MassModule } from "../engine/MassModule.js";
 import { FrictionModule } from "../engine/FrictionModule.js";
 import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
@@ -857,7 +855,7 @@ export class DevPanel {
 
     // Physical behaviors sliders (only affects elements currently rendered)
     this.setSliderVal("slide-entity-radius", "val-entity-radius", e.colliderModule?.radius ?? 0.32, 2);
-    this.setSliderVal("slide-entity-mass", "val-entity-mass", e.massModule?.mass ?? 1.0, 1);
+    this.setSliderVal("slide-entity-mass", "val-entity-mass", e.mass, 1);
     this.setSliderVal("slide-entity-static-fric", "val-entity-static-fric", e.frictionModule?.staticFrictionMod ?? 1.0, 2);
     this.setSliderVal("slide-entity-dynamic-fric", "val-entity-dynamic-fric", e.frictionModule?.dynamicFrictionMod ?? 1.0, 2);
     this.setSliderVal("slide-entity-bounce", "val-entity-bounce", e.bounceModule?.bounceMod ?? 0.4, 2);
@@ -894,9 +892,7 @@ export class DevPanel {
         const checkAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
         if (checkAir) checkAir.checked = Boolean(char.walkingModule.walkInAir);
       }
-      if (char.strengthModule) {
-        this.setSliderVal("slide-strength", "val-strength", char.strength, 1);
-      }
+      this.setSliderVal("slide-strength", "val-strength", char.strength, 1);
       if (char.pickupModule) {
         this.setSliderVal("slide-pickup-reach", "val-pickup-reach", char.pickupModule.pickupReach, 1);
       }
@@ -946,8 +942,8 @@ export class DevPanel {
     const hasColliderModule = Boolean(e.colliderModule);
     const colEnabled = Boolean(e.colliderModule?.enabled);
 
-    const hasMassModule = Boolean(e.massModule);
-    const massEnabled = Boolean(e.massModule?.enabled);
+    const hasMass = e.hasMass;
+    const massEnabled = Boolean(e.hasRigidbody && e.rigidbodyModule?.enabled && e.mass > 0);
 
     const hasFrictionModule = Boolean(e.frictionModule);
     const fricEnabled = Boolean(e.frictionModule?.enabled);
@@ -966,9 +962,6 @@ export class DevPanel {
 
     const hasWalkingModule = isChar && Boolean(char?.walkingModule);
     const walkEnabled = isChar && Boolean(char?.walkingModule?.enabled);
-
-    const hasStrengthModule = isChar && Boolean(char?.strengthModule);
-    const strEnabled = isChar && Boolean(char?.strengthModule?.enabled);
 
     const hasPickupModule = isChar && Boolean(char?.pickupModule);
     const pickupEnabled = isChar && Boolean(char?.pickupModule?.enabled);
@@ -1043,6 +1036,9 @@ export class DevPanel {
               <input type="range" id="slide-entity-vert-vel" min="-12" max="12" step="0.2" value="${e.verticalVelocity}">
             </div>
           </div>
+          <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
+            <div id="prop-socket-mass"></div>
+          </div>
         </div>
       `;
     }
@@ -1068,27 +1064,12 @@ export class DevPanel {
       `;
     }
 
-    // 3. Mass Module
-    if (hasMassModule) {
-      attachedCount++;
-      html += `
-        <div class="module-card ${!massEnabled ? 'module-disabled' : ''}" data-module-id="mass">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>⚖️ Mass</label>
-            ${renderToggleBtn("mass", massEnabled)}
-          </div>
-          ${!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled (body is massless)</div>` : ''}
-          <div id="prop-socket-mass"></div>
-        </div>
-      `;
-    }
-
     // 4. Friction Module
     if (hasFrictionModule) {
       attachedCount++;
-      const fricMassWarning = !hasMassModule
-        ? `<div class="module-dep-warning">⚠️ Requires Mass behavior (no normal force calculation)</div>`
-        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled</div>` : '');
+      const fricMassWarning = !hasMass
+        ? `<div class="module-dep-warning">⚠️ Requires Rigidbody Mass (no normal force calculation)</div>`
+        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass is zero or disabled</div>` : '');
 
       html += `
         <div class="module-card ${!fricEnabled ? 'module-disabled' : ''}" data-module-id="friction">
@@ -1119,9 +1100,9 @@ export class DevPanel {
     // 5. Bounciness Module
     if (hasBounceModule) {
       attachedCount++;
-      const bounceMassWarning = !hasMassModule
-        ? `<div class="module-dep-warning">⚠️ Requires Mass behavior (no restitution calculation)</div>`
-        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled</div>` : '');
+      const bounceMassWarning = !hasMass
+        ? `<div class="module-dep-warning">⚠️ Requires Rigidbody Mass (no restitution calculation)</div>`
+        : (!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass is zero or disabled</div>` : '');
 
       const bounceVertWarning = e.bounceModule?.verticalBounce && (!e.hasVerticalVelocity || !vertPosEnabled)
         ? `<div class="module-dep-warning">⚠️ Vertical bounce inactive without Vertical Velocity / Vertical Position</div>`
@@ -1230,9 +1211,9 @@ export class DevPanel {
           ? `<div class="module-dep-warning">⚠️ Requires Friction behavior (feet slip without ground traction)</div>`
           : (!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : '');
 
-        const walkStrWarning = !hasStrengthModule
-          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot propel body)</div>`
-          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+        const walkStrWarning = !char.hasStrength
+          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength (cannot propel body)</div>`
+          : '';
 
         html += `
           <div class="module-card ${!walkEnabled ? 'module-disabled' : ''}" data-module-id="walking">
@@ -1268,20 +1249,9 @@ export class DevPanel {
               </div>
               <input type="range" id="slide-air-fric" min="0.0" max="3.0" step="0.05" value="${char.walkingModule?.airFriction ?? 1.0}">
             </div>
-          </div>
-        `;
-      }
-
-      if (hasStrengthModule) {
-        attachedCount++;
-        html += `
-          <div class="module-card ${!strEnabled ? 'module-disabled' : ''}" data-module-id="strength">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>💪 Strength Ability</label>
-              ${renderToggleBtn("strength", strEnabled)}
+            <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
+              <div id="prop-socket-strength"></div>
             </div>
-            ${!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : ''}
-            <div id="prop-socket-strength"></div>
           </div>
         `;
       }
@@ -1308,9 +1278,9 @@ export class DevPanel {
 
       if (hasThrowModule) {
         attachedCount++;
-        const throwStrWarning = !hasStrengthModule
-          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability (cannot launch objects)</div>`
-          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+        const throwStrWarning = !char.hasStrength
+          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength (cannot launch objects)</div>`
+          : '';
 
         html += `
           <div class="module-card ${!throwEnabled ? 'module-disabled' : ''}" data-module-id="throw">
@@ -1402,9 +1372,9 @@ export class DevPanel {
           ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>`
           : (!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : '');
 
-        const climbStrWarning = !hasStrengthModule
-          ? `<div class="module-dep-warning">⚠️ Requires Strength Ability to climb</div>`
-          : (!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : '');
+        const climbStrWarning = !char.hasStrength
+          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength to climb</div>`
+          : '';
 
         html += `
           <div class="module-card ${!climbEnabled ? 'module-disabled' : ''}" data-module-id="climbing">
@@ -1461,9 +1431,8 @@ export class DevPanel {
     }
 
     const allModules: ModuleInfo[] = [
-      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, vertical velocity, motion integration & collision mode", isAttached: hasRigidbodyModule },
+      { id: "rigidbody", name: "Rigidbody", icon: "⚙️", description: "Linear velocity, mass, vertical velocity, motion integration & collision mode", isAttached: hasRigidbodyModule },
       { id: "collider", name: "Collider", icon: "🛡️", description: "Solid physical bounds & collision with walls and entities", isAttached: hasColliderModule },
-      { id: "mass", name: "Mass", icon: "⚖️", description: "Physical mass, weight, inertia, and momentum transfer", isAttached: hasMassModule },
       { id: "friction", name: "Friction", icon: "🛝", description: "Ground friction, stopping resistance, and deceleration", isAttached: hasFrictionModule },
       { id: "bounce", name: "Bounciness", icon: "🏀", description: "Elastic restitution on collisions and impacts", isAttached: hasBounceModule },
       { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPosModule },
@@ -1473,8 +1442,7 @@ export class DevPanel {
 
     if (isChar) {
       allModules.push(
-        { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration and maximum ground speed", isAttached: hasWalkingModule },
-        { id: "strength", name: "Strength Ability", icon: "💪", description: "Muscle power for throw speed and climbing", isAttached: hasStrengthModule },
+        { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration, muscle strength, and maximum ground speed", isAttached: hasWalkingModule },
         { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickupModule },
         { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrowModule },
         { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },
@@ -1552,9 +1520,6 @@ export class DevPanel {
       case "collider":
         if (e.colliderModule) e.colliderModule.enabled = !e.colliderModule.enabled;
         break;
-      case "mass":
-        if (e.massModule) e.massModule.enabled = !e.massModule.enabled;
-        break;
       case "friction":
         if (e.frictionModule) e.frictionModule.enabled = !e.frictionModule.enabled;
         break;
@@ -1572,9 +1537,6 @@ export class DevPanel {
         break;
       case "walking":
         if (char?.walkingModule) char.walkingModule.enabled = !char.walkingModule.enabled;
-        break;
-      case "strength":
-        if (char?.strengthModule) char.strengthModule.enabled = !char.strengthModule.enabled;
         break;
       case "pickup":
         if (char?.pickupModule) char.pickupModule.enabled = !char.pickupModule.enabled;
@@ -1607,9 +1569,6 @@ export class DevPanel {
       case "collider":
         e.colliderModule = null;
         break;
-      case "mass":
-        e.massModule = null;
-        break;
       case "friction":
         e.frictionModule = null;
         break;
@@ -1634,11 +1593,6 @@ export class DevPanel {
           char.walkingModule = null;
           char.isActivelyWalking = false;
           char.isSprinting = false;
-        }
-        break;
-      case "strength":
-        if (e instanceof Character) {
-          (e as Character).strengthModule = null;
         }
         break;
       case "pickup":
@@ -1694,9 +1648,6 @@ export class DevPanel {
       case "collider":
         e.colliderModule = new ColliderModule({ radius: 0.32 });
         break;
-      case "mass":
-        e.massModule = new MassModule({ mass: 1.0 });
-        break;
       case "friction":
         e.frictionModule = new FrictionModule();
         break;
@@ -1720,11 +1671,6 @@ export class DevPanel {
       case "walking":
         if (e instanceof Character) {
           (e as Character).walkingModule = new WalkingModule();
-        }
-        break;
-      case "strength":
-        if (e instanceof Character) {
-          (e as Character).strengthModule = new StrengthModule({ strength: 1.0 });
         }
         break;
       case "pickup":
@@ -1800,11 +1746,11 @@ export class DevPanel {
       e.colliderRadius = val;
     }, 2);
 
-    // Mass (Dynamic Property Socket)
+    // Mass (Dynamic Property Socket inside Rigidbody)
     const massSocketEl = this.container.querySelector("#prop-socket-mass");
-    if (massSocketEl && e.massModule) {
+    if (massSocketEl && e.rigidbodyModule) {
       const massCtrl = new PropertyControl({
-        property: e.massModule.massProp,
+        property: e.rigidbodyModule.massProp,
         owner: e,
         label: "Mass (kg)",
         step: 0.1,
@@ -1871,9 +1817,9 @@ export class DevPanel {
 
       // Strength (Dynamic Property Socket)
       const strSocketEl = this.container.querySelector("#prop-socket-strength");
-      if (strSocketEl && char.strengthModule) {
+      if (strSocketEl) {
         const strCtrl = new PropertyControl({
-          property: char.strengthModule.strengthProp,
+          property: char.strengthProp,
           owner: char,
           label: "Muscle Strength Ratio (×)",
           step: 0.1,
@@ -2512,13 +2458,13 @@ export class DevPanel {
       color: s.color,
       hasRigidbody: s.hasRigidbody,
       rigidbodyModule: s.hasRigidbody ? new RigidbodyModule({
+        mass: s.mass,
         velocity: { x: 0, y: 0 },
         hasVerticalVelocity: s.hasVerticalVelocity,
         verticalVelocity: 0,
         collisionMode: "dynamic",
       }) : null,
       colliderModule: s.hasCollider ? new ColliderModule({ radius: s.colliderRadius }) : null,
-      massModule: s.hasMass ? new MassModule({ mass: s.mass }) : null,
       frictionModule: s.hasFriction ? new FrictionModule({ staticFrictionMod: s.staticFrictionMod, dynamicFrictionMod: s.dynamicFrictionMod }) : null,
       bounceModule: s.hasBounce ? new BounceModule({ bounceMod: s.bounceMod, verticalBounce: s.verticalBounce }) : null,
       verticalPositionModule: s.hasVerticalPosition ? new VerticalPositionModule({
@@ -2548,6 +2494,7 @@ export class DevPanel {
       color: orig.color,
       hasRigidbody: orig.hasRigidbody,
       rigidbodyModule: orig.rigidbodyModule ? new RigidbodyModule({
+        mass: orig.mass,
         velocity: { x: orig.velocity.x, y: orig.velocity.y },
         hasVerticalVelocity: orig.rigidbodyModule.hasVerticalVelocity,
         verticalVelocity: orig.verticalVelocity,
@@ -2555,7 +2502,6 @@ export class DevPanel {
         enabled: orig.rigidbodyModule.enabled,
       }) : null,
       colliderModule: orig.colliderModule ? new ColliderModule({ radius: orig.colliderModule.radius, enabled: orig.colliderModule.enabled }) : null,
-      massModule: orig.massModule ? new MassModule({ mass: orig.massModule.mass, enabled: orig.massModule.enabled }) : null,
       frictionModule: orig.frictionModule ? new FrictionModule({ staticFrictionMod: orig.frictionModule.staticFrictionMod, dynamicFrictionMod: orig.frictionModule.dynamicFrictionMod, enabled: orig.frictionModule.enabled }) : null,
       bounceModule: orig.bounceModule ? new BounceModule({ bounceMod: orig.bounceModule.bounceMod, verticalBounce: orig.bounceModule.verticalBounce, enabled: orig.bounceModule.enabled }) : null,
       verticalPositionModule: orig.verticalPositionModule ? new VerticalPositionModule({

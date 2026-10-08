@@ -3,28 +3,24 @@ import { WalkingModule } from "./WalkingModule.js";
 import { PickupModule } from "./PickupModule.js";
 import { ThrowModule, TrajectoryCalculation } from "./ThrowModule.js";
 import { ClimbingModule } from "./ClimbingModule.js";
-import { StrengthModule } from "./StrengthModule.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { JumpModule } from "./JumpModule.js";
 import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
 import type { Arena } from "../engine/Arena.js";
 
 export class Character extends GameObject {
-  public strengthModule: StrengthModule | null;
+  public strengthProp: DynamicProperty;
 
   public get hasStrength(): boolean {
-    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strength > 0);
+    return this.strength > 0;
   }
 
   public get strength(): number {
-    return this.hasStrength ? this.strengthModule!.strengthProp.get(this.properties) : 0;
+    return this.strengthProp.get(this.properties);
   }
 
   public set strength(val: number) {
-    if (this.strengthModule) {
-      this.strengthModule.strengthProp.set(Math.max(0.1, val), this.properties);
-    } else {
-      this.strengthModule = new StrengthModule({ strength: val });
-    }
+    this.strengthProp.set(Math.max(0.1, val), this.properties);
   }
 
   public facingAngle: number; // Angle in radians
@@ -52,15 +48,15 @@ export class Character extends GameObject {
    * Effective mass: base character mass plus the mass of any currently carried object.
    */
   public override get mass(): number {
-    const base = this.hasMass ? this.baseMass : 0;
+    const base = this.hasMass && this.rigidbodyModule ? this.rigidbodyModule.massProp.get(this.properties) : 0;
     const carried = (this.heldObject && this.heldObject.hasMass) ? this.heldObject.mass : 0;
     return base + carried;
   }
 
   public override set mass(val: number) {
     this.baseMass = Math.max(0.1, val);
-    if (this.massModule) {
-      this.massModule.mass = this.baseMass;
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(this.baseMass, this.properties);
     }
   }
 
@@ -130,15 +126,17 @@ export class Character extends GameObject {
     this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
 
     this.baseMass = options.mass ?? 1.2;
-    this.strength = options.strength ?? 1.0;
     this.facingAngle = 0;
     this.heldObject = null;
     this.isAiming = false;
     this.aimTarget = null;
     this.activeTrajectory = null;
 
+    // Native dynamic strength property
+    this.strengthProp = new DynamicProperty(options.strength ?? 1.0);
+    this.properties.add("strength", this.strengthProp.literalValue);
+
     // Initialize default modular capabilities
-    this.strengthModule = new StrengthModule({ strength: options.strength ?? 1.0 });
     this.walkingModule = new WalkingModule();
     this.pickupModule = new PickupModule();
     this.throwModule = new ThrowModule();
