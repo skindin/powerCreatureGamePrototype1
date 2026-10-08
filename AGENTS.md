@@ -65,7 +65,20 @@
 
 ---
 
-## 2. Active Milestone: Phase 10 (Online Multiplayer Architecture)
+## 2. Active Milestone: Phase 11 (Dynamic Properties & Energy Busses Architecture)
+
+- **Phase 11.1 (Blender-Style Dynamic Property Sockets)**:
+  - `DynamicProperty`: Sockets with dual modes: `literalValue` or `isReference` linking to a named property string.
+  - `ObjectPropertiesRegistry`: Object-scoped dictionary of named referenceable properties with locally unique names.
+  - **Limbo State**: Deleting a reference property leaves sockets in an explicit warning/limbo state with expedited "+ Recreate" or "Unlink" quick-fixes.
+  - **Rename Propagation**: Renaming an object property string dynamically cascades to all sockets pointing to that name on the entity.
+  - **Scrub Draggable Fields**: Click-and-drag horizontal scrubber with rate proportional to initial magnitude, replacing hardcoded `<input type="range">` sliders.
+  - **DevPanel Integration**: `PropertyControl` mounted for `MassModule` and `StrengthModule`.
+  - Design document: [CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/docs/design/CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md).
+
+---
+
+## 3. Active Milestone: Phase 10 (Online Multiplayer Architecture)
 
 - **Phase 10.7 (Dedicated Spawn & Random Overlap Separation)**:
   - Universal spawn coordinate: `(4.8, 7.0, 0)`.
