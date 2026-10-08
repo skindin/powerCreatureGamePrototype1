@@ -1393,12 +1393,15 @@ powerCreatureGamePrototype1/
   - Added `#persistent-ping-hud` badge directly inside `.canvas-wrapper` in the top-left corner (`top: 14px; left: 14px; z-index: 60`).
   - Styled as a compact, sleek glassmorphic pill (`📶 XX ms`) with dynamic signal coloring (green $<70\text{ms}$, amber $<140\text{ms}$, red $\ge 140\text{ms}$).
   - Automatically visible in multiplayer modes (both `online` and `boomerang`) even when the top bar, inspector sidebar, controls bar, or settings menus are closed, collapsed, or hidden in fullscreen.
-- **Fix for Slow-Motion Stutter on Newly Joined / High-Ping Players (`ServerJitterBuffer.ts`, `OnlineSessionManager.ts`)**:
-  - **Root Cause**: When a player with high latency joined, the server jitter queue started empty while the 60Hz loop immediately began consuming inputs. In starvation, `consume()` alternated between neutral zero-velocity packets and newly arrived movement packets, halving the player's apparent speed (~50% slow-motion) for ~1 second until the buffer caught up.
-  - **Jitter Buffer Priming (`ServerJitterBuffer.ts`)**: Added `hasPrimed` guard to `PlayerJitterQueue`. Upon first connection or clear, consumption waits until `targetDepth` (default 2 packets) has arrived in the queue before popping packets. While priming, safe neutral packets are returned without triggering starvation cycles, allowing inputs to play back at true 1.0× fixed cadence.
-  - **Controller Button Disambiguation (`InputManager.ts`)**:
-  - **Root Cause**: `rightPaddleButtonIndices` previously included button 9 (Menu/Burger/Start on standard gamepads) and button 15 (D-pad Right on standard mapping) under the assumption they might represent hardware back-paddles on certain controllers. This caused pressing the burger/start button or D-pad Right to trigger unexpected jump/climb actions.
-  - **Fix**: Removed button 9 and button 15 from `rightPaddleButtonIndices`, strictly limiting standard jump buttons to Button 0 (A / Cross) plus legitimate extended hardware back-paddles (M1 / Button 16+). Similarly cleaned `leftPaddleButtonIndices` to LB (4) and L3 (10) plus extended hardware back-paddles (M2 / Button 17+), preventing accidental sprint activation from D-pad arrows or back/select.
+### Phase 10.8 — Elimination of Spawn Immunity Slow-Motion Resistance & Submissive Client Spawning
+- **Root Cause of Join Slow-Motion**:
+  - The previous `spawnImmunityTicks = 60` logic in `ServerGameSimulation.ts` and `UniversalRoomManager.ts` clamped `sChar.velocity.x = 0; sChar.velocity.y = 0;` on the server for 60 ticks (a full 1.0s) whenever a packet arrived from the newly joined player.
+  - Concurrently, `ServerGameSimulation.step()` was advancing the character forward with input packets, but every incoming telemetry message forcibly wiped the character's velocity back to zero. This created intense 60Hz artificial resistance that halved the character's effective movement speed during their first second of connection from the perspective of existing players.
+  - In addition, an artificial `hasPrimed` delay in `ServerJitterBuffer.ts` was withholding input consumption until a packet queue accumulated.
+- **Architectural Fix**:
+  - **Removed `spawnImmunityTicks` entirely (`ServerGameSimulation.ts`, `UniversalRoomManager.ts`, `Character.ts`)**: The server no longer fights or zeroes out player velocities upon joining.
+  - **100% Submissive Client Spawning (`OnlineSessionManager.ts`)**: When a client joins an online room, it receives the server's authoritative `spawnPos` via `room_joined` / `player_added`. The client is completely submissive: it snaps its local coordinates, primaryCharacter, and baseCharacter directly to the server's dictated `spawnPos`, zeroes its initial velocity, clears any prior interpolator history, and starts streaming regular movement packets from that exact point.
+  - **Immediate Jitter Buffer Consumption (`ServerJitterBuffer.ts`)**: Removed the artificial withholding delay from `consume()`. As soon as input packets arrive, they are consumed immediately, ensuring full 1.0× movement speed right from the moment of connection.
 
 ---
 

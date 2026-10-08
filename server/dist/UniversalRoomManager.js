@@ -6025,7 +6025,6 @@ class Character extends GameObject {
     __publicField(this, "playerNumber", 1);
     __publicField(this, "playerColor", "#f59e0b");
     __publicField(this, "hasCustomName", false);
-    __publicField(this, "spawnImmunityTicks", 0);
     // Aiming state
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
@@ -6124,7 +6123,6 @@ class Character extends GameObject {
     this.activeTrajectory = null;
     this.isActivelyWalking = false;
     this.isSprinting = false;
-    this.spawnImmunityTicks = 0;
   }
   /**
    * Updates character facing direction:
@@ -7304,34 +7302,10 @@ class PlayerJitterQueue {
    *   to prevent runaway ghost overshoot while preserving last known aim direction.
    */
   consume(serverTick) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c;
     const drainedPackets = [];
-    if (!this.hasPrimed) {
-      if (this.queue.length >= this.targetDepth) {
-        this.hasPrimed = true;
-      } else {
-        const neutralPacket2 = {
-          playerId: this.playerId,
-          tick: serverTick,
-          moveX: 0,
-          moveY: 0,
-          isSprinting: false,
-          isJumpHeld: false,
-          isGrabHeld: false,
-          isDrop: false,
-          isThrow: false,
-          isAiming: false,
-          isLockHeld: false,
-          aimX: (_a = this.lastKnownInput) == null ? void 0 : _a.aimX,
-          aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
-          facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
-        };
-        return {
-          packet: neutralPacket2,
-          isStarved: true,
-          drainedPackets
-        };
-      }
+    if (!this.hasPrimed && this.queue.length > 0) {
+      this.hasPrimed = true;
     }
     if (this.queue.length > this.burstDrainThreshold) {
       const excessCount = this.queue.length - (this.targetDepth + 1);
@@ -7375,9 +7349,9 @@ class PlayerJitterQueue {
       isAiming: false,
       isLockHeld: false,
       // Retain last known aim coordinates so player orientation doesn't snap abruptly
-      aimX: (_d = this.lastKnownInput) == null ? void 0 : _d.aimX,
-      aimY: (_e = this.lastKnownInput) == null ? void 0 : _e.aimY,
-      facingAngle: (_f = this.lastKnownInput) == null ? void 0 : _f.facingAngle
+      aimX: (_a = this.lastKnownInput) == null ? void 0 : _a.aimX,
+      aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
+      facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
     };
     return {
       packet: neutralPacket,
@@ -8166,32 +8140,23 @@ class ServerGameSimulation {
         sChar.verticalVelocity = clientChar.vz;
       }
     }
-    if (sChar.spawnImmunityTicks > 0) {
-      sChar.spawnImmunityTicks--;
-      sChar.velocity.x = 0;
-      sChar.velocity.y = 0;
-      if (sChar.hasVerticalVelocity) {
-        sChar.verticalVelocity = 0;
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 2.5) {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (hasRecentImpact) {
+      if (isClientMoving) {
+        sChar.position.x += dx * 0.25;
+        sChar.position.y += dy * 0.25;
       }
+      sChar.position.z = clientChar.z;
     } else {
-      const dx = clientChar.x - sChar.position.x;
-      const dy = clientChar.y - sChar.position.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > 2.5) {
-        sChar.position.x = clientChar.x;
-        sChar.position.y = clientChar.y;
-        sChar.position.z = clientChar.z;
-      } else if (hasRecentImpact) {
-        if (isClientMoving) {
-          sChar.position.x += dx * 0.25;
-          sChar.position.y += dy * 0.25;
-        }
-        sChar.position.z = clientChar.z;
-      } else {
-        sChar.position.x = clientChar.x;
-        sChar.position.y = clientChar.y;
-        sChar.position.z = clientChar.z;
-      }
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
     }
     for (const obj of this.objects) {
       if (obj.isHeld) continue;
@@ -8810,7 +8775,6 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       hasCustomName: isExplicitCustom
     });
     character.position.z = spawnZ;
-    character.spawnImmunityTicks = 60;
     const otherEntities = [
       ...this.simulation.allCharacters,
       ...this.simulation.objects
@@ -9044,7 +9008,6 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim())
             });
             newChar.position.z = spawnZ;
-            newChar.spawnImmunityTicks = 60;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

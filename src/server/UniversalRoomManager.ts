@@ -334,7 +334,6 @@ export class UniversalRoomManager {
       hasCustomName: isExplicitCustom,
     });
     character.position.z = spawnZ;
-    character.spawnImmunityTicks = 60; // 1 second of authoritative spawn immunity
 
     // Gentle overlap resolution on spawn: if character overlaps an existing creature or object,
     // gently separate them away from each other. If directly on top of each other, choose a random direction.
@@ -609,7 +608,6 @@ export class UniversalRoomManager {
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim()),
             });
             newChar.position.z = spawnZ;
-            newChar.spawnImmunityTicks = 60;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

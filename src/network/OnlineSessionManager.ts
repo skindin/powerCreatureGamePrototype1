@@ -415,6 +415,17 @@ export class OnlineSessionManager {
         if (targetChar.hasVerticalVelocity) {
           targetChar.verticalVelocity = 0;
         }
+        targetChar.isActivelyWalking = false;
+        targetChar.isSprinting = false;
+
+        // Also ensure primaryCharacter / baseCharacter stay in sync if separate
+        if (this.gameLoop?.primaryCharacter && this.gameLoop.primaryCharacter !== targetChar && info.localPlayerId === "keyboard") {
+          this.gameLoop.primaryCharacter.position.x = info.spawnPos.x;
+          this.gameLoop.primaryCharacter.position.y = info.spawnPos.y;
+          this.gameLoop.primaryCharacter.position.z = info.spawnPos.z ?? 0;
+          this.gameLoop.primaryCharacter.velocity.x = 0;
+          this.gameLoop.primaryCharacter.velocity.y = 0;
+        }
       }
 
       // Clear any prior interpolator history for this character/id

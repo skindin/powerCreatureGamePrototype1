@@ -150,34 +150,9 @@ export class PlayerJitterQueue {
   public consume(serverTick?: number): JitterConsumeResult {
     const drainedPackets: PlayerInputPacket[] = [];
 
-    // Prime the queue upon first connection: don't start consuming until targetDepth frames have arrived
-    if (!this.hasPrimed) {
-      if (this.queue.length >= this.targetDepth) {
-        this.hasPrimed = true;
-      } else {
-        // Still priming buffer: return neutral packet without incrementing starvations so player starts at normal speed
-        const neutralPacket: PlayerInputPacket = {
-          playerId: this.playerId,
-          tick: serverTick,
-          moveX: 0,
-          moveY: 0,
-          isSprinting: false,
-          isJumpHeld: false,
-          isGrabHeld: false,
-          isDrop: false,
-          isThrow: false,
-          isAiming: false,
-          isLockHeld: false,
-          aimX: this.lastKnownInput?.aimX,
-          aimY: this.lastKnownInput?.aimY,
-          facingAngle: this.lastKnownInput?.facingAngle,
-        };
-        return {
-          packet: neutralPacket,
-          isStarved: true,
-          drainedPackets,
-        };
-      }
+    // If queue is not empty, ensure hasPrimed is marked true
+    if (!this.hasPrimed && this.queue.length > 0) {
+      this.hasPrimed = true;
     }
 
     // 1. Drain burst backlog if queue has backed up (> burstDrainThreshold)
