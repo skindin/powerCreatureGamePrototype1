@@ -256,14 +256,21 @@ powerCreatureGamePrototype1/
     - Simulates all freebody objects (rolling ball, bouncing ball, crates, rocks) with full gravity, angular roll, bounce, and collisions at full real-time speed.
     - Maintains per-player input queues (`inputQueues: Map<string, PlayerInputPacket[]>`) that buffer client inputs received over the network to absorb WAN latency and jitter.
     - When network jitter momentarily delays a packet, maintains directional steering momentum (`moveX, moveY`) across brief gaps rather than abruptly stalling the character, while releasing trigger actions (`isJumpHeld: false, isGrabHeld: false, isDrop: false, isThrow: false`).
-  - **Phase 4.3 Authoritative Grab & Contest Arbiter**:
+  - **Phase 4.3 Authoritative Grab, Contest Arbiter & Reliable ACK Handshake**:
     - Validates reach and line-of-sight before granting an object grab.
     - Resolves simultaneous multi-player grabs on the exact same freebody on the exact same tick via strict deterministic tiebreakers:
       1. **Creature Strength** (`char.strength`): Stronger creature wins.
       2. **3D Euclidean Proximity**: Closer creature to object center wins.
       3. **Deterministic ID Priority**: Tiebreak fallback.
-    - Grants object to the winning player, cancels the loser's grab, and records the resolution in `contestedGrabEvents` audit queue.
+    - **Reliable Contested Grab Message Delivery & ACK Lifecycle**:
+      - Server assigns unique `eventId` (`grab-${objId}-${tick}-${winnerId}`) and queues outcome in `pendingContestedEvents`.
+      - Broadcast continuously each tick in `GhostSnapshot.contestedGrabEvents` until all involved clients (winner and all losers) acknowledge receipt via `ackContestedEventIds` or 180-tick (3s) timeout.
+      - Upon receipt, clients explicitly force-detach the held object locally if they were in `loserPlayerIds`, and confirm possession if they were the winner, eliminating desync where both players believed the other had the item.
   - Produces authoritative `MultiplayerGhostSnapshot` with real vertical position $z$, vertical velocity $v_z$, resting flags, and true ground contact.
+  - **Server-Authoritative Joining & Freebody Preservation**:
+    - When a player connects to the online room, the server assigns starting 2D coordinates $(x, y)$ and vertical elevation $z$ based on player slots (`SLOT_SPAWNS`), sending authoritative `spawnPos` to the client.
+    - The client immediately snaps to this server spawn position upon joining/registering and forcefully drops any local object carried over from local mode.
+    - The server's existing position and held status of all freebody objects are strictly preserved; freshly joined clients cannot assert or steal held objects upon joining.
 - **Explicit Grab Targeting Pipeline (`attempt to pick up X`)**:
   - `PlayerInputPacket` includes `grabTargetObjectId?: string | null`.
   - When the client initiates a grab, `PlayerManager` evaluates the specific entity within reach and aim (`target.id`), sending an explicit intent to grab that object.

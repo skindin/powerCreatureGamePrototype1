@@ -193,11 +193,6 @@ export class OnlineSessionManager {
           list.push({
             localPlayerId: p.id,
             name: p.character.hasCustomName ? p.character.name : undefined,
-            spawnPos: {
-              x: Number(p.character.position.x.toFixed(3)),
-              y: Number(p.character.position.y.toFixed(3)),
-              z: Number((p.character.position.z ?? 0).toFixed(3)),
-            },
           });
         }
       }
@@ -226,11 +221,63 @@ export class OnlineSessionManager {
       }
     };
 
+    this.client.onContestedGrabEvents = (events) => {
+      if (this.gameLoop && this.gameLoop.activeMode === "online") {
+        this.handleContestedGrabEvents(events);
+      }
+    };
+
     this.client.onSnapshotReceived = (snapshot: GhostSnapshot) => {
       if (this.gameLoop && this.gameLoop.activeMode === "online") {
         this.handleSnapshotReceived(snapshot);
       }
     };
+  }
+
+  private handleContestedGrabEvents(events: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[]): void {
+    if (!this.gameLoop || !Array.isArray(events) || events.length === 0) return;
+
+    for (const ev of events) {
+      console.log(`⚡ [OnlineSession] Contested Grab Arbitration Event: Winner=${ev.winnerPlayerId}, Losers=[${ev.loserPlayerIds.join(", ")}], Object=${ev.targetObjectId}, Reason=${ev.reason}`);
+
+      // Identify if any local player on this client machine lost the contest
+      for (const p of this.gameLoop.players.values()) {
+        const localChar = p.character;
+        const matchesLoser = ev.loserPlayerIds.some((loserId) =>
+          loserId === p.id ||
+          loserId === localChar.playerId ||
+          loserId === localChar.serverCharId ||
+          (this.client.clientId !== null && (loserId === this.client.clientId || loserId === `${this.client.clientId}:${p.id}`))
+        );
+
+        if (matchesLoser) {
+          // Explicit authoritative loser notification: immediately drop the object locally if held
+          if (localChar.heldObject && localChar.heldObject.id === ev.targetObjectId) {
+            const held = localChar.heldObject;
+            held.isHeld = false;
+            held.heldBy = null;
+            held.wakeUp();
+            localChar.heldObject = null;
+          }
+        }
+
+        const matchesWinner =
+          ev.winnerPlayerId === p.id ||
+          ev.winnerPlayerId === localChar.playerId ||
+          ev.winnerPlayerId === localChar.serverCharId ||
+          (this.client.clientId !== null && (ev.winnerPlayerId === this.client.clientId || ev.winnerPlayerId === `${this.client.clientId}:${p.id}`));
+
+        if (matchesWinner) {
+          // Confirm local possession of winning object
+          const targetObj = this.gameLoop.objects.find((o) => o.id === ev.targetObjectId);
+          if (targetObj) {
+            localChar.heldObject = targetObj;
+            targetObj.isHeld = true;
+            targetObj.heldBy = localChar;
+          }
+        }
+      }
+    }
   }
 
   private updateStatsUI(stats: OnlineRoomStats): void {
@@ -339,29 +386,47 @@ export class OnlineSessionManager {
     }
   }
 
-  private handlePlayerRegistered(info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }): void {
+  private handlePlayerRegistered(info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }): void {
     console.log(`🌐 [OnlineSession] Local player ${info.localPlayerId} registered as P${info.playerNumber} (${info.color}, "${info.name}") serverId=${info.serverCharId}`);
     const p = this.gameLoop?.playerManager.players.get(info.localPlayerId);
-    if (p) {
-      p.character.playerNumber = info.playerNumber;
-      p.character.color = info.color;
-      p.character.playerColor = info.color;
-      p.character.serverCharId = info.serverCharId;
-      if (!p.character.hasCustomName) {
-        p.character.name = info.name || `Player ${info.playerNumber}`;
+    const targetChar = p?.character || (info.localPlayerId === "keyboard" ? this.gameLoop?.playerManager.baseCharacter : null);
+
+    if (targetChar) {
+      targetChar.playerNumber = info.playerNumber;
+      targetChar.color = info.color;
+      targetChar.playerColor = info.color;
+      targetChar.serverCharId = info.serverCharId;
+      if (!targetChar.hasCustomName) {
+        targetChar.name = info.name || `Player ${info.playerNumber}`;
       }
+
+      // Authoritative Spawn Positioning (Phase 5):
+      // Snap position to server-dictated spawn coordinates and cancel local held objects
+      if (info.spawnPos) {
+        targetChar.position.x = info.spawnPos.x;
+        targetChar.position.y = info.spawnPos.y;
+        targetChar.position.z = info.spawnPos.z ?? 0;
+        targetChar.velocity.x = 0;
+        targetChar.velocity.y = 0;
+        if (targetChar.hasVerticalVelocity) {
+          targetChar.verticalVelocity = 0;
+        }
+      }
+
+      // Release any object falsely carried over from local sandbox
+      if (targetChar.heldObject) {
+        const held = targetChar.heldObject;
+        held.isHeld = false;
+        held.heldBy = null;
+        held.wakeUp();
+        targetChar.heldObject = null;
+      }
+    }
+
+    if (p) {
       p.color = info.color;
       p.playerNumber = info.playerNumber;
       p.name = p.character.name;
-    } else if (info.localPlayerId === "keyboard" && this.gameLoop?.playerManager.baseCharacter) {
-      const base = this.gameLoop.playerManager.baseCharacter;
-      base.playerNumber = info.playerNumber;
-      base.color = info.color;
-      base.playerColor = info.color;
-      base.serverCharId = info.serverCharId;
-      if (!base.hasCustomName) {
-        base.name = info.name || `Player ${info.playerNumber}`;
-      }
     }
     this.gameLoop?.playerManager.onPlayersChanged?.();
   }

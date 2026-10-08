@@ -7662,6 +7662,7 @@ class ContestedGrabArbiter {
         }
       }
       const outcome = {
+        eventId: `grab-${objId}-${currentTick}-${winner.char.playerId}`,
         tick: currentTick,
         targetObjectId: objId,
         winnerPlayerId: winner.char.playerId,
@@ -7681,7 +7682,7 @@ class ServerTelemetryBroadcaster {
   /**
    * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
    */
-  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, rttMs = 0, forPlayerId) {
+  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId) {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
     const clockSync = latestClockSync.get(targetPId) || latestClockSync.get("keyboard");
@@ -7767,6 +7768,7 @@ class ServerTelemetryBroadcaster {
       characters: ghostCharacters,
       objects: ghostObjects,
       ackActionIds: recentAckedActionIds,
+      contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : void 0,
       clockSync
     };
   }
@@ -7814,8 +7816,9 @@ class ServerGameSimulation {
     __publicField(this, "snapshotManager");
     __publicField(this, "clientAckedTicks", /* @__PURE__ */ new Map());
     // Client confirmed server ticks (7.3)
-    // Contested grab arbitration audit log
+    // Contested grab arbitration audit log & active reliable retry map
     __publicField(this, "contestedGrabEvents", []);
+    __publicField(this, "pendingContestedEvents", /* @__PURE__ */ new Map());
     // Reliable action deduplication & ACK tracking
     __publicField(this, "processedActionIds", /* @__PURE__ */ new Set());
     __publicField(this, "recentAckedActionIds", []);
@@ -8171,10 +8174,7 @@ class ServerGameSimulation {
     }
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj) {
-        sChar.heldObject = sObj;
-        sObj.isHeld = true;
-        sObj.heldBy = sChar;
+      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
         const relPos = sChar.calculateHeldObjectPosition(this.arena);
         sObj.position.x = relPos.x;
         sObj.position.y = relPos.y;
@@ -8276,9 +8276,50 @@ class ServerGameSimulation {
   }
   /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
+   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
    */
   arbitrateContestedGrabs(grabRequests) {
-    ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    for (const res of results) {
+      this.pendingContestedEvents.set(res.eventId, {
+        event: res,
+        createdTick: this.currentTick,
+        acks: /* @__PURE__ */ new Set()
+      });
+    }
+  }
+  /**
+   * Acknowledges that a client character has received and processed contested grab events.
+   */
+  acknowledgeContestedEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingContestedEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
+        const allAcked = needed.every((pId) => pending.acks.has(pId));
+        if (allAcked) {
+          this.pendingContestedEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged contested grab events for broadcast.
+   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
+   */
+  getActiveContestedEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingContestedEvents.entries()) {
+      if (nowTick - record.createdTick > 180) {
+        this.pendingContestedEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
   }
   /**
    * Advances the authoritative simulation by 1 fixed physics tick.
@@ -8445,6 +8486,7 @@ class ServerGameSimulation {
       this.arena,
       this.latestClockSync,
       this.getRecentAckedActionIds(),
+      this.getActiveContestedEvents(),
       rttMs,
       forPlayerId
     );
@@ -8674,7 +8716,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.needsMapReload = false;
     console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
-  registerCharacter(client, localPlayerId, name, spawnPos) {
+  registerCharacter(client, localPlayerId, name, _spawnPos) {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
       if (name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())) {
@@ -8694,56 +8736,63 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const hasValidSpawnPos = Boolean(
-      spawnPos && typeof spawnPos.x === "number" && !isNaN(spawnPos.x) && typeof spawnPos.y === "number" && !isNaN(spawnPos.y)
-    );
-    if (hasValidSpawnPos) {
-      const spawnX = spawnPos.x;
-      const spawnY = spawnPos.y;
-      const spawnZ = typeof spawnPos.z === "number" && !isNaN(spawnPos.z) ? spawnPos.z : 0;
-      const character = new Character({
-        x: spawnX,
-        y: spawnY,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1,
-        playerId: serverCharId,
-        playerNumber,
-        name: charName,
-        hasCustomName: isExplicitCustom
-      });
-      character.position.z = spawnZ;
-      for (const obj of this.simulation.objects) {
-        if (obj.isHeld) continue;
-        const minDistance = character.colliderRadius + obj.colliderRadius;
-        const ox = obj.position.x - character.position.x;
-        const oy = obj.position.y - character.position.y;
-        const oDist = Math.hypot(ox, oy);
-        if (oDist < minDistance) {
-          const charZ = character.position.z;
-          const objZ = obj.position.z;
-          if (Math.abs(charZ - objZ) < 0.8) {
-            const overlap = minDistance - oDist + 0.04;
-            const nx = oDist > 1e-3 ? ox / oDist : 1;
-            const ny = oDist > 1e-3 ? oy / oDist : 0;
-            character.position.x -= nx * (overlap * 0.5);
-            character.position.y -= ny * (overlap * 0.5);
-            obj.position.x += nx * (overlap * 0.5);
-            obj.position.y += ny * (overlap * 0.5);
-            obj.wakeUp();
-          }
+    const SLOT_SPAWNS = [
+      { x: 4.8, y: 7, z: 0 },
+      // Slot 1 (West spawn)
+      { x: 15.2, y: 7, z: 0 },
+      // Slot 2 (East spawn)
+      { x: 10, y: 3, z: 0 },
+      // Slot 3 (North spawn)
+      { x: 10, y: 11, z: 0 }
+      // Slot 4 (South spawn)
+    ];
+    const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
+    const spawnX = defaultSpawn.x;
+    const spawnY = defaultSpawn.y;
+    const spawnZ = defaultSpawn.z;
+    const character = new Character({
+      x: spawnX,
+      y: spawnY,
+      color,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1,
+      playerId: serverCharId,
+      playerNumber,
+      name: charName,
+      hasCustomName: isExplicitCustom
+    });
+    character.position.z = spawnZ;
+    for (const obj of this.simulation.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = character.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - character.position.x;
+      const oy = obj.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          const nx = oDist > 1e-3 ? ox / oDist : 1;
+          const ny = oDist > 1e-3 ? oy / oDist : 0;
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
         }
       }
-      this.simulation.characters.set(serverCharId, character);
-      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     }
+    this.simulation.characters.set(serverCharId, character);
+    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     const entry = {
       localPlayerId,
       serverCharId,
       playerNumber,
       color,
-      name: charName
+      name: charName,
+      spawnPos: { x: character.position.x, y: character.position.y, z: character.position.z }
     };
     client.characters.set(localPlayerId, entry);
     console.log(
@@ -8882,7 +8931,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             serverCharId: entry.serverCharId,
             playerNumber: entry.playerNumber,
             color: entry.color,
-            name: entry.name
+            name: entry.name,
+            spawnPos: entry.spawnPos
           }));
           return;
         }
@@ -8943,6 +8993,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           }
           this.simulation.queueInput(pkt);
+          if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
+            this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
+          }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
               act.playerId = this.resolveActionPlayerId(client, act, serverCharId);

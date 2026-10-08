@@ -16,6 +16,7 @@ export interface ClientCharacterEntry {
   color: string;
   name: string;
   isDefaultPlaceholder?: boolean;
+  spawnPos?: { x: number; y: number; z: number };
 }
 
 export interface ConnectedRoomClient {
@@ -284,7 +285,7 @@ export class UniversalRoomManager {
     client: ConnectedRoomClient,
     localPlayerId: string,
     name?: string,
-    spawnPos?: { x: number; y: number; z?: number }
+    _spawnPos?: { x: number; y: number; z?: number }
   ): ClientCharacterEntry {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
@@ -313,60 +314,60 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    const hasValidSpawnPos = Boolean(
-      spawnPos &&
-      typeof spawnPos.x === "number" &&
-      !isNaN(spawnPos.x) &&
-      typeof spawnPos.y === "number" &&
-      !isNaN(spawnPos.y)
-    );
+    // SERVER-AUTHORITATIVE SPAWN POSITIONS (Phase 5):
+    // The server assigns starting 2D coordinates (x, y) and vertical elevation (z)
+    // based on assigned player slot, ignoring client-side local exploration coordinates!
+    const SLOT_SPAWNS: Array<{ x: number; y: number; z: number }> = [
+      { x: 4.8, y: 7.0, z: 0 },   // Slot 1 (West spawn)
+      { x: 15.2, y: 7.0, z: 0 },  // Slot 2 (East spawn)
+      { x: 10.0, y: 3.0, z: 0 },  // Slot 3 (North spawn)
+      { x: 10.0, y: 11.0, z: 0 }, // Slot 4 (South spawn)
+    ];
+    const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
+    const spawnX = defaultSpawn.x;
+    const spawnY = defaultSpawn.y;
+    const spawnZ = defaultSpawn.z;
 
-    if (hasValidSpawnPos) {
-      const spawnX = spawnPos!.x;
-      const spawnY = spawnPos!.y;
-      const spawnZ = (typeof spawnPos!.z === "number" && !isNaN(spawnPos!.z)) ? spawnPos!.z : 0;
+    const character = new Character({
+      x: spawnX,
+      y: spawnY,
+      color,
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+      playerId: serverCharId,
+      playerNumber,
+      name: charName,
+      hasCustomName: isExplicitCustom,
+    });
+    character.position.z = spawnZ;
 
-      const character = new Character({
-        x: spawnX,
-        y: spawnY,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: serverCharId,
-        playerNumber,
-        name: charName,
-        hasCustomName: isExplicitCustom,
-      });
-      character.position.z = spawnZ;
-
-      // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
-      // gently separate character and object away from each other so they no longer overlap.
-      for (const obj of this.simulation.objects) {
-        if (obj.isHeld) continue;
-        const minDistance = character.colliderRadius + obj.colliderRadius;
-        const ox = obj.position.x - character.position.x;
-        const oy = obj.position.y - character.position.y;
-        const oDist = Math.hypot(ox, oy);
-        if (oDist < minDistance) {
-          const charZ = character.position.z;
-          const objZ = obj.position.z;
-          if (Math.abs(charZ - objZ) < 0.8) {
-            const overlap = minDistance - oDist + 0.04;
-            const nx = oDist > 0.001 ? ox / oDist : 1;
-            const ny = oDist > 0.001 ? oy / oDist : 0;
-            character.position.x -= nx * (overlap * 0.5);
-            character.position.y -= ny * (overlap * 0.5);
-            obj.position.x += nx * (overlap * 0.5);
-            obj.position.y += ny * (overlap * 0.5);
-            obj.wakeUp();
-          }
+    // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
+    // gently separate character and object away from each other so they no longer overlap.
+    for (const obj of this.simulation.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = character.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - character.position.x;
+      const oy = obj.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          const nx = oDist > 0.001 ? ox / oDist : 1;
+          const ny = oDist > 0.001 ? oy / oDist : 0;
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
         }
       }
-
-      this.simulation.characters.set(serverCharId, character);
-      this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     }
+
+    this.simulation.characters.set(serverCharId, character);
+    this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
 
     const entry: ClientCharacterEntry = {
       localPlayerId,
@@ -374,6 +375,7 @@ export class UniversalRoomManager {
       playerNumber,
       color,
       name: charName,
+      spawnPos: { x: character.position.x, y: character.position.y, z: character.position.z },
     };
     client.characters.set(localPlayerId, entry);
 
@@ -541,6 +543,7 @@ export class UniversalRoomManager {
             playerNumber: entry.playerNumber,
             color: entry.color,
             name: entry.name,
+            spawnPos: entry.spawnPos,
           }));
           return;
         }
@@ -612,6 +615,11 @@ export class UniversalRoomManager {
           }
 
           this.simulation.queueInput(pkt);
+
+          // Process contested grab acknowledgments from client
+          if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
+            this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
+          }
 
           // Process reliable actions FIRST before syncCharacterFromPacket clears heldObject
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {

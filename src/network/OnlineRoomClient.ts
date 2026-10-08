@@ -36,16 +36,18 @@ export class OnlineRoomClient {
   public assignedColor: string = "#f59e0b";
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
+  public unacknowledgedContestedAcks = new Set<string>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
   public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
-  public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }) => void;
+  public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }) => void;
   public onPlayerRemoved?: (localPlayerId: string) => void;
   public onPlayerLeft?: (charId: string) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
+  public onContestedGrabEvents?: (events: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[]) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
   public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }>;
@@ -246,6 +248,13 @@ export class OnlineRoomClient {
                 this.acknowledgeActions(msg.snapshot.ackActionIds);
               }
 
+              if (Array.isArray(msg.snapshot.contestedGrabEvents) && msg.snapshot.contestedGrabEvents.length > 0) {
+                for (const ev of msg.snapshot.contestedGrabEvents) {
+                  this.unacknowledgedContestedAcks.add(ev.eventId);
+                }
+                this.onContestedGrabEvents?.(msg.snapshot.contestedGrabEvents);
+              }
+
               if (msg.snapshot.clockSync) {
                 this.onClockSync?.(msg.snapshot.clockSync);
               }
@@ -434,6 +443,10 @@ export class OnlineRoomClient {
         isSleeping: obj.isSleeping,
       })) : undefined;
 
+      const ackContestedEventIds = this.unacknowledgedContestedAcks.size > 0
+        ? Array.from(this.unacknowledgedContestedAcks.values())
+        : undefined;
+
       this.ws.send(JSON.stringify({
         type: "player_input",
         localPlayerId,
@@ -442,6 +455,7 @@ export class OnlineRoomClient {
         character: charTelemetry,
         objects: objTelemetry,
         reliableActions,
+        ackContestedEventIds,
       }));
     } catch (_) {}
   }

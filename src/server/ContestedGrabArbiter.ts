@@ -9,6 +9,7 @@ export interface ContestedGrabRequest {
 }
 
 export interface ContestedGrabResult {
+  eventId: string;
   tick: number;
   targetObjectId: string;
   winnerPlayerId: string;
@@ -106,6 +107,7 @@ export class ContestedGrabArbiter {
       }
 
       const outcome: ContestedGrabResult = {
+        eventId: `grab-${objId}-${currentTick}-${winner.char.playerId}`,
         tick: currentTick,
         targetObjectId: objId,
         winnerPlayerId: winner.char.playerId,

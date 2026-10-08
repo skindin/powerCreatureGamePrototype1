@@ -26,6 +26,7 @@ export class ServerTelemetryBroadcaster {
     arena: Arena,
     latestClockSync: Map<string, ClockSyncPacket>,
     recentAckedActionIds: string[],
+    contestedGrabEvents?: import("./ContestedGrabArbiter.js").ContestedGrabResult[],
     rttMs: number = 0,
     forPlayerId?: string
   ): GhostSnapshot {
@@ -118,6 +119,7 @@ export class ServerTelemetryBroadcaster {
       characters: ghostCharacters,
       objects: ghostObjects,
       ackActionIds: recentAckedActionIds,
+      contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : undefined,
       clockSync,
     };
   }

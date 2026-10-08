@@ -54,8 +54,9 @@ export class ServerGameSimulation {
   public snapshotManager: AuthoritativeSnapshotManager;
   public clientAckedTicks: Map<string, number> = new Map(); // Client confirmed server ticks (7.3)
 
-  // Contested grab arbitration audit log
+  // Contested grab arbitration audit log & active reliable retry map
   public contestedGrabEvents: ContestedGrabResult[] = [];
+  public pendingContestedEvents: Map<string, { event: ContestedGrabResult; createdTick: number; acks: Set<string> }> = new Map();
 
   // Reliable action deduplication & ACK tracking
   private processedActionIds: Set<string> = new Set();
@@ -485,12 +486,13 @@ export class ServerGameSimulation {
     // Note: client packets are NOT permitted to override the server's authoritative player color.
 
     // 4. Synchronize Held Object state
+    // Authoritative Server Protection: A client cannot simply claim an object upon joining or telemetry.
+    // An object is only kept held if the server's authoritative state already has it held by this character,
+    // or if the client explicitly releases/drops an object it was holding.
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj) {
-        sChar.heldObject = sObj;
-        sObj.isHeld = true;
-        sObj.heldBy = sChar;
+      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
+        // Keep synced with hands
         const relPos = sChar.calculateHeldObjectPosition(this.arena);
         sObj.position.x = relPos.x;
         sObj.position.y = relPos.y;
@@ -604,11 +606,56 @@ export class ServerGameSimulation {
 
   /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
+   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
    */
   private arbitrateContestedGrabs(
     grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[]
   ): void {
-    ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    for (const res of results) {
+      this.pendingContestedEvents.set(res.eventId, {
+        event: res,
+        createdTick: this.currentTick,
+        acks: new Set<string>(),
+      });
+    }
+  }
+
+  /**
+   * Acknowledges that a client character has received and processed contested grab events.
+   */
+  public acknowledgeContestedEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingContestedEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        // Check if all involved parties (winner + all losers) have acknowledged
+        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
+        const allAcked = needed.every((pId) => pending.acks.has(pId));
+        if (allAcked) {
+          this.pendingContestedEvents.delete(id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Returns all active unacknowledged contested grab events for broadcast.
+   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
+   */
+  public getActiveContestedEvents(): ContestedGrabResult[] {
+    const active: ContestedGrabResult[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingContestedEvents.entries()) {
+      if (nowTick - record.createdTick > 180) {
+        // Expired after 3 seconds of continuous transmission
+        this.pendingContestedEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
   }
 
   /**
@@ -813,6 +860,7 @@ export class ServerGameSimulation {
       this.arena,
       this.latestClockSync,
       this.getRecentAckedActionIds(),
+      this.getActiveContestedEvents(),
       rttMs,
       forPlayerId
     );

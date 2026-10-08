@@ -50,6 +50,7 @@ export interface GhostSnapshot {
   objects: GhostEntityState[];
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
+  contestedGrabEvents?: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[];
   clockSync?: ClockSyncPacket;
   worldSnapshot?: AuthoritativeWorldSnapshot;
 }

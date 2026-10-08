@@ -574,8 +574,29 @@ export class GameLoop {
         )
       );
 
-      // 1a. If currently held by any local character on this machine, local holder transform governs
-      if (isHeldByAnyLocalPlayer) continue;
+      // If the server explicitly says a remote player holds this object,
+      // force local client to relinquish possession if it mistakenly thought it was holding it!
+      const sHeldBy = sObj.heldBy;
+      const isServerHeldByRemote = Boolean(
+        sObj.isHeld && sHeldBy &&
+        !Array.from(this.players.values()).some((p) =>
+          sHeldBy === p.id ||
+          sHeldBy === p.character.playerId ||
+          sHeldBy === p.character.serverCharId ||
+          (localClientId && (sHeldBy === localClientId || sHeldBy.startsWith(`${localClientId}:`)))
+        )
+      );
+
+      if (isHeldByAnyLocalPlayer && isServerHeldByRemote) {
+        // Relinquish false local hold
+        if (localObj.heldBy instanceof Character && localObj.heldBy.heldObject === localObj) {
+          localObj.heldBy.heldObject = null;
+        }
+        localObj.isHeld = false;
+        localObj.heldBy = null;
+      } else if (isHeldByAnyLocalPlayer) {
+        continue;
+      }
 
       // 2. If dragged by user mouse in editor, user drag governs
       if (this.inputManager?.draggedEntity === localObj) continue;
