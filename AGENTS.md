@@ -1396,7 +1396,9 @@ powerCreatureGamePrototype1/
 - **Fix for Slow-Motion Stutter on Newly Joined / High-Ping Players (`ServerJitterBuffer.ts`, `OnlineSessionManager.ts`)**:
   - **Root Cause**: When a player with high latency joined, the server jitter queue started empty while the 60Hz loop immediately began consuming inputs. In starvation, `consume()` alternated between neutral zero-velocity packets and newly arrived movement packets, halving the player's apparent speed (~50% slow-motion) for ~1 second until the buffer caught up.
   - **Jitter Buffer Priming (`ServerJitterBuffer.ts`)**: Added `hasPrimed` guard to `PlayerJitterQueue`. Upon first connection or clear, consumption waits until `targetDepth` (default 2 packets) has arrived in the queue before popping packets. While priming, safe neutral packets are returned without triggering starvation cycles, allowing inputs to play back at true 1.0× fixed cadence.
-  - **Dynamic Interp Delay Adaptation (`OnlineSessionManager.ts`)**: Dynamically tunes client `interpolator.interpDelayMs = Math.max(60, Math.min(250, Math.round(pingMs * 0.75)))` based on measured RTT, preventing remote snapshot starvation under broadband latency spikes.
+  - **Controller Button Disambiguation (`InputManager.ts`)**:
+  - **Root Cause**: `rightPaddleButtonIndices` previously included button 9 (Menu/Burger/Start on standard gamepads) and button 15 (D-pad Right on standard mapping) under the assumption they might represent hardware back-paddles on certain controllers. This caused pressing the burger/start button or D-pad Right to trigger unexpected jump/climb actions.
+  - **Fix**: Removed button 9 and button 15 from `rightPaddleButtonIndices`, strictly limiting standard jump buttons to Button 0 (A / Cross) plus legitimate extended hardware back-paddles (M1 / Button 16+). Similarly cleaned `leftPaddleButtonIndices` to LB (4) and L3 (10) plus extended hardware back-paddles (M2 / Button 17+), preventing accidental sprint activation from D-pad arrows or back/select.
 
 ---
 

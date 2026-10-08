@@ -683,17 +683,17 @@ export class InputManager {
       }
 
       // Left Under-Paddle (M2) / Sprint buttons:
-      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended M2 paddles & axes
-      const leftPaddleButtonIndices = [4, 10, 2, 8, 14, 13, 12];
+      // LB (4), L3 (10), plus extended M2 back paddles & paddle axes
+      const leftPaddleButtonIndices = [4, 10];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
-      // A (0), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
-      // NOTE: Button 11 (R3 / right stick click) is explicitly EXCLUDED so clicking the right joystick never triggers climb/jump!
-      const rightPaddleButtonIndices = [0, 9, 15];
+      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles & paddle axes.
+      // NOTE: Burger / Menu / Start (Button 9) and D-pad Right (Button 15) are strictly excluded so they do NOT trigger jump!
+      const rightPaddleButtonIndices = [0];
       const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
