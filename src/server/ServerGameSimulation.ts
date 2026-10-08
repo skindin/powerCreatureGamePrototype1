@@ -415,28 +415,41 @@ export class ServerGameSimulation {
     }
 
     // 2. Synchronize Physical Coordinates
-    const dx = clientChar.x - sChar.position.x;
-    const dy = clientChar.y - sChar.position.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist > 2.5) {
-      // Large difference (teleport or initial join): snap
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
-    } else if (hasRecentImpact) {
-      // During active collision on the server, preserve the physical push!
-      // Only blend client position if the client is actively steering/walking:
-      if (isClientMoving) {
-        sChar.position.x += dx * 0.25;
-        sChar.position.y += dy * 0.25;
+    // SPAWN IMMUNITY: For the first ~60 ticks (~1s) after a player joins or respawns,
+    // the server strictly commands the character's spawn position! We ignore client coordinates
+    // that might originate from previous local play sessions or before the client processed room_joined.
+    if (sChar.spawnImmunityTicks > 0) {
+      sChar.spawnImmunityTicks--;
+      // During spawn immunity, keep coordinates locked to authoritative spawn position
+      sChar.velocity.x = 0;
+      sChar.velocity.y = 0;
+      if (sChar.hasVerticalVelocity) {
+        sChar.verticalVelocity = 0;
       }
-      sChar.position.z = clientChar.z;
     } else {
-      // When not colliding, sync directly to eliminate drift
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
+      const dx = clientChar.x - sChar.position.x;
+      const dy = clientChar.y - sChar.position.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > 2.5) {
+        // Large difference (teleport or initial join): snap
+        sChar.position.x = clientChar.x;
+        sChar.position.y = clientChar.y;
+        sChar.position.z = clientChar.z;
+      } else if (hasRecentImpact) {
+        // During active collision on the server, preserve the physical push!
+        // Only blend client position if the client is actively steering/walking:
+        if (isClientMoving) {
+          sChar.position.x += dx * 0.25;
+          sChar.position.y += dy * 0.25;
+        }
+        sChar.position.z = clientChar.z;
+      } else {
+        // When not colliding, sync directly to eliminate drift
+        sChar.position.x = clientChar.x;
+        sChar.position.y = clientChar.y;
+        sChar.position.z = clientChar.z;
+      }
     }
 
     // 2b. Gentle Overlap Relaxation:

@@ -6025,6 +6025,7 @@ class Character extends GameObject {
     __publicField(this, "playerNumber", 1);
     __publicField(this, "playerColor", "#f59e0b");
     __publicField(this, "hasCustomName", false);
+    __publicField(this, "spawnImmunityTicks", 0);
     // Aiming state
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
@@ -6123,6 +6124,7 @@ class Character extends GameObject {
     this.activeTrajectory = null;
     this.isActivelyWalking = false;
     this.isSprinting = false;
+    this.spawnImmunityTicks = 0;
   }
   /**
    * Updates character facing direction:
@@ -8117,23 +8119,32 @@ class ServerGameSimulation {
         sChar.verticalVelocity = clientChar.vz;
       }
     }
-    const dx = clientChar.x - sChar.position.x;
-    const dy = clientChar.y - sChar.position.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 2.5) {
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
-    } else if (hasRecentImpact) {
-      if (isClientMoving) {
-        sChar.position.x += dx * 0.25;
-        sChar.position.y += dy * 0.25;
+    if (sChar.spawnImmunityTicks > 0) {
+      sChar.spawnImmunityTicks--;
+      sChar.velocity.x = 0;
+      sChar.velocity.y = 0;
+      if (sChar.hasVerticalVelocity) {
+        sChar.verticalVelocity = 0;
       }
-      sChar.position.z = clientChar.z;
     } else {
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
+      const dx = clientChar.x - sChar.position.x;
+      const dy = clientChar.y - sChar.position.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 2.5) {
+        sChar.position.x = clientChar.x;
+        sChar.position.y = clientChar.y;
+        sChar.position.z = clientChar.z;
+      } else if (hasRecentImpact) {
+        if (isClientMoving) {
+          sChar.position.x += dx * 0.25;
+          sChar.position.y += dy * 0.25;
+        }
+        sChar.position.z = clientChar.z;
+      } else {
+        sChar.position.x = clientChar.x;
+        sChar.position.y = clientChar.y;
+        sChar.position.z = clientChar.z;
+      }
     }
     for (const obj of this.objects) {
       if (obj.isHeld) continue;
@@ -8737,14 +8748,14 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
     const SLOT_SPAWNS = [
-      { x: 4.8, y: 7, z: 0 },
-      // Slot 1 (West spawn)
-      { x: 15.2, y: 7, z: 0 },
-      // Slot 2 (East spawn)
-      { x: 10, y: 3, z: 0 },
-      // Slot 3 (North spawn)
-      { x: 10, y: 11, z: 0 }
-      // Slot 4 (South spawn)
+      { x: 3.5, y: 7, z: 0 },
+      // Slot 1 (West open midfield)
+      { x: 17, y: 3.5, z: 0 },
+      // Slot 2 (East open clearing - safely away from cover wall at 15..16, 7..8)
+      { x: 3.5, y: 11, z: 0 },
+      // Slot 3 (Southwest open clearing)
+      { x: 17, y: 11, z: 0 }
+      // Slot 4 (Southeast open clearing)
     ];
     const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
     const spawnX = defaultSpawn.x;
@@ -8763,6 +8774,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       hasCustomName: isExplicitCustom
     });
     character.position.z = spawnZ;
+    character.spawnImmunityTicks = 60;
     for (const obj of this.simulation.objects) {
       if (obj.isHeld) continue;
       const minDistance = character.colliderRadius + obj.colliderRadius;
@@ -8851,7 +8863,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.clients.set(clientId, client);
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
     ws.on("message", (raw) => {
-      var _a;
+      var _a, _b, _c, _d;
       try {
         client.lastSeen = Date.now();
         const text = raw.toString();
@@ -8967,10 +8979,13 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           }
           let sChar = this.simulation.characters.get(serverCharId);
-          if (!sChar && data.character && typeof data.character.x === "number" && typeof data.character.y === "number") {
+          if (!sChar) {
+            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? 3.5;
+            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
+            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
             const newChar = new Character({
-              x: data.character.x,
-              y: data.character.y,
+              x: spawnX,
+              y: spawnY,
               color: charEntry.color,
               colliderRadius: 0.44,
               mass: 1.2,
@@ -8980,7 +8995,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               name: charEntry.name,
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim())
             });
-            newChar.position.z = data.character.z || 0;
+            newChar.position.z = spawnZ;
+            newChar.spawnImmunityTicks = 60;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

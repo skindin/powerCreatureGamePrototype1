@@ -91,6 +91,7 @@ export class Character extends GameObject {
   public playerNumber: number = 1;
   public playerColor: string = "#f59e0b";
   public hasCustomName: boolean = false;
+  public spawnImmunityTicks: number = 0;
 
   // Aiming state
   public isAiming: boolean;
@@ -177,6 +178,7 @@ export class Character extends GameObject {
     this.activeTrajectory = null;
     this.isActivelyWalking = false;
     this.isSprinting = false;
+    this.spawnImmunityTicks = 0;
   }
 
   /**

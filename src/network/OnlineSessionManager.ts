@@ -77,11 +77,6 @@ export class OnlineSessionManager {
           playerNumber: p.playerNumber,
           color: p.color,
           name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
-          spawnPos: {
-            x: Number(p.character.position.x.toFixed(3)),
-            y: Number(p.character.position.y.toFixed(3)),
-            z: Number((p.character.position.z ?? 0).toFixed(3)),
-          },
         });
       }
     }
@@ -97,12 +92,7 @@ export class OnlineSessionManager {
       for (const p of this.gameLoop.playerManager.players.values()) {
         this.client.addPlayer(
           p.id,
-          p.character.hasCustomName ? p.character.name : undefined,
-          {
-            x: Number(p.character.position.x.toFixed(3)),
-            y: Number(p.character.position.y.toFixed(3)),
-            z: Number((p.character.position.z ?? 0).toFixed(3)),
-          }
+          p.character.hasCustomName ? p.character.name : undefined
         );
       }
     }
@@ -412,6 +402,10 @@ export class OnlineSessionManager {
           targetChar.verticalVelocity = 0;
         }
       }
+
+      // Clear any prior interpolator history for this character/id
+      this.gameLoop?.interpolator.clearEntity(info.serverCharId);
+      this.gameLoop?.interpolator.clearEntity(info.localPlayerId);
 
       // Release any object falsely carried over from local sandbox
       if (targetChar.heldObject) {

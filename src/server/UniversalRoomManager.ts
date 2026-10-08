@@ -316,12 +316,14 @@ export class UniversalRoomManager {
 
     // SERVER-AUTHORITATIVE SPAWN POSITIONS (Phase 5):
     // The server assigns starting 2D coordinates (x, y) and vertical elevation (z)
-    // based on assigned player slot, ignoring client-side local exploration coordinates!
+    // based on assigned player slot in open clearings, ignoring client-side local exploration coordinates!
+    // Note: Standard Arena has cover obstacles at (4..5, 4..5) and (15..16, 7..8), and center divider at col 10.
+    // All spawn points are placed well in the clear:
     const SLOT_SPAWNS: Array<{ x: number; y: number; z: number }> = [
-      { x: 4.8, y: 7.0, z: 0 },   // Slot 1 (West spawn)
-      { x: 15.2, y: 7.0, z: 0 },  // Slot 2 (East spawn)
-      { x: 10.0, y: 3.0, z: 0 },  // Slot 3 (North spawn)
-      { x: 10.0, y: 11.0, z: 0 }, // Slot 4 (South spawn)
+      { x: 3.5, y: 7.0, z: 0 },   // Slot 1 (West open midfield)
+      { x: 17.0, y: 3.5, z: 0 },  // Slot 2 (East open clearing - safely away from cover wall at 15..16, 7..8)
+      { x: 3.5, y: 11.0, z: 0 },  // Slot 3 (Southwest open clearing)
+      { x: 17.0, y: 11.0, z: 0 }, // Slot 4 (Southeast open clearing)
     ];
     const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
     const spawnX = defaultSpawn.x;
@@ -341,6 +343,7 @@ export class UniversalRoomManager {
       hasCustomName: isExplicitCustom,
     });
     character.position.z = spawnZ;
+    character.spawnImmunityTicks = 60; // 1 second of authoritative spawn immunity
 
     // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
     // gently separate character and object away from each other so they no longer overlap.
@@ -585,11 +588,14 @@ export class UniversalRoomManager {
           }
 
           let sChar = this.simulation.characters.get(serverCharId);
-          if (!sChar && data.character && typeof data.character.x === "number" && typeof data.character.y === "number") {
-            // Client provided its true coordinates; instantiate physical character now!
+          if (!sChar) {
+            // Instantiate physical character using server-authoritative spawn position!
+            const spawnX = charEntry.spawnPos?.x ?? 3.5;
+            const spawnY = charEntry.spawnPos?.y ?? 7.0;
+            const spawnZ = charEntry.spawnPos?.z ?? 0;
             const newChar = new Character({
-              x: data.character.x,
-              y: data.character.y,
+              x: spawnX,
+              y: spawnY,
               color: charEntry.color,
               colliderRadius: 0.44,
               mass: 1.2,
@@ -599,7 +605,8 @@ export class UniversalRoomManager {
               name: charEntry.name,
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim()),
             });
-            newChar.position.z = data.character.z || 0;
+            newChar.position.z = spawnZ;
+            newChar.spawnImmunityTicks = 60;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

@@ -148,14 +148,11 @@ export class OnlineRoomClient {
           }));
         }
 
-        const primarySpawnPos = activeLocalPlayers.find(p => p.localPlayerId === "keyboard")?.spawnPos || activeLocalPlayers[0]?.spawnPos;
-
         this.ws?.send(JSON.stringify({
           type: "join_room",
           name: this.hasCustomName ? this.playerName : undefined,
-          spawnPos: primarySpawnPos,
           localPlayers: activeLocalPlayers.length > 0
-            ? activeLocalPlayers
+            ? activeLocalPlayers.map(p => ({ localPlayerId: p.localPlayerId, name: p.name }))
             : [{ localPlayerId: "keyboard", name: this.hasCustomName ? this.playerName : undefined }],
         }));
 

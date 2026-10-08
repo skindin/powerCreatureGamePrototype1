@@ -1367,6 +1367,22 @@ powerCreatureGamePrototype1/
   - In `ServerGameSimulation.ts` during telemetry coordinate sync: when character telemetry is received while overlapping any dynamic object, gentle overlap relaxation eases both bodies apart along their normal, preventing deep overlap penetration and eliminating 60Hz push/re-assert loops.
   - In `main.ts` during snapshot reconciliation: if a local character and an object are in contact, gentle relaxation shifts both bodies so local collision resolution and server ghost alignment converge smoothly without fighting.
 
+### Phase 10.6 — Dedicated Open Spawn Clearings, Zero Player Position Caching & Spawn Immunity
+- **Root Causes of Rejoin / Spawn Glitching**:
+  1. **Spawn Point Inside Cover Obstacle**: Slot 2 spawn was previously defined at `(15.2, 7.0)`, which directly intersected the 2×2 cover obstacle in `Standard Arena` at `cols 15..16, rows 7..8`. Any player assigned Slot 2 spawned directly on/inside a physical wall obstacle, causing the physics solver to repeatedly push them out to the middle-right.
+  2. **Local Mode Telemetry Fighting Server Spawns**: When joining online mode, client browser tabs were streaming their local sandbox exploration coordinates (`x, y, z`) in `spawnPos` and fixed tick `player_input` packets before receiving `room_joined`. In `ServerGameSimulation.ts`, large coordinate deltas (`dist > 2.5`) snapped the server character to the client's local position, fighting with server authoritative slot spawns and causing rapid rubber-band ping-ponging for ~1 second.
+  3. **Stale Interpolator Traces**: When a player disconnected and a new player joined with that slot or client index, previous interpolator snapshot samples were still buffered, causing visual interpolation toward the old position.
+- **Architectural Resolution**:
+  - **Guaranteed Open Spawn Clearings (`UniversalRoomManager.ts`)**:
+    Updated `SLOT_SPAWNS` to open, unobstructed clearings well away from arena walls and cover obstacles:
+    - Slot 1 (P1): `(3.5, 7.0, 0)` (West open midfield)
+    - Slot 2 (P2): `(17.0, 3.5, 0)` (East open clearing, north of the 2×2 cover obstacle)
+    - Slot 3 (P3): `(3.5, 11.0, 0)` (Southwest open clearing)
+    - Slot 4 (P4): `(17.0, 11.0, 0)` (Southeast open clearing)
+  - **Zero Position Caching on Disconnect**: When any player leaves or disconnects, `UniversalRoomManager.handleDisconnection` and `unregisterCharacter` completely delete character entities, clear jitter buffers, clear clock sync maps, clear ACK tracking, and trash world state if no players remain. Every connecting player receives a fresh authoritative slot spawn.
+  - **Server Spawn Immunity (`Character.ts`, `ServerGameSimulation.ts`, `UniversalRoomManager.ts`)**: Added `character.spawnImmunityTicks = 60` (~1.0s at 60Hz). During this spawn immunity window, `syncCharacterFromPacket` strictly ignores any incoming client telemetry coordinates, guaranteeing the server's authoritative spawn location cannot be overridden by stale client packets.
+  - **Client-Side Telemetry Cleanup & Immediate Snapping (`OnlineRoomClient.ts`, `OnlineSessionManager.ts`)**: Removed stale local coordinates from `join_room` and `add_player` requests. Upon receiving `room_joined` / `player_added`, the local character immediately snaps to the server's authoritative spawn position with zeroed velocity, any falsely carried local objects are released, and `interpolator.clearEntity` purges historical samples.
+
 ---
 
 ## 5. Agent Workflow Rule

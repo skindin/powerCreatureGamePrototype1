@@ -36,11 +36,11 @@ async function run() {
   console.log(`P1 server spawnPos:`, c1SpawnReceived);
   console.log(`P2 server spawnPos:`, c2SpawnReceived);
 
-  if (!c1SpawnReceived || c1SpawnReceived.x !== 4.8 || c1SpawnReceived.y !== 7.0) {
-    throw new Error(`Expected P1 to spawn at (4.8, 7.0), got ${JSON.stringify(c1SpawnReceived)}`);
+  if (!c1SpawnReceived || c1SpawnReceived.x !== 3.5 || c1SpawnReceived.y !== 7.0) {
+    throw new Error(`Expected P1 to spawn at (3.5, 7.0), got ${JSON.stringify(c1SpawnReceived)}`);
   }
-  if (!c2SpawnReceived || c2SpawnReceived.x !== 15.2 || c2SpawnReceived.y !== 7.0) {
-    throw new Error(`Expected P2 to spawn at (15.2, 7.0), got ${JSON.stringify(c2SpawnReceived)}`);
+  if (!c2SpawnReceived || c2SpawnReceived.x !== 17.0 || c2SpawnReceived.y !== 3.5) {
+    throw new Error(`Expected P2 to spawn at (17.0, 3.5), got ${JSON.stringify(c2SpawnReceived)}`);
   }
   console.log("✅ Server-authoritative slot spawning verified!");
 
