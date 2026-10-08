@@ -17,7 +17,7 @@ Key outcomes:
 3. **Multi-Tier Energy Busses**:
    - **HP**: Lethal damage threshold.
    - **Energy Pool**: Total stored chemical/biological reserve.
-   - **Energy Busses**: Intermediate power channels with **Max Power** (draw rate limit) and **Stamina** (burst duration limit before local exhaustion).
+   - **Energy Busses**: Intermediate power channels with **Max Power** (draw rate limit) and **Stamina** (burst duration limit before local exhaustion, regenerates over time with NO energy cost).
    - **Hierarchical Bus Routing**: Busses can feed from parent busses (e.g. `LocomotionBus` and `CombatBus` draw from `CoreMetabolicBus`).
 4. **Node Graph Architecture & Prefab Serialization**:
    - Visualizing and inspecting these relationships using a node viewer.
@@ -39,24 +39,104 @@ Currently, objects in the world are distinguished mainly by whether they exist i
   - Automatically or manually bound to an **Input Channel / Group** (e.g., `KeyboardMouse`, `Gamepad_0`, `Gamepad_1`, `Touch_VirtualStick`).
   - Hotplug support: When a new gamepad connects, the system can dynamically bind an unbound local character prefab to that controller index.
 - **Lifecycle & State**:
-  - Alive, Stunned, Exhausted, Dead.
-  - Coordinates death transitions when `HP <= 0` (ragdoll state, dropping inventory, respawn trigger).
+  - Alive, Dead.
+  - Coordinates death transitions when `HP <= 0` (dropping inventory, respawn trigger).
 
 ---
 
-### Pillar B: Dynamic Named Properties (Decoupling Stats from Code)
-Today, `StrengthModule.ts` is a sealed Tier 1 module providing a static multiplier used for throw/carrying. We want greater designer freedom without touching code.
+## 2. Phased Roadmap
 
-#### Two Architectural Patterns to Decide:
-- **Option 1: Centralized `PropertiesRegistryModule` on GameObject**:
-  - A dictionary of named properties: `{ [name: string]: { value: number, min?: number, max?: number } }`.
-  - Modules like `ThrowModule` or `WalkingModule` don't hardcode their stat; they have a property reference string (e.g. `strengthPropertyKey = "ArmStrength"`).
-  - If `"ArmStrength"` is not found, it falls back to `"Strength"` or default `1.0`.
-- **Option 2: Decentralized Module Export & Bus Linking**:
-  - Any module can declare exported outputs (e.g., `LegStrength: 1.5`).
-  - Other modules link directly to specific exported slots.
+### Phase 1: Dynamic Property References System (Blender Node Socket Model) 🎯 [CURRENT]
+- **Dual-Mode Property Sockets**:
+  - **Literal Mode (Default)**: Behaves like a standard independent numeric field (e.g. `1.0`).
+  - **Reference Mode**: Plugs into an object-scoped named property (e.g., linked to `"ArmStrength"`).
+- **Inline Value Editing with Linked Indicator**:
+  - Even when referencing a property, the value remains directly editable right in the field.
+  - Modifying the value updates the shared property across all modules referencing it.
+  - Shows an obvious visual badge/pill displaying that it is a reference and its linked name.
+- **Reference Selector & Management Dropdown**:
+  - Toggle button on the field to switch between Literal and Reference mode.
+  - **Searchable List**: Scrollable list of existing referenceable properties on this object with a search bar.
+  - **Create New**: Inline input to create and name a new property on this object.
+  - **Locally Unique Names**: Enforces unique property names within this single `GameObject`.
+  - **Rename & Delete Actions**: Each referenced property row in the management UI has:
+    - An **inline rename button/field** (updates all sockets referencing this key).
+    - A **delete button** (prompts or detaches sockets back to their current literal value).
 
-*(Recommendation: Option 1 is far simpler to inspect in DevPanel and configure in prefabs).*
+### Phase 2: Multi-Tier Energy Busses & Burst Stamina
+- Core energy pool vs. subsystem energy busses (Locomotion, Combat, etc.).
+- `maxPower` (draw limit) and `stamina` (burst duration before local exhaustion).
+- Stamina regenerates over time with zero energy cost.
+- Hierarchical bus drawing and localized vs. cascading fatigue.
+
+### Phase 3: Explicit `CharacterModule` & Dynamic Input Group Binding
+- Distinguish characters from freebodies.
+- Role switching (`LOCAL_PLAYER`, `REMOTE_PLAYER`, `NPC_AI`).
+- Dynamic input channel binding (hotplugging gamepads, touch, keyboard).
+- Life state (`Alive`, `Dead`).
+
+### Phase 4: Node Graph Visualizer & Prefab Blueprint Serialization
+- Interactive 2D canvas node wire viewer for inspecting sockets, properties, and busses.
+- JSON Prefab loading/saving with wiring intact.
+
+---
+
+## 3. Phase 1 Technical Design Details
+
+### 3.1 Data Model
+```typescript
+export interface ObjectProperty {
+  id: string; // locally unique name (e.g., "ArmStrength")
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export class DynamicProperty {
+  public isReference: boolean = false;
+  public referenceKey: string = '';
+  public literalValue: number = 1.0;
+
+  constructor(defaultValue: number = 1.0) {
+    this.literalValue = defaultValue;
+  }
+
+  public get(owner: GameObject): number {
+    if (this.isReference && this.referenceKey) {
+      return owner.properties?.get(this.referenceKey) ?? this.literalValue;
+    }
+    return this.literalValue;
+  }
+
+  public set(owner: GameObject, newValue: number): void {
+    if (this.isReference && this.referenceKey) {
+      owner.properties?.set(this.referenceKey, newValue);
+    } else {
+      this.literalValue = newValue;
+    }
+  }
+}
+```
+
+### 3.2 UI Flow (DevPanel / Property Control)
+```
+[ Literal Field ]
+[ 1.50 ] [ 🔗 Link ]
+
+[ Linked Reference Field ]
+[ 1.50 ] [ 🔗 ArmStrength ✕ ] -> Updates ArmStrength, shows linked indicator
+
+[ Dropdown Open ]
+┌───────────────────────────────┐
+│ 🔍 [ Search properties...   ] │
+├───────────────────────────────┤
+│ • ArmStrength [1.50] [✎] [🗑] │
+│ • LegStrength [2.00] [✎] [🗑] │
+├───────────────────────────────┤
+│ [+ New Property Name ] [ Add ]│
+└───────────────────────────────┘
+```
 
 ---
 
