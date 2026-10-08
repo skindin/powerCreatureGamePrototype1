@@ -114,7 +114,7 @@ export class CollisionResolver {
     const dy = b.position.y - a.position.y;
     const distSq = dx * dx + dy * dy;
 
-    if (distSq >= minDist * minDist || distSq <= 0.00000001) {
+    if (distSq >= minDist * minDist) {
       return false;
     }
 
@@ -125,9 +125,17 @@ export class CollisionResolver {
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
 
-    // Normal pointing from A to B
-    const normX = dx / dist;
-    const normY = dy / dist;
+    // Normal pointing from A to B (if exactly on top of each other, pick a random direction)
+    let normX: number;
+    let normY: number;
+    if (dist > 0.0001) {
+      normX = dx / dist;
+      normY = dy / dist;
+    } else {
+      const randomAngle = Math.random() * Math.PI * 2;
+      normX = Math.cos(randomAngle);
+      normY = Math.sin(randomAngle);
+    }
 
     // Relative velocity (B relative to A)
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
@@ -529,11 +537,19 @@ export class CollisionResolver {
           const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
 
-          if (dist2DSq < minDist * minDist && dist2DSq > 0.000001) {
+          if (dist2DSq < minDist * minDist) {
             const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
-            const normX = dx / dist;
-            const normY = dy / dist;
+            let normX: number;
+            let normY: number;
+            if (dist > 0.0001) {
+              normX = dx / dist;
+              normY = dy / dist;
+            } else {
+              const randomAngle = Math.random() * Math.PI * 2;
+              normX = Math.cos(randomAngle);
+              normY = Math.sin(randomAngle);
+            }
 
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);

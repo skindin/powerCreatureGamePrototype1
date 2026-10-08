@@ -880,6 +880,11 @@
           </div>
 
           <main class="canvas-wrapper">
+            <!-- Persistent Top-Left Ping HUD (Always visible in multiplayer modes even when top bar/menus are hidden) -->
+            <div id="persistent-ping-hud" class="persistent-ping-hud hidden" title="Multiplayer Ping (always visible in multiplayer)">
+              <span class="ping-signal-icon">📶</span>
+              <span id="persistent-ping-val">-- ms</span>
+            </div>
             <canvas id="game-canvas"></canvas>
           </main>
 

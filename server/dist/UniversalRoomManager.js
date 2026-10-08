@@ -6504,7 +6504,7 @@ class CollisionResolver {
     const dx = b.position.x - a.position.x;
     const dy = b.position.y - a.position.y;
     const distSq = dx * dx + dy * dy;
-    if (distSq >= minDist * minDist || distSq <= 1e-8) {
+    if (distSq >= minDist * minDist) {
       return false;
     }
     if (a.isImmovable && b.isImmovable) {
@@ -6512,8 +6512,16 @@ class CollisionResolver {
     }
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
-    const normX = dx / dist;
-    const normY = dy / dist;
+    let normX;
+    let normY;
+    if (dist > 1e-4) {
+      normX = dx / dist;
+      normY = dy / dist;
+    } else {
+      const randomAngle = Math.random() * Math.PI * 2;
+      normX = Math.cos(randomAngle);
+      normY = Math.sin(randomAngle);
+    }
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
@@ -6807,11 +6815,19 @@ class CollisionResolver {
           const dy = b.position.y - a.position.y;
           const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
-          if (dist2DSq < minDist * minDist && dist2DSq > 1e-6) {
+          if (dist2DSq < minDist * minDist) {
             const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
-            const normX = dx / dist;
-            const normY = dy / dist;
+            let normX;
+            let normY;
+            if (dist > 1e-4) {
+              normX = dx / dist;
+              normY = dy / dist;
+            } else {
+              const randomAngle = Math.random() * Math.PI * 2;
+              normX = Math.cos(randomAngle);
+              normY = Math.sin(randomAngle);
+            }
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
             const velAlongNormal = relVx * normX + relVy * normY;
@@ -7231,6 +7247,7 @@ class PlayerJitterQueue {
     __publicField(this, "burstDrains", 0);
     __publicField(this, "receivedCount", 0);
     __publicField(this, "consumedCount", 0);
+    __publicField(this, "hasPrimed", false);
     this.playerId = playerId;
     this.targetDepth = (config == null ? void 0 : config.targetDepth) ?? 2;
     this.maxCapacity = (config == null ? void 0 : config.maxCapacity) ?? 60;
@@ -7280,13 +7297,42 @@ class PlayerJitterQueue {
    *
    * - If queue has burst backlog exceeding target depth, excess intermediate packets
    *   are drained and returned in `drainedPackets` so the caller can apply fast-forward updates.
-   * - If queue has available inputs, pops the oldest sorted packet.
+   * - If queue has available inputs and is primed, pops the oldest sorted packet.
+   * - When a player first joins, waits until targetDepth (e.g. 2 packets) are primed before consuming,
+   *   preventing high-ping players from stuttering in half-speed slow motion.
    * - If queue is starved (empty), generates a safe neutral packet with zero movement
    *   to prevent runaway ghost overshoot while preserving last known aim direction.
    */
   consume(serverTick) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     const drainedPackets = [];
+    if (!this.hasPrimed) {
+      if (this.queue.length >= this.targetDepth) {
+        this.hasPrimed = true;
+      } else {
+        const neutralPacket2 = {
+          playerId: this.playerId,
+          tick: serverTick,
+          moveX: 0,
+          moveY: 0,
+          isSprinting: false,
+          isJumpHeld: false,
+          isGrabHeld: false,
+          isDrop: false,
+          isThrow: false,
+          isAiming: false,
+          isLockHeld: false,
+          aimX: (_a = this.lastKnownInput) == null ? void 0 : _a.aimX,
+          aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
+          facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
+        };
+        return {
+          packet: neutralPacket2,
+          isStarved: true,
+          drainedPackets
+        };
+      }
+    }
     if (this.queue.length > this.burstDrainThreshold) {
       const excessCount = this.queue.length - (this.targetDepth + 1);
       for (let i = 0; i < excessCount; i++) {
@@ -7329,9 +7375,9 @@ class PlayerJitterQueue {
       isAiming: false,
       isLockHeld: false,
       // Retain last known aim coordinates so player orientation doesn't snap abruptly
-      aimX: (_a = this.lastKnownInput) == null ? void 0 : _a.aimX,
-      aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
-      facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
+      aimX: (_d = this.lastKnownInput) == null ? void 0 : _d.aimX,
+      aimY: (_e = this.lastKnownInput) == null ? void 0 : _e.aimY,
+      facingAngle: (_f = this.lastKnownInput) == null ? void 0 : _f.facingAngle
     };
     return {
       packet: neutralPacket,
@@ -7352,6 +7398,7 @@ class PlayerJitterQueue {
     this.queue = [];
     this.lastConsumedTick = null;
     this.lastKnownInput = null;
+    this.hasPrimed = false;
   }
   /**
    * Returns telemetry statistics for this jitter buffer queue.
@@ -8747,20 +8794,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const SLOT_SPAWNS = [
-      { x: 3.5, y: 7, z: 0 },
-      // Slot 1 (West open midfield)
-      { x: 17, y: 3.5, z: 0 },
-      // Slot 2 (East open clearing - safely away from cover wall at 15..16, 7..8)
-      { x: 3.5, y: 11, z: 0 },
-      // Slot 3 (Southwest open clearing)
-      { x: 17, y: 11, z: 0 }
-      // Slot 4 (Southeast open clearing)
-    ];
-    const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
-    const spawnX = defaultSpawn.x;
-    const spawnY = defaultSpawn.y;
-    const spawnZ = defaultSpawn.z;
+    const spawnX = 4.8;
+    const spawnY = 7;
+    const spawnZ = 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -8775,24 +8811,36 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     });
     character.position.z = spawnZ;
     character.spawnImmunityTicks = 60;
-    for (const obj of this.simulation.objects) {
-      if (obj.isHeld) continue;
-      const minDistance = character.colliderRadius + obj.colliderRadius;
-      const ox = obj.position.x - character.position.x;
-      const oy = obj.position.y - character.position.y;
+    const otherEntities = [
+      ...this.simulation.allCharacters,
+      ...this.simulation.objects
+    ];
+    for (const ent of otherEntities) {
+      if (ent.isHeld) continue;
+      const minDistance = character.colliderRadius + ent.colliderRadius;
+      const ox = ent.position.x - character.position.x;
+      const oy = ent.position.y - character.position.y;
       const oDist = Math.hypot(ox, oy);
       if (oDist < minDistance) {
         const charZ = character.position.z;
-        const objZ = obj.position.z;
-        if (Math.abs(charZ - objZ) < 0.8) {
+        const entZ = ent.position.z;
+        if (Math.abs(charZ - entZ) < 0.8) {
           const overlap = minDistance - oDist + 0.04;
-          const nx = oDist > 1e-3 ? ox / oDist : 1;
-          const ny = oDist > 1e-3 ? oy / oDist : 0;
+          let nx;
+          let ny;
+          if (oDist > 1e-3) {
+            nx = ox / oDist;
+            ny = oy / oDist;
+          } else {
+            const randomAngle = Math.random() * Math.PI * 2;
+            nx = Math.cos(randomAngle);
+            ny = Math.sin(randomAngle);
+          }
           character.position.x -= nx * (overlap * 0.5);
           character.position.y -= ny * (overlap * 0.5);
-          obj.position.x += nx * (overlap * 0.5);
-          obj.position.y += ny * (overlap * 0.5);
-          obj.wakeUp();
+          ent.position.x += nx * (overlap * 0.5);
+          ent.position.y += ny * (overlap * 0.5);
+          ent.wakeUp();
         }
       }
     }

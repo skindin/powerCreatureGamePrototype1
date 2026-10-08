@@ -17,6 +17,8 @@ export interface OnlineSessionDOMElements {
   rttCurrent: HTMLElement | null;
   playersCount: HTMLElement | null;
   rosterList: HTMLElement | null;
+  persistentPingHud?: HTMLElement | null;
+  persistentPingVal?: HTMLElement | null;
 }
 
 /**
@@ -308,6 +310,18 @@ export class OnlineSessionManager {
       else if (stats.pingMs < 140) this.dom.rttCurrent.style.color = "#f59e0b";
       else this.dom.rttCurrent.style.color = "#ef4444";
     }
+
+    // Persistent Top-Left Ping HUD (Always visible in online mode even when top bar / menus are hidden)
+    if (this.dom.persistentPingVal) {
+      this.dom.persistentPingVal.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : stats.status;
+      if (stats.pingMs < 70) this.dom.persistentPingVal.style.color = "#22c55e";
+      else if (stats.pingMs < 140) this.dom.persistentPingVal.style.color = "#f59e0b";
+      else this.dom.persistentPingVal.style.color = "#ef4444";
+    }
+    if (this.dom.persistentPingHud && this.gameLoop && this.gameLoop.activeMode === "online") {
+      this.dom.persistentPingHud.classList.remove("hidden");
+    }
+
     if (this.dom.playersCount) {
       this.dom.playersCount.textContent = `${stats.playerCount} Connected`;
     }
@@ -533,6 +547,13 @@ export class OnlineSessionManager {
         radius: gc.radius,
       });
     }
+
+    // Dynamic latency-adaptive interpolation delay:
+    // If the player has high ping, adapt interpDelayMs so buffered snapshots never starve into extrapolation stalls.
+    if (this.client.pingMs > 0) {
+      this.gameLoop.interpolator.interpDelayMs = Math.max(60, Math.min(250, Math.round(this.client.pingMs * 0.75)));
+    }
+
     this.gameLoop.interpolator.pushSnapshot(snapshot.seq, samples, performance.now());
 
     // 2b. Synchronize external server pushes & impulses on local characters
@@ -577,8 +598,16 @@ export class OnlineSessionManager {
           if (oDist < minDistance) {
             if (Math.abs(localChar.position.z - obj.position.z) < 0.8) {
               const overlap = minDistance - oDist + 0.03;
-              const nx = oDist > 0.001 ? ox / oDist : 1;
-              const ny = oDist > 0.001 ? oy / oDist : 0;
+              let nx: number;
+              let ny: number;
+              if (oDist > 0.001) {
+                nx = ox / oDist;
+                ny = oy / oDist;
+              } else {
+                const randomAngle = Math.random() * Math.PI * 2;
+                nx = Math.cos(randomAngle);
+                ny = Math.sin(randomAngle);
+              }
               localChar.position.x -= nx * (overlap * 0.5);
               localChar.position.y -= ny * (overlap * 0.5);
               obj.position.x += nx * (overlap * 0.5);

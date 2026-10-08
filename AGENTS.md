@@ -1383,6 +1383,21 @@ powerCreatureGamePrototype1/
   - **Server Spawn Immunity (`Character.ts`, `ServerGameSimulation.ts`, `UniversalRoomManager.ts`)**: Added `character.spawnImmunityTicks = 60` (~1.0s at 60Hz). During this spawn immunity window, `syncCharacterFromPacket` strictly ignores any incoming client telemetry coordinates, guaranteeing the server's authoritative spawn location cannot be overridden by stale client packets.
   - **Client-Side Telemetry Cleanup & Immediate Snapping (`OnlineRoomClient.ts`, `OnlineSessionManager.ts`)**: Removed stale local coordinates from `join_room` and `add_player` requests. Upon receiving `room_joined` / `player_added`, the local character immediately snaps to the server's authoritative spawn position with zeroed velocity, any falsely carried local objects are released, and `interpolator.clearEntity` purges historical samples.
 
+### Phase 10.7 — Dedicated Spawn Coordinate, Random Overlap Separation, Persistent Ping & Jitter Priming
+- **Dedicated Universal Spawn Coordinate (`UniversalRoomManager.ts`)**:
+  - Unified all online player spawns to the single dedicated location: `(4.8, 7.0, 0)`.
+- **Random Direction Overlap Separation (`CollisionResolver.ts`, `UniversalRoomManager.ts`, `OnlineSessionManager.ts`)**:
+  - Previously, when entities spawned or rested directly on top of each other ($dx \approx 0, dy \approx 0$ or $distSq \le 0.00000001$), `resolvePairDiscreteTOI` returned `false` (doing nothing) and `resolveBodiesNaive` skipped them, causing overlapping characters to stall or freeze.
+  - Now, when entities overlap with $dist \le 0.0001$ and have no distinct directional vector, a random separation angle $\theta \in [0, 2\pi)$ is chosen (`normX = Math.cos(angle)`, `normY = Math.sin(angle)`), cleanly pushing them apart in a random direction.
+- **Persistent Top-Left Ping Display (`index.html`, `style.css`, `main.ts`, `OnlineSessionManager.ts`)**:
+  - Added `#persistent-ping-hud` badge directly inside `.canvas-wrapper` in the top-left corner (`top: 14px; left: 14px; z-index: 60`).
+  - Styled as a compact, sleek glassmorphic pill (`📶 XX ms`) with dynamic signal coloring (green $<70\text{ms}$, amber $<140\text{ms}$, red $\ge 140\text{ms}$).
+  - Automatically visible in multiplayer modes (both `online` and `boomerang`) even when the top bar, inspector sidebar, controls bar, or settings menus are closed, collapsed, or hidden in fullscreen.
+- **Fix for Slow-Motion Stutter on Newly Joined / High-Ping Players (`ServerJitterBuffer.ts`, `OnlineSessionManager.ts`)**:
+  - **Root Cause**: When a player with high latency joined, the server jitter queue started empty while the 60Hz loop immediately began consuming inputs. In starvation, `consume()` alternated between neutral zero-velocity packets and newly arrived movement packets, halving the player's apparent speed (~50% slow-motion) for ~1 second until the buffer caught up.
+  - **Jitter Buffer Priming (`ServerJitterBuffer.ts`)**: Added `hasPrimed` guard to `PlayerJitterQueue`. Upon first connection or clear, consumption waits until `targetDepth` (default 2 packets) has arrived in the queue before popping packets. While priming, safe neutral packets are returned without triggering starvation cycles, allowing inputs to play back at true 1.0× fixed cadence.
+  - **Dynamic Interp Delay Adaptation (`OnlineSessionManager.ts`)**: Dynamically tunes client `interpolator.interpDelayMs = Math.max(60, Math.min(250, Math.round(pingMs * 0.75)))` based on measured RTT, preventing remote snapshot starvation under broadband latency spikes.
+
 ---
 
 ## 5. Agent Workflow Rule

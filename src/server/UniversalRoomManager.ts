@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
 import { ServerGameSimulation } from "./ServerGameSimulation.js";
 import { Character } from "../character/Character.js";
+import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 
@@ -314,21 +315,11 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    // SERVER-AUTHORITATIVE SPAWN POSITIONS (Phase 5):
-    // The server assigns starting 2D coordinates (x, y) and vertical elevation (z)
-    // based on assigned player slot in open clearings, ignoring client-side local exploration coordinates!
-    // Note: Standard Arena has cover obstacles at (4..5, 4..5) and (15..16, 7..8), and center divider at col 10.
-    // All spawn points are placed well in the clear:
-    const SLOT_SPAWNS: Array<{ x: number; y: number; z: number }> = [
-      { x: 3.5, y: 7.0, z: 0 },   // Slot 1 (West open midfield)
-      { x: 17.0, y: 3.5, z: 0 },  // Slot 2 (East open clearing - safely away from cover wall at 15..16, 7..8)
-      { x: 3.5, y: 11.0, z: 0 },  // Slot 3 (Southwest open clearing)
-      { x: 17.0, y: 11.0, z: 0 }, // Slot 4 (Southeast open clearing)
-    ];
-    const defaultSpawn = SLOT_SPAWNS[(playerNumber - 1) % SLOT_SPAWNS.length];
-    const spawnX = defaultSpawn.x;
-    const spawnY = defaultSpawn.y;
-    const spawnZ = defaultSpawn.z;
+    // SERVER-AUTHORITATIVE DEDICATED SPAWN POSITION:
+    // All players start at the dedicated spawn position (4.8, 7.0, 0).
+    const spawnX = 4.8;
+    const spawnY = 7.0;
+    const spawnZ = 0;
 
     const character = new Character({
       x: spawnX,
@@ -345,26 +336,38 @@ export class UniversalRoomManager {
     character.position.z = spawnZ;
     character.spawnImmunityTicks = 60; // 1 second of authoritative spawn immunity
 
-    // Gentle overlap resolution on spawn: if character overlaps an existing freebody object,
-    // gently separate character and object away from each other so they no longer overlap.
-    for (const obj of this.simulation.objects) {
-      if (obj.isHeld) continue;
-      const minDistance = character.colliderRadius + obj.colliderRadius;
-      const ox = obj.position.x - character.position.x;
-      const oy = obj.position.y - character.position.y;
+    // Gentle overlap resolution on spawn: if character overlaps an existing creature or object,
+    // gently separate them away from each other. If directly on top of each other, choose a random direction.
+    const otherEntities: (Character | GameObject)[] = [
+      ...this.simulation.allCharacters,
+      ...this.simulation.objects,
+    ];
+    for (const ent of otherEntities) {
+      if (ent.isHeld) continue;
+      const minDistance = character.colliderRadius + ent.colliderRadius;
+      const ox = ent.position.x - character.position.x;
+      const oy = ent.position.y - character.position.y;
       const oDist = Math.hypot(ox, oy);
       if (oDist < minDistance) {
         const charZ = character.position.z;
-        const objZ = obj.position.z;
-        if (Math.abs(charZ - objZ) < 0.8) {
+        const entZ = ent.position.z;
+        if (Math.abs(charZ - entZ) < 0.8) {
           const overlap = minDistance - oDist + 0.04;
-          const nx = oDist > 0.001 ? ox / oDist : 1;
-          const ny = oDist > 0.001 ? oy / oDist : 0;
+          let nx: number;
+          let ny: number;
+          if (oDist > 0.001) {
+            nx = ox / oDist;
+            ny = oy / oDist;
+          } else {
+            const randomAngle = Math.random() * Math.PI * 2;
+            nx = Math.cos(randomAngle);
+            ny = Math.sin(randomAngle);
+          }
           character.position.x -= nx * (overlap * 0.5);
           character.position.y -= ny * (overlap * 0.5);
-          obj.position.x += nx * (overlap * 0.5);
-          obj.position.y += ny * (overlap * 0.5);
-          obj.wakeUp();
+          ent.position.x += nx * (overlap * 0.5);
+          ent.position.y += ny * (overlap * 0.5);
+          ent.wakeUp();
         }
       }
     }

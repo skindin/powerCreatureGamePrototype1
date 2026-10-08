@@ -27,8 +27,8 @@ async function runCleanDisconnectRejoinTest() {
   await new Promise((r) => setTimeout(r, 200));
 
   console.log("C1 Initial Spawn:", c1Spawn);
-  if (!c1Spawn || c1Spawn.x !== 3.5 || c1Spawn.y !== 7.0) {
-    throw new Error(`Expected C1 to spawn at (3.5, 7.0), got ${JSON.stringify(c1Spawn)}`);
+  if (!c1Spawn || Math.abs(c1Spawn.x - 4.8) > 0.05 || Math.abs(c1Spawn.y - 7.0) > 0.05) {
+    throw new Error(`Expected C1 to spawn at (4.8, 7.0), got ${JSON.stringify(c1Spawn)}`);
   }
 
   // Simulate C1 sending telemetry from somewhere far away (e.g. (10.0, 5.0))
@@ -67,17 +67,17 @@ async function runCleanDisconnectRejoinTest() {
   await new Promise((r) => setTimeout(r, 200));
 
   console.log("C2 Fresh Spawn after C1 left:", c2Spawn);
-  if (!c2Spawn || c2Spawn.x !== 3.5 || c2Spawn.y !== 7.0) {
-    throw new Error(`Expected fresh player C2 to spawn cleanly at default slot spawn (3.5, 7.0), got ${JSON.stringify(c2Spawn)}`);
+  if (!c2Spawn || Math.abs(c2Spawn.x - 4.8) > 0.05 || Math.abs(c2Spawn.y - 7.0) > 0.05) {
+    throw new Error(`Expected fresh player C2 to spawn cleanly at dedicated spawn (4.8, 7.0), got ${JSON.stringify(c2Spawn)}`);
   }
 
-  // Verify server simulation character is at (3.5, 7.0) and has spawnImmunityTicks active
+  // Verify server simulation character is at (4.8, 7.0) and has spawnImmunityTicks active
   const sChar = room.simulation.characters.get(c2.clientId!);
   if (!sChar) {
     throw new Error("Server simulation should have C2 registered");
   }
-  if (Math.abs(sChar.position.x - 3.5) > 0.01 || Math.abs(sChar.position.y - 7.0) > 0.01) {
-    throw new Error(`Server character position should be at (3.5, 7.0), got (${sChar.position.x}, ${sChar.position.y})`);
+  if (Math.abs(sChar.position.x - 4.8) > 0.05 || Math.abs(sChar.position.y - 7.0) > 0.05) {
+    throw new Error(`Server character position should be at (4.8, 7.0), got (${sChar.position.x}, ${sChar.position.y})`);
   }
 
   // 3. Client 2 tries to send a packet with a stale local coordinate from local mode (e.g. (14.0, 10.0))
@@ -102,7 +102,7 @@ async function runCleanDisconnectRejoinTest() {
   await new Promise((r) => setTimeout(r, 100));
 
   // Verify server character did NOT jump to 14.0, 10.0!
-  if (Math.abs(sChar.position.x - 3.5) > 0.1 || Math.abs(sChar.position.y - 7.0) > 0.1) {
+  if (Math.abs(sChar.position.x - 4.8) > 0.1 || Math.abs(sChar.position.y - 7.0) > 0.1) {
     throw new Error(`Spawn immunity violated! Character jumped to (${sChar.position.x}, ${sChar.position.y})`);
   }
 

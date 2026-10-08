@@ -471,6 +471,8 @@ function bootstrap(): void {
   const onlineRttCurrent = document.getElementById("online-rtt-current");
   const onlinePlayersCount = document.getElementById("online-players-count");
   const onlineRosterList = document.getElementById("online-roster-list");
+  const persistentPingHud = document.getElementById("persistent-ping-hud");
+  const persistentPingVal = document.getElementById("persistent-ping-val");
 
   // Encapsulated Online Session Manager
   const onlineSession = new OnlineSessionManager(onlineClient, {
@@ -485,6 +487,8 @@ function bootstrap(): void {
     rttCurrent: onlineRttCurrent,
     playersCount: onlinePlayersCount,
     rosterList: onlineRosterList,
+    persistentPingHud,
+    persistentPingVal,
   });
   onlineSession.setGameLoop(gameLoop, character);
 
@@ -646,6 +650,7 @@ function bootstrap(): void {
     mobileModeOnlineBtn?.classList.toggle("active", mode === "online");
 
     if (mode === "local") {
+      persistentPingHud?.classList.add("hidden");
       onlineSession.disconnect();
       onlineHud?.classList.add("hidden");
       onlineStatusPill?.classList.add("hidden");
@@ -672,6 +677,7 @@ function bootstrap(): void {
         base.name = "Player 1";
       }
     } else if (mode === "boomerang") {
+      persistentPingHud?.classList.remove("hidden");
       onlineSession.disconnect();
       onlineHud?.classList.add("hidden");
       onlineStatusPill?.classList.add("hidden");
@@ -682,6 +688,7 @@ function bootstrap(): void {
       relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
       relayClient.connect();
     } else if (mode === "online") {
+      persistentPingHud?.classList.remove("hidden");
       relayClient.disconnect();
       relayHud?.classList.add("hidden");
       relayStatusPill?.classList.add("hidden");
@@ -747,6 +754,17 @@ function bootstrap(): void {
       if (stats.lastRttMs < 70) rttCurrent.style.color = "#22c55e";
       else if (stats.lastRttMs < 140) rttCurrent.style.color = "#f59e0b";
       else rttCurrent.style.color = "#ef4444";
+    }
+
+    // Update Persistent Top-Left Ping HUD if in boomerang mode
+    if (activeGameMode === "boomerang") {
+      if (persistentPingVal) {
+        persistentPingVal.textContent = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
+        if (stats.lastRttMs < 70) persistentPingVal.style.color = "#22c55e";
+        else if (stats.lastRttMs < 140) persistentPingVal.style.color = "#f59e0b";
+        else persistentPingVal.style.color = "#ef4444";
+      }
+      persistentPingHud?.classList.remove("hidden");
     }
 
     if (rttSub) {

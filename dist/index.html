@@ -14,8 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
     <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <script type="module" crossorigin src="/assets/index-aJvoz4hU.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CbmQgNRf.css">
+    <script type="module" crossorigin src="/assets/index-DM-YZP92.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CvpS2QCC.css">
   </head>
   <body>
     <div id="app-layout">
@@ -881,6 +881,11 @@
           </div>
 
           <main class="canvas-wrapper">
+            <!-- Persistent Top-Left Ping HUD (Always visible in multiplayer modes even when top bar/menus are hidden) -->
+            <div id="persistent-ping-hud" class="persistent-ping-hud hidden" title="Multiplayer Ping (always visible in multiplayer)">
+              <span class="ping-signal-icon">📶</span>
+              <span id="persistent-ping-val">-- ms</span>
+            </div>
             <canvas id="game-canvas"></canvas>
           </main>
 
