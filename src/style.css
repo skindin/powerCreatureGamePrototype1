@@ -4309,3 +4309,329 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   color: #bae6fd;
   line-height: 1.45;
 }
+
+/* ==========================================================================
+   DYNAMIC PROPERTY SOCKETS (BLENDER-STYLE REFERENCES & SCRUBBER)
+   ========================================================================== */
+.prop-socket-control {
+  margin: 6px 0 10px 0;
+  position: relative;
+  font-family: inherit;
+}
+
+.prop-socket-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.prop-socket-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.prop-socket-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.badge-linked {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.badge-limbo {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: pulse 1.5s infinite;
+}
+
+.prop-socket-control-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prop-scrub-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+  padding: 3px 6px;
+  cursor: ew-resize;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.prop-scrub-field:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.prop-scrub-field.field-referenced {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(14, 116, 144, 0.15);
+}
+
+.prop-scrub-field.field-limbo {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.prop-number-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f8fafc;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: ew-resize;
+}
+
+.prop-number-input:focus {
+  cursor: text;
+}
+
+.prop-link-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prop-link-btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: #38bdf8;
+}
+
+.prop-link-btn.btn-active-link {
+  background: rgba(14, 116, 144, 0.4);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+/* Limbo Warning Bar */
+.prop-limbo-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: #fca5a5;
+}
+
+.btn-limbo-fix {
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-limbo-fix.btn-recreate {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-limbo-fix.btn-detach {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* Dropdown Panel */
+.prop-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.7);
+  padding: 8px;
+  margin-top: 4px;
+}
+
+.prop-dropdown-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: #f8fafc;
+  font-size: 0.78rem;
+  margin-bottom: 6px;
+  outline: none;
+}
+
+.prop-dropdown-search:focus {
+  border-color: #38bdf8;
+}
+
+.prop-dropdown-list {
+  max-height: 140px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prop-dropdown-empty {
+  font-size: 0.72rem;
+  color: #64748b;
+  padding: 6px;
+  text-align: center;
+}
+
+.prop-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 6px;
+  transition: all 0.12s ease;
+}
+
+.prop-dropdown-item:hover {
+  background: rgba(51, 65, 85, 0.8);
+}
+
+.prop-dropdown-item.item-selected {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(14, 116, 144, 0.25);
+}
+
+.prop-item-select-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: #f1f5f9;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+
+.prop-item-val {
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.prop-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+}
+
+.prop-action-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.prop-action-btn:hover {
+  color: #f8fafc;
+}
+
+.prop-action-btn.btn-delete:hover {
+  color: #ef4444;
+}
+
+.prop-dropdown-create-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  padding-top: 6px;
+}
+
+.prop-create-input {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.74rem;
+  color: #f8fafc;
+  outline: none;
+}
+
+.prop-create-btn {
+  background: #0284c7;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.prop-create-btn:hover {
+  background: #0369a1;
+}
+
+.prop-dropdown-footer {
+  margin-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  padding-top: 4px;
+}
+
+.prop-unlink-action-btn {
+  width: 100%;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.prop-unlink-action-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fff;
+}
+

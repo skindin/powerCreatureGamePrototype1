@@ -16,6 +16,7 @@ import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import { RigidbodyModule } from "../engine/RigidbodyModule.js";
+import { PropertyControl } from "./PropertyControl.js";
 
 export interface CreatorPreset {
   name: string;
@@ -1077,13 +1078,7 @@ export class DevPanel {
             ${renderToggleBtn("mass", massEnabled)}
           </div>
           ${!massEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Mass behavior is disabled (body is massless)</div>` : ''}
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Mass (kg)</span>
-              <span id="val-entity-mass">${(e.massModule?.mass ?? 1.0).toFixed(1)}</span>
-            </div>
-            <input type="range" id="slide-entity-mass" min="0.1" max="8.0" step="0.1" value="${e.massModule?.mass ?? 1.0}">
-          </div>
+          <div id="prop-socket-mass"></div>
         </div>
       `;
     }
@@ -1286,13 +1281,7 @@ export class DevPanel {
               ${renderToggleBtn("strength", strEnabled)}
             </div>
             ${!strEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Strength Ability is disabled</div>` : ''}
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Muscle Strength Ratio</span>
-                <span id="val-strength">${(char.strengthModule?.strength ?? 1.0).toFixed(1)}×</span>
-              </div>
-              <input type="range" id="slide-strength" min="0.2" max="4.0" step="0.1" value="${char.strengthModule?.strength ?? 1.0}">
-            </div>
+            <div id="prop-socket-strength"></div>
           </div>
         `;
       }
@@ -1811,11 +1800,17 @@ export class DevPanel {
       e.colliderRadius = val;
     }, 2);
 
-    // Mass
-    this.setupSlider("slide-entity-mass", "val-entity-mass", (val) => {
-      e.mass = val;
-      this.updateSelectorOptions();
-    }, 1);
+    // Mass (Dynamic Property Socket)
+    const massSocketEl = this.container.querySelector("#prop-socket-mass");
+    if (massSocketEl && e.massModule) {
+      const massCtrl = new PropertyControl({
+        property: e.massModule.massProp,
+        owner: e,
+        label: "Mass (kg)",
+        step: 0.1,
+      });
+      massSocketEl.appendChild(massCtrl.element);
+    }
 
     // Friction
     this.setupSlider("slide-entity-static-fric", "val-entity-static-fric", (val) => {
@@ -1874,9 +1869,17 @@ export class DevPanel {
         if (char.walkingModule) char.walkingModule.airFriction = val;
       }, 2);
 
-      this.setupSlider("slide-strength", "val-strength", (val) => {
-        char.strength = val;
-      }, 1);
+      // Strength (Dynamic Property Socket)
+      const strSocketEl = this.container.querySelector("#prop-socket-strength");
+      if (strSocketEl && char.strengthModule) {
+        const strCtrl = new PropertyControl({
+          property: char.strengthModule.strengthProp,
+          owner: char,
+          label: "Muscle Strength Ratio (×)",
+          step: 0.1,
+        });
+        strSocketEl.appendChild(strCtrl.element);
+      }
 
       this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
         if (char.pickupModule) char.pickupModule.pickupReach = val;

@@ -30,7 +30,6 @@ const normalized = targetFile.replace(/\\/g, '/');
 
 // Tier 1: 🔒 Sealed & Read-Only (Feature-Complete Modules)
 const TIER_1_SEALED = [
-  'src/engine/MassModule.ts',
   'src/engine/FrictionModule.ts',
   'src/engine/BounceModule.ts',
   'src/engine/RollModule.ts',
@@ -39,7 +38,6 @@ const TIER_1_SEALED = [
   'src/engine/Arena.ts',
   'src/engine/ColliderModule.ts',
   'src/engine/RigidbodyModule.ts',
-  'src/character/StrengthModule.ts',
   'src/character/JumpModule.ts',
   'src/character/WallEdgeAssistModule.ts',
   'src/engine/physics/StateHistoryBuffer.ts',

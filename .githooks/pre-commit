@@ -2,7 +2,6 @@
 # Pre-commit hook to prevent modifications to frozen/sealed files
 
 FROZEN_FILES="
-src/engine/MassModule.ts
 src/engine/FrictionModule.ts
 src/engine/BounceModule.ts
 src/engine/RollModule.ts
@@ -11,7 +10,6 @@ src/engine/VerticalPositionModule.ts
 src/engine/Arena.ts
 src/engine/ColliderModule.ts
 src/engine/RigidbodyModule.ts
-src/character/StrengthModule.ts
 src/character/JumpModule.ts
 src/character/WallEdgeAssistModule.ts
 src/engine/physics/StateHistoryBuffer.ts

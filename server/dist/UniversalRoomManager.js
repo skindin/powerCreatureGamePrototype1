@@ -4104,12 +4104,196 @@ class ColliderModule {
     this.ccdThresholdRatio = options.ccdThresholdRatio ?? 0.5;
   }
 }
+class DynamicProperty {
+  constructor(initialValue = 0, isReference = false, referenceKey = "") {
+    __publicField(this, "isReference", false);
+    __publicField(this, "referenceKey", "");
+    __publicField(this, "literalValue", 0);
+    // Listeners for UI reactivity (e.g. syncing DevPanel inputs)
+    __publicField(this, "_listeners", /* @__PURE__ */ new Set());
+    this.literalValue = initialValue;
+    this.isReference = isReference;
+    this.referenceKey = referenceKey;
+  }
+  /**
+   * Resolves the current numeric value given an owner registry.
+   * If in reference mode and the property doesn't exist, it remains in
+   * "limbo" and returns literalValue as fallback.
+   */
+  get(registry) {
+    if (this.isReference && this.referenceKey && registry) {
+      const ref = registry.get(this.referenceKey);
+      if (ref !== void 0) {
+        return ref;
+      }
+    }
+    return this.literalValue;
+  }
+  /**
+   * Sets the numeric value.
+   * If in reference mode and the reference exists in the registry,
+   * it updates the shared registry value (which updates all sockets referencing it).
+   * Otherwise, updates the literal value.
+   */
+  set(value, registry) {
+    if (this.isReference && this.referenceKey && registry && registry.has(this.referenceKey)) {
+      registry.set(this.referenceKey, value);
+    } else {
+      this.literalValue = value;
+    }
+    this.notify();
+  }
+  /**
+   * Check if this property is in a "limbo/broken" state (referencing a key that does not exist).
+   */
+  isLimbo(registry) {
+    if (!this.isReference || !this.referenceKey) return false;
+    if (!registry) return true;
+    return !registry.has(this.referenceKey);
+  }
+  /**
+   * Switches to reference mode and links to a specific key.
+   */
+  link(referenceKey, registry) {
+    this.isReference = true;
+    this.referenceKey = referenceKey;
+    if (registry && registry.has(referenceKey)) {
+      this.literalValue = registry.get(referenceKey);
+    }
+    this.notify();
+  }
+  /**
+   * Unlinks from reference mode and becomes a standalone literal value.
+   */
+  unlink() {
+    this.isReference = false;
+    this.referenceKey = "";
+    this.notify();
+  }
+  subscribe(cb) {
+    this._listeners.add(cb);
+    return () => this._listeners.delete(cb);
+  }
+  notify() {
+    for (const cb of this._listeners) {
+      cb(this);
+    }
+  }
+  clone() {
+    const p = new DynamicProperty(this.literalValue, this.isReference, this.referenceKey);
+    return p;
+  }
+}
+class ObjectPropertiesRegistry {
+  constructor(initialEntries) {
+    __publicField(this, "_properties", /* @__PURE__ */ new Map());
+    __publicField(this, "_changeListeners", /* @__PURE__ */ new Set());
+    if (initialEntries) {
+      for (const [k, v] of Object.entries(initialEntries)) {
+        this._properties.set(k, v);
+      }
+    }
+  }
+  has(name) {
+    return this._properties.has(name);
+  }
+  get(name) {
+    return this._properties.get(name);
+  }
+  set(name, value) {
+    this._properties.set(name, value);
+    this.notify();
+  }
+  /**
+   * Adds a new named property with uniqueness enforcement.
+   * If the name already exists, returns false or throws.
+   */
+  add(name, initialValue = 1) {
+    const trimmed = name.trim();
+    if (!trimmed || this._properties.has(trimmed)) {
+      return false;
+    }
+    this._properties.set(trimmed, initialValue);
+    this.notify();
+    return true;
+  }
+  /**
+   * Deletes a named property. Referencing sockets will remain referencing this string
+   * but enter a Limbo/Warning state.
+   */
+  delete(name) {
+    const deleted = this._properties.delete(name);
+    if (deleted) {
+      this.notify();
+    }
+    return deleted;
+  }
+  /**
+   * Renames a property. Updates all registered DynamicProperty sockets pointing to oldName to newName.
+   */
+  rename(oldName, newName, socketsToUpdate) {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew || trimmedNew === oldName) return false;
+    if (this._properties.has(trimmedNew)) return false;
+    const val = this._properties.get(oldName);
+    if (val === void 0) return false;
+    this._properties.delete(oldName);
+    this._properties.set(trimmedNew, val);
+    if (socketsToUpdate) {
+      for (const socket of socketsToUpdate) {
+        if (socket.isReference && socket.referenceKey === oldName) {
+          socket.referenceKey = trimmedNew;
+          socket.notify();
+        }
+      }
+    }
+    this.notify();
+    return true;
+  }
+  getAll() {
+    const list = [];
+    for (const [name, value] of this._properties.entries()) {
+      list.push({ name, value });
+    }
+    return list;
+  }
+  subscribe(cb) {
+    this._changeListeners.add(cb);
+    return () => this._changeListeners.delete(cb);
+  }
+  notify() {
+    for (const cb of this._changeListeners) {
+      cb();
+    }
+  }
+  toJSON() {
+    const out = {};
+    for (const [k, v] of this._properties.entries()) {
+      out[k] = v;
+    }
+    return out;
+  }
+  static fromJSON(data) {
+    return new ObjectPropertiesRegistry(data);
+  }
+}
 class MassModule {
   constructor(options = {}) {
-    __publicField(this, "mass");
+    __publicField(this, "massProp");
     __publicField(this, "enabled");
-    this.mass = options.mass ?? 1;
+    if (options.mass instanceof DynamicProperty) {
+      this.massProp = options.mass;
+    } else {
+      this.massProp = new DynamicProperty(options.mass ?? 1);
+    }
     this.enabled = options.enabled ?? true;
+  }
+  get mass() {
+    return this.massProp.literalValue;
+  }
+  set mass(val) {
+    this.massProp.literalValue = val;
+    this.massProp.notify();
   }
 }
 class FrictionModule {
@@ -4413,6 +4597,8 @@ class GameObject {
     // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
     __publicField(this, "isImmovable", false);
     __publicField(this, "serverCharId");
+    // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
+    __publicField(this, "properties", new ObjectPropertiesRegistry());
     __publicField(this, "_staticVelocity", { x: 0, y: 0 });
     // Modular behavior components
     __publicField(this, "rigidbodyModule", null);
@@ -4553,14 +4739,14 @@ class GameObject {
     }
   }
   get hasMass() {
-    return Boolean(this.massModule && this.massModule.enabled && this.massModule.mass > 0);
+    return Boolean(this.massModule && this.massModule.enabled && this.mass > 0);
   }
   get mass() {
-    return this.massModule && this.massModule.enabled ? this.massModule.mass : 0;
+    return this.massModule && this.massModule.enabled ? this.massModule.massProp.get(this.properties) : 0;
   }
   set mass(val) {
     if (this.massModule) {
-      this.massModule.mass = val;
+      this.massModule.massProp.set(val, this.properties);
     } else {
       this.massModule = new MassModule({ mass: val });
     }
@@ -5906,10 +6092,21 @@ class StrengthModule {
     __publicField(this, "id", "strength");
     __publicField(this, "name", "Strength Module");
     __publicField(this, "enabled", true);
-    // Strength multiplier: governs physical exertion for walking under load, throwing power, and vertical climbing
-    __publicField(this, "strength", 1);
-    this.strength = options.strength ?? 1;
+    // Dynamic property socket for strength
+    __publicField(this, "strengthProp");
+    if (options.strength instanceof DynamicProperty) {
+      this.strengthProp = options.strength;
+    } else {
+      this.strengthProp = new DynamicProperty(options.strength ?? 1);
+    }
     this.enabled = options.enabled ?? true;
+  }
+  get strength() {
+    return this.strengthProp.literalValue;
+  }
+  set strength(val) {
+    this.strengthProp.literalValue = val;
+    this.strengthProp.notify();
   }
 }
 class JumpModule {
@@ -6050,14 +6247,14 @@ class Character extends GameObject {
     this.climbingModule = null;
   }
   get hasStrength() {
-    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strengthModule.strength > 0);
+    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strength > 0);
   }
   get strength() {
-    return this.hasStrength ? this.strengthModule.strength : 0;
+    return this.hasStrength ? this.strengthModule.strengthProp.get(this.properties) : 0;
   }
   set strength(val) {
     if (this.strengthModule) {
-      this.strengthModule.strength = Math.max(0.1, val);
+      this.strengthModule.strengthProp.set(Math.max(0.1, val), this.properties);
     } else {
       this.strengthModule = new StrengthModule({ strength: val });
     }

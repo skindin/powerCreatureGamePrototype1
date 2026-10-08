@@ -12,16 +12,16 @@ export class Character extends GameObject {
   public strengthModule: StrengthModule | null;
 
   public get hasStrength(): boolean {
-    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strengthModule.strength > 0);
+    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strength > 0);
   }
 
   public get strength(): number {
-    return this.hasStrength ? this.strengthModule!.strength : 0;
+    return this.hasStrength ? this.strengthModule!.strengthProp.get(this.properties) : 0;
   }
 
   public set strength(val: number) {
     if (this.strengthModule) {
-      this.strengthModule.strength = Math.max(0.1, val);
+      this.strengthModule.strengthProp.set(Math.max(0.1, val), this.properties);
     } else {
       this.strengthModule = new StrengthModule({ strength: val });
     }

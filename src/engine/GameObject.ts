@@ -10,6 +10,8 @@ import { RigidbodyModule } from "./RigidbodyModule.js";
 import { SurfaceSupportModule } from "./SurfaceSupportModule.js";
 import { MotionIntegrator } from "./MotionIntegrator.js";
 
+import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
+
 export interface Vector2D {
   x: number;
   y: number;
@@ -51,6 +53,9 @@ export class GameObject {
   // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
   public isImmovable: boolean = false;
   public serverCharId?: string;
+
+  // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
+  public properties: ObjectPropertiesRegistry = new ObjectPropertiesRegistry();
 
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -266,16 +271,18 @@ export class GameObject {
   }
 
   public get hasMass(): boolean {
-    return Boolean(this.massModule && this.massModule.enabled && this.massModule.mass > 0);
+    return Boolean(this.massModule && this.massModule.enabled && this.mass > 0);
   }
 
   public get mass(): number {
-    return this.massModule && this.massModule.enabled ? this.massModule.mass : 0;
+    return this.massModule && this.massModule.enabled
+      ? this.massModule.massProp.get(this.properties)
+      : 0;
   }
 
   public set mass(val: number) {
     if (this.massModule) {
-      this.massModule.mass = val;
+      this.massModule.massProp.set(val, this.properties);
     } else {
       this.massModule = new MassModule({ mass: val });
     }
