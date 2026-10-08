@@ -37,6 +37,7 @@ export class OnlineSessionManager {
   private gameLoop: GameLoop | null = null;
   private dom: OnlineSessionDOMElements;
   private defaultCharacter: Character | null = null;
+  private spawnAlignedPlayerIds: Set<string> = new Set<string>();
 
   constructor(client: OnlineRoomClient, dom: OnlineSessionDOMElements) {
     this.client = client;
@@ -68,6 +69,7 @@ export class OnlineSessionManager {
    * Connects to the online universal room, pre-populating active local players.
    */
   public connect(): void {
+    this.spawnAlignedPlayerIds.clear();
     this.client.localPlayers.clear();
     if (this.gameLoop?.playerManager) {
       for (const p of this.gameLoop.playerManager.players.values()) {
@@ -101,6 +103,7 @@ export class OnlineSessionManager {
   }
 
   public disconnect(): void {
+    this.spawnAlignedPlayerIds.clear();
     this.client.disconnect();
   }
 
@@ -133,7 +136,12 @@ export class OnlineSessionManager {
           isLockHeld: false,
           isAiming: false,
         };
-        this.client.sendPlayerInput(p.id, pkt, p.character, this.gameLoop.objects);
+        // The client must not send any position information until its position has been corrected
+        // and it is fully connected and registered with an authoritative spawn position.
+        const isSpawnAligned = this.spawnAlignedPlayerIds.has(p.id);
+        const charToSend = isSpawnAligned ? p.character : undefined;
+        const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
+        this.client.sendPlayerInput(p.id, pkt, charToSend, objsToSend);
       }
     } else {
       const hero = this.gameLoop.primaryCharacter || this.defaultCharacter;
@@ -149,7 +157,10 @@ export class OnlineSessionManager {
         isLockHeld: false,
         isAiming: false,
       };
-      this.client.sendPlayerInput("keyboard", kbPkt, hero, this.gameLoop.objects);
+      const isSpawnAligned = this.spawnAlignedPlayerIds.has("keyboard");
+      const charToSend = isSpawnAligned ? hero : undefined;
+      const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
+      this.client.sendPlayerInput("keyboard", kbPkt, charToSend, objsToSend);
     }
   }
 
@@ -426,6 +437,9 @@ export class OnlineSessionManager {
           this.gameLoop.primaryCharacter.velocity.x = 0;
           this.gameLoop.primaryCharacter.velocity.y = 0;
         }
+
+        // Local player is now strictly aligned with server-authoritative spawn position!
+        this.spawnAlignedPlayerIds.add(info.localPlayerId);
       }
 
       // Clear any prior interpolator history for this character/id

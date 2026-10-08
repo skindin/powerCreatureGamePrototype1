@@ -144,7 +144,6 @@ export class OnlineRoomClient {
             name: (p.name && !/^Player(\s+\d+)?$/i.test(p.name.trim()) && !/^Controller\s+#\d+$/i.test(p.name.trim()))
               ? p.name
               : (p.localPlayerId === "keyboard" && this.hasCustomName ? this.playerName : undefined),
-            spawnPos: p.spawnPos,
           }));
         }
 
@@ -317,7 +316,7 @@ export class OnlineRoomClient {
     return this.clientId ? `${this.clientId}:${localPlayerId}` : localPlayerId;
   }
 
-  public addPlayer(localPlayerId: string, name?: string, spawnPos?: { x: number; y: number; z?: number }): void {
+  public addPlayer(localPlayerId: string, name?: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       const isCustom = Boolean(
@@ -330,7 +329,6 @@ export class OnlineRoomClient {
         type: "add_player",
         localPlayerId,
         name: isCustom ? name!.trim() : undefined,
-        spawnPos,
       }));
     } catch (_) {}
   }
@@ -390,7 +388,12 @@ export class OnlineRoomClient {
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
-      const charTelemetry = character ? {
+      // The client must not send any position information until its position has been corrected
+      // and it is fully connected and registered with an authoritative spawn position.
+      const localReg = this.localPlayers.get(localPlayerId);
+      const isSpawnAligned = Boolean(localReg && localReg.spawnPos);
+
+      const charTelemetry = (character && isSpawnAligned) ? {
         id: serverCharId,
         name: isCustomCharacter
           ? character.name
@@ -413,7 +416,7 @@ export class OnlineRoomClient {
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)
-      const myHeldObjects = (Array.isArray(actualObjects) && actualObjects.length > 0)
+      const myHeldObjects = (isSpawnAligned && Array.isArray(actualObjects) && actualObjects.length > 0)
         ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
         : [];
 

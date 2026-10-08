@@ -1403,6 +1403,14 @@ powerCreatureGamePrototype1/
   - **100% Submissive Client Spawning (`OnlineSessionManager.ts`)**: When a client joins an online room, it receives the server's authoritative `spawnPos` via `room_joined` / `player_added`. The client is completely submissive: it snaps its local coordinates, primaryCharacter, and baseCharacter directly to the server's dictated `spawnPos`, zeroes its initial velocity, clears any prior interpolator history, and starts streaming regular movement packets from that exact point.
   - **Immediate Jitter Buffer Consumption (`ServerJitterBuffer.ts`)**: Removed the artificial withholding delay from `consume()`. As soon as input packets arrive, they are consumed immediately, ensuring full 1.0× movement speed right from the moment of connection.
 
+### Phase 10.9 — Zero Initial Position Transmission & Authoritative Spawn Correction Gating
+- **Problem**:
+  - The client was streaming local coordinates in `sendTickTelemetry()` and `OnlineRoomClient.sendPlayerInput()` the moment WebSocket connection opened, sending pre-connection sandbox coordinates before the server responded with `room_joined` / `player_added` or before the client snapped to `spawnPos`. The server was receiving and adopting these early coordinates, overriding its intended spawn point.
+- **Architectural Solution**:
+  - **Gated Telemetry in `OnlineSessionManager.ts`**: Introduced `spawnAlignedPlayerIds: Set<string>`. On initial connection or disconnect, the set is cleared. Only after the client receives `onPlayerRegistered` containing the authoritative `spawnPos` and snaps its local entity to the spawn coordinates does the player get added to `spawnAlignedPlayerIds`. Prior to this point, `charToSend` and `objsToSend` are passed as `undefined` in `sendTickTelemetry()`.
+  - **Strict Position Gating in `OnlineRoomClient.ts`**: In `sendPlayerInput()`, `charTelemetry` and `objTelemetry` are strictly `undefined` unless `isSpawnAligned` (`Boolean(localReg && localReg.spawnPos)`) is true. Only pure input commands (`packet`) are transmitted prior to authoritative spawn confirmation.
+  - **Omission of Client-Dictated `spawnPos`**: Removed client-specified `spawnPos` from `join_room` and `add_player` requests so the client never proposes coordinates to the server. The server remains the sole authority over spawn placement.
+
 ---
 
 ## 5. Agent Workflow Rule
