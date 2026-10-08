@@ -1,0 +1,16 @@
+{
+  "file-lock-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "replace_file_content|write_to_file|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/agent-file-guard.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
