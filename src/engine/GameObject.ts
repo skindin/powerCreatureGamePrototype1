@@ -263,7 +263,11 @@ export class GameObject {
   }
 
   public get hasMass(): boolean {
-    return Boolean(this.hasRigidbody && this.rigidbodyModule!.enabled && this.mass > 0);
+    return Boolean(
+      this.hasRigidbody &&
+      this.rigidbodyModule!.enabled &&
+      this.rigidbodyModule!.massProp.get(this.properties) > 0
+    );
   }
 
   public get mass(): number {

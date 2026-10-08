@@ -4732,7 +4732,9 @@ class GameObject {
     }
   }
   get hasMass() {
-    return Boolean(this.hasRigidbody && this.rigidbodyModule.enabled && this.mass > 0);
+    return Boolean(
+      this.hasRigidbody && this.rigidbodyModule.enabled && this.rigidbodyModule.massProp.get(this.properties) > 0
+    );
   }
   get mass() {
     return this.hasRigidbody && this.rigidbodyModule.enabled ? this.rigidbodyModule.massProp.get(this.properties) : 0;
