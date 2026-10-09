@@ -71,6 +71,13 @@ export class GameLoop {
   public latestClockSync: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null = null;
   public isPhysicsPaused = false;
   public globalCollisionMode: CollisionMode = "dynamic";
+  /** World physics conversion multiplier for converting absorbed impact shock to raw HP damage */
+  public get worldCollisionDamageScale(): number {
+    return GameObject.globalWorldCollisionDamageScale;
+  }
+  public set worldCollisionDamageScale(val: number) {
+    GameObject.globalWorldCollisionDamageScale = val;
+  }
   public lastSnapshot: WorldSnapshot | null = null;
   public lastInputs = new Map<string, PlayerInputPacket>();
   public historyBuffer = new StateHistoryBuffer(60, 30);

@@ -7,7 +7,10 @@ import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { JumpModule } from "./JumpModule.js";
 import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
 import { HealthModule } from "./HealthModule.js";
+import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import type { Arena } from "../engine/Arena.js";
+
+export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 
 export class Character extends GameObject {
   public strengthProp: DynamicProperty;
@@ -90,6 +93,7 @@ export class Character extends GameObject {
   public jumpConsumesEnergy: boolean = false;
 
   // Player identity & multiplayer slot
+  public controllerType: CharacterControllerType = "local";
   public playerId: string = "keyboard";
   public playerNumber: number = 1;
   public playerColor: string = "#f59e0b";
@@ -112,6 +116,8 @@ export class Character extends GameObject {
     playerNumber?: number;
     name?: string;
     hasCustomName?: boolean;
+    controllerType?: CharacterControllerType;
+    damageSolverModule?: DamageSolverModule | null;
   } = {}) {
     const initialColor = options.color ?? "#f59e0b";
     super({
@@ -122,8 +128,10 @@ export class Character extends GameObject {
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,
       bounceMod: 0.1,
+      damageSolverModule: options.damageSolverModule !== undefined ? options.damageSolverModule : new DamageSolverModule(),
     });
 
+    this.controllerType = options.controllerType ?? "local";
     this.playerId = options.playerId ?? "keyboard";
     this.playerNumber = options.playerNumber ?? 1;
     this.playerColor = initialColor;
@@ -151,6 +159,9 @@ export class Character extends GameObject {
     this.wallEdgeAssistModule = new WallEdgeAssistModule();
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
     this.healthModule = new HealthModule();
+    if (!this.damageSolverModule) {
+      this.damageSolverModule = new DamageSolverModule();
+    }
   }
 
   /**

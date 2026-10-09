@@ -40,6 +40,7 @@ export class PlayerManager {
 
   public players: Map<string, PlayerEntry> = new Map();
   public remotePlayers: Map<string, Character> = new Map();
+  public dummyCharacters: Character[] = [];
   public onPlayersChanged?: () => void;
   public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
   private actionSeq: number = 0;
@@ -108,13 +109,14 @@ export class PlayerManager {
   public get allCharacters(): Character[] {
     const activeChars = Array.from(this.players.values()).map((p) => p.character);
     const remotes = Array.from(this.remotePlayers.values());
+    const dummies = this.dummyCharacters;
     if (activeChars.length === 0 && remotes.length === 0) {
-      return [this.baseCharacter];
+      return [this.baseCharacter, ...dummies];
     }
     if (activeChars.length === 0) {
-      return [this.baseCharacter, ...remotes];
+      return [this.baseCharacter, ...remotes, ...dummies];
     }
-    return [...activeChars, ...remotes];
+    return [...activeChars, ...remotes, ...dummies];
   }
 
   public get primaryCharacter(): Character {
@@ -767,6 +769,21 @@ export class PlayerManager {
     if (this.players.size === 0 && !inputs.has("keyboard")) {
       if (input.draggedEntity !== this.baseCharacter) {
         this.baseCharacter.updateCharacter(
+          dt,
+          { x: 0, y: 0 },
+          false,
+          null,
+          this.arena,
+          false,
+          this.arena.entities
+        );
+      }
+    }
+
+    // Always update dummy characters physics, health and ground settling (controllerType === 'none')
+    for (const dummy of this.dummyCharacters) {
+      if (input.draggedEntity !== dummy) {
+        dummy.updateCharacter(
           dt,
           { x: 0, y: 0 },
           false,

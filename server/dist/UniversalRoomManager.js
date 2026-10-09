@@ -4608,7 +4608,7 @@ class MotionIntegrator {
     }
   }
 }
-class GameObject {
+const _GameObject = class _GameObject {
   constructor(options = {}) {
     __publicField(this, "id");
     __publicField(this, "name");
@@ -4650,6 +4650,7 @@ class GameObject {
     __publicField(this, "rollModule", null);
     __publicField(this, "healthModule", null);
     __publicField(this, "damageAuraModule", null);
+    __publicField(this, "damageSolverModule", null);
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -4691,6 +4692,7 @@ class GameObject {
     this.rollModule = options.rollModule ?? null;
     this.healthModule = options.healthModule ?? null;
     this.damageAuraModule = options.damageAuraModule ?? null;
+    this.damageSolverModule = options.damageSolverModule ?? null;
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -4727,6 +4729,15 @@ class GameObject {
       this.rollModule.angularVelocity.y = 0;
       this.rollModule.angularVelocity.z = 0;
     }
+  }
+  /**
+   * Dispatches a physical impact shock event to attached modules (such as DamageSolverModule).
+   */
+  dispatchImpact(event, worldCollisionDamageScale = _GameObject.globalWorldCollisionDamageScale) {
+    if (this.damageSolverModule && this.damageSolverModule.enabled && this.healthModule) {
+      return this.damageSolverModule.handleImpact(event, this, this.healthModule, worldCollisionDamageScale);
+    }
+    return 0;
   }
   // --- Convenience Getters & Setters ---
   get hasRigidbody() {
@@ -5277,12 +5288,25 @@ class GameObject {
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return;
     const normalVel = dot;
+    const impactSpeed = Math.abs(normalVel);
     if (restitution > 0 && this.hasMass) {
       this.velocity.x -= (1 + restitution) * normalVel * normalX;
       this.velocity.y -= (1 + restitution) * normalVel * normalY;
     } else {
       this.velocity.x -= normalVel * normalX;
       this.velocity.y -= normalVel * normalY;
+    }
+    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
+    const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod));
+    const shockDeceleration = impactSpeed * 60 * absorbedFraction;
+    if (shockDeceleration > 0.01) {
+      this.dispatchImpact({
+        absorbedShock: shockDeceleration,
+        impactSpeed,
+        otherEntity: null,
+        normalX,
+        normalY
+      });
     }
     if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
       const roll = this.rollModule;
@@ -5362,7 +5386,10 @@ class GameObject {
       }
     }
   }
-}
+};
+/** Global world scale for converting absorbed collision shock to raw HP damage */
+__publicField(_GameObject, "globalWorldCollisionDamageScale", 1);
+let GameObject = _GameObject;
 class WalkingModule {
   constructor(options) {
     __publicField(this, "id", "walking");
@@ -6471,6 +6498,60 @@ __publicField(_HealthModule, "RESPAWN_SPAWNS", [
   // Slot 4 (Southeast open clearing)
 ]);
 let HealthModule = _HealthModule;
+class DamageSolverModule {
+  // 60ms ~ 3-4 frames
+  constructor(options) {
+    __publicField(this, "id", "damageSolver");
+    __publicField(this, "name", "Damage Solver & Armor");
+    __publicField(this, "enabled", true);
+    /**
+     * Multiplier / susceptibility percentage for blunt physical impacts.
+     * 1.0 = 100% normal damage, 0.0 = completely immune, 0.5 = 50% armored resistance.
+     */
+    __publicField(this, "impactSusceptibilityProp");
+    /**
+     * Minimum absorbed shock acceleration (u/s²) required before trauma occurs.
+     * Prevents gentle walking into walls or light nudges from dealing damage.
+     */
+    __publicField(this, "minShockThresholdProp");
+    /** Cooldown timer to prevent multi-substep collision spam in a single frame */
+    __publicField(this, "lastImpactTime", 0);
+    __publicField(this, "impactCooldownMs", 60);
+    this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
+    this.minShockThresholdProp = new DynamicProperty((options == null ? void 0 : options.minShockThreshold) ?? 4);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  getImpactSusceptibility(registry) {
+    return this.impactSusceptibilityProp.get(registry);
+  }
+  getMinShockThreshold(registry) {
+    return this.minShockThresholdProp.get(registry);
+  }
+  /**
+   * Evaluates an incoming physical impact shock event against thresholds
+   * and deducts damage from the entity's HealthModule.
+   */
+  handleImpact(event, entity, healthModule, worldCollisionDamageScale) {
+    if (!this.enabled || !healthModule || !healthModule.enabled) return 0;
+    const now = performance.now();
+    if (now - this.lastImpactTime < this.impactCooldownMs) {
+      return 0;
+    }
+    const registry = entity.properties;
+    const susceptibility = this.getImpactSusceptibility(registry);
+    if (susceptibility <= 0) return 0;
+    const threshold = this.getMinShockThreshold(registry);
+    const netShock = Math.max(0, event.absorbedShock - threshold);
+    if (netShock <= 0) return 0;
+    const finalDamage = netShock * worldCollisionDamageScale * susceptibility;
+    if (finalDamage > 1e-3) {
+      this.lastImpactTime = now;
+      healthModule.takeDamage(finalDamage, registry);
+      return finalDamage;
+    }
+    return 0;
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";
@@ -6481,7 +6562,8 @@ class Character extends GameObject {
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,
-      bounceMod: 0.1
+      bounceMod: 0.1,
+      damageSolverModule: options.damageSolverModule !== void 0 ? options.damageSolverModule : new DamageSolverModule()
     });
     __publicField(this, "strengthProp");
     __publicField(this, "facingAngle");
@@ -6509,6 +6591,7 @@ class Character extends GameObject {
     /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
     __publicField(this, "jumpConsumesEnergy", false);
     // Player identity & multiplayer slot
+    __publicField(this, "controllerType", "local");
     __publicField(this, "playerId", "keyboard");
     __publicField(this, "playerNumber", 1);
     __publicField(this, "playerColor", "#f59e0b");
@@ -6517,6 +6600,7 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
+    this.controllerType = options.controllerType ?? "local";
     this.playerId = options.playerId ?? "keyboard";
     this.playerNumber = options.playerNumber ?? 1;
     this.playerColor = initialColor;
@@ -6537,6 +6621,9 @@ class Character extends GameObject {
     this.wallEdgeAssistModule = new WallEdgeAssistModule();
     this.climbingModule = null;
     this.healthModule = new HealthModule();
+    if (!this.damageSolverModule) {
+      this.damageSolverModule = new DamageSolverModule();
+    }
   }
   get hasStrength() {
     return this.strength > 0;
@@ -7173,6 +7260,20 @@ class CollisionResolver {
     entity.lastContactPoint = { x: cx, y: cy };
     entity.lastContactNormal = { x: normX, y: normY };
     entity.lastCollisionTime = nowWall;
+    if (vn < 0) {
+      const impactSpeed = Math.abs(vn);
+      const absFrac = Math.max(0, 1 - Math.min(1, bRestitution));
+      const shock = impactSpeed * 60 * absFrac;
+      if (shock > 0.01) {
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY
+        });
+      }
+    }
     return true;
   }
   /**
@@ -7279,6 +7380,43 @@ class CollisionResolver {
         b.rollModule.angularVelocity.z -= spinImpulseB;
         b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
       }
+    }
+    const relSpeed = Math.abs(velAlongNormal);
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
+    const absFracA = Math.max(0, 1 - Math.min(1, bModA));
+    const absFracB = Math.max(0, 1 - Math.min(1, bModB));
+    let deltaVa = relSpeed * 0.5;
+    let deltaVb = relSpeed * 0.5;
+    if (!isMasslessA && !isMasslessB) {
+      deltaVa = normalImpulse * invMassA;
+      deltaVb = normalImpulse * invMassB;
+    } else if (isMasslessA && !isMasslessB) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && isMasslessB) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
+    }
+    const shockA = Math.abs(deltaVa) * 60 * absFracA;
+    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+    if (shockA > 0.01) {
+      a.dispatchImpact({
+        absorbedShock: shockA,
+        impactSpeed: relSpeed,
+        otherEntity: b,
+        normalX: -normX,
+        normalY: -normY
+      });
+    }
+    if (shockB > 0.01) {
+      b.dispatchImpact({
+        absorbedShock: shockB,
+        impactSpeed: relSpeed,
+        otherEntity: a,
+        normalX: normX,
+        normalY: normY
+      });
     }
   }
   /**

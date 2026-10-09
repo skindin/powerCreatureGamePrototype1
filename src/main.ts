@@ -220,6 +220,19 @@ function bootstrap(): void {
     name: initialPlayerHandle,
   });
 
+  // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)
+  const dummyCharacter = new Character({
+    id: "dummy-1",
+    x: 6.8,
+    y: 7.0,
+    color: "#64748b", // Neutral slate gray
+    colliderRadius: 0.44,
+    mass: 1.5,
+    strength: 0,
+    name: "Sparring Dummy",
+    controllerType: "none",
+  });
+
   // 3. Initialize Initial Freebody Objects in unit coordinates
   const objects: GameObject[] = [
     new GameObject({
@@ -282,12 +295,12 @@ function bootstrap(): void {
   ];
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
-  arena.syncEntitiesWithWalls([character, ...objects]);
+  arena.syncEntitiesWithWalls([character, dummyCharacter, ...objects]);
 
   // 4. Initialize Renderer & Dev Panel
   let gameLoop: GameLoop | null = null;
   const getAllActiveCharacters = (): Character[] => {
-    return gameLoop ? gameLoop.allCharacters : [character];
+    return gameLoop ? gameLoop.allCharacters : [character, dummyCharacter];
   };
 
   const renderer = new Renderer(ctx);
@@ -382,7 +395,9 @@ function bootstrap(): void {
     inputManager,
     devPanel,
   });
+  gameLoop.playerManager.dummyCharacters.push(dummyCharacter);
   (window as any).gameLoop = gameLoop;
+  (window as any).dummyCharacter = dummyCharacter;
 
   devPanel.getGameLoop = () => gameLoop;
   devPanel.getRenderer = () => renderer;

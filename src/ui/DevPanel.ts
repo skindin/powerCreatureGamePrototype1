@@ -16,6 +16,7 @@ import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import { RigidbodyModule } from "../engine/RigidbodyModule.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
+import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 
 export interface CreatorPreset {
@@ -818,6 +819,14 @@ export class DevPanel {
             </div>
             <input type="range" id="slide-static-thresh" min="0.02" max="1.0" step="0.02" value="${this.arena.staticFrictionThreshold}">
           </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Collision Damage Scale (HP / Shock)</span>
+              <span id="val-collision-damage-scale">${GameObject.globalWorldCollisionDamageScale.toFixed(2)}</span>
+            </div>
+            <input type="range" id="slide-collision-damage-scale" min="0.0" max="5.0" step="0.1" value="${GameObject.globalWorldCollisionDamageScale}">
+          </div>
         </div>
       </div>
     `;
@@ -985,6 +994,9 @@ export class DevPanel {
 
     const hasDamageAuraModule = Boolean(e.damageAuraModule);
     const damageAuraEnabled = Boolean(e.damageAuraModule?.enabled);
+
+    const hasDamageSolverModule = Boolean(e.damageSolverModule);
+    const damageSolverEnabled = Boolean(e.damageSolverModule?.enabled);
 
     let html = "";
     let attachedCount = 0;
@@ -1436,6 +1448,29 @@ export class DevPanel {
       `;
     }
 
+    // Damage Solver & Armor Module
+    if (hasDamageSolverModule && e.damageSolverModule) {
+      attachedCount++;
+      const healthWarning = !hasHealthModule
+        ? `<div class="module-dep-warning">⚠️ Inactive: Requires Health & Vitality behavior</div>`
+        : '';
+      html += `
+        <div class="module-card ${!damageSolverEnabled ? 'module-disabled' : ''}" data-module-id="damageSolver">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🛡️ Damage Solver & Armor</label>
+            ${renderToggleBtn("damageSolver", damageSolverEnabled)}
+          </div>
+          ${!damageSolverEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Damage Solver is disabled</div>` : ''}
+          ${healthWarning}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Converts physical impacts, wall collisions, and collisions with freebodies into shock damage.
+          </div>
+          <div id="prop-socket-impact-susceptibility"></div>
+          <div id="prop-socket-min-shock-thresh"></div>
+        </div>
+      `;
+    }
+
     if (attachedCount === 0) {
       html = `
         <div class="empty-behaviors-msg">
@@ -1466,6 +1501,7 @@ export class DevPanel {
       { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRollModule },
       { id: "health", name: "Health & Vitality", icon: "❤️", description: "Hit points, passive health regeneration, and death / respawn loop", isAttached: hasHealthModule },
       { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
+      { id: "damageSolver", name: "Damage Solver & Armor", icon: "🛡️", description: "Converts blunt physical impacts and wall collisions into HP damage", isAttached: hasDamageSolverModule },
     ];
 
     if (isChar) {
@@ -1587,6 +1623,9 @@ export class DevPanel {
       case "damageAura":
         if (e.damageAuraModule) e.damageAuraModule.enabled = !e.damageAuraModule.enabled;
         break;
+      case "damageSolver":
+        if (e.damageSolverModule) e.damageSolverModule.enabled = !e.damageSolverModule.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -1665,6 +1704,9 @@ export class DevPanel {
         break;
       case "damageAura":
         e.damageAuraModule = null;
+        break;
+      case "damageSolver":
+        e.damageSolverModule = null;
         break;
     }
 
@@ -1751,6 +1793,12 @@ export class DevPanel {
         e.damageAuraModule = new DamageAuraModule({
           damageRadius: 2.0,
           damageRate: 20.0,
+        });
+        break;
+      case "damageSolver":
+        e.damageSolverModule = new DamageSolverModule({
+          impactSusceptibility: 1.0,
+          minShockThreshold: 2.0,
         });
         break;
     }
@@ -2202,6 +2250,33 @@ export class DevPanel {
         auraRateSocketEl.appendChild(rateCtrl.element);
       }
     }
+
+    // Damage Solver & Armor Module controls (applicable to any entity)
+    if (e.damageSolverModule) {
+      const ds = e.damageSolverModule;
+
+      const suscSocketEl = this.container.querySelector("#prop-socket-impact-susceptibility");
+      if (suscSocketEl) {
+        const suscCtrl = new PropertyControl({
+          property: ds.impactSusceptibilityProp,
+          owner: e,
+          label: "Impact Susceptibility (Multiplier)",
+          step: 0.1,
+        });
+        suscSocketEl.appendChild(suscCtrl.element);
+      }
+
+      const threshSocketEl = this.container.querySelector("#prop-socket-min-shock-thresh");
+      if (threshSocketEl) {
+        const threshCtrl = new PropertyControl({
+          property: ds.minShockThresholdProp,
+          owner: e,
+          label: "Min Shock Threshold (u/s²)",
+          step: 0.5,
+        });
+        threshSocketEl.appendChild(threshCtrl.element);
+      }
+    }
   }
 
   private setSliderVal(sliderId: string, labelId: string, val: number, decimals: number): void {
@@ -2641,6 +2716,14 @@ export class DevPanel {
 
     this.setupSlider("slide-static-thresh", "val-static-thresh", (val) => {
       this.arena.staticFrictionThreshold = val;
+    }, 2);
+
+    this.setupSlider("slide-collision-damage-scale", "val-collision-damage-scale", (val) => {
+      GameObject.globalWorldCollisionDamageScale = val;
+      const loop = this.getGameLoop ? this.getGameLoop() : null;
+      if (loop) {
+        loop.worldCollisionDamageScale = val;
+      }
     }, 2);
 
     // 8. Presets

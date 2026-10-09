@@ -9,6 +9,8 @@ import { RigidbodyModule } from "./RigidbodyModule.js";
 import { SurfaceSupportModule } from "./SurfaceSupportModule.js";
 import { MotionIntegrator } from "./MotionIntegrator.js";
 import { DamageAuraModule } from "./DamageAuraModule.js";
+import { DamageSolverModule } from "./DamageSolverModule.js";
+import type { ImpactEvent } from "./DamageSolverModule.js";
 import type { HealthModule } from "../character/HealthModule.js";
 
 import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
@@ -54,6 +56,9 @@ export class GameObject {
   // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
   public isImmovable: boolean = false;
   public serverCharId?: string;
+
+  /** Global world scale for converting absorbed collision shock to raw HP damage */
+  public static globalWorldCollisionDamageScale: number = 1.0;
 
   // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
   public properties: ObjectPropertiesRegistry = new ObjectPropertiesRegistry();
@@ -109,6 +114,7 @@ export class GameObject {
   public rollModule: RollModule | null = null;
   public healthModule: HealthModule | null = null;
   public damageAuraModule: DamageAuraModule | null = null;
+  public damageSolverModule: DamageSolverModule | null = null;
 
   constructor(options: {
     id?: string;
@@ -129,6 +135,7 @@ export class GameObject {
     rollModule?: RollModule | null;
     healthModule?: HealthModule | null;
     damageAuraModule?: DamageAuraModule | null;
+    damageSolverModule?: DamageSolverModule | null;
     // Convenience option shorthands
     mass?: number;
     colliderRadius?: number;
@@ -205,6 +212,17 @@ export class GameObject {
     this.rollModule = options.rollModule ?? null;
     this.healthModule = options.healthModule ?? null;
     this.damageAuraModule = options.damageAuraModule ?? null;
+    this.damageSolverModule = options.damageSolverModule ?? null;
+  }
+
+  /**
+   * Dispatches a physical impact shock event to attached modules (such as DamageSolverModule).
+   */
+  public dispatchImpact(event: ImpactEvent, worldCollisionDamageScale = GameObject.globalWorldCollisionDamageScale): number {
+    if (this.damageSolverModule && this.damageSolverModule.enabled && this.healthModule) {
+      return this.damageSolverModule.handleImpact(event, this, this.healthModule, worldCollisionDamageScale);
+    }
+    return 0;
   }
 
   // --- Convenience Getters & Setters ---
@@ -943,6 +961,7 @@ export class GameObject {
     if (dot >= 0) return; // Moving away from wall
 
     const normalVel = dot;
+    const impactSpeed = Math.abs(normalVel);
 
     if (restitution > 0 && this.hasMass) {
       // Elastic / partially elastic bounce
@@ -952,6 +971,23 @@ export class GameObject {
       // Inelastic wall impact (restitution = 0 or no bounce module / no mass)
       this.velocity.x -= normalVel * normalX;
       this.velocity.y -= normalVel * normalY;
+    }
+
+    // Physical Impact Damage Calculation:
+    // Deceleration shock = deltaV / dt (normalized to 1 frame @ 60Hz: impactSpeed * 60).
+    // Cushioning from bounciness (elasticity): absorbed shock is reduced by (1 - bounce).
+    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
+    const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod));
+    const shockDeceleration = impactSpeed * 60 * absorbedFraction;
+
+    if (shockDeceleration > 0.01) {
+      this.dispatchImpact({
+        absorbedShock: shockDeceleration,
+        impactSpeed,
+        otherEntity: null,
+        normalX,
+        normalY,
+      });
     }
 
     // Tangential friction and 3D angular velocity coupling on wall

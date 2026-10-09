@@ -364,6 +364,21 @@ export class CollisionResolver {
     entity.lastContactNormal = { x: normX, y: normY };
     entity.lastCollisionTime = nowWall;
 
+    if (vn < 0) {
+      const impactSpeed = Math.abs(vn);
+      const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution));
+      const shock = impactSpeed * 60 * absFrac;
+      if (shock > 0.01) {
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY,
+        });
+      }
+    }
+
     return true;
   }
 
@@ -506,6 +521,55 @@ export class CollisionResolver {
         b.rollModule.angularVelocity.z -= spinImpulseB;
         b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
       }
+    }
+
+    // Physical Impact Shock Calculation:
+    // Change in velocity along normal for each body:
+    // deltaVa = normalImpulse * invMassA
+    // deltaVb = normalImpulse * invMassB
+    // Deceleration shock = deltaV / dt (scaled to 1 frame @ 60Hz: deltaV * 60)
+    // Elastic cushioning: absorbedFraction = (1 - bounceMod)
+    const relSpeed = Math.abs(velAlongNormal);
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
+    const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA));
+    const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB));
+
+    // Compute effective deltaV for A and B
+    let deltaVa = relSpeed * 0.5;
+    let deltaVb = relSpeed * 0.5;
+    if (!isMasslessA && !isMasslessB) {
+      deltaVa = (normalImpulse * invMassA);
+      deltaVb = (normalImpulse * invMassB);
+    } else if (isMasslessA && !isMasslessB) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && isMasslessB) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
+    }
+
+    const shockA = Math.abs(deltaVa) * 60 * absFracA;
+    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+
+    if (shockA > 0.01) {
+      a.dispatchImpact({
+        absorbedShock: shockA,
+        impactSpeed: relSpeed,
+        otherEntity: b,
+        normalX: -normX,
+        normalY: -normY,
+      });
+    }
+
+    if (shockB > 0.01) {
+      b.dispatchImpact({
+        absorbedShock: shockB,
+        impactSpeed: relSpeed,
+        otherEntity: a,
+        normalX: normX,
+        normalY: normY,
+      });
     }
   }
 
