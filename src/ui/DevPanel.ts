@@ -2717,8 +2717,8 @@ export class DevPanel {
       value: GameObject.globalWorldCollisionDamageScale,
       min: 0.0,
       max: 5.0,
-      step: 0.1,
-      decimals: 2,
+      step: 0.005,
+      decimals: 3,
       suffix: " HP/Shock",
       onChange: (val) => {
         GameObject.globalWorldCollisionDamageScale = val;
