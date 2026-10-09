@@ -1,8 +1,11 @@
+import { DynamicProperty } from "./properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
+
 export class ColliderModule {
-  public radius: number;
+  public radiusProp: DynamicProperty;
+  public ccdThresholdRatioProp: DynamicProperty;
   public enabled: boolean;
   public canSweep: boolean;
-  public ccdThresholdRatio: number;
 
   constructor(options: {
     radius?: number;
@@ -10,10 +13,34 @@ export class ColliderModule {
     canSweep?: boolean;
     ccdThresholdRatio?: number;
   } = {}) {
-    this.radius = options.radius ?? 0.32;
+    this.radiusProp = new DynamicProperty(options.radius ?? 0.32);
+    this.ccdThresholdRatioProp = new DynamicProperty(options.ccdThresholdRatio ?? 0.5);
     this.enabled = options.enabled ?? true;
     this.canSweep = options.canSweep ?? true;
-    this.ccdThresholdRatio = options.ccdThresholdRatio ?? 0.5;
+  }
+
+  public get radius(): number {
+    return this.radiusProp.literalValue;
+  }
+
+  public set radius(val: number) {
+    this.radiusProp.literalValue = val;
+  }
+
+  public get ccdThresholdRatio(): number {
+    return this.ccdThresholdRatioProp.literalValue;
+  }
+
+  public set ccdThresholdRatio(val: number) {
+    this.ccdThresholdRatioProp.literalValue = val;
+  }
+
+  public getRadius(registry?: ObjectPropertiesRegistry): number {
+    return this.radiusProp.get(registry);
+  }
+
+  public getCcdThresholdRatio(registry?: ObjectPropertiesRegistry): number {
+    return this.ccdThresholdRatioProp.get(registry);
   }
 }
 

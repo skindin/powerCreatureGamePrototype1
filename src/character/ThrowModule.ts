@@ -27,15 +27,66 @@ export interface TrajectoryCalculation {
   visualShape?: "circle" | "box";
 }
 
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
+
 export class ThrowModule {
   public id = "throw";
   public name = "Throw Ability";
   public enabled = true;
 
   // Tunable throw physics in wall-based units
-  public baseThrowForce = 7.6; // Base throw power in u/s
-  public maxThrowAimDistance = 13.0; // Max throw aim distance in units (~13 wall tiles)
-  public maxThrowHeight = 5.0; // Max throw height reach in units above release point (~5 wall heights)
+  public baseThrowForceProp: DynamicProperty;
+  public maxThrowAimDistanceProp: DynamicProperty;
+  public maxThrowHeightProp: DynamicProperty;
+
+  constructor(options?: {
+    baseThrowForce?: number;
+    maxThrowAimDistance?: number;
+    maxThrowHeight?: number;
+    enabled?: boolean;
+  }) {
+    this.baseThrowForceProp = new DynamicProperty(options?.baseThrowForce ?? 7.6);
+    this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
+    this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get baseThrowForce(): number {
+    return this.baseThrowForceProp.literalValue;
+  }
+
+  public set baseThrowForce(val: number) {
+    this.baseThrowForceProp.literalValue = val;
+  }
+
+  public get maxThrowAimDistance(): number {
+    return this.maxThrowAimDistanceProp.literalValue;
+  }
+
+  public set maxThrowAimDistance(val: number) {
+    this.maxThrowAimDistanceProp.literalValue = val;
+  }
+
+  public get maxThrowHeight(): number {
+    return this.maxThrowHeightProp.literalValue;
+  }
+
+  public set maxThrowHeight(val: number) {
+    this.maxThrowHeightProp.literalValue = val;
+  }
+
+  public getBaseThrowForce(registry?: ObjectPropertiesRegistry): number {
+    return this.baseThrowForceProp.get(registry);
+  }
+
+  public getMaxThrowAimDistance(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowAimDistanceProp.get(registry);
+  }
+
+  public getMaxThrowHeight(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowHeightProp.get(registry);
+  }
 
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)

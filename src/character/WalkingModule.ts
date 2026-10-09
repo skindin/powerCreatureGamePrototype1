@@ -1,6 +1,8 @@
 import { Vector2D } from "../engine/GameObject.js";
 import type { Character } from "./Character.js";
 import type { Arena } from "../engine/Arena.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export interface WalkingModuleOptions {
   maxWalkForce?: number;
@@ -17,10 +19,10 @@ export class WalkingModule {
   public enabled = true;
 
   // Maximum propulsion / braking force exerted by the character's legs (in Newtons / Force units)
-  public maxWalkForce = 35.0;
+  public maxWalkForceProp: DynamicProperty;
 
   // Maximum physical leg stride / cadence speed cap (u/s)
-  public maxWalkSpeed = 5.2;
+  public maxWalkSpeedProp: DynamicProperty;
 
   // Drag damping factor for backwards compatibility / reference
   public dragDamping = 8.01;
@@ -29,15 +31,51 @@ export class WalkingModule {
   public walkInAir = true;
 
   // Air friction multiplier applied when airborne (floating friction to stay still)
-  public airFriction = 1.0;
+  public airFrictionProp: DynamicProperty;
 
   constructor(options?: WalkingModuleOptions) {
-    if (options?.maxWalkForce !== undefined) this.maxWalkForce = options.maxWalkForce;
-    if (options?.maxWalkSpeed !== undefined) this.maxWalkSpeed = options.maxWalkSpeed;
+    this.maxWalkForceProp = new DynamicProperty(options?.maxWalkForce ?? 35.0);
+    this.maxWalkSpeedProp = new DynamicProperty(options?.maxWalkSpeed ?? 5.2);
     if (options?.dragDamping !== undefined) this.dragDamping = options.dragDamping;
     if (options?.walkInAir !== undefined) this.walkInAir = options.walkInAir;
-    if (options?.airFriction !== undefined) this.airFriction = options.airFriction;
+    this.airFrictionProp = new DynamicProperty(options?.airFriction ?? 1.0);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get maxWalkForce(): number {
+    return this.maxWalkForceProp.literalValue;
+  }
+
+  public set maxWalkForce(val: number) {
+    this.maxWalkForceProp.literalValue = val;
+  }
+
+  public get maxWalkSpeed(): number {
+    return this.maxWalkSpeedProp.literalValue;
+  }
+
+  public set maxWalkSpeed(val: number) {
+    this.maxWalkSpeedProp.literalValue = val;
+  }
+
+  public get airFriction(): number {
+    return this.airFrictionProp.literalValue;
+  }
+
+  public set airFriction(val: number) {
+    this.airFrictionProp.literalValue = val;
+  }
+
+  public getMaxWalkForce(registry?: ObjectPropertiesRegistry): number {
+    return this.maxWalkForceProp.get(registry);
+  }
+
+  public getMaxWalkSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxWalkSpeedProp.get(registry);
+  }
+
+  public getAirFriction(registry?: ObjectPropertiesRegistry): number {
+    return this.airFrictionProp.get(registry);
   }
 
   /**

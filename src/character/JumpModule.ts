@@ -1,6 +1,8 @@
 import type { Character } from "./Character.js";
 import type { Arena } from "../engine/Arena.js";
 import type { Vector2D } from "../engine/GameObject.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export interface JumpModuleOptions {
   jumpStrength?: number;
@@ -15,22 +17,42 @@ export class JumpModule {
 
   /**
    * Jump strength (impulse in N·s).
-   * Default 18.5 N·s provides enough propulsion to achieve the max takeoff speed (~9.67 u/s, 1.5 units height)
-   * both unencumbered (1.2kg) and when holding the Light Blue Box (0.7kg, total 1.9kg).
-   * When carrying the Heavy Red Box (2.6kg, total 3.8kg), takeoff speed drops to ~4.87 u/s (~0.39 units height).
    */
-  public jumpStrength = 18.5;
+  public jumpStrengthProp: DynamicProperty;
 
   /**
    * Maximum initial takeoff speed cap (in units per second).
-   * 9.67 u/s achieves a peak ballistic jump height of ~1.5 units under gravity 30.0 u/s^2.
    */
-  public maxInitialSpeed = 9.67;
+  public maxInitialSpeedProp: DynamicProperty;
 
   constructor(options?: JumpModuleOptions) {
-    if (options?.jumpStrength !== undefined) this.jumpStrength = options.jumpStrength;
-    if (options?.maxInitialSpeed !== undefined) this.maxInitialSpeed = options.maxInitialSpeed;
+    this.jumpStrengthProp = new DynamicProperty(options?.jumpStrength ?? 18.5);
+    this.maxInitialSpeedProp = new DynamicProperty(options?.maxInitialSpeed ?? 9.67);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get jumpStrength(): number {
+    return this.jumpStrengthProp.literalValue;
+  }
+
+  public set jumpStrength(val: number) {
+    this.jumpStrengthProp.literalValue = val;
+  }
+
+  public get maxInitialSpeed(): number {
+    return this.maxInitialSpeedProp.literalValue;
+  }
+
+  public set maxInitialSpeed(val: number) {
+    this.maxInitialSpeedProp.literalValue = val;
+  }
+
+  public getJumpStrength(registry?: ObjectPropertiesRegistry): number {
+    return this.jumpStrengthProp.get(registry);
+  }
+
+  public getMaxInitialSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxInitialSpeedProp.get(registry);
   }
 
   /**

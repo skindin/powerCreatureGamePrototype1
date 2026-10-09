@@ -4092,44 +4092,6 @@ __publicField(_Arena, "WALL_PRESETS", [
   }
 ]);
 let Arena = _Arena;
-class ColliderModule {
-  constructor(options = {}) {
-    __publicField(this, "radius");
-    __publicField(this, "enabled");
-    __publicField(this, "canSweep");
-    __publicField(this, "ccdThresholdRatio");
-    this.radius = options.radius ?? 0.32;
-    this.enabled = options.enabled ?? true;
-    this.canSweep = options.canSweep ?? true;
-    this.ccdThresholdRatio = options.ccdThresholdRatio ?? 0.5;
-  }
-}
-class FrictionModule {
-  constructor(options = {}) {
-    __publicField(this, "staticFrictionMod");
-    __publicField(this, "dynamicFrictionMod");
-    __publicField(this, "enabled");
-    this.staticFrictionMod = options.staticFrictionMod ?? 1;
-    this.dynamicFrictionMod = options.dynamicFrictionMod ?? 1;
-    this.enabled = options.enabled ?? true;
-  }
-}
-class BounceModule {
-  constructor(options = {}) {
-    __publicField(this, "bounceMod");
-    __publicField(this, "verticalBounce");
-    __publicField(this, "enabled");
-    this.bounceMod = options.bounceMod ?? 0.4;
-    this.verticalBounce = options.verticalBounce ?? true;
-    this.enabled = options.enabled ?? true;
-  }
-}
-class GravityModule {
-  constructor(options = {}) {
-    __publicField(this, "enabled");
-    this.enabled = options.enabled ?? true;
-  }
-}
 class DynamicProperty {
   constructor(initialValue = 0, isReference = false, referenceKey = "") {
     __publicField(this, "isReference", false);
@@ -4301,6 +4263,89 @@ class ObjectPropertiesRegistry {
   }
   static fromJSON(data) {
     return new ObjectPropertiesRegistry(data);
+  }
+}
+class ColliderModule {
+  constructor(options = {}) {
+    __publicField(this, "radiusProp");
+    __publicField(this, "ccdThresholdRatioProp");
+    __publicField(this, "enabled");
+    __publicField(this, "canSweep");
+    this.radiusProp = new DynamicProperty(options.radius ?? 0.32);
+    this.ccdThresholdRatioProp = new DynamicProperty(options.ccdThresholdRatio ?? 0.5);
+    this.enabled = options.enabled ?? true;
+    this.canSweep = options.canSweep ?? true;
+  }
+  get radius() {
+    return this.radiusProp.literalValue;
+  }
+  set radius(val) {
+    this.radiusProp.literalValue = val;
+  }
+  get ccdThresholdRatio() {
+    return this.ccdThresholdRatioProp.literalValue;
+  }
+  set ccdThresholdRatio(val) {
+    this.ccdThresholdRatioProp.literalValue = val;
+  }
+  getRadius(registry) {
+    return this.radiusProp.get(registry);
+  }
+  getCcdThresholdRatio(registry) {
+    return this.ccdThresholdRatioProp.get(registry);
+  }
+}
+class FrictionModule {
+  constructor(options = {}) {
+    __publicField(this, "staticFrictionProp");
+    __publicField(this, "dynamicFrictionProp");
+    __publicField(this, "enabled");
+    this.staticFrictionProp = new DynamicProperty(options.staticFrictionMod ?? 1);
+    this.dynamicFrictionProp = new DynamicProperty(options.dynamicFrictionMod ?? 1);
+    this.enabled = options.enabled ?? true;
+  }
+  get staticFrictionMod() {
+    return this.staticFrictionProp.literalValue;
+  }
+  set staticFrictionMod(val) {
+    this.staticFrictionProp.literalValue = val;
+  }
+  get dynamicFrictionMod() {
+    return this.dynamicFrictionProp.literalValue;
+  }
+  set dynamicFrictionMod(val) {
+    this.dynamicFrictionProp.literalValue = val;
+  }
+  getStaticFrictionMod(registry) {
+    return this.staticFrictionProp.get(registry);
+  }
+  getDynamicFrictionMod(registry) {
+    return this.dynamicFrictionProp.get(registry);
+  }
+}
+class BounceModule {
+  constructor(options = {}) {
+    __publicField(this, "bounceModProp");
+    __publicField(this, "verticalBounce");
+    __publicField(this, "enabled");
+    this.bounceModProp = new DynamicProperty(options.bounceMod ?? 0.4);
+    this.verticalBounce = options.verticalBounce ?? true;
+    this.enabled = options.enabled ?? true;
+  }
+  get bounceMod() {
+    return this.bounceModProp.literalValue;
+  }
+  set bounceMod(val) {
+    this.bounceModProp.literalValue = val;
+  }
+  getBounceMod(registry) {
+    return this.bounceModProp.get(registry);
+  }
+}
+class GravityModule {
+  constructor(options = {}) {
+    __publicField(this, "enabled");
+    this.enabled = options.enabled ?? true;
   }
 }
 class RigidbodyModule {
@@ -5319,21 +5364,48 @@ class WalkingModule {
     __publicField(this, "name", "Walking Module");
     __publicField(this, "enabled", true);
     // Maximum propulsion / braking force exerted by the character's legs (in Newtons / Force units)
-    __publicField(this, "maxWalkForce", 35);
+    __publicField(this, "maxWalkForceProp");
     // Maximum physical leg stride / cadence speed cap (u/s)
-    __publicField(this, "maxWalkSpeed", 5.2);
+    __publicField(this, "maxWalkSpeedProp");
     // Drag damping factor for backwards compatibility / reference
     __publicField(this, "dragDamping", 8.01);
     // When enabled, walking force applies in the air, granting air control / steering
     __publicField(this, "walkInAir", true);
     // Air friction multiplier applied when airborne (floating friction to stay still)
-    __publicField(this, "airFriction", 1);
-    if ((options == null ? void 0 : options.maxWalkForce) !== void 0) this.maxWalkForce = options.maxWalkForce;
-    if ((options == null ? void 0 : options.maxWalkSpeed) !== void 0) this.maxWalkSpeed = options.maxWalkSpeed;
+    __publicField(this, "airFrictionProp");
+    this.maxWalkForceProp = new DynamicProperty((options == null ? void 0 : options.maxWalkForce) ?? 35);
+    this.maxWalkSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxWalkSpeed) ?? 5.2);
     if ((options == null ? void 0 : options.dragDamping) !== void 0) this.dragDamping = options.dragDamping;
     if ((options == null ? void 0 : options.walkInAir) !== void 0) this.walkInAir = options.walkInAir;
-    if ((options == null ? void 0 : options.airFriction) !== void 0) this.airFriction = options.airFriction;
+    this.airFrictionProp = new DynamicProperty((options == null ? void 0 : options.airFriction) ?? 1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxWalkForce() {
+    return this.maxWalkForceProp.literalValue;
+  }
+  set maxWalkForce(val) {
+    this.maxWalkForceProp.literalValue = val;
+  }
+  get maxWalkSpeed() {
+    return this.maxWalkSpeedProp.literalValue;
+  }
+  set maxWalkSpeed(val) {
+    this.maxWalkSpeedProp.literalValue = val;
+  }
+  get airFriction() {
+    return this.airFrictionProp.literalValue;
+  }
+  set airFriction(val) {
+    this.airFrictionProp.literalValue = val;
+  }
+  getMaxWalkForce(registry) {
+    return this.maxWalkForceProp.get(registry);
+  }
+  getMaxWalkSpeed(registry) {
+    return this.maxWalkSpeedProp.get(registry);
+  }
+  getAirFriction(registry) {
+    return this.airFrictionProp.get(registry);
   }
   /**
    * Symmetrical Force-Based Locomotion & Air Friction:
@@ -5411,15 +5483,25 @@ class WalkingModule {
   }
 }
 class PickupModule {
-  constructor() {
+  // Deprecated: single 3D pickup range now governs reach across all layers
+  constructor(options) {
     __publicField(this, "id", "pickup");
     __publicField(this, "name", "Pickup Ability");
     __publicField(this, "enabled", true);
-    __publicField(this, "pickupReach", 1.3);
-    // 3D radius in units to reach and pick up freebodies (~1.3 wall tiles)
+    __publicField(this, "pickupReachProp");
     __publicField(this, "crossLayerReachRatio", 1);
+    this.pickupReachProp = new DynamicProperty((options == null ? void 0 : options.pickupReach) ?? 1.3);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
-  // Deprecated: single 3D pickup range now governs reach across all layers
+  get pickupReach() {
+    return this.pickupReachProp.literalValue;
+  }
+  set pickupReach(val) {
+    this.pickupReachProp.literalValue = val;
+  }
+  getPickupReach(registry) {
+    return this.pickupReachProp.get(registry);
+  }
   /**
    * Returns true if the object is within the character's physical grab reach using true 3D math.
    * Gets the delta magnitude of the 3D positions (dx, dy, dz) and forces the character
@@ -5570,18 +5652,46 @@ class PickupModule {
   }
 }
 class ThrowModule {
-  constructor() {
+  constructor(options) {
     __publicField(this, "id", "throw");
     __publicField(this, "name", "Throw Ability");
     __publicField(this, "enabled", true);
     // Tunable throw physics in wall-based units
-    __publicField(this, "baseThrowForce", 7.6);
-    // Base throw power in u/s
-    __publicField(this, "maxThrowAimDistance", 13);
-    // Max throw aim distance in units (~13 wall tiles)
-    __publicField(this, "maxThrowHeight", 5);
+    __publicField(this, "baseThrowForceProp");
+    __publicField(this, "maxThrowAimDistanceProp");
+    __publicField(this, "maxThrowHeightProp");
+    this.baseThrowForceProp = new DynamicProperty((options == null ? void 0 : options.baseThrowForce) ?? 7.6);
+    this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
+    this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
-  // Max throw height reach in units above release point (~5 wall heights)
+  get baseThrowForce() {
+    return this.baseThrowForceProp.literalValue;
+  }
+  set baseThrowForce(val) {
+    this.baseThrowForceProp.literalValue = val;
+  }
+  get maxThrowAimDistance() {
+    return this.maxThrowAimDistanceProp.literalValue;
+  }
+  set maxThrowAimDistance(val) {
+    this.maxThrowAimDistanceProp.literalValue = val;
+  }
+  get maxThrowHeight() {
+    return this.maxThrowHeightProp.literalValue;
+  }
+  set maxThrowHeight(val) {
+    this.maxThrowHeightProp.literalValue = val;
+  }
+  getBaseThrowForce(registry) {
+    return this.baseThrowForceProp.get(registry);
+  }
+  getMaxThrowAimDistance(registry) {
+    return this.maxThrowAimDistanceProp.get(registry);
+  }
+  getMaxThrowHeight(registry) {
+    return this.maxThrowHeightProp.get(registry);
+  }
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
    */
@@ -6089,19 +6199,33 @@ class JumpModule {
     __publicField(this, "enabled", true);
     /**
      * Jump strength (impulse in N·s).
-     * Default 18.5 N·s provides enough propulsion to achieve the max takeoff speed (~9.67 u/s, 1.5 units height)
-     * both unencumbered (1.2kg) and when holding the Light Blue Box (0.7kg, total 1.9kg).
-     * When carrying the Heavy Red Box (2.6kg, total 3.8kg), takeoff speed drops to ~4.87 u/s (~0.39 units height).
      */
-    __publicField(this, "jumpStrength", 18.5);
+    __publicField(this, "jumpStrengthProp");
     /**
      * Maximum initial takeoff speed cap (in units per second).
-     * 9.67 u/s achieves a peak ballistic jump height of ~1.5 units under gravity 30.0 u/s^2.
      */
-    __publicField(this, "maxInitialSpeed", 9.67);
-    if ((options == null ? void 0 : options.jumpStrength) !== void 0) this.jumpStrength = options.jumpStrength;
-    if ((options == null ? void 0 : options.maxInitialSpeed) !== void 0) this.maxInitialSpeed = options.maxInitialSpeed;
+    __publicField(this, "maxInitialSpeedProp");
+    this.jumpStrengthProp = new DynamicProperty((options == null ? void 0 : options.jumpStrength) ?? 18.5);
+    this.maxInitialSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxInitialSpeed) ?? 9.67);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get jumpStrength() {
+    return this.jumpStrengthProp.literalValue;
+  }
+  set jumpStrength(val) {
+    this.jumpStrengthProp.literalValue = val;
+  }
+  get maxInitialSpeed() {
+    return this.maxInitialSpeedProp.literalValue;
+  }
+  set maxInitialSpeed(val) {
+    this.maxInitialSpeedProp.literalValue = val;
+  }
+  getJumpStrength(registry) {
+    return this.jumpStrengthProp.get(registry);
+  }
+  getMaxInitialSpeed(registry) {
+    return this.maxInitialSpeedProp.get(registry);
   }
   /**
    * Attempts to jump from the current supporting surface (ground or wall top).
@@ -6143,7 +6267,7 @@ class WallEdgeAssistModule {
      * Maximum distance the character is allowed to hang off of elevated walls
      * before the ledge guard clamps movement (in units).
      */
-    __publicField(this, "hangDistance", 0.1);
+    __publicField(this, "hangDistanceProp");
     /** Whether the assist clamp (ledge guard) is currently active/armed */
     __publicField(this, "isAssistClampArmed", false);
     /** Tracks whether character has moved onto the wall top platform after mounting */
@@ -6153,8 +6277,17 @@ class WallEdgeAssistModule {
     __publicField(this, "mountStartX", 0);
     __publicField(this, "mountStartY", 0);
     if ((options == null ? void 0 : options.preventWalkOff) !== void 0) this.preventWalkOff = options.preventWalkOff;
-    if ((options == null ? void 0 : options.hangDistance) !== void 0) this.hangDistance = options.hangDistance;
+    this.hangDistanceProp = new DynamicProperty((options == null ? void 0 : options.hangDistance) ?? 0.1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get hangDistance() {
+    return this.hangDistanceProp.literalValue;
+  }
+  set hangDistance(val) {
+    this.hangDistanceProp.literalValue = val;
+  }
+  getHangDistance(registry) {
+    return this.hangDistanceProp.get(registry);
   }
 }
 class Character extends GameObject {
@@ -7367,7 +7500,7 @@ class RollModule {
      * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
      * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
      */
-    __publicField(this, "rollResistance", 0.4);
+    __publicField(this, "rollResistanceProp");
     /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
     __publicField(this, "visualPhase", 0);
     var _a, _b, _c;
@@ -7377,7 +7510,16 @@ class RollModule {
       y: ((_b = options.angularVelocity) == null ? void 0 : _b.y) ?? 0,
       z: ((_c = options.angularVelocity) == null ? void 0 : _c.z) ?? 0
     };
-    this.rollResistance = options.rollResistance ?? 0.4;
+    this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
+  }
+  get rollResistance() {
+    return this.rollResistanceProp.literalValue;
+  }
+  set rollResistance(val) {
+    this.rollResistanceProp.literalValue = val;
+  }
+  getRollResistance(registry) {
+    return this.rollResistanceProp.get(registry);
   }
   /**
    * Total magnitude of 3D angular velocity (|ω| in rad/s)

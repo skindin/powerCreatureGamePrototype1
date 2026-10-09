@@ -1053,13 +1053,7 @@ export class DevPanel {
             ${renderToggleBtn("collider", colEnabled)}
           </div>
           ${!colEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Collider behavior is disabled (passes through objects)</div>` : ''}
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Collider Radius (u)</span>
-              <span id="val-entity-radius">${(e.colliderModule?.radius ?? 0.32).toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-entity-radius" min="0.1" max="1.5" step="0.02" value="${e.colliderModule?.radius ?? 0.32}">
-          </div>
+          <div id="prop-socket-collider-radius"></div>
         </div>
       `;
     }
@@ -1079,20 +1073,8 @@ export class DevPanel {
           </div>
           ${!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : ''}
           ${fricMassWarning}
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Static Friction Mod</span>
-              <span id="val-entity-static-fric">${(e.frictionModule?.staticFrictionMod ?? 1.0).toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-entity-static-fric" min="0" max="3.0" step="0.05" value="${e.frictionModule?.staticFrictionMod ?? 1.0}">
-          </div>
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Dynamic Friction Mod</span>
-              <span id="val-entity-dynamic-fric">${(e.frictionModule?.dynamicFrictionMod ?? 1.0).toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-entity-dynamic-fric" min="0" max="3.0" step="0.05" value="${e.frictionModule?.dynamicFrictionMod ?? 1.0}">
-          </div>
+          <div id="prop-socket-static-fric"></div>
+          <div id="prop-socket-dynamic-fric"></div>
         </div>
       `;
     }
@@ -1116,13 +1098,7 @@ export class DevPanel {
           </div>
           ${!bounceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Bounciness behavior is disabled</div>` : ''}
           ${bounceMassWarning}
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Bounciness (Restitution)</span>
-              <span id="val-entity-bounce">${(e.bounceModule?.bounceMod ?? 0.4).toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-entity-bounce" min="0.05" max="1.0" step="0.05" value="${e.bounceModule?.bounceMod ?? 0.4}">
-          </div>
+          <div id="prop-socket-bounce"></div>
           <div class="toggle-subrow" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
             <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
               <input type="checkbox" id="check-mod-vert-bounce" ${e.bounceModule?.verticalBounce ? 'checked' : ''}>
@@ -1192,13 +1168,7 @@ export class DevPanel {
           </div>
           ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
           ${rollFricWarning}
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Roll Resistance (u/s²)</span>
-              <span id="val-entity-roll-resist">${(e.rollModule?.rollResistance ?? 0.4).toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-entity-roll-resist" min="0.0" max="4.0" step="0.05" value="${e.rollModule?.rollResistance ?? 0.4}">
-          </div>
+          <div id="prop-socket-roll-resist"></div>
         </div>
       `;
     }
@@ -1228,27 +1198,9 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
               <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
             </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Walk Force (N)</span>
-                <span id="val-walk-force">${(char.walkingModule?.maxWalkForce ?? 45.0).toFixed(0)}</span>
-              </div>
-              <input type="range" id="slide-walk-force" min="5.0" max="100.0" step="1.0" value="${char.walkingModule?.maxWalkForce ?? 45.0}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Walk Speed (u/s)</span>
-                <span id="val-walk-speed">${(char.walkingModule?.maxWalkSpeed ?? 6.0).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-walk-speed" min="1.0" max="15.0" step="0.2" value="${char.walkingModule?.maxWalkSpeed ?? 6.0}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Air / Floating Friction</span>
-                <span id="val-air-fric">${(char.walkingModule?.airFriction ?? 1.0).toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-air-fric" min="0.0" max="3.0" step="0.05" value="${char.walkingModule?.airFriction ?? 1.0}">
-            </div>
+            <div id="prop-socket-walk-force"></div>
+            <div id="prop-socket-walk-speed"></div>
+            <div id="prop-socket-air-fric"></div>
             <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
               <div id="prop-socket-strength"></div>
             </div>
@@ -1265,13 +1217,7 @@ export class DevPanel {
               ${renderToggleBtn("pickup", pickupEnabled)}
             </div>
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Pickup Reach (3D)</span>
-                <span id="val-pickup-reach">${(char.pickupModule?.pickupReach ?? 1.3).toFixed(1)} u</span>
-              </div>
-              <input type="range" id="slide-pickup-reach" min="0.4" max="3.5" step="0.1" value="${char.pickupModule?.pickupReach ?? 1.3}">
-            </div>
+            <div id="prop-socket-pickup-reach"></div>
           </div>
         `;
       }
@@ -1290,20 +1236,8 @@ export class DevPanel {
             </div>
             ${!throwEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Throw Ability is disabled</div>` : ''}
             ${throwStrWarning}
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Base Throw Power (u/s)</span>
-                <span id="val-throw-force">${(char.throwModule?.baseThrowForce ?? 7.6).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-throw-force" min="2.0" max="25.0" step="0.5" value="${char.throwModule?.baseThrowForce ?? 7.6}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Throw Height (u)</span>
-                <span id="val-throw-max-height">${(char.throwModule?.maxThrowHeight ?? 5.0).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-throw-max-height" min="1.0" max="15.0" step="0.5" value="${char.throwModule?.maxThrowHeight ?? 5.0}">
-            </div>
+            <div id="prop-socket-throw-force"></div>
+            <div id="prop-socket-throw-max-height"></div>
           </div>
         `;
       }
@@ -1322,20 +1256,8 @@ export class DevPanel {
             </div>
             ${!jumpEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Jump Ability is disabled</div>` : ''}
             ${jumpVertWarning}
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Jump Strength (N·s)</span>
-                <span id="val-jump-strength">${(char.jumpModule?.jumpStrength ?? 18.5).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-jump-strength" min="2.0" max="40.0" step="0.5" value="${char.jumpModule?.jumpStrength ?? 18.5}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Takeoff Speed (u/s)</span>
-                <span id="val-jump-max-speed">${(char.jumpModule?.maxInitialSpeed ?? 9.7).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-jump-max-speed" min="2.0" max="30.0" step="0.1" value="${char.jumpModule?.maxInitialSpeed ?? 9.67}">
-            </div>
+            <div id="prop-socket-jump-strength"></div>
+            <div id="prop-socket-jump-max-speed"></div>
           </div>
         `;
       }
@@ -1355,13 +1277,7 @@ export class DevPanel {
                 ${char.wallEdgeAssistModule?.preventWalkOff ? 'Active' : 'Inactive'}
               </button>
             </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Ledge Hang Distance (u)</span>
-                <span id="val-edge-hang">${(char.wallEdgeAssistModule?.hangDistance ?? 0.10).toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-edge-hang" min="0.02" max="0.5" step="0.01" value="${char.wallEdgeAssistModule?.hangDistance ?? 0.10}">
-            </div>
+            <div id="prop-socket-edge-hang"></div>
           </div>
         `;
       }
@@ -1391,20 +1307,8 @@ export class DevPanel {
                 ${char.climbingModule?.horizontalClimb ? 'Active' : 'Inactive'}
               </button>
             </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Adhesion (N)</span>
-                <span id="val-climb-adhesion">${(char.climbingModule?.maxAdhesion ?? 105.0).toFixed(0)}</span>
-              </div>
-              <input type="range" id="slide-climb-adhesion" min="15.0" max="240.0" step="5.0" value="${char.climbingModule?.maxAdhesion ?? 105.0}">
-            </div>
-            <div class="slider-group">
-              <div class="slider-label">
-                <span>Max Climb Speed (u/s)</span>
-                <span id="val-climb-speed">${(char.climbingModule?.maxClimbSpeed ?? 3.0).toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-climb-speed" min="0.5" max="8.0" step="0.1" value="${char.climbingModule?.maxClimbSpeed ?? 3.0}">
-            </div>
+            <div id="prop-socket-climb-adhesion"></div>
+            <div id="prop-socket-climb-speed"></div>
           </div>
         `;
       }
@@ -1742,9 +1646,17 @@ export class DevPanel {
     }, 2);
 
     // Collider
-    this.setupSlider("slide-entity-radius", "val-entity-radius", (val) => {
-      e.colliderRadius = val;
-    }, 2);
+    // Collider Radius (Dynamic Property Socket)
+    const colRadSocketEl = this.container.querySelector("#prop-socket-collider-radius");
+    if (colRadSocketEl && e.colliderModule) {
+      const colCtrl = new PropertyControl({
+        property: e.colliderModule.radiusProp,
+        owner: e,
+        label: "Collider Radius (u)",
+        step: 0.02,
+      });
+      colRadSocketEl.appendChild(colCtrl.element);
+    }
 
     // Mass (Dynamic Property Socket inside Rigidbody)
     const massSocketEl = this.container.querySelector("#prop-socket-mass");
@@ -1758,18 +1670,39 @@ export class DevPanel {
       massSocketEl.appendChild(massCtrl.element);
     }
 
-    // Friction
-    this.setupSlider("slide-entity-static-fric", "val-entity-static-fric", (val) => {
-      e.staticGroundFrictionMod = val;
-    }, 2);
-    this.setupSlider("slide-entity-dynamic-fric", "val-entity-dynamic-fric", (val) => {
-      e.dynamicGroundFrictionMod = val;
-    }, 2);
+    // Friction (Dynamic Property Sockets)
+    const staticFricSocketEl = this.container.querySelector("#prop-socket-static-fric");
+    if (staticFricSocketEl && e.frictionModule) {
+      const sfCtrl = new PropertyControl({
+        property: e.frictionModule.staticFrictionProp,
+        owner: e,
+        label: "Static Friction Mod",
+        step: 0.05,
+      });
+      staticFricSocketEl.appendChild(sfCtrl.element);
+    }
+    const dynFricSocketEl = this.container.querySelector("#prop-socket-dynamic-fric");
+    if (dynFricSocketEl && e.frictionModule) {
+      const dfCtrl = new PropertyControl({
+        property: e.frictionModule.dynamicFrictionProp,
+        owner: e,
+        label: "Dynamic Friction Mod",
+        step: 0.05,
+      });
+      dynFricSocketEl.appendChild(dfCtrl.element);
+    }
 
-    // Bounce
-    this.setupSlider("slide-entity-bounce", "val-entity-bounce", (val) => {
-      e.bounceMod = val;
-    }, 2);
+    // Bounce (Dynamic Property Socket)
+    const bounceSocketEl = this.container.querySelector("#prop-socket-bounce");
+    if (bounceSocketEl && e.bounceModule) {
+      const bCtrl = new PropertyControl({
+        property: e.bounceModule.bounceModProp,
+        owner: e,
+        label: "Bounciness (Restitution)",
+        step: 0.05,
+      });
+      bounceSocketEl.appendChild(bCtrl.element);
+    }
     const checkVertBounce = this.container.querySelector("#check-mod-vert-bounce") as HTMLInputElement;
     checkVertBounce?.addEventListener("change", () => {
       if (e.bounceModule) {
@@ -1789,12 +1722,17 @@ export class DevPanel {
       this.updateInspector();
     }, 2);
 
-    // Roll
-    this.setupSlider("slide-entity-roll-resist", "val-entity-roll-resist", (val) => {
-      if (e.rollModule) {
-        e.rollModule.rollResistance = val;
-      }
-    }, 2);
+    // Roll Resistance (Dynamic Property Socket)
+    const rollResistSocketEl = this.container.querySelector("#prop-socket-roll-resist");
+    if (rollResistSocketEl && e.rollModule) {
+      const rollCtrl = new PropertyControl({
+        property: e.rollModule.rollResistanceProp,
+        owner: e,
+        label: "Roll Resistance (u/s²)",
+        step: 0.05,
+      });
+      rollResistSocketEl.appendChild(rollCtrl.element);
+    }
 
     // Character Abilities
     if (isChar && char) {
@@ -1805,15 +1743,37 @@ export class DevPanel {
         }
       });
 
-      this.setupSlider("slide-walk-force", "val-walk-force", (val) => {
-        if (char.walkingModule) char.walkingModule.maxWalkForce = val;
-      }, 0);
-      this.setupSlider("slide-walk-speed", "val-walk-speed", (val) => {
-        if (char.walkingModule) char.walkingModule.maxWalkSpeed = val;
-      }, 1);
-      this.setupSlider("slide-air-fric", "val-air-fric", (val) => {
-        if (char.walkingModule) char.walkingModule.airFriction = val;
-      }, 2);
+      // Walking sockets
+      const walkForceSocketEl = this.container.querySelector("#prop-socket-walk-force");
+      if (walkForceSocketEl && char.walkingModule) {
+        const wfCtrl = new PropertyControl({
+          property: char.walkingModule.maxWalkForceProp,
+          owner: char,
+          label: "Max Walk Force (N)",
+          step: 1.0,
+        });
+        walkForceSocketEl.appendChild(wfCtrl.element);
+      }
+      const walkSpeedSocketEl = this.container.querySelector("#prop-socket-walk-speed");
+      if (walkSpeedSocketEl && char.walkingModule) {
+        const wsCtrl = new PropertyControl({
+          property: char.walkingModule.maxWalkSpeedProp,
+          owner: char,
+          label: "Max Walk Speed (u/s)",
+          step: 0.2,
+        });
+        walkSpeedSocketEl.appendChild(wsCtrl.element);
+      }
+      const airFricSocketEl = this.container.querySelector("#prop-socket-air-fric");
+      if (airFricSocketEl && char.walkingModule) {
+        const afCtrl = new PropertyControl({
+          property: char.walkingModule.airFrictionProp,
+          owner: char,
+          label: "Air / Floating Friction",
+          step: 0.05,
+        });
+        airFricSocketEl.appendChild(afCtrl.element);
+      }
 
       // Strength (Dynamic Property Socket)
       const strSocketEl = this.container.querySelector("#prop-socket-strength");
@@ -1827,24 +1787,61 @@ export class DevPanel {
         strSocketEl.appendChild(strCtrl.element);
       }
 
-      this.setupSlider("slide-pickup-reach", "val-pickup-reach", (val) => {
-        if (char.pickupModule) char.pickupModule.pickupReach = val;
-      }, 1);
+      // Pickup socket
+      const pickupReachSocketEl = this.container.querySelector("#prop-socket-pickup-reach");
+      if (pickupReachSocketEl && char.pickupModule) {
+        const prCtrl = new PropertyControl({
+          property: char.pickupModule.pickupReachProp,
+          owner: char,
+          label: "Pickup Reach (3D) (u)",
+          step: 0.1,
+        });
+        pickupReachSocketEl.appendChild(prCtrl.element);
+      }
 
-      this.setupSlider("slide-throw-force", "val-throw-force", (val) => {
-        if (char.throwModule) char.throwModule.baseThrowForce = val;
-      }, 1);
-      this.setupSlider("slide-throw-max-height", "val-throw-max-height", (val) => {
-        if (char.throwModule) char.throwModule.maxThrowHeight = val;
-      }, 1);
+      // Throw sockets
+      const throwForceSocketEl = this.container.querySelector("#prop-socket-throw-force");
+      if (throwForceSocketEl && char.throwModule) {
+        const tfCtrl = new PropertyControl({
+          property: char.throwModule.baseThrowForceProp,
+          owner: char,
+          label: "Base Throw Power (u/s)",
+          step: 0.5,
+        });
+        throwForceSocketEl.appendChild(tfCtrl.element);
+      }
+      const throwHeightSocketEl = this.container.querySelector("#prop-socket-throw-max-height");
+      if (throwHeightSocketEl && char.throwModule) {
+        const thCtrl = new PropertyControl({
+          property: char.throwModule.maxThrowHeightProp,
+          owner: char,
+          label: "Max Throw Height (u)",
+          step: 0.5,
+        });
+        throwHeightSocketEl.appendChild(thCtrl.element);
+      }
 
-      // Jump Ability
-      this.setupSlider("slide-jump-strength", "val-jump-strength", (val) => {
-        if (char.jumpModule) char.jumpModule.jumpStrength = val;
-      }, 1);
-      this.setupSlider("slide-jump-max-speed", "val-jump-max-speed", (val) => {
-        if (char.jumpModule) char.jumpModule.maxInitialSpeed = val;
-      }, 1);
+      // Jump sockets
+      const jumpStrSocketEl = this.container.querySelector("#prop-socket-jump-strength");
+      if (jumpStrSocketEl && char.jumpModule) {
+        const jsCtrl = new PropertyControl({
+          property: char.jumpModule.jumpStrengthProp,
+          owner: char,
+          label: "Jump Strength (N·s)",
+          step: 0.5,
+        });
+        jumpStrSocketEl.appendChild(jsCtrl.element);
+      }
+      const jumpSpeedSocketEl = this.container.querySelector("#prop-socket-jump-max-speed");
+      if (jumpSpeedSocketEl && char.jumpModule) {
+        const jspCtrl = new PropertyControl({
+          property: char.jumpModule.maxInitialSpeedProp,
+          owner: char,
+          label: "Max Takeoff Speed (u/s)",
+          step: 0.1,
+        });
+        jumpSpeedSocketEl.appendChild(jspCtrl.element);
+      }
 
       // Wall Edge Assist
       const btnEdgeWalkOff = this.container.querySelector("#toggle-edge-walkoff") as HTMLButtonElement;
@@ -1855,10 +1852,18 @@ export class DevPanel {
           btnEdgeWalkOff.textContent = char.wallEdgeAssistModule.preventWalkOff ? "Active" : "Inactive";
         }
       });
-      this.setupSlider("slide-edge-hang", "val-edge-hang", (val) => {
-        if (char.wallEdgeAssistModule) char.wallEdgeAssistModule.hangDistance = val;
-      }, 2);
+      const edgeHangSocketEl = this.container.querySelector("#prop-socket-edge-hang");
+      if (edgeHangSocketEl && char.wallEdgeAssistModule) {
+        const ehCtrl = new PropertyControl({
+          property: char.wallEdgeAssistModule.hangDistanceProp,
+          owner: char,
+          label: "Ledge Hang Distance (u)",
+          step: 0.01,
+        });
+        edgeHangSocketEl.appendChild(ehCtrl.element);
+      }
 
+      // Climbing
       const btnClimbSideways = this.container.querySelector("#toggle-climb-sideways") as HTMLButtonElement;
       btnClimbSideways?.addEventListener("click", () => {
         if (char.climbingModule) {
@@ -1867,13 +1872,26 @@ export class DevPanel {
           btnClimbSideways.textContent = char.climbingModule.horizontalClimb ? "Active" : "Inactive";
         }
       });
-
-      this.setupSlider("slide-climb-adhesion", "val-climb-adhesion", (val) => {
-        if (char.climbingModule) char.climbingModule.maxAdhesion = val;
-      }, 0);
-      this.setupSlider("slide-climb-speed", "val-climb-speed", (val) => {
-        if (char.climbingModule) char.climbingModule.maxClimbSpeed = val;
-      }, 1);
+      const climbAdhesionSocketEl = this.container.querySelector("#prop-socket-climb-adhesion");
+      if (climbAdhesionSocketEl && char.climbingModule) {
+        const caCtrl = new PropertyControl({
+          property: char.climbingModule.maxAdhesionProp,
+          owner: char,
+          label: "Max Adhesion (N)",
+          step: 5.0,
+        });
+        climbAdhesionSocketEl.appendChild(caCtrl.element);
+      }
+      const climbSpeedSocketEl = this.container.querySelector("#prop-socket-climb-speed");
+      if (climbSpeedSocketEl && char.climbingModule) {
+        const csCtrl = new PropertyControl({
+          property: char.climbingModule.maxClimbSpeedProp,
+          owner: char,
+          label: "Max Climb Speed (u/s)",
+          step: 0.1,
+        });
+        climbSpeedSocketEl.appendChild(csCtrl.element);
+      }
     }
   }
 

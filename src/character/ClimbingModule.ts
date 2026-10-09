@@ -1,6 +1,8 @@
 import type { Character } from "./Character.js";
 import { Vector2D } from "../engine/GameObject.js";
 import type { Arena, Wall } from "../engine/Arena.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export class ClimbingModule {
   public id = "climbing";
@@ -8,10 +10,10 @@ export class ClimbingModule {
   public enabled = true;
 
   // Maximum adhesive grip force before character slips and cannot climb/cling (in Newtons)
-  public maxAdhesion = 105.0;
+  public maxAdhesionProp: DynamicProperty;
 
   // Maximum vertical speed cap when climbing walls (in units per second)
-  public maxClimbSpeed = 3.0;
+  public maxClimbSpeedProp: DynamicProperty;
 
   // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
   public horizontalClimb = false;
@@ -41,9 +43,33 @@ export class ClimbingModule {
     maxClimbSpeed?: number;
     horizontalClimb?: boolean;
   }) {
-    if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
-    if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
+    this.maxAdhesionProp = new DynamicProperty(options?.maxAdhesion ?? 105.0);
+    this.maxClimbSpeedProp = new DynamicProperty(options?.maxClimbSpeed ?? 3.0);
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
+  }
+
+  public get maxAdhesion(): number {
+    return this.maxAdhesionProp.literalValue;
+  }
+
+  public set maxAdhesion(val: number) {
+    this.maxAdhesionProp.literalValue = val;
+  }
+
+  public get maxClimbSpeed(): number {
+    return this.maxClimbSpeedProp.literalValue;
+  }
+
+  public set maxClimbSpeed(val: number) {
+    this.maxClimbSpeedProp.literalValue = val;
+  }
+
+  public getMaxAdhesion(registry?: ObjectPropertiesRegistry): number {
+    return this.maxAdhesionProp.get(registry);
+  }
+
+  public getMaxClimbSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxClimbSpeedProp.get(registry);
   }
 
   /**

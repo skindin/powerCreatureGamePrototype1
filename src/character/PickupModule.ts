@@ -1,12 +1,31 @@
 import type { Character } from "./Character.js";
 import { GameObject } from "../engine/GameObject.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export class PickupModule {
   public id = "pickup";
   public name = "Pickup Ability";
   public enabled = true;
-  public pickupReach = 1.3; // 3D radius in units to reach and pick up freebodies (~1.3 wall tiles)
+  public pickupReachProp: DynamicProperty;
   public crossLayerReachRatio = 1.0; // Deprecated: single 3D pickup range now governs reach across all layers
+
+  constructor(options?: { pickupReach?: number; enabled?: boolean }) {
+    this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get pickupReach(): number {
+    return this.pickupReachProp.literalValue;
+  }
+
+  public set pickupReach(val: number) {
+    this.pickupReachProp.literalValue = val;
+  }
+
+  public getPickupReach(registry?: ObjectPropertiesRegistry): number {
+    return this.pickupReachProp.get(registry);
+  }
 
   /**
    * Returns true if the object is within the character's physical grab reach using true 3D math.
