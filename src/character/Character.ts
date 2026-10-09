@@ -6,6 +6,7 @@ import { ClimbingModule } from "./ClimbingModule.js";
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { JumpModule } from "./JumpModule.js";
 import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
+import { HealthModule } from "./HealthModule.js";
 import type { Arena } from "../engine/Arena.js";
 
 export class Character extends GameObject {
@@ -44,6 +45,9 @@ export class Character extends GameObject {
   // Base mass when not carrying anything
   public baseMass = 1.2;
 
+  /** Spawn location used when respawning or resetting */
+  public spawnPos?: { x: number; y: number; z?: number };
+
   /**
    * Effective mass: base character mass plus the mass of any currently carried object.
    */
@@ -81,6 +85,9 @@ export class Character extends GameObject {
   public jumpModule: JumpModule | null;
   public wallEdgeAssistModule: WallEdgeAssistModule | null;
   public climbingModule: ClimbingModule | null;
+
+  /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
+  public jumpConsumesEnergy: boolean = false;
 
   // Player identity & multiplayer slot
   public playerId: string = "keyboard";
@@ -143,6 +150,7 @@ export class Character extends GameObject {
     this.jumpModule = new JumpModule();
     this.wallEdgeAssistModule = new WallEdgeAssistModule();
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
+    this.healthModule = new HealthModule();
   }
 
   /**
@@ -256,6 +264,11 @@ export class Character extends GameObject {
 
     // 2. Update base physics & collisions
     this.updatePosition(dt, arena);
+
+    // 2b. Process health regeneration & death check
+    if (this.healthModule && this.healthModule.enabled) {
+      this.healthModule.update(dt, this, arena);
+    }
 
     // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
     if (isClimbInput && !this.isClimbing && canJump) {

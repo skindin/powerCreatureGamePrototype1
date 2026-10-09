@@ -8,6 +8,8 @@ import { VerticalPositionModule } from "./VerticalPositionModule.js";
 import { RigidbodyModule } from "./RigidbodyModule.js";
 import { SurfaceSupportModule } from "./SurfaceSupportModule.js";
 import { MotionIntegrator } from "./MotionIntegrator.js";
+import { DamageAuraModule } from "./DamageAuraModule.js";
+import type { HealthModule } from "../character/HealthModule.js";
 
 import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
 
@@ -105,6 +107,8 @@ export class GameObject {
   public verticalPositionModule: VerticalPositionModule | null = null;
   public gravityModule: GravityModule | null = null;
   public rollModule: RollModule | null = null;
+  public healthModule: HealthModule | null = null;
+  public damageAuraModule: DamageAuraModule | null = null;
 
   constructor(options: {
     id?: string;
@@ -123,6 +127,8 @@ export class GameObject {
     verticalPositionModule?: VerticalPositionModule | null;
     gravityModule?: GravityModule | null;
     rollModule?: RollModule | null;
+    healthModule?: HealthModule | null;
+    damageAuraModule?: DamageAuraModule | null;
     // Convenience option shorthands
     mass?: number;
     colliderRadius?: number;
@@ -197,6 +203,8 @@ export class GameObject {
       : (options.hasGravity === false ? null : new GravityModule());
 
     this.rollModule = options.rollModule ?? null;
+    this.healthModule = options.healthModule ?? null;
+    this.damageAuraModule = options.damageAuraModule ?? null;
   }
 
   // --- Convenience Getters & Setters ---

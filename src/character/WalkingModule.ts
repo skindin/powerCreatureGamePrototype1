@@ -7,6 +7,11 @@ import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicPrope
 export interface WalkingModuleOptions {
   maxWalkForce?: number;
   maxWalkSpeed?: number;
+  canSprint?: boolean;
+  maxSprintSpeed?: number;
+  sprintConsumesEnergy?: boolean;
+  walkConsumesEnergy?: boolean;
+  consumesEnergy?: boolean;
   dragDamping?: number;
   walkInAir?: boolean;
   airFriction?: number;
@@ -24,6 +29,17 @@ export class WalkingModule {
   // Maximum physical leg stride / cadence speed cap (u/s)
   public maxWalkSpeedProp: DynamicProperty;
 
+  // Whether sprinting is allowed
+  public canSprint: boolean = true;
+
+  // Explicit maximum speed cap when sprinting (u/s)
+  public maxSprintSpeedProp: DynamicProperty;
+
+  // Energy consumption toggles (placeholders before full Energy Busses)
+  public sprintConsumesEnergy: boolean = false;
+  public walkConsumesEnergy: boolean = false;
+  public consumesEnergy: boolean = false;
+
   // Drag damping factor for backwards compatibility / reference
   public dragDamping = 8.01;
 
@@ -36,6 +52,11 @@ export class WalkingModule {
   constructor(options?: WalkingModuleOptions) {
     this.maxWalkForceProp = new DynamicProperty(options?.maxWalkForce ?? 35.0);
     this.maxWalkSpeedProp = new DynamicProperty(options?.maxWalkSpeed ?? 5.2);
+    if (options?.canSprint !== undefined) this.canSprint = options.canSprint;
+    this.maxSprintSpeedProp = new DynamicProperty(options?.maxSprintSpeed ?? 8.06);
+    if (options?.sprintConsumesEnergy !== undefined) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
+    if (options?.walkConsumesEnergy !== undefined) this.walkConsumesEnergy = options.walkConsumesEnergy;
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.dragDamping !== undefined) this.dragDamping = options.dragDamping;
     if (options?.walkInAir !== undefined) this.walkInAir = options.walkInAir;
     this.airFrictionProp = new DynamicProperty(options?.airFriction ?? 1.0);
@@ -56,6 +77,18 @@ export class WalkingModule {
 
   public set maxWalkSpeed(val: number) {
     this.maxWalkSpeedProp.literalValue = val;
+  }
+
+  public get maxSprintSpeed(): number {
+    return this.maxSprintSpeedProp.literalValue;
+  }
+
+  public set maxSprintSpeed(val: number) {
+    this.maxSprintSpeedProp.literalValue = val;
+  }
+
+  public getMaxSprintSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxSprintSpeedProp.get(registry);
   }
 
   public get airFriction(): number {
@@ -125,12 +158,14 @@ export class WalkingModule {
 
     // Target velocity:
     // Carrying a load reduces top walking speed smoothly based on carried mass and strength.
-    // Sprinting multiplies top speed and propulsion force.
+    // Sprinting multiplies top speed and propulsion force (if allowed by canSprint).
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
-    const sprintFactor = character.isSprinting ? 1.55 : 1.0;
+    const isActivelySprinting = this.canSprint && character.isSprinting;
     const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
-    const effectiveSpeed = (maxWalkSpeed * sprintFactor) / (1.0 + loadFactor);
+    const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
+    const baseTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
+    const effectiveSpeed = baseTargetSpeed / (1.0 + loadFactor);
 
     let targetVx = 0;
     let targetVy = 0;
@@ -167,7 +202,7 @@ export class WalkingModule {
 
     // Symmetrical acceleration and deceleration: a = F_walk / totalMass * grip
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    const effectiveWalkForce = character.isSprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
     const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
     const maxStep = maxAccel * dt;
 

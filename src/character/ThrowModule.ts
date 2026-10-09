@@ -40,15 +40,22 @@ export class ThrowModule {
   public maxThrowAimDistanceProp: DynamicProperty;
   public maxThrowHeightProp: DynamicProperty;
 
+  /**
+   * Whether throwing consumes energy from an Energy Bus (placeholder toggle).
+   */
+  public consumesEnergy: boolean = false;
+
   constructor(options?: {
     baseThrowForce?: number;
     maxThrowAimDistance?: number;
     maxThrowHeight?: number;
+    consumesEnergy?: boolean;
     enabled?: boolean;
   }) {
     this.baseThrowForceProp = new DynamicProperty(options?.baseThrowForce ?? 7.6);
     this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
     this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 

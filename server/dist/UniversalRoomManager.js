@@ -4648,6 +4648,8 @@ class GameObject {
     __publicField(this, "verticalPositionModule", null);
     __publicField(this, "gravityModule", null);
     __publicField(this, "rollModule", null);
+    __publicField(this, "healthModule", null);
+    __publicField(this, "damageAuraModule", null);
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -4687,6 +4689,8 @@ class GameObject {
     }
     this.gravityModule = options.gravityModule !== void 0 ? options.gravityModule : options.hasGravity === false ? null : new GravityModule();
     this.rollModule = options.rollModule ?? null;
+    this.healthModule = options.healthModule ?? null;
+    this.damageAuraModule = options.damageAuraModule ?? null;
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -5368,6 +5372,14 @@ class WalkingModule {
     __publicField(this, "maxWalkForceProp");
     // Maximum physical leg stride / cadence speed cap (u/s)
     __publicField(this, "maxWalkSpeedProp");
+    // Whether sprinting is allowed
+    __publicField(this, "canSprint", true);
+    // Explicit maximum speed cap when sprinting (u/s)
+    __publicField(this, "maxSprintSpeedProp");
+    // Energy consumption toggles (placeholders before full Energy Busses)
+    __publicField(this, "sprintConsumesEnergy", false);
+    __publicField(this, "walkConsumesEnergy", false);
+    __publicField(this, "consumesEnergy", false);
     // Drag damping factor for backwards compatibility / reference
     __publicField(this, "dragDamping", 8.01);
     // When enabled, walking force applies in the air, granting air control / steering
@@ -5376,6 +5388,11 @@ class WalkingModule {
     __publicField(this, "airFrictionProp");
     this.maxWalkForceProp = new DynamicProperty((options == null ? void 0 : options.maxWalkForce) ?? 35);
     this.maxWalkSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxWalkSpeed) ?? 5.2);
+    if ((options == null ? void 0 : options.canSprint) !== void 0) this.canSprint = options.canSprint;
+    this.maxSprintSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxSprintSpeed) ?? 8.06);
+    if ((options == null ? void 0 : options.sprintConsumesEnergy) !== void 0) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
+    if ((options == null ? void 0 : options.walkConsumesEnergy) !== void 0) this.walkConsumesEnergy = options.walkConsumesEnergy;
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.dragDamping) !== void 0) this.dragDamping = options.dragDamping;
     if ((options == null ? void 0 : options.walkInAir) !== void 0) this.walkInAir = options.walkInAir;
     this.airFrictionProp = new DynamicProperty((options == null ? void 0 : options.airFriction) ?? 1);
@@ -5392,6 +5409,15 @@ class WalkingModule {
   }
   set maxWalkSpeed(val) {
     this.maxWalkSpeedProp.literalValue = val;
+  }
+  get maxSprintSpeed() {
+    return this.maxSprintSpeedProp.literalValue;
+  }
+  set maxSprintSpeed(val) {
+    this.maxSprintSpeedProp.literalValue = val;
+  }
+  getMaxSprintSpeed(registry) {
+    return this.maxSprintSpeedProp.get(registry);
   }
   get airFriction() {
     return this.airFrictionProp.literalValue;
@@ -5444,9 +5470,11 @@ class WalkingModule {
     }
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8);
-    const sprintFactor = character.isSprinting ? 1.55 : 1;
+    const isActivelySprinting = this.canSprint && character.isSprinting;
     const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
-    const effectiveSpeed = maxWalkSpeed * sprintFactor / (1 + loadFactor);
+    const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
+    const baseTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
+    const effectiveSpeed = baseTargetSpeed / (1 + loadFactor);
     let targetVx = 0;
     let targetVy = 0;
     if (isMoving) {
@@ -5473,7 +5501,7 @@ class WalkingModule {
     const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
     const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    const effectiveWalkForce = character.isSprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
     const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
     const maxStep = maxAccel * dt;
     if (diffSpeed <= maxStep || !isAirborne && !isMoving && currentSpeed < staticThreshold) {
@@ -5487,14 +5515,19 @@ class WalkingModule {
   }
 }
 class PickupModule {
-  // Deprecated: single 3D pickup range now governs reach across all layers
   constructor(options) {
     __publicField(this, "id", "pickup");
     __publicField(this, "name", "Pickup Ability");
     __publicField(this, "enabled", true);
     __publicField(this, "pickupReachProp");
     __publicField(this, "crossLayerReachRatio", 1);
+    // Deprecated: single 3D pickup range now governs reach across all layers
+    /**
+     * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+     */
+    __publicField(this, "consumesEnergy", false);
     this.pickupReachProp = new DynamicProperty((options == null ? void 0 : options.pickupReach) ?? 1.3);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
   get pickupReach() {
@@ -5665,9 +5698,14 @@ class ThrowModule {
     __publicField(this, "baseThrowForceProp");
     __publicField(this, "maxThrowAimDistanceProp");
     __publicField(this, "maxThrowHeightProp");
+    /**
+     * Whether throwing consumes energy from an Energy Bus (placeholder toggle).
+     */
+    __publicField(this, "consumesEnergy", false);
     this.baseThrowForceProp = new DynamicProperty((options == null ? void 0 : options.baseThrowForce) ?? 7.6);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
     this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
   get baseThrowForce() {
@@ -6301,6 +6339,129 @@ class WallEdgeAssistModule {
     return this.hangDistanceProp.get(registry);
   }
 }
+class HealthModule {
+  constructor(options) {
+    __publicField(this, "id", "health");
+    __publicField(this, "name", "Health & Vitality");
+    __publicField(this, "enabled", true);
+    /** Baseline max health value */
+    __publicField(this, "baseMaxHp");
+    /** Effective maximum health (can be modified by buffs/debuffs) */
+    __publicField(this, "maxHpProp");
+    /** Current live HP */
+    __publicField(this, "currentHpProp");
+    /** Baseline max heal rate (HP / second) */
+    __publicField(this, "baseMaxHealRate");
+    /** Effective max heal rate (HP / second) */
+    __publicField(this, "maxHealRateProp");
+    /** Toggle indicating whether healing draws energy from an Energy Bus */
+    __publicField(this, "consumesEnergy", false);
+    this.baseMaxHp = (options == null ? void 0 : options.baseMaxHp) ?? 100;
+    const initialMaxHp = (options == null ? void 0 : options.maxHp) ?? this.baseMaxHp;
+    this.maxHpProp = new DynamicProperty(initialMaxHp);
+    this.currentHpProp = new DynamicProperty((options == null ? void 0 : options.currentHp) ?? initialMaxHp);
+    this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 10;
+    this.maxHealRateProp = new DynamicProperty((options == null ? void 0 : options.maxHealRate) ?? this.baseMaxHealRate);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxHp() {
+    return this.maxHpProp.literalValue;
+  }
+  set maxHp(val) {
+    this.maxHpProp.literalValue = Math.max(1, val);
+  }
+  get currentHp() {
+    return this.currentHpProp.literalValue;
+  }
+  set currentHp(val) {
+    this.currentHpProp.literalValue = Math.max(0, Math.min(this.maxHp, val));
+  }
+  get maxHealRate() {
+    return this.maxHealRateProp.literalValue;
+  }
+  set maxHealRate(val) {
+    this.maxHealRateProp.literalValue = Math.max(0, val);
+  }
+  getMaxHp(registry) {
+    return this.maxHpProp.get(registry);
+  }
+  getCurrentHp(registry) {
+    return this.currentHpProp.get(registry);
+  }
+  getMaxHealRate(registry) {
+    return this.maxHealRateProp.get(registry);
+  }
+  takeDamage(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentHp(registry);
+    const updated = Math.max(0, cur - amount);
+    this.currentHpProp.set(updated, registry);
+  }
+  heal(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentHp(registry);
+    const max = this.getMaxHp(registry);
+    const updated = Math.min(max, cur + amount);
+    this.currentHpProp.set(updated, registry);
+  }
+  /**
+   * Continuous per-frame health tick:
+   * Heals current HP up to maxHp at maxHealRate * dt.
+   * If HP drops to 0 or below, triggers character death and respawn.
+   */
+  update(dt, character, arena) {
+    if (!this.enabled) return;
+    const registry = character.properties;
+    const current = this.getCurrentHp(registry);
+    const max = this.getMaxHp(registry);
+    if (current > 0 && current < max) {
+      const healRate = this.getMaxHealRate(registry);
+      if (healRate > 0) {
+        const nextHp = Math.min(max, current + healRate * dt);
+        this.currentHpProp.set(nextHp, registry);
+      }
+    }
+    if (this.getCurrentHp(registry) <= 1e-4) {
+      this.dieAndRespawn(character, arena);
+    }
+  }
+  /**
+   * Resets character state on death:
+   * Drops any carried object, clears wall mounts, resets velocities,
+   * snaps to a spawn position, and restores full health.
+   */
+  dieAndRespawn(character, arena) {
+    if (character.heldObject) {
+      character.heldObject.isHeld = false;
+      character.heldObject.heldBy = null;
+      character.heldObject = null;
+    }
+    character.isClimbing = false;
+    character.standingWall = null;
+    if (character.wallEdgeAssistModule) {
+      character.wallEdgeAssistModule.isAssistClampArmed = false;
+      character.wallEdgeAssistModule.hasMovedOntoWall = false;
+    }
+    character.velocity = { x: 0, y: 0 };
+    character.verticalVelocity = 0;
+    let spawnX = 4.8;
+    let spawnY = 7;
+    if (character.spawnPos) {
+      spawnX = character.spawnPos.x;
+      spawnY = character.spawnPos.y;
+    } else if (arena) {
+      spawnX = arena.width / 2;
+      spawnY = arena.height / 2;
+    }
+    character.position.x = spawnX;
+    character.position.y = spawnY;
+    character.position.z = 0;
+    character.supportingSurfaceHeight = 0;
+    const max = this.getMaxHp(character.properties);
+    this.currentHpProp.set(max, character.properties);
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";
@@ -6327,6 +6488,8 @@ class Character extends GameObject {
     __publicField(this, "onSprintChange");
     // Base mass when not carrying anything
     __publicField(this, "baseMass", 1.2);
+    /** Spawn location used when respawning or resetting */
+    __publicField(this, "spawnPos");
     // Removable Modules
     __publicField(this, "walkingModule");
     __publicField(this, "pickupModule");
@@ -6334,6 +6497,8 @@ class Character extends GameObject {
     __publicField(this, "jumpModule");
     __publicField(this, "wallEdgeAssistModule");
     __publicField(this, "climbingModule");
+    /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
+    __publicField(this, "jumpConsumesEnergy", false);
     // Player identity & multiplayer slot
     __publicField(this, "playerId", "keyboard");
     __publicField(this, "playerNumber", 1);
@@ -6362,6 +6527,7 @@ class Character extends GameObject {
     this.jumpModule = new JumpModule();
     this.wallEdgeAssistModule = new WallEdgeAssistModule();
     this.climbingModule = null;
+    this.healthModule = new HealthModule();
   }
   get hasStrength() {
     return this.strength > 0;
@@ -6483,6 +6649,9 @@ class Character extends GameObject {
       this.isActivelyWalking = false;
     }
     this.updatePosition(dt, arena);
+    if (this.healthModule && this.healthModule.enabled) {
+      this.healthModule.update(dt, this, arena);
+    }
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }

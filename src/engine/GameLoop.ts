@@ -504,6 +504,18 @@ export class GameLoop {
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
       obj.updatePosition(dt, this.arena);
+      // Process health logic on objects that are not characters
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj as any, this.arena);
+      }
+    }
+
+    // 3b. Process Damage Aura emitters across all entities
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
     }
 
     // 4. Resolve collisions across all characters and objects via CollisionResolver

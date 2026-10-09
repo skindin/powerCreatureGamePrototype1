@@ -453,9 +453,13 @@ export class Renderer {
 
       const useHover = this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both";
 
-      // 2. Ground Shadows (Rendered BELOW all wall squares including sides and tops)
+      // 2. Ground Shadows & Hazard Auras (Rendered BELOW wall squares and entities)
       // Only the shadow fill is covered!
       for (const entity of allRenderables) {
+        // Draw Damage Aura zone on the floor if equipped
+        if (entity.damageAuraModule && entity.damageAuraModule.enabled) {
+          HudOverlayPass.drawDamageAura(ctx, entity, ppu);
+        }
         const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
         ShadowPass.drawObjectGroundShadowFill(ctx, entity, arena, ppu, effPos, this.viewSettings);
       }
@@ -601,10 +605,24 @@ export class Renderer {
         this.drawGhostClones(ghostSnapshot, ppu, arena);
       }
 
-      // 12. Player Name Tags — drawn LAST so they are always above walls, entities, and everything else
+      // 12. Player Name Tags & Overhead Health Bars — drawn LAST so they are always above walls, entities, and everything else
       for (const char of characters) {
         const isRemote = isRemoteForThisView(char);
         HudOverlayPass.drawCharacterNameTag(ctx, char, arena, ppu, this.viewSettings, Renderer.getAltitudeScale, isRemote);
+      }
+
+      // Overhead Health Bars for any non-character objects with a HealthModule
+      for (const obj of objects) {
+        if (obj.healthModule && obj.healthModule.enabled) {
+          const hoverScale = (this.viewSettings.verticalVisuals === "hover" || this.viewSettings.verticalVisuals === "both")
+            ? this.viewSettings.visualAltitudeScale : 0;
+          const altitudeScale = (this.viewSettings.verticalVisuals === "bigger" || this.viewSettings.verticalVisuals === "both")
+            ? Renderer.getAltitudeScale(obj.position.z, arena.wallHeight) : 1.0;
+          const px = obj.position.x * ppu;
+          const py = (obj.position.y - obj.position.z * hoverScale) * ppu;
+          const r = (obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.32)) * ppu * altitudeScale;
+          HudOverlayPass.drawHealthBar(ctx, obj, arena, ppu, hoverScale, altitudeScale, r, px, py);
+        }
       }
 
       // 12b. Collision Mode & Contact Diagnostics Overlay

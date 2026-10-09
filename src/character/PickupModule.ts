@@ -10,8 +10,14 @@ export class PickupModule {
   public pickupReachProp: DynamicProperty;
   public crossLayerReachRatio = 1.0; // Deprecated: single 3D pickup range now governs reach across all layers
 
-  constructor(options?: { pickupReach?: number; enabled?: boolean }) {
+  /**
+   * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+   */
+  public consumesEnergy: boolean = false;
+
+  constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; enabled?: boolean }) {
     this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 

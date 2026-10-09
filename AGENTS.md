@@ -73,6 +73,13 @@
   - **Scrub Draggable Fields**: Click-and-drag horizontal scrubber with rate proportional to initial magnitude, replacing hardcoded `<input type="range">` sliders.
   - **DevPanel Integration**: `PropertyControl` mounted for `MassModule` and `StrengthModule`.
   - Design document: [CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/docs/design/CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md).
+- **Phase 11.2 (Health & Damage Aura Foundation)**:
+  - `HealthModule`: `baseMaxHp`, `maxHpProp`, `currentHpProp`, `baseMaxHealRate`, `maxHealRateProp`, `consumesEnergy` toggle, and placeholder death/respawn loop.
+  - `DamageAuraModule`: Radiates continuous damage within 3D spherical radius (`damageRadiusProp`, `damageRateProp`) to any entity with a `HealthModule`.
+  - **Hazard Orb**: Pre-spawned hazard orb with `DamageAuraModule` in `main.ts` for instant testability.
+  - **Dynamic Overhead Health Bar**: Overhead HP bar drawn above characters and objects only when wounded (`currentHp < maxHp`).
+  - **Ability Energy Toggles**: `consumesEnergy` flags and DevPanel warnings added to Walking, Pickup, Throw, Jump, and Climbing abilities.
+  - Roadmap document: [health_energy_consumables_roadmap.md](file:///C:/Users/tealf/.gemini/antigravity-ide/brain/9a7a90af-a0fb-448e-bbeb-0fa9a4c2bb40/health_energy_consumables_roadmap.md).
 
 ---
 

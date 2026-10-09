@@ -14,6 +14,8 @@ import { BounceModule } from "../engine/BounceModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import { RigidbodyModule } from "../engine/RigidbodyModule.js";
+import { HealthModule } from "../character/HealthModule.js";
+import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 
 export interface CreatorPreset {
@@ -978,6 +980,12 @@ export class DevPanel {
     const hasClimbingModule = isChar && Boolean(char?.climbingModule);
     const climbEnabled = isChar && Boolean(char?.climbingModule?.enabled);
 
+    const hasHealthModule = Boolean(e.healthModule);
+    const healthEnabled = Boolean(e.healthModule?.enabled);
+
+    const hasDamageAuraModule = Boolean(e.damageAuraModule);
+    const damageAuraEnabled = Boolean(e.damageAuraModule?.enabled);
+
     let html = "";
     let attachedCount = 0;
 
@@ -1198,11 +1206,30 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
               <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
             </div>
+            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 4px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Can Sprint (Shift / Gamepad)</span>
+              <input type="checkbox" id="check-can-sprint" ${char.walkingModule?.canSprint ? 'checked' : ''}>
+            </div>
             <div id="prop-socket-walk-force"></div>
             <div id="prop-socket-walk-speed"></div>
+            <div id="prop-socket-sprint-speed"></div>
             <div id="prop-socket-air-fric"></div>
             <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
               <div id="prop-socket-strength"></div>
+            </div>
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Walk Consumes Energy</span>
+              <input type="checkbox" id="check-walk-energy" ${char.walkingModule?.walkConsumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-walk-energy" class="module-dep-warning" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
+            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
+              <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-sprint-energy" class="module-dep-warning" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
             </div>
           </div>
         `;
@@ -1218,6 +1245,13 @@ export class DevPanel {
             </div>
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div id="prop-socket-pickup-reach"></div>
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
+              <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-pickup-energy" class="module-dep-warning" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
           </div>
         `;
       }
@@ -1238,6 +1272,13 @@ export class DevPanel {
             ${throwStrWarning}
             <div id="prop-socket-throw-force"></div>
             <div id="prop-socket-throw-max-height"></div>
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
+              <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-throw-energy" class="module-dep-warning" style="display: ${char.throwModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
           </div>
         `;
       }
@@ -1258,6 +1299,13 @@ export class DevPanel {
             ${jumpVertWarning}
             <div id="prop-socket-jump-strength"></div>
             <div id="prop-socket-jump-max-speed"></div>
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
+              <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-jump-energy" class="module-dep-warning" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
           </div>
         `;
       }
@@ -1309,9 +1357,83 @@ export class DevPanel {
             </div>
             <div id="prop-socket-climb-adhesion"></div>
             <div id="prop-socket-climb-speed"></div>
+            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
+              <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="warn-climb-energy" class="module-dep-warning" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
           </div>
         `;
       }
+    }
+
+    // Health & Vitality Module (Any entity can have Health)
+    if (hasHealthModule && e.healthModule) {
+      attachedCount++;
+      const hm = e.healthModule;
+      html += `
+        <div class="module-card ${!healthEnabled ? 'module-disabled' : ''}" data-module-id="health">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>❤️ Health & Vitality</label>
+            ${renderToggleBtn("health", healthEnabled)}
+          </div>
+          ${!healthEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Health & Vitality is disabled</div>` : ''}
+          <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 6px 0; display: flex; justify-content: space-between;">
+            <span>Current Status:</span>
+            <span id="val-entity-health-status" style="font-family: monospace; font-weight: 600; color: ${hm.currentHp < hm.maxHp * 0.3 ? '#ef4444' : (hm.currentHp < hm.maxHp * 0.6 ? '#f59e0b' : '#22c55e')};">
+              ${hm.currentHp.toFixed(1)} / ${hm.maxHp.toFixed(1)} HP (${((hm.currentHp / Math.max(0.1, hm.maxHp)) * 100).toFixed(0)}%)
+            </span>
+          </div>
+
+          <div id="prop-socket-health-cur"></div>
+          <div id="prop-socket-health-max"></div>
+          <div id="prop-socket-health-healrate"></div>
+
+          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+            <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
+            <input type="checkbox" id="check-health-energy" ${hm.consumesEnergy ? 'checked' : ''}>
+          </div>
+          <div id="warn-health-energy" class="module-dep-warning" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
+            ⚠️ Energy Busses not implemented yet (healing functions without drawing energy).
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px;">
+            <button id="btn-health-sub10" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">
+              -10 Dmg
+            </button>
+            <button id="btn-health-add10" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #22c55e; border-color: rgba(34, 197, 94, 0.4);">
+              +10 Heal
+            </button>
+            <button id="btn-health-kill" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #dc2626; border-color: rgba(220, 38, 38, 0.4);">
+              💀 Kill (0 HP)
+            </button>
+            <button id="btn-health-full" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+              ✨ Full HP
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Damage Aura Module (Any entity can radiate damage)
+    if (hasDamageAuraModule && e.damageAuraModule) {
+      attachedCount++;
+      html += `
+        <div class="module-card ${!damageAuraEnabled ? 'module-disabled' : ''}" data-module-id="damageAura">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>☣️ Damage Aura</label>
+            ${renderToggleBtn("damageAura", damageAuraEnabled)}
+          </div>
+          ${!damageAuraEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Damage Aura is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Radiates continuous damage in a 3D spherical radius to all entities with a Health behavior.
+          </div>
+          <div id="prop-socket-aura-radius"></div>
+          <div id="prop-socket-aura-rate"></div>
+        </div>
+      `;
     }
 
     if (attachedCount === 0) {
@@ -1342,6 +1464,8 @@ export class DevPanel {
       { id: "verticalPosition", name: "Vertical Position", icon: "↕️", description: "3D elevation (z-axis) and spatial altitude coordinates", isAttached: hasVertPosModule },
       { id: "gravity", name: "Gravity", icon: "🪐", description: "Downward gravitational acceleration toward ground", isAttached: hasGravityModule },
       { id: "roll", name: "Roll", icon: "🔄", description: "3D angular rotation and rolling resistance", isAttached: hasRollModule },
+      { id: "health", name: "Health & Vitality", icon: "❤️", description: "Hit points, passive health regeneration, and death / respawn loop", isAttached: hasHealthModule },
+      { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
     ];
 
     if (isChar) {
@@ -1457,6 +1581,12 @@ export class DevPanel {
       case "climbing":
         if (char?.climbingModule) char.climbingModule.enabled = !char.climbingModule.enabled;
         break;
+      case "health":
+        if (e.healthModule) e.healthModule.enabled = !e.healthModule.enabled;
+        break;
+      case "damageAura":
+        if (e.damageAuraModule) e.damageAuraModule.enabled = !e.damageAuraModule.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -1530,6 +1660,12 @@ export class DevPanel {
           char.isClimbing = false;
         }
         break;
+      case "health":
+        e.healthModule = null;
+        break;
+      case "damageAura":
+        e.damageAuraModule = null;
+        break;
     }
 
     this.renderEntityModules();
@@ -1601,6 +1737,21 @@ export class DevPanel {
         if (e instanceof Character) {
           (e as Character).climbingModule = new ClimbingModule();
         }
+        break;
+      case "health":
+        e.healthModule = new HealthModule({
+          baseMaxHp: 100,
+          maxHp: 100,
+          currentHp: 100,
+          baseMaxHealRate: 10,
+          maxHealRate: 10,
+        });
+        break;
+      case "damageAura":
+        e.damageAuraModule = new DamageAuraModule({
+          damageRadius: 2.0,
+          damageRate: 20.0,
+        });
         break;
     }
 
@@ -1743,6 +1894,13 @@ export class DevPanel {
         }
       });
 
+      const canSprintCheck = this.container.querySelector("#check-can-sprint") as HTMLInputElement;
+      canSprintCheck?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.canSprint = canSprintCheck.checked;
+        }
+      });
+
       // Walking sockets
       const walkForceSocketEl = this.container.querySelector("#prop-socket-walk-force");
       if (walkForceSocketEl && char.walkingModule) {
@@ -1764,6 +1922,16 @@ export class DevPanel {
         });
         walkSpeedSocketEl.appendChild(wsCtrl.element);
       }
+      const sprintSpeedSocketEl = this.container.querySelector("#prop-socket-sprint-speed");
+      if (sprintSpeedSocketEl && char.walkingModule) {
+        const ssCtrl = new PropertyControl({
+          property: char.walkingModule.maxSprintSpeedProp,
+          owner: char,
+          label: "Max Sprint Speed (u/s)",
+          step: 0.2,
+        });
+        sprintSpeedSocketEl.appendChild(ssCtrl.element);
+      }
       const airFricSocketEl = this.container.querySelector("#prop-socket-air-fric");
       if (airFricSocketEl && char.walkingModule) {
         const afCtrl = new PropertyControl({
@@ -1774,6 +1942,24 @@ export class DevPanel {
         });
         airFricSocketEl.appendChild(afCtrl.element);
       }
+
+      // Energy consumption checkboxes
+      const checkWalkEnergy = this.container.querySelector("#check-walk-energy") as HTMLInputElement;
+      checkWalkEnergy?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.walkConsumesEnergy = checkWalkEnergy.checked;
+          const warn = this.container.querySelector("#warn-walk-energy") as HTMLElement;
+          if (warn) warn.style.display = checkWalkEnergy.checked ? "block" : "none";
+        }
+      });
+      const checkSprintEnergy = this.container.querySelector("#check-sprint-energy") as HTMLInputElement;
+      checkSprintEnergy?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
+          const warn = this.container.querySelector("#warn-sprint-energy") as HTMLElement;
+          if (warn) warn.style.display = checkSprintEnergy.checked ? "block" : "none";
+        }
+      });
 
       // Strength (Dynamic Property Socket)
       const strSocketEl = this.container.querySelector("#prop-socket-strength");
@@ -1798,6 +1984,14 @@ export class DevPanel {
         });
         pickupReachSocketEl.appendChild(prCtrl.element);
       }
+      const checkPickupEnergy = this.container.querySelector("#check-pickup-energy") as HTMLInputElement;
+      checkPickupEnergy?.addEventListener("change", () => {
+        if (char.pickupModule) {
+          char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
+          const warn = this.container.querySelector("#warn-pickup-energy") as HTMLElement;
+          if (warn) warn.style.display = checkPickupEnergy.checked ? "block" : "none";
+        }
+      });
 
       // Throw sockets
       const throwForceSocketEl = this.container.querySelector("#prop-socket-throw-force");
@@ -1820,6 +2014,14 @@ export class DevPanel {
         });
         throwHeightSocketEl.appendChild(thCtrl.element);
       }
+      const checkThrowEnergy = this.container.querySelector("#check-throw-energy") as HTMLInputElement;
+      checkThrowEnergy?.addEventListener("change", () => {
+        if (char.throwModule) {
+          char.throwModule.consumesEnergy = checkThrowEnergy.checked;
+          const warn = this.container.querySelector("#warn-throw-energy") as HTMLElement;
+          if (warn) warn.style.display = checkThrowEnergy.checked ? "block" : "none";
+        }
+      });
 
       // Jump sockets
       const jumpStrSocketEl = this.container.querySelector("#prop-socket-jump-strength");
@@ -1842,6 +2044,12 @@ export class DevPanel {
         });
         jumpSpeedSocketEl.appendChild(jspCtrl.element);
       }
+      const checkJumpEnergy = this.container.querySelector("#check-jump-energy") as HTMLInputElement;
+      checkJumpEnergy?.addEventListener("change", () => {
+        char.jumpConsumesEnergy = checkJumpEnergy.checked;
+        const warn = this.container.querySelector("#warn-jump-energy") as HTMLElement;
+        if (warn) warn.style.display = checkJumpEnergy.checked ? "block" : "none";
+      });
 
       // Wall Edge Assist
       const btnEdgeWalkOff = this.container.querySelector("#toggle-edge-walkoff") as HTMLButtonElement;
@@ -1891,6 +2099,107 @@ export class DevPanel {
           step: 0.1,
         });
         climbSpeedSocketEl.appendChild(csCtrl.element);
+      }
+      const checkClimbEnergy = this.container.querySelector("#check-climb-energy") as HTMLInputElement;
+      checkClimbEnergy?.addEventListener("change", () => {
+        if (char.climbingModule) {
+          char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
+          const warn = this.container.querySelector("#warn-climb-energy") as HTMLElement;
+          if (warn) warn.style.display = checkClimbEnergy.checked ? "block" : "none";
+        }
+      });
+    }
+
+    // Health & Vitality Module controls (applicable to any entity)
+    if (e.healthModule) {
+      const hm = e.healthModule;
+
+      const hpCurSocketEl = this.container.querySelector("#prop-socket-health-cur");
+      if (hpCurSocketEl) {
+        const curCtrl = new PropertyControl({
+          property: hm.currentHpProp,
+          owner: e,
+          label: "Current Health (HP)",
+          step: 1.0,
+        });
+        hpCurSocketEl.appendChild(curCtrl.element);
+      }
+
+      const hpMaxSocketEl = this.container.querySelector("#prop-socket-health-max");
+      if (hpMaxSocketEl) {
+        const maxCtrl = new PropertyControl({
+          property: hm.maxHpProp,
+          owner: e,
+          label: "Max Health (HP)",
+          step: 5.0,
+        });
+        hpMaxSocketEl.appendChild(maxCtrl.element);
+      }
+
+      const hpHealSocketEl = this.container.querySelector("#prop-socket-health-healrate");
+      if (hpHealSocketEl) {
+        const hrCtrl = new PropertyControl({
+          property: hm.maxHealRateProp,
+          owner: e,
+          label: "Passive Heal Rate (HP/s)",
+          step: 0.5,
+        });
+        hpHealSocketEl.appendChild(hrCtrl.element);
+      }
+
+      const checkHealthEnergy = this.container.querySelector("#check-health-energy") as HTMLInputElement;
+      checkHealthEnergy?.addEventListener("change", () => {
+        hm.consumesEnergy = checkHealthEnergy.checked;
+        const warn = this.container.querySelector("#warn-health-energy") as HTMLElement;
+        if (warn) warn.style.display = checkHealthEnergy.checked ? "block" : "none";
+      });
+
+      // Quick test buttons
+      this.container.querySelector("#btn-health-sub10")?.addEventListener("click", () => {
+        hm.takeDamage(10, e.properties);
+        this.updateInspector();
+      });
+      this.container.querySelector("#btn-health-add10")?.addEventListener("click", () => {
+        hm.heal(10, e.properties);
+        this.updateInspector();
+      });
+      this.container.querySelector("#btn-health-kill")?.addEventListener("click", () => {
+        hm.currentHpProp.set(0, e.properties);
+        if (isChar && char) {
+          hm.dieAndRespawn(char, this.arena);
+        }
+        this.updateInspector();
+      });
+      this.container.querySelector("#btn-health-full")?.addEventListener("click", () => {
+        hm.currentHpProp.set(hm.getMaxHp(e.properties), e.properties);
+        this.updateInspector();
+      });
+    }
+
+    // Damage Aura Module controls (applicable to any entity)
+    if (e.damageAuraModule) {
+      const da = e.damageAuraModule;
+
+      const auraRadiusSocketEl = this.container.querySelector("#prop-socket-aura-radius");
+      if (auraRadiusSocketEl) {
+        const arCtrl = new PropertyControl({
+          property: da.damageRadiusProp,
+          owner: e,
+          label: "Aura Radius (3D) (u)",
+          step: 0.2,
+        });
+        auraRadiusSocketEl.appendChild(arCtrl.element);
+      }
+
+      const auraRateSocketEl = this.container.querySelector("#prop-socket-aura-rate");
+      if (auraRateSocketEl) {
+        const rateCtrl = new PropertyControl({
+          property: da.damageRateProp,
+          owner: e,
+          label: "Damage Rate (HP/s)",
+          step: 2.0,
+        });
+        auraRateSocketEl.appendChild(rateCtrl.element);
       }
     }
   }
@@ -2676,6 +2985,22 @@ export class DevPanel {
       <div class="inspect-item">
         <span class="inspect-k">Roll Resistance</span>
         <span class="inspect-v ${e.rollModule.rollResistance === 0 ? 'highlight-held' : ''}">${e.rollModule.rollResistance.toFixed(2)} u/s²</span>
+      </div>
+      ` : ''}
+      ${e.healthModule && e.healthModule.enabled ? `
+      <div class="inspect-item">
+        <span class="inspect-k">Health (HP)</span>
+        <span class="inspect-v ${e.healthModule.currentHp < e.healthModule.maxHp * 0.4 ? 'highlight-held' : ''}">${e.healthModule.currentHp.toFixed(1)} / ${e.healthModule.maxHp.toFixed(1)}</span>
+      </div>
+      <div class="inspect-item">
+        <span class="inspect-k">Passive Heal Rate</span>
+        <span class="inspect-v">${e.healthModule.maxHealRate.toFixed(1)} HP/s</span>
+      </div>
+      ` : ''}
+      ${e.damageAuraModule && e.damageAuraModule.enabled ? `
+      <div class="inspect-item">
+        <span class="inspect-k">Damage Aura</span>
+        <span class="inspect-v highlight-held">${e.damageAuraModule.damageRate.toFixed(1)} HP/s (r=${e.damageAuraModule.damageRadius.toFixed(1)}u)</span>
       </div>
       ` : ''}
       ${isChar && char ? `

@@ -82,6 +82,120 @@ export class HudOverlayPass {
       ctx.fillText(badgeText, x, pillY + pillH / 2);
     }
 
+    // Overhead Health Bar: Rendered above character/entity ONLY if wounded (currentHp < maxHp)
+    HudOverlayPass.drawHealthBar(ctx, char, arena, ppu, hoverScale, altitudeScale, r, x, y);
+
+    ctx.restore();
+  }
+
+  /**
+   * Draws an overhead health bar for any entity with a HealthModule,
+   * rendered only when currentHp < maxHp (avoiding HUD clutter at full health).
+   */
+  public static drawHealthBar(
+    ctx: CanvasRenderingContext2D,
+    entity: GameObject,
+    _arena: Arena,
+    _ppu: number,
+    _hoverScale: number,
+    _altitudeScale: number,
+    r: number,
+    x: number,
+    y: number
+  ): void {
+    const hm = entity.healthModule;
+    if (!hm || !hm.enabled) return;
+
+    const currentHp = hm.getCurrentHp(entity.properties);
+    const maxHp = hm.getMaxHp(entity.properties);
+
+    // Only render health bar if wounded (strictly currentHp < maxHp)
+    if (currentHp >= maxHp - 0.001) return;
+
+    const hpRatio = Math.max(0, Math.min(1, currentHp / Math.max(0.001, maxHp)));
+
+    // Health bar dimensions
+    const barWidth = Math.max(34, r * 1.8);
+    const barHeight = 5;
+    const barX = x - barWidth / 2;
+    // Position bar directly above head (or above name pill if character has one)
+    const isChar = entity.isCharacter;
+    const barY = isChar ? y - r - 24 : y - r - 10;
+
+    ctx.save();
+
+    // Dark background box
+    ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Red damage background behind fill
+    ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barWidth, barHeight, 2);
+    ctx.fill();
+
+    // Health fill gradient (green > amber > red based on ratio)
+    let fillGradientColor = "#22c55e"; // Healthy green
+    if (hpRatio < 0.25) {
+      fillGradientColor = "#ef4444"; // Critical red
+    } else if (hpRatio < 0.55) {
+      fillGradientColor = "#f59e0b"; // Warning amber
+    }
+
+    const fillW = Math.max(0, barWidth * hpRatio);
+    if (fillW > 0) {
+      ctx.fillStyle = fillGradientColor;
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, fillW, barHeight, 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draws a pulsing ground aura circle for any entity equipped with a DamageAuraModule.
+   */
+  public static drawDamageAura(
+    ctx: CanvasRenderingContext2D,
+    entity: GameObject,
+    ppu: number
+  ): void {
+    const aura = entity.damageAuraModule;
+    if (!aura || !aura.enabled) return;
+
+    const radius = aura.getDamageRadius(entity.properties);
+    if (radius <= 0) return;
+
+    const px = entity.position.x * ppu;
+    const py = entity.position.y * ppu;
+    const rPixels = radius * ppu;
+
+    ctx.save();
+    // Translucent soft hazard zone on ground
+    const gradient = ctx.createRadialGradient(px, py, rPixels * 0.2, px, py, rPixels);
+    gradient.addColorStop(0, "rgba(239, 68, 68, 0.18)");
+    gradient.addColorStop(0.7, "rgba(239, 68, 68, 0.10)");
+    gradient.addColorStop(1, "rgba(239, 68, 68, 0.0)");
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(px, py, rPixels, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dashed outer boundary ring
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(px, py, rPixels, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.restore();
   }
 

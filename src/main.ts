@@ -2,6 +2,7 @@ import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
+import { DamageAuraModule } from "./engine/DamageAuraModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -263,6 +264,19 @@ function bootstrap(): void {
       rollModule: new RollModule({
         rollResistance: 0.0,
         angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
+      }),
+    }),
+    new GameObject({
+      id: "hazard-orb-1",
+      name: "Hazard Orb (Damage Aura)",
+      position: { x: 10.0, y: 7.0, z: 0 },
+      mass: 5.0,
+      colliderRadius: 0.35,
+      color: "#ef4444",
+      bounceMod: 0.1,
+      damageAuraModule: new DamageAuraModule({
+        damageRadius: 2.2,
+        damageRate: 25.0,
       }),
     }),
   ];

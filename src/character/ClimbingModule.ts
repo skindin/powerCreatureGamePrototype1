@@ -38,14 +38,23 @@ export class ClimbingModule {
   // Previous frame climb key state to detect fresh presses
   private wasClimbHeldLastTick = false;
 
+  /**
+   * Whether climbing consumes energy from an Energy Bus (placeholder toggle).
+   */
+  public consumesEnergy: boolean = false;
+
   constructor(options?: {
     maxAdhesion?: number;
     maxClimbSpeed?: number;
     horizontalClimb?: boolean;
+    consumesEnergy?: boolean;
+    enabled?: boolean;
   }) {
     this.maxAdhesionProp = new DynamicProperty(options?.maxAdhesion ?? 105.0);
     this.maxClimbSpeedProp = new DynamicProperty(options?.maxClimbSpeed ?? 3.0);
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
   public get maxAdhesion(): number {
