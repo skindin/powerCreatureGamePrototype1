@@ -6339,7 +6339,7 @@ class WallEdgeAssistModule {
     return this.hangDistanceProp.get(registry);
   }
 }
-class HealthModule {
+const _HealthModule = class _HealthModule {
   constructor(options) {
     __publicField(this, "id", "health");
     __publicField(this, "name", "Health & Vitality");
@@ -6429,9 +6429,9 @@ class HealthModule {
   /**
    * Resets character state on death:
    * Drops any carried object, clears wall mounts, resets velocities,
-   * snaps to a spawn position, and restores full health.
+   * snaps to a random spawn position from the 4 online clearings, and restores full health.
    */
-  dieAndRespawn(character, arena) {
+  dieAndRespawn(character, _arena) {
     if (character.heldObject) {
       character.heldObject.isHeld = false;
       character.heldObject.heldBy = null;
@@ -6445,23 +6445,32 @@ class HealthModule {
     }
     character.velocity = { x: 0, y: 0 };
     character.verticalVelocity = 0;
-    let spawnX = 4.8;
-    let spawnY = 7;
-    if (character.spawnPos) {
-      spawnX = character.spawnPos.x;
-      spawnY = character.spawnPos.y;
-    } else if (arena) {
-      spawnX = arena.width / 2;
-      spawnY = arena.height / 2;
-    }
-    character.position.x = spawnX;
-    character.position.y = spawnY;
-    character.position.z = 0;
+    const spawns = _HealthModule.RESPAWN_SPAWNS;
+    const randomIndex = Math.floor(Math.random() * spawns.length);
+    const chosenSpawn = spawns[randomIndex];
+    character.position.x = chosenSpawn.x;
+    character.position.y = chosenSpawn.y;
+    character.position.z = chosenSpawn.z ?? 0;
     character.supportingSurfaceHeight = 0;
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
   }
-}
+};
+/**
+ * Authoritative clearing spawn points (West, East, Southwest, Southeast).
+ * Open clearings safely away from arena cover walls.
+ */
+__publicField(_HealthModule, "RESPAWN_SPAWNS", [
+  { x: 3.5, y: 7, z: 0 },
+  // Slot 1 (West open midfield)
+  { x: 17, y: 3.5, z: 0 },
+  // Slot 2 (East open clearing)
+  { x: 3.5, y: 11, z: 0 },
+  // Slot 3 (Southwest open clearing)
+  { x: 17, y: 11, z: 0 }
+  // Slot 4 (Southeast open clearing)
+]);
+let HealthModule = _HealthModule;
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";

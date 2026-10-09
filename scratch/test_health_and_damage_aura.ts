@@ -98,8 +98,11 @@ function testHealthAndDamageAura() {
   if (hero.healthModule.currentHp !== 100) {
     throw new Error(`Expected full 100 HP after respawn, got ${hero.healthModule.currentHp}`);
   }
-  if (hero.position.x !== 5.0 || hero.position.y !== 5.0 || hero.position.z !== 0) {
-    throw new Error(`Expected snap to spawnPos (5, 5, 0), got (${hero.position.x}, ${hero.position.y}, ${hero.position.z})`);
+  const isOneOfFourSpawns = HealthModule.RESPAWN_SPAWNS.some(
+    (s) => Math.abs(s.x - hero.position.x) < 0.001 && Math.abs(s.y - hero.position.y) < 0.001
+  );
+  if (!isOneOfFourSpawns) {
+    throw new Error(`Expected snap to one of four online clearings, got (${hero.position.x}, ${hero.position.y}, ${hero.position.z})`);
   }
   if (hero.velocity.x !== 0 || hero.velocity.y !== 0) {
     throw new Error(`Expected velocity zeroed on death, got (${hero.velocity.x}, ${hero.velocity.y})`);

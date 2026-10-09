@@ -125,11 +125,22 @@ export class HealthModule {
   }
 
   /**
+   * Authoritative clearing spawn points (West, East, Southwest, Southeast).
+   * Open clearings safely away from arena cover walls.
+   */
+  public static readonly RESPAWN_SPAWNS: ReadonlyArray<{ x: number; y: number; z: number }> = [
+    { x: 3.5, y: 7.0, z: 0 },   // Slot 1 (West open midfield)
+    { x: 17.0, y: 3.5, z: 0 },  // Slot 2 (East open clearing)
+    { x: 3.5, y: 11.0, z: 0 },  // Slot 3 (Southwest open clearing)
+    { x: 17.0, y: 11.0, z: 0 }, // Slot 4 (Southeast open clearing)
+  ];
+
+  /**
    * Resets character state on death:
    * Drops any carried object, clears wall mounts, resets velocities,
-   * snaps to a spawn position, and restores full health.
+   * snaps to a random spawn position from the 4 online clearings, and restores full health.
    */
-  public dieAndRespawn(character: Character, arena?: Arena): void {
+  public dieAndRespawn(character: Character, _arena?: Arena): void {
     // 1. Drop carried objects
     if (character.heldObject) {
       character.heldObject.isHeld = false;
@@ -149,19 +160,14 @@ export class HealthModule {
     character.velocity = { x: 0, y: 0 };
     character.verticalVelocity = 0;
 
-    // 4. Place at spawn location
-    let spawnX = 4.8;
-    let spawnY = 7.0;
-    if (character.spawnPos) {
-      spawnX = character.spawnPos.x;
-      spawnY = character.spawnPos.y;
-    } else if (arena) {
-      spawnX = arena.width / 2;
-      spawnY = arena.height / 2;
-    }
-    character.position.x = spawnX;
-    character.position.y = spawnY;
-    character.position.z = 0;
+    // 4. Place at a random spawn clearing out of the four online points
+    const spawns = HealthModule.RESPAWN_SPAWNS;
+    const randomIndex = Math.floor(Math.random() * spawns.length);
+    const chosenSpawn = spawns[randomIndex];
+
+    character.position.x = chosenSpawn.x;
+    character.position.y = chosenSpawn.y;
+    character.position.z = chosenSpawn.z ?? 0;
     character.supportingSurfaceHeight = 0;
 
     // 5. Restore full HP
