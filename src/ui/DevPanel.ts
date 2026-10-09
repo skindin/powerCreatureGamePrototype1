@@ -1724,7 +1724,7 @@ export class DevPanel {
       case "damageSolver":
         e.damageSolverModule = new DamageSolverModule({
           impactSusceptibility: 1.0,
-          minShockThreshold: 2.0,
+          damageThresholdHp: 2.0,
         });
         break;
     }
@@ -2195,10 +2195,10 @@ export class DevPanel {
       const threshSocketEl = this.container.querySelector("#prop-socket-min-shock-thresh");
       if (threshSocketEl) {
         const threshCtrl = new PropertyControl({
-          property: ds.minShockThresholdProp,
+          property: ds.damageThresholdHpProp,
           owner: e,
-          label: "Min Shock Threshold (u/s²)",
-          step: 0.5,
+          label: "Damage Threshold (HP)",
+          step: 1.0,
         });
         threshSocketEl.appendChild(threshCtrl.element);
       }

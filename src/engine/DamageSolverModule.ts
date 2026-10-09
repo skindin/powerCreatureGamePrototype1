@@ -21,6 +21,9 @@ export interface ImpactEvent {
 
 export interface DamageSolverModuleOptions {
   impactSusceptibility?: number;
+  /** Flat HP threshold absorbed/subtracted before health damage occurs */
+  damageThresholdHp?: number;
+  /** Backwards compatibility alias for damageThresholdHp */
   minShockThreshold?: number;
   enabled?: boolean;
 }
@@ -29,9 +32,9 @@ export interface DamageSolverModuleOptions {
  * DamageSolverModule
  *
  * Serves as the defensive articulation / armor layer for any entity with a HealthModule.
- * Receives physical impact shock events, converts absorbed shock above threshold
- * to raw damage scaled by the world collision damage scale, applies impact susceptibility %,
- * and passes the net damage directly to the entity's HealthModule.
+ * Receives physical impact shock events, converts absorbed shock to base HP damage via the
+ * world collision damage scale and entity impact susceptibility %, and subtracts the
+ * flat damageThresholdHp (armor/tolerance buffer) before taking damage, clamped at 0.
  */
 export class DamageSolverModule {
   public id = "damageSolver";
@@ -45,10 +48,10 @@ export class DamageSolverModule {
   public impactSusceptibilityProp: DynamicProperty;
 
   /**
-   * Minimum absorbed shock acceleration (u/s²) required before trauma occurs.
-   * Prevents gentle walking into walls or light nudges from dealing damage.
+   * Flat amount of HP subtracted from the incoming scaled impact damage before health is lost.
+   * Clamps the final HP deduction at 0 (e.g., a threshold of 5.0 HP absorbs the first 5 HP of any impact).
    */
-  public minShockThresholdProp: DynamicProperty;
+  public damageThresholdHpProp: DynamicProperty;
 
   /** Cooldown timer to prevent multi-substep collision spam in a single frame */
   private lastImpactTime: number = 0;
@@ -56,21 +59,35 @@ export class DamageSolverModule {
 
   constructor(options?: DamageSolverModuleOptions) {
     this.impactSusceptibilityProp = new DynamicProperty(options?.impactSusceptibility ?? 1.0);
-    this.minShockThresholdProp = new DynamicProperty(options?.minShockThreshold ?? 4.0);
+    const initialThresh = options?.damageThresholdHp ?? options?.minShockThreshold ?? 2.0;
+    this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get minShockThresholdProp(): DynamicProperty {
+    return this.damageThresholdHpProp;
   }
 
   public getImpactSusceptibility(registry?: ObjectPropertiesRegistry): number {
     return this.impactSusceptibilityProp.get(registry);
   }
 
+  public getDamageThresholdHp(registry?: ObjectPropertiesRegistry): number {
+    return this.damageThresholdHpProp.get(registry);
+  }
+
+  /** Backwards compatibility alias for getDamageThresholdHp */
   public getMinShockThreshold(registry?: ObjectPropertiesRegistry): number {
-    return this.minShockThresholdProp.get(registry);
+    return this.getDamageThresholdHp(registry);
   }
 
   /**
    * Evaluates an incoming physical impact shock event against thresholds
    * and deducts damage from the entity's HealthModule.
+   *
+   * Formula:
+   *   baseDamage = absorbedShock * worldCollisionDamageScale * susceptibility
+   *   finalDamage = max(0, baseDamage - damageThresholdHp)
    */
   public handleImpact(
     event: ImpactEvent,
@@ -89,12 +106,14 @@ export class DamageSolverModule {
     const susceptibility = this.getImpactSusceptibility(registry);
     if (susceptibility <= 0) return 0;
 
-    const threshold = this.getMinShockThreshold(registry);
-    const netShock = Math.max(0, event.absorbedShock - threshold);
-    if (netShock <= 0) return 0;
+    // 1. Convert physical shock directly into base raw HP damage
+    const baseDamage = event.absorbedShock * worldCollisionDamageScale * susceptibility;
+    if (baseDamage <= 0.0001) return 0;
 
-    // Linear un-clamped scaling: netShock * worldScale * susceptibility
-    const finalDamage = netShock * worldCollisionDamageScale * susceptibility;
+    // 2. Subtract flat HP threshold buffer (clamped at 0)
+    const thresholdHp = this.getDamageThresholdHp(registry);
+    const finalDamage = Math.max(0, baseDamage - thresholdHp);
+
     if (finalDamage > 0.001) {
       this.lastImpactTime = now;
       healthModule.takeDamage(finalDamage, registry);

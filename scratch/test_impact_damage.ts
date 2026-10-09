@@ -22,13 +22,15 @@ async function testImpactDamage() {
   });
   hero.damageSolverModule = new DamageSolverModule({
     impactSusceptibility: 1.0,
-    minShockThreshold: 2.0,
+    damageThresholdHp: 2.0, // absorbs first 2.0 HP of any impact
   });
 
   const hpBefore = hero.healthModule!.currentHp;
   console.log(`Hero HP before wall impact: ${hpBefore}`);
 
-  // Simulate a blunt impact with high deceleration shock (e.g. 15.0 u/s²)
+  // Simulate a blunt impact with high deceleration shock (15.0 u/s²)
+  // baseDamage = 15.0 * worldScale(1.0) * susc(1.0) = 15.0 HP
+  // finalDamage = max(0, 15.0 - 2.0) = 13.0 HP -> HP becomes 87
   const impactEvent = {
     absorbedShock: 15.0,
     impactSpeed: 10.0,
@@ -39,15 +41,16 @@ async function testImpactDamage() {
 
   hero.damageSolverModule.handleImpact(impactEvent, hero, hero.healthModule!, 1.0);
   const hpAfter = hero.healthModule!.currentHp;
-  console.log(`Hero HP after impact (15.0 shock, min thresh 2.0, world scale 1.0): ${hpAfter}`);
+  console.log(`Hero HP after impact (15.0 base HP damage - 2.0 HP threshold): ${hpAfter}`);
 
-  if (hpAfter >= hpBefore) {
-    throw new Error("Expected HP to decrease following severe blunt impact!");
+  if (hpAfter !== 87) {
+    throw new Error(`Expected HP to be 87 after 15.0 base - 2.0 thresh, but got ${hpAfter}!`);
   }
 
-  // Low shock below threshold should deal 0 damage
+  // Low shock where base HP damage <= damageThresholdHp (1.5 base HP <= 2.0 thresh)
+  // finalDamage = max(0, 1.5 - 2.0) = 0 HP -> HP remains 87
   const lowImpact = {
-    absorbedShock: 1.5, // below minShockThreshold of 2.0
+    absorbedShock: 1.5,
     impactSpeed: 1.0,
     otherEntity: null,
     normalX: -1,
@@ -56,9 +59,9 @@ async function testImpactDamage() {
   // Advance time past cooldown
   await new Promise((r) => setTimeout(r, 70));
   hero.damageSolverModule.handleImpact(lowImpact, hero, hero.healthModule!, 1.0);
-  console.log(`Hero HP after low shock (1.5 shock < 2.0 thresh): ${hero.healthModule!.currentHp}`);
+  console.log(`Hero HP after low shock (1.5 base HP damage < 2.0 HP thresh clamped to 0): ${hero.healthModule!.currentHp}`);
   if (hero.healthModule!.currentHp !== hpAfter) {
-    throw new Error("Low impact below threshold should not have inflicted damage!");
+    throw new Error("Low impact below HP threshold should have been clamped to 0 damage!");
   }
 
   console.log("✅ Collision Damage Solver tests passed successfully!");
