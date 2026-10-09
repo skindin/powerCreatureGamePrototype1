@@ -59,7 +59,7 @@ export class DamageSolverModule {
 
   constructor(options?: DamageSolverModuleOptions) {
     this.impactSusceptibilityProp = new DynamicProperty(options?.impactSusceptibility ?? 1.0);
-    const initialThresh = options?.damageThresholdHp ?? options?.minShockThreshold ?? 2.0;
+    const initialThresh = options?.damageThresholdHp ?? options?.minShockThreshold ?? 5.0;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }

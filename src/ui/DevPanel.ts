@@ -1724,7 +1724,7 @@ export class DevPanel {
       case "damageSolver":
         e.damageSolverModule = new DamageSolverModule({
           impactSusceptibility: 1.0,
-          damageThresholdHp: 2.0,
+          damageThresholdHp: 5.0,
         });
         break;
     }
