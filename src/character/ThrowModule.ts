@@ -363,7 +363,8 @@ export class ThrowModule {
     }
 
     // Limit how high the player can throw objects (effective max vertical target height above release)
-    const effectiveMaxHeight = this.maxThrowHeight * (thrower?.strength ?? 1.0);
+    const maxThrowHeight = this.maxThrowHeightProp.get(thrower?.properties);
+    const effectiveMaxHeight = maxThrowHeight * (thrower?.strength ?? 1.0);
     const maxAllowedTargetZ = startZ + effectiveMaxHeight;
     if (targetSurfaceHeight > maxAllowedTargetZ) {
       targetSurfaceHeight = maxAllowedTargetZ;
@@ -375,7 +376,8 @@ export class ThrowModule {
     if (dist < 0.1) return null;
 
     // Clamp aim distance to character reach
-    const actualDist = Math.min(dist, this.maxThrowAimDistance);
+    const maxThrowAimDistance = this.maxThrowAimDistanceProp.get(thrower?.properties);
+    const actualDist = Math.min(dist, maxThrowAimDistance);
     const dirX = dx / dist;
     const dirY = dy / dist;
     const finalTargetX = startX + dirX * actualDist;
@@ -537,7 +539,8 @@ export class ThrowModule {
       }
     }
 
-    const throwPower = this.baseThrowForce * character.strength;
+    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
+    const throwPower = baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
 
     const charVel = {
@@ -698,7 +701,8 @@ export class ThrowModule {
       }
     }
 
-    const throwPower = this.baseThrowForce * character.strength;
+    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
+    const throwPower = baseThrowForce * character.strength;
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,

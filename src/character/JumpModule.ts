@@ -74,7 +74,9 @@ export class JumpModule {
 
     // Effective mass scales takeoff velocity: heavier load = lower jump (character.mass includes carriedMass)
     const totalMass = Math.max(0.2, character.mass);
-    const takeoffSpeed = Math.min(this.maxInitialSpeed, this.jumpStrength / totalMass);
+    const jumpStrength = this.jumpStrengthProp.get(character.properties);
+    const maxInitialSpeed = this.maxInitialSpeedProp.get(character.properties);
+    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
 
     if (takeoffSpeed <= 0.01) return false;
 

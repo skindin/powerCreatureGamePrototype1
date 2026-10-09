@@ -246,17 +246,19 @@ export class GameObject {
     const speed = Math.hypot(this.velocity.x, this.velocity.y);
     const r = Math.max(0.01, this.colliderRadius);
     const displacement = speed * dt;
-    const threshold = this.colliderModule.ccdThresholdRatio ?? 0.5;
+    const threshold = this.colliderModule.ccdThresholdRatioProp.get(this.properties) ?? 0.5;
     return (displacement / r) >= threshold ? "continuous" : "discrete";
   }
 
   public get colliderRadius(): number {
-    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radius : 0;
+    return this.colliderModule && this.colliderModule.enabled
+      ? this.colliderModule.radiusProp.get(this.properties)
+      : 0;
   }
 
   public set colliderRadius(val: number) {
     if (this.colliderModule) {
-      this.colliderModule.radius = val;
+      this.colliderModule.radiusProp.set(val, this.properties);
     } else {
       this.colliderModule = new ColliderModule({ radius: val });
     }
@@ -292,24 +294,28 @@ export class GameObject {
   }
 
   public get staticGroundFrictionMod(): number {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionMod : 0;
+    return this.hasFriction && this.frictionModule
+      ? this.frictionModule.staticFrictionProp.get(this.properties)
+      : 0;
   }
 
   public set staticGroundFrictionMod(val: number) {
     if (this.frictionModule) {
-      this.frictionModule.staticFrictionMod = val;
+      this.frictionModule.staticFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ staticFrictionMod: val });
     }
   }
 
   public get dynamicGroundFrictionMod(): number {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionMod : 0;
+    return this.hasFriction && this.frictionModule
+      ? this.frictionModule.dynamicFrictionProp.get(this.properties)
+      : 0;
   }
 
   public set dynamicGroundFrictionMod(val: number) {
     if (this.frictionModule) {
-      this.frictionModule.dynamicFrictionMod = val;
+      this.frictionModule.dynamicFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ dynamicFrictionMod: val });
     }
@@ -323,14 +329,16 @@ export class GameObject {
   }
 
   public get bounceMod(): number | null {
-    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceMod : null;
+    return this.hasBounce && this.bounceModule
+      ? this.bounceModule.bounceModProp.get(this.properties)
+      : null;
   }
 
   public set bounceMod(val: number | null) {
     if (val === null || val <= 0.01) {
       this.bounceModule = null;
     } else if (this.bounceModule) {
-      this.bounceModule.bounceMod = val;
+      this.bounceModule.bounceModProp.set(val, this.properties);
     } else {
       this.bounceModule = new BounceModule({ bounceMod: val });
     }

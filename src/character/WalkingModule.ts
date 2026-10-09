@@ -115,8 +115,9 @@ export class WalkingModule {
     if (totalMass <= 0.01) return;
 
     // Active grip: on ground, scales by surface friction. In air, airFriction applies floating friction.
+    const airFriction = this.airFrictionProp.get(character.properties);
     const grip = isAirborne
-      ? this.airFriction
+      ? airFriction
       : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10.0);
     if (grip <= 0.001) {
       return;
@@ -128,7 +129,8 @@ export class WalkingModule {
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
     const sprintFactor = character.isSprinting ? 1.55 : 1.0;
-    const effectiveSpeed = (this.maxWalkSpeed * sprintFactor) / (1.0 + loadFactor);
+    const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
+    const effectiveSpeed = (maxWalkSpeed * sprintFactor) / (1.0 + loadFactor);
 
     let targetVx = 0;
     let targetVy = 0;
@@ -164,7 +166,8 @@ export class WalkingModule {
     const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
 
     // Symmetrical acceleration and deceleration: a = F_walk / totalMass * grip
-    const effectiveWalkForce = character.isSprinting ? this.maxWalkForce * 1.5 : this.maxWalkForce;
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
+    const effectiveWalkForce = character.isSprinting ? maxWalkForce * 1.5 : maxWalkForce;
     const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
     const maxStep = maxAccel * dt;
 

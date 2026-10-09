@@ -60,7 +60,8 @@ export class PickupModule {
     const deltaMagnitude = Math.hypot(dx, dy, dz);
 
     // Force the character to have to be within a single pickup range
-    return deltaMagnitude <= this.pickupReach;
+    const reach = this.pickupReachProp.get(character.properties);
+    return deltaMagnitude <= reach;
   }
 
   /**

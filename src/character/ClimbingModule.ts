@@ -158,7 +158,8 @@ export class ClimbingModule {
     // If the downward gravitational force of total mass exceeds maxAdhesion, grip fails and character slips
     const totalMass = character.mass;
     const requiredForce = totalMass * arena.gravity;
-    if (requiredForce > this.maxAdhesion) {
+    const maxAdhesion = this.maxAdhesionProp.get(character.properties);
+    if (requiredForce > maxAdhesion) {
       character.isClimbing = false;
       return false;
     }
@@ -192,12 +193,14 @@ export class ClimbingModule {
       character.verticalVelocity = 0;
       (character as any).standingWall = null;
 
+      const maxClimbSpeed = this.maxClimbSpeedProp.get(character.properties);
+
       // Handle horizontal traverse along the wall face if horizontalClimb is enabled
       if (this.horizontalClimb && hasMoveInput && Math.abs(inputDotTangent) >= 0.1) {
         const baseMass = character.baseMass;
         const traverseSpeed = Math.max(
           0.5,
-          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+          Math.min(maxClimbSpeed, (maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
         );
         character.velocity.x = tangentX * inputDotTangent * traverseSpeed;
         character.velocity.y = tangentY * inputDotTangent * traverseSpeed;
@@ -212,7 +215,7 @@ export class ClimbingModule {
         const baseMass = character.baseMass;
         const effectiveClimbSpeed = Math.max(
           0.2,
-          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+          Math.min(maxClimbSpeed, (maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
         );
         character.position.z += effectiveClimbSpeed * dt;
 

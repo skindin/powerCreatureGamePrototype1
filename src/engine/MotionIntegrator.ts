@@ -149,9 +149,10 @@ export class MotionIntegrator {
 
           // Roll Resistance
           const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          const rollResistance = roll.rollResistanceProp.get(entity.properties);
           if (speed > 0) {
-            if (roll.rollResistance > 0) {
-              const decel = roll.rollResistance * dt;
+            if (rollResistance > 0) {
+              const decel = rollResistance * dt;
               const newSpeed = Math.max(0, speed - decel);
               if (newSpeed < 0.005) {
                 entity.velocity.x = 0;
@@ -178,8 +179,8 @@ export class MotionIntegrator {
           }
 
           if (Math.abs(roll.angularVelocity.z) > 0.001) {
-            if (roll.rollResistance > 0) {
-              const zDecel = (roll.rollResistance / (beta * R)) * dt;
+            if (rollResistance > 0) {
+              const zDecel = (rollResistance / (beta * R)) * dt;
               const signZ = Math.sign(roll.angularVelocity.z);
               const magZ = Math.abs(roll.angularVelocity.z);
               roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);

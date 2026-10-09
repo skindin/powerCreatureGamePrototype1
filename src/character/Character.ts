@@ -65,12 +65,12 @@ export class Character extends GameObject {
   }
 
   public get hangDistance(): number {
-    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistance : 0.10;
+    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistanceProp.get(this.properties) : 0.10;
   }
 
   public set hangDistance(val: number) {
     if (this.wallEdgeAssistModule) {
-      this.wallEdgeAssistModule.hangDistance = Math.max(0, val);
+      this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
   }
 

@@ -4547,9 +4547,10 @@ class MotionIntegrator {
             }
           }
           const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          const rollResistance = roll.rollResistanceProp.get(entity.properties);
           if (speed > 0) {
-            if (roll.rollResistance > 0) {
-              const decel = roll.rollResistance * dt;
+            if (rollResistance > 0) {
+              const decel = rollResistance * dt;
               const newSpeed = Math.max(0, speed - decel);
               if (newSpeed < 5e-3) {
                 entity.velocity.x = 0;
@@ -4575,8 +4576,8 @@ class MotionIntegrator {
             }
           }
           if (Math.abs(roll.angularVelocity.z) > 1e-3) {
-            if (roll.rollResistance > 0) {
-              const zDecel = roll.rollResistance / (beta * R) * dt;
+            if (rollResistance > 0) {
+              const zDecel = rollResistance / (beta * R) * dt;
               const signZ = Math.sign(roll.angularVelocity.z);
               const magZ = Math.abs(roll.angularVelocity.z);
               roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
@@ -4763,15 +4764,15 @@ class GameObject {
     const speed = Math.hypot(this.velocity.x, this.velocity.y);
     const r = Math.max(0.01, this.colliderRadius);
     const displacement = speed * dt;
-    const threshold = this.colliderModule.ccdThresholdRatio ?? 0.5;
+    const threshold = this.colliderModule.ccdThresholdRatioProp.get(this.properties) ?? 0.5;
     return displacement / r >= threshold ? "continuous" : "discrete";
   }
   get colliderRadius() {
-    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radius : 0;
+    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radiusProp.get(this.properties) : 0;
   }
   set colliderRadius(val) {
     if (this.colliderModule) {
-      this.colliderModule.radius = val;
+      this.colliderModule.radiusProp.set(val, this.properties);
     } else {
       this.colliderModule = new ColliderModule({ radius: val });
     }
@@ -4798,21 +4799,21 @@ class GameObject {
     return Boolean(this.hasMass && this.frictionModule && this.frictionModule.enabled);
   }
   get staticGroundFrictionMod() {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionMod : 0;
+    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionProp.get(this.properties) : 0;
   }
   set staticGroundFrictionMod(val) {
     if (this.frictionModule) {
-      this.frictionModule.staticFrictionMod = val;
+      this.frictionModule.staticFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ staticFrictionMod: val });
     }
   }
   get dynamicGroundFrictionMod() {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionMod : 0;
+    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionProp.get(this.properties) : 0;
   }
   set dynamicGroundFrictionMod(val) {
     if (this.frictionModule) {
-      this.frictionModule.dynamicFrictionMod = val;
+      this.frictionModule.dynamicFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ dynamicFrictionMod: val });
     }
@@ -4824,13 +4825,13 @@ class GameObject {
     return Boolean(this.hasMass && this.bounceModule && this.bounceModule.enabled);
   }
   get bounceMod() {
-    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceMod : null;
+    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceModProp.get(this.properties) : null;
   }
   set bounceMod(val) {
     if (val === null || val <= 0.01) {
       this.bounceModule = null;
     } else if (this.bounceModule) {
-      this.bounceModule.bounceMod = val;
+      this.bounceModule.bounceModProp.set(val, this.properties);
     } else {
       this.bounceModule = new BounceModule({ bounceMod: val });
     }
@@ -5436,14 +5437,16 @@ class WalkingModule {
     character.isActivelyWalking = isMoving;
     const totalMass = character.hasMass ? Math.max(0.2, character.mass) : 1;
     if (totalMass <= 0.01) return;
-    const grip = isAirborne ? this.airFriction : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10);
+    const airFriction = this.airFrictionProp.get(character.properties);
+    const grip = isAirborne ? airFriction : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10);
     if (grip <= 1e-3) {
       return;
     }
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8);
     const sprintFactor = character.isSprinting ? 1.55 : 1;
-    const effectiveSpeed = this.maxWalkSpeed * sprintFactor / (1 + loadFactor);
+    const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
+    const effectiveSpeed = maxWalkSpeed * sprintFactor / (1 + loadFactor);
     let targetVx = 0;
     let targetVy = 0;
     if (isMoving) {
@@ -5469,7 +5472,8 @@ class WalkingModule {
     }
     const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
     const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
-    const effectiveWalkForce = character.isSprinting ? this.maxWalkForce * 1.5 : this.maxWalkForce;
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
+    const effectiveWalkForce = character.isSprinting ? maxWalkForce * 1.5 : maxWalkForce;
     const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
     const maxStep = maxAccel * dt;
     if (diffSpeed <= maxStep || !isAirborne && !isMoving && currentSpeed < staticThreshold) {
@@ -5524,7 +5528,8 @@ class PickupModule {
     const dy = obj.position.y - character.position.y;
     const dz = objZ - charZ;
     const deltaMagnitude = Math.hypot(dx, dy, dz);
-    return deltaMagnitude <= this.pickupReach;
+    const reach = this.pickupReachProp.get(character.properties);
+    return deltaMagnitude <= reach;
   }
   /**
    * Finds the nearest grabbable object to the mouse/aim location within character reach
@@ -5879,7 +5884,8 @@ class ThrowModule {
         targetSurfaceHeight = arena.getSupportingSurfaceHeight(targetX, targetY);
       }
     }
-    const effectiveMaxHeight = this.maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
+    const maxThrowHeight = this.maxThrowHeightProp.get(thrower == null ? void 0 : thrower.properties);
+    const effectiveMaxHeight = maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
     const maxAllowedTargetZ = startZ + effectiveMaxHeight;
     if (targetSurfaceHeight > maxAllowedTargetZ) {
       targetSurfaceHeight = maxAllowedTargetZ;
@@ -5888,7 +5894,8 @@ class ThrowModule {
     const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
-    const actualDist = Math.min(dist, this.maxThrowAimDistance);
+    const maxThrowAimDistance = this.maxThrowAimDistanceProp.get(thrower == null ? void 0 : thrower.properties);
+    const actualDist = Math.min(dist, maxThrowAimDistance);
     const dirX = dx / dist;
     const dirY = dy / dist;
     const finalTargetX = startX + dirX * actualDist;
@@ -5992,7 +5999,8 @@ class ThrowModule {
         startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
-    const throwPower = this.baseThrowForce * character.strength;
+    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
+    const throwPower = baseThrowForce * character.strength;
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
     const charVel = {
       x: character.velocity.x,
@@ -6127,7 +6135,8 @@ class ThrowModule {
         startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
-    const throwPower = this.baseThrowForce * character.strength;
+    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
+    const throwPower = baseThrowForce * character.strength;
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,
@@ -6240,7 +6249,9 @@ class JumpModule {
       return false;
     }
     const totalMass = Math.max(0.2, character.mass);
-    const takeoffSpeed = Math.min(this.maxInitialSpeed, this.jumpStrength / totalMass);
+    const jumpStrength = this.jumpStrengthProp.get(character.properties);
+    const maxInitialSpeed = this.maxInitialSpeedProp.get(character.properties);
+    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
     if (takeoffSpeed <= 0.01) return false;
     character.verticalVelocity = takeoffSpeed;
     character.position.z = Math.max(character.position.z, surfaceZ + 0.02);
@@ -6386,11 +6397,11 @@ class Character extends GameObject {
     return this.heldObject && this.heldObject.hasMass ? this.heldObject.mass : 0;
   }
   get hangDistance() {
-    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistance : 0.1;
+    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistanceProp.get(this.properties) : 0.1;
   }
   set hangDistance(val) {
     if (this.wallEdgeAssistModule) {
-      this.wallEdgeAssistModule.hangDistance = Math.max(0, val);
+      this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
   }
   /**
