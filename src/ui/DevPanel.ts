@@ -18,6 +18,7 @@ import { HealthModule } from "../character/HealthModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { PropertyControl } from "./PropertyControl.js";
+import { FloatScrubber } from "./FloatScrubber.js";
 
 export interface CreatorPreset {
   name: string;
@@ -206,6 +207,7 @@ export class DevPanel {
   private objectSpecificControlsEl!: HTMLElement;
   private modePlayBtn!: HTMLButtonElement;
   private modeEditBtn!: HTMLButtonElement;
+  private scrubbers: Map<string, FloatScrubber> = new Map();
 
   constructor(options: {
     container: HTMLElement;
@@ -395,13 +397,7 @@ export class DevPanel {
             </p>
           </div>
 
-          <div class="slider-group" style="margin-top: 12px;">
-            <div class="slider-label">
-              <span>Standard Wall Height (u)</span>
-              <span id="val-editor-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
-            </div>
-            <input type="range" id="slide-editor-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
-          </div>
+          <div id="scrub-container-editor-wall-height" style="margin-top: 12px;"></div>
 
           <div style="display: flex; gap: 8px; margin-top: 12px;">
             <button id="btn-reset-walls" class="btn-secondary-action" style="flex: 1;">↺ Reset Layout</button>
@@ -463,13 +459,9 @@ export class DevPanel {
             </select>
           </div>
 
-          <!-- Dynamic CCD Threshold Ratio Slider -->
-          <div class="slider-group" id="group-ccd-threshold" style="margin-bottom: 10px;">
-            <div class="slider-label">
-              <span>Dynamic CCD Threshold Ratio</span>
-              <span id="val-ccd-threshold">0.50×</span>
-            </div>
-            <input type="range" id="slide-ccd-threshold" min="0.10" max="2.00" step="0.05" value="0.50">
+          <!-- Dynamic CCD Threshold Ratio Scrubber -->
+          <div id="group-ccd-threshold" style="margin-bottom: 10px;">
+            <div id="scrub-container-ccd-threshold"></div>
             <span style="font-size: 0.70rem; color: #94a3b8; display: block; margin-top: 2px;">
               Triggers Continuous Swept when displacement per tick exceeds (Ratio × Radius).
             </span>
@@ -522,25 +514,17 @@ export class DevPanel {
             </span>
           </div>
 
-          <!-- Buffer Capacity Slider (Dynamic live resizing) -->
-          <div class="slider-group" id="group-buffer-capacity" style="margin-bottom: 8px;">
-            <div class="slider-label">
-              <span>Buffer Capacity</span>
-              <span id="val-buffer-capacity">60 ticks (1.0s)</span>
-            </div>
-            <input type="range" id="slide-buffer-capacity" min="15" max="120" step="5" value="60">
+          <!-- Buffer Capacity Scrubber (Dynamic live resizing) -->
+          <div id="group-buffer-capacity" style="margin-bottom: 8px;">
+            <div id="scrub-container-buffer-capacity"></div>
             <span style="font-size: 0.68rem; color: #64748b; display: block; margin-top: 2px;">
               Dynamic ring buffer size (15 to 120 ticks, 0.25s to 2.0s).
             </span>
           </div>
 
-          <!-- Rollback Replay Depth Slider -->
-          <div class="slider-group" id="group-rollback-depth" style="margin-bottom: 8px;">
-            <div class="slider-label">
-              <span>Test Rollback Depth</span>
-              <span id="val-rollback-depth">30 ticks (0.50s)</span>
-            </div>
-            <input type="range" id="slide-rollback-depth" min="5" max="60" step="5" value="30">
+          <!-- Rollback Replay Depth Scrubber -->
+          <div id="group-rollback-depth" style="margin-bottom: 8px;">
+            <div id="scrub-container-rollback-depth"></div>
           </div>
 
           <!-- Live Buffer Trail Toggle -->
@@ -677,12 +661,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="grp-creator-radius" style="display: ${this.creatorState.hasCollider ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Collider Radius (u)</span>
-                <span id="val-creator-radius">${this.creatorState.colliderRadius.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-creator-radius" min="0.1" max="1.5" step="0.02" value="${this.creatorState.colliderRadius}">
+            <div id="grp-creator-radius" style="display: ${this.creatorState.hasCollider ? 'block' : 'none'};">
+              <div id="scrub-container-creator-radius"></div>
             </div>
 
             <div class="toggle-row">
@@ -692,12 +672,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="grp-creator-mass" style="display: ${this.creatorState.hasMass ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Mass (kg)</span>
-                <span id="val-creator-mass">${this.creatorState.mass.toFixed(1)}</span>
-              </div>
-              <input type="range" id="slide-creator-mass" min="0.1" max="8.0" step="0.1" value="${this.creatorState.mass}">
+            <div id="grp-creator-mass" style="display: ${this.creatorState.hasMass ? 'block' : 'none'};">
+              <div id="scrub-container-creator-mass"></div>
             </div>
 
             <div class="toggle-row">
@@ -707,12 +683,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="grp-creator-fric" style="display: ${this.creatorState.hasFriction ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Dynamic Friction Mod</span>
-                <span id="val-creator-fric">${this.creatorState.dynamicFrictionMod.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-creator-fric" min="0" max="3.0" step="0.05" value="${this.creatorState.dynamicFrictionMod}">
+            <div id="grp-creator-fric" style="display: ${this.creatorState.hasFriction ? 'block' : 'none'};">
+              <div id="scrub-container-creator-fric"></div>
             </div>
 
             <div class="toggle-row">
@@ -722,12 +694,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="grp-creator-bounce" style="display: ${this.creatorState.hasBounce ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Bounciness (Restitution)</span>
-                <span id="val-creator-bounce">${this.creatorState.bounceMod.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-creator-bounce" min="0.05" max="1.0" step="0.05" value="${this.creatorState.bounceMod}">
+            <div id="grp-creator-bounce" style="display: ${this.creatorState.hasBounce ? 'block' : 'none'};">
+              <div id="scrub-container-creator-bounce"></div>
               <div style="margin-top: 6px;">
                 <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                   <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''}>
@@ -746,12 +714,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="grp-creator-vert-pos" style="display: ${this.creatorState.hasVerticalPosition ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Elevation (z)</span>
-                <span id="val-creator-elevation">${this.creatorState.elevation.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-creator-elevation" min="0.0" max="4.0" step="0.05" value="${this.creatorState.elevation}">
+            <div id="grp-creator-vert-pos" style="display: ${this.creatorState.hasVerticalPosition ? 'block' : 'none'};">
+              <div id="scrub-container-creator-elevation"></div>
             </div>
 
             <div class="toggle-row">
@@ -768,12 +732,8 @@ export class DevPanel {
               </button>
             </div>
 
-            <div class="slider-group" id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule ? 'block' : 'none'};">
-              <div class="slider-label">
-                <span>Roll Resistance (u/s²)</span>
-                <span id="val-creator-roll-resist">${this.creatorState.rollResistance.toFixed(2)}</span>
-              </div>
-              <input type="range" id="slide-creator-roll-resist" min="0.0" max="4.0" step="0.05" value="${this.creatorState.rollResistance}">
+            <div id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule ? 'block' : 'none'};">
+              <div id="scrub-container-creator-roll-resist"></div>
             </div>
 
             <button id="btn-spawn-configured" class="btn-spawn-primary">✨ Spawn Object</button>
@@ -788,45 +748,11 @@ export class DevPanel {
         <div class="dev-section">
           <h3>🌍 World Physics & Environment</h3>
 
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Gravity Force (u/s²)</span>
-              <span id="val-gravity">${this.arena.gravity.toFixed(1)}</span>
-            </div>
-            <input type="range" id="slide-gravity" min="1.0" max="100.0" step="0.5" value="${this.arena.gravity}">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Standard Wall Height (u)</span>
-              <span id="val-wall-height">${this.arena.wallHeight.toFixed(1)}</span>
-            </div>
-            <input type="range" id="slide-wall-height" min="0.2" max="3.0" step="0.1" value="${this.arena.wallHeight}">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Base Ground Friction Coeff (u/s²)</span>
-              <span id="val-friction">${this.arena.frictionCoeff.toFixed(1)}</span>
-            </div>
-            <input type="range" id="slide-friction" min="1.0" max="30.0" step="0.5" value="${this.arena.frictionCoeff}">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Static Friction Threshold (u/s)</span>
-              <span id="val-static-thresh">${this.arena.staticFrictionThreshold.toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-static-thresh" min="0.02" max="1.0" step="0.02" value="${this.arena.staticFrictionThreshold}">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-label">
-              <span>Collision Damage Scale (HP / Shock)</span>
-              <span id="val-collision-damage-scale">${GameObject.globalWorldCollisionDamageScale.toFixed(2)}</span>
-            </div>
-            <input type="range" id="slide-collision-damage-scale" min="0.0" max="5.0" step="0.1" value="${GameObject.globalWorldCollisionDamageScale}">
-          </div>
+          <div id="scrub-container-gravity" style="margin-bottom: 8px;"></div>
+          <div id="scrub-container-wall-height" style="margin-bottom: 8px;"></div>
+          <div id="scrub-container-friction" style="margin-bottom: 8px;"></div>
+          <div id="scrub-container-static-thresh" style="margin-bottom: 8px;"></div>
+          <div id="scrub-container-collision-damage-scale" style="margin-bottom: 8px;"></div>
         </div>
       </div>
     `;
@@ -2332,21 +2258,21 @@ export class DevPanel {
     const colGrp = this.container.querySelector("#grp-creator-radius") as HTMLElement;
     if (colBtn) { colBtn.textContent = s.hasCollider ? "Attached" : "Detached"; colBtn.classList.toggle("active", s.hasCollider); }
     if (colGrp) colGrp.style.display = s.hasCollider ? "block" : "none";
-    this.setSliderVal("slide-creator-radius", "val-creator-radius", s.colliderRadius, 2);
+    this.setScrubberVal("scrub-container-creator-radius", s.colliderRadius);
 
     // Mass
     const massBtn = this.container.querySelector("#creator-toggle-mass") as HTMLButtonElement;
     const massGrp = this.container.querySelector("#grp-creator-mass") as HTMLElement;
     if (massBtn) { massBtn.textContent = s.hasMass ? "Attached" : "Detached"; massBtn.classList.toggle("active", s.hasMass); }
     if (massGrp) massGrp.style.display = s.hasMass ? "block" : "none";
-    this.setSliderVal("slide-creator-mass", "val-creator-mass", s.mass, 1);
+    this.setScrubberVal("scrub-container-creator-mass", s.mass);
 
     // Friction
     const fricBtn = this.container.querySelector("#creator-toggle-friction") as HTMLButtonElement;
     const fricGrp = this.container.querySelector("#grp-creator-fric") as HTMLElement;
     if (fricBtn) { fricBtn.textContent = s.hasFriction ? "Attached" : "Detached"; fricBtn.classList.toggle("active", s.hasFriction); }
     if (fricGrp) fricGrp.style.display = s.hasFriction ? "block" : "none";
-    this.setSliderVal("slide-creator-fric", "val-creator-fric", s.dynamicFrictionMod, 2);
+    this.setScrubberVal("scrub-container-creator-fric", s.dynamicFrictionMod);
 
     // Bounce
     const bounceBtn = this.container.querySelector("#creator-toggle-bounce") as HTMLButtonElement;
@@ -2361,7 +2287,7 @@ export class DevPanel {
     if (creatorWarnBounceVert) {
       creatorWarnBounceVert.style.display = (s.hasBounce && s.verticalBounce && (!s.hasVerticalPosition || !s.hasVerticalVelocity)) ? "block" : "none";
     }
-    this.setSliderVal("slide-creator-bounce", "val-creator-bounce", s.bounceMod, 2);
+    this.setScrubberVal("scrub-container-creator-bounce", s.bounceMod);
 
     // Vertical Position
     const vertPosBtn = this.container.querySelector("#creator-toggle-vert-pos") as HTMLButtonElement;
@@ -2371,7 +2297,7 @@ export class DevPanel {
       vertPosBtn.classList.toggle("active", s.hasVerticalPosition);
     }
     if (vertPosGrp) vertPosGrp.style.display = s.hasVerticalPosition ? "block" : "none";
-    this.setSliderVal("slide-creator-elevation", "val-creator-elevation", s.elevation, 2);
+    this.setScrubberVal("scrub-container-creator-elevation", s.elevation);
 
     // Gravity
     const gravBtn = this.container.querySelector("#creator-toggle-gravity") as HTMLButtonElement;
@@ -2382,7 +2308,7 @@ export class DevPanel {
     const rollGrp = this.container.querySelector("#group-creator-roll-resist") as HTMLElement;
     if (rollBtn) { rollBtn.textContent = s.hasRollModule ? "Enabled" : "Disabled"; rollBtn.classList.toggle("active", s.hasRollModule); }
     if (rollGrp) rollGrp.style.display = s.hasRollModule ? "block" : "none";
-    this.setSliderVal("slide-creator-roll-resist", "val-creator-roll-resist", s.rollResistance, 2);
+    this.setScrubberVal("scrub-container-creator-roll-resist", s.rollResistance);
   }
 
   private bindEvents(): void {
@@ -2488,11 +2414,20 @@ export class DevPanel {
       this.updateInspector();
     });
 
-    this.setupSlider("slide-ccd-threshold", "val-ccd-threshold", (val) => {
-      if (this.selectedEntity?.colliderModule) {
-        this.selectedEntity.colliderModule.ccdThresholdRatio = val;
-      }
-    }, 2);
+    this.setupScrubber("scrub-container-ccd-threshold", {
+      label: "Dynamic CCD Threshold Ratio",
+      value: this.selectedEntity?.colliderModule?.ccdThresholdRatio ?? 0.5,
+      min: 0.1,
+      max: 2.0,
+      step: 0.05,
+      decimals: 2,
+      suffix: "×",
+      onChange: (val) => {
+        if (this.selectedEntity?.colliderModule) {
+          this.selectedEntity.colliderModule.ccdThresholdRatio = val;
+        }
+      },
+    });
 
     selectEntityCollision?.addEventListener("change", () => {
       if (this.selectedEntity) {
@@ -2539,21 +2474,35 @@ export class DevPanel {
     const btnTestDesync = this.container.querySelector("#btn-test-desync") as HTMLButtonElement | null;
     const bannerRollbackResult = this.container.querySelector("#banner-rollback-result") as HTMLElement | null;
 
-    this.setupSlider("slide-buffer-capacity", "val-buffer-capacity", (val) => {
-      const loop = this.getGameLoop?.();
-      if (loop) {
-        loop.historyBuffer.setCapacity(val);
-        const valEl = this.container.querySelector("#val-buffer-capacity");
-        if (valEl) valEl.textContent = `${val} ticks (${(val / 60).toFixed(1)}s)`;
-        this.updateInspector();
-      }
-    }, 0);
+    this.setupScrubber("scrub-container-buffer-capacity", {
+      label: "Buffer Capacity",
+      value: this.getGameLoop?.()?.historyBuffer?.capacity ?? 60,
+      min: 15,
+      max: 120,
+      step: 5,
+      decimals: 0,
+      suffix: " ticks",
+      onChange: (val) => {
+        const loop = this.getGameLoop?.();
+        if (loop) {
+          loop.historyBuffer.setCapacity(val);
+          this.updateInspector();
+        }
+      },
+    });
 
-    this.setupSlider("slide-rollback-depth", "val-rollback-depth", (val) => {
-      this.rollbackDepthTicks = Math.round(val);
-      const valEl = this.container.querySelector("#val-rollback-depth");
-      if (valEl) valEl.textContent = `${this.rollbackDepthTicks} ticks (${(this.rollbackDepthTicks / 60).toFixed(2)}s)`;
-    }, 0);
+    this.setupScrubber("scrub-container-rollback-depth", {
+      label: "Test Rollback Depth",
+      value: this.rollbackDepthTicks,
+      min: 5,
+      max: 60,
+      step: 5,
+      decimals: 0,
+      suffix: " ticks",
+      onChange: (val) => {
+        this.rollbackDepthTicks = Math.round(val);
+      },
+    });
 
     const toggleBufferTrail = this.container.querySelector("#toggle-buffer-trail") as HTMLButtonElement | null;
     if (toggleBufferTrail) {
@@ -2657,21 +2606,48 @@ export class DevPanel {
       this.updateInspector();
     });
 
-    // 7. World Physics Sliders
+    // 7. World Physics Scrubbers
 
-    this.setupSlider("slide-gravity", "val-gravity", (val) => {
-      this.arena.gravity = val;
-    }, 1);
+    this.setupScrubber("scrub-container-gravity", {
+      label: "Gravity Force",
+      value: this.arena.gravity,
+      min: 1.0,
+      max: 100.0,
+      step: 0.5,
+      decimals: 1,
+      suffix: " u/s²",
+      onChange: (val) => {
+        this.arena.gravity = val;
+      },
+    });
 
-    this.setupSlider("slide-wall-height", "val-wall-height", (val) => {
-      this.arena.setStandardWallHeight(val);
-      this.setSliderVal("slide-editor-wall-height", "val-editor-wall-height", val, 1);
-    }, 1);
+    this.setupScrubber("scrub-container-wall-height", {
+      label: "Standard Wall Height",
+      value: this.arena.wallHeight,
+      min: 0.2,
+      max: 3.0,
+      step: 0.1,
+      decimals: 1,
+      suffix: " u",
+      onChange: (val) => {
+        this.arena.setStandardWallHeight(val);
+        this.setScrubberVal("scrub-container-editor-wall-height", val);
+      },
+    });
 
-    this.setupSlider("slide-editor-wall-height", "val-editor-wall-height", (val) => {
-      this.arena.setStandardWallHeight(val);
-      this.setSliderVal("slide-wall-height", "val-wall-height", val, 1);
-    }, 1);
+    this.setupScrubber("scrub-container-editor-wall-height", {
+      label: "Standard Wall Height",
+      value: this.arena.wallHeight,
+      min: 0.2,
+      max: 3.0,
+      step: 0.1,
+      decimals: 1,
+      suffix: " u",
+      onChange: (val) => {
+        this.arena.setStandardWallHeight(val);
+        this.setScrubberVal("scrub-container-wall-height", val);
+      },
+    });
 
     const selectWallPreset = this.container.querySelector("#select-wall-preset") as HTMLSelectElement | null;
     selectWallPreset?.addEventListener("change", () => {
@@ -2710,21 +2686,48 @@ export class DevPanel {
       this.updateWallPresetUI();
     });
 
-    this.setupSlider("slide-friction", "val-friction", (val) => {
-      this.arena.frictionCoeff = val;
-    }, 1);
+    this.setupScrubber("scrub-container-friction", {
+      label: "Base Ground Friction Coeff",
+      value: this.arena.frictionCoeff,
+      min: 1.0,
+      max: 30.0,
+      step: 0.5,
+      decimals: 1,
+      suffix: " u/s²",
+      onChange: (val) => {
+        this.arena.frictionCoeff = val;
+      },
+    });
 
-    this.setupSlider("slide-static-thresh", "val-static-thresh", (val) => {
-      this.arena.staticFrictionThreshold = val;
-    }, 2);
+    this.setupScrubber("scrub-container-static-thresh", {
+      label: "Static Friction Threshold",
+      value: this.arena.staticFrictionThreshold,
+      min: 0.02,
+      max: 1.0,
+      step: 0.02,
+      decimals: 2,
+      suffix: " u/s",
+      onChange: (val) => {
+        this.arena.staticFrictionThreshold = val;
+      },
+    });
 
-    this.setupSlider("slide-collision-damage-scale", "val-collision-damage-scale", (val) => {
-      GameObject.globalWorldCollisionDamageScale = val;
-      const loop = this.getGameLoop ? this.getGameLoop() : null;
-      if (loop) {
-        loop.worldCollisionDamageScale = val;
-      }
-    }, 2);
+    this.setupScrubber("scrub-container-collision-damage-scale", {
+      label: "Collision Damage Scale",
+      value: GameObject.globalWorldCollisionDamageScale,
+      min: 0.0,
+      max: 5.0,
+      step: 0.1,
+      decimals: 2,
+      suffix: " HP/Shock",
+      onChange: (val) => {
+        GameObject.globalWorldCollisionDamageScale = val;
+        const loop = this.getGameLoop ? this.getGameLoop() : null;
+        if (loop) {
+          loop.worldCollisionDamageScale = val;
+        }
+      },
+    });
 
     // 8. Presets
     const presetButtons = this.container.querySelectorAll(".preset-chip");
@@ -2770,7 +2773,16 @@ export class DevPanel {
       const grp = this.container.querySelector("#grp-creator-radius") as HTMLElement;
       if (grp) grp.style.display = this.creatorState.hasCollider ? "block" : "none";
     });
-    this.setupSlider("slide-creator-radius", "val-creator-radius", (v) => { this.creatorState.colliderRadius = v; }, 2);
+    this.setupScrubber("scrub-container-creator-radius", {
+      label: "Collider Radius",
+      value: this.creatorState.colliderRadius,
+      min: 0.1,
+      max: 1.5,
+      step: 0.02,
+      decimals: 2,
+      suffix: " u",
+      onChange: (v) => { this.creatorState.colliderRadius = v; },
+    });
 
     const creatorMassBtn = this.container.querySelector("#creator-toggle-mass") as HTMLButtonElement;
     creatorMassBtn?.addEventListener("click", () => {
@@ -2780,7 +2792,16 @@ export class DevPanel {
       const grp = this.container.querySelector("#grp-creator-mass") as HTMLElement;
       if (grp) grp.style.display = this.creatorState.hasMass ? "block" : "none";
     });
-    this.setupSlider("slide-creator-mass", "val-creator-mass", (v) => { this.creatorState.mass = v; }, 1);
+    this.setupScrubber("scrub-container-creator-mass", {
+      label: "Mass",
+      value: this.creatorState.mass,
+      min: 0.1,
+      max: 8.0,
+      step: 0.1,
+      decimals: 1,
+      suffix: " kg",
+      onChange: (v) => { this.creatorState.mass = v; },
+    });
 
     const creatorFricBtn = this.container.querySelector("#creator-toggle-friction") as HTMLButtonElement;
     creatorFricBtn?.addEventListener("click", () => {
@@ -2790,7 +2811,15 @@ export class DevPanel {
       const grp = this.container.querySelector("#grp-creator-fric") as HTMLElement;
       if (grp) grp.style.display = this.creatorState.hasFriction ? "block" : "none";
     });
-    this.setupSlider("slide-creator-fric", "val-creator-fric", (v) => { this.creatorState.dynamicFrictionMod = v; }, 2);
+    this.setupScrubber("scrub-container-creator-fric", {
+      label: "Dynamic Friction Mod",
+      value: this.creatorState.dynamicFrictionMod,
+      min: 0.0,
+      max: 3.0,
+      step: 0.05,
+      decimals: 2,
+      onChange: (v) => { this.creatorState.dynamicFrictionMod = v; },
+    });
 
     const creatorBounceBtn = this.container.querySelector("#creator-toggle-bounce") as HTMLButtonElement;
     creatorBounceBtn?.addEventListener("click", () => {
@@ -2800,7 +2829,15 @@ export class DevPanel {
       const grp = this.container.querySelector("#grp-creator-bounce") as HTMLElement;
       if (grp) grp.style.display = this.creatorState.hasBounce ? "block" : "none";
     });
-    this.setupSlider("slide-creator-bounce", "val-creator-bounce", (v) => { this.creatorState.bounceMod = v; }, 2);
+    this.setupScrubber("scrub-container-creator-bounce", {
+      label: "Bounciness (Restitution)",
+      value: this.creatorState.bounceMod,
+      min: 0.05,
+      max: 1.0,
+      step: 0.05,
+      decimals: 2,
+      onChange: (v) => { this.creatorState.bounceMod = v; },
+    });
 
     const creatorVertBounceCheck = this.container.querySelector("#creator-check-vert-bounce") as HTMLInputElement;
     creatorVertBounceCheck?.addEventListener("change", () => {
@@ -2813,7 +2850,16 @@ export class DevPanel {
       this.creatorState.hasVerticalPosition = !this.creatorState.hasVerticalPosition;
       this.syncCreatorInputs();
     });
-    this.setupSlider("slide-creator-elevation", "val-creator-elevation", (v) => { this.creatorState.elevation = v; }, 2);
+    this.setupScrubber("scrub-container-creator-elevation", {
+      label: "Elevation (z)",
+      value: this.creatorState.elevation,
+      min: 0.0,
+      max: 4.0,
+      step: 0.05,
+      decimals: 2,
+      suffix: " u",
+      onChange: (v) => { this.creatorState.elevation = v; },
+    });
 
     const creatorVertVelBtn = this.container.querySelector("#creator-toggle-vert-vel") as HTMLButtonElement;
     creatorVertVelBtn?.addEventListener("click", () => {
@@ -2837,7 +2883,16 @@ export class DevPanel {
       const grp = this.container.querySelector("#group-creator-roll-resist") as HTMLElement;
       if (grp) grp.style.display = this.creatorState.hasRollModule ? "block" : "none";
     });
-    this.setupSlider("slide-creator-roll-resist", "val-creator-roll-resist", (v) => { this.creatorState.rollResistance = v; }, 2);
+    this.setupScrubber("scrub-container-creator-roll-resist", {
+      label: "Roll Resistance",
+      value: this.creatorState.rollResistance,
+      min: 0.0,
+      max: 4.0,
+      step: 0.05,
+      decimals: 2,
+      suffix: " u/s²",
+      onChange: (v) => { this.creatorState.rollResistance = v; },
+    });
 
     // 10. Spawn Configured Object
     this.container.querySelector("#btn-spawn-configured")?.addEventListener("click", () => {
@@ -2946,6 +3001,35 @@ export class DevPanel {
     }
 
     this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
+  }
+
+  private setupScrubber(
+    containerId: string,
+    options: {
+      label: string;
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+      decimals?: number;
+      suffix?: string;
+      onChange: (val: number) => void;
+    }
+  ): FloatScrubber | null {
+    const cont = this.container.querySelector(`#${containerId}`) as HTMLElement;
+    if (!cont) return null;
+    cont.innerHTML = "";
+    const scrubber = new FloatScrubber(options);
+    cont.appendChild(scrubber.element);
+    this.scrubbers.set(containerId, scrubber);
+    return scrubber;
+  }
+
+  private setScrubberVal(containerId: string, val: number): void {
+    const scrubber = this.scrubbers.get(containerId);
+    if (scrubber) {
+      scrubber.setValue(val, false);
+    }
   }
 
   private setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {

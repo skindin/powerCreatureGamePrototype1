@@ -14,6 +14,9 @@ export class PropertyControl {
   private _owner: GameObject;
   private _label: string;
   private _step: number;
+  private _min?: number;
+  private _max?: number;
+  private _decimals: number;
   private _isDropdownOpen: boolean = false;
   private _searchTerm: string = "";
 
@@ -22,11 +25,17 @@ export class PropertyControl {
     owner: GameObject;
     label: string;
     step?: number;
+    min?: number;
+    max?: number;
+    decimals?: number;
   }) {
     this._property = options.property;
     this._owner = options.owner;
     this._label = options.label;
-    this._step = options.step ?? 0.1;
+    this._step = options.step ?? 0.05;
+    this._min = options.min;
+    this._max = options.max;
+    this._decimals = options.decimals ?? (options.step && options.step < 0.01 ? 3 : 2);
 
     this._container = document.createElement("div");
     this._container.className = "prop-socket-control";
@@ -84,14 +93,20 @@ export class PropertyControl {
     const numInput = document.createElement("input");
     numInput.type = "number";
     numInput.step = this._step.toString();
-    numInput.value = Number(resolvedVal.toFixed(2)).toString();
+    if (this._min !== undefined) numInput.min = this._min.toString();
+    if (this._max !== undefined) numInput.max = this._max.toString();
+    numInput.value = Number(resolvedVal.toFixed(this._decimals)).toString();
     numInput.className = "prop-number-input";
 
     // Direct input change
     numInput.addEventListener("change", () => {
-      const parsed = parseFloat(numInput.value);
+      let parsed = parseFloat(numInput.value);
       if (!isNaN(parsed)) {
-        this._property.set(parsed, this._owner.properties);
+        if (this._min !== undefined) parsed = Math.max(this._min, parsed);
+        if (this._max !== undefined) parsed = Math.min(this._max, parsed);
+        const rounded = Number(parsed.toFixed(this._decimals));
+        this._property.set(rounded, this._owner.properties);
+        numInput.value = rounded.toString();
       }
     });
 
@@ -111,11 +126,14 @@ export class PropertyControl {
       const onMouseMove = (moveEvt: MouseEvent) => {
         if (!isDragging) return;
         const deltaX = moveEvt.clientX - startX;
-        // Sensitivity scaled by current magnitude
-        const speed = Math.max(0.01, Math.abs(startVal) * 0.02, this._step);
-        const newVal = startVal + deltaX * speed * 0.2;
-        this._property.set(Number(newVal.toFixed(2)), this._owner.properties);
-        numInput.value = Number(newVal.toFixed(2)).toString();
+        // Sensitivity scaled by current magnitude and minimum step
+        const speed = Math.max(0.005, Math.abs(startVal) * 0.02, this._step);
+        let newVal = startVal + deltaX * speed * 0.2;
+        if (this._min !== undefined) newVal = Math.max(this._min, newVal);
+        if (this._max !== undefined) newVal = Math.min(this._max, newVal);
+        const rounded = Number(newVal.toFixed(this._decimals));
+        this._property.set(rounded, this._owner.properties);
+        numInput.value = rounded.toString();
       };
 
       const onMouseUp = () => {
