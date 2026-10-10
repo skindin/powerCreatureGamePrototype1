@@ -4651,6 +4651,7 @@ const _GameObject = class _GameObject {
     __publicField(this, "healthModule", null);
     __publicField(this, "damageAuraModule", null);
     __publicField(this, "damageSolverModule", null);
+    __publicField(this, "characterModule", null);
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -4693,6 +4694,7 @@ const _GameObject = class _GameObject {
     this.healthModule = options.healthModule ?? null;
     this.damageAuraModule = options.damageAuraModule ?? null;
     this.damageSolverModule = options.damageSolverModule ?? null;
+    this.characterModule = options.characterModule ?? null;
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -6623,12 +6625,51 @@ class DamageSolverModule {
     return 0;
   }
 }
+class CharacterModule {
+  constructor(options) {
+    __publicField(this, "id", "character");
+    __publicField(this, "name", "Character Module");
+    __publicField(this, "enabled", true);
+    __publicField(this, "role");
+    if (options == null ? void 0 : options.role) {
+      this.role = options.role;
+    } else if (options == null ? void 0 : options.isDummy) {
+      this.role = "dummy";
+    } else {
+      this.role = "local_player";
+    }
+  }
+  get isDummy() {
+    return this.role === "dummy";
+  }
+  set isDummy(val) {
+    if (val) {
+      this.role = "dummy";
+    } else if (this.role === "dummy") {
+      this.role = "local_player";
+    }
+  }
+  get isPlayer() {
+    return this.role === "local_player" || this.role === "remote_player";
+  }
+  get isAI() {
+    return this.role === "local_ai" || this.role === "remote_ai";
+  }
+  get isLocal() {
+    return this.role === "local_player" || this.role === "local_ai" || this.role === "dummy";
+  }
+  get isRemote() {
+    return this.role === "remote_player" || this.role === "remote_ai";
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";
+    const determinedRole = options.role ?? (options.controllerType === "none" ? "dummy" : options.controllerType === "remote" ? "remote_player" : options.controllerType === "ai" ? "local_ai" : "local_player");
+    const initialCharacterModule = options.characterModule !== void 0 ? options.characterModule : new CharacterModule({ role: determinedRole });
     super({
       id: options.id,
-      name: options.name ?? `Player ${options.playerNumber ?? 1}`,
+      name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
       position: { x: options.x ?? 5, y: options.y ?? 7, z: 0 },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
@@ -6636,7 +6677,8 @@ class Character extends GameObject {
       bounceMod: 0.1,
       dynamicGroundFrictionMod: options.dynamicGroundFrictionMod ?? 2,
       staticGroundFrictionMod: options.staticGroundFrictionMod ?? 2,
-      damageSolverModule: options.damageSolverModule !== void 0 ? options.damageSolverModule : new DamageSolverModule()
+      damageSolverModule: options.damageSolverModule !== void 0 ? options.damageSolverModule : new DamageSolverModule(),
+      characterModule: initialCharacterModule
     });
     __publicField(this, "strengthProp");
     __publicField(this, "facingAngle");
@@ -6673,9 +6715,9 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
-    this.controllerType = options.controllerType ?? "local";
-    this.playerId = options.playerId ?? "keyboard";
-    this.playerNumber = options.playerNumber ?? 1;
+    this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
+    this.playerId = options.playerId ?? (determinedRole === "dummy" ? "dummy-1" : "keyboard");
+    this.playerNumber = options.playerNumber !== void 0 ? options.playerNumber : determinedRole === "dummy" ? 0 : 1;
     this.playerColor = initialColor;
     const isExplicitCustom = options.name ? !/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()) : false;
     this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
@@ -6685,13 +6727,21 @@ class Character extends GameObject {
     this.isAiming = false;
     this.aimTarget = null;
     this.activeTrajectory = null;
-    this.strengthProp = new DynamicProperty(options.strength ?? 1);
+    this.strengthProp = new DynamicProperty(options.strength ?? (determinedRole === "dummy" ? 0 : 1));
     this.properties.add("strength", this.strengthProp.literalValue);
-    this.walkingModule = new WalkingModule();
-    this.pickupModule = new PickupModule();
-    this.throwModule = new ThrowModule();
-    this.jumpModule = new JumpModule();
-    this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    if (determinedRole === "dummy") {
+      this.walkingModule = null;
+      this.pickupModule = null;
+      this.throwModule = null;
+      this.jumpModule = null;
+      this.wallEdgeAssistModule = null;
+    } else {
+      this.walkingModule = new WalkingModule();
+      this.pickupModule = new PickupModule();
+      this.throwModule = new ThrowModule();
+      this.jumpModule = new JumpModule();
+      this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    }
     this.climbingModule = null;
     this.healthModule = new HealthModule();
     if (!this.damageSolverModule) {
@@ -6738,6 +6788,19 @@ class Character extends GameObject {
     if (this.wallEdgeAssistModule) {
       this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
+  }
+  get role() {
+    return this.characterModule ? this.characterModule.role : "local_player";
+  }
+  set role(val) {
+    if (this.characterModule) {
+      this.characterModule.role = val;
+    } else {
+      this.characterModule = new CharacterModule({ role: val });
+    }
+  }
+  get isDummy() {
+    return this.role === "dummy";
   }
   /**
    * Attempts to jump using the attached JumpModule.
@@ -8524,31 +8587,35 @@ class ServerTelemetryBroadcaster {
         maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0
       };
     });
-    const ghostCharacters = allCharacters.map((c) => ({
-      id: c.playerId || c.id || "player",
-      name: c.name,
-      x: Number(c.position.x.toFixed(3)),
-      y: Number(c.position.y.toFixed(3)),
-      z: Number(c.position.z.toFixed(3)),
-      vx: Number(c.velocity.x.toFixed(3)),
-      vy: Number(c.velocity.y.toFixed(3)),
-      vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
-      surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
-      isGrounded: c.isRestingOnSurface || c.position.z <= 5e-3,
-      radius: c.colliderRadius,
-      color: c.playerColor || c.color,
-      playerColor: c.playerColor || c.color,
-      playerNumber: c.playerNumber,
-      isClimbing: c.isClimbing,
-      isAboveWalls: c.isAboveWalls,
-      facingAngle: Number(c.facingAngle.toFixed(4)),
-      heldObjectId: c.heldObject ? c.heldObject.id : null,
-      isHolding: Boolean(c.heldObject),
-      isDummy: c.controllerType === "none" || c.id === "dummy-1",
-      controllerType: c.controllerType,
-      currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
-      maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0
-    }));
+    const ghostCharacters = allCharacters.map((c) => {
+      var _a, _b;
+      return {
+        id: c.playerId || c.id || "player",
+        name: c.name,
+        x: Number(c.position.x.toFixed(3)),
+        y: Number(c.position.y.toFixed(3)),
+        z: Number(c.position.z.toFixed(3)),
+        vx: Number(c.velocity.x.toFixed(3)),
+        vy: Number(c.velocity.y.toFixed(3)),
+        vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: c.isRestingOnSurface || c.position.z <= 5e-3,
+        radius: c.colliderRadius,
+        color: c.playerColor || c.color,
+        playerColor: c.playerColor || c.color,
+        playerNumber: c.playerNumber,
+        isClimbing: c.isClimbing,
+        isAboveWalls: c.isAboveWalls,
+        facingAngle: Number(c.facingAngle.toFixed(4)),
+        heldObjectId: c.heldObject ? c.heldObject.id : null,
+        isHolding: Boolean(c.heldObject),
+        isDummy: ((_a = c.characterModule) == null ? void 0 : _a.role) === "dummy" || c.controllerType === "none" || c.id === "dummy-1",
+        role: ((_b = c.characterModule) == null ? void 0 : _b.role) ?? (c.controllerType === "none" ? "dummy" : "remote_player"),
+        controllerType: c.controllerType,
+        currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
+        maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0
+      };
+    });
     return {
       seq: currentTick,
       sentAt: performance.now(),
@@ -8728,7 +8795,8 @@ class ServerGameSimulation {
       mass: 1.5,
       strength: 0,
       name: "Sparring Dummy",
-      controllerType: "none"
+      controllerType: "none",
+      role: "dummy"
     });
     this.characters.set(dummy.id, dummy);
     this.objects = [
@@ -9526,8 +9594,12 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     }
   }
   allocatePlayerNumber() {
+    var _a;
     const used = /* @__PURE__ */ new Set();
     for (const char of this.simulation.characters.values()) {
+      if (((_a = char.characterModule) == null ? void 0 : _a.role) === "dummy" || char.controllerType === "none" || char.id === "dummy-1") {
+        continue;
+      }
       if (char.playerNumber && char.playerNumber > 0) {
         used.add(char.playerNumber);
       }

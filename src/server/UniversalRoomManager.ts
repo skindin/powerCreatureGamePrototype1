@@ -202,6 +202,9 @@ export class UniversalRoomManager {
   public allocatePlayerNumber(): number {
     const used = new Set<number>();
     for (const char of this.simulation.characters.values()) {
+      if (char.characterModule?.role === "dummy" || char.controllerType === "none" || char.id === "dummy-1") {
+        continue;
+      }
       if (char.playerNumber && char.playerNumber > 0) {
         used.add(char.playerNumber);
       }

@@ -34,6 +34,7 @@ export interface GhostEntityState {
   currentHp?: number;
   maxHp?: number;
   isDummy?: boolean;
+  role?: string;
   controllerType?: "local" | "remote" | "none" | "ai";
 }
 

@@ -81,6 +81,12 @@
   - **Dynamic Overhead Health Bar**: Overhead HP bar drawn above characters and objects only when wounded (`currentHp < maxHp`).
   - **Ability Energy Toggles**: `consumesEnergy` flags and DevPanel warnings added to Walking, Pickup, Throw, Jump, and Climbing abilities.
   - Roadmap document: [health_energy_consumables_roadmap.md](file:///C:/Users/tealf/.gemini/antigravity-ide/brain/9a7a90af-a0fb-448e-bbeb-0fa9a4c2bb40/health_energy_consumables_roadmap.md).
+- **Phase 11.3 (CharacterModule & Explicit Entity Role Architecture)**:
+  - `CharacterModule`: First-class modular entity role classifier (`local_player`, `local_ai`, `remote_player`, `remote_ai`, `dummy`).
+  - **Dummy Distinction**: Inert physical entity with health/combat modules; excluded from server player number/color chronological allocation (real players are assigned P1, P2...).
+  - **Local Client Trust**: Dummies are simulated locally without waiting for server input or suffering remote interpolation lag, and are excluded from `remoteOverrides`.
+  - **Renderer GUI**: Preserves grab prompts and trajectory line for all local players, resolving previous dummy selection overshadowing.
+  - **DevPanel Integration**: Added Character Module card with interactive role selector and behavior toggle/removal.
 
 ---
 

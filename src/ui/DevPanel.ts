@@ -17,6 +17,7 @@ import { RigidbodyModule } from "../engine/RigidbodyModule.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
+import { CharacterModule, type CharacterRole } from "../character/CharacterModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 
@@ -924,6 +925,9 @@ export class DevPanel {
     const hasDamageSolverModule = Boolean(e.damageSolverModule);
     const damageSolverEnabled = Boolean(e.damageSolverModule?.enabled);
 
+    const hasCharModule = Boolean(e.characterModule) || isChar;
+    const charModuleEnabled = Boolean(e.characterModule?.enabled ?? true);
+
     let html = "";
     let attachedCount = 0;
 
@@ -936,6 +940,37 @@ export class DevPanel {
         <button class="btn-remove-module" data-module-id="${modId}" title="Remove behavior from object">✕ Remove</button>
       </div>
     `;
+
+    // 0. Character Module (Role: local_player, local_ai, remote_player, remote_ai, dummy)
+    if (hasCharModule) {
+      attachedCount++;
+      const currentRole: CharacterRole = e.characterModule?.role ?? (char ? char.role : "local_player");
+      html += `
+        <div class="module-card ${!charModuleEnabled ? 'module-disabled' : ''}" data-module-id="character">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>👤 Character Module</label>
+            ${renderToggleBtn("character", charModuleEnabled)}
+          </div>
+          ${!charModuleEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Character Module is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy.
+          </div>
+          <div class="slider-group" style="margin-top: 6px;">
+            <div class="slider-label">
+              <span>Entity Role</span>
+              <span id="badge-char-role" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.68rem;">${currentRole.toUpperCase()}</span>
+            </div>
+            <select id="select-char-role" class="dev-select" style="width: 100%;">
+              <option value="local_player" ${currentRole === 'local_player' ? 'selected' : ''}>Local Player (Human Keyboard/Gamepad)</option>
+              <option value="local_ai" ${currentRole === 'local_ai' ? 'selected' : ''}>Local AI (Autonomous Bot)</option>
+              <option value="remote_player" ${currentRole === 'remote_player' ? 'selected' : ''}>Remote Player (Network Client)</option>
+              <option value="remote_ai" ${currentRole === 'remote_ai' ? 'selected' : ''}>Remote AI (Server Bot)</option>
+              <option value="dummy" ${currentRole === 'dummy' ? 'selected' : ''}>Dummy (Inert Physical Target)</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
 
     // 1. Rigidbody Module
     if (hasRigidbodyModule) {
@@ -1428,6 +1463,7 @@ export class DevPanel {
       { id: "health", name: "Health & Vitality", icon: "❤️", description: "Hit points, passive health regeneration, and death / respawn loop", isAttached: hasHealthModule },
       { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
       { id: "damageSolver", name: "Damage Solver & Armor", icon: "🛡️", description: "Converts blunt physical impacts and wall collisions into HP damage", isAttached: hasDamageSolverModule },
+      { id: "character", name: "Character Module", icon: "👤", description: "Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy", isAttached: hasCharModule },
     ];
 
     if (isChar) {
@@ -1552,6 +1588,9 @@ export class DevPanel {
       case "damageSolver":
         if (e.damageSolverModule) e.damageSolverModule.enabled = !e.damageSolverModule.enabled;
         break;
+      case "character":
+        if (e.characterModule) e.characterModule.enabled = !e.characterModule.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -1633,6 +1672,9 @@ export class DevPanel {
         break;
       case "damageSolver":
         e.damageSolverModule = null;
+        break;
+      case "character":
+        e.characterModule = null;
         break;
     }
 
@@ -1727,6 +1769,11 @@ export class DevPanel {
           damageThresholdHp: 5.0,
         });
         break;
+      case "character":
+        e.characterModule = new CharacterModule({
+          role: e instanceof Character ? (e as Character).role : "dummy",
+        });
+        break;
     }
 
     this.renderEntityModules();
@@ -1738,6 +1785,22 @@ export class DevPanel {
     const e = this.selectedEntity;
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
+
+    // Character Module Role Selector
+    const selectCharRole = this.container.querySelector("#select-char-role") as HTMLSelectElement | null;
+    selectCharRole?.addEventListener("change", () => {
+      const newRole = selectCharRole.value as CharacterRole;
+      if (char) {
+        char.role = newRole;
+      } else if (e.characterModule) {
+        e.characterModule.role = newRole;
+      } else {
+        e.characterModule = new CharacterModule({ role: newRole });
+      }
+      const badge = this.container.querySelector("#badge-char-role");
+      if (badge) badge.textContent = newRole.toUpperCase();
+      this.updateInspector();
+    });
 
     // Rigidbody
     const selectRbCollision = this.container.querySelector("#select-rb-collision-mode") as HTMLSelectElement | null;

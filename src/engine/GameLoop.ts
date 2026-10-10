@@ -341,7 +341,10 @@ export class GameLoop {
       // Revert to full-canvas mouse coordinate mapping
       this.inputManager.setKeyboardViewport(null);
 
-      const localHeroChar = this.playerManager.players.get("keyboard")?.character || this.allCharacters[0] || null;
+      const localHeroChar = this.playerManager.players.get("keyboard")?.character
+        || Array.from(this.playerManager.players.values())[0]?.character
+        || this.playerManager.baseCharacter
+        || null;
 
       // Sample remote player interpolated states for all non-local characters
       const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
@@ -349,6 +352,7 @@ export class GameLoop {
       const rttMs = ghostData?.rttMs ?? 0;
       for (const char of this.allCharacters) {
         if (localHeroChar && char === localHeroChar) continue;
+        if (char.isDummy || char.characterModule?.role === "dummy") continue;
         const isLocalChar = Array.from(this.playerManager.players.values()).some((p) => p.character === char);
         if (isLocalChar) continue;
         const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);

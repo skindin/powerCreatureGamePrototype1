@@ -9,8 +9,10 @@ import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
 import { HealthModule } from "./HealthModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import type { Arena } from "../engine/Arena.js";
+import { CharacterModule, type CharacterRole } from "./CharacterModule.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
+export type { CharacterRole };
 
 export class Character extends GameObject {
   public strengthProp: DynamicProperty;
@@ -99,6 +101,22 @@ export class Character extends GameObject {
   public playerColor: string = "#f59e0b";
   public hasCustomName: boolean = false;
 
+  public get role(): CharacterRole {
+    return this.characterModule ? this.characterModule.role : "local_player";
+  }
+
+  public set role(val: CharacterRole) {
+    if (this.characterModule) {
+      this.characterModule.role = val;
+    } else {
+      this.characterModule = new CharacterModule({ role: val });
+    }
+  }
+
+  public get isDummy(): boolean {
+    return this.role === "dummy";
+  }
+
   // Aiming state
   public isAiming: boolean;
   public aimTarget: Vector2D | null;
@@ -117,14 +135,29 @@ export class Character extends GameObject {
     name?: string;
     hasCustomName?: boolean;
     controllerType?: CharacterControllerType;
+    role?: CharacterRole;
+    characterModule?: CharacterModule | null;
     damageSolverModule?: DamageSolverModule | null;
     dynamicGroundFrictionMod?: number;
     staticGroundFrictionMod?: number;
   } = {}) {
     const initialColor = options.color ?? "#f59e0b";
+    const determinedRole: CharacterRole = options.role ?? (
+      options.controllerType === "none"
+        ? "dummy"
+        : options.controllerType === "remote"
+        ? "remote_player"
+        : options.controllerType === "ai"
+        ? "local_ai"
+        : "local_player"
+    );
+    const initialCharacterModule = options.characterModule !== undefined
+      ? options.characterModule
+      : new CharacterModule({ role: determinedRole });
+
     super({
       id: options.id,
-      name: options.name ?? `Player ${options.playerNumber ?? 1}`,
+      name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
       position: { x: options.x ?? 5.0, y: options.y ?? 7.0, z: 0 },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
@@ -133,11 +166,12 @@ export class Character extends GameObject {
       dynamicGroundFrictionMod: options.dynamicGroundFrictionMod ?? 2.0,
       staticGroundFrictionMod: options.staticGroundFrictionMod ?? 2.0,
       damageSolverModule: options.damageSolverModule !== undefined ? options.damageSolverModule : new DamageSolverModule(),
+      characterModule: initialCharacterModule,
     });
 
-    this.controllerType = options.controllerType ?? "local";
-    this.playerId = options.playerId ?? "keyboard";
-    this.playerNumber = options.playerNumber ?? 1;
+    this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
+    this.playerId = options.playerId ?? (determinedRole === "dummy" ? "dummy-1" : "keyboard");
+    this.playerNumber = options.playerNumber !== undefined ? options.playerNumber : (determinedRole === "dummy" ? 0 : 1);
     this.playerColor = initialColor;
     const isExplicitCustom = options.name
       ? (!/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()))
@@ -152,15 +186,24 @@ export class Character extends GameObject {
     this.activeTrajectory = null;
 
     // Native dynamic strength property
-    this.strengthProp = new DynamicProperty(options.strength ?? 1.0);
+    this.strengthProp = new DynamicProperty(options.strength ?? (determinedRole === "dummy" ? 0 : 1.0));
     this.properties.add("strength", this.strengthProp.literalValue);
 
     // Initialize default modular capabilities
-    this.walkingModule = new WalkingModule();
-    this.pickupModule = new PickupModule();
-    this.throwModule = new ThrowModule();
-    this.jumpModule = new JumpModule();
-    this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    // Dummies are inert physical targets with health and damage solver; they do not have active player abilities
+    if (determinedRole === "dummy") {
+      this.walkingModule = null;
+      this.pickupModule = null;
+      this.throwModule = null;
+      this.jumpModule = null;
+      this.wallEdgeAssistModule = null;
+    } else {
+      this.walkingModule = new WalkingModule();
+      this.pickupModule = new PickupModule();
+      this.throwModule = new ThrowModule();
+      this.jumpModule = new JumpModule();
+      this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    }
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
     this.healthModule = new HealthModule();
     if (!this.damageSolverModule) {

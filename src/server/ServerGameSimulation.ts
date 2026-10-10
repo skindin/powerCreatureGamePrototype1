@@ -203,6 +203,7 @@ export class ServerGameSimulation {
       strength: 0,
       name: "Sparring Dummy",
       controllerType: "none",
+      role: "dummy",
     });
     this.characters.set(dummy.id, dummy);
 

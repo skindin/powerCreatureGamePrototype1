@@ -12,6 +12,7 @@ import { DamageAuraModule } from "./DamageAuraModule.js";
 import { DamageSolverModule } from "./DamageSolverModule.js";
 import type { ImpactEvent } from "./DamageSolverModule.js";
 import type { HealthModule } from "../character/HealthModule.js";
+import type { CharacterModule } from "../character/CharacterModule.js";
 
 import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
 
@@ -115,6 +116,7 @@ export class GameObject {
   public healthModule: HealthModule | null = null;
   public damageAuraModule: DamageAuraModule | null = null;
   public damageSolverModule: DamageSolverModule | null = null;
+  public characterModule: CharacterModule | null = null;
 
   constructor(options: {
     id?: string;
@@ -136,6 +138,7 @@ export class GameObject {
     healthModule?: HealthModule | null;
     damageAuraModule?: DamageAuraModule | null;
     damageSolverModule?: DamageSolverModule | null;
+    characterModule?: CharacterModule | null;
     // Convenience option shorthands
     mass?: number;
     colliderRadius?: number;
@@ -213,6 +216,7 @@ export class GameObject {
     this.healthModule = options.healthModule ?? null;
     this.damageAuraModule = options.damageAuraModule ?? null;
     this.damageSolverModule = options.damageSolverModule ?? null;
+    this.characterModule = options.characterModule ?? null;
   }
 
   /**

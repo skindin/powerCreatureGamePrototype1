@@ -231,6 +231,7 @@ function bootstrap(): void {
     strength: 0,
     name: "Sparring Dummy",
     controllerType: "none",
+    role: "dummy",
   });
 
   // 3. Initialize Initial Freebody Objects in unit coordinates

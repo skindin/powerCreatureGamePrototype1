@@ -485,8 +485,21 @@ export class OnlineSessionManager {
       const activeCharIds = new Set<string>();
       for (const c of snapshot.characters) {
         activeCharIds.add(c.id);
+        const isDummy = c.isDummy || c.role === "dummy" || c.id === "dummy-1" || c.controllerType === "none";
         const isLocal = c.id === this.client.clientId || (this.client.clientId !== null && c.id.startsWith(`${this.client.clientId}:`));
-        if (!isLocal) {
+        if (isDummy) {
+          // Dummy character is simulated locally as an inert physical entity; sync HP/name if present
+          const dummy = this.gameLoop.playerManager.dummyCharacters.find((d) => d.id === c.id || d.id === "dummy-1")
+            || this.gameLoop.allCharacters.find((ac) => ac.id === c.id || ac.id === "dummy-1");
+          if (dummy) {
+            if (c.currentHp !== undefined && dummy.healthModule) {
+              dummy.healthModule.currentHpProp.set(c.currentHp, dummy.properties);
+            }
+            if (c.maxHp !== undefined && dummy.healthModule) {
+              dummy.healthModule.maxHpProp.set(c.maxHp, dummy.properties);
+            }
+          }
+        } else if (!isLocal) {
           this.gameLoop.playerManager.syncRemoteCharacter(c);
           const remChar = this.gameLoop.playerManager.remotePlayers.get(c.id);
           if (remChar) {
@@ -670,6 +683,9 @@ export class OnlineSessionManager {
     this.dom.rosterList.innerHTML = "";
 
     for (const c of characters) {
+      if (c.isDummy || c.role === "dummy" || c.id === "dummy-1" || c.controllerType === "none") {
+        continue;
+      }
       const isMe = c.id === this.client.clientId || (this.client.clientId !== null && c.id.startsWith(`${this.client.clientId}:`));
       const chipColor = c.playerColor || c.color || (isMe ? this.client.assignedColor : '#38bdf8') || '#38bdf8';
       const chip = document.createElement("div");
