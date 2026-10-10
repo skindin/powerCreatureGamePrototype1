@@ -6671,6 +6671,194 @@ class CharacterModule {
     return this.role === "remote_player" || this.role === "remote_ai";
   }
 }
+class EnergyPool {
+  constructor(options) {
+    __publicField(this, "id", "energy_pool");
+    __publicField(this, "name", "Energy Pool");
+    __publicField(this, "enabled", true);
+    __publicField(this, "baseMaxEnergyProp");
+    __publicField(this, "maxEnergyProp");
+    __publicField(this, "currentEnergyProp");
+    /**
+     * When enabled, energy consumption is bypassed (godmode / testing).
+     */
+    __publicField(this, "infiniteEnergy", false);
+    /**
+     * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
+     */
+    __publicField(this, "debugAutoRefillOnEmpty", true);
+    const base = (options == null ? void 0 : options.baseMaxEnergy) ?? 1e3;
+    const max = (options == null ? void 0 : options.maxEnergy) ?? base;
+    const cur = (options == null ? void 0 : options.currentEnergy) ?? max;
+    this.baseMaxEnergyProp = new DynamicProperty(base);
+    this.maxEnergyProp = new DynamicProperty(max);
+    this.currentEnergyProp = new DynamicProperty(cur);
+    if ((options == null ? void 0 : options.infiniteEnergy) !== void 0) this.infiniteEnergy = options.infiniteEnergy;
+    if ((options == null ? void 0 : options.debugAutoRefillOnEmpty) !== void 0) this.debugAutoRefillOnEmpty = options.debugAutoRefillOnEmpty;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  getBaseMaxEnergy(registry) {
+    return this.baseMaxEnergyProp.get(registry);
+  }
+  getMaxEnergy(registry) {
+    return this.maxEnergyProp.get(registry);
+  }
+  getCurrentEnergy(registry) {
+    return this.currentEnergyProp.get(registry);
+  }
+  setCurrentEnergy(val, registry) {
+    const max = this.getMaxEnergy(registry);
+    const clamped = Math.max(0, Math.min(max, val));
+    this.currentEnergyProp.set(clamped, registry);
+  }
+  /**
+   * Attempts to consume energy from the pool.
+   * Returns true if enough energy was available (or if infiniteEnergy is enabled).
+   */
+  consume(amount, registry) {
+    if (!this.enabled || amount <= 0) return true;
+    if (this.infiniteEnergy) return true;
+    const cur = this.getCurrentEnergy(registry);
+    if (cur >= amount) {
+      const next = cur - amount;
+      this.currentEnergyProp.set(next, registry);
+      if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return true;
+    }
+    this.currentEnergyProp.set(0, registry);
+    if (this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return false;
+  }
+  /**
+   * Adds energy to the pool (e.g. from eating food or healing items).
+   */
+  addEnergy(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentEnergy(registry);
+    const max = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(Math.min(max, cur + amount), registry);
+  }
+  /**
+   * Refills current energy back to 100% capacity.
+   */
+  refill(registry) {
+    const max = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(max, registry);
+  }
+}
+class EnergyBus {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "enabled", true);
+    // Maximum continuous/burst power output in Watts
+    __publicField(this, "baseMaxPowerProp");
+    __publicField(this, "maxPowerProp");
+    // Burst stamina reservoir (in seconds of sustained maximum effort)
+    __publicField(this, "baseMaxStaminaProp");
+    __publicField(this, "maxStaminaProp");
+    __publicField(this, "currentStaminaProp");
+    // Stamina regeneration rate (stamina units per second when not exhausted or under light draw)
+    __publicField(this, "staminaRegenRateProp");
+    /**
+     * Exhaustion threshold: when stamina hits 0, bus becomes exhausted.
+     * Remains exhausted until stamina recovers back to recoveryThresholdRatio (default 20%).
+     */
+    __publicField(this, "isExhausted", false);
+    __publicField(this, "recoveryThresholdRatio", 0.2);
+    // Live telemetry for DevPanel
+    __publicField(this, "livePowerDraw", 0);
+    this.id = (options == null ? void 0 : options.id) ?? "bus_main";
+    this.name = (options == null ? void 0 : options.name) ?? "Main";
+    const basePower = (options == null ? void 0 : options.baseMaxPower) ?? 250;
+    const maxPower = (options == null ? void 0 : options.maxPower) ?? basePower;
+    const baseStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 100;
+    const maxStamina = (options == null ? void 0 : options.maxStamina) ?? baseStamina;
+    const curStamina = (options == null ? void 0 : options.currentStamina) ?? maxStamina;
+    this.baseMaxPowerProp = new DynamicProperty(basePower);
+    this.maxPowerProp = new DynamicProperty(maxPower);
+    this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
+    this.maxStaminaProp = new DynamicProperty(maxStamina);
+    this.currentStaminaProp = new DynamicProperty(curStamina);
+    this.staminaRegenRateProp = new DynamicProperty((options == null ? void 0 : options.staminaRegenRate) ?? 15);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
+  }
+  getMaxStamina(registry) {
+    return this.maxStaminaProp.get(registry);
+  }
+  getCurrentStamina(registry) {
+    return this.currentStaminaProp.get(registry);
+  }
+  getStaminaRegenRate(registry) {
+    return this.staminaRegenRateProp.get(registry);
+  }
+  /**
+   * Requests power draw (in Watts) over dt seconds.
+   * Consumes Joules (power * dt) from the supplied pool, drains stamina if drawing heavy power,
+   * or recovers stamina if draw is low/zero.
+   * Returns the actual power granted (in Watts).
+   */
+  requestPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false) {
+    if (!this.enabled || dt <= 0) {
+      this.livePowerDraw = 0;
+      return 0;
+    }
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if (this.isExhausted && !allowWhenExhausted) {
+      this.livePowerDraw = 0;
+      return 0;
+    }
+    const targetWatts = Math.min(requestedPowerWatts, maxP);
+    const energyNeededJoules = targetWatts * dt;
+    if (pool && !pool.consume(energyNeededJoules, registry)) {
+      this.isExhausted = true;
+      this.currentStaminaProp.set(0, registry);
+      this.livePowerDraw = 0;
+      return 0;
+    }
+    if (targetWatts > maxP * 0.4) {
+      const drainRatio = (targetWatts - maxP * 0.4) / (maxP * 0.6);
+      const staminaDrain = drainRatio * 20 * dt;
+      const nextS = Math.max(0, curS - staminaDrain);
+      this.currentStaminaProp.set(nextS, registry);
+      if (nextS <= 1e-4) {
+        this.isExhausted = true;
+      }
+    }
+    this.livePowerDraw = targetWatts;
+    return targetWatts;
+  }
+  /**
+   * Advances passive stamina regeneration when draw is below threshold.
+   */
+  update(dt, pool, registry) {
+    if (!this.enabled || dt <= 0) return;
+    const maxS = this.getMaxStamina(registry);
+    let curS = this.getCurrentStamina(registry);
+    const regen = this.getStaminaRegenRate(registry);
+    if (this.isExhausted) {
+      const recoveryThreshold = maxS * this.recoveryThresholdRatio;
+      if (curS >= recoveryThreshold) {
+        this.isExhausted = false;
+      }
+    }
+    if (curS < maxS) {
+      curS = Math.min(maxS, curS + regen * dt);
+      this.currentStaminaProp.set(curS, registry);
+    }
+    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) <= 1e-4) {
+      this.isExhausted = true;
+    }
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";
@@ -6712,6 +6900,9 @@ class Character extends GameObject {
     __publicField(this, "jumpModule");
     __publicField(this, "wallEdgeAssistModule");
     __publicField(this, "climbingModule");
+    __publicField(this, "healthModule");
+    __publicField(this, "energyPool");
+    __publicField(this, "energyBus");
     /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
     __publicField(this, "jumpConsumesEnergy", false);
     // Player identity & multiplayer slot
@@ -6753,6 +6944,8 @@ class Character extends GameObject {
     }
     this.climbingModule = null;
     this.healthModule = new HealthModule();
+    this.energyPool = new EnergyPool();
+    this.energyBus = new EnergyBus();
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -6892,6 +7085,9 @@ class Character extends GameObject {
     this.updatePosition(dt, arena);
     if (this.healthModule && this.healthModule.enabled) {
       this.healthModule.update(dt, this, arena);
+    }
+    if (this.energyBus && this.energyBus.enabled) {
+      this.energyBus.update(dt, this.energyPool, this.properties);
     }
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);

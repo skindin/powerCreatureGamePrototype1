@@ -18,6 +18,8 @@ import { HealthModule } from "../character/HealthModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { CharacterModule, type CharacterRole } from "../character/CharacterModule.js";
+import { EnergyPool } from "../character/EnergyPool.js";
+import { EnergyBus } from "../character/EnergyBus.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 
@@ -928,6 +930,12 @@ export class DevPanel {
     const hasCharModule = Boolean(e.characterModule) || isChar;
     const charModuleEnabled = Boolean(e.characterModule?.enabled ?? true);
 
+    const hasEnergyPool = isChar && Boolean(char?.energyPool);
+    const energyPoolEnabled = isChar && Boolean(char?.energyPool?.enabled);
+
+    const hasEnergyBus = isChar && Boolean(char?.energyBus);
+    const energyBusEnabled = isChar && Boolean(char?.energyBus?.enabled);
+
     let html = "";
     let attachedCount = 0;
 
@@ -1432,6 +1440,96 @@ export class DevPanel {
       `;
     }
 
+    // Energy Pool Module (Character only)
+    if (hasEnergyPool && char?.energyPool) {
+      attachedCount++;
+      const ep = char.energyPool;
+      const curEnergy = ep.getCurrentEnergy(char.properties);
+      const maxEnergy = ep.getMaxEnergy(char.properties);
+      const energyPct = maxEnergy > 0 ? Math.min(100, Math.max(0, (curEnergy / maxEnergy) * 100)) : 0;
+
+      html += `
+        <div class="module-card ${!energyPoolEnabled ? 'module-disabled' : ''}" data-module-id="energyPool">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>⚡ Energy Pool</label>
+            ${renderToggleBtn("energyPool", energyPoolEnabled)}
+          </div>
+          ${!energyPoolEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Pool is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Finite biochemical energy store (in Joules). Depleted by physical work; refueled by eating food.
+          </div>
+
+          <div style="margin: 6px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+              <span>Energy Reservoir</span>
+              <span>${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${energyPct.toFixed(0)}%)</span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+              <div style="background: linear-gradient(90deg, #ca8a04, #eab308); height: 100%; width: ${energyPct}%; transition: width 0.1s ease;"></div>
+            </div>
+          </div>
+
+          <div id="prop-socket-energy-cur"></div>
+          <div id="prop-socket-energy-max"></div>
+
+          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
+            <span style="font-size: 0.8rem; color: #cbd5e1;">Infinite Energy (Godmode)</span>
+            <input type="checkbox" id="check-energy-infinite" ${ep.infiniteEnergy ? 'checked' : ''}>
+          </div>
+          <div class="toggle-row" style="margin-top: 4px; margin-bottom: 4px;">
+            <span style="font-size: 0.8rem; color: #cbd5e1;">Debug Auto-Refill on Empty</span>
+            <input type="checkbox" id="check-energy-autorefill" ${ep.debugAutoRefillOnEmpty ? 'checked' : ''}>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px;">
+            <button id="btn-energy-sub100" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #eab308; border-color: rgba(234, 179, 8, 0.4);">
+              -100 J
+            </button>
+            <button id="btn-energy-refill" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #22c55e; border-color: rgba(34, 197, 94, 0.4);">
+              ⚡ Refill (100%)
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Energy Bus Module (Character only)
+    if (hasEnergyBus && char?.energyBus) {
+      attachedCount++;
+      const eb = char.energyBus;
+      const curStamina = eb.getCurrentStamina(char.properties);
+      const maxStamina = eb.getMaxStamina(char.properties);
+      const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
+
+      html += `
+        <div class="module-card ${!energyBusEnabled ? 'module-disabled' : ''}" data-module-id="energyBus">
+          <div class="toggle-row" style="margin-bottom: 2px;">
+            <label>🚌 Energy Bus (Main)</label>
+            ${renderToggleBtn("energyBus", energyBusEnabled)}
+          </div>
+          ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
+          ${eb.isExhausted ? `<div class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">⚠️ Exhausted! Stamina depleted below safety threshold</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Muscle output throughput (Watts) and burst stamina. Throttles connected abilities when exhausted.
+          </div>
+
+          <div style="margin: 6px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+              <span>Burst Stamina</span>
+              <span>${curStamina.toFixed(0)} / ${maxStamina.toFixed(0)} (${staminaPct.toFixed(0)}%)</span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+              <div style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
+            </div>
+          </div>
+
+          <div id="prop-socket-bus-maxpower"></div>
+          <div id="prop-socket-bus-maxstamina"></div>
+          <div id="prop-socket-bus-regen"></div>
+        </div>
+      `;
+    }
+
     if (attachedCount === 0) {
       html = `
         <div class="empty-behaviors-msg">
@@ -1473,7 +1571,9 @@ export class DevPanel {
         { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrowModule },
         { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },
         { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssistModule },
-        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule }
+        { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule },
+        { id: "energyPool", name: "Energy Pool", icon: "⚡", description: "Finite biochemical energy reservoir (Joules) with debug auto-refill", isAttached: hasEnergyPool },
+        { id: "energyBus", name: "Energy Bus (Main)", icon: "🚌", description: "Muscle output power throughput (Watts) and burst stamina", isAttached: hasEnergyBus }
       );
     }
 
@@ -1591,6 +1691,12 @@ export class DevPanel {
       case "character":
         if (e.characterModule) e.characterModule.enabled = !e.characterModule.enabled;
         break;
+      case "energyPool":
+        if (char?.energyPool) char.energyPool.enabled = !char.energyPool.enabled;
+        break;
+      case "energyBus":
+        if (char?.energyBus) char.energyBus.enabled = !char.energyBus.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -1675,6 +1781,16 @@ export class DevPanel {
         break;
       case "character":
         e.characterModule = null;
+        break;
+      case "energyPool":
+        if (e instanceof Character) {
+          (e as Character).energyPool = null;
+        }
+        break;
+      case "energyBus":
+        if (e instanceof Character) {
+          (e as Character).energyBus = null;
+        }
         break;
     }
 
@@ -1773,6 +1889,16 @@ export class DevPanel {
         e.characterModule = new CharacterModule({
           role: e instanceof Character ? (e as Character).role : "dummy",
         });
+        break;
+      case "energyPool":
+        if (e instanceof Character) {
+          (e as Character).energyPool = new EnergyPool();
+        }
+        break;
+      case "energyBus":
+        if (e instanceof Character) {
+          (e as Character).energyBus = new EnergyBus();
+        }
         break;
     }
 
@@ -2264,6 +2390,91 @@ export class DevPanel {
           step: 1.0,
         });
         threshSocketEl.appendChild(threshCtrl.element);
+      }
+    }
+
+    // Energy Pool controls (Character only)
+    if (char && char.energyPool) {
+      const ep = char.energyPool;
+
+      const curEnergyEl = this.container.querySelector("#prop-socket-energy-cur");
+      if (curEnergyEl) {
+        const curCtrl = new PropertyControl({
+          property: ep.currentEnergyProp,
+          owner: char,
+          label: "Current Energy (J)",
+          step: 50.0,
+        });
+        curEnergyEl.appendChild(curCtrl.element);
+      }
+
+      const maxEnergyEl = this.container.querySelector("#prop-socket-energy-max");
+      if (maxEnergyEl) {
+        const maxCtrl = new PropertyControl({
+          property: ep.maxEnergyProp,
+          owner: char,
+          label: "Max Energy Capacity (J)",
+          step: 100.0,
+        });
+        maxEnergyEl.appendChild(maxCtrl.element);
+      }
+
+      const checkInfinite = this.container.querySelector("#check-energy-infinite") as HTMLInputElement;
+      checkInfinite?.addEventListener("change", () => {
+        ep.infiniteEnergy = checkInfinite.checked;
+      });
+
+      const checkAutoRefill = this.container.querySelector("#check-energy-autorefill") as HTMLInputElement;
+      checkAutoRefill?.addEventListener("change", () => {
+        ep.debugAutoRefillOnEmpty = checkAutoRefill.checked;
+      });
+
+      this.container.querySelector("#btn-energy-sub100")?.addEventListener("click", () => {
+        ep.consume(100, char.properties);
+        this.updateInspector();
+      });
+
+      this.container.querySelector("#btn-energy-refill")?.addEventListener("click", () => {
+        ep.refill(char.properties);
+        this.updateInspector();
+      });
+    }
+
+    // Energy Bus controls (Character only)
+    if (char && char.energyBus) {
+      const eb = char.energyBus;
+
+      const maxPowerEl = this.container.querySelector("#prop-socket-bus-maxpower");
+      if (maxPowerEl) {
+        const pCtrl = new PropertyControl({
+          property: eb.maxPowerProp,
+          owner: char,
+          label: "Max Power Output (Watts)",
+          step: 25.0,
+        });
+        maxPowerEl.appendChild(pCtrl.element);
+      }
+
+      const maxStaminaEl = this.container.querySelector("#prop-socket-bus-maxstamina");
+      if (maxStaminaEl) {
+        const sCtrl = new PropertyControl({
+          property: eb.maxStaminaProp,
+          owner: char,
+          label: "Burst Stamina Capacity",
+          step: 10.0,
+        });
+        maxStaminaEl.appendChild(sCtrl.element);
+      }
+
+      const regenEl = this.container.querySelector("#prop-socket-bus-regen");
+      if (regenEl) {
+        const rCtrl = new PropertyControl({
+          property: eb.staminaRegenRateProp,
+          owner: char,
+          label: "Stamina Regen Rate (/s)",
+          step: 2.0,
+        });
+        regenEl.appendChild(rCtrl.element);
       }
     }
   }

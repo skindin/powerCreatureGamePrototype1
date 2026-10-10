@@ -10,6 +10,8 @@ import { HealthModule } from "./HealthModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import type { Arena } from "../engine/Arena.js";
 import { CharacterModule, type CharacterRole } from "./CharacterModule.js";
+import { EnergyPool } from "./EnergyPool.js";
+import { EnergyBus } from "./EnergyBus.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
@@ -90,6 +92,9 @@ export class Character extends GameObject {
   public jumpModule: JumpModule | null;
   public wallEdgeAssistModule: WallEdgeAssistModule | null;
   public climbingModule: ClimbingModule | null;
+  public healthModule: HealthModule | null;
+  public energyPool: EnergyPool | null;
+  public energyBus: EnergyBus | null;
 
   /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
   public jumpConsumesEnergy: boolean = false;
@@ -206,6 +211,8 @@ export class Character extends GameObject {
     }
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
     this.healthModule = new HealthModule();
+    this.energyPool = new EnergyPool();
+    this.energyBus = new EnergyBus();
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -326,6 +333,11 @@ export class Character extends GameObject {
     // 2b. Process health regeneration & death check
     if (this.healthModule && this.healthModule.enabled) {
       this.healthModule.update(dt, this, arena);
+    }
+
+    // 2c. Update energy bus stamina recovery
+    if (this.energyBus && this.energyBus.enabled) {
+      this.energyBus.update(dt, this.energyPool, this.properties);
     }
 
     // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
