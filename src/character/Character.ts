@@ -118,6 +118,8 @@ export class Character extends GameObject {
     hasCustomName?: boolean;
     controllerType?: CharacterControllerType;
     damageSolverModule?: DamageSolverModule | null;
+    dynamicGroundFrictionMod?: number;
+    staticGroundFrictionMod?: number;
   } = {}) {
     const initialColor = options.color ?? "#f59e0b";
     super({
@@ -128,6 +130,8 @@ export class Character extends GameObject {
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,
       bounceMod: 0.1,
+      dynamicGroundFrictionMod: options.dynamicGroundFrictionMod ?? 2.0,
+      staticGroundFrictionMod: options.staticGroundFrictionMod ?? 2.0,
       damageSolverModule: options.damageSolverModule !== undefined ? options.damageSolverModule : new DamageSolverModule(),
     });
 

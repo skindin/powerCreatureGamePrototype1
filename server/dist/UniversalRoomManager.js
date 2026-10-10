@@ -6630,6 +6630,8 @@ class Character extends GameObject {
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,
       bounceMod: 0.1,
+      dynamicGroundFrictionMod: options.dynamicGroundFrictionMod ?? 2,
+      staticGroundFrictionMod: options.staticGroundFrictionMod ?? 2,
       damageSolverModule: options.damageSolverModule !== void 0 ? options.damageSolverModule : new DamageSolverModule()
     });
     __publicField(this, "strengthProp");
