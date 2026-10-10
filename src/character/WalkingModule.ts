@@ -49,6 +49,17 @@ export class WalkingModule {
   // Air friction multiplier applied when airborne (floating friction to stay still)
   public airFrictionProp: DynamicProperty;
 
+  // Planned momentum braking state:
+  // When movement input drops to zero, computes the exact force and duration required
+  // to brake the character's release velocity to zero. The module continues executing
+  // this pre-planned deceleration until the timer expires, without fighting external pushes!
+  public isBrakingPlanned: boolean = false;
+  public plannedBrakeRemainingTime: number = 0;
+  public plannedBrakeDirX: number = 0;
+  public plannedBrakeDirY: number = 0;
+  public plannedBrakeAccel: number = 0;
+  public wasMovingLastTick: boolean = false;
+
   constructor(options?: WalkingModuleOptions) {
     this.maxWalkForceProp = new DynamicProperty(options?.maxWalkForce ?? 35.0);
     this.maxWalkSpeedProp = new DynamicProperty(options?.maxWalkSpeed ?? 5.2);
@@ -124,18 +135,21 @@ export class WalkingModule {
     const isAirborne = !character.isRestingOnSurface;
     if (!this.enabled || (isAirborne && !this.walkInAir) || character.isClimbing) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
 
     // Walking strictly requires mass and muscle strength to propel the body
     if (!character.hasMass || !character.hasStrength || character.strength <= 0) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
 
     // On ground, feet require friction to push against the floor
     if (!isAirborne && (!character.hasFriction || !character.frictionModule?.enabled || character.dynamicGroundFrictionMod <= 0.001)) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
 
@@ -167,12 +181,21 @@ export class WalkingModule {
     const baseTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
     const effectiveSpeed = baseTargetSpeed / (1.0 + loadFactor);
 
-    let targetVx = 0;
-    let targetVy = 0;
+    // Active locomotion acceleration capability
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
+    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
+
     if (isMoving) {
+      // 1. ACTIVE INPUT: Steer and accelerate toward target velocity
+      this.isBrakingPlanned = false;
+      this.wasMovingLastTick = true;
+
       const dirX = inputVector.x / inputMag;
       const dirY = inputVector.y / inputMag;
 
+      let targetVx = 0;
+      let targetVy = 0;
       if (isAirborne) {
         // When not standing on something, do not clamp max speed to effective walking speed!
         // Preserve any higher velocity capacity (e.g. launches, high-speed jumps).
@@ -184,37 +207,84 @@ export class WalkingModule {
         targetVx = dirX * effectiveSpeed;
         targetVy = dirY * effectiveSpeed;
       }
-    }
 
-    // Velocity difference to reach target (whether accelerating to speed or braking to stay still)
-    const diffX = targetVx - character.velocity.x;
-    const diffY = targetVy - character.velocity.y;
-    const diffSpeed = Math.hypot(diffX, diffY);
+      // Velocity difference to reach target
+      const diffX = targetVx - character.velocity.x;
+      const diffY = targetVy - character.velocity.y;
+      const diffSpeed = Math.hypot(diffX, diffY);
 
-    if (diffSpeed < 0.001) {
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
-      return;
-    }
+      if (diffSpeed < 0.001) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+        return;
+      }
 
-    const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
-    const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
-
-    // Symmetrical acceleration and deceleration: a = F_walk / totalMass * grip
-    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
-    const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
-    const maxStep = maxAccel * dt;
-
-    if (diffSpeed <= maxStep || (!isAirborne && !isMoving && currentSpeed < staticThreshold)) {
-      // Reached terminal target velocity (full speed or crisp complete stop)
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
+      const maxStep = maxAccel * dt;
+      if (diffSpeed <= maxStep) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+      } else {
+        const stepRatio = maxStep / diffSpeed;
+        character.velocity.x += diffX * stepRatio;
+        character.velocity.y += diffY * stepRatio;
+      }
     } else {
-      // Step toward target velocity at symmetrical rate maxAccel
-      const stepRatio = maxStep / diffSpeed;
-      character.velocity.x += diffX * stepRatio;
-      character.velocity.y += diffY * stepRatio;
+      // 2. NO INPUT: Pre-planned momentum braking
+      const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+      const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
+
+      // Arm pre-planned braking ONLY if we just transitioned from active movement!
+      if (!this.isBrakingPlanned && this.wasMovingLastTick) {
+        this.wasMovingLastTick = false;
+        if (currentSpeed > staticThreshold && maxAccel > 0.001) {
+          this.isBrakingPlanned = true;
+          this.plannedBrakeRemainingTime = currentSpeed / maxAccel;
+          this.plannedBrakeDirX = character.velocity.x / currentSpeed;
+          this.plannedBrakeDirY = character.velocity.y / currentSpeed;
+          this.plannedBrakeAccel = maxAccel;
+        } else {
+          // Already essentially still: zero out immediately to prevent microscopic drift
+          if (!isAirborne && currentSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+          return;
+        }
+      } else if (!this.isBrakingPlanned) {
+        // Idle state: not executing a planned brake, do not fight external forces!
+        this.wasMovingLastTick = false;
+        return;
+      }
+
+      // Execute planned braking for this frame
+      if (this.isBrakingPlanned) {
+        const stepDt = Math.min(dt, this.plannedBrakeRemainingTime);
+        const decelStep = this.plannedBrakeAccel * stepDt;
+
+        // Apply pre-planned opposing deceleration
+        character.velocity.x -= this.plannedBrakeDirX * decelStep;
+        character.velocity.y -= this.plannedBrakeDirY * decelStep;
+
+        this.plannedBrakeRemainingTime -= dt;
+
+        // Check if pre-planned braking window has completed
+        if (this.plannedBrakeRemainingTime <= 0.0001) {
+          this.isBrakingPlanned = false;
+          // If deceleration brought the character to rest (no new external push during braking),
+          // ensure clean zero velocity
+          const dot = character.velocity.x * this.plannedBrakeDirX + character.velocity.y * this.plannedBrakeDirY;
+          if (dot <= staticThreshold) {
+            // Velocity along the original braking axis was brought to 0
+            character.velocity.x -= dot * this.plannedBrakeDirX;
+            character.velocity.y -= dot * this.plannedBrakeDirY;
+          }
+          const postSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+          if (!isAirborne && postSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+        }
+      }
     }
   }
 }

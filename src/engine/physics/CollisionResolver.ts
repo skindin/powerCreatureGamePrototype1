@@ -491,13 +491,15 @@ export class CollisionResolver {
     b.velocity.y += normalImpulse * invMassB * normY;
 
     // Tangential relative velocity (perpendicular to normal)
+    // When two characters collide, bypass tangential friction to prevent circular snagging/orbiting
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const tangX = -normY;
     const tangY = normX;
     const relVx = b.velocity.x - a.velocity.x;
     const relVy = b.velocity.y - a.velocity.y;
     const relVt = relVx * tangX + relVy * tangY;
 
-    if (Math.abs(relVt) > 0.001) {
+    if (!isCharCharContact && Math.abs(relVt) > 0.001) {
       const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
       const beta = 0.4; // Sphere rotational inertia factor
       const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
