@@ -6229,13 +6229,14 @@ class ThrowModule {
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
-      visualShape: held.visualShape
+      visualShape: held.visualShape,
+      launchVel: { vx, vy, vz }
     };
   }
   /**
    * Executes the throw of the held object using the exact same launch parameters
    */
-  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
+  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
     let startX = held.position.x;
@@ -6266,7 +6267,7 @@ class ThrowModule {
     };
     const candidateEntities = entities ?? arena.entities;
     const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    const launch = this.computeLaunchVelocity(
+    const launch = launchVel ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz } : this.computeLaunchVelocity(
       startX,
       startY,
       startZ,
@@ -9143,6 +9144,11 @@ class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = act.launchVx !== void 0 ? {
+            vx: act.launchVx,
+            vy: act.launchVy,
+            vz: act.launchVz ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -9150,7 +9156,8 @@ class ServerGameSimulation {
             this.arena,
             void 0,
             void 0,
-            act.isLockHeld ?? false
+            act.isLockHeld ?? false,
+            launchVel
           );
         }
       }
@@ -9288,6 +9295,11 @@ class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : pkt.aimX !== void 0 ? pkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = aimTarget ? aimTarget.y : pkt.aimY !== void 0 ? pkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = pkt.launchVx !== void 0 ? {
+            vx: pkt.launchVx,
+            vy: pkt.launchVy,
+            vz: pkt.launchVz ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -9295,7 +9307,8 @@ class ServerGameSimulation {
             this.arena,
             void 0,
             void 0,
-            pkt.isLockHeld
+            pkt.isLockHeld,
+            launchVel
           );
         }
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {

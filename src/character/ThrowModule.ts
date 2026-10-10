@@ -25,6 +25,7 @@ export interface TrajectoryCalculation {
   flightTime?: number;
   colliderRadius?: number;
   visualShape?: "circle" | "box";
+  launchVel?: { vx: number; vy: number; vz: number };
 }
 
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
@@ -666,6 +667,7 @@ export class ThrowModule {
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
       visualShape: held.visualShape,
+      launchVel: { vx, vy, vz },
     };
   }
 
@@ -679,7 +681,8 @@ export class ThrowModule {
     arena: Arena,
     entities?: GameObject[],
     hoverScale?: number,
-    autoLock = false
+    autoLock = false,
+    launchVel?: { vx: number; vy: number; vz: number }
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -718,10 +721,12 @@ export class ThrowModule {
     const candidateEntities = entities ?? arena.entities;
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
-      candidateEntities, scale, character, held, autoLock
-    );
+    const launch = launchVel
+      ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz, totalTime: 1.0, finalTargetX: aimTargetX, finalTargetY: aimTargetY, targetSurfaceHeight: 0 }
+      : this.computeLaunchVelocity(
+          startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+          candidateEntities, scale, character, held, autoLock
+        );
     if (!launch) return null;
 
     if (launch.isAutoLocked && launch.targetObject) {

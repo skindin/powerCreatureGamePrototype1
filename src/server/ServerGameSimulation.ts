@@ -616,6 +616,11 @@ export class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? (char.position.x + Math.cos(char.facingAngle) * 3);
           const aimY = act.aimY ?? (char.position.y + Math.sin(char.facingAngle) * 3);
+          const launchVel = (act as any).launchVx !== undefined ? {
+            vx: (act as any).launchVx,
+            vy: (act as any).launchVy,
+            vz: (act as any).launchVz ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -623,7 +628,8 @@ export class ServerGameSimulation {
             this.arena,
             undefined,
             undefined,
-            act.isLockHeld ?? false
+            act.isLockHeld ?? false,
+            launchVel
           );
         }
       }
@@ -788,6 +794,11 @@ export class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : (pkt.aimX !== undefined ? pkt.aimX : (char.position.x + Math.cos(char.facingAngle) * 3));
           const aimY = aimTarget ? aimTarget.y : (pkt.aimY !== undefined ? pkt.aimY : (char.position.y + Math.sin(char.facingAngle) * 3));
+          const launchVel = (pkt as any).launchVx !== undefined ? {
+            vx: (pkt as any).launchVx,
+            vy: (pkt as any).launchVy,
+            vz: (pkt as any).launchVz ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -795,7 +806,8 @@ export class ServerGameSimulation {
             this.arena,
             undefined,
             undefined,
-            pkt.isLockHeld
+            pkt.isLockHeld,
+            launchVel
           );
         }
 

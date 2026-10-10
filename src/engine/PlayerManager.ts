@@ -582,6 +582,8 @@ export class PlayerManager {
         }
       }
 
+      const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
+
       map.set(entry.id, {
         playerId: entry.id,
         playerName: cChar.name,
@@ -598,7 +600,12 @@ export class PlayerManager {
         isAiming: true,
         isLockHeld: slot.isLockHeld ?? false,
         facingAngle: cChar.facingAngle,
-      });
+        ...(activeLaunchVel ? {
+          launchVx: activeLaunchVel.vx,
+          launchVy: activeLaunchVel.vy,
+          launchVz: activeLaunchVel.vz
+        } : {})
+      } as any);
       slot.isDropRequested = false;
       slot.isThrowRequested = false;
     }
@@ -665,6 +672,9 @@ export class PlayerManager {
           char.facingAngle = Math.atan2(aimDy, aimDx);
         }
 
+        // Use the exact pre-calculated launch velocity from the client's active trajectory preview if available
+        const clientLaunchVel = char.activeTrajectory?.launchVel;
+
         char.throwModule.throwHeldObject(
           char,
           throwAimX,
@@ -672,7 +682,8 @@ export class PlayerManager {
           this.arena,
           undefined,
           undefined,
-          pkt.isLockHeld
+          pkt.isLockHeld,
+          clientLaunchVel
         );
 
         // Once the throw completes and character is empty-handed, reset aim stick movement flags
@@ -695,7 +706,12 @@ export class PlayerManager {
           aimX: throwAimX,
           aimY: throwAimY,
           isLockHeld: pkt.isLockHeld,
-        };
+          ...(clientLaunchVel ? {
+            launchVx: clientLaunchVel.vx,
+            launchVy: clientLaunchVel.vy,
+            launchVz: clientLaunchVel.vz,
+          } : {})
+        } as any;
         if (!isReplay) {
           this.onReliableActionDispatched?.(action);
         }
