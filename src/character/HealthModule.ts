@@ -123,7 +123,12 @@ export class HealthModule {
 
     // Check death condition
     if (this.getCurrentHp(registry) <= 0.0001) {
-      this.dieAndRespawn(character, arena);
+      // In online multiplayer mode, death/respawn is authoritative: the server picks the respawn location
+      // and broadcasts DeathRespawnEvent so the character does not glitch between different positions.
+      const isOnline = (character as any)._isInOnlineMode === true;
+      if (!isOnline) {
+        this.dieAndRespawn(character, arena);
+      }
     }
   }
 
@@ -143,7 +148,7 @@ export class HealthModule {
    * Drops any carried object, clears wall mounts, resets velocities,
    * snaps to a random spawn position from the 4 online clearings, and restores full health.
    */
-  public dieAndRespawn(character: Character, _arena?: Arena): void {
+  public dieAndRespawn(character: Character, _arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
     // 1. Drop carried objects
     if (character.heldObject) {
       character.heldObject.isHeld = false;
@@ -163,14 +168,14 @@ export class HealthModule {
     character.velocity = { x: 0, y: 0 };
     character.verticalVelocity = 0;
 
-    // 4. Place at a random spawn clearing out of the four online points
+    // 4. Place at explicit or random spawn clearing out of the four online points
     const spawns = HealthModule.RESPAWN_SPAWNS;
-    const randomIndex = Math.floor(Math.random() * spawns.length);
-    const chosenSpawn = spawns[randomIndex];
+    const picked = explicitPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
 
     character.position.x = chosenSpawn.x;
     character.position.y = chosenSpawn.y;
-    character.position.z = chosenSpawn.z ?? 0;
+    character.position.z = chosenSpawn.z;
     character.supportingSurfaceHeight = 0;
 
     // 5. Restore full HP

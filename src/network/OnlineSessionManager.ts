@@ -338,6 +338,11 @@ export class OnlineSessionManager {
     }
 
     if (stats.status === "disconnected" || stats.status === "error") {
+      if (this.gameLoop?.allCharacters) {
+        for (const char of this.gameLoop.allCharacters) {
+          (char as any)._isInOnlineMode = false;
+        }
+      }
       this.gameLoop?.playerManager.clearRemoteCharacters();
       this.gameLoop?.interpolator.clearAll();
       for (const obj of this.gameLoop?.objects || []) {
@@ -358,6 +363,11 @@ export class OnlineSessionManager {
 
   private handleJoined(info: { clientId: string; playerNumber: number; name: string; color: string }): void {
     console.log(`🌐 [OnlineSession] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
+    if (this.gameLoop?.allCharacters) {
+      for (const char of this.gameLoop.allCharacters) {
+        (char as any)._isInOnlineMode = true;
+      }
+    }
     const hero = this.gameLoop?.players.get("keyboard")?.character || this.defaultCharacter;
     const localChosenName = this.client.playerName && this.client.playerName.trim().length > 0
       ? this.client.playerName.trim()
@@ -479,6 +489,24 @@ export class OnlineSessionManager {
 
   private handleSnapshotReceived(snapshot: GhostSnapshot): void {
     if (!this.gameLoop) return;
+
+    // Process authoritative server death & respawn events
+    if (snapshot.deathRespawnEvents && Array.isArray(snapshot.deathRespawnEvents)) {
+      for (const ev of snapshot.deathRespawnEvents) {
+        const targetChar = this.gameLoop.allCharacters.find(
+          (c) => c.id === ev.targetEntityId || c.playerId === ev.targetEntityId || (c.isDummy && ev.targetEntityId === "dummy-1")
+        );
+        if (targetChar && targetChar.healthModule) {
+          targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
+            x: ev.respawnX,
+            y: ev.respawnY,
+            z: ev.respawnZ
+          });
+          this.gameLoop.interpolator.clearEntity(targetChar.playerId);
+          this.gameLoop.interpolator.clearEntity(targetChar.id);
+        }
+      }
+    }
 
     // 1. Sync characters in playerManager
     if (Array.isArray(snapshot.characters)) {

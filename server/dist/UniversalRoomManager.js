@@ -6515,7 +6515,10 @@ const _HealthModule = class _HealthModule {
       }
     }
     if (this.getCurrentHp(registry) <= 1e-4) {
-      this.dieAndRespawn(character, arena);
+      const isOnline = character._isInOnlineMode === true;
+      if (!isOnline) {
+        this.dieAndRespawn(character, arena);
+      }
     }
   }
   /**
@@ -6523,7 +6526,7 @@ const _HealthModule = class _HealthModule {
    * Drops any carried object, clears wall mounts, resets velocities,
    * snaps to a random spawn position from the 4 online clearings, and restores full health.
    */
-  dieAndRespawn(character, _arena) {
+  dieAndRespawn(character, _arena, explicitPos) {
     var _a;
     if (character.heldObject) {
       character.heldObject.isHeld = false;
@@ -6539,11 +6542,11 @@ const _HealthModule = class _HealthModule {
     character.velocity = { x: 0, y: 0 };
     character.verticalVelocity = 0;
     const spawns = _HealthModule.RESPAWN_SPAWNS;
-    const randomIndex = Math.floor(Math.random() * spawns.length);
-    const chosenSpawn = spawns[randomIndex];
+    const picked = explicitPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
     character.position.x = chosenSpawn.x;
     character.position.y = chosenSpawn.y;
-    character.position.z = chosenSpawn.z ?? 0;
+    character.position.z = chosenSpawn.z;
     character.supportingSurfaceHeight = 0;
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
