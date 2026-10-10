@@ -87,6 +87,11 @@
   - **Local Client Trust**: Dummies are simulated locally without waiting for server input or suffering remote interpolation lag, and are excluded from `remoteOverrides`.
   - **Renderer GUI**: Preserves grab prompts and trajectory line for all local players, resolving previous dummy selection overshadowing.
   - **DevPanel Integration**: Added Character Module card with interactive role selector and behavior toggle/removal.
+- **Phase 11.4 (Energy Bus Ability Connections & DevPanel Accordion Collapsibles)**:
+  - `EnergyBus Connection`: Added `energyBusId` connection sockets to `WalkingModule` (walk & sprint), `PickupModule`, `ThrowModule`, `JumpModule` (via `Character.jumpEnergyBusId`), `ClimbingModule`, and `HealthModule` (healing). Each module renders a dropdown below its energy toggle to bind to any character energy bus (defaulting to `"bus_main"`).
+  - `Character.energyBusses`: Characters maintain a registry `Map<string, EnergyBus>` and `getEnergyBus(busId)` resolver.
+  - `Collapsible Sections & Behaviors`: Interactive accordion collapse (`▶` / `▼`) enabled across the entire DevPanel: Live Diagnostics, Physics & Collisions, History Buffer & Rollback Replay, Selected Physical Behaviors section, every individual attached behavior card, Add New Object creator section, every individual behavior card within the New Object creator, and World Physics & Environment.
+
 
 ---
 
