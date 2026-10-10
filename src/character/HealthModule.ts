@@ -32,6 +32,8 @@ export class HealthModule {
 
   /** Toggle indicating whether healing draws energy from an Energy Bus */
   public consumesEnergy: boolean = false;
+  /** ID of the Energy Bus to draw power from */
+  public energyBusId: string = "bus_main";
 
   /** Optional callback invoked when entity dies and respawns */
   public onDeathRespawn?: (entity: Character, respawnPos: { x: number; y: number; z: number }) => void;

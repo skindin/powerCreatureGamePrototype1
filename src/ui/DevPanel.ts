@@ -211,6 +211,47 @@ export class DevPanel {
   private modePlayBtn!: HTMLButtonElement;
   private modeEditBtn!: HTMLButtonElement;
   private scrubbers: Map<string, FloatScrubber> = new Map();
+  private collapsedSections: Set<string> = new Set();
+
+  public isSectionCollapsed(id: string): boolean {
+    return this.collapsedSections.has(id);
+  }
+
+  public toggleSectionCollapse(id: string): void {
+    if (this.collapsedSections.has(id)) {
+      this.collapsedSections.delete(id);
+    } else {
+      this.collapsedSections.add(id);
+    }
+  }
+
+  public renderModuleHeader(modId: string, titleHtml: string, actionButtonsHtml = ""): string {
+    const isCollapsed = this.isSectionCollapsed("mod-" + modId);
+    const arrow = isCollapsed ? "▶" : "▼";
+    return `
+      <div class="toggle-row" style="margin-bottom: 2px;">
+        <div class="collapsible-section-header" data-collapse-id="mod-${modId}" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+          <span class="collapse-icon" style="font-size: 0.72rem; color: #94a3b8; transition: transform 0.15s ease;">${arrow}</span>
+          <label style="cursor: pointer; margin: 0;">${titleHtml}</label>
+        </div>
+        ${actionButtonsHtml}
+      </div>
+    `;
+  }
+
+  public renderCollapsibleHeader(sectionId: string, titleHtml: string, badgeHtml = ""): string {
+    const isCollapsed = this.isSectionCollapsed(sectionId);
+    const arrow = isCollapsed ? "▶" : "▼";
+    return `
+      <div class="collapsible-section-header" data-collapse-id="${sectionId}" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 4px 0;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="collapse-icon" style="font-size: 0.72rem; color: #94a3b8; transition: transform 0.15s ease;">${arrow}</span>
+          <h3 style="margin: 0; display: inline-block;">${titleHtml}</h3>
+        </div>
+        ${badgeHtml}
+      </div>
+    `;
+  }
 
   constructor(options: {
     container: HTMLElement;
@@ -427,18 +468,20 @@ export class DevPanel {
 
         <!-- Live Diagnostics Inspector -->
         <div class="dev-section">
-          <h3>📊 Live Diagnostics</h3>
-          <div id="dev-inspector" class="inspector-grid"></div>
+          ${this.renderCollapsibleHeader("diagnostics", "📊 Live Diagnostics")}
+          <div id="collapse-body-diagnostics" style="display: ${this.isSectionCollapsed('diagnostics') ? 'none' : 'block'}; margin-top: 8px;">
+            <div id="dev-inspector" class="inspector-grid"></div>
+          </div>
         </div>
 
         <!-- ⚡ Physics & Collision Simulation (Phase A) -->
         <div class="dev-section" style="border: 1px solid rgba(6, 182, 212, 0.3); background: rgba(6, 182, 212, 0.04);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <h3 style="margin: 0; color: #38bdf8;">⚡ Physics & Collisions</h3>
-            <span id="badge-sim-tick" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.4);">
-              Tick 0 (60Hz)
-            </span>
-          </div>
+          ${this.renderCollapsibleHeader(
+            "physics",
+            "<span style='color: #38bdf8;'>⚡ Physics & Collisions</span>",
+            `<span id="badge-sim-tick" class="badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.4);">Tick 0 (60Hz)</span>`
+          )}
+          <div id="collapse-body-physics" style="display: ${this.isSectionCollapsed('physics') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Test Discrete TOI Rollback vs. Continuous Swept CCD vs. Legacy Naive Overlap.</p>
 
           <!-- Simulation Play / Pause / Step -->
@@ -502,11 +545,13 @@ export class DevPanel {
               OFF
             </button>
           </div>
+          </div>
         </div>
 
         <!-- ⏪ Phase 2: State History & Deterministic Rollback -->
         <div class="dev-section" id="section-history-rollback">
-          <h3>⏪ History Buffer & Rollback Replay</h3>
+          ${this.renderCollapsibleHeader("history", "⏪ History Buffer & Rollback Replay")}
+          <div id="collapse-body-history" style="display: ${this.isSectionCollapsed('history') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Test local deterministic rewind, input replay, and desync reconciliation (Phase 2).</p>
 
           <!-- Live Buffer Telemetry Badge -->
@@ -571,12 +616,14 @@ export class DevPanel {
           <!-- Rollback Result Banner -->
           <div id="banner-rollback-result" style="display: none; padding: 8px 10px; border-radius: 6px; font-size: 0.72rem; line-height: 1.4; margin-top: 4px; border: 1px solid transparent;">
           </div>
+          </div>
         </div>
 
         <!-- 🧩 Modular Capabilities & Physical Behaviors -->
 
         <div class="dev-section">
-          <h3>🧩 Physical Behaviors</h3>
+          ${this.renderCollapsibleHeader("behaviors", "🧩 Physical Behaviors")}
+          <div id="collapse-body-behaviors" style="display: ${this.isSectionCollapsed('behaviors') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
 
           <!-- Visual Shape -->
@@ -599,14 +646,17 @@ export class DevPanel {
             <div id="dropdown-add-behavior" class="dropdown-add-behavior" style="display: none;">
             </div>
           </div>
+          </div>
         </div>
 
         <!-- ✨ Add New Object (Creator & Presets) -->
         <div class="dev-section">
-          <div class="creator-sticky-header">
-            <h3 style="margin: 0;">✨ Add New Object</h3>
-            <span class="not-live-badge">⚠️ NOT LIVE OBJECT</span>
-          </div>
+          ${this.renderCollapsibleHeader(
+            "new-object",
+            "✨ Add New Object",
+            `<span class="not-live-badge">⚠️ NOT LIVE OBJECT</span>`
+          )}
+          <div id="collapse-body-new-object" style="display: ${this.isSectionCollapsed('new-object') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Configure template properties or choose a preset to spawn into the arena.</p>
           
           <div class="presets-container" style="margin-bottom: 10px;">
@@ -638,105 +688,163 @@ export class DevPanel {
               </div>
             </div>
 
-            <div class="toggle-row">
-              <label>Rigidbody</label>
-              <button id="creator-toggle-rigidbody" class="btn-toggle ${this.creatorState.hasRigidbody ? 'active' : ''}">
-                ${this.creatorState.hasRigidbody ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-
-            <div class="slider-group" id="grp-creator-rigidbody" style="display: ${this.creatorState.hasRigidbody ? 'block' : 'none'};">
-              <div class="toggle-subrow" style="display: flex; align-items: center; justify-content: space-between;">
-                <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
-                <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'active' : ''}" ${!this.creatorState.hasVerticalPosition ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                  ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'Enabled' : 'Disabled'}
+            <!-- Creator Behavior: Rigidbody -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-rb" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-rb') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">⚙️ Rigidbody</label>
+                </div>
+                <button id="creator-toggle-rigidbody" class="btn-toggle ${this.creatorState.hasRigidbody ? 'active' : ''}">
+                  ${this.creatorState.hasRigidbody ? 'Attached' : 'Detached'}
                 </button>
               </div>
-              <div id="creator-warn-rb-vert-pos" class="module-dep-warning" style="display: ${!this.creatorState.hasVerticalPosition ? 'block' : 'none'}; margin-top: 4px;">
-                ⚠️ Requires Vertical Position behavior
+              <div id="collapse-body-creator-rb" style="display: ${this.isSectionCollapsed('creator-rb') ? 'none' : 'block'}; margin-top: 6px;">
+                <div class="slider-group" id="grp-creator-rigidbody" style="display: ${this.creatorState.hasRigidbody ? 'block' : 'none'};">
+                  <div class="toggle-subrow" style="display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 0.8rem; color: #cbd5e1;">Vertical Velocity</label>
+                    <button id="creator-toggle-vert-vel" class="btn-toggle ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'active' : ''}" ${!this.creatorState.hasVerticalPosition ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                      ${this.creatorState.hasVerticalVelocity && this.creatorState.hasVerticalPosition ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+                  <div id="creator-warn-rb-vert-pos" class="module-dep-warning" style="display: ${!this.creatorState.hasVerticalPosition ? 'block' : 'none'}; margin-top: 4px;">
+                    ⚠️ Requires Vertical Position behavior
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="toggle-row">
-              <label>Collider</label>
-              <button id="creator-toggle-collider" class="btn-toggle ${this.creatorState.hasCollider ? 'active' : ''}">
-                ${this.creatorState.hasCollider ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-
-            <div id="grp-creator-radius" style="display: ${this.creatorState.hasCollider ? 'block' : 'none'};">
-              <div id="scrub-container-creator-radius"></div>
-            </div>
-
-            <div class="toggle-row">
-              <label>Mass</label>
-              <button id="creator-toggle-mass" class="btn-toggle ${this.creatorState.hasMass ? 'active' : ''}">
-                ${this.creatorState.hasMass ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-
-            <div id="grp-creator-mass" style="display: ${this.creatorState.hasMass ? 'block' : 'none'};">
-              <div id="scrub-container-creator-mass"></div>
-            </div>
-
-            <div class="toggle-row">
-              <label>Friction</label>
-              <button id="creator-toggle-friction" class="btn-toggle ${this.creatorState.hasFriction ? 'active' : ''}">
-                ${this.creatorState.hasFriction ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-
-            <div id="grp-creator-fric" style="display: ${this.creatorState.hasFriction ? 'block' : 'none'};">
-              <div id="scrub-container-creator-fric"></div>
-            </div>
-
-            <div class="toggle-row">
-              <label>Bounciness</label>
-              <button id="creator-toggle-bounce" class="btn-toggle ${this.creatorState.hasBounce ? 'active' : ''}">
-                ${this.creatorState.hasBounce ? 'Attached' : 'Detached'}
-              </button>
-            </div>
-
-            <div id="grp-creator-bounce" style="display: ${this.creatorState.hasBounce ? 'block' : 'none'};">
-              <div id="scrub-container-creator-bounce"></div>
-              <div style="margin-top: 6px;">
-                <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                  <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''}>
-                  <span>Vertical Bounce</span>
-                </label>
+            <!-- Creator Behavior: Collider -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-col" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-col') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">🛡️ Collider</label>
+                </div>
+                <button id="creator-toggle-collider" class="btn-toggle ${this.creatorState.hasCollider ? 'active' : ''}">
+                  ${this.creatorState.hasCollider ? 'Attached' : 'Detached'}
+                </button>
               </div>
-              <div id="creator-warn-bounce-vert" class="module-dep-warning" style="display: ${this.creatorState.hasBounce && this.creatorState.verticalBounce && (!this.creatorState.hasVerticalPosition || !this.creatorState.hasVerticalVelocity) ? 'block' : 'none'};">
-                ⚠️ Inactive without Vertical Velocity
+              <div id="collapse-body-creator-col" style="display: ${this.isSectionCollapsed('creator-col') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="grp-creator-radius" style="display: ${this.creatorState.hasCollider ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-radius"></div>
+                </div>
               </div>
             </div>
 
-            <div class="toggle-row">
-              <label>Vertical Position</label>
-              <button id="creator-toggle-vert-pos" class="btn-toggle ${this.creatorState.hasVerticalPosition ? 'active' : ''}">
-                ${this.creatorState.hasVerticalPosition ? 'Attached' : 'Detached'}
-              </button>
+            <!-- Creator Behavior: Mass -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-mass" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-mass') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">⚖️ Mass</label>
+                </div>
+                <button id="creator-toggle-mass" class="btn-toggle ${this.creatorState.hasMass ? 'active' : ''}">
+                  ${this.creatorState.hasMass ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-mass" style="display: ${this.isSectionCollapsed('creator-mass') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="grp-creator-mass" style="display: ${this.creatorState.hasMass ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-mass"></div>
+                </div>
+              </div>
             </div>
 
-            <div id="grp-creator-vert-pos" style="display: ${this.creatorState.hasVerticalPosition ? 'block' : 'none'};">
-              <div id="scrub-container-creator-elevation"></div>
+            <!-- Creator Behavior: Friction -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-fric" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-fric') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">🛑 Friction</label>
+                </div>
+                <button id="creator-toggle-friction" class="btn-toggle ${this.creatorState.hasFriction ? 'active' : ''}">
+                  ${this.creatorState.hasFriction ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-fric" style="display: ${this.isSectionCollapsed('creator-fric') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="grp-creator-fric" style="display: ${this.creatorState.hasFriction ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-fric"></div>
+                </div>
+              </div>
             </div>
 
-            <div class="toggle-row">
-              <label>Gravity</label>
-              <button id="creator-toggle-gravity" class="btn-toggle ${this.creatorState.hasGravity ? 'active' : ''}">
-                ${this.creatorState.hasGravity ? 'Attached' : 'Detached'}
-              </button>
+            <!-- Creator Behavior: Bounciness -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-bounce" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-bounce') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">🎾 Bounciness</label>
+                </div>
+                <button id="creator-toggle-bounce" class="btn-toggle ${this.creatorState.hasBounce ? 'active' : ''}">
+                  ${this.creatorState.hasBounce ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-bounce" style="display: ${this.isSectionCollapsed('creator-bounce') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="grp-creator-bounce" style="display: ${this.creatorState.hasBounce ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-bounce"></div>
+                  <div style="margin-top: 6px;">
+                    <label style="font-size: 0.78rem; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                      <input type="checkbox" id="creator-check-vert-bounce" ${this.creatorState.verticalBounce ? 'checked' : ''}>
+                      <span>Vertical Bounce</span>
+                    </label>
+                  </div>
+                  <div id="creator-warn-bounce-vert" class="module-dep-warning" style="display: ${this.creatorState.hasBounce && this.creatorState.verticalBounce && (!this.creatorState.hasVerticalPosition || !this.creatorState.hasVerticalVelocity) ? 'block' : 'none'};">
+                    ⚠️ Inactive without Vertical Velocity
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div class="toggle-row">
-              <label>Roll</label>
-              <button id="creator-toggle-roll" class="btn-toggle ${this.creatorState.hasRollModule ? 'active' : ''}">
-                ${this.creatorState.hasRollModule ? 'Enabled' : 'Disabled'}
-              </button>
+            <!-- Creator Behavior: Vertical Position -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-vert-pos" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-vert-pos') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">↕️ Vertical Position</label>
+                </div>
+                <button id="creator-toggle-vert-pos" class="btn-toggle ${this.creatorState.hasVerticalPosition ? 'active' : ''}">
+                  ${this.creatorState.hasVerticalPosition ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-vert-pos" style="display: ${this.isSectionCollapsed('creator-vert-pos') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="grp-creator-vert-pos" style="display: ${this.creatorState.hasVerticalPosition ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-elevation"></div>
+                </div>
+              </div>
             </div>
 
-            <div id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule ? 'block' : 'none'};">
-              <div id="scrub-container-creator-roll-resist"></div>
+            <!-- Creator Behavior: Gravity -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-gravity" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-gravity') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">⬇️ Gravity</label>
+                </div>
+                <button id="creator-toggle-gravity" class="btn-toggle ${this.creatorState.hasGravity ? 'active' : ''}">
+                  ${this.creatorState.hasGravity ? 'Attached' : 'Detached'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-gravity" style="display: ${this.isSectionCollapsed('creator-gravity') ? 'none' : 'block'}; margin-top: 6px;">
+                <span style="font-size: 0.72rem; color: #94a3b8;">Applies arena gravity acceleration downwards.</span>
+              </div>
+            </div>
+
+            <!-- Creator Behavior: Roll -->
+            <div class="creator-behavior-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: rgba(15, 23, 42, 0.4);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="collapsible-section-header" data-collapse-id="creator-roll" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
+                  <span class="collapse-icon" style="font-size: 0.7rem; color: #94a3b8;">${this.isSectionCollapsed('creator-roll') ? '▶' : '▼'}</span>
+                  <label style="margin: 0; cursor: pointer; font-size: 0.8rem; font-weight: 600;">🔄 Roll</label>
+                </div>
+                <button id="creator-toggle-roll" class="btn-toggle ${this.creatorState.hasRollModule ? 'active' : ''}">
+                  ${this.creatorState.hasRollModule ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <div id="collapse-body-creator-roll" style="display: ${this.isSectionCollapsed('creator-roll') ? 'none' : 'block'}; margin-top: 6px;">
+                <div id="group-creator-roll-resist" style="display: ${this.creatorState.hasRollModule ? 'block' : 'none'};">
+                  <div id="scrub-container-creator-roll-resist"></div>
+                </div>
+              </div>
             </div>
 
             <button id="btn-spawn-configured" class="btn-spawn-primary">✨ Spawn Object</button>
@@ -745,17 +853,19 @@ export class DevPanel {
           <div style="margin-top: 10px;">
             <button id="btn-clear-entities" class="btn-danger" style="width: 100%;">Clear All Objects</button>
           </div>
+          </div>
         </div>
 
         <!-- 🌍 World & Arena Physics -->
         <div class="dev-section">
-          <h3>🌍 World Physics & Environment</h3>
-
-          <div id="scrub-container-gravity" style="margin-bottom: 8px;"></div>
-          <div id="scrub-container-wall-height" style="margin-bottom: 8px;"></div>
-          <div id="scrub-container-friction" style="margin-bottom: 8px;"></div>
-          <div id="scrub-container-static-thresh" style="margin-bottom: 8px;"></div>
-          <div id="scrub-container-collision-damage-scale" style="margin-bottom: 8px;"></div>
+          ${this.renderCollapsibleHeader("world-physics", "🌍 World Physics & Environment")}
+          <div id="collapse-body-world-physics" style="display: ${this.isSectionCollapsed('world-physics') ? 'none' : 'block'}; margin-top: 8px;">
+            <div id="scrub-container-gravity" style="margin-bottom: 8px;"></div>
+            <div id="scrub-container-wall-height" style="margin-bottom: 8px;"></div>
+            <div id="scrub-container-friction" style="margin-bottom: 8px;"></div>
+            <div id="scrub-container-static-thresh" style="margin-bottom: 8px;"></div>
+            <div id="scrub-container-collision-damage-scale" style="margin-bottom: 8px;"></div>
+          </div>
         </div>
       </div>
     `;
@@ -940,6 +1050,15 @@ export class DevPanel {
     let attachedCount = 0;
 
     // Helper to generate toggle button HTML
+    const renderEnergyBusOptions = (selectedBusId: string = "bus_main") => {
+      if (!char || !char.energyBusses || char.energyBusses.size === 0) {
+        return `<option value="bus_main" ${selectedBusId === "bus_main" ? "selected" : ""}>Main Bus (bus_main)</option>`;
+      }
+      return Array.from(char.energyBusses.values()).map(b => 
+        `<option value="${b.id}" ${b.id === selectedBusId ? "selected" : ""}>${b.name} (${b.id})</option>`
+      ).join("");
+    };
+
     const renderToggleBtn = (modId: string, isEnabled: boolean) => `
       <div style="display: flex; align-items: center; gap: 6px;">
         <button class="btn-toggle-module ${isEnabled ? 'active' : 'disabled'}" data-module-id="${modId}" title="${isEnabled ? 'Disable' : 'Enable'} this behavior">
@@ -955,10 +1074,8 @@ export class DevPanel {
       const currentRole: CharacterRole = e.characterModule?.role ?? (char ? char.role : "local_player");
       html += `
         <div class="module-card ${!charModuleEnabled ? 'module-disabled' : ''}" data-module-id="character">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>👤 Character Module</label>
-            ${renderToggleBtn("character", charModuleEnabled)}
-          </div>
+          ${this.renderModuleHeader("character", "👤 Character Module", renderToggleBtn("character", charModuleEnabled))}
+          <div id="collapse-body-mod-character" style="display: ${this.isSectionCollapsed('mod-character') ? 'none' : 'block'};">
           ${!charModuleEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Character Module is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
             Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy.
@@ -976,6 +1093,7 @@ export class DevPanel {
               <option value="dummy" ${currentRole === 'dummy' ? 'selected' : ''}>Dummy (Inert Physical Target)</option>
             </select>
           </div>
+          </div>
         </div>
       `;
     }
@@ -989,10 +1107,8 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!rbEnabled ? 'module-disabled' : ''}" data-module-id="rigidbody">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>⚙️ Rigidbody</label>
-            ${renderToggleBtn("rigidbody", rbEnabled)}
-          </div>
+          ${this.renderModuleHeader("rigidbody", "⚙️ Rigidbody", renderToggleBtn("rigidbody", rbEnabled))}
+          <div id="collapse-body-mod-rigidbody" style="display: ${this.isSectionCollapsed('mod-rigidbody') ? 'none' : 'block'};">
           ${!rbEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Rigidbody behavior is disabled</div>` : ''}
           <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 8px 0; display: flex; justify-content: space-between;">
             <span>Linear Velocity (vx, vy):</span>
@@ -1028,6 +1144,7 @@ export class DevPanel {
           <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
             <div id="prop-socket-mass"></div>
           </div>
+          </div>
         </div>
       `;
     }
@@ -1037,12 +1154,11 @@ export class DevPanel {
       attachedCount++;
       html += `
         <div class="module-card ${!colEnabled ? 'module-disabled' : ''}" data-module-id="collider">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🛡️ Collider</label>
-            ${renderToggleBtn("collider", colEnabled)}
-          </div>
+          ${this.renderModuleHeader("collider", "🛡️ Collider", renderToggleBtn("collider", colEnabled))}
+          <div id="collapse-body-mod-collider" style="display: ${this.isSectionCollapsed('mod-collider') ? 'none' : 'block'};">
           ${!colEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Collider behavior is disabled (passes through objects)</div>` : ''}
           <div id="prop-socket-collider-radius"></div>
+          </div>
         </div>
       `;
     }
@@ -1056,14 +1172,13 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!fricEnabled ? 'module-disabled' : ''}" data-module-id="friction">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🛝 Friction</label>
-            ${renderToggleBtn("friction", fricEnabled)}
-          </div>
+          ${this.renderModuleHeader("friction", "🛝 Friction", renderToggleBtn("friction", fricEnabled))}
+          <div id="collapse-body-mod-friction" style="display: ${this.isSectionCollapsed('mod-friction') ? 'none' : 'block'};">
           ${!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : ''}
           ${fricMassWarning}
           <div id="prop-socket-static-fric"></div>
           <div id="prop-socket-dynamic-fric"></div>
+          </div>
         </div>
       `;
     }
@@ -1081,10 +1196,8 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!bounceEnabled ? 'module-disabled' : ''}" data-module-id="bounce">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🏀 Bounciness</label>
-            ${renderToggleBtn("bounce", bounceEnabled)}
-          </div>
+          ${this.renderModuleHeader("bounce", "🏀 Bounciness", renderToggleBtn("bounce", bounceEnabled))}
+          <div id="collapse-body-mod-bounce" style="display: ${this.isSectionCollapsed('mod-bounce') ? 'none' : 'block'};">
           ${!bounceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Bounciness behavior is disabled</div>` : ''}
           ${bounceMassWarning}
           <div id="prop-socket-bounce"></div>
@@ -1095,6 +1208,7 @@ export class DevPanel {
             </label>
           </div>
           ${bounceVertWarning}
+          </div>
         </div>
       `;
     }
@@ -1104,10 +1218,8 @@ export class DevPanel {
       attachedCount++;
       html += `
         <div class="module-card ${!vertPosEnabled ? 'module-disabled' : ''}" data-module-id="verticalPosition">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>↕️ Vertical Position</label>
-            ${renderToggleBtn("verticalPosition", vertPosEnabled)}
-          </div>
+          ${this.renderModuleHeader("verticalPosition", "↕️ Vertical Position", renderToggleBtn("verticalPosition", vertPosEnabled))}
+          <div id="collapse-body-mod-verticalPosition" style="display: ${this.isSectionCollapsed('mod-verticalPosition') ? 'none' : 'block'};">
           ${!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : ''}
           <div class="slider-group">
             <div class="slider-label">
@@ -1115,6 +1227,7 @@ export class DevPanel {
               <span id="val-entity-elevation">${e.position.z.toFixed(2)}</span>
             </div>
             <input type="range" id="slide-entity-elevation" min="0.0" max="4.0" step="0.05" value="${e.position.z}">
+          </div>
           </div>
         </div>
       `;
@@ -1129,14 +1242,13 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!gravEnabled ? 'module-disabled' : ''}" data-module-id="gravity">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🪐 Gravity</label>
-            ${renderToggleBtn("gravity", gravEnabled)}
-          </div>
+          ${this.renderModuleHeader("gravity", "🪐 Gravity", renderToggleBtn("gravity", gravEnabled))}
+          <div id="collapse-body-mod-gravity" style="display: ${this.isSectionCollapsed('mod-gravity') ? 'none' : 'block'};">
           ${!gravEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Gravity behavior is disabled</div>` : ''}
           ${gravVertWarning}
           <div class="module-detached-note" style="color: #94a3b8; font-style: normal;">
             Subject to downward gravitational acceleration (${this.arena.gravity.toFixed(1)} u/s²)
+          </div>
           </div>
         </div>
       `;
@@ -1151,13 +1263,12 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!rollEnabled ? 'module-disabled' : ''}" data-module-id="roll">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🔄 Roll</label>
-            ${renderToggleBtn("roll", rollEnabled)}
-          </div>
+          ${this.renderModuleHeader("roll", "🔄 Roll", renderToggleBtn("roll", rollEnabled))}
+          <div id="collapse-body-mod-roll" style="display: ${this.isSectionCollapsed('mod-roll') ? 'none' : 'block'};">
           ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
           ${rollFricWarning}
           <div id="prop-socket-roll-resist"></div>
+          </div>
         </div>
       `;
     }
@@ -1176,10 +1287,8 @@ export class DevPanel {
 
         html += `
           <div class="module-card ${!walkEnabled ? 'module-disabled' : ''}" data-module-id="walking">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>🚶 Walking Ability</label>
-              ${renderToggleBtn("walking", walkEnabled)}
-            </div>
+            ${this.renderModuleHeader("walking", "🚶 Walking Ability", renderToggleBtn("walking", walkEnabled))}
+            <div id="collapse-body-mod-walking" style="display: ${this.isSectionCollapsed('mod-walking') ? 'none' : 'block'};">
             ${!walkEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Walking Ability is disabled</div>` : ''}
             ${walkFricWarning}
             ${walkStrWarning}
@@ -1202,6 +1311,12 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Walk Consumes Energy</span>
               <input type="checkbox" id="check-walk-energy" ${char.walkingModule?.walkConsumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-walk-energy-bus" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Walk Energy Bus</label>
+              <select id="select-walk-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.walkingModule?.walkEnergyBusId)}
+              </select>
+            </div>
             <div id="warn-walk-energy" class="module-dep-warning" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
             </div>
@@ -1209,8 +1324,15 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
               <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-sprint-energy-bus" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Sprint Energy Bus</label>
+              <select id="select-sprint-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.walkingModule?.sprintEnergyBusId)}
+              </select>
+            </div>
             <div id="warn-sprint-energy" class="module-dep-warning" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
             </div>
           </div>
         `;
@@ -1220,18 +1342,23 @@ export class DevPanel {
         attachedCount++;
         html += `
           <div class="module-card ${!pickupEnabled ? 'module-disabled' : ''}" data-module-id="pickup">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>✋ Pickup Ability</label>
-              ${renderToggleBtn("pickup", pickupEnabled)}
-            </div>
+            ${this.renderModuleHeader("pickup", "✋ Pickup Ability", renderToggleBtn("pickup", pickupEnabled))}
+            <div id="collapse-body-mod-pickup" style="display: ${this.isSectionCollapsed('mod-pickup') ? 'none' : 'block'};">
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div id="prop-socket-pickup-reach"></div>
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-pickup-energy-bus" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
+              <select id="select-pickup-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.pickupModule?.energyBusId)}
+              </select>
+            </div>
             <div id="warn-pickup-energy" class="module-dep-warning" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
             </div>
           </div>
         `;
@@ -1245,10 +1372,8 @@ export class DevPanel {
 
         html += `
           <div class="module-card ${!throwEnabled ? 'module-disabled' : ''}" data-module-id="throw">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>🎯 Throw Ability</label>
-              ${renderToggleBtn("throw", throwEnabled)}
-            </div>
+            ${this.renderModuleHeader("throw", "🎯 Throw Ability", renderToggleBtn("throw", throwEnabled))}
+            <div id="collapse-body-mod-throw" style="display: ${this.isSectionCollapsed('mod-throw') ? 'none' : 'block'};">
             ${!throwEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Throw Ability is disabled</div>` : ''}
             ${throwStrWarning}
             <div id="prop-socket-throw-force"></div>
@@ -1257,8 +1382,15 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-throw-energy-bus" style="display: ${char.throwModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
+              <select id="select-throw-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.throwModule?.energyBusId)}
+              </select>
+            </div>
             <div id="warn-throw-energy" class="module-dep-warning" style="display: ${char.throwModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
             </div>
           </div>
         `;
@@ -1272,10 +1404,8 @@ export class DevPanel {
 
         html += `
           <div class="module-card ${!jumpEnabled ? 'module-disabled' : ''}" data-module-id="jump">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>🦘 Jump Ability</label>
-              ${renderToggleBtn("jump", jumpEnabled)}
-            </div>
+            ${this.renderModuleHeader("jump", "🦘 Jump Ability", renderToggleBtn("jump", jumpEnabled))}
+            <div id="collapse-body-mod-jump" style="display: ${this.isSectionCollapsed('mod-jump') ? 'none' : 'block'};">
             ${!jumpEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Jump Ability is disabled</div>` : ''}
             ${jumpVertWarning}
             <div id="prop-socket-jump-strength"></div>
@@ -1284,8 +1414,15 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-jump-energy-bus" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
+              <select id="select-jump-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.jumpEnergyBusId)}
+              </select>
+            </div>
             <div id="warn-jump-energy" class="module-dep-warning" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
             </div>
           </div>
         `;
@@ -1295,10 +1432,8 @@ export class DevPanel {
         attachedCount++;
         html += `
           <div class="module-card ${!edgeAssistEnabled ? 'module-disabled' : ''}" data-module-id="wallEdgeAssist">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>🛡️ Wall Edge Assist</label>
-              ${renderToggleBtn("wallEdgeAssist", edgeAssistEnabled)}
-            </div>
+            ${this.renderModuleHeader("wallEdgeAssist", "🛡️ Wall Edge Assist", renderToggleBtn("wallEdgeAssist", edgeAssistEnabled))}
+            <div id="collapse-body-mod-wallEdgeAssist" style="display: ${this.isSectionCollapsed('mod-wallEdgeAssist') ? 'none' : 'block'};">
             ${!edgeAssistEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Wall Edge Assist is disabled</div>` : ''}
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Prevent Walk-Off</label>
@@ -1307,6 +1442,7 @@ export class DevPanel {
               </button>
             </div>
             <div id="prop-socket-edge-hang"></div>
+            </div>
           </div>
         `;
       }
@@ -1323,10 +1459,8 @@ export class DevPanel {
 
         html += `
           <div class="module-card ${!climbEnabled ? 'module-disabled' : ''}" data-module-id="climbing">
-            <div class="toggle-row" style="margin-bottom: 2px;">
-              <label>🧗 Climbing Ability</label>
-              ${renderToggleBtn("climbing", climbEnabled)}
-            </div>
+            ${this.renderModuleHeader("climbing", "🧗 Climbing Ability", renderToggleBtn("climbing", climbEnabled))}
+            <div id="collapse-body-mod-climbing" style="display: ${this.isSectionCollapsed('mod-climbing') ? 'none' : 'block'};">
             ${!climbEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Climbing Ability is disabled</div>` : ''}
             ${climbVertWarning}
             ${climbStrWarning}
@@ -1342,8 +1476,15 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-climb-energy-bus" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
+              <select id="select-climb-energy-bus" class="dev-select" style="width: 100%;">
+                ${renderEnergyBusOptions(char.climbingModule?.energyBusId)}
+              </select>
+            </div>
             <div id="warn-climb-energy" class="module-dep-warning" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
               ⚠️ Energy Busses not implemented yet (no energy will be deducted).
+            </div>
             </div>
           </div>
         `;
@@ -1356,10 +1497,8 @@ export class DevPanel {
       const hm = e.healthModule;
       html += `
         <div class="module-card ${!healthEnabled ? 'module-disabled' : ''}" data-module-id="health">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>❤️ Health & Vitality</label>
-            ${renderToggleBtn("health", healthEnabled)}
-          </div>
+          ${this.renderModuleHeader("health", "❤️ Health & Vitality", renderToggleBtn("health", healthEnabled))}
+          <div id="collapse-body-mod-health" style="display: ${this.isSectionCollapsed('mod-health') ? 'none' : 'block'};">
           ${!healthEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Health & Vitality is disabled</div>` : ''}
           <div style="font-size: 0.78rem; color: #94a3b8; margin: 4px 0 6px 0; display: flex; justify-content: space-between;">
             <span>Current Status:</span>
@@ -1375,6 +1514,12 @@ export class DevPanel {
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
             <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
             <input type="checkbox" id="check-health-energy" ${hm.consumesEnergy ? 'checked' : ''}>
+          </div>
+          <div id="field-health-energy-bus" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
+            <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
+            <select id="select-health-energy-bus" class="dev-select" style="width: 100%;">
+              ${renderEnergyBusOptions(hm.energyBusId)}
+            </select>
           </div>
           <div id="warn-health-energy" class="module-dep-warning" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
             ⚠️ Energy Busses not implemented yet (healing functions without drawing energy).
@@ -1394,6 +1539,7 @@ export class DevPanel {
               ✨ Full HP
             </button>
           </div>
+          </div>
         </div>
       `;
     }
@@ -1403,16 +1549,15 @@ export class DevPanel {
       attachedCount++;
       html += `
         <div class="module-card ${!damageAuraEnabled ? 'module-disabled' : ''}" data-module-id="damageAura">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>☣️ Damage Aura</label>
-            ${renderToggleBtn("damageAura", damageAuraEnabled)}
-          </div>
+          ${this.renderModuleHeader("damageAura", "☣️ Damage Aura", renderToggleBtn("damageAura", damageAuraEnabled))}
+          <div id="collapse-body-mod-damageAura" style="display: ${this.isSectionCollapsed('mod-damageAura') ? 'none' : 'block'};">
           ${!damageAuraEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Damage Aura is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
             Radiates continuous damage in a 3D spherical radius to all entities with a Health behavior.
           </div>
           <div id="prop-socket-aura-radius"></div>
           <div id="prop-socket-aura-rate"></div>
+          </div>
         </div>
       `;
     }
@@ -1425,10 +1570,8 @@ export class DevPanel {
         : '';
       html += `
         <div class="module-card ${!damageSolverEnabled ? 'module-disabled' : ''}" data-module-id="damageSolver">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🛡️ Damage Solver & Armor</label>
-            ${renderToggleBtn("damageSolver", damageSolverEnabled)}
-          </div>
+          ${this.renderModuleHeader("damageSolver", "🛡️ Damage Solver & Armor", renderToggleBtn("damageSolver", damageSolverEnabled))}
+          <div id="collapse-body-mod-damageSolver" style="display: ${this.isSectionCollapsed('mod-damageSolver') ? 'none' : 'block'};">
           ${!damageSolverEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Damage Solver is disabled</div>` : ''}
           ${healthWarning}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
@@ -1436,6 +1579,7 @@ export class DevPanel {
           </div>
           <div id="prop-socket-impact-susceptibility"></div>
           <div id="prop-socket-min-shock-thresh"></div>
+          </div>
         </div>
       `;
     }
@@ -1450,10 +1594,8 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!energyPoolEnabled ? 'module-disabled' : ''}" data-module-id="energyPool">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>⚡ Energy Pool</label>
-            ${renderToggleBtn("energyPool", energyPoolEnabled)}
-          </div>
+          ${this.renderModuleHeader("energyPool", "⚡ Energy Pool", renderToggleBtn("energyPool", energyPoolEnabled))}
+          <div id="collapse-body-mod-energyPool" style="display: ${this.isSectionCollapsed('mod-energyPool') ? 'none' : 'block'};">
           ${!energyPoolEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Pool is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
             Finite biochemical energy store (in Joules). Depleted by physical work; refueled by eating food.
@@ -1489,6 +1631,7 @@ export class DevPanel {
               ⚡ Refill (100%)
             </button>
           </div>
+          </div>
         </div>
       `;
     }
@@ -1503,10 +1646,8 @@ export class DevPanel {
 
       html += `
         <div class="module-card ${!energyBusEnabled ? 'module-disabled' : ''}" data-module-id="energyBus">
-          <div class="toggle-row" style="margin-bottom: 2px;">
-            <label>🚌 Energy Bus (Main)</label>
-            ${renderToggleBtn("energyBus", energyBusEnabled)}
-          </div>
+          ${this.renderModuleHeader("energyBus", "🚌 Energy Bus (Main)", renderToggleBtn("energyBus", energyBusEnabled))}
+          <div id="collapse-body-mod-energyBus" style="display: ${this.isSectionCollapsed('mod-energyBus') ? 'none' : 'block'};">
           ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
           ${eb.isExhausted ? `<div class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">⚠️ Exhausted! Stamina depleted below safety threshold</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
@@ -1526,6 +1667,7 @@ export class DevPanel {
           <div id="prop-socket-bus-maxpower"></div>
           <div id="prop-socket-bus-maxstamina"></div>
           <div id="prop-socket-bus-regen"></div>
+          </div>
         </div>
       `;
     }
@@ -2106,21 +2248,38 @@ export class DevPanel {
         airFricSocketEl.appendChild(afCtrl.element);
       }
 
-      // Energy consumption checkboxes
+      // Energy consumption checkboxes & bus selectors
       const checkWalkEnergy = this.container.querySelector("#check-walk-energy") as HTMLInputElement;
+      const fieldWalkBus = this.container.querySelector("#field-walk-energy-bus") as HTMLElement;
       checkWalkEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.walkConsumesEnergy = checkWalkEnergy.checked;
+          if (fieldWalkBus) fieldWalkBus.style.display = checkWalkEnergy.checked ? "block" : "none";
           const warn = this.container.querySelector("#warn-walk-energy") as HTMLElement;
           if (warn) warn.style.display = checkWalkEnergy.checked ? "block" : "none";
         }
       });
+      const selectWalkBus = this.container.querySelector("#select-walk-energy-bus") as HTMLSelectElement;
+      selectWalkBus?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.walkEnergyBusId = selectWalkBus.value;
+        }
+      });
+
       const checkSprintEnergy = this.container.querySelector("#check-sprint-energy") as HTMLInputElement;
+      const fieldSprintBus = this.container.querySelector("#field-sprint-energy-bus") as HTMLElement;
       checkSprintEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
+          if (fieldSprintBus) fieldSprintBus.style.display = checkSprintEnergy.checked ? "block" : "none";
           const warn = this.container.querySelector("#warn-sprint-energy") as HTMLElement;
           if (warn) warn.style.display = checkSprintEnergy.checked ? "block" : "none";
+        }
+      });
+      const selectSprintBus = this.container.querySelector("#select-sprint-energy-bus") as HTMLSelectElement;
+      selectSprintBus?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.sprintEnergyBusId = selectSprintBus.value;
         }
       });
 
@@ -2148,11 +2307,19 @@ export class DevPanel {
         pickupReachSocketEl.appendChild(prCtrl.element);
       }
       const checkPickupEnergy = this.container.querySelector("#check-pickup-energy") as HTMLInputElement;
+      const fieldPickupBus = this.container.querySelector("#field-pickup-energy-bus") as HTMLElement;
       checkPickupEnergy?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
+          if (fieldPickupBus) fieldPickupBus.style.display = checkPickupEnergy.checked ? "block" : "none";
           const warn = this.container.querySelector("#warn-pickup-energy") as HTMLElement;
           if (warn) warn.style.display = checkPickupEnergy.checked ? "block" : "none";
+        }
+      });
+      const selectPickupBus = this.container.querySelector("#select-pickup-energy-bus") as HTMLSelectElement;
+      selectPickupBus?.addEventListener("change", () => {
+        if (char.pickupModule) {
+          char.pickupModule.energyBusId = selectPickupBus.value;
         }
       });
 
@@ -2178,11 +2345,19 @@ export class DevPanel {
         throwHeightSocketEl.appendChild(thCtrl.element);
       }
       const checkThrowEnergy = this.container.querySelector("#check-throw-energy") as HTMLInputElement;
+      const fieldThrowBus = this.container.querySelector("#field-throw-energy-bus") as HTMLElement;
       checkThrowEnergy?.addEventListener("change", () => {
         if (char.throwModule) {
           char.throwModule.consumesEnergy = checkThrowEnergy.checked;
+          if (fieldThrowBus) fieldThrowBus.style.display = checkThrowEnergy.checked ? "block" : "none";
           const warn = this.container.querySelector("#warn-throw-energy") as HTMLElement;
           if (warn) warn.style.display = checkThrowEnergy.checked ? "block" : "none";
+        }
+      });
+      const selectThrowBus = this.container.querySelector("#select-throw-energy-bus") as HTMLSelectElement;
+      selectThrowBus?.addEventListener("change", () => {
+        if (char.throwModule) {
+          char.throwModule.energyBusId = selectThrowBus.value;
         }
       });
 
@@ -2208,10 +2383,16 @@ export class DevPanel {
         jumpSpeedSocketEl.appendChild(jspCtrl.element);
       }
       const checkJumpEnergy = this.container.querySelector("#check-jump-energy") as HTMLInputElement;
+      const fieldJumpBus = this.container.querySelector("#field-jump-energy-bus") as HTMLElement;
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
+        if (fieldJumpBus) fieldJumpBus.style.display = checkJumpEnergy.checked ? "block" : "none";
         const warn = this.container.querySelector("#warn-jump-energy") as HTMLElement;
         if (warn) warn.style.display = checkJumpEnergy.checked ? "block" : "none";
+      });
+      const selectJumpBus = this.container.querySelector("#select-jump-energy-bus") as HTMLSelectElement;
+      selectJumpBus?.addEventListener("change", () => {
+        char.jumpEnergyBusId = selectJumpBus.value;
       });
 
       // Wall Edge Assist
@@ -2264,11 +2445,19 @@ export class DevPanel {
         climbSpeedSocketEl.appendChild(csCtrl.element);
       }
       const checkClimbEnergy = this.container.querySelector("#check-climb-energy") as HTMLInputElement;
+      const fieldClimbBus = this.container.querySelector("#field-climb-energy-bus") as HTMLElement;
       checkClimbEnergy?.addEventListener("change", () => {
         if (char.climbingModule) {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
+          if (fieldClimbBus) fieldClimbBus.style.display = checkClimbEnergy.checked ? "block" : "none";
           const warn = this.container.querySelector("#warn-climb-energy") as HTMLElement;
           if (warn) warn.style.display = checkClimbEnergy.checked ? "block" : "none";
+        }
+      });
+      const selectClimbBus = this.container.querySelector("#select-climb-energy-bus") as HTMLSelectElement;
+      selectClimbBus?.addEventListener("change", () => {
+        if (char.climbingModule) {
+          char.climbingModule.energyBusId = selectClimbBus.value;
         }
       });
     }
@@ -2311,10 +2500,16 @@ export class DevPanel {
       }
 
       const checkHealthEnergy = this.container.querySelector("#check-health-energy") as HTMLInputElement;
+      const fieldHealthBus = this.container.querySelector("#field-health-energy-bus") as HTMLElement;
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
+        if (fieldHealthBus) fieldHealthBus.style.display = checkHealthEnergy.checked ? "block" : "none";
         const warn = this.container.querySelector("#warn-health-energy") as HTMLElement;
         if (warn) warn.style.display = checkHealthEnergy.checked ? "block" : "none";
+      });
+      const selectHealthBus = this.container.querySelector("#select-health-energy-bus") as HTMLSelectElement;
+      selectHealthBus?.addEventListener("change", () => {
+        hm.energyBusId = selectHealthBus.value;
       });
 
       // Quick test buttons
@@ -2586,6 +2781,27 @@ export class DevPanel {
   }
 
   private bindEvents(): void {
+    // 0. Collapsible Sections and Modules Accordion Delegation
+    this.container.addEventListener("click", (evt) => {
+      const header = (evt.target as HTMLElement).closest(".collapsible-section-header") as HTMLElement;
+      if (!header) return;
+      const collapseId = header.dataset.collapseId;
+      if (!collapseId) return;
+
+      this.toggleSectionCollapse(collapseId);
+      const isCollapsed = this.isSectionCollapsed(collapseId);
+      const icon = header.querySelector(".collapse-icon") as HTMLElement;
+      if (icon) {
+        icon.textContent = isCollapsed ? "▶" : "▼";
+      }
+
+      // Check for matching collapse-body container
+      const body = this.container.querySelector(`#collapse-body-${collapseId}`) as HTMLElement;
+      if (body) {
+        body.style.display = isCollapsed ? "none" : (body.dataset.displayType || "block");
+      }
+    });
+
     // 1. Mode Switcher
     this.modePlayBtn.addEventListener("click", () => {
       this.setMode(false);

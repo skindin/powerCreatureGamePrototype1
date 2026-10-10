@@ -95,9 +95,21 @@ export class Character extends GameObject {
   public healthModule: HealthModule | null;
   public energyPool: EnergyPool | null;
   public energyBus: EnergyBus | null;
+  public energyBusses: Map<string, EnergyBus> = new Map();
+
+  /**
+   * Retrieves an EnergyBus by ID, falling back to the default energyBus if matching or requested
+   */
+  public getEnergyBus(busId?: string): EnergyBus | null {
+    if (!busId || busId === "default" || busId === "bus_main") {
+      return this.energyBus;
+    }
+    return this.energyBusses.get(busId) || this.energyBus;
+  }
 
   /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
   public jumpConsumesEnergy: boolean = false;
+  public jumpEnergyBusId: string = "bus_main";
 
   // Player identity & multiplayer slot
   public controllerType: CharacterControllerType = "local";
@@ -213,6 +225,7 @@ export class Character extends GameObject {
     this.healthModule = new HealthModule();
     this.energyPool = new EnergyPool();
     this.energyBus = new EnergyBus();
+    this.energyBusses.set(this.energyBus.id, this.energyBus);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }

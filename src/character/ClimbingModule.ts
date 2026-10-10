@@ -42,6 +42,7 @@ export class ClimbingModule {
    * Whether climbing consumes energy from an Energy Bus (placeholder toggle).
    */
   public consumesEnergy: boolean = false;
+  public energyBusId: string = "bus_main";
 
   constructor(options?: {
     maxAdhesion?: number;

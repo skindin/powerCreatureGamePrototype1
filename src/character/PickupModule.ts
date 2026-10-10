@@ -14,6 +14,7 @@ export class PickupModule {
    * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
    */
   public consumesEnergy: boolean = false;
+  public energyBusId: string = "bus_main";
 
   constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; enabled?: boolean }) {
     this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);

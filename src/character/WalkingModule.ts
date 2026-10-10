@@ -37,7 +37,9 @@ export class WalkingModule {
 
   // Energy consumption toggles (placeholders before full Energy Busses)
   public sprintConsumesEnergy: boolean = false;
+  public sprintEnergyBusId: string = "bus_main";
   public walkConsumesEnergy: boolean = false;
+  public walkEnergyBusId: string = "bus_main";
   public consumesEnergy: boolean = false;
 
   // Drag damping factor for backwards compatibility / reference

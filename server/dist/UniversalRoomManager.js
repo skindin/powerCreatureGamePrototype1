@@ -5407,7 +5407,9 @@ class WalkingModule {
     __publicField(this, "maxSprintSpeedProp");
     // Energy consumption toggles (placeholders before full Energy Busses)
     __publicField(this, "sprintConsumesEnergy", false);
+    __publicField(this, "sprintEnergyBusId", "bus_main");
     __publicField(this, "walkConsumesEnergy", false);
+    __publicField(this, "walkEnergyBusId", "bus_main");
     __publicField(this, "consumesEnergy", false);
     // Drag damping factor for backwards compatibility / reference
     __publicField(this, "dragDamping", 8.01);
@@ -5610,6 +5612,7 @@ class PickupModule {
      * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
      */
     __publicField(this, "consumesEnergy", false);
+    __publicField(this, "energyBusId", "bus_main");
     this.pickupReachProp = new DynamicProperty((options == null ? void 0 : options.pickupReach) ?? 1.3);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
@@ -5786,6 +5789,7 @@ class ThrowModule {
      * Whether throwing consumes energy from an Energy Bus (placeholder toggle).
      */
     __publicField(this, "consumesEnergy", false);
+    __publicField(this, "energyBusId", "bus_main");
     this.baseThrowForceProp = new DynamicProperty((options == null ? void 0 : options.baseThrowForce) ?? 7.6);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
     this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
@@ -6446,6 +6450,8 @@ const _HealthModule = class _HealthModule {
     __publicField(this, "maxHealRateProp");
     /** Toggle indicating whether healing draws energy from an Energy Bus */
     __publicField(this, "consumesEnergy", false);
+    /** ID of the Energy Bus to draw power from */
+    __publicField(this, "energyBusId", "bus_main");
     /** Optional callback invoked when entity dies and respawns */
     __publicField(this, "onDeathRespawn");
     this.baseMaxHp = (options == null ? void 0 : options.baseMaxHp) ?? 100;
@@ -6903,8 +6909,10 @@ class Character extends GameObject {
     __publicField(this, "healthModule");
     __publicField(this, "energyPool");
     __publicField(this, "energyBus");
+    __publicField(this, "energyBusses", /* @__PURE__ */ new Map());
     /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
     __publicField(this, "jumpConsumesEnergy", false);
+    __publicField(this, "jumpEnergyBusId", "bus_main");
     // Player identity & multiplayer slot
     __publicField(this, "controllerType", "local");
     __publicField(this, "playerId", "keyboard");
@@ -6946,6 +6954,7 @@ class Character extends GameObject {
     this.healthModule = new HealthModule();
     this.energyPool = new EnergyPool();
     this.energyBus = new EnergyBus();
+    this.energyBusses.set(this.energyBus.id, this.energyBus);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -6990,6 +6999,15 @@ class Character extends GameObject {
     if (this.wallEdgeAssistModule) {
       this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
+  }
+  /**
+   * Retrieves an EnergyBus by ID, falling back to the default energyBus if matching or requested
+   */
+  getEnergyBus(busId) {
+    if (!busId || busId === "default" || busId === "bus_main") {
+      return this.energyBus;
+    }
+    return this.energyBusses.get(busId) || this.energyBus;
   }
   get role() {
     return this.characterModule ? this.characterModule.role : "local_player";
