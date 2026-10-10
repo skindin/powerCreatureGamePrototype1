@@ -5388,7 +5388,7 @@ const _GameObject = class _GameObject {
   }
 };
 /** Global world scale for converting absorbed collision shock to raw HP damage */
-__publicField(_GameObject, "globalWorldCollisionDamageScale", 1);
+__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.01);
 let GameObject = _GameObject;
 class WalkingModule {
   constructor(options) {
@@ -5413,6 +5413,16 @@ class WalkingModule {
     __publicField(this, "walkInAir", true);
     // Air friction multiplier applied when airborne (floating friction to stay still)
     __publicField(this, "airFrictionProp");
+    // Planned momentum braking state:
+    // When movement input drops to zero, computes the exact force and duration required
+    // to brake the character's release velocity to zero. The module continues executing
+    // this pre-planned deceleration until the timer expires, without fighting external pushes!
+    __publicField(this, "isBrakingPlanned", false);
+    __publicField(this, "plannedBrakeRemainingTime", 0);
+    __publicField(this, "plannedBrakeDirX", 0);
+    __publicField(this, "plannedBrakeDirY", 0);
+    __publicField(this, "plannedBrakeAccel", 0);
+    __publicField(this, "wasMovingLastTick", false);
     this.maxWalkForceProp = new DynamicProperty((options == null ? void 0 : options.maxWalkForce) ?? 35);
     this.maxWalkSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxWalkSpeed) ?? 5.2);
     if ((options == null ? void 0 : options.canSprint) !== void 0) this.canSprint = options.canSprint;
@@ -5475,14 +5485,17 @@ class WalkingModule {
     const isAirborne = !character.isRestingOnSurface;
     if (!this.enabled || isAirborne && !this.walkInAir || character.isClimbing) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     if (!character.hasMass || !character.hasStrength || character.strength <= 0) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     if (!isAirborne && (!character.hasFriction || !((_a = character.frictionModule) == null ? void 0 : _a.enabled) || character.dynamicGroundFrictionMod <= 1e-3)) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     const inputMag = Math.hypot(inputVector.x, inputVector.y);
@@ -5502,42 +5515,84 @@ class WalkingModule {
     const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
     const baseTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
     const effectiveSpeed = baseTargetSpeed / (1 + loadFactor);
-    let targetVx = 0;
-    let targetVy = 0;
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
+    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
     if (isMoving) {
+      this.isBrakingPlanned = false;
+      this.wasMovingLastTick = true;
       const dirX = inputVector.x / inputMag;
       const dirY = inputVector.y / inputMag;
+      let targetVx = 0;
+      let targetVy = 0;
       if (isAirborne) {
-        const currentSpeed2 = Math.hypot(character.velocity.x, character.velocity.y);
-        const airTargetSpeed = Math.max(effectiveSpeed, currentSpeed2);
+        const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+        const airTargetSpeed = Math.max(effectiveSpeed, currentSpeed);
         targetVx = dirX * airTargetSpeed;
         targetVy = dirY * airTargetSpeed;
       } else {
         targetVx = dirX * effectiveSpeed;
         targetVy = dirY * effectiveSpeed;
       }
-    }
-    const diffX = targetVx - character.velocity.x;
-    const diffY = targetVy - character.velocity.y;
-    const diffSpeed = Math.hypot(diffX, diffY);
-    if (diffSpeed < 1e-3) {
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
-      return;
-    }
-    const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
-    const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
-    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
-    const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
-    const maxStep = maxAccel * dt;
-    if (diffSpeed <= maxStep || !isAirborne && !isMoving && currentSpeed < staticThreshold) {
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
+      const diffX = targetVx - character.velocity.x;
+      const diffY = targetVy - character.velocity.y;
+      const diffSpeed = Math.hypot(diffX, diffY);
+      if (diffSpeed < 1e-3) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+        return;
+      }
+      const maxStep = maxAccel * dt;
+      if (diffSpeed <= maxStep) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+      } else {
+        const stepRatio = maxStep / diffSpeed;
+        character.velocity.x += diffX * stepRatio;
+        character.velocity.y += diffY * stepRatio;
+      }
     } else {
-      const stepRatio = maxStep / diffSpeed;
-      character.velocity.x += diffX * stepRatio;
-      character.velocity.y += diffY * stepRatio;
+      const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+      const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
+      if (!this.isBrakingPlanned && this.wasMovingLastTick) {
+        this.wasMovingLastTick = false;
+        if (currentSpeed > staticThreshold && maxAccel > 1e-3) {
+          this.isBrakingPlanned = true;
+          this.plannedBrakeRemainingTime = currentSpeed / maxAccel;
+          this.plannedBrakeDirX = character.velocity.x / currentSpeed;
+          this.plannedBrakeDirY = character.velocity.y / currentSpeed;
+          this.plannedBrakeAccel = maxAccel;
+        } else {
+          if (!isAirborne && currentSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+          return;
+        }
+      } else if (!this.isBrakingPlanned) {
+        this.wasMovingLastTick = false;
+        return;
+      }
+      if (this.isBrakingPlanned) {
+        const stepDt = Math.min(dt, this.plannedBrakeRemainingTime);
+        const decelStep = this.plannedBrakeAccel * stepDt;
+        character.velocity.x -= this.plannedBrakeDirX * decelStep;
+        character.velocity.y -= this.plannedBrakeDirY * decelStep;
+        this.plannedBrakeRemainingTime -= dt;
+        if (this.plannedBrakeRemainingTime <= 1e-4) {
+          this.isBrakingPlanned = false;
+          const dot = character.velocity.x * this.plannedBrakeDirX + character.velocity.y * this.plannedBrakeDirY;
+          if (dot <= staticThreshold) {
+            character.velocity.x -= dot * this.plannedBrakeDirX;
+            character.velocity.y -= dot * this.plannedBrakeDirY;
+          }
+          const postSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+          if (!isAirborne && postSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+        }
+      }
     }
   }
 }
@@ -6510,26 +6565,38 @@ class DamageSolverModule {
      */
     __publicField(this, "impactSusceptibilityProp");
     /**
-     * Minimum absorbed shock acceleration (u/s²) required before trauma occurs.
-     * Prevents gentle walking into walls or light nudges from dealing damage.
+     * Flat amount of HP subtracted from the incoming scaled impact damage before health is lost.
+     * Clamps the final HP deduction at 0 (e.g., a threshold of 5.0 HP absorbs the first 5 HP of any impact).
      */
-    __publicField(this, "minShockThresholdProp");
+    __publicField(this, "damageThresholdHpProp");
     /** Cooldown timer to prevent multi-substep collision spam in a single frame */
     __publicField(this, "lastImpactTime", 0);
     __publicField(this, "impactCooldownMs", 60);
     this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
-    this.minShockThresholdProp = new DynamicProperty((options == null ? void 0 : options.minShockThreshold) ?? 4);
+    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 5;
+    this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get minShockThresholdProp() {
+    return this.damageThresholdHpProp;
   }
   getImpactSusceptibility(registry) {
     return this.impactSusceptibilityProp.get(registry);
   }
+  getDamageThresholdHp(registry) {
+    return this.damageThresholdHpProp.get(registry);
+  }
+  /** Backwards compatibility alias for getDamageThresholdHp */
   getMinShockThreshold(registry) {
-    return this.minShockThresholdProp.get(registry);
+    return this.getDamageThresholdHp(registry);
   }
   /**
    * Evaluates an incoming physical impact shock event against thresholds
    * and deducts damage from the entity's HealthModule.
+   *
+   * Formula:
+   *   baseDamage = absorbedShock * worldCollisionDamageScale * susceptibility
+   *   finalDamage = max(0, baseDamage - damageThresholdHp)
    */
   handleImpact(event, entity, healthModule, worldCollisionDamageScale) {
     if (!this.enabled || !healthModule || !healthModule.enabled) return 0;
@@ -6540,10 +6607,10 @@ class DamageSolverModule {
     const registry = entity.properties;
     const susceptibility = this.getImpactSusceptibility(registry);
     if (susceptibility <= 0) return 0;
-    const threshold = this.getMinShockThreshold(registry);
-    const netShock = Math.max(0, event.absorbedShock - threshold);
-    if (netShock <= 0) return 0;
-    const finalDamage = netShock * worldCollisionDamageScale * susceptibility;
+    const baseDamage = event.absorbedShock * worldCollisionDamageScale * susceptibility;
+    if (baseDamage <= 1e-4) return 0;
+    const thresholdHp = this.getDamageThresholdHp(registry);
+    const finalDamage = Math.max(0, baseDamage - thresholdHp);
     if (finalDamage > 1e-3) {
       this.lastImpactTime = now;
       healthModule.takeDamage(finalDamage, registry);
@@ -7072,7 +7139,7 @@ class CollisionResolver {
    * Objects have stepped forward. If overlapping, rolls both bodies back along their travel paths
    * to the exact tangent contact point, applies mass/restitution impulses, then finishes the step.
    */
-  static resolvePairDiscreteTOI(a, b, _arena, dt) {
+  static resolvePairDiscreteTOI(a, b, _arena, _dt) {
     const minDist = a.colliderRadius + b.colliderRadius;
     const dx = b.position.x - a.position.x;
     const dy = b.position.y - a.position.y;
@@ -7098,54 +7165,42 @@ class CollisionResolver {
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
-    const relSpeed = Math.hypot(relVx, relVy);
-    let alpha = 0;
-    if (relSpeed > 1e-4) {
-      alpha = Math.min(1, Math.max(0, overlap / (relSpeed * dt)));
-    }
-    const rewindDt = alpha * dt;
-    if (!a.isImmovable) {
-      a.position.x -= a.velocity.x * rewindDt;
-      a.position.y -= a.velocity.y * rewindDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x -= b.velocity.x * rewindDt;
-      b.position.y -= b.velocity.y * rewindDt;
-    }
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    if (contactDist < minDist && contactDist > 1e-5) {
-      const penetration = minDist - contactDist;
-      const cNormX = contactDx / contactDist;
-      const cNormY = contactDy / contactDist;
-      if (b.isImmovable) {
-        a.position.x -= cNormX * penetration;
-        a.position.y -= cNormY * penetration;
-      } else if (a.isImmovable) {
-        b.position.x += cNormX * penetration;
-        b.position.y += cNormY * penetration;
-      } else {
-        const fix = penetration * 0.5;
-        a.position.x -= cNormX * fix;
-        a.position.y -= cNormY * fix;
-        b.position.x += cNormX * fix;
-        b.position.y += cNormY * fix;
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invSum = invA + invB;
+    if (invSum > 1e-4) {
+      const fixA = overlap * (invA / invSum);
+      const fixB = overlap * (invB / invSum);
+      if (!a.isImmovable) {
+        a.position.x -= normX * fixA;
+        a.position.y -= normY * fixA;
+      }
+      if (!b.isImmovable) {
+        b.position.x += normX * fixB;
+        b.position.y += normY * fixB;
+      }
+    } else {
+      if (!a.isImmovable && !b.isImmovable) {
+        const fix = overlap * 0.5;
+        a.position.x -= normX * fix;
+        a.position.y -= normY * fix;
+        b.position.x += normX * fix;
+        b.position.y += normY * fix;
+      } else if (!a.isImmovable) {
+        a.position.x -= normX * overlap;
+        a.position.y -= normY * overlap;
+      } else if (!b.isImmovable) {
+        b.position.x += normX * overlap;
+        b.position.y += normY * overlap;
       }
     }
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const restitution = Math.max(bounceA, bounceB);
+    const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
     this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
-    const remDt = (1 - alpha) * dt;
-    if (!a.isImmovable) {
-      a.position.x += a.velocity.x * remDt;
-      a.position.y += a.velocity.y * remDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x += b.velocity.x * remDt;
-      b.position.y += b.velocity.y * remDt;
-    }
     return true;
   }
   /**
@@ -7355,12 +7410,13 @@ class CollisionResolver {
     a.velocity.y -= normalImpulse * invMassA * normY;
     b.velocity.x += normalImpulse * invMassB * normX;
     b.velocity.y += normalImpulse * invMassB * normY;
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const tangX = -normY;
     const tangY = normX;
     const relVx = b.velocity.x - a.velocity.x;
     const relVy = b.velocity.y - a.velocity.y;
     const relVt = relVx * tangX + relVy * tangY;
-    if (Math.abs(relVt) > 1e-3) {
+    if (!isCharCharContact && Math.abs(relVt) > 1e-3) {
       const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
       const beta = 0.4;
       const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));

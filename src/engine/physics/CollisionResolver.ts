@@ -107,7 +107,7 @@ export class CollisionResolver {
     a: GameObject,
     b: GameObject,
     _arena: Arena,
-    dt: number
+    _dt: number
   ): boolean {
     const minDist = a.colliderRadius + b.colliderRadius;
     const dx = b.position.x - a.position.x;
@@ -142,65 +142,50 @@ export class CollisionResolver {
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
 
-    // Find contact fraction alpha in [0, 1] using relative motion
-    const relSpeed = Math.hypot(relVx, relVy);
-    let alpha = 0; // fraction of frame to rewind
-    if (relSpeed > 0.0001) {
-      alpha = Math.min(1.0, Math.max(0.0, overlap / (relSpeed * dt)));
-    }
+    // Positional separation based on inverse mass distribution
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invSum = invA + invB;
 
-    // Sub-tick rollback to exact tangent contact
-    const rewindDt = alpha * dt;
-    if (!a.isImmovable) {
-      a.position.x -= a.velocity.x * rewindDt;
-      a.position.y -= a.velocity.y * rewindDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x -= b.velocity.x * rewindDt;
-      b.position.y -= b.velocity.y * rewindDt;
-    }
-
-    // Ensure no residual penetration at contact
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    if (contactDist < minDist && contactDist > 0.00001) {
-      const penetration = minDist - contactDist;
-      const cNormX = contactDx / contactDist;
-      const cNormY = contactDy / contactDist;
-      if (b.isImmovable) {
-        a.position.x -= cNormX * penetration;
-        a.position.y -= cNormY * penetration;
-      } else if (a.isImmovable) {
-        b.position.x += cNormX * penetration;
-        b.position.y += cNormY * penetration;
-      } else {
-        const fix = penetration * 0.5;
-        a.position.x -= cNormX * fix;
-        a.position.y -= cNormY * fix;
-        b.position.x += cNormX * fix;
-        b.position.y += cNormY * fix;
+    if (invSum > 0.0001) {
+      const fixA = overlap * (invA / invSum);
+      const fixB = overlap * (invB / invSum);
+      if (!a.isImmovable) {
+        a.position.x -= normX * fixA;
+        a.position.y -= normY * fixA;
+      }
+      if (!b.isImmovable) {
+        b.position.x += normX * fixB;
+        b.position.y += normY * fixB;
+      }
+    } else {
+      // Both massless and neither immovable: 50/50 separation
+      if (!a.isImmovable && !b.isImmovable) {
+        const fix = overlap * 0.5;
+        a.position.x -= normX * fix;
+        a.position.y -= normY * fix;
+        b.position.x += normX * fix;
+        b.position.y += normY * fix;
+      } else if (!a.isImmovable) {
+        a.position.x -= normX * overlap;
+        a.position.y -= normY * overlap;
+      } else if (!b.isImmovable) {
+        b.position.x += normX * overlap;
+        b.position.y += normY * overlap;
       }
     }
 
-    // Combined restitution
+    // Combined restitution: Character-on-character contact is purely inelastic (restitution = 0)
+    // to prevent artificial elastic bouncing or slingshotting during walking/pushing
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const restitution = Math.max(bounceA, bounceB);
+    const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
 
     // Apply physical impulses respecting Massless vs Massive rule
     this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
-
-    // Advance remainder of frame with new velocities
-    const remDt = (1.0 - alpha) * dt;
-    if (!a.isImmovable) {
-      a.position.x += a.velocity.x * remDt;
-      a.position.y += a.velocity.y * remDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x += b.velocity.x * remDt;
-      b.position.y += b.velocity.y * remDt;
-    }
 
     return true;
   }
