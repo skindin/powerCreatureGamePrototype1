@@ -5,8 +5,9 @@ import { CollisionResolver } from "../engine/physics/CollisionResolver.js";
 import { IslandManager } from "../engine/physics/IslandManager.js";
 import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
+import { GhostSnapshot, GhostEntityState, DeathRespawnEvent } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
+import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
 import {
   AuthoritativeSnapshotManager,
@@ -15,7 +16,7 @@ import {
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
 import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
 
-export type { ContestedGrabResult };
+export type { ContestedGrabResult, DeathRespawnEvent };
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -57,6 +58,9 @@ export class ServerGameSimulation {
   // Contested grab arbitration audit log & active reliable retry map
   public contestedGrabEvents: ContestedGrabResult[] = [];
   public pendingContestedEvents: Map<string, { event: ContestedGrabResult; createdTick: number; acks: Set<string> }> = new Map();
+
+  // Authoritative death & respawn reliable retry map
+  public pendingDeathRespawnEvents: Map<string, { event: DeathRespawnEvent; createdTick: number; acks: Set<string> }> = new Map();
 
   // Reliable action deduplication & ACK tracking
   private processedActionIds: Set<string> = new Set();
@@ -188,6 +192,20 @@ export class ServerGameSimulation {
     });
     this.characters.set(player1.playerId, player1);
 
+    // Spawn authoritative Sparring Dummy (inert character with controllerType "none")
+    const dummy = new Character({
+      id: "dummy-1",
+      x: 6.8,
+      y: 7.0,
+      color: "#64748b",
+      colliderRadius: 0.44,
+      mass: 1.5,
+      strength: 0,
+      name: "Sparring Dummy",
+      controllerType: "none",
+    });
+    this.characters.set(dummy.id, dummy);
+
     // Spawn default freebody test objects
     this.objects = [
       new GameObject({
@@ -232,6 +250,19 @@ export class ServerGameSimulation {
         rollModule: new RollModule({
           rollResistance: 0.0,
           angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
+        }),
+      }),
+      new GameObject({
+        id: "hazard-orb-1",
+        name: "Hazard Orb (Damage Aura)",
+        position: { x: 10.0, y: 7.0, z: 0 },
+        mass: 5.0,
+        colliderRadius: 0.35,
+        color: "#ef4444",
+        bounceMod: 0.1,
+        damageAuraModule: new DamageAuraModule({
+          damageRadius: 2.2,
+          damageRate: 25.0,
         }),
       }),
     ];
@@ -659,6 +690,42 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Acknowledges that a client character has received and processed death & respawn events.
+   */
+  public acknowledgeDeathRespawnEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingDeathRespawnEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        // Clean up once all registered connected players have acknowledged
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingDeathRespawnEvents.delete(id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Returns all active unacknowledged death respawn events for continuous broadcast.
+   */
+  public getActiveDeathRespawnEvents(): DeathRespawnEvent[] {
+    const active: DeathRespawnEvent[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingDeathRespawnEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        // Expired after 5 seconds of continuous retransmission
+        this.pendingDeathRespawnEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -817,6 +884,40 @@ export class ServerGameSimulation {
         continue;
       }
       obj.updatePosition(dt, this.arena);
+      // Process health logic on objects that are not characters
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj as any, this.arena);
+      }
+    }
+
+    // 4b. Process Damage Aura emitters across all entities
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
+    }
+
+    // 4c. Process death respawns hook setup for characters
+    for (const char of this.allCharacters) {
+      if (char.healthModule && !char.healthModule.onDeathRespawn) {
+        char.healthModule.onDeathRespawn = (entity, respawnPos) => {
+          const eventId = `death-${entity.id}-${this.currentTick}`;
+          this.pendingDeathRespawnEvents.set(eventId, {
+            event: {
+              eventId,
+              targetEntityId: entity.id,
+              tick: this.currentTick,
+              respawnX: respawnPos.x,
+              respawnY: respawnPos.y,
+              respawnZ: respawnPos.z,
+              maxHp: entity.healthModule ? entity.healthModule.getMaxHp(entity.properties) : 100,
+            },
+            createdTick: this.currentTick,
+            acks: new Set<string>(),
+          });
+        };
+      }
     }
 
     // 5. Deterministic collision resolution across all entities
@@ -862,7 +963,8 @@ export class ServerGameSimulation {
       this.getRecentAckedActionIds(),
       this.getActiveContestedEvents(),
       rttMs,
-      forPlayerId
+      forPlayerId,
+      this.getActiveDeathRespawnEvents()
     );
   }
 }

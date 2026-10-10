@@ -28,7 +28,8 @@ export class ServerTelemetryBroadcaster {
     recentAckedActionIds: string[],
     contestedGrabEvents?: import("./ContestedGrabArbiter.js").ContestedGrabResult[],
     rttMs: number = 0,
-    forPlayerId?: string
+    forPlayerId?: string,
+    deathRespawnEvents?: import("../network/RelayClient.js").DeathRespawnEvent[]
   ): GhostSnapshot {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
@@ -85,6 +86,8 @@ export class ServerTelemetryBroadcaster {
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
         isSleeping: obj.isSleeping,
+        currentHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : undefined,
+        maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : undefined,
       };
     });
 
@@ -108,6 +111,10 @@ export class ServerTelemetryBroadcaster {
       facingAngle: Number(c.facingAngle.toFixed(4)),
       heldObjectId: c.heldObject ? c.heldObject.id : null,
       isHolding: Boolean(c.heldObject),
+      isDummy: c.controllerType === "none" || c.id === "dummy-1",
+      controllerType: c.controllerType,
+      currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : undefined,
+      maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : undefined,
     }));
 
     return {
@@ -120,6 +127,7 @@ export class ServerTelemetryBroadcaster {
       objects: ghostObjects,
       ackActionIds: recentAckedActionIds,
       contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : undefined,
+      deathRespawnEvents: deathRespawnEvents && deathRespawnEvents.length > 0 ? [...deathRespawnEvents] : undefined,
       clockSync,
     };
   }

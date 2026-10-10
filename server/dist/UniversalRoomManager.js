@@ -6438,6 +6438,8 @@ const _HealthModule = class _HealthModule {
     __publicField(this, "maxHealRateProp");
     /** Toggle indicating whether healing draws energy from an Energy Bus */
     __publicField(this, "consumesEnergy", false);
+    /** Optional callback invoked when entity dies and respawns */
+    __publicField(this, "onDeathRespawn");
     this.baseMaxHp = (options == null ? void 0 : options.baseMaxHp) ?? 100;
     const initialMaxHp = (options == null ? void 0 : options.maxHp) ?? this.baseMaxHp;
     this.maxHpProp = new DynamicProperty(initialMaxHp);
@@ -6514,6 +6516,7 @@ const _HealthModule = class _HealthModule {
    * snaps to a random spawn position from the 4 online clearings, and restores full health.
    */
   dieAndRespawn(character, _arena) {
+    var _a;
     if (character.heldObject) {
       character.heldObject.isHeld = false;
       character.heldObject.heldBy = null;
@@ -6536,6 +6539,7 @@ const _HealthModule = class _HealthModule {
     character.supportingSurfaceHeight = 0;
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
+    (_a = this.onDeathRespawn) == null ? void 0 : _a.call(this, character, chosenSpawn);
   }
 };
 /**
@@ -7922,6 +7926,70 @@ class RollModule {
     }
   }
 }
+class DamageAuraModule {
+  constructor(options) {
+    __publicField(this, "id", "damageAura");
+    __publicField(this, "name", "Damage Aura");
+    __publicField(this, "enabled", true);
+    /** Radius in world units within which objects take damage */
+    __publicField(this, "damageRadiusProp");
+    /** Health points drained per second (HP / s) */
+    __publicField(this, "damageRateProp");
+    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
+    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get damageRadius() {
+    return this.damageRadiusProp.literalValue;
+  }
+  set damageRadius(val) {
+    this.damageRadiusProp.literalValue = Math.max(0.1, val);
+  }
+  get damageRate() {
+    return this.damageRateProp.literalValue;
+  }
+  set damageRate(val) {
+    this.damageRateProp.literalValue = Math.max(0, val);
+  }
+  getDamageRadius(registry) {
+    return this.damageRadiusProp.get(registry);
+  }
+  getDamageRate(registry) {
+    return this.damageRateProp.get(registry);
+  }
+  /**
+   * Continuous update tick:
+   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
+   */
+  update(dt, sourceEntity, arenaOrTargets) {
+    if (!this.enabled || dt <= 0) return;
+    const registry = sourceEntity.properties;
+    const radius = this.getDamageRadius(registry);
+    const rate = this.getDamageRate(registry);
+    if (radius <= 0.01 || rate <= 0) return;
+    const damageThisFrame = rate * dt;
+    const srcX = sourceEntity.position.x;
+    const srcY = sourceEntity.position.y;
+    const srcZ = sourceEntity.position.z ?? 0;
+    const radiusSq = radius * radius;
+    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
+    for (const target of entities) {
+      if (target === sourceEntity) continue;
+      const healthMod = target.healthModule;
+      if (!healthMod || !healthMod.enabled) continue;
+      const targetX = target.position.x;
+      const targetY = target.position.y;
+      const targetZ = target.position.z ?? 0;
+      const dx = targetX - srcX;
+      const dy = targetY - srcY;
+      const dz = targetZ - srcZ;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq <= radiusSq) {
+        healthMod.takeDamage(damageThisFrame, target.properties);
+      }
+    }
+  }
+}
 class PlayerJitterQueue {
   constructor(playerId, config) {
     __publicField(this, "playerId");
@@ -8398,7 +8466,7 @@ class ServerTelemetryBroadcaster {
   /**
    * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
    */
-  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId) {
+  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents) {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
     const clockSync = latestClockSync.get(targetPId) || latestClockSync.get("keyboard");
@@ -8451,7 +8519,9 @@ class ServerTelemetryBroadcaster {
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : void 0,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : void 0,
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : void 0,
-        isSleeping: obj.isSleeping
+        isSleeping: obj.isSleeping,
+        currentHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : void 0,
+        maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0
       };
     });
     const ghostCharacters = allCharacters.map((c) => ({
@@ -8473,7 +8543,11 @@ class ServerTelemetryBroadcaster {
       isAboveWalls: c.isAboveWalls,
       facingAngle: Number(c.facingAngle.toFixed(4)),
       heldObjectId: c.heldObject ? c.heldObject.id : null,
-      isHolding: Boolean(c.heldObject)
+      isHolding: Boolean(c.heldObject),
+      isDummy: c.controllerType === "none" || c.id === "dummy-1",
+      controllerType: c.controllerType,
+      currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
+      maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0
     }));
     return {
       seq: currentTick,
@@ -8485,6 +8559,7 @@ class ServerTelemetryBroadcaster {
       objects: ghostObjects,
       ackActionIds: recentAckedActionIds,
       contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : void 0,
+      deathRespawnEvents: deathRespawnEvents && deathRespawnEvents.length > 0 ? [...deathRespawnEvents] : void 0,
       clockSync
     };
   }
@@ -8535,6 +8610,8 @@ class ServerGameSimulation {
     // Contested grab arbitration audit log & active reliable retry map
     __publicField(this, "contestedGrabEvents", []);
     __publicField(this, "pendingContestedEvents", /* @__PURE__ */ new Map());
+    // Authoritative death & respawn reliable retry map
+    __publicField(this, "pendingDeathRespawnEvents", /* @__PURE__ */ new Map());
     // Reliable action deduplication & ACK tracking
     __publicField(this, "processedActionIds", /* @__PURE__ */ new Set());
     __publicField(this, "recentAckedActionIds", []);
@@ -8642,6 +8719,18 @@ class ServerGameSimulation {
       name: "Server Player 1"
     });
     this.characters.set(player1.playerId, player1);
+    const dummy = new Character({
+      id: "dummy-1",
+      x: 6.8,
+      y: 7,
+      color: "#64748b",
+      colliderRadius: 0.44,
+      mass: 1.5,
+      strength: 0,
+      name: "Sparring Dummy",
+      controllerType: "none"
+    });
+    this.characters.set(dummy.id, dummy);
     this.objects = [
       new GameObject({
         id: "stone-1",
@@ -8685,6 +8774,19 @@ class ServerGameSimulation {
         rollModule: new RollModule({
           rollResistance: 0,
           angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 }
+        })
+      }),
+      new GameObject({
+        id: "hazard-orb-1",
+        name: "Hazard Orb (Damage Aura)",
+        position: { x: 10, y: 7, z: 0 },
+        mass: 5,
+        colliderRadius: 0.35,
+        color: "#ef4444",
+        bounceMod: 0.1,
+        damageAuraModule: new DamageAuraModule({
+          damageRadius: 2.2,
+          damageRate: 25
         })
       })
     ];
@@ -9038,6 +9140,38 @@ class ServerGameSimulation {
     return active;
   }
   /**
+   * Acknowledges that a client character has received and processed death & respawn events.
+   */
+  acknowledgeDeathRespawnEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingDeathRespawnEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingDeathRespawnEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged death respawn events for continuous broadcast.
+   */
+  getActiveDeathRespawnEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingDeathRespawnEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        this.pendingDeathRespawnEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -9169,6 +9303,35 @@ class ServerGameSimulation {
         continue;
       }
       obj.updatePosition(dt, this.arena);
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj, this.arena);
+      }
+    }
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
+    }
+    for (const char of this.allCharacters) {
+      if (char.healthModule && !char.healthModule.onDeathRespawn) {
+        char.healthModule.onDeathRespawn = (entity, respawnPos) => {
+          const eventId = `death-${entity.id}-${this.currentTick}`;
+          this.pendingDeathRespawnEvents.set(eventId, {
+            event: {
+              eventId,
+              targetEntityId: entity.id,
+              tick: this.currentTick,
+              respawnX: respawnPos.x,
+              respawnY: respawnPos.y,
+              respawnZ: respawnPos.z,
+              maxHp: entity.healthModule ? entity.healthModule.getMaxHp(entity.properties) : 100
+            },
+            createdTick: this.currentTick,
+            acks: /* @__PURE__ */ new Set()
+          });
+        };
+      }
     }
     CollisionResolver.resolveEntityCollisions(
       [...this.allCharacters, ...this.objects],
@@ -9204,7 +9367,8 @@ class ServerGameSimulation {
       this.getRecentAckedActionIds(),
       this.getActiveContestedEvents(),
       rttMs,
-      forPlayerId
+      forPlayerId,
+      this.getActiveDeathRespawnEvents()
     );
   }
 }
@@ -9715,6 +9879,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           this.simulation.queueInput(pkt);
           if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
             this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
+          }
+          if (Array.isArray(data.ackDeathRespawnEventIds) && data.ackDeathRespawnEventIds.length > 0) {
+            this.simulation.acknowledgeDeathRespawnEvents(serverCharId, data.ackDeathRespawnEventIds);
           }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {

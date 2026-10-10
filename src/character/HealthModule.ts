@@ -33,6 +33,9 @@ export class HealthModule {
   /** Toggle indicating whether healing draws energy from an Energy Bus */
   public consumesEnergy: boolean = false;
 
+  /** Optional callback invoked when entity dies and respawns */
+  public onDeathRespawn?: (entity: Character, respawnPos: { x: number; y: number; z: number }) => void;
+
   constructor(options?: HealthModuleOptions) {
     this.baseMaxHp = options?.baseMaxHp ?? 100.0;
     const initialMaxHp = options?.maxHp ?? this.baseMaxHp;
@@ -173,5 +176,7 @@ export class HealthModule {
     // 5. Restore full HP
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
+
+    this.onDeathRespawn?.(character, chosenSpawn);
   }
 }

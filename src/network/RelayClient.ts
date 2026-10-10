@@ -31,6 +31,20 @@ export interface GhostEntityState {
   angY?: number;
   angZ?: number;
   isSleeping?: boolean;
+  currentHp?: number;
+  maxHp?: number;
+  isDummy?: boolean;
+  controllerType?: "local" | "remote" | "none" | "ai";
+}
+
+export interface DeathRespawnEvent {
+  eventId: string;
+  targetEntityId: string;
+  tick: number;
+  respawnX: number;
+  respawnY: number;
+  respawnZ: number;
+  maxHp: number;
 }
 
 import { ClockSyncPacket } from "../server/ServerJitterBuffer.js";
@@ -51,6 +65,7 @@ export interface GhostSnapshot {
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
   contestedGrabEvents?: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[];
+  deathRespawnEvents?: DeathRespawnEvent[];
   clockSync?: ClockSyncPacket;
   worldSnapshot?: AuthoritativeWorldSnapshot;
 }

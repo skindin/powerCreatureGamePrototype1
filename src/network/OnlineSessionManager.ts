@@ -493,6 +493,15 @@ export class OnlineSessionManager {
             if (c.name && remChar.name !== c.name) {
               remChar.name = c.name;
             }
+            if (c.controllerType) {
+              remChar.controllerType = c.controllerType;
+            }
+            if (c.currentHp !== undefined && remChar.healthModule) {
+              remChar.healthModule.currentHpProp.set(c.currentHp, remChar.properties);
+            }
+            if (c.maxHp !== undefined && remChar.healthModule) {
+              remChar.healthModule.maxHpProp.set(c.maxHp, remChar.properties);
+            }
             if (c.heldObjectId) {
               const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
               if (targetObj) {
@@ -503,11 +512,17 @@ export class OnlineSessionManager {
             }
           }
         } else {
-          // Local client character! Ensure authoritative server-assigned color, number and name are preserved
+          // Local client character! Ensure authoritative server-assigned color, number, name and HP are preserved
           const localPlayerId = c.id.includes(":") ? c.id.split(":")[1] : "keyboard";
           const p = this.gameLoop.players.get(localPlayerId);
           const localChar = p?.character || (localPlayerId === "keyboard" ? (this.gameLoop.players.get("keyboard")?.character || this.gameLoop.playerManager.baseCharacter) : null);
           if (localChar) {
+            if (c.currentHp !== undefined && localChar.healthModule) {
+              localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+            }
+            if (c.maxHp !== undefined && localChar.healthModule) {
+              localChar.healthModule.maxHpProp.set(c.maxHp, localChar.properties);
+            }
             const authoritativeColor = c.playerColor || c.color || (p ? p.color : this.client.assignedColor);
             if (authoritativeColor && (localChar.color !== authoritativeColor || localChar.playerColor !== authoritativeColor)) {
               localChar.color = authoritativeColor;
