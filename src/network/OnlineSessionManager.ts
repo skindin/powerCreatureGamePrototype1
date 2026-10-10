@@ -488,7 +488,7 @@ export class OnlineSessionManager {
         const isDummy = c.isDummy || c.role === "dummy" || c.id === "dummy-1" || c.controllerType === "none";
         const isLocal = c.id === this.client.clientId || (this.client.clientId !== null && c.id.startsWith(`${this.client.clientId}:`));
         if (isDummy) {
-          // Dummy character is simulated locally as an inert physical entity; sync HP/name if present
+          // Dummy character is an inert physical combat entity; sync position, velocity, and HP from server
           const dummy = this.gameLoop.playerManager.dummyCharacters.find((d) => d.id === c.id || d.id === "dummy-1")
             || this.gameLoop.allCharacters.find((ac) => ac.id === c.id || ac.id === "dummy-1");
           if (dummy) {
@@ -497,6 +497,34 @@ export class OnlineSessionManager {
             }
             if (c.maxHp !== undefined && dummy.healthModule) {
               dummy.healthModule.maxHpProp.set(c.maxHp, dummy.properties);
+            }
+
+            // Sync physical coordinates and velocities
+            if (c.x !== undefined && c.y !== undefined) {
+              const dx = c.x - dummy.position.x;
+              const dy = c.y - dummy.position.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist > 3.0) {
+                // Hard snap on large divergence
+                dummy.position.x = c.x;
+                dummy.position.y = c.y;
+                dummy.position.z = c.z ?? dummy.position.z;
+                dummy.velocity.x = c.vx ?? 0;
+                dummy.velocity.y = c.vy ?? 0;
+              } else if (dist > 0.02) {
+                // Smooth convergence blend
+                const blend = 0.35;
+                dummy.position.x += dx * blend;
+                dummy.position.y += dy * blend;
+                if (c.z !== undefined) {
+                  dummy.position.z += (c.z - dummy.position.z) * blend;
+                }
+                if (c.vx !== undefined) dummy.velocity.x += (c.vx - dummy.velocity.x) * blend;
+                if (c.vy !== undefined) dummy.velocity.y += (c.vy - dummy.velocity.y) * blend;
+              }
+              if (c.facingAngle !== undefined) {
+                dummy.facingAngle = c.facingAngle;
+              }
             }
           }
         } else if (!isLocal) {

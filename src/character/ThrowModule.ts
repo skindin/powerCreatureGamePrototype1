@@ -26,6 +26,7 @@ export interface TrajectoryCalculation {
   colliderRadius?: number;
   visualShape?: "circle" | "box";
   launchVel?: { vx: number; vy: number; vz: number };
+  launchPos?: { x: number; y: number; z: number };
 }
 
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
@@ -668,6 +669,7 @@ export class ThrowModule {
       colliderRadius: held.colliderRadius,
       visualShape: held.visualShape,
       launchVel: { vx, vy, vz },
+      launchPos: { x: startX, y: startY, z: startZ },
     };
   }
 
@@ -682,19 +684,17 @@ export class ThrowModule {
     entities?: GameObject[],
     hoverScale?: number,
     autoLock = false,
-    launchVel?: { vx: number; vy: number; vz: number }
+    launchVel?: { vx: number; vy: number; vz: number },
+    launchPos?: { x: number; y: number; z: number }
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    let startX = held.position.x;
-    let startY = held.position.y;
-    let startZ = held.position.z;
+    let startX = launchPos ? launchPos.x : held.position.x;
+    let startY = launchPos ? launchPos.y : held.position.y;
+    let startZ = launchPos ? launchPos.z : held.position.z;
 
-    // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is near an adjacent wall, elevate startZ when throwing
-    // over or onto the wall so the item clears the top without clipping the rim!
-    if (character.position.z < arena.wallHeight) {
+    if (!launchPos && character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
         startY,
@@ -734,6 +734,11 @@ export class ThrowModule {
       const dy = launch.targetObject.position.y - character.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
+      }
+    } else if (launchVel) {
+      // In online/direct launch mode, face the direction of the horizontal launch vector
+      if (Math.hypot(launchVel.vx, launchVel.vy) > 0.05) {
+        character.facingAngle = Math.atan2(launchVel.vy, launchVel.vx);
       }
     }
 

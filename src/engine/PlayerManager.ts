@@ -583,6 +583,7 @@ export class PlayerManager {
       }
 
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
+      const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
       map.set(entry.id, {
         playerId: entry.id,
@@ -604,6 +605,11 @@ export class PlayerManager {
           launchVx: activeLaunchVel.vx,
           launchVy: activeLaunchVel.vy,
           launchVz: activeLaunchVel.vz
+        } : {}),
+        ...(activeLaunchPos ? {
+          launchStartX: activeLaunchPos.x,
+          launchStartY: activeLaunchPos.y,
+          launchStartZ: activeLaunchPos.z
         } : {})
       } as any);
       slot.isDropRequested = false;
@@ -672,8 +678,9 @@ export class PlayerManager {
           char.facingAngle = Math.atan2(aimDy, aimDx);
         }
 
-        // Use the exact pre-calculated launch velocity from the client's active trajectory preview if available
+        // Use the exact pre-calculated launch velocity and start position from the client's active trajectory preview if available
         const clientLaunchVel = char.activeTrajectory?.launchVel;
+        const clientLaunchPos = char.activeTrajectory?.launchPos;
 
         char.throwModule.throwHeldObject(
           char,
@@ -683,7 +690,8 @@ export class PlayerManager {
           undefined,
           undefined,
           pkt.isLockHeld,
-          clientLaunchVel
+          clientLaunchVel,
+          clientLaunchPos
         );
 
         // Once the throw completes and character is empty-handed, reset aim stick movement flags
@@ -710,6 +718,11 @@ export class PlayerManager {
             launchVx: clientLaunchVel.vx,
             launchVy: clientLaunchVel.vy,
             launchVz: clientLaunchVel.vz,
+          } : {}),
+          ...(clientLaunchPos ? {
+            launchStartX: clientLaunchPos.x,
+            launchStartY: clientLaunchPos.y,
+            launchStartZ: clientLaunchPos.z,
           } : {})
         } as any;
         if (!isReplay) {

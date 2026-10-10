@@ -6230,19 +6230,20 @@ class ThrowModule {
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
       visualShape: held.visualShape,
-      launchVel: { vx, vy, vz }
+      launchVel: { vx, vy, vz },
+      launchPos: { x: startX, y: startY, z: startZ }
     };
   }
   /**
    * Executes the throw of the held object using the exact same launch parameters
    */
-  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel) {
+  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel, launchPos) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
-    let startX = held.position.x;
-    let startY = held.position.y;
-    let startZ = held.position.z;
-    if (character.position.z < arena.wallHeight) {
+    let startX = launchPos ? launchPos.x : held.position.x;
+    let startY = launchPos ? launchPos.y : held.position.y;
+    let startZ = launchPos ? launchPos.z : held.position.z;
+    if (!launchPos && character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
         startY,
@@ -6291,6 +6292,10 @@ class ThrowModule {
       const dy = launch.targetObject.position.y - character.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
+      }
+    } else if (launchVel) {
+      if (Math.hypot(launchVel.vx, launchVel.vy) > 0.05) {
+        character.facingAngle = Math.atan2(launchVel.vy, launchVel.vx);
       }
     }
     held.isHeld = false;
@@ -9149,6 +9154,11 @@ class ServerGameSimulation {
             vy: act.launchVy,
             vz: act.launchVz ?? 0
           } : void 0;
+          const launchPos = act.launchStartX !== void 0 ? {
+            x: act.launchStartX,
+            y: act.launchStartY,
+            z: act.launchStartZ ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -9157,7 +9167,8 @@ class ServerGameSimulation {
             void 0,
             void 0,
             act.isLockHeld ?? false,
-            launchVel
+            launchVel,
+            launchPos
           );
         }
       }
@@ -9300,6 +9311,11 @@ class ServerGameSimulation {
             vy: pkt.launchVy,
             vz: pkt.launchVz ?? 0
           } : void 0;
+          const launchPos = pkt.launchStartX !== void 0 ? {
+            x: pkt.launchStartX,
+            y: pkt.launchStartY,
+            z: pkt.launchStartZ ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -9308,7 +9324,8 @@ class ServerGameSimulation {
             void 0,
             void 0,
             pkt.isLockHeld,
-            launchVel
+            launchVel,
+            launchPos
           );
         }
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {

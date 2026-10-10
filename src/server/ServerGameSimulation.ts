@@ -621,6 +621,11 @@ export class ServerGameSimulation {
             vy: (act as any).launchVy,
             vz: (act as any).launchVz ?? 0
           } : undefined;
+          const launchPos = (act as any).launchStartX !== undefined ? {
+            x: (act as any).launchStartX,
+            y: (act as any).launchStartY,
+            z: (act as any).launchStartZ ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -629,7 +634,8 @@ export class ServerGameSimulation {
             undefined,
             undefined,
             act.isLockHeld ?? false,
-            launchVel
+            launchVel,
+            launchPos
           );
         }
       }
@@ -799,6 +805,11 @@ export class ServerGameSimulation {
             vy: (pkt as any).launchVy,
             vz: (pkt as any).launchVz ?? 0
           } : undefined;
+          const launchPos = (pkt as any).launchStartX !== undefined ? {
+            x: (pkt as any).launchStartX,
+            y: (pkt as any).launchStartY,
+            z: (pkt as any).launchStartZ ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -807,7 +818,8 @@ export class ServerGameSimulation {
             undefined,
             undefined,
             pkt.isLockHeld,
-            launchVel
+            launchVel,
+            launchPos
           );
         }
 
