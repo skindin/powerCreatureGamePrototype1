@@ -194,18 +194,20 @@ export class WalkingModule {
     let effectiveTargetSpeed = sprintingNow ? maxSprintSpeed : maxWalkSpeed;
 
     // Energy: ONE request per tick, from the toggle/bus of the gait actually in use.
-    // Physics: legs push with force F toward target speed v. Mechanical power = F * v,
-    // metabolic power = mechanical / 0.25 (muscle efficiency). F is the force needed to reach v in
-    // 0.5s (m * v / 0.5), capped by what the legs can deliver (maxForce * strength * grip).
-    // It is charged as if unresisted, whether or not the character actually moves.
+    // Biomechanical Physics: Continuous locomotion metabolic power maintains velocity against
+    // ground contact resistance and mechanical work.
+    // Mechanical power: P_mech = F_res * v = (totalMass * g * Cr) * v
+    // Metabolic power: P_metabolic = P_mech / 0.25 (muscle efficiency = 25%)
+    // Cr is the gait resistance coefficient: Cr ~ 0.40 for sprinting, Cr ~ 0.28 for walking.
     const consumesEnergy = sprintingNow ? this.sprintConsumesEnergy : this.walkConsumesEnergy;
     if (isMoving && consumesEnergy) {
       const bus = character.getEnergyBus(sprintingNow ? this.sprintEnergyBusId : this.walkEnergyBusId);
       if (bus) {
         const v = effectiveTargetSpeed / (1.0 + loadFactor);
-        const forceCap = effectiveWalkForce * character.strength * grip;
-        const force = Math.min(forceCap, (totalMass * v) / 0.5);
-        const requestedWatts = (force * v) / 0.25;
+        const g = 9.81;
+        const Cr = sprintingNow ? 0.40 : 0.28;
+        const resForce = totalMass * g * Cr;
+        const requestedWatts = (resForce * v) / 0.25;
         const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties);
         const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
         if (fraction <= 0) {

@@ -117,6 +117,11 @@
     - Health / Healing: `consumesEnergy = true`, `energyBusId = "bus_main"`
   - **DevPanel Add Behavior Parity**: Newly attached abilities via DevPanel follow these exact energy defaults and bus connections.
   - **Automated Verification**: Verified 100% via `scratch/test_ability_energy_defaults.ts`.
+- **Phase 11.8 (Locomotion Power Physics Correction)**:
+  - **Replaced Transient Acceleration with Steady-State Locomotion Work**: In `WalkingModule.ts` (Tier 2, user permission granted), replaced the erroneous rocket launch formula (`8 * m * v^2 = 624 W`) with standard steady-state biomechanical metabolic transport power: `P_metabolic = (totalMass * g * Cr * v) / 0.25`.
+  - **Sprinting & Walking Power Realism**: Sprinting at 8.06 u/s costs **151.8 W** (using running resistance `Cr = 0.40`), and walking at 5.20 u/s costs **68.6 W** (using walking resistance `Cr = 0.28`).
+  - **Speed Choke Eliminated**: Because 151.8 W is well below the bus's 250 W limit, 100% of requested power is granted, allowing full 8.06 u/s sprint speed without any speed degradation.
+  - **Automated Verification**: Verified 100% via `scratch/test_locomotion_wattage.ts`.
 
 
 ---
