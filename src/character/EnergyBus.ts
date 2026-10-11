@@ -4,7 +4,8 @@ import type { EnergyPool } from "./EnergyPool.js";
 
 /**
  * EnergyBus: Models muscle output throughput in Watts and burst stamina.
- * Throttles or feeds connected abilities (sprinting, jumping, throwing, climbing, healing).
+ * Stamina units represent sustained seconds of effort at maxPower.
+ * Drawing energy at any level depletes stamina proportionally.
  */
 export class EnergyBus {
   public id: string;
@@ -20,7 +21,7 @@ export class EnergyBus {
   public maxStaminaProp: DynamicProperty;
   public currentStaminaProp: DynamicProperty;
 
-  // Stamina regeneration rate (stamina units per second when not exhausted or under light draw)
+  // Stamina regeneration rate (stamina seconds recovered per second of rest)
   public staminaRegenRateProp: DynamicProperty;
 
   /**
@@ -51,7 +52,7 @@ export class EnergyBus {
     const basePower = options?.baseMaxPower ?? 250.0;
     const maxPower = options?.maxPower ?? basePower;
 
-    const baseStamina = options?.baseMaxStamina ?? 100.0;
+    const baseStamina = options?.baseMaxStamina ?? 10.0; // Default 10 seconds of max effort
     const maxStamina = options?.maxStamina ?? baseStamina;
     const curStamina = options?.currentStamina ?? maxStamina;
 
@@ -62,7 +63,7 @@ export class EnergyBus {
     this.maxStaminaProp = new DynamicProperty(maxStamina);
     this.currentStaminaProp = new DynamicProperty(curStamina);
 
-    this.staminaRegenRateProp = new DynamicProperty(options?.staminaRegenRate ?? 15.0);
+    this.staminaRegenRateProp = new DynamicProperty(options?.staminaRegenRate ?? 1.0);
     this.currentWattageProp = new DynamicProperty(0.0);
 
     if (options?.enabled !== undefined) this.enabled = options.enabled;
@@ -90,9 +91,7 @@ export class EnergyBus {
 
   /**
    * Requests power draw (in Watts) over dt seconds.
-   * Consumes Joules (power * dt) from the supplied pool, drains stamina if drawing heavy power,
-   * or recovers stamina if draw is low/zero.
-   * Returns the actual power granted (in Watts).
+   * Depletes stamina whenever power > 0.
    */
   public requestPower(
     requestedPowerWatts: number,
@@ -102,38 +101,37 @@ export class EnergyBus {
     allowWhenExhausted: boolean = false
   ): number {
     if (!this.enabled || dt <= 0) {
+      this.livePowerDraw = 0;
       return 0;
     }
 
     const maxP = this.getMaxPower(registry);
     const curS = this.getCurrentStamina(registry);
 
-    // If currently exhausted and ability does not allow execution during exhaustion, reject request
+    // If exhausted and ability does not allow exertion during exhaustion, reject request
     if (this.isExhausted && !allowWhenExhausted) {
+      this.livePowerDraw = 0;
       return 0;
     }
 
     // 1. Initial power capped by bus maximum
     let targetWatts = Math.min(requestedPowerWatts, maxP);
     if (targetWatts <= 0) {
+      this.livePowerDraw = 0;
       return 0;
     }
 
-    // 2. If high effort, cap targetWatts so that stamina drain does not exceed remaining stamina
-    // Formula for stamina drain: drainRatio = (W - 0.4*maxP) / (0.6*maxP)
-    // drain = drainRatio * 20.0 * dt
-    // If curS is small, maximum allowed drain is curS:
-    if (targetWatts > maxP * 0.4) {
-      const maxDrain = curS;
-      if (maxDrain <= 0.0001) {
-        // No stamina available for high-power exertion!
-        // Cap targetWatts to threshold power (40% of maxP)
-        targetWatts = maxP * 0.4;
-      } else {
-        const maxDrainRatio = maxDrain / (20.0 * dt);
-        const maxWattsFromStamina = maxP * 0.4 + maxDrainRatio * (maxP * 0.6);
-        targetWatts = Math.min(targetWatts, maxWattsFromStamina);
-      }
+    // 2. Cap targetWatts so stamina depletion does not exceed remaining stamina this frame
+    // staminaDrain = (targetWatts / maxP) * dt <= curS  =>  targetWatts <= maxP * (curS / dt)
+    if (maxP > 0) {
+      const maxWattsFromStamina = maxP * (curS / dt);
+      targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
+    }
+
+    if (targetWatts <= 0.0001) {
+      this.isExhausted = true;
+      this.livePowerDraw = 0;
+      return 0;
     }
 
     // 3. Pool energy availability check (partial consumption allowed)
@@ -142,9 +140,9 @@ export class EnergyBus {
     if (pool) {
       const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
       if (grantedJoules <= 0.0001) {
-        // Completely out of energy
         this.isExhausted = true;
         this.currentStaminaProp.set(0, registry);
+        this.livePowerDraw = 0;
         return 0;
       }
       grantedWatts = grantedJoules / dt;
@@ -153,10 +151,9 @@ export class EnergyBus {
       }
     }
 
-    // 4. Drain stamina based on actual granted power
-    if (grantedWatts > maxP * 0.4) {
-      const drainRatio = (grantedWatts - maxP * 0.4) / (maxP * 0.6);
-      const staminaDrain = drainRatio * 20.0 * dt;
+    // 4. Drain stamina proportionally to actual granted power
+    if (grantedWatts > 0 && maxP > 0) {
+      const staminaDrain = (grantedWatts / maxP) * dt;
       const nextS = Math.max(0, curS - staminaDrain);
       this.currentStaminaProp.set(nextS, registry);
 
@@ -165,16 +162,13 @@ export class EnergyBus {
       }
     }
 
-    this.livePowerDraw += grantedWatts;
-    
+    this.livePowerDraw = grantedWatts;
+    this.currentWattageProp.set(grantedWatts, registry);
     return grantedWatts;
   }
 
   /**
-   * Charges a discrete burst of metabolic energy (Joules) for an instantaneous action
-   * (jump, throw, grab). The action is spread over max(minDt, joules / maxPower) so the
-   * bus power cap is respected while the FULL Joule cost is still charged.
-   * Returns the fraction (0..1) of the requested energy that could be supplied.
+   * Charges a discrete burst of metabolic energy (Joules) for an instantaneous action.
    */
   public requestEnergy(
     joules: number,
@@ -192,21 +186,22 @@ export class EnergyBus {
   }
 
   /**
-   * Advances passive stamina regeneration when draw is below threshold.
+   * Advances passive stamina regeneration only when the bus is resting (0 power drawn).
    */
   public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
     if (!this.enabled || dt <= 0) return;
 
-    // Total power drawn across all requests this tick (walk + sprint + ...)
-    const drewWatts = this.livePowerDraw;
-    this.currentWattageProp.set(drewWatts, registry);
+    const hadPowerDraw = this.livePowerDraw > 0.0001;
+
+    // Decay live power draw reading if no power was requested this tick
+    this.currentWattageProp.set(this.livePowerDraw, registry);
     this.livePowerDraw = 0;
 
     const maxS = this.getMaxStamina(registry);
     let curS = this.getCurrentStamina(registry);
     const regen = this.getStaminaRegenRate(registry);
 
-    // If exhausted, check if we recovered past the recovery threshold
+    // If exhausted, check if stamina recovered past the threshold
     if (this.isExhausted) {
       const recoveryThreshold = maxS * this.recoveryThresholdRatio;
       if (curS >= recoveryThreshold) {
@@ -214,9 +209,8 @@ export class EnergyBus {
       }
     }
 
-    // Stamina only recovers while draw is at or below the sustainable (aerobic) level
-    const sustainableWatts = this.getMaxPower(registry) * 0.4;
-    if (curS < maxS && drewWatts <= sustainableWatts) {
+    // Recover stamina only when not actively drawing power
+    if (!hadPowerDraw && curS < maxS) {
       curS = Math.min(maxS, curS + regen * dt);
       this.currentStaminaProp.set(curS, registry);
     }
