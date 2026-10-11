@@ -102,7 +102,6 @@ export class EnergyBus {
     allowWhenExhausted: boolean = false
   ): number {
     if (!this.enabled || dt <= 0) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
@@ -111,14 +110,12 @@ export class EnergyBus {
 
     // If currently exhausted and ability does not allow execution during exhaustion, reject request
     if (this.isExhausted && !allowWhenExhausted) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
     // 1. Initial power capped by bus maximum
     let targetWatts = Math.min(requestedPowerWatts, maxP);
     if (targetWatts <= 0) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
@@ -148,7 +145,6 @@ export class EnergyBus {
         // Completely out of energy
         this.isExhausted = true;
         this.currentStaminaProp.set(0, registry);
-        this.livePowerDraw = 0;
         return 0;
       }
       grantedWatts = grantedJoules / dt;
@@ -169,8 +165,8 @@ export class EnergyBus {
       }
     }
 
-    this.livePowerDraw = grantedWatts;
-    this.currentWattageProp.set(grantedWatts, registry);
+    this.livePowerDraw += grantedWatts;
+    
     return grantedWatts;
   }
 
@@ -201,8 +197,9 @@ export class EnergyBus {
   public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
     if (!this.enabled || dt <= 0) return;
 
-    // Decay live power draw reading if no power was requested this tick
-    this.currentWattageProp.set(this.livePowerDraw, registry);
+    // Total power drawn across all requests this tick (walk + sprint + ...)
+    const drewWatts = this.livePowerDraw;
+    this.currentWattageProp.set(drewWatts, registry);
     this.livePowerDraw = 0;
 
     const maxS = this.getMaxStamina(registry);
@@ -217,8 +214,9 @@ export class EnergyBus {
       }
     }
 
-    // Recover stamina if below max
-    if (curS < maxS) {
+    // Stamina only recovers while draw is at or below the sustainable (aerobic) level
+    const sustainableWatts = this.getMaxPower(registry) * 0.4;
+    if (curS < maxS && drewWatts <= sustainableWatts) {
       curS = Math.min(maxS, curS + regen * dt);
       this.currentStaminaProp.set(curS, registry);
     }

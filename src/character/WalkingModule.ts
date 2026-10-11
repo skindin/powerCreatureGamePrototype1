@@ -179,63 +179,42 @@ export class WalkingModule {
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
     const isActivelySprinting = this.canSprint && character.isSprinting;
 
-    // Active locomotion force and speed capability
+    // Sprint falls back to a walk while the sprint bus is exhausted
+    let sprintingNow = isActivelySprinting;
+    if (sprintingNow && this.sprintConsumesEnergy) {
+      const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
+      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+    }
+
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
     const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
     const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
 
-    let effectiveWalkForce = maxWalkForce;
-    let effectiveTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
+    let effectiveWalkForce = sprintingNow ? maxWalkForce * 1.5 : maxWalkForce;
+    let effectiveTargetSpeed = sprintingNow ? maxSprintSpeed : maxWalkSpeed;
 
-    // Handle energy consumption and bus exhaustion
-    if (isMoving) {
-      if (isActivelySprinting && this.sprintConsumesEnergy) {
-        const bus = character.getEnergyBus(this.sprintEnergyBusId);
-        if (bus) {
-          // Sprint requested power draw:
-          // Physical mechanical power: P = F_propulsion * v_target
-          // Plus muscle metabolic efficiency (muscle efficiency ~ 25%, meaning ~4x mechanical power)
-          // Defaulting to maxWalkForce * 1.5 * maxSprintSpeed * 0.25 scaled by mass/strength
-          const mechSprintPower = (maxWalkForce * 1.5) * maxSprintSpeed * 0.25;
-          const requestedSprintWatts = Math.max(200, Math.min(800, mechSprintPower));
-          const grantedPower = bus.requestPower(requestedSprintWatts, dt, character.energyPool, character.properties);
-
-          if (grantedPower <= 0 || bus.isExhausted) {
-            // Out of sprint power or exhausted: strictly disable sprinting!
-            effectiveTargetSpeed = maxWalkSpeed;
-            effectiveWalkForce = maxWalkForce;
-            character.isSprinting = false;
-          } else {
-            // Scale the extra sprint speed and force boost proportionally to granted power fraction
-            const sprintFraction = Math.min(1.0, grantedPower / requestedSprintWatts);
-            effectiveTargetSpeed = maxWalkSpeed + (maxSprintSpeed - maxWalkSpeed) * sprintFraction;
-            effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * sprintFraction);
-          }
-        }
-      } else if (isActivelySprinting) {
-        effectiveWalkForce = maxWalkForce * 1.5;
-      }
-
-      if (this.walkConsumesEnergy) {
-        const bus = character.getEnergyBus(this.walkEnergyBusId);
-        if (bus) {
-          // Walk requested power draw:
-          // P = F_walk * v_walk * 0.25 (muscular metabolic work)
-          const mechWalkPower = maxWalkForce * maxWalkSpeed * 0.20;
-          const requestedWalkWatts = Math.max(50, Math.min(300, mechWalkPower));
-          const grantedPower = bus.requestPower(requestedWalkWatts, dt, character.energyPool, character.properties);
-
-          if (grantedPower <= 0) {
-            // Completely out of energy/stamina: walking disabled (cannot exert muscular propulsion)
-            effectiveWalkForce = 0;
-            effectiveTargetSpeed = 0;
-            character.isActivelyWalking = false;
-          } else {
-            // Scale walking force and cadence proportionally to power granted
-            const walkFraction = Math.min(1.0, grantedPower / requestedWalkWatts);
-            effectiveWalkForce *= walkFraction;
-            effectiveTargetSpeed *= walkFraction;
-          }
+    // Energy: ONE request per tick, from the toggle/bus of the gait actually in use.
+    // Physics: legs push with force F toward target speed v. Mechanical power = F * v,
+    // metabolic power = mechanical / 0.25 (muscle efficiency). F is the force needed to reach v in
+    // 0.5s (m * v / 0.5), capped by what the legs can deliver (maxForce * strength * grip).
+    // It is charged as if unresisted, whether or not the character actually moves.
+    const consumesEnergy = sprintingNow ? this.sprintConsumesEnergy : this.walkConsumesEnergy;
+    if (isMoving && consumesEnergy) {
+      const bus = character.getEnergyBus(sprintingNow ? this.sprintEnergyBusId : this.walkEnergyBusId);
+      if (bus) {
+        const v = effectiveTargetSpeed / (1.0 + loadFactor);
+        const forceCap = effectiveWalkForce * character.strength * grip;
+        const force = Math.min(forceCap, (totalMass * v) / 0.5);
+        const requestedWatts = (force * v) / 0.25;
+        const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties);
+        const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+        if (fraction <= 0) {
+          effectiveWalkForce = 0;
+          effectiveTargetSpeed = 0;
+          character.isActivelyWalking = false;
+        } else {
+          effectiveWalkForce *= fraction;
+          effectiveTargetSpeed *= fraction;
         }
       }
     }
