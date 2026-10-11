@@ -235,20 +235,54 @@ export class Character extends GameObject {
    * Attempts to jump using the attached JumpModule.
    */
   public jump(arena?: Arena, movementInput?: Vector2D): boolean {
-    if (this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition) {
-      if (this.jumpConsumesEnergy) {
-        const bus = this.getEnergyBus(this.jumpEnergyBusId);
-        if (bus) {
-          // Instantaneous leap burst: request 1200W impulse over 1/60s (= 20 Joules)
-          const granted = bus.requestPower(1200, 1 / 60, this.energyPool, this.properties);
-          if (granted <= 0 || bus.isExhausted) {
-            return false;
-          }
+    if (!this.jumpModule || !this.jumpModule.enabled || !this.hasVerticalPosition) {
+      return false;
+    }
+
+    // A jump can ONLY occur from a supporting surface (ground or wall top).
+    // If airborne, do NOT consume energy!
+    const surfaceZ = this.supportingSurfaceHeight ?? 0;
+    const isGrounded = this.isRestingOnSurface ||
+      (Math.abs(this.position.z - surfaceZ) <= 0.08 && Math.abs(this.verticalVelocity) <= 0.8);
+
+    if (!isGrounded || this.isHeld) {
+      return false;
+    }
+
+    // Physical kinetic energy calculation:
+    // Takeoff speed from JumpModule: v = min(maxSpeed, jumpStrength / totalMass)
+    // Mechanical Work: W_mech = 0.5 * totalMass * v^2
+    // Muscle metabolic efficiency is approx ~25%, meaning metabolic energy E_metabolic = W_mech / 0.25 = 2.0 * totalMass * v^2.
+    // Even if motion is resisted or carried mass is huge, the impulse attempted (jumpStrength)
+    // represents intended unresisted work.
+    const totalMass = Math.max(0.2, this.mass);
+    const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
+    const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
+    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
+
+    if (takeoffSpeed <= 0.01) return false;
+
+    // Metabolic energy in Joules
+    const mechanicalJoules = 0.5 * totalMass * (takeoffSpeed * takeoffSpeed);
+    const metabolicJoules = Math.max(15, mechanicalJoules * 3.5);
+
+    let energyFraction = 1.0;
+    if (this.jumpConsumesEnergy) {
+      const bus = this.getEnergyBus(this.jumpEnergyBusId);
+      if (bus) {
+        energyFraction = bus.requestEnergy(metabolicJoules, 0.05, this.energyPool, this.properties);
+        if (energyFraction <= 0) {
+          return false;
         }
       }
-      return this.jumpModule.jump(this, arena, movementInput);
     }
-    return false;
+
+    const jumped = this.jumpModule.jump(this, arena, movementInput);
+    if (jumped && energyFraction < 1) {
+      // Partial energy: jump with the maximum impulse the available energy allows
+      this.verticalVelocity *= Math.sqrt(energyFraction); // E ∝ v²
+    }
+    return jumped;
   }
 
   /**

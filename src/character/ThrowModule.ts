@@ -712,19 +712,23 @@ export class ThrowModule {
       }
     }
 
-    // Energy consumption check
+    // Energy consumption check based on actual kinetic work:
+    // Work done on object: W = 0.5 * m * v_launch^2 + m * g * h
+    // Muscular metabolic cost is ~3.5x mechanical work due to muscular efficiency.
+    // Even if motion is resisted or heavy, the energy lost reflects the intended unresisted kinetic work!
     let throwPowerScale = 1.0;
     if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus) {
-        // Throw exertion: burst over 1/60s scaled by held mass
-        const heldMass = held.hasMass ? Math.max(0.5, held.mass) : 1.0;
-        const requestedWatts = 600 + heldMass * 100;
-        const granted = bus.requestPower(requestedWatts, 1 / 60, character.energyPool, character.properties);
-        if (granted <= 0) {
+        const heldMass = held.hasMass ? Math.max(0.2, held.mass) : 1.0;
+        const throwImpulseSpeed = this.baseThrowForceProp.get(character.properties) * character.strength;
+        const mechWorkJoules = 0.5 * heldMass * (throwImpulseSpeed * throwImpulseSpeed);
+        const metabolicJoules = Math.max(10, mechWorkJoules * 3.5);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
+        if (fraction <= 0) {
           return null;
         }
-        throwPowerScale = Math.min(1.0, granted / requestedWatts);
+        throwPowerScale = Math.sqrt(fraction); // E ∝ v²
       }
     }
 

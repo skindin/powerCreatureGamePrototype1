@@ -95,7 +95,8 @@
   - **Removed Stale UI Warnings**: Completely purged obsolete "Energy Busses not implemented yet" warnings from DevPanel cards.
   - **Live Power Deduction & Proportional Scaling**: Wired `bus.requestPower(...)` logic into `WalkingModule` (75W walk, 350W sprint), `Character.jump` (1200W impulse), `PickupModule` (400W–500W lift), `ThrowModule` (600W–800W throw), `ClimbingModule` (80W hold, 260W vertical climb), and `HealthModule` (50W per HP/s passive regeneration). When pool energy or stamina cannot satisfy 100% of the requested power, abilities run at the maximum possible partial power fraction until fully depleted.
   - **Live Telemetry & Status Bars**: Added dynamic frame-by-frame UI updates for Burst Stamina (`current / max (pct%)`) and Energy Reservoir (`current / max J (pct%)`), plus a dedicated `Current Wattage Used (W)` DynamicProperty socket and live power readout field on the Energy Bus card.
-  - **Exhaustion & Depletion Disabling**: Depleting the pool or draining stamina completely halts walking propulsion, cancels jumps, prevents throws and pickups, stops passive regeneration, and causes characters clinging to walls to slip.
+  - **Exhaustion & Depletion Disabling**: Depleting the pool or draining stamina completely halts walking propulsion, cancels jumps, prevents throws and pickups, stops passive regeneration, and causes characters clinging to walls to slip. Sprint speed (not just force) drops to walk speed when sprint power is unavailable.
+  - **Physics-Based Costs**: Burst actions (jump, throw, pickup) are charged once via `EnergyBus.requestEnergy(joules, minDt, ...)` using mechanical work (½mv² for jump/throw, m·g·h for lift) ÷ 25% muscle efficiency, charged as if unresisted. Jump only charges at the grounded takeoff moment (never while airborne/held key). Climbing draws isometric hold (m·g) + ascent (m·g·v) power.
 
 
 ---

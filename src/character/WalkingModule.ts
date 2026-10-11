@@ -178,51 +178,69 @@ export class WalkingModule {
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
     const isActivelySprinting = this.canSprint && character.isSprinting;
+
+    // Active locomotion force and speed capability
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
     const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
     const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
-    const baseTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
-    const effectiveSpeed = baseTargetSpeed / (1.0 + loadFactor);
 
-    // Active locomotion acceleration capability
-    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    let effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    let effectiveWalkForce = maxWalkForce;
+    let effectiveTargetSpeed = isActivelySprinting ? maxSprintSpeed : maxWalkSpeed;
 
     // Handle energy consumption and bus exhaustion
     if (isMoving) {
       if (isActivelySprinting && this.sprintConsumesEnergy) {
         const bus = character.getEnergyBus(this.sprintEnergyBusId);
         if (bus) {
-          // Sprint requested power draw: 350W
-          const grantedPower = bus.requestPower(350, dt, character.energyPool, character.properties);
-          if (grantedPower <= 0) {
-            // Out of sprint power completely: drop sprint boost entirely
+          // Sprint requested power draw:
+          // Physical mechanical power: P = F_propulsion * v_target
+          // Plus muscle metabolic efficiency (muscle efficiency ~ 25%, meaning ~4x mechanical power)
+          // Defaulting to maxWalkForce * 1.5 * maxSprintSpeed * 0.25 scaled by mass/strength
+          const mechSprintPower = (maxWalkForce * 1.5) * maxSprintSpeed * 0.25;
+          const requestedSprintWatts = Math.max(200, Math.min(800, mechSprintPower));
+          const grantedPower = bus.requestPower(requestedSprintWatts, dt, character.energyPool, character.properties);
+
+          if (grantedPower <= 0 || bus.isExhausted) {
+            // Out of sprint power or exhausted: strictly disable sprinting!
+            effectiveTargetSpeed = maxWalkSpeed;
             effectiveWalkForce = maxWalkForce;
+            character.isSprinting = false;
           } else {
-            // Scale the extra sprint force boost proportionally to granted power fraction
-            const sprintFraction = Math.min(1.0, grantedPower / 350);
+            // Scale the extra sprint speed and force boost proportionally to granted power fraction
+            const sprintFraction = Math.min(1.0, grantedPower / requestedSprintWatts);
+            effectiveTargetSpeed = maxWalkSpeed + (maxSprintSpeed - maxWalkSpeed) * sprintFraction;
             effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * sprintFraction);
           }
         }
+      } else if (isActivelySprinting) {
+        effectiveWalkForce = maxWalkForce * 1.5;
       }
 
       if (this.walkConsumesEnergy) {
         const bus = character.getEnergyBus(this.walkEnergyBusId);
         if (bus) {
-          // Walk requested power draw: 75W
-          const grantedPower = bus.requestPower(75, dt, character.energyPool, character.properties);
+          // Walk requested power draw:
+          // P = F_walk * v_walk * 0.25 (muscular metabolic work)
+          const mechWalkPower = maxWalkForce * maxWalkSpeed * 0.20;
+          const requestedWalkWatts = Math.max(50, Math.min(300, mechWalkPower));
+          const grantedPower = bus.requestPower(requestedWalkWatts, dt, character.energyPool, character.properties);
+
           if (grantedPower <= 0) {
-            // Completely out of energy/stamina: walking disabled (cannot exert force)
+            // Completely out of energy/stamina: walking disabled (cannot exert muscular propulsion)
             effectiveWalkForce = 0;
+            effectiveTargetSpeed = 0;
             character.isActivelyWalking = false;
           } else {
-            // Scale walking force proportionally to power granted
-            const walkFraction = Math.min(1.0, grantedPower / 75);
+            // Scale walking force and cadence proportionally to power granted
+            const walkFraction = Math.min(1.0, grantedPower / requestedWalkWatts);
             effectiveWalkForce *= walkFraction;
+            effectiveTargetSpeed *= walkFraction;
           }
         }
       }
     }
 
+    const effectiveSpeed = effectiveTargetSpeed / (1.0 + loadFactor);
     const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
 
     if (isMoving) {

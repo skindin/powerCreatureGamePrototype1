@@ -203,15 +203,25 @@ export class ClimbingModule {
       character.verticalVelocity = 0;
       (character as any).standingWall = null;
 
-      // Energy consumption check while clinging/climbing
+      // Energy consumption check while clinging/climbing:
+      // Physical Work against gravity:
+      // When holding position (isometric contraction): muscles must generate upward force F = m * g to resist falling.
+      // Isometric human/creature muscle maintenance power is ~ 0.3 * m * g / efficiency (approx 30% work rate).
+      // When ascending: mechanical power P_mech = m * g * v_ascent.
+      // With muscle efficiency ~25%: P_metabolic = (m * g * v_ascent) / 0.25 = 4 * m * g * v_ascent.
+      // Even if movement is blocked, attempting to climb exerts full intended force!
       let climbPowerScale = 1.0;
       if (this.consumesEnergy) {
         const bus = character.getEnergyBus(this.energyBusId);
         if (bus) {
-          // Drawing climbing power: 80W base cling + 180W if actively ascending
-          const powerReq = isClimbHeld ? 260 : 80;
+          const g = arena.gravity || 9.81;
+          const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
+          const maxAscentSpeed = this.maxClimbSpeedProp.get(character.properties);
+          const ascentWatts = isClimbHeld ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
+          const powerReq = isometricHoldingWatts + ascentWatts;
+
           const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties);
-          if (granted <= 0) {
+          if (granted <= 0 || bus.isExhausted) {
             // Stamina / energy exhausted: slip from the wall and fall
             character.isClimbing = false;
             this.climbSuppressedUntilRelease = true;

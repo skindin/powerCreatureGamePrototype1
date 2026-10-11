@@ -175,6 +175,27 @@ export class EnergyBus {
   }
 
   /**
+   * Charges a discrete burst of metabolic energy (Joules) for an instantaneous action
+   * (jump, throw, grab). The action is spread over max(minDt, joules / maxPower) so the
+   * bus power cap is respected while the FULL Joule cost is still charged.
+   * Returns the fraction (0..1) of the requested energy that could be supplied.
+   */
+  public requestEnergy(
+    joules: number,
+    minDt: number,
+    pool?: EnergyPool | null,
+    registry?: ObjectPropertiesRegistry
+  ): number {
+    if (joules <= 0) return 1;
+    if (!this.enabled) return 0;
+    const maxP = Math.max(1, this.getMaxPower(registry));
+    const dt = Math.max(minDt, joules / maxP);
+    const watts = joules / dt;
+    const granted = this.requestPower(watts, dt, pool, registry);
+    return watts > 0 ? Math.min(1, granted / watts) : 0;
+  }
+
+  /**
    * Advances passive stamina regeneration when draw is below threshold.
    */
   public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {

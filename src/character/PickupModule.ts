@@ -109,15 +109,18 @@ export class PickupModule {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
 
-    // Energy consumption check
+    // Energy consumption: physical work of lifting the object to hand height.
+    // W_mech = m * g * h, metabolic cost = W_mech / 0.25 (muscle efficiency).
+    // Cost is charged for the intended lift regardless of whether the object is heavy/resisted.
     if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus) {
-        // Lifting effort: request 600W burst over 1/60s (= 10 Joules) scaled slightly by target mass
-        const targetMass = target.hasMass ? Math.max(0.5, target.mass) : 1.0;
-        const requestedWatts = 400 + targetMass * 50;
-        const granted = bus.requestPower(requestedWatts, 1 / 60, character.energyPool, character.properties);
-        if (granted <= 0 || bus.isExhausted) {
+        const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
+        const liftHeight = 0.45;
+        const metabolicJoules = Math.max(5, (targetMass * 9.81 * liftHeight) / 0.25);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties);
+        if (fraction < 1) {
+          // Not enough energy to complete the lift
           return false;
         }
       }
