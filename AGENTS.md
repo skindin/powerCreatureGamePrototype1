@@ -93,8 +93,9 @@
   - `Collapsible Sections & Behaviors`: Interactive accordion collapse (`▶` / `▼`) enabled across the entire DevPanel: Live Diagnostics, Physics & Collisions, History Buffer & Rollback Replay, Selected Physical Behaviors section, every individual attached behavior card, Add New Object creator section, every individual behavior card within the New Object creator, and World Physics & Environment.
 - **Phase 11.5 (Active Energy & Stamina Consumption Across Abilities)**:
   - **Removed Stale UI Warnings**: Completely purged obsolete "Energy Busses not implemented yet" warnings from DevPanel cards.
-  - **Live Power Deduction**: Wired actual `bus.requestPower(...)` logic into `WalkingModule` (75W walk, 350W sprint), `Character.jump` (1200W impulse), `PickupModule` (400W–500W lift), `ThrowModule` (600W–800W throw), `ClimbingModule` (80W hold, 260W vertical climb), and `HealthModule` (50W per HP/s passive regeneration).
-  - **Exhaustion & Penalty Dynamics**: Depleting the pool or draining stamina to zero triggers bus exhaustion, throttling sprint speed back to normal walk, reducing locomotion force to 35%, causing characters clinging to walls to slip, and cancelling leaps/throws/pickups when drained.
+  - **Live Power Deduction & Proportional Scaling**: Wired `bus.requestPower(...)` logic into `WalkingModule` (75W walk, 350W sprint), `Character.jump` (1200W impulse), `PickupModule` (400W–500W lift), `ThrowModule` (600W–800W throw), `ClimbingModule` (80W hold, 260W vertical climb), and `HealthModule` (50W per HP/s passive regeneration). When pool energy or stamina cannot satisfy 100% of the requested power, abilities run at the maximum possible partial power fraction until fully depleted.
+  - **Live Telemetry & Status Bars**: Added dynamic frame-by-frame UI updates for Burst Stamina (`current / max (pct%)`) and Energy Reservoir (`current / max J (pct%)`), plus a dedicated `Current Wattage Used (W)` DynamicProperty socket and live power readout field on the Energy Bus card.
+  - **Exhaustion & Depletion Disabling**: Depleting the pool or draining stamina completely halts walking propulsion, cancels jumps, prevents throws and pickups, stops passive regeneration, and causes characters clinging to walls to slip.
 
 
 ---

@@ -90,6 +90,32 @@ export class EnergyPool {
   }
 
   /**
+   * Consumes up to `amount` Joules from the pool.
+   * Returns the actual Joules granted (which may be between 0 and amount).
+   */
+  public consumePartial(amount: number, registry?: ObjectPropertiesRegistry): number {
+    if (!this.enabled || amount <= 0) return 0;
+    if (this.infiniteEnergy) return amount;
+
+    const cur = this.getCurrentEnergy(registry);
+    if (cur <= 0.0001) {
+      this.currentEnergyProp.set(0, registry);
+      if (this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return 0;
+    }
+
+    const granted = Math.min(cur, amount);
+    const next = cur - granted;
+    this.currentEnergyProp.set(next, registry);
+    if (next <= 0.0001 && this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return granted;
+  }
+
+  /**
    * Adds energy to the pool (e.g. from eating food or healing items).
    */
   public addEnergy(amount: number, registry?: ObjectPropertiesRegistry): void {

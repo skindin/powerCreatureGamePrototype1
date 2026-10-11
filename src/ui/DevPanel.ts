@@ -1582,10 +1582,10 @@ export class DevPanel {
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
               <span>Energy Reservoir</span>
-              <span>${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${energyPct.toFixed(0)}%)</span>
+              <span id="label-energy-pool-status">${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${energyPct.toFixed(0)}%)</span>
             </div>
             <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
-              <div style="background: linear-gradient(90deg, #ca8a04, #eab308); height: 100%; width: ${energyPct}%; transition: width 0.1s ease;"></div>
+              <div id="bar-energy-pool-fill" style="background: linear-gradient(90deg, #ca8a04, #eab308); height: 100%; width: ${energyPct}%; transition: width 0.1s ease;"></div>
             </div>
           </div>
 
@@ -1621,13 +1621,14 @@ export class DevPanel {
       const curStamina = eb.getCurrentStamina(char.properties);
       const maxStamina = eb.getMaxStamina(char.properties);
       const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
+      const curWatts = eb.getCurrentWattage(char.properties);
 
       html += `
         <div class="module-card ${!energyBusEnabled ? 'module-disabled' : ''}" data-module-id="energyBus">
           ${this.renderModuleHeader("energyBus", "🚌 Energy Bus (Main)", renderToggleBtn("energyBus", energyBusEnabled))}
           <div id="collapse-body-mod-energyBus" style="display: ${this.isSectionCollapsed('mod-energyBus') ? 'none' : 'block'};">
           ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
-          ${eb.isExhausted ? `<div class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">⚠️ Exhausted! Stamina depleted below safety threshold</div>` : ''}
+          <div id="warn-bus-exhausted" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${eb.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below safety threshold</div>
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
             Muscle output throughput (Watts) and burst stamina. Throttles connected abilities when exhausted.
           </div>
@@ -1635,13 +1636,19 @@ export class DevPanel {
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
               <span>Burst Stamina</span>
-              <span>${curStamina.toFixed(0)} / ${maxStamina.toFixed(0)} (${staminaPct.toFixed(0)}%)</span>
+              <span id="label-energy-bus-stamina-status">${curStamina.toFixed(0)} / ${maxStamina.toFixed(0)} (${staminaPct.toFixed(0)}%)</span>
             </div>
             <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
-              <div style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
+              <div id="bar-energy-bus-stamina-fill" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
             </div>
           </div>
 
+          <div style="margin: 6px 0; padding: 4px 8px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; color: #94a3b8;">Current Power Draw:</span>
+            <span id="label-energy-bus-wattage" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
+          </div>
+
+          <div id="prop-socket-bus-curwattage"></div>
           <div id="prop-socket-bus-maxpower"></div>
           <div id="prop-socket-bus-maxstamina"></div>
           <div id="prop-socket-bus-regen"></div>
@@ -2602,6 +2609,17 @@ export class DevPanel {
     // Energy Bus controls (Character only)
     if (char && char.energyBus) {
       const eb = char.energyBus;
+
+      const curWattEl = this.container.querySelector("#prop-socket-bus-curwattage");
+      if (curWattEl) {
+        const wCtrl = new PropertyControl({
+          property: eb.currentWattageProp,
+          owner: char,
+          label: "Current Wattage Used (W)",
+          step: 10.0,
+        });
+        curWattEl.appendChild(wCtrl.element);
+      }
 
       const maxPowerEl = this.container.querySelector("#prop-socket-bus-maxpower");
       if (maxPowerEl) {
@@ -3643,6 +3661,53 @@ export class DevPanel {
       </div>
       ` : ''}
     `;
+
+    // Real-time update of live Energy Pool & Energy Bus status bars
+    if (isChar && char) {
+      if (char.energyPool) {
+        const ep = char.energyPool;
+        const curE = ep.getCurrentEnergy(char.properties);
+        const maxE = ep.getMaxEnergy(char.properties);
+        const pctE = maxE > 0 ? Math.min(100, Math.max(0, (curE / maxE) * 100)) : 0;
+
+        const labelPool = this.container.querySelector("#label-energy-pool-status");
+        if (labelPool) {
+          labelPool.textContent = `${curE.toFixed(0)} / ${maxE.toFixed(0)} J (${pctE.toFixed(0)}%)`;
+        }
+        const barPool = this.container.querySelector("#bar-energy-pool-fill") as HTMLElement | null;
+        if (barPool) {
+          barPool.style.width = `${pctE}%`;
+        }
+      }
+
+      if (char.energyBus) {
+        const eb = char.energyBus;
+        const curS = eb.getCurrentStamina(char.properties);
+        const maxS = eb.getMaxStamina(char.properties);
+        const pctS = maxS > 0 ? Math.min(100, Math.max(0, (curS / maxS) * 100)) : 0;
+        const curWatts = eb.getCurrentWattage(char.properties);
+
+        const labelStamina = this.container.querySelector("#label-energy-bus-stamina-status");
+        if (labelStamina) {
+          labelStamina.textContent = `${curS.toFixed(0)} / ${maxS.toFixed(0)} (${pctS.toFixed(0)}%)`;
+        }
+        const barStamina = this.container.querySelector("#bar-energy-bus-stamina-fill") as HTMLElement | null;
+        if (barStamina) {
+          barStamina.style.width = `${pctS}%`;
+        }
+
+        const labelWattage = this.container.querySelector("#label-energy-bus-wattage") as HTMLElement | null;
+        if (labelWattage) {
+          labelWattage.textContent = `${curWatts.toFixed(0)} Watts`;
+          labelWattage.style.color = curWatts > 0 ? "#38bdf8" : "#64748b";
+        }
+
+        const warnExhausted = this.container.querySelector("#warn-bus-exhausted") as HTMLElement | null;
+        if (warnExhausted) {
+          warnExhausted.style.display = eb.isExhausted ? "block" : "none";
+        }
+      }
+    }
   }
 
   private renderWallPresetOptions(): string {

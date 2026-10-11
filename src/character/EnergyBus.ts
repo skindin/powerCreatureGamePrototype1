@@ -30,8 +30,9 @@ export class EnergyBus {
   public isExhausted: boolean = false;
   public recoveryThresholdRatio: number = 0.20;
 
-  // Live telemetry for DevPanel
+  // Live telemetry for DevPanel & ability inspection
   public livePowerDraw: number = 0;
+  public currentWattageProp: DynamicProperty;
 
   constructor(options?: {
     id?: string;
@@ -62,8 +63,13 @@ export class EnergyBus {
     this.currentStaminaProp = new DynamicProperty(curStamina);
 
     this.staminaRegenRateProp = new DynamicProperty(options?.staminaRegenRate ?? 15.0);
+    this.currentWattageProp = new DynamicProperty(0.0);
 
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public getCurrentWattage(registry?: ObjectPropertiesRegistry): number {
+    return this.currentWattageProp.get(registry);
   }
 
   public getMaxPower(registry?: ObjectPropertiesRegistry): number {
@@ -109,22 +115,51 @@ export class EnergyBus {
       return 0;
     }
 
-    // Cap requested power to bus maximum
-    const targetWatts = Math.min(requestedPowerWatts, maxP);
-    const energyNeededJoules = targetWatts * dt;
-
-    // Check pool availability
-    if (pool && !pool.consume(energyNeededJoules, registry)) {
-      // Energy pool empty! Exhaust immediately
-      this.isExhausted = true;
-      this.currentStaminaProp.set(0, registry);
+    // 1. Initial power capped by bus maximum
+    let targetWatts = Math.min(requestedPowerWatts, maxP);
+    if (targetWatts <= 0) {
       this.livePowerDraw = 0;
       return 0;
     }
 
-    // High effort drains stamina proportionally
+    // 2. If high effort, cap targetWatts so that stamina drain does not exceed remaining stamina
+    // Formula for stamina drain: drainRatio = (W - 0.4*maxP) / (0.6*maxP)
+    // drain = drainRatio * 20.0 * dt
+    // If curS is small, maximum allowed drain is curS:
     if (targetWatts > maxP * 0.4) {
-      const drainRatio = (targetWatts - maxP * 0.4) / (maxP * 0.6);
+      const maxDrain = curS;
+      if (maxDrain <= 0.0001) {
+        // No stamina available for high-power exertion!
+        // Cap targetWatts to threshold power (40% of maxP)
+        targetWatts = maxP * 0.4;
+      } else {
+        const maxDrainRatio = maxDrain / (20.0 * dt);
+        const maxWattsFromStamina = maxP * 0.4 + maxDrainRatio * (maxP * 0.6);
+        targetWatts = Math.min(targetWatts, maxWattsFromStamina);
+      }
+    }
+
+    // 3. Pool energy availability check (partial consumption allowed)
+    let grantedWatts = targetWatts;
+    const energyNeededJoules = targetWatts * dt;
+    if (pool) {
+      const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
+      if (grantedJoules <= 0.0001) {
+        // Completely out of energy
+        this.isExhausted = true;
+        this.currentStaminaProp.set(0, registry);
+        this.livePowerDraw = 0;
+        return 0;
+      }
+      grantedWatts = grantedJoules / dt;
+      if (pool.getCurrentEnergy(registry) <= 0.0001) {
+        this.isExhausted = true;
+      }
+    }
+
+    // 4. Drain stamina based on actual granted power
+    if (grantedWatts > maxP * 0.4) {
+      const drainRatio = (grantedWatts - maxP * 0.4) / (maxP * 0.6);
       const staminaDrain = drainRatio * 20.0 * dt;
       const nextS = Math.max(0, curS - staminaDrain);
       this.currentStaminaProp.set(nextS, registry);
@@ -134,8 +169,9 @@ export class EnergyBus {
       }
     }
 
-    this.livePowerDraw = targetWatts;
-    return targetWatts;
+    this.livePowerDraw = grantedWatts;
+    this.currentWattageProp.set(grantedWatts, registry);
+    return grantedWatts;
   }
 
   /**
@@ -143,6 +179,10 @@ export class EnergyBus {
    */
   public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
     if (!this.enabled || dt <= 0) return;
+
+    // Decay live power draw reading if no power was requested this tick
+    this.currentWattageProp.set(this.livePowerDraw, registry);
+    this.livePowerDraw = 0;
 
     const maxS = this.getMaxStamina(registry);
     let curS = this.getCurrentStamina(registry);

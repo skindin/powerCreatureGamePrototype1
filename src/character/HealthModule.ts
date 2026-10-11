@@ -118,20 +118,22 @@ export class HealthModule {
     if (current > 0 && current < max) {
       const healRate = this.getMaxHealRate(registry);
       if (healRate > 0) {
-        let allowed = true;
+        let effectiveHealRate = healRate;
         if (this.consumesEnergy) {
           const bus = character.getEnergyBus(this.energyBusId);
           if (bus) {
             // Bio-regeneration power: e.g. 50W per HP/sec rate
             const powerWatts = healRate * 50;
             const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry);
-            if (granted <= 0 || bus.isExhausted) {
-              allowed = false;
+            if (granted <= 0) {
+              effectiveHealRate = 0;
+            } else {
+              effectiveHealRate = healRate * Math.min(1.0, granted / powerWatts);
             }
           }
         }
-        if (allowed) {
-          const nextHp = Math.min(max, current + healRate * dt);
+        if (effectiveHealRate > 0) {
+          const nextHp = Math.min(max, current + effectiveHealRate * dt);
           this.currentHpProp.set(nextHp, registry);
         }
       }

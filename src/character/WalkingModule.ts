@@ -192,11 +192,15 @@ export class WalkingModule {
       if (isActivelySprinting && this.sprintConsumesEnergy) {
         const bus = character.getEnergyBus(this.sprintEnergyBusId);
         if (bus) {
-          // Sprint power draw: 350W
+          // Sprint requested power draw: 350W
           const grantedPower = bus.requestPower(350, dt, character.energyPool, character.properties);
-          if (grantedPower < 100 || bus.isExhausted) {
-            // Cannot sustain sprint power: downgrade to normal walking
+          if (grantedPower <= 0) {
+            // Out of sprint power completely: drop sprint boost entirely
             effectiveWalkForce = maxWalkForce;
+          } else {
+            // Scale the extra sprint force boost proportionally to granted power fraction
+            const sprintFraction = Math.min(1.0, grantedPower / 350);
+            effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * sprintFraction);
           }
         }
       }
@@ -204,11 +208,16 @@ export class WalkingModule {
       if (this.walkConsumesEnergy) {
         const bus = character.getEnergyBus(this.walkEnergyBusId);
         if (bus) {
-          // Walk power draw: 75W
+          // Walk requested power draw: 75W
           const grantedPower = bus.requestPower(75, dt, character.energyPool, character.properties);
-          if (grantedPower <= 0 || bus.isExhausted) {
-            // Out of energy/stamina: severely reduced locomotion force (exhausted plodding)
-            effectiveWalkForce *= 0.35;
+          if (grantedPower <= 0) {
+            // Completely out of energy/stamina: walking disabled (cannot exert force)
+            effectiveWalkForce = 0;
+            character.isActivelyWalking = false;
+          } else {
+            // Scale walking force proportionally to power granted
+            const walkFraction = Math.min(1.0, grantedPower / 75);
+            effectiveWalkForce *= walkFraction;
           }
         }
       }

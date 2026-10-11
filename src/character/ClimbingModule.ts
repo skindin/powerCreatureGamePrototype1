@@ -204,18 +204,20 @@ export class ClimbingModule {
       (character as any).standingWall = null;
 
       // Energy consumption check while clinging/climbing
+      let climbPowerScale = 1.0;
       if (this.consumesEnergy) {
         const bus = character.getEnergyBus(this.energyBusId);
         if (bus) {
           // Drawing climbing power: 80W base cling + 180W if actively ascending
           const powerReq = isClimbHeld ? 260 : 80;
           const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties);
-          if (granted <= 0 || bus.isExhausted) {
+          if (granted <= 0) {
             // Stamina / energy exhausted: slip from the wall and fall
             character.isClimbing = false;
             this.climbSuppressedUntilRelease = true;
             return false;
           }
+          climbPowerScale = Math.min(1.0, granted / powerReq);
         }
       }
 
@@ -240,9 +242,9 @@ export class ClimbingModule {
       if (isClimbHeld) {
         const baseMass = character.baseMass;
         const effectiveClimbSpeed = Math.max(
-          0.2,
+          0.1,
           Math.min(maxClimbSpeed, (maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
-        );
+        ) * climbPowerScale;
         character.position.z += effectiveClimbSpeed * dt;
 
         // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
