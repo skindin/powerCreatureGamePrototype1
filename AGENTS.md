@@ -91,6 +91,10 @@
   - `EnergyBus Connection`: Added `energyBusId` connection sockets to `WalkingModule` (walk & sprint), `PickupModule`, `ThrowModule`, `JumpModule` (via `Character.jumpEnergyBusId`), `ClimbingModule`, and `HealthModule` (healing). Each module renders a dropdown below its energy toggle to bind to any character energy bus (defaulting to `"bus_main"`).
   - `Character.energyBusses`: Characters maintain a registry `Map<string, EnergyBus>` and `getEnergyBus(busId)` resolver.
   - `Collapsible Sections & Behaviors`: Interactive accordion collapse (`▶` / `▼`) enabled across the entire DevPanel: Live Diagnostics, Physics & Collisions, History Buffer & Rollback Replay, Selected Physical Behaviors section, every individual attached behavior card, Add New Object creator section, every individual behavior card within the New Object creator, and World Physics & Environment.
+- **Phase 11.5 (Active Energy & Stamina Consumption Across Abilities)**:
+  - **Removed Stale UI Warnings**: Completely purged obsolete "Energy Busses not implemented yet" warnings from DevPanel cards.
+  - **Live Power Deduction**: Wired actual `bus.requestPower(...)` logic into `WalkingModule` (75W walk, 350W sprint), `Character.jump` (1200W impulse), `PickupModule` (400W–500W lift), `ThrowModule` (600W–800W throw), `ClimbingModule` (80W hold, 260W vertical climb), and `HealthModule` (50W per HP/s passive regeneration).
+  - **Exhaustion & Penalty Dynamics**: Depleting the pool or draining stamina to zero triggers bus exhaustion, throttling sprint speed back to normal walk, reducing locomotion force to 35%, causing characters clinging to walls to slip, and cancelling leaps/throws/pickups when drained.
 
 
 ---

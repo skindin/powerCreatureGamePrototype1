@@ -109,6 +109,20 @@ export class PickupModule {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
 
+    // Energy consumption check
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) {
+        // Lifting effort: request 600W burst over 1/60s (= 10 Joules) scaled slightly by target mass
+        const targetMass = target.hasMass ? Math.max(0.5, target.mass) : 1.0;
+        const requestedWatts = 400 + targetMass * 50;
+        const granted = bus.requestPower(requestedWatts, 1 / 60, character.energyPool, character.properties);
+        if (granted <= 0 || bus.isExhausted) {
+          return false;
+        }
+      }
+    }
+
     // Apply incoming object force/momentum to the character (symmetric with throw recoil)
     const objVx = target.velocity.x;
     const objVy = target.velocity.y;

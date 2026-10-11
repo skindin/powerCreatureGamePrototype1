@@ -236,6 +236,16 @@ export class Character extends GameObject {
    */
   public jump(arena?: Arena, movementInput?: Vector2D): boolean {
     if (this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition) {
+      if (this.jumpConsumesEnergy) {
+        const bus = this.getEnergyBus(this.jumpEnergyBusId);
+        if (bus) {
+          // Instantaneous leap burst: request 1200W impulse over 1/60s (= 20 Joules)
+          const granted = bus.requestPower(1200, 1 / 60, this.energyPool, this.properties);
+          if (granted <= 0 || bus.isExhausted) {
+            return false;
+          }
+        }
+      }
       return this.jumpModule.jump(this, arena, movementInput);
     }
     return false;
@@ -349,7 +359,13 @@ export class Character extends GameObject {
     }
 
     // 2c. Update energy bus stamina recovery
-    if (this.energyBus && this.energyBus.enabled) {
+    if (this.energyBusses.size > 0) {
+      for (const bus of this.energyBusses.values()) {
+        if (bus && bus.enabled) {
+          bus.update(dt, this.energyPool, this.properties);
+        }
+      }
+    } else if (this.energyBus && this.energyBus.enabled) {
       this.energyBus.update(dt, this.energyPool, this.properties);
     }
 

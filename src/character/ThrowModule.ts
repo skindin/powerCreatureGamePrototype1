@@ -712,6 +712,20 @@ export class ThrowModule {
       }
     }
 
+    // Energy consumption check
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) {
+        // Throw exertion: 1200W burst over 1/60s (= 20 Joules) scaled by held mass
+        const heldMass = held.hasMass ? Math.max(0.5, held.mass) : 1.0;
+        const requestedWatts = 600 + heldMass * 100;
+        const granted = bus.requestPower(requestedWatts, 1 / 60, character.energyPool, character.properties);
+        if (granted <= 0 || bus.isExhausted) {
+          return null;
+        }
+      }
+    }
+
     const baseThrowForce = this.baseThrowForceProp.get(character.properties);
     const throwPower = baseThrowForce * character.strength;
     const charVel = {

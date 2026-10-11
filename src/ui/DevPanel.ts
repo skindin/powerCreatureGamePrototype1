@@ -1317,9 +1317,6 @@ export class DevPanel {
                 ${renderEnergyBusOptions(char.walkingModule?.walkEnergyBusId)}
               </select>
             </div>
-            <div id="warn-walk-energy" class="module-dep-warning" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
-            </div>
             <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
               <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
@@ -1329,9 +1326,6 @@ export class DevPanel {
               <select id="select-sprint-energy-bus" class="dev-select" style="width: 100%;">
                 ${renderEnergyBusOptions(char.walkingModule?.sprintEnergyBusId)}
               </select>
-            </div>
-            <div id="warn-sprint-energy" class="module-dep-warning" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
             </div>
             </div>
           </div>
@@ -1355,9 +1349,6 @@ export class DevPanel {
               <select id="select-pickup-energy-bus" class="dev-select" style="width: 100%;">
                 ${renderEnergyBusOptions(char.pickupModule?.energyBusId)}
               </select>
-            </div>
-            <div id="warn-pickup-energy" class="module-dep-warning" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
             </div>
             </div>
           </div>
@@ -1388,9 +1379,6 @@ export class DevPanel {
                 ${renderEnergyBusOptions(char.throwModule?.energyBusId)}
               </select>
             </div>
-            <div id="warn-throw-energy" class="module-dep-warning" style="display: ${char.throwModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
-            </div>
             </div>
           </div>
         `;
@@ -1419,9 +1407,6 @@ export class DevPanel {
               <select id="select-jump-energy-bus" class="dev-select" style="width: 100%;">
                 ${renderEnergyBusOptions(char.jumpEnergyBusId)}
               </select>
-            </div>
-            <div id="warn-jump-energy" class="module-dep-warning" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
             </div>
             </div>
           </div>
@@ -1482,9 +1467,6 @@ export class DevPanel {
                 ${renderEnergyBusOptions(char.climbingModule?.energyBusId)}
               </select>
             </div>
-            <div id="warn-climb-energy" class="module-dep-warning" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-              ⚠️ Energy Busses not implemented yet (no energy will be deducted).
-            </div>
             </div>
           </div>
         `;
@@ -1521,10 +1503,6 @@ export class DevPanel {
               ${renderEnergyBusOptions(hm.energyBusId)}
             </select>
           </div>
-          <div id="warn-health-energy" class="module-dep-warning" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 2px;">
-            ⚠️ Energy Busses not implemented yet (healing functions without drawing energy).
-          </div>
-
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px;">
             <button id="btn-health-sub10" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">
               -10 Dmg
@@ -2255,8 +2233,6 @@ export class DevPanel {
         if (char.walkingModule) {
           char.walkingModule.walkConsumesEnergy = checkWalkEnergy.checked;
           if (fieldWalkBus) fieldWalkBus.style.display = checkWalkEnergy.checked ? "block" : "none";
-          const warn = this.container.querySelector("#warn-walk-energy") as HTMLElement;
-          if (warn) warn.style.display = checkWalkEnergy.checked ? "block" : "none";
         }
       });
       const selectWalkBus = this.container.querySelector("#select-walk-energy-bus") as HTMLSelectElement;
@@ -2272,8 +2248,6 @@ export class DevPanel {
         if (char.walkingModule) {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
           if (fieldSprintBus) fieldSprintBus.style.display = checkSprintEnergy.checked ? "block" : "none";
-          const warn = this.container.querySelector("#warn-sprint-energy") as HTMLElement;
-          if (warn) warn.style.display = checkSprintEnergy.checked ? "block" : "none";
         }
       });
       const selectSprintBus = this.container.querySelector("#select-sprint-energy-bus") as HTMLSelectElement;
@@ -2312,8 +2286,6 @@ export class DevPanel {
         if (char.pickupModule) {
           char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
           if (fieldPickupBus) fieldPickupBus.style.display = checkPickupEnergy.checked ? "block" : "none";
-          const warn = this.container.querySelector("#warn-pickup-energy") as HTMLElement;
-          if (warn) warn.style.display = checkPickupEnergy.checked ? "block" : "none";
         }
       });
       const selectPickupBus = this.container.querySelector("#select-pickup-energy-bus") as HTMLSelectElement;
@@ -2350,8 +2322,6 @@ export class DevPanel {
         if (char.throwModule) {
           char.throwModule.consumesEnergy = checkThrowEnergy.checked;
           if (fieldThrowBus) fieldThrowBus.style.display = checkThrowEnergy.checked ? "block" : "none";
-          const warn = this.container.querySelector("#warn-throw-energy") as HTMLElement;
-          if (warn) warn.style.display = checkThrowEnergy.checked ? "block" : "none";
         }
       });
       const selectThrowBus = this.container.querySelector("#select-throw-energy-bus") as HTMLSelectElement;
@@ -2387,8 +2357,6 @@ export class DevPanel {
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
         if (fieldJumpBus) fieldJumpBus.style.display = checkJumpEnergy.checked ? "block" : "none";
-        const warn = this.container.querySelector("#warn-jump-energy") as HTMLElement;
-        if (warn) warn.style.display = checkJumpEnergy.checked ? "block" : "none";
       });
       const selectJumpBus = this.container.querySelector("#select-jump-energy-bus") as HTMLSelectElement;
       selectJumpBus?.addEventListener("change", () => {
@@ -2450,8 +2418,6 @@ export class DevPanel {
         if (char.climbingModule) {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
           if (fieldClimbBus) fieldClimbBus.style.display = checkClimbEnergy.checked ? "block" : "none";
-          const warn = this.container.querySelector("#warn-climb-energy") as HTMLElement;
-          if (warn) warn.style.display = checkClimbEnergy.checked ? "block" : "none";
         }
       });
       const selectClimbBus = this.container.querySelector("#select-climb-energy-bus") as HTMLSelectElement;
@@ -2504,8 +2470,6 @@ export class DevPanel {
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
         if (fieldHealthBus) fieldHealthBus.style.display = checkHealthEnergy.checked ? "block" : "none";
-        const warn = this.container.querySelector("#warn-health-energy") as HTMLElement;
-        if (warn) warn.style.display = checkHealthEnergy.checked ? "block" : "none";
       });
       const selectHealthBus = this.container.querySelector("#select-health-energy-bus") as HTMLSelectElement;
       selectHealthBus?.addEventListener("change", () => {

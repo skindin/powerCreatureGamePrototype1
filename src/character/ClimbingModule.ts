@@ -203,6 +203,22 @@ export class ClimbingModule {
       character.verticalVelocity = 0;
       (character as any).standingWall = null;
 
+      // Energy consumption check while clinging/climbing
+      if (this.consumesEnergy) {
+        const bus = character.getEnergyBus(this.energyBusId);
+        if (bus) {
+          // Drawing climbing power: 80W base cling + 180W if actively ascending
+          const powerReq = isClimbHeld ? 260 : 80;
+          const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties);
+          if (granted <= 0 || bus.isExhausted) {
+            // Stamina / energy exhausted: slip from the wall and fall
+            character.isClimbing = false;
+            this.climbSuppressedUntilRelease = true;
+            return false;
+          }
+        }
+      }
+
       const maxClimbSpeed = this.maxClimbSpeedProp.get(character.properties);
 
       // Handle horizontal traverse along the wall face if horizontalClimb is enabled

@@ -185,7 +185,35 @@ export class WalkingModule {
 
     // Active locomotion acceleration capability
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
-    const effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
+    let effectiveWalkForce = isActivelySprinting ? maxWalkForce * 1.5 : maxWalkForce;
+
+    // Handle energy consumption and bus exhaustion
+    if (isMoving) {
+      if (isActivelySprinting && this.sprintConsumesEnergy) {
+        const bus = character.getEnergyBus(this.sprintEnergyBusId);
+        if (bus) {
+          // Sprint power draw: 350W
+          const grantedPower = bus.requestPower(350, dt, character.energyPool, character.properties);
+          if (grantedPower < 100 || bus.isExhausted) {
+            // Cannot sustain sprint power: downgrade to normal walking
+            effectiveWalkForce = maxWalkForce;
+          }
+        }
+      }
+
+      if (this.walkConsumesEnergy) {
+        const bus = character.getEnergyBus(this.walkEnergyBusId);
+        if (bus) {
+          // Walk power draw: 75W
+          const grantedPower = bus.requestPower(75, dt, character.energyPool, character.properties);
+          if (grantedPower <= 0 || bus.isExhausted) {
+            // Out of energy/stamina: severely reduced locomotion force (exhausted plodding)
+            effectiveWalkForce *= 0.35;
+          }
+        }
+      }
+    }
+
     const maxAccel = ((effectiveWalkForce * character.strength) / totalMass) * grip;
 
     if (isMoving) {
