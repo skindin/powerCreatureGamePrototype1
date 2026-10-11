@@ -105,6 +105,18 @@
   - **Multi-Request Accumulation**: `EnergyBus.requestPower` cleanly accumulates power draws across concurrent abilities in each tick and publishes total wattage to `currentWattageProp`.
   - **DevPanel Telemetry & Controls**: Updated DevPanel stamina meter to display seconds (`10.0s / 10.0s (100%)`), with 1.0s capacity scrubber steps and 0.2 s/s regen rate scrubber steps.
   - **Automated Verification**: Verified 100% via `scratch/test_stamina_drain_equation.ts` and `scratch/test_energy_consumption.ts`.
+- **Phase 11.7 (Default Collapsed Inspector Accordions & Ability Energy Presets)**:
+  - **Default Collapsed Inspector**: All collapsible accordion headers in the DevPanel inspector (Diagnostics, Physics, History Buffer, Selected Physical Behaviors, attached behavior cards, New Object Creator modules, World Physics) are now collapsed by default via `expandedSections` set.
+  - **Ability Energy Defaults**: Configured default energy consumption across abilities on `Character`:
+    - Walking: `walkConsumesEnergy = false`
+    - Sprinting: `sprintConsumesEnergy = true`, `sprintEnergyBusId = "bus_main"`
+    - Jumping: `jumpConsumesEnergy = true`, `jumpEnergyBusId = "bus_main"`
+    - Throwing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+    - Picking Up: `consumesEnergy = false`, `energyBusId = "bus_main"`
+    - Climbing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+    - Health / Healing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+  - **DevPanel Add Behavior Parity**: Newly attached abilities via DevPanel follow these exact energy defaults and bus connections.
+  - **Automated Verification**: Verified 100% via `scratch/test_ability_energy_defaults.ts`.
 
 
 ---

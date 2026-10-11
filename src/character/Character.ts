@@ -107,8 +107,8 @@ export class Character extends GameObject {
     return this.energyBusses.get(busId) || this.energyBus;
   }
 
-  /** Placeholder toggle indicating if jumping consumes energy from an Energy Bus */
-  public jumpConsumesEnergy: boolean = false;
+  /** Toggle indicating if jumping consumes energy from an Energy Bus */
+  public jumpConsumesEnergy: boolean = true;
   public jumpEnergyBusId: string = "bus_main";
 
   // Player identity & multiplayer slot
@@ -215,14 +215,28 @@ export class Character extends GameObject {
       this.jumpModule = null;
       this.wallEdgeAssistModule = null;
     } else {
-      this.walkingModule = new WalkingModule();
-      this.pickupModule = new PickupModule();
-      this.throwModule = new ThrowModule();
+      this.walkingModule = new WalkingModule({
+        walkConsumesEnergy: false,
+        sprintConsumesEnergy: true,
+      });
+      this.walkingModule.walkEnergyBusId = "bus_main";
+      this.walkingModule.sprintEnergyBusId = "bus_main";
+
+      this.pickupModule = new PickupModule({ consumesEnergy: false });
+      this.pickupModule.energyBusId = "bus_main";
+
+      this.throwModule = new ThrowModule({ consumesEnergy: true });
+      this.throwModule.energyBusId = "bus_main";
+
       this.jumpModule = new JumpModule();
+      this.jumpConsumesEnergy = true;
+      this.jumpEnergyBusId = "bus_main";
+
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
     }
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
-    this.healthModule = new HealthModule();
+    this.healthModule = new HealthModule({ consumesEnergy: true });
+    this.healthModule.energyBusId = "bus_main";
     this.energyPool = new EnergyPool();
     this.energyBus = new EnergyBus();
     this.energyBusses.set(this.energyBus.id, this.energyBus);

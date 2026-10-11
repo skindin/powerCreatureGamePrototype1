@@ -211,17 +211,17 @@ export class DevPanel {
   private modePlayBtn!: HTMLButtonElement;
   private modeEditBtn!: HTMLButtonElement;
   private scrubbers: Map<string, FloatScrubber> = new Map();
-  private collapsedSections: Set<string> = new Set();
+  private expandedSections: Set<string> = new Set();
 
   public isSectionCollapsed(id: string): boolean {
-    return this.collapsedSections.has(id);
+    return !this.expandedSections.has(id);
   }
 
   public toggleSectionCollapse(id: string): void {
-    if (this.collapsedSections.has(id)) {
-      this.collapsedSections.delete(id);
+    if (this.expandedSections.has(id)) {
+      this.expandedSections.delete(id);
     } else {
-      this.collapsedSections.add(id);
+      this.expandedSections.add(id);
     }
   }
 
@@ -1963,22 +1963,31 @@ export class DevPanel {
         break;
       case "walking":
         if (e instanceof Character) {
-          (e as Character).walkingModule = new WalkingModule();
+          (e as Character).walkingModule = new WalkingModule({
+            walkConsumesEnergy: false,
+            sprintConsumesEnergy: true,
+          });
+          (e as Character).walkingModule!.walkEnergyBusId = "bus_main";
+          (e as Character).walkingModule!.sprintEnergyBusId = "bus_main";
         }
         break;
       case "pickup":
         if (e instanceof Character) {
-          (e as Character).pickupModule = new PickupModule();
+          (e as Character).pickupModule = new PickupModule({ consumesEnergy: false });
+          (e as Character).pickupModule!.energyBusId = "bus_main";
         }
         break;
       case "throw":
         if (e instanceof Character) {
-          (e as Character).throwModule = new ThrowModule();
+          (e as Character).throwModule = new ThrowModule({ consumesEnergy: true });
+          (e as Character).throwModule!.energyBusId = "bus_main";
         }
         break;
       case "jump":
         if (e instanceof Character) {
           (e as Character).jumpModule = new JumpModule();
+          (e as Character).jumpConsumesEnergy = true;
+          (e as Character).jumpEnergyBusId = "bus_main";
         }
         break;
       case "wallEdgeAssist":
@@ -1988,7 +1997,8 @@ export class DevPanel {
         break;
       case "climbing":
         if (e instanceof Character) {
-          (e as Character).climbingModule = new ClimbingModule();
+          (e as Character).climbingModule = new ClimbingModule({ consumesEnergy: true });
+          (e as Character).climbingModule!.energyBusId = "bus_main";
         }
         break;
       case "health":
@@ -1998,7 +2008,9 @@ export class DevPanel {
           currentHp: 100,
           baseMaxHealRate: 10,
           maxHealRate: 10,
+          consumesEnergy: true,
         });
+        e.healthModule.energyBusId = "bus_main";
         break;
       case "damageAura":
         e.damageAuraModule = new DamageAuraModule({
