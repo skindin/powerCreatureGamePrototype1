@@ -1,0 +1,7 @@
+{
+  "name": "Power Creature Game",
+  "description": "A top-down 2D action arena and interactive physics sandbox where creatures fight, sprint, climb, and throw dynamic freebodies across an arena with physical wall heights.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

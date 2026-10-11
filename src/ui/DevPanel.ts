@@ -1630,13 +1630,13 @@ export class DevPanel {
           ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
           <div id="warn-bus-exhausted" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${eb.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below safety threshold</div>
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Muscle output throughput (Watts) and burst stamina. Throttles connected abilities when exhausted.
+            Muscle output throughput (Watts) and burst stamina (duration at max power).
           </div>
 
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-              <span>Burst Stamina</span>
-              <span id="label-energy-bus-stamina-status">${curStamina.toFixed(0)} / ${maxStamina.toFixed(0)} (${staminaPct.toFixed(0)}%)</span>
+              <span>Burst Stamina (Max Power Duration)</span>
+              <span id="label-energy-bus-stamina-status">${curStamina.toFixed(1)}s / ${maxStamina.toFixed(1)}s (${staminaPct.toFixed(0)}%)</span>
             </div>
             <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
               <div id="bar-energy-bus-stamina-fill" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
@@ -2637,8 +2637,10 @@ export class DevPanel {
         const sCtrl = new PropertyControl({
           property: eb.maxStaminaProp,
           owner: char,
-          label: "Burst Stamina Capacity",
-          step: 10.0,
+          label: "Burst Stamina Capacity (Seconds)",
+          step: 1.0,
+          min: 0.5,
+          max: 120.0,
         });
         maxStaminaEl.appendChild(sCtrl.element);
       }
@@ -2648,8 +2650,10 @@ export class DevPanel {
         const rCtrl = new PropertyControl({
           property: eb.staminaRegenRateProp,
           owner: char,
-          label: "Stamina Regen Rate (/s)",
-          step: 2.0,
+          label: "Stamina Regen Rate (s/s)",
+          step: 0.2,
+          min: 0.1,
+          max: 10.0,
         });
         regenEl.appendChild(rCtrl.element);
       }
@@ -3689,7 +3693,7 @@ export class DevPanel {
 
         const labelStamina = this.container.querySelector("#label-energy-bus-stamina-status");
         if (labelStamina) {
-          labelStamina.textContent = `${curS.toFixed(0)} / ${maxS.toFixed(0)} (${pctS.toFixed(0)}%)`;
+          labelStamina.textContent = `${curS.toFixed(1)}s / ${maxS.toFixed(1)}s (${pctS.toFixed(0)}%)`;
         }
         const barStamina = this.container.querySelector("#bar-energy-bus-stamina-fill") as HTMLElement | null;
         if (barStamina) {

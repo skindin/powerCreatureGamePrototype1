@@ -101,7 +101,6 @@ export class EnergyBus {
     allowWhenExhausted: boolean = false
   ): number {
     if (!this.enabled || dt <= 0) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
@@ -110,19 +109,17 @@ export class EnergyBus {
 
     // If exhausted and ability does not allow exertion during exhaustion, reject request
     if (this.isExhausted && !allowWhenExhausted) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
     // 1. Initial power capped by bus maximum
     let targetWatts = Math.min(requestedPowerWatts, maxP);
     if (targetWatts <= 0) {
-      this.livePowerDraw = 0;
       return 0;
     }
 
     // 2. Cap targetWatts so stamina depletion does not exceed remaining stamina this frame
-    // staminaDrain = (targetWatts / maxP) * dt <= curS  =>  targetWatts <= maxP * (curS / dt)
+    // Equation: staminaDrain = (targetWatts / maxP) * dt <= curS  =>  targetWatts <= maxP * (curS / dt)
     if (maxP > 0) {
       const maxWattsFromStamina = maxP * (curS / dt);
       targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
@@ -130,7 +127,6 @@ export class EnergyBus {
 
     if (targetWatts <= 0.0001) {
       this.isExhausted = true;
-      this.livePowerDraw = 0;
       return 0;
     }
 
@@ -142,7 +138,6 @@ export class EnergyBus {
       if (grantedJoules <= 0.0001) {
         this.isExhausted = true;
         this.currentStaminaProp.set(0, registry);
-        this.livePowerDraw = 0;
         return 0;
       }
       grantedWatts = grantedJoules / dt;
@@ -152,6 +147,7 @@ export class EnergyBus {
     }
 
     // 4. Drain stamina proportionally to actual granted power
+    // Equation: current wattage / max wattage per second => staminaDrain = (grantedWatts / maxP) * dt
     if (grantedWatts > 0 && maxP > 0) {
       const staminaDrain = (grantedWatts / maxP) * dt;
       const nextS = Math.max(0, curS - staminaDrain);
@@ -162,8 +158,8 @@ export class EnergyBus {
       }
     }
 
-    this.livePowerDraw = grantedWatts;
-    this.currentWattageProp.set(grantedWatts, registry);
+    this.livePowerDraw += grantedWatts;
+    this.currentWattageProp.set(this.livePowerDraw, registry);
     return grantedWatts;
   }
 

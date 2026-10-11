@@ -97,6 +97,14 @@
   - **Live Telemetry & Status Bars**: Added dynamic frame-by-frame UI updates for Burst Stamina (`current / max (pct%)`) and Energy Reservoir (`current / max J (pct%)`), plus a dedicated `Current Wattage Used (W)` DynamicProperty socket and live power readout field on the Energy Bus card.
   - **Exhaustion & Depletion Disabling**: Depleting the pool or draining stamina completely halts walking propulsion, cancels jumps, prevents throws and pickups, stops passive regeneration, and causes characters clinging to walls to slip. Sprint speed (not just force) drops to walk speed when sprint power is unavailable.
   - **Physics-Based Costs**: Burst actions (jump, throw, pickup) are charged once via `EnergyBus.requestEnergy(joules, minDt, ...)` using mechanical work (½mv² for jump/throw, m·g·h for lift) ÷ 25% muscle efficiency, charged as if unresisted. Jump only charges at the grounded takeoff moment (never while airborne/held key). Climbing draws isometric hold (m·g) + ascent (m·g·v) power.
+- **Phase 11.6 (Pure Seconds Stamina Model & Wattage Depletion Equation)**:
+  - **Stamina Definition**: Stamina represents duration in seconds of continuous exertion at `maxPower`. Default `baseMaxStamina = 10.0` seconds.
+  - **Depletion Equation**: Depletion rate is strictly `current wattage / max wattage per second`. Over `dt`, `staminaDrain = (currentWatts / maxPower) * dt`.
+  - **Duration Scaling**: Drawing at 100% max wattage drains at 1.0 s/s (10s stamina lasts 10s); drawing at 50% max wattage drains at 0.5 s/s and lasts twice as long (10s stamina lasts 20s); drawing at 0W drains 0s.
+  - **Stamina Regeneration**: When not drawing power (0W), stamina recovers at `staminaRegenRate` seconds/second of rest (default 1.0 s/s).
+  - **Multi-Request Accumulation**: `EnergyBus.requestPower` cleanly accumulates power draws across concurrent abilities in each tick and publishes total wattage to `currentWattageProp`.
+  - **DevPanel Telemetry & Controls**: Updated DevPanel stamina meter to display seconds (`10.0s / 10.0s (100%)`), with 1.0s capacity scrubber steps and 0.2 s/s regen rate scrubber steps.
+  - **Automated Verification**: Verified 100% via `scratch/test_stamina_drain_equation.ts` and `scratch/test_energy_consumption.ts`.
 
 
 ---

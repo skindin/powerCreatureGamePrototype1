@@ -139,6 +139,7 @@ function autoTunnelPlugin(): Plugin {
 
   async function connectTunnel(port: number) {
     if (isClosing) return;
+    if (process.env.ENABLE_TUNNEL !== 'true') return;
     try {
       // Do not override local_host so the Host header reflects pcg-arena-teal.loca.lt
       const tunnel = await localtunnel({
@@ -343,13 +344,13 @@ function autoTunnelPlugin(): Plugin {
       // 3. Start tunnel
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address();
-        const port = typeof addr === 'object' && addr?.port ? addr.port : 5173;
+        const port = typeof addr === 'object' && addr?.port ? addr.port : 3000;
         connectTunnel(port);
       });
 
       if (server.httpServer?.listening) {
         const addr = server.httpServer.address();
-        const port = typeof addr === 'object' && addr?.port ? addr.port : 5173;
+        const port = typeof addr === 'object' && addr?.port ? addr.port : 3000;
         connectTunnel(port);
       }
 
@@ -366,8 +367,8 @@ export default defineConfig(({ command }) => ({
     noExternal: ['ws'],
   },
   server: {
-    host: true, // Listen on all network addresses (0.0.0.0)
-    port: 5173,
+    host: '0.0.0.0', // Listen on all network addresses (0.0.0.0)
+    port: 3000,
     allowedHosts: true, // Allow external tunnel hosts (e.g. *.loca.lt, ngrok, LAN IPs)
     watch: {
       ignored: [
