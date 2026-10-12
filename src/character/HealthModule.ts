@@ -9,6 +9,7 @@ export interface HealthModuleOptions {
   currentHp?: number;
   baseMaxHealRate?: number;
   maxHealRate?: number;
+  hpPerJoule?: number;
   consumesEnergy?: boolean;
   enabled?: boolean;
 }
@@ -30,6 +31,9 @@ export class HealthModule {
   /** Effective max heal rate (HP / second) */
   public maxHealRateProp: DynamicProperty;
 
+  /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
+  public hpPerJouleProp: DynamicProperty;
+
   /** Toggle indicating whether healing draws energy from an Energy Bus */
   public consumesEnergy: boolean = false;
   /** ID of the Energy Bus to draw power from */
@@ -46,6 +50,9 @@ export class HealthModule {
 
     this.baseMaxHealRate = options?.baseMaxHealRate ?? 10.0;
     this.maxHealRateProp = new DynamicProperty(options?.maxHealRate ?? this.baseMaxHealRate);
+
+    // Default 0.02 HP/Joule (equals 50 Joules per 1 HP)
+    this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.02);
 
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
@@ -73,6 +80,18 @@ export class HealthModule {
 
   public set maxHealRate(val: number) {
     this.maxHealRateProp.literalValue = Math.max(0, val);
+  }
+
+  public get hpPerJoule(): number {
+    return this.hpPerJouleProp.literalValue;
+  }
+
+  public set hpPerJoule(val: number) {
+    this.hpPerJouleProp.literalValue = Math.max(0.0001, val);
+  }
+
+  public getHpPerJoule(registry?: ObjectPropertiesRegistry): number {
+    return Math.max(0.0001, this.hpPerJouleProp.get(registry));
   }
 
   public getMaxHp(registry?: ObjectPropertiesRegistry): number {
@@ -122,8 +141,9 @@ export class HealthModule {
         if (this.consumesEnergy) {
           const bus = character.getEnergyBus(this.energyBusId);
           if (bus) {
-            // Bio-regeneration power: e.g. 50W per HP/sec rate
-            const powerWatts = healRate * 50;
+            // Bio-regeneration power: Power = healRate / (HP/Joule)
+            const hpPerJoule = this.getHpPerJoule(registry);
+            const powerWatts = healRate / hpPerJoule;
             const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry);
             if (granted <= 0) {
               effectiveHealRate = 0;

@@ -240,6 +240,8 @@ export class Character extends GameObject {
     this.energyPool = new EnergyPool();
     this.energyBus = new EnergyBus();
     this.energyBusses.set(this.energyBus.id, this.energyBus);
+    this.properties.add("hpPerJoule", this.healthModule.hpPerJoule);
+    this.properties.add("muscleEfficiency", this.energyBus.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -266,9 +268,7 @@ export class Character extends GameObject {
     // Physical kinetic energy calculation:
     // Takeoff speed from JumpModule: v = min(maxSpeed, jumpStrength / totalMass)
     // Mechanical Work: W_mech = 0.5 * totalMass * v^2
-    // Muscle metabolic efficiency is approx ~25%, meaning metabolic energy E_metabolic = W_mech / 0.25 = 2.0 * totalMass * v^2.
-    // Even if motion is resisted or carried mass is huge, the impulse attempted (jumpStrength)
-    // represents intended unresisted work.
+    // Muscle metabolic efficiency is scaled by muscleEfficiency from the connected EnergyBus.
     const totalMass = Math.max(0.2, this.mass);
     const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
     const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
@@ -276,13 +276,14 @@ export class Character extends GameObject {
 
     if (takeoffSpeed <= 0.01) return false;
 
-    // Metabolic energy in Joules
+    // Metabolic energy in Joules using forward-facing muscleEfficiency
     const mechanicalJoules = 0.5 * totalMass * (takeoffSpeed * takeoffSpeed);
-    const metabolicJoules = Math.max(15, mechanicalJoules * 3.5);
+    const bus = this.getEnergyBus(this.jumpEnergyBusId);
+    const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+    const metabolicJoules = Math.max(15, mechanicalJoules / efficiency);
 
     let energyFraction = 1.0;
     if (this.jumpConsumesEnergy) {
-      const bus = this.getEnergyBus(this.jumpEnergyBusId);
       if (bus) {
         energyFraction = bus.requestEnergy(metabolicJoules, 0.05, this.energyPool, this.properties);
         if (energyFraction <= 0) {

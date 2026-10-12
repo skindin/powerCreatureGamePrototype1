@@ -1492,6 +1492,7 @@ export class DevPanel {
           <div id="prop-socket-health-cur"></div>
           <div id="prop-socket-health-max"></div>
           <div id="prop-socket-health-healrate"></div>
+          <div id="prop-socket-health-hpperjoule"></div>
 
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
             <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
@@ -1652,6 +1653,7 @@ export class DevPanel {
           <div id="prop-socket-bus-maxpower"></div>
           <div id="prop-socket-bus-maxstamina"></div>
           <div id="prop-socket-bus-regen"></div>
+          <div id="prop-socket-bus-efficiency"></div>
           </div>
         </div>
       `;
@@ -2484,6 +2486,16 @@ export class DevPanel {
         hpHealSocketEl.appendChild(hrCtrl.element);
       }
 
+      const hpPerJouleSocketEl = this.container.querySelector("#prop-socket-health-hpperjoule");
+      if (hpPerJouleSocketEl) {
+        const jCtrl = new PropertyControl({
+          property: hm.hpPerJouleProp,
+          owner: e,
+          label: "Healing Efficiency (HP/Joule)",
+          step: 0.005,
+        });
+        hpPerJouleSocketEl.appendChild(jCtrl.element);
+      }
       const checkHealthEnergy = this.container.querySelector("#check-health-energy") as HTMLInputElement;
       const fieldHealthBus = this.container.querySelector("#field-health-energy-bus") as HTMLElement;
       checkHealthEnergy?.addEventListener("change", () => {
@@ -2668,6 +2680,18 @@ export class DevPanel {
           max: 10.0,
         });
         regenEl.appendChild(rCtrl.element);
+      }
+      const effEl = this.container.querySelector("#prop-socket-bus-efficiency");
+      if (effEl) {
+        const eCtrl = new PropertyControl({
+          property: eb.muscleEfficiencyProp,
+          owner: char,
+          label: "Muscle Metabolic Efficiency (Ratio)",
+          step: 0.05,
+          min: 0.01,
+          max: 1.0,
+        });
+        effEl.appendChild(eCtrl.element);
       }
     }
   }

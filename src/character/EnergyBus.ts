@@ -31,6 +31,9 @@ export class EnergyBus {
   public isExhausted: boolean = false;
   public recoveryThresholdRatio: number = 0.20;
 
+  // Muscle mechanical-to-metabolic efficiency ratio (default 0.25 = 25% efficiency)
+  public muscleEfficiencyProp: DynamicProperty;
+
   // Live telemetry for DevPanel & ability inspection
   public livePowerDraw: number = 0;
   public currentWattageProp: DynamicProperty;
@@ -44,6 +47,7 @@ export class EnergyBus {
     maxStamina?: number;
     currentStamina?: number;
     staminaRegenRate?: number;
+    muscleEfficiency?: number;
     enabled?: boolean;
   }) {
     this.id = options?.id ?? "bus_main";
@@ -64,9 +68,22 @@ export class EnergyBus {
     this.currentStaminaProp = new DynamicProperty(curStamina);
 
     this.staminaRegenRateProp = new DynamicProperty(options?.staminaRegenRate ?? 1.0);
+    this.muscleEfficiencyProp = new DynamicProperty(options?.muscleEfficiency ?? 0.25);
     this.currentWattageProp = new DynamicProperty(0.0);
 
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get muscleEfficiency(): number {
+    return this.muscleEfficiencyProp.literalValue;
+  }
+
+  public set muscleEfficiency(val: number) {
+    this.muscleEfficiencyProp.literalValue = Math.max(0.01, Math.min(1.0, val));
+  }
+
+  public getMuscleEfficiency(registry?: ObjectPropertiesRegistry): number {
+    return Math.max(0.01, Math.min(1.0, this.muscleEfficiencyProp.get(registry)));
   }
 
   public getCurrentWattage(registry?: ObjectPropertiesRegistry): number {

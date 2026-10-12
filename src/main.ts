@@ -1,3 +1,4 @@
+import "./style.css";
 import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
