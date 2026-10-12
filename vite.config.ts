@@ -221,8 +221,6 @@ function autoTunnelPlugin(): Plugin {
         const isTunnel =
           forwardedHost.includes('loca.lt') ||
           host.includes('loca.lt') ||
-          req.headers['x-forwarded-proto'] === 'https' ||
-          Boolean(req.headers['x-forwarded-for']) ||
           Boolean(req.headers['bypass-tunnel-reminder']);
 
         const rawUrl = req.url || '/';
@@ -310,12 +308,7 @@ function autoTunnelPlugin(): Plugin {
         }
 
         if (isTunnel) {
-          // If a client tries requesting raw unbundled /src files, redirect to fresh /
-          if (req.url && req.url.startsWith('/src/')) {
-            res.writeHead(302, { Location: '/' });
-            res.end();
-            return;
-          }
+
 
           if (serveDistFile(req.url || '/', res)) {
             return;

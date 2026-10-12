@@ -372,14 +372,14 @@ function bootstrap(): void {
     }
   };
 
-  // Register PWA Service Worker for offline play on HTTPS/tunnel, unregister on localhost for live updates
+  // Register PWA Service Worker for offline play on explicit tunnel, unregister on cloud/dev for live updates
   if ("serviceWorker" in navigator) {
-    if (window.location.protocol === "https:") {
+    if (window.location.hostname.includes("loca.lt")) {
       navigator.serviceWorker.register("/sw.js").catch((err) => {
         console.warn("PWA ServiceWorker registration notice:", err);
       });
     } else {
-      // On localhost / desktop app: unregister service workers so changes are always 100% live
+      // On dev / cloud run preview / localhost: unregister service workers so changes and styles are always 100% live
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (const registration of registrations) {
           registration.unregister();
