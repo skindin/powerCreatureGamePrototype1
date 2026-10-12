@@ -126,6 +126,15 @@
 
 ---
 
+- **Phase 11.9 (Forward-Facing Efficiency Sockets & Cloud Run Proxy Fix)**:
+  - **DevPanel Forward-Facing Sockets**: Added "Healing Efficiency (HP/Joule)" (hpPerJouleProp) to HealthModule card and "Muscle Metabolic Efficiency (Ratio)" (muscleEfficiencyProp) to EnergyBus card.
+  - **Environment Variables Cleanup**: Removed GITHUB_TOKEN and ENABLE_TUNNEL from .env.example so AI Studio Build stops prompting the user for tokens.
+  - **Cloud Run Proxy & Tunnel Middleware Fix**: Narrowed isTunnel in vite.config.ts to only match loca.lt domains (preventing Cloud Run HTTPS reverse proxy headers from triggering tunnel redirects or serving stale bundles).
+  - **CSS Delivery Restored**: Eliminated the 302 redirect on /src/style.css, restoring full CSS styling and default accordion collapsing.
+  - **PWA Service Worker Scoping**: Restricted service worker registration to explicit loca.lt domains, ensuring Cloud Run preview iframes always fetch live un-cached source files.
+
+---
+
 ## 3. Active Milestone: Phase 10 (Online Multiplayer Architecture)
 
 - **Phase 10.7 (Dedicated Spawn & Random Overlap Separation)**:
