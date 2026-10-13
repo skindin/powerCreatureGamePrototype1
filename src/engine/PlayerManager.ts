@@ -820,6 +820,31 @@ export class PlayerManager {
       }
     }
 
+    // Update any registered player characters whose inputs were suspended or missing (e.g. window blurred/background)
+    for (const [playerId, entry] of this.players) {
+      if (!inputs.has(playerId)) {
+        const char = entry.character;
+        if (char && input.draggedEntity !== char) {
+          char.updateCharacter(
+            dt,
+            { x: 0, y: 0 },
+            false,
+            null,
+            this.arena,
+            false,
+            this.arena.entities,
+            false
+          );
+          if (char.heldObject) {
+            const heldPos = char.calculateHeldObjectPosition(this.arena);
+            char.heldObject.position.x = heldPos.x;
+            char.heldObject.position.y = heldPos.y;
+            char.heldObject.position.z = heldPos.z;
+          }
+        }
+      }
+    }
+
     // Always update dummy characters physics, health and ground settling (controllerType === 'none')
     for (const dummy of this.dummyCharacters) {
       if (input.draggedEntity !== dummy) {

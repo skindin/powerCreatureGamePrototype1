@@ -151,7 +151,10 @@
   - **Unified Stamina Depletion**: Removed the health regen exemption (`abilityId !== "health_regen"`) in `EnergyBus.requestPower`. All power drawn from the energy bus (including health regeneration at 250 W) now strictly drains burst stamina according to the universal equation `staminaDrain = (grantedWatts / maxPower) * dt` (e.g. 250 W on a 500 W bus drains stamina at 0.5 s/s).
   - **Resting Stamina Recovery**: When power draw drops to 0 W (e.g. character heals back to full health or rests), stamina smoothly recovers at `staminaRegenRate` (1.0 s/s).
   - **DevPanel Live Current Stamina Socket**: Mounted a live `PropertyControl` socket for `currentStaminaProp` ("Current Stamina Left (Seconds)") directly underneath "Burst Stamina Capacity (Seconds)" in the DevPanel Energy Bus card, updating continuously in real time.
-  - **Automated Verification**: Verified 100% via `scratch/test_healing_stamina_drain.ts` and the full regression test suite.
+- **Phase 11.14 (Background Physics/Health Simulation & HP Regen Wattage Equation)**:
+  - **Background Character Simulation**: Updated `PlayerManager.ts` to ensure registered player characters without input packets (e.g. keyboard suspended on window blur/background tab) continuously update physics, gravity, settling, health logic, and death/respawn with neutral inputs (`{ x: 0, y: 0 }`). Input listening remains appropriately suspended, but characters in damage auras now smoothly perish and respawn immediately to one of the 4 clearings without waiting for the window to regain focus.
+  - **HP Regen Wattage Equation Clarification**: Confirmed that the 250 W draw during passive bio-regeneration is strictly derived from the mechanical formula $P = \frac{\text{healRate}}{\text{hpPerJoule}} = \frac{10.0\text{ HP/s}}{0.04\text{ HP/J}} = 250.0\text{ W}$, not a hardcoded ceiling. With the bus max power now at 500 W, higher heal rates or custom efficiencies scale dynamically without clamping.
+  - **Automated Verification**: Verified 100% via `scratch/test_background_respawn.ts` alongside full regression suite.
 
 ---
 
