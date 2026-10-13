@@ -1652,6 +1652,7 @@ export class DevPanel {
           <div id="prop-socket-bus-curwattage"></div>
           <div id="prop-socket-bus-maxpower"></div>
           <div id="prop-socket-bus-maxstamina"></div>
+          <div id="prop-socket-bus-curstamina"></div>
           <div id="prop-socket-bus-regen"></div>
           <div id="prop-socket-bus-efficiency"></div>
           </div>
@@ -2667,6 +2668,18 @@ export class DevPanel {
           max: 120.0,
         });
         maxStaminaEl.appendChild(sCtrl.element);
+      }
+
+      const curStaminaEl = this.container.querySelector("#prop-socket-bus-curstamina");
+      if (curStaminaEl) {
+        const csCtrl = new PropertyControl({
+          property: eb.currentStaminaProp,
+          owner: char,
+          label: "Current Stamina Left (Seconds)",
+          step: 0.5,
+          min: 0.0,
+        });
+        curStaminaEl.appendChild(csCtrl.element);
       }
 
       const regenEl = this.container.querySelector("#prop-socket-bus-regen");
@@ -3745,6 +3758,11 @@ export class DevPanel {
         const warnExhausted = this.container.querySelector("#warn-bus-exhausted") as HTMLElement | null;
         if (warnExhausted) {
           warnExhausted.style.display = eb.isExhausted ? "block" : "none";
+        }
+
+        const curStaminaInput = this.container.querySelector("#prop-socket-bus-curstamina .prop-number-input") as HTMLInputElement | null;
+        if (curStaminaInput && document.activeElement !== curStaminaInput) {
+          curStaminaInput.value = curS.toFixed(2);
         }
       }
     }

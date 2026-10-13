@@ -7097,14 +7097,12 @@ class EnergyBus {
       }
     }
     if (grantedWatts > 0 && maxP > 0) {
-      if (abilityId !== "health_regen") {
-        this.hadPhysicalExertion = true;
-        const staminaDrain = grantedWatts / maxP * dt;
-        const nextS = Math.max(0, curS - staminaDrain);
-        this.currentStaminaProp.set(nextS, registry);
-        if (nextS <= 1e-4) {
-          this.isExhausted = true;
-        }
+      this.hadPhysicalExertion = true;
+      const staminaDrain = grantedWatts / maxP * dt;
+      const nextS = Math.max(0, curS - staminaDrain);
+      this.currentStaminaProp.set(nextS, registry);
+      if (nextS <= 1e-4) {
+        this.isExhausted = true;
       }
     }
     this.livePowerDraw += grantedWatts;

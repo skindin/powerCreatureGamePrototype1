@@ -268,15 +268,13 @@ export class EnergyBus {
     // 4. Drain stamina proportionally to actual granted power
     // Equation: current wattage / max wattage per second => staminaDrain = (grantedWatts / maxP) * dt
     if (grantedWatts > 0 && maxP > 0) {
-      if (abilityId !== "health_regen") {
-        this.hadPhysicalExertion = true;
-        const staminaDrain = (grantedWatts / maxP) * dt;
-        const nextS = Math.max(0, curS - staminaDrain);
-        this.currentStaminaProp.set(nextS, registry);
+      this.hadPhysicalExertion = true;
+      const staminaDrain = (grantedWatts / maxP) * dt;
+      const nextS = Math.max(0, curS - staminaDrain);
+      this.currentStaminaProp.set(nextS, registry);
 
-        if (nextS <= 0.0001) {
-          this.isExhausted = true;
-        }
+      if (nextS <= 0.0001) {
+        this.isExhausted = true;
       }
     }
 

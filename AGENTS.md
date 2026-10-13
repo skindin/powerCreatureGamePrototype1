@@ -147,6 +147,11 @@
 - **Phase 11.12 (Default Watt Capacity Update to 500 Watts)**:
   - **Default Bus Power Capacity**: Updated default `baseMaxPower` in `EnergyBus` from 250.0 W to 500.0 W. Characters can now concurrently sprint (~152 W) and heal at full rate (250 W) with headroom, drawing up to 500 W total before rationing occurs.
   - **Automated Verification**: Verified 100% via regression suite (`test_concurrent_rationing_and_stamina.ts`, `test_locomotion_wattage.ts`, `test_sprint_detoggle_and_floor.ts`).
+- **Phase 11.13 (Unified Stamina Depletion Across All Power Draws & Live Stamina Field)**:
+  - **Unified Stamina Depletion**: Removed the health regen exemption (`abilityId !== "health_regen"`) in `EnergyBus.requestPower`. All power drawn from the energy bus (including health regeneration at 250 W) now strictly drains burst stamina according to the universal equation `staminaDrain = (grantedWatts / maxPower) * dt` (e.g. 250 W on a 500 W bus drains stamina at 0.5 s/s).
+  - **Resting Stamina Recovery**: When power draw drops to 0 W (e.g. character heals back to full health or rests), stamina smoothly recovers at `staminaRegenRate` (1.0 s/s).
+  - **DevPanel Live Current Stamina Socket**: Mounted a live `PropertyControl` socket for `currentStaminaProp` ("Current Stamina Left (Seconds)") directly underneath "Burst Stamina Capacity (Seconds)" in the DevPanel Energy Bus card, updating continuously in real time.
+  - **Automated Verification**: Verified 100% via `scratch/test_healing_stamina_drain.ts` and the full regression test suite.
 
 ---
 
