@@ -155,6 +155,9 @@
   - **Background Character Simulation**: Updated `PlayerManager.ts` to ensure registered player characters without input packets (e.g. keyboard suspended on window blur/background tab) continuously update physics, gravity, settling, health logic, and death/respawn with neutral inputs (`{ x: 0, y: 0 }`). Input listening remains appropriately suspended, but characters in damage auras now smoothly perish and respawn immediately to one of the 4 clearings without waiting for the window to regain focus.
   - **HP Regen Wattage Equation Clarification**: Confirmed that the 250 W draw during passive bio-regeneration is strictly derived from the mechanical formula $P = \frac{\text{healRate}}{\text{hpPerJoule}} = \frac{10.0\text{ HP/s}}{0.04\text{ HP/J}} = 250.0\text{ W}$, not a hardcoded ceiling. With the bus max power now at 500 W, higher heal rates or custom efficiencies scale dynamically without clamping.
   - **Automated Verification**: Verified 100% via `scratch/test_background_respawn.ts` alongside full regression suite.
+- **Phase 11.15 (Default Energy Capacity Update to 10,000 Joules)**:
+  - **Default Energy Pool Capacity**: Updated default `baseMaxEnergy` in `EnergyPool` from 1,000.0 J to 10,000.0 J. Newly spawned characters, freshly initialized pools, and reset energy reserves now start with a full 10,000 Joules energy reservoir.
+  - **Automated Verification**: Verified 100% across the full regression test suite (`test_energy_consumption.ts`, `test_healing_stamina_drain.ts`, `test_background_respawn.ts`, etc.).
 
 ---
 

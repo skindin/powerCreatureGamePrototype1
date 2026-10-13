@@ -32,7 +32,7 @@ export class EnergyPool {
     debugAutoRefillOnEmpty?: boolean;
     enabled?: boolean;
   }) {
-    const base = options?.baseMaxEnergy ?? 1000.0;
+    const base = options?.baseMaxEnergy ?? 10000.0;
     const max = options?.maxEnergy ?? base;
     const cur = options?.currentEnergy ?? max;
 
