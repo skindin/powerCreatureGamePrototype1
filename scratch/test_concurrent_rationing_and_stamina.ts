@@ -13,7 +13,7 @@ arena.entities = [char];
 console.log("\n--- Test 1: Proportional Power Rationing ---");
 char.healthModule.currentHpProp.set(50.0, char.properties);
 char.healthModule.maxHpProp.set(100.0, char.properties);
-char.healthModule.maxHealRateProp.set(5.0, char.properties); // Demands 250 W @ 0.02 HP/J
+char.healthModule.maxHealRateProp.set(20.0, char.properties); // Demands 500 W @ 0.04 HP/J
 char.healthModule.consumesEnergy = true;
 char.isSprinting = true;
 
@@ -22,7 +22,7 @@ char.updateCharacter(dt, { x: 1, y: 0 }, false, null, arena, false, arena.entiti
 
 const curWatts = char.energyBus.getCurrentWattage(char.properties);
 const maxWatts = char.energyBus.getMaxPower(char.properties);
-console.log(`Demanded: ${(151.8 + 250).toFixed(1)} W, Bus Max: ${maxWatts} W, Granted Wattage: ${curWatts.toFixed(2)} W`);
+console.log(`Demanded: ${(151.8 + 500).toFixed(1)} W, Bus Max: ${maxWatts} W, Granted Wattage: ${curWatts.toFixed(2)} W`);
 
 if (curWatts > maxWatts + 0.001) {
   throw new Error(`Wattage (${curWatts}) exceeded max power (${maxWatts})!`);
@@ -30,7 +30,7 @@ if (curWatts > maxWatts + 0.001) {
 if (Math.abs(curWatts - maxWatts) > 0.1) {
   throw new Error(`Expected granted power to equal max power when demands exceed capacity, got ${curWatts}`);
 }
-console.log("✅ Concurrent power draw is strictly capped at maxPower (250 W) and proportionally nerfed!");
+console.log("✅ Concurrent power draw is strictly capped at maxPower (500 W) and proportionally nerfed!");
 
 // ----------------------------------------------------------------------------
 // Test 2: Resting Stamina Recovery While Wounded

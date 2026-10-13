@@ -63,11 +63,12 @@ function requireConstants() {
   };
   return constants;
 }
-throw new Error(`Could not resolve "bufferutil" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_bufferutil_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_bufferutil_ws = {};
+const __viteOptionalPeerDep_bufferutil_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_bufferutil_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws);
+const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws$1);
 var hasRequiredBufferUtil;
 function requireBufferUtil() {
   if (hasRequiredBufferUtil) return bufferUtil.exports;
@@ -576,11 +577,12 @@ function requirePermessageDeflate() {
   return permessageDeflate;
 }
 var validation = { exports: {} };
-throw new Error(`Could not resolve "utf-8-validate" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_utf8Validate_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_utf8Validate_ws = {};
+const __viteOptionalPeerDep_utf8Validate_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_utf8Validate_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws);
+const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws$1);
 var hasRequiredValidation;
 function requireValidation() {
   if (hasRequiredValidation) return validation.exports;
@@ -6942,7 +6944,7 @@ class EnergyBus {
     __publicField(this, "_totalDemand", 0);
     this.id = (options == null ? void 0 : options.id) ?? "bus_main";
     this.name = (options == null ? void 0 : options.name) ?? "Main";
-    const basePower = (options == null ? void 0 : options.baseMaxPower) ?? 250;
+    const basePower = (options == null ? void 0 : options.baseMaxPower) ?? 500;
     const maxPower = (options == null ? void 0 : options.maxPower) ?? basePower;
     const baseStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 10;
     const maxStamina = (options == null ? void 0 : options.maxStamina) ?? baseStamina;

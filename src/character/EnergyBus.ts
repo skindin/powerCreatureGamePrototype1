@@ -97,7 +97,7 @@ export class EnergyBus {
     this.id = options?.id ?? "bus_main";
     this.name = options?.name ?? "Main";
 
-    const basePower = options?.baseMaxPower ?? 250.0;
+    const basePower = options?.baseMaxPower ?? 500.0;
     const maxPower = options?.maxPower ?? basePower;
 
     const baseStamina = options?.baseMaxStamina ?? 10.0; // Default 10 seconds of max effort

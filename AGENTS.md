@@ -144,6 +144,9 @@
   - **Detoggle to Free Walk**: Detoggled movement continues seamlessly at full base walk speed (5.20 u/s) drawing 0W with zero stamina drain (when `walkConsumesEnergy` is false). Players never stall, halt, or crawl slower than base walk speed due to sprint energy limits.
   - **Input Synchronization**: Attached `onSprintChange` listeners in `PlayerManager` and `main.ts` so detoggling disarms keyboard (`isKeyboardSprintActive`) and gamepad (`slot.sprintArmed`) sprint states.
   - **Automated Verification**: Verified 100% via `scratch/test_sprint_detoggle_and_floor.ts`, alongside the full regression suite.
+- **Phase 11.12 (Default Watt Capacity Update to 500 Watts)**:
+  - **Default Bus Power Capacity**: Updated default `baseMaxPower` in `EnergyBus` from 250.0 W to 500.0 W. Characters can now concurrently sprint (~152 W) and heal at full rate (250 W) with headroom, drawing up to 500 W total before rationing occurs.
+  - **Automated Verification**: Verified 100% via regression suite (`test_concurrent_rationing_and_stamina.ts`, `test_locomotion_wattage.ts`, `test_sprint_detoggle_and_floor.ts`).
 
 ---
 
