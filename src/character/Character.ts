@@ -387,7 +387,10 @@ export class Character extends GameObject {
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && this.walkingModule?.sprintConsumesEnergy) {
       const sprintBus = this.getEnergyBus(this.walkingModule.sprintEnergyBusId);
-      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(this.properties) <= 0.0001)) {
+        sprintingNow = false;
+        this.setSprinting(false);
+      }
     }
     const locomotionConsumesEnergy = sprintingNow
       ? this.walkingModule?.sprintConsumesEnergy

@@ -179,11 +179,14 @@ export class WalkingModule {
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
     const isActivelySprinting = this.canSprint && character.isSprinting;
 
-    // Sprint falls back to a walk while the sprint bus is exhausted
+    // Sprint falls back to a walk while the sprint bus is exhausted or has zero stamina
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && this.sprintConsumesEnergy) {
       const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
-      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(character.properties) <= 0.0001)) {
+        sprintingNow = false;
+        character.setSprinting(false);
+      }
     }
 
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
@@ -193,30 +196,87 @@ export class WalkingModule {
     let effectiveWalkForce = sprintingNow ? maxWalkForce * 1.5 : maxWalkForce;
     let effectiveTargetSpeed = sprintingNow ? maxSprintSpeed : maxWalkSpeed;
 
-    // Energy: ONE request per tick, from the toggle/bus of the gait actually in use.
+    const baseWalkTargetSpeed = maxWalkSpeed / (1.0 + loadFactor);
+    const sprintTargetSpeed = maxSprintSpeed / (1.0 + loadFactor);
+    const g = 9.81;
+
     // Biomechanical Physics: Continuous locomotion metabolic power maintains velocity against
     // ground contact resistance and mechanical work.
     // Mechanical power: P_mech = F_res * v = (totalMass * g * Cr) * v
     // Metabolic power: P_metabolic = P_mech / 0.25 (muscle efficiency = 25%)
     // Cr is the gait resistance coefficient: Cr ~ 0.40 for sprinting, Cr ~ 0.28 for walking.
-    const consumesEnergy = sprintingNow ? this.sprintConsumesEnergy : this.walkConsumesEnergy;
-    if (isMoving && consumesEnergy) {
-      const bus = character.getEnergyBus(sprintingNow ? this.sprintEnergyBusId : this.walkEnergyBusId);
-      if (bus) {
-        const v = effectiveTargetSpeed / (1.0 + loadFactor);
-        const g = 9.81;
-        const Cr = sprintingNow ? 0.40 : 0.28;
-        const resForce = totalMass * g * Cr;
-        const requestedWatts = (resForce * v) / 0.25;
-        const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties);
-        const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
-        if (fraction <= 0) {
-          effectiveWalkForce = 0;
-          effectiveTargetSpeed = 0;
-          character.isActivelyWalking = false;
-        } else {
-          effectiveWalkForce *= fraction;
-          effectiveTargetSpeed *= fraction;
+    if (isMoving) {
+      if (sprintingNow && this.sprintConsumesEnergy) {
+        const bus = character.getEnergyBus(this.sprintEnergyBusId);
+        if (bus) {
+          const CrSprint = 0.40;
+          const resForceSprint = totalMass * g * CrSprint;
+          const requestedWatts = (resForceSprint * sprintTargetSpeed) / 0.25;
+          // Minimum power required in sprint gait to achieve base walk speed:
+          const baseSpeedWatts = (resForceSprint * baseWalkTargetSpeed) / 0.25;
+
+          // Peek if the bus can supply more than baseSpeedWatts:
+          const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false);
+
+          if (peekedWatts <= baseSpeedWatts + 0.001) {
+            // Not enough power to sprint faster than base speed!
+            // Detoggle sprint, snap to base walk, and do not consume energy.
+            character.setSprinting(false);
+            sprintingNow = false;
+            effectiveWalkForce = maxWalkForce;
+            effectiveTargetSpeed = maxWalkSpeed;
+            bus.registerDemand("locomotion", 0);
+
+            // If walking also consumes energy, request walking power instead
+            if (this.walkConsumesEnergy) {
+              const walkBus = character.getEnergyBus(this.walkEnergyBusId);
+              if (walkBus) {
+                const CrWalk = 0.28;
+                const resForceWalk = totalMass * g * CrWalk;
+                const walkRequested = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+                const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion");
+                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
+                effectiveWalkForce *= fraction;
+                effectiveTargetSpeed *= fraction;
+                if (fraction <= 0) character.isActivelyWalking = false;
+              }
+            }
+          } else {
+            // Bus can grant more power than base walk speed! Request sprint power.
+            const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion");
+            if (grantedWatts <= baseSpeedWatts + 0.001) {
+              // Edge case: if granted power dropped to or below base speed threshold
+              character.setSprinting(false);
+              sprintingNow = false;
+              effectiveWalkForce = maxWalkForce;
+              effectiveTargetSpeed = maxWalkSpeed;
+            } else {
+              // Achievable speed bounded between baseWalkTargetSpeed and sprintTargetSpeed
+              const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, (grantedWatts * 0.25) / resForceSprint));
+              effectiveTargetSpeed = achievableSpeed * (1.0 + loadFactor);
+              const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed
+                ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed)
+                : 1;
+              effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+            }
+          }
+        }
+      } else if (!sprintingNow && this.walkConsumesEnergy) {
+        const bus = character.getEnergyBus(this.walkEnergyBusId);
+        if (bus) {
+          const Cr = 0.28;
+          const resForce = totalMass * g * Cr;
+          const requestedWatts = (resForce * baseWalkTargetSpeed) / 0.25;
+          const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion");
+          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+          if (fraction <= 0) {
+            effectiveWalkForce = 0;
+            effectiveTargetSpeed = 0;
+            character.isActivelyWalking = false;
+          } else {
+            effectiveWalkForce *= fraction;
+            effectiveTargetSpeed *= fraction;
+          }
         }
       }
     }

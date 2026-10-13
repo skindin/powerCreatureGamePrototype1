@@ -290,6 +290,11 @@ export class PlayerManager {
       isKeyboard: true,
       character: char,
     };
+    char.onSprintChange = (sprinting: boolean) => {
+      if (!sprinting) {
+        this.inputManager.isKeyboardSprintActive = false;
+      }
+    };
     this.players.set("keyboard", entry);
 
     this.onPlayersChanged?.();
@@ -378,6 +383,12 @@ export class PlayerManager {
       isKeyboard: false,
       slotIndex,
       character: char,
+    };
+    char.onSprintChange = (sprinting: boolean) => {
+      if (!sprinting && entry.slotIndex !== undefined) {
+        const gSlot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+        if (gSlot) gSlot.sprintArmed = false;
+      }
     };
     this.players.set(key, entry);
 

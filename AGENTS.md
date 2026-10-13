@@ -138,6 +138,12 @@
   - **Resting Stamina Recovery**: When physically resting (stationary on the ground), stamina smoothly regenerates at `staminaRegenRate` (1.0 s/s) all the way to 100% (10.0s) capacity without freezing at 2.0s or oscillating while wounded.
   - **Airborne Jump Holding Energy Fix**: In `Character.jump`, verified physical grounding (`isGrounded`) before charging metabolic jump impulse energy, eliminating phantom energy drains while airborne with Space held. Reordered hold-to-jump buffer before `bus.update(dt)`.
   - **Automated Verification**: Verified 100% across `test_concurrent_rationing_and_stamina.ts`, `test_locomotion_wattage.ts`, `test_stamina_drain_equation.ts`, `test_energy_consumption.ts`, and `test_health_and_damage_aura.ts`.
+- **Phase 11.11 (Sprint Energy Floor & Automatic Detoggle Architecture)**:
+  - **Graceful Sprint Deceleration**: When bus power is partially granted or rationed, sprint speed decelerates smoothly between `maxSprintSpeed` (8.06 u/s) and base walk speed (5.20 u/s) proportional to granted wattage.
+  - **Base Speed Power Threshold Check (`peekPower`)**: In `EnergyBus.peekPower`, safely checks available power without deducting energy or draining stamina. If available power cannot exceed the metabolic power needed to run faster than base walk speed ($P_{\text{granted}} \le P_{\text{base}}$), sprint automatically detoggles (`character.setSprinting(false)`).
+  - **Detoggle to Free Walk**: Detoggled movement continues seamlessly at full base walk speed (5.20 u/s) drawing 0W with zero stamina drain (when `walkConsumesEnergy` is false). Players never stall, halt, or crawl slower than base walk speed due to sprint energy limits.
+  - **Input Synchronization**: Attached `onSprintChange` listeners in `PlayerManager` and `main.ts` so detoggling disarms keyboard (`isKeyboardSprintActive`) and gamepad (`slot.sprintArmed`) sprint states.
+  - **Automated Verification**: Verified 100% via `scratch/test_sprint_detoggle_and_floor.ts`, alongside the full regression suite.
 
 ---
 

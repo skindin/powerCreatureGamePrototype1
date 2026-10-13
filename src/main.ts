@@ -350,6 +350,11 @@ function bootstrap(): void {
   inputManager.onStopKeyboardSprint = () => {
     character.setSprinting(false);
   };
+  character.onSprintChange = (sprinting: boolean) => {
+    if (!sprinting) {
+      inputManager.isKeyboardSprintActive = false;
+    }
+  };
 
   // Gamepad Connection Indicator
   const controllerBadge = document.getElementById("controller-badge");

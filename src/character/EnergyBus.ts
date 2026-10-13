@@ -151,6 +151,51 @@ export class EnergyBus {
   }
 
   /**
+   * Peeks how much power (in Watts) would be granted without consuming pool energy or draining stamina.
+   */
+  public peekPower(
+    requestedPowerWatts: number,
+    dt: number,
+    pool?: EnergyPool | null,
+    registry?: ObjectPropertiesRegistry,
+    allowWhenExhausted: boolean = false
+  ): number {
+    if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
+      return 0;
+    }
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if ((this.isExhausted && !allowWhenExhausted) || maxP <= 0 || curS <= 0.0001) {
+      return 0;
+    }
+
+    let targetWatts = Math.min(requestedPowerWatts, maxP);
+    if (this._totalDemand > maxP) {
+      targetWatts = (requestedPowerWatts / this._totalDemand) * maxP;
+    }
+    if (targetWatts <= 0.0001) {
+      return 0;
+    }
+
+    const maxWattsFromStamina = maxP * (curS / dt);
+    targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
+    if (targetWatts <= 0.0001) {
+      return 0;
+    }
+
+    if (pool) {
+      if (pool.infiniteEnergy) return targetWatts;
+      const curPoolE = pool.getCurrentEnergy(registry);
+      if (curPoolE <= 0.0001) return 0;
+      const energyNeededJoules = targetWatts * dt;
+      const grantedJoules = Math.min(curPoolE, energyNeededJoules);
+      return grantedJoules / dt;
+    }
+
+    return targetWatts;
+  }
+
+  /**
    * Requests power draw (in Watts) over dt seconds.
    * Depletes stamina whenever power > 0.
    */

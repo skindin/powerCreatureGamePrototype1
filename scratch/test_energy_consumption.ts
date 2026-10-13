@@ -57,6 +57,7 @@ if (staminaAfterSprint >= staminaBeforeSprint) {
 }
 
 // 4. Test Jump Energy Consumption
+char.energyBus.beginTick();
 char.jumpConsumesEnergy = true;
 const poolBeforeJump = poolAfterSprint;
 const jumpSuccess = char.jump(arena, inputVec);
@@ -67,9 +68,14 @@ if (poolAfterJump >= poolBeforeJump) {
   throw new Error("Jump did not consume energy!");
 }
 
+// Land back on the ground for pickup
+char.altitude = 0;
+char.velocity.z = 0;
+
 // 5. Test Pickup Energy Consumption
+char.energyBus.beginTick();
 char.pickupModule!.consumesEnergy = true;
-const rock = new GameObject({ id: "rock1", x: 5.2, y: 5.2, mass: 2.0 });
+const rock = new GameObject({ id: "rock1", x: char.position.x, y: char.position.y, mass: 2.0 });
 const poolBeforePickup = poolAfterJump;
 const pickupSuccess = char.pickupModule!.pickup(char, rock);
 const poolAfterPickup = char.energyPool.getCurrentEnergy(char.properties);
@@ -80,6 +86,7 @@ if (poolAfterPickup >= poolBeforePickup) {
 }
 
 // 6. Test Throw Energy Consumption
+char.energyBus.beginTick();
 char.throwModule!.consumesEnergy = true;
 const poolBeforeThrow = poolAfterPickup;
 const thrown = char.throwModule!.throwHeldObject(char, 10, 10, arena);

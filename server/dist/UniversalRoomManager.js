@@ -5516,31 +5516,78 @@ class WalkingModule {
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && this.sprintConsumesEnergy) {
       const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
-      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(character.properties) <= 1e-4)) {
+        sprintingNow = false;
+        character.setSprinting(false);
+      }
     }
     const maxWalkForce = this.maxWalkForceProp.get(character.properties);
     const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
     const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
     let effectiveWalkForce = sprintingNow ? maxWalkForce * 1.5 : maxWalkForce;
     let effectiveTargetSpeed = sprintingNow ? maxSprintSpeed : maxWalkSpeed;
-    const consumesEnergy = sprintingNow ? this.sprintConsumesEnergy : this.walkConsumesEnergy;
-    if (isMoving && consumesEnergy) {
-      const bus = character.getEnergyBus(sprintingNow ? this.sprintEnergyBusId : this.walkEnergyBusId);
-      if (bus) {
-        const v = effectiveTargetSpeed / (1 + loadFactor);
-        const g = 9.81;
-        const Cr = sprintingNow ? 0.4 : 0.28;
-        const resForce = totalMass * g * Cr;
-        const requestedWatts = resForce * v / 0.25;
-        const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties);
-        const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
-        if (fraction <= 0) {
-          effectiveWalkForce = 0;
-          effectiveTargetSpeed = 0;
-          character.isActivelyWalking = false;
-        } else {
-          effectiveWalkForce *= fraction;
-          effectiveTargetSpeed *= fraction;
+    const baseWalkTargetSpeed = maxWalkSpeed / (1 + loadFactor);
+    const sprintTargetSpeed = maxSprintSpeed / (1 + loadFactor);
+    const g = 9.81;
+    if (isMoving) {
+      if (sprintingNow && this.sprintConsumesEnergy) {
+        const bus = character.getEnergyBus(this.sprintEnergyBusId);
+        if (bus) {
+          const CrSprint = 0.4;
+          const resForceSprint = totalMass * g * CrSprint;
+          const requestedWatts = resForceSprint * sprintTargetSpeed / 0.25;
+          const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
+          const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false);
+          if (peekedWatts <= baseSpeedWatts + 1e-3) {
+            character.setSprinting(false);
+            sprintingNow = false;
+            effectiveWalkForce = maxWalkForce;
+            effectiveTargetSpeed = maxWalkSpeed;
+            bus.registerDemand("locomotion", 0);
+            if (this.walkConsumesEnergy) {
+              const walkBus = character.getEnergyBus(this.walkEnergyBusId);
+              if (walkBus) {
+                const CrWalk = 0.28;
+                const resForceWalk = totalMass * g * CrWalk;
+                const walkRequested = resForceWalk * baseWalkTargetSpeed / 0.25;
+                const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion");
+                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
+                effectiveWalkForce *= fraction;
+                effectiveTargetSpeed *= fraction;
+                if (fraction <= 0) character.isActivelyWalking = false;
+              }
+            }
+          } else {
+            const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion");
+            if (grantedWatts <= baseSpeedWatts + 1e-3) {
+              character.setSprinting(false);
+              sprintingNow = false;
+              effectiveWalkForce = maxWalkForce;
+              effectiveTargetSpeed = maxWalkSpeed;
+            } else {
+              const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, grantedWatts * 0.25 / resForceSprint));
+              effectiveTargetSpeed = achievableSpeed * (1 + loadFactor);
+              const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed) : 1;
+              effectiveWalkForce = maxWalkForce * (1 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+            }
+          }
+        }
+      } else if (!sprintingNow && this.walkConsumesEnergy) {
+        const bus = character.getEnergyBus(this.walkEnergyBusId);
+        if (bus) {
+          const Cr = 0.28;
+          const resForce = totalMass * g * Cr;
+          const requestedWatts = resForce * baseWalkTargetSpeed / 0.25;
+          const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion");
+          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+          if (fraction <= 0) {
+            effectiveWalkForce = 0;
+            effectiveTargetSpeed = 0;
+            character.isActivelyWalking = false;
+          } else {
+            effectiveWalkForce *= fraction;
+            effectiveTargetSpeed *= fraction;
+          }
         }
       }
     }
@@ -6969,6 +7016,40 @@ class EnergyBus {
     return this.staminaRegenRateProp.get(registry);
   }
   /**
+   * Peeks how much power (in Watts) would be granted without consuming pool energy or draining stamina.
+   */
+  peekPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false) {
+    if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
+      return 0;
+    }
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if (this.isExhausted && !allowWhenExhausted || maxP <= 0 || curS <= 1e-4) {
+      return 0;
+    }
+    let targetWatts = Math.min(requestedPowerWatts, maxP);
+    if (this._totalDemand > maxP) {
+      targetWatts = requestedPowerWatts / this._totalDemand * maxP;
+    }
+    if (targetWatts <= 1e-4) {
+      return 0;
+    }
+    const maxWattsFromStamina = maxP * (curS / dt);
+    targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
+    if (targetWatts <= 1e-4) {
+      return 0;
+    }
+    if (pool) {
+      if (pool.infiniteEnergy) return targetWatts;
+      const curPoolE = pool.getCurrentEnergy(registry);
+      if (curPoolE <= 1e-4) return 0;
+      const energyNeededJoules = targetWatts * dt;
+      const grantedJoules = Math.min(curPoolE, energyNeededJoules);
+      return grantedJoules / dt;
+    }
+    return targetWatts;
+  }
+  /**
    * Requests power draw (in Watts) over dt seconds.
    * Depletes stamina whenever power > 0.
    */
@@ -7337,7 +7418,10 @@ class Character extends GameObject {
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && ((_b = this.walkingModule) == null ? void 0 : _b.sprintConsumesEnergy)) {
       const sprintBus = this.getEnergyBus(this.walkingModule.sprintEnergyBusId);
-      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(this.properties) <= 1e-4)) {
+        sprintingNow = false;
+        this.setSprinting(false);
+      }
     }
     const locomotionConsumesEnergy = sprintingNow ? (_c = this.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = this.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
     if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule) {
