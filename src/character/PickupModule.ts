@@ -14,11 +14,14 @@ export class PickupModule {
    * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
    */
   public consumesEnergy: boolean = false;
+  /** Whether picking up is allowed when power cannot provide 100% full lift */
+  public allowPartialPower: boolean = false;
   public energyBusId: string = "bus_main";
 
-  constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; enabled?: boolean }) {
+  constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; allowPartialPower?: boolean; enabled?: boolean }) {
     this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
@@ -118,8 +121,8 @@ export class PickupModule {
         const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
         const liftHeight = 0.45;
         const metabolicJoules = Math.max(5, (targetMass * 9.81 * liftHeight) / 0.25);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties);
-        if (fraction < 1) {
+        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties, this.allowPartialPower);
+        if (fraction <= 0 || (!this.allowPartialPower && fraction < 1.0)) {
           // Not enough energy to complete the lift
           return false;
         }

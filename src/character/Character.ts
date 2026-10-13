@@ -109,6 +109,8 @@ export class Character extends GameObject {
 
   /** Toggle indicating if jumping consumes energy from an Energy Bus */
   public jumpConsumesEnergy: boolean = true;
+  /** Whether jumping is allowed to run at partial impulse when bus power cannot provide 100% */
+  public jumpAllowPartialPower: boolean = false;
   public jumpEnergyBusId: string = "bus_main";
 
   // Player identity & multiplayer slot
@@ -217,12 +219,14 @@ export class Character extends GameObject {
     } else {
       this.walkingModule = new WalkingModule({
         walkConsumesEnergy: false,
+        walkAllowPartialPower: false,
         sprintConsumesEnergy: true,
+        sprintAllowPartialPower: true,
       });
       this.walkingModule.walkEnergyBusId = "bus_main";
       this.walkingModule.sprintEnergyBusId = "bus_main";
 
-      this.pickupModule = new PickupModule({ consumesEnergy: false });
+      this.pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
       this.pickupModule.energyBusId = "bus_main";
 
       this.throwModule = new ThrowModule({ consumesEnergy: true });
@@ -230,12 +234,13 @@ export class Character extends GameObject {
 
       this.jumpModule = new JumpModule();
       this.jumpConsumesEnergy = true;
+      this.jumpAllowPartialPower = false;
       this.jumpEnergyBusId = "bus_main";
 
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
     }
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
-    this.healthModule = new HealthModule({ consumesEnergy: true });
+    this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
     this.healthModule.energyBusId = "bus_main";
     this.energyPool = new EnergyPool();
     this.energyBus = new EnergyBus();
@@ -285,8 +290,11 @@ export class Character extends GameObject {
     let energyFraction = 1.0;
     if (this.jumpConsumesEnergy) {
       if (bus) {
-        energyFraction = bus.requestEnergy(metabolicJoules, 0.05, this.energyPool, this.properties);
-        if (energyFraction <= 0) {
+        if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
+          return false;
+        }
+        energyFraction = bus.requestEnergy(metabolicJoules, 0.05, this.energyPool, this.properties, this.jumpAllowPartialPower);
+        if (energyFraction <= 0 || (!this.jumpAllowPartialPower && energyFraction < 1.0)) {
           return false;
         }
       }

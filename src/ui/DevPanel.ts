@@ -1311,6 +1311,10 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Walk Consumes Energy</span>
               <input type="checkbox" id="check-walk-energy" ${char.walkingModule?.walkConsumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-walk-partial-power" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+              <input type="checkbox" id="check-walk-partial-power" ${char.walkingModule?.walkAllowPartialPower ? 'checked' : ''}>
+            </div>
             <div id="field-walk-energy-bus" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
               <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Walk Energy Bus</label>
               <select id="select-walk-energy-bus" class="dev-select" style="width: 100%;">
@@ -1320,6 +1324,10 @@ export class DevPanel {
             <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
               <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+              <input type="checkbox" id="check-sprint-partial-power" ${char.walkingModule?.sprintAllowPartialPower ? 'checked' : ''}>
             </div>
             <div id="field-sprint-energy-bus" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
               <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Sprint Energy Bus</label>
@@ -1343,6 +1351,10 @@ export class DevPanel {
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+              <input type="checkbox" id="check-pickup-partial-power" ${char.pickupModule?.allowPartialPower ? 'checked' : ''}>
             </div>
             <div id="field-pickup-energy-bus" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
               <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
@@ -1401,6 +1413,10 @@ export class DevPanel {
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
+            </div>
+            <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+              <input type="checkbox" id="check-jump-partial-power" ${char.jumpAllowPartialPower ? 'checked' : ''}>
             </div>
             <div id="field-jump-energy-bus" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
               <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
@@ -1461,6 +1477,10 @@ export class DevPanel {
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
             </div>
+            <div id="field-climb-partial-power" style="display: ${char.climbingModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+              <input type="checkbox" id="check-climb-partial-power" ${char.climbingModule?.allowPartialPower ? 'checked' : ''}>
+            </div>
             <div id="field-climb-energy-bus" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
               <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
               <select id="select-climb-energy-bus" class="dev-select" style="width: 100%;">
@@ -1497,6 +1517,10 @@ export class DevPanel {
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
             <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
             <input type="checkbox" id="check-health-energy" ${hm.consumesEnergy ? 'checked' : ''}>
+          </div>
+          <div id="field-health-partial-power" style="display: ${hm.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
+            <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
+            <input type="checkbox" id="check-health-partial-power" ${hm.allowPartialPower ? 'checked' : ''}>
           </div>
           <div id="field-health-energy-bus" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
             <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
@@ -1968,7 +1992,9 @@ export class DevPanel {
         if (e instanceof Character) {
           (e as Character).walkingModule = new WalkingModule({
             walkConsumesEnergy: false,
+            walkAllowPartialPower: false,
             sprintConsumesEnergy: true,
+            sprintAllowPartialPower: true,
           });
           (e as Character).walkingModule!.walkEnergyBusId = "bus_main";
           (e as Character).walkingModule!.sprintEnergyBusId = "bus_main";
@@ -1976,7 +2002,7 @@ export class DevPanel {
         break;
       case "pickup":
         if (e instanceof Character) {
-          (e as Character).pickupModule = new PickupModule({ consumesEnergy: false });
+          (e as Character).pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
           (e as Character).pickupModule!.energyBusId = "bus_main";
         }
         break;
@@ -1990,6 +2016,7 @@ export class DevPanel {
         if (e instanceof Character) {
           (e as Character).jumpModule = new JumpModule();
           (e as Character).jumpConsumesEnergy = true;
+          (e as Character).jumpAllowPartialPower = false;
           (e as Character).jumpEnergyBusId = "bus_main";
         }
         break;
@@ -2000,7 +2027,7 @@ export class DevPanel {
         break;
       case "climbing":
         if (e instanceof Character) {
-          (e as Character).climbingModule = new ClimbingModule({ consumesEnergy: true });
+          (e as Character).climbingModule = new ClimbingModule({ consumesEnergy: true, allowPartialPower: false });
           (e as Character).climbingModule!.energyBusId = "bus_main";
         }
         break;
@@ -2012,6 +2039,7 @@ export class DevPanel {
           baseMaxHealRate: 10,
           maxHealRate: 10,
           consumesEnergy: true,
+          allowPartialPower: true,
         });
         e.healthModule.energyBusId = "bus_main";
         break;
@@ -2250,11 +2278,19 @@ export class DevPanel {
 
       // Energy consumption checkboxes & bus selectors
       const checkWalkEnergy = this.container.querySelector("#check-walk-energy") as HTMLInputElement;
+      const fieldWalkPartialPower = this.container.querySelector("#field-walk-partial-power") as HTMLElement;
+      const checkWalkPartialPower = this.container.querySelector("#check-walk-partial-power") as HTMLInputElement;
       const fieldWalkBus = this.container.querySelector("#field-walk-energy-bus") as HTMLElement;
       checkWalkEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.walkConsumesEnergy = checkWalkEnergy.checked;
+          if (fieldWalkPartialPower) fieldWalkPartialPower.style.display = checkWalkEnergy.checked ? "flex" : "none";
           if (fieldWalkBus) fieldWalkBus.style.display = checkWalkEnergy.checked ? "block" : "none";
+        }
+      });
+      checkWalkPartialPower?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.walkAllowPartialPower = checkWalkPartialPower.checked;
         }
       });
       const selectWalkBus = this.container.querySelector("#select-walk-energy-bus") as HTMLSelectElement;
@@ -2265,11 +2301,19 @@ export class DevPanel {
       });
 
       const checkSprintEnergy = this.container.querySelector("#check-sprint-energy") as HTMLInputElement;
+      const fieldSprintPartialPower = this.container.querySelector("#field-sprint-partial-power") as HTMLElement;
+      const checkSprintPartialPower = this.container.querySelector("#check-sprint-partial-power") as HTMLInputElement;
       const fieldSprintBus = this.container.querySelector("#field-sprint-energy-bus") as HTMLElement;
       checkSprintEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
+          if (fieldSprintPartialPower) fieldSprintPartialPower.style.display = checkSprintEnergy.checked ? "flex" : "none";
           if (fieldSprintBus) fieldSprintBus.style.display = checkSprintEnergy.checked ? "block" : "none";
+        }
+      });
+      checkSprintPartialPower?.addEventListener("change", () => {
+        if (char.walkingModule) {
+          char.walkingModule.sprintAllowPartialPower = checkSprintPartialPower.checked;
         }
       });
       const selectSprintBus = this.container.querySelector("#select-sprint-energy-bus") as HTMLSelectElement;
@@ -2303,11 +2347,19 @@ export class DevPanel {
         pickupReachSocketEl.appendChild(prCtrl.element);
       }
       const checkPickupEnergy = this.container.querySelector("#check-pickup-energy") as HTMLInputElement;
+      const fieldPickupPartialPower = this.container.querySelector("#field-pickup-partial-power") as HTMLElement;
+      const checkPickupPartialPower = this.container.querySelector("#check-pickup-partial-power") as HTMLInputElement;
       const fieldPickupBus = this.container.querySelector("#field-pickup-energy-bus") as HTMLElement;
       checkPickupEnergy?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
+          if (fieldPickupPartialPower) fieldPickupPartialPower.style.display = checkPickupEnergy.checked ? "flex" : "none";
           if (fieldPickupBus) fieldPickupBus.style.display = checkPickupEnergy.checked ? "block" : "none";
+        }
+      });
+      checkPickupPartialPower?.addEventListener("change", () => {
+        if (char.pickupModule) {
+          char.pickupModule.allowPartialPower = checkPickupPartialPower.checked;
         }
       });
       const selectPickupBus = this.container.querySelector("#select-pickup-energy-bus") as HTMLSelectElement;
@@ -2375,10 +2427,16 @@ export class DevPanel {
         jumpSpeedSocketEl.appendChild(jspCtrl.element);
       }
       const checkJumpEnergy = this.container.querySelector("#check-jump-energy") as HTMLInputElement;
+      const fieldJumpPartialPower = this.container.querySelector("#field-jump-partial-power") as HTMLElement;
+      const checkJumpPartialPower = this.container.querySelector("#check-jump-partial-power") as HTMLInputElement;
       const fieldJumpBus = this.container.querySelector("#field-jump-energy-bus") as HTMLElement;
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
+        if (fieldJumpPartialPower) fieldJumpPartialPower.style.display = checkJumpEnergy.checked ? "flex" : "none";
         if (fieldJumpBus) fieldJumpBus.style.display = checkJumpEnergy.checked ? "block" : "none";
+      });
+      checkJumpPartialPower?.addEventListener("change", () => {
+        char.jumpAllowPartialPower = checkJumpPartialPower.checked;
       });
       const selectJumpBus = this.container.querySelector("#select-jump-energy-bus") as HTMLSelectElement;
       selectJumpBus?.addEventListener("change", () => {
@@ -2435,11 +2493,19 @@ export class DevPanel {
         climbSpeedSocketEl.appendChild(csCtrl.element);
       }
       const checkClimbEnergy = this.container.querySelector("#check-climb-energy") as HTMLInputElement;
+      const fieldClimbPartialPower = this.container.querySelector("#field-climb-partial-power") as HTMLElement;
+      const checkClimbPartialPower = this.container.querySelector("#check-climb-partial-power") as HTMLInputElement;
       const fieldClimbBus = this.container.querySelector("#field-climb-energy-bus") as HTMLElement;
       checkClimbEnergy?.addEventListener("change", () => {
         if (char.climbingModule) {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
+          if (fieldClimbPartialPower) fieldClimbPartialPower.style.display = checkClimbEnergy.checked ? "flex" : "none";
           if (fieldClimbBus) fieldClimbBus.style.display = checkClimbEnergy.checked ? "block" : "none";
+        }
+      });
+      checkClimbPartialPower?.addEventListener("change", () => {
+        if (char.climbingModule) {
+          char.climbingModule.allowPartialPower = checkClimbPartialPower.checked;
         }
       });
       const selectClimbBus = this.container.querySelector("#select-climb-energy-bus") as HTMLSelectElement;
@@ -2498,10 +2564,16 @@ export class DevPanel {
         hpPerJouleSocketEl.appendChild(jCtrl.element);
       }
       const checkHealthEnergy = this.container.querySelector("#check-health-energy") as HTMLInputElement;
+      const fieldHealthPartialPower = this.container.querySelector("#field-health-partial-power") as HTMLElement;
+      const checkHealthPartialPower = this.container.querySelector("#check-health-partial-power") as HTMLInputElement;
       const fieldHealthBus = this.container.querySelector("#field-health-energy-bus") as HTMLElement;
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
+        if (fieldHealthPartialPower) fieldHealthPartialPower.style.display = checkHealthEnergy.checked ? "flex" : "none";
         if (fieldHealthBus) fieldHealthBus.style.display = checkHealthEnergy.checked ? "block" : "none";
+      });
+      checkHealthPartialPower?.addEventListener("change", () => {
+        hm.allowPartialPower = checkHealthPartialPower.checked;
       });
       const selectHealthBus = this.container.querySelector("#select-health-energy-bus") as HTMLSelectElement;
       selectHealthBus?.addEventListener("change", () => {

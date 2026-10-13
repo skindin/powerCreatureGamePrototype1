@@ -42,6 +42,8 @@ export class ClimbingModule {
    * Whether climbing consumes energy from an Energy Bus (placeholder toggle).
    */
   public consumesEnergy: boolean = false;
+  /** Whether climbing is allowed to run when power cannot provide 100% */
+  public allowPartialPower: boolean = false;
   public energyBusId: string = "bus_main";
 
   constructor(options?: {
@@ -49,12 +51,14 @@ export class ClimbingModule {
     maxClimbSpeed?: number;
     horizontalClimb?: boolean;
     consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
     enabled?: boolean;
   }) {
     this.maxAdhesionProp = new DynamicProperty(options?.maxAdhesion ?? 105.0);
     this.maxClimbSpeedProp = new DynamicProperty(options?.maxClimbSpeed ?? 3.0);
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
@@ -220,11 +224,12 @@ export class ClimbingModule {
           const ascentWatts = isClimbHeld ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
           const powerReq = isometricHoldingWatts + ascentWatts;
 
-          const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties);
-          if (granted <= 0 || bus.isExhausted) {
-            // Stamina / energy exhausted: slip from the wall and fall
+          const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties, false, "climbing", this.allowPartialPower);
+          if (granted <= 0 || bus.isExhausted || (!this.allowPartialPower && granted < powerReq - 0.001)) {
+            // Stamina / energy exhausted or full power unsatisfied: slip from the wall and fall
             character.isClimbing = false;
             this.climbSuppressedUntilRelease = true;
+            bus.registerDemand("climbing", 0, this.allowPartialPower);
             return false;
           }
           climbPowerScale = Math.min(1.0, granted / powerReq);
@@ -294,6 +299,20 @@ export class ClimbingModule {
     // they latch on and start climbing from their current height immediately!
     const contactTolerance = 0.03;
     if (isClimbHeld && hasMoveInput && targetDot > 0.01 && shortestDist <= r + contactTolerance && character.position.z < targetWall.wallHeight) {
+      if (this.consumesEnergy) {
+        const bus = character.getEnergyBus(this.energyBusId);
+        if (bus) {
+          const g = arena.gravity || 9.81;
+          const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
+          const maxAscentSpeed = this.maxClimbSpeedProp.get(character.properties);
+          const powerReq = isometricHoldingWatts + (totalMass * g * maxAscentSpeed) / 0.25;
+          if (!this.allowPartialPower && !bus.canSatisfyFullPower(powerReq, dt, character.energyPool, character.properties, "climbing")) {
+            character.isClimbing = false;
+            return false;
+          }
+        }
+      }
+
       // Ensure any micro-gap to the wall is completely closed before climbing begins
       if (shortestDist > 0.001) {
         const wallNormalX = targetDx / shortestDist;
@@ -321,6 +340,10 @@ export class ClimbingModule {
       return true;
     }
 
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) bus.registerDemand("climbing", 0, this.allowPartialPower);
+    }
     character.isClimbing = false;
     return false;
   }

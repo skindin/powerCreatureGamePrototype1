@@ -36,13 +36,15 @@ export class HealthModule {
 
   /** Toggle indicating whether healing draws energy from an Energy Bus */
   public consumesEnergy: boolean = false;
+  /** Whether healing is allowed to run when bus power cannot provide 100% full wattage */
+  public allowPartialPower: boolean = true;
   /** ID of the Energy Bus to draw power from */
   public energyBusId: string = "bus_main";
 
   /** Optional callback invoked when entity dies and respawns */
   public onDeathRespawn?: (entity: Character, respawnPos: { x: number; y: number; z: number }) => void;
 
-  constructor(options?: HealthModuleOptions) {
+  constructor(options?: HealthModuleOptions & { allowPartialPower?: boolean }) {
     this.baseMaxHp = options?.baseMaxHp ?? 100.0;
     const initialMaxHp = options?.maxHp ?? this.baseMaxHp;
     this.maxHpProp = new DynamicProperty(initialMaxHp);
@@ -55,6 +57,7 @@ export class HealthModule {
     this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.04);
 
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
@@ -144,7 +147,7 @@ export class HealthModule {
             // Bio-regeneration power: Power = healRate / (HP/Joule)
             const hpPerJoule = this.getHpPerJoule(registry);
             const powerWatts = healRate / Math.max(0.0001, hpPerJoule);
-            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen");
+            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen", this.allowPartialPower);
             if (granted <= 0) {
               effectiveHealRate = 0;
             } else {

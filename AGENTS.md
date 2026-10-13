@@ -158,6 +158,10 @@
 - **Phase 11.15 (Default Energy Capacity Update to 10,000 Joules)**:
   - **Default Energy Pool Capacity**: Updated default `baseMaxEnergy` in `EnergyPool` from 1,000.0 J to 10,000.0 J. Newly spawned characters, freshly initialized pools, and reset energy reserves now start with a full 10,000 Joules energy reservoir.
   - **Automated Verification**: Verified 100% across the full regression test suite (`test_energy_consumption.ts`, `test_healing_stamina_drain.ts`, `test_background_respawn.ts`, etc.).
+- **Phase 11.16 (Allow Partial Power & Two-Tier Priority Precedent Architecture)**:
+  - **Two-Tier Priority Allocation**: In `EnergyBus`, full-power demands (`allowPartialPower = false`) take absolute precedence over partial-power demands (`allowPartialPower = true`), evaluated in FIFO order. If a full-power ability (e.g. Climb or Jump) is initiated while partial-power abilities (Sprint, Heal) are running, the full-power ability claims 100% of its needed wattage, while partial-power abilities yield headroom and scale down proportionally to share whatever capacity remains. If bus capacity or headroom cannot satisfy 100% of a full-power ability, it receives 0 W and refuses to run.
+  - **Ability Toggles & Presets**: Added `Allow Partial Power` boolean toggles conditionally rendered under each `Consumes Energy` toggle in the DevPanel inspector across Walking (default false), Sprinting (default true), Jump (default false), Climbing (default false), Pickup (default false), and Health/Healing (default true). Excluded from Throwing.
+  - **Automated Verification**: Verified 100% via `scratch/test_allow_partial_power.ts` alongside the full project regression test suite.
 
 ---
 
