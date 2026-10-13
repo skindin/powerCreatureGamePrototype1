@@ -132,6 +132,12 @@
   - **Cloud Run Proxy & Tunnel Middleware Fix**: Narrowed isTunnel in vite.config.ts to only match loca.lt domains (preventing Cloud Run HTTPS reverse proxy headers from triggering tunnel redirects or serving stale bundles).
   - **CSS Delivery Restored**: Eliminated the 302 redirect on /src/style.css, restoring full CSS styling and default accordion collapsing.
   - **PWA Service Worker Scoping**: Restricted service worker registration to explicit loca.lt domains, ensuring Cloud Run preview iframes always fetch live un-cached source files.
+- **Phase 11.10 (Multi-Ability Proportional Power Rationing & Resting Stamina Recovery)**:
+  - **Proportional Power Rationing Formula**: When multiple abilities concurrently demand power exceeding `maxPower` (250 W), each ability receives its exact proportional share: `P_granted = (P_demanded / P_total_demanded) * maxPower`. Total power draw is strictly capped at `maxPower` (250 W), preventing excess power draw (e.g., 401.8 W previously drawn when sprinting and healing simultaneously).
+  - **Physical Exertion vs Metabolic Healing Separation**: Muscular burst stamina is only depleted by physical movement/actions (`WalkingModule`, `ClimbingModule`, jumps, throws, lifts). Passive cellular bio-healing (`HealthModule`) draws power through the bus against `maxPower` and consumes Joules from `EnergyPool`, but does not drain muscular burst stamina or prevent resting stamina recovery.
+  - **Resting Stamina Recovery**: When physically resting (stationary on the ground), stamina smoothly regenerates at `staminaRegenRate` (1.0 s/s) all the way to 100% (10.0s) capacity without freezing at 2.0s or oscillating while wounded.
+  - **Airborne Jump Holding Energy Fix**: In `Character.jump`, verified physical grounding (`isGrounded`) before charging metabolic jump impulse energy, eliminating phantom energy drains while airborne with Space held. Reordered hold-to-jump buffer before `bus.update(dt)`.
+  - **Automated Verification**: Verified 100% across `test_concurrent_rationing_and_stamina.ts`, `test_locomotion_wattage.ts`, `test_stamina_drain_equation.ts`, `test_energy_consumption.ts`, and `test_health_and_damage_aura.ts`.
 
 ---
 

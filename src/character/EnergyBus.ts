@@ -37,6 +37,50 @@ export class EnergyBus {
   // Live telemetry for DevPanel & ability inspection
   public livePowerDraw: number = 0;
   public currentWattageProp: DynamicProperty;
+  public hadPhysicalExertion: boolean = false;
+
+  // Registered ability power demands for the current tick
+  private _demands: Map<string, number> = new Map();
+  private _totalDemand: number = 0;
+
+  /**
+   * Resets active demands and live power draw at the start of a tick.
+   */
+  public beginTick(): void {
+    this._demands.clear();
+    this._totalDemand = 0;
+    this.livePowerDraw = 0;
+    this.hadPhysicalExertion = false;
+  }
+
+  /**
+   * Registers or updates an ability's power demand for the current tick.
+   */
+  public registerDemand(abilityId: string, demandedWatts: number): void {
+    if (demandedWatts > 0.001) {
+      this._demands.set(abilityId, demandedWatts);
+    } else {
+      this._demands.delete(abilityId);
+    }
+    let sum = 0;
+    for (const d of this._demands.values()) {
+      sum += d;
+    }
+    this._totalDemand = sum;
+  }
+
+  public getDemand(abilityId: string): number {
+    return this._demands.get(abilityId) ?? 0;
+  }
+
+  public getTotalDemand(): number {
+    return this._totalDemand;
+  }
+
+  public clearDemands(): void {
+    this._demands.clear();
+    this._totalDemand = 0;
+  }
 
   constructor(options?: {
     id?: string;
@@ -115,9 +159,10 @@ export class EnergyBus {
     dt: number,
     pool?: EnergyPool | null,
     registry?: ObjectPropertiesRegistry,
-    allowWhenExhausted: boolean = false
+    allowWhenExhausted: boolean = false,
+    abilityId?: string
   ): number {
-    if (!this.enabled || dt <= 0) {
+    if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
       return 0;
     }
 
@@ -129,18 +174,31 @@ export class EnergyBus {
       return 0;
     }
 
-    // 1. Initial power capped by bus maximum
+    if (maxP <= 0) {
+      return 0;
+    }
+
+    // If abilityId provided, update/register demand
+    if (abilityId) {
+      this.registerDemand(abilityId, requestedPowerWatts);
+    }
+
+    // 1. Multi-ability proportional rationing:
+    // When multiple abilities combine to surpass max power capacity, each ability
+    // is proportionally nerfed: (demanded / totalDemanded) * maxPower.
     let targetWatts = Math.min(requestedPowerWatts, maxP);
-    if (targetWatts <= 0) {
+    if (this._totalDemand > maxP) {
+      targetWatts = (requestedPowerWatts / this._totalDemand) * maxP;
+    }
+
+    if (targetWatts <= 0.0001) {
       return 0;
     }
 
     // 2. Cap targetWatts so stamina depletion does not exceed remaining stamina this frame
     // Equation: staminaDrain = (targetWatts / maxP) * dt <= curS  =>  targetWatts <= maxP * (curS / dt)
-    if (maxP > 0) {
-      const maxWattsFromStamina = maxP * (curS / dt);
-      targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
-    }
+    const maxWattsFromStamina = maxP * (curS / dt);
+    targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
 
     if (targetWatts <= 0.0001) {
       this.isExhausted = true;
@@ -154,7 +212,6 @@ export class EnergyBus {
       const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
       if (grantedJoules <= 0.0001) {
         this.isExhausted = true;
-        this.currentStaminaProp.set(0, registry);
         return 0;
       }
       grantedWatts = grantedJoules / dt;
@@ -166,12 +223,15 @@ export class EnergyBus {
     // 4. Drain stamina proportionally to actual granted power
     // Equation: current wattage / max wattage per second => staminaDrain = (grantedWatts / maxP) * dt
     if (grantedWatts > 0 && maxP > 0) {
-      const staminaDrain = (grantedWatts / maxP) * dt;
-      const nextS = Math.max(0, curS - staminaDrain);
-      this.currentStaminaProp.set(nextS, registry);
+      if (abilityId !== "health_regen") {
+        this.hadPhysicalExertion = true;
+        const staminaDrain = (grantedWatts / maxP) * dt;
+        const nextS = Math.max(0, curS - staminaDrain);
+        this.currentStaminaProp.set(nextS, registry);
 
-      if (nextS <= 0.0001) {
-        this.isExhausted = true;
+        if (nextS <= 0.0001) {
+          this.isExhausted = true;
+        }
       }
     }
 
@@ -194,7 +254,7 @@ export class EnergyBus {
     const maxP = Math.max(1, this.getMaxPower(registry));
     const dt = Math.max(minDt, joules / maxP);
     const watts = joules / dt;
-    const granted = this.requestPower(watts, dt, pool, registry);
+    const granted = this.requestPower(watts, dt, pool, registry, false, "burst_action");
     return watts > 0 ? Math.min(1, granted / watts) : 0;
   }
 
@@ -204,9 +264,7 @@ export class EnergyBus {
   public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
     if (!this.enabled || dt <= 0) return;
 
-    const hadPowerDraw = this.livePowerDraw > 0.0001;
-
-    // Decay live power draw reading if no power was requested this tick
+    // Publish final live power draw reading to currentWattageProp
     this.currentWattageProp.set(this.livePowerDraw, registry);
     this.livePowerDraw = 0;
 
@@ -222,8 +280,9 @@ export class EnergyBus {
       }
     }
 
-    // Recover stamina only when not actively drawing power
-    if (!hadPowerDraw && curS < maxS) {
+    // Recover stamina when physically resting (no physical exertion this tick)
+    const isResting = !this.hadPhysicalExertion;
+    if (isResting && curS < maxS) {
       curS = Math.min(maxS, curS + regen * dt);
       this.currentStaminaProp.set(curS, registry);
     }
@@ -232,5 +291,7 @@ export class EnergyBus {
     if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) <= 0.0001) {
       this.isExhausted = true;
     }
+
+    this.hadPhysicalExertion = false;
   }
 }

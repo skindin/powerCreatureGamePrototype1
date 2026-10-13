@@ -369,14 +369,86 @@ export class Character extends GameObject {
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
 
-    // 0. Process modular climbing if pressing into wall and holding climb input
-    // Requires: climbingModule enabled, Vertical Position enabled, and Strength enabled
+    // Start of tick: Reset demand registrations and live power draw on all energy busses
+    if (this.energyBusses.size > 0) {
+      for (const bus of this.energyBusses.values()) {
+        if (bus && bus.enabled) bus.beginTick();
+      }
+    } else if (this.energyBus && this.energyBus.enabled) {
+      this.energyBus.beginTick();
+    }
+
+    // Pre-register active ability demands for proportional power rationing across abilities:
+    // 1. Locomotion demand (Walking / Sprinting)
+    const canWalk = Boolean(this.walkingModule && this.walkingModule.enabled && this.hasFriction);
+    const inputMag = Math.hypot(movementInput.x, movementInput.y);
+    const isMoving = inputMag > 0.05;
+    const isActivelySprinting = Boolean(this.walkingModule?.canSprint && this.isSprinting);
+    let sprintingNow = isActivelySprinting;
+    if (sprintingNow && this.walkingModule?.sprintConsumesEnergy) {
+      const sprintBus = this.getEnergyBus(this.walkingModule.sprintEnergyBusId);
+      if (sprintBus && sprintBus.isExhausted) sprintingNow = false;
+    }
+    const locomotionConsumesEnergy = sprintingNow
+      ? this.walkingModule?.sprintConsumesEnergy
+      : this.walkingModule?.walkConsumesEnergy;
+    if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule) {
+      const carriedMass = this.carriedMass;
+      const loadFactor = carriedMass / (Math.max(0.1, this.strength) * 8.0);
+      const targetSpeed = sprintingNow
+        ? this.walkingModule.maxSprintSpeedProp.get(this.properties)
+        : this.walkingModule.maxWalkSpeedProp.get(this.properties);
+      const v = targetSpeed / (1.0 + loadFactor);
+      const g = 9.81;
+      const Cr = sprintingNow ? 0.40 : 0.28;
+      const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1.0;
+      const resForce = totalMass * g * Cr;
+      const locomotionWatts = (resForce * v) / 0.25;
+      const bus = this.getEnergyBus(sprintingNow ? this.walkingModule.sprintEnergyBusId : this.walkingModule.walkEnergyBusId);
+      if (bus) {
+        bus.registerDemand("locomotion", locomotionWatts);
+      }
+    }
+
+    // 2. Health regeneration demand
+    if (this.healthModule && this.healthModule.enabled && this.healthModule.consumesEnergy) {
+      const curHp = this.healthModule.getCurrentHp(this.properties);
+      const maxHp = this.healthModule.getMaxHp(this.properties);
+      if (curHp > 0 && curHp < maxHp - 0.001) {
+        const healRate = this.healthModule.getMaxHealRate(this.properties);
+        if (healRate > 0) {
+          const hpPerJoule = this.healthModule.getHpPerJoule(this.properties);
+          const healthWatts = healRate / Math.max(0.0001, hpPerJoule);
+          const bus = this.getEnergyBus(this.healthModule.energyBusId);
+          if (bus) {
+            bus.registerDemand("health_regen", healthWatts);
+          }
+        }
+      }
+    }
+
+    // 3. Climbing demand
     const canClimb = Boolean(
       this.climbingModule &&
       this.climbingModule.enabled &&
       this.hasVerticalPosition &&
       this.hasStrength
     );
+    if (canClimb && this.isClimbing && this.climbingModule?.consumesEnergy) {
+      const totalMass = this.mass;
+      const g = arena.gravity || 9.81;
+      const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
+      const maxAscentSpeed = this.climbingModule.maxClimbSpeedProp.get(this.properties);
+      const ascentWatts = isClimbInput ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
+      const climbWatts = isometricHoldingWatts + ascentWatts;
+      const bus = this.getEnergyBus(this.climbingModule.energyBusId);
+      if (bus) {
+        bus.registerDemand("climbing", climbWatts);
+      }
+    }
+
+    // 0. Process modular climbing if pressing into wall and holding climb input
+    // Requires: climbingModule enabled, Vertical Position enabled, and Strength enabled
     if (canClimb) {
       this.climbingModule!.update(this, movementInput, isClimbInput, dt, arena);
     } else if (this.isClimbing) {
@@ -392,7 +464,6 @@ export class Character extends GameObject {
 
     // 1. Process modular walking
     // Requires: walkingModule enabled and Friction enabled
-    const canWalk = Boolean(this.walkingModule && this.walkingModule.enabled && this.hasFriction);
     if (canWalk) {
       this.walkingModule!.update(this, movementInput, dt, arena);
     } else {
@@ -407,7 +478,12 @@ export class Character extends GameObject {
       this.healthModule.update(dt, this, arena);
     }
 
-    // 2c. Update energy bus stamina recovery
+    // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
+    if (isClimbInput && !this.isClimbing && canJump) {
+      this.jump(arena, movementInput);
+    }
+
+    // 2c. Update energy bus stamina recovery (runs after all physical abilities and buffers in the tick)
     if (this.energyBusses.size > 0) {
       for (const bus of this.energyBusses.values()) {
         if (bus && bus.enabled) {
@@ -416,11 +492,6 @@ export class Character extends GameObject {
       }
     } else if (this.energyBus && this.energyBus.enabled) {
       this.energyBus.update(dt, this.energyPool, this.properties);
-    }
-
-    // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
-    if (isClimbInput && !this.isClimbing && canJump) {
-      this.jump(arena, movementInput);
     }
 
     // 3. Update facing orientation using intended movement input or aim.

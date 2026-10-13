@@ -51,8 +51,8 @@ export class HealthModule {
     this.baseMaxHealRate = options?.baseMaxHealRate ?? 10.0;
     this.maxHealRateProp = new DynamicProperty(options?.maxHealRate ?? this.baseMaxHealRate);
 
-    // Default 0.02 HP/Joule (equals 50 Joules per 1 HP)
-    this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.02);
+    // Default 0.04 HP/Joule (equals 25 Joules per 1 HP, 250W at 10 HP/s)
+    this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.04);
 
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
@@ -134,7 +134,7 @@ export class HealthModule {
     const max = this.getMaxHp(registry);
 
     // Passive regeneration if wounded and alive
-    if (current > 0 && current < max) {
+    if (current > 0 && current < max - 0.001) {
       const healRate = this.getMaxHealRate(registry);
       if (healRate > 0) {
         let effectiveHealRate = healRate;
@@ -143,8 +143,8 @@ export class HealthModule {
           if (bus) {
             // Bio-regeneration power: Power = healRate / (HP/Joule)
             const hpPerJoule = this.getHpPerJoule(registry);
-            const powerWatts = healRate / hpPerJoule;
-            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry);
+            const powerWatts = healRate / Math.max(0.0001, hpPerJoule);
+            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen");
             if (granted <= 0) {
               effectiveHealRate = 0;
             } else {
@@ -154,9 +154,15 @@ export class HealthModule {
         }
         if (effectiveHealRate > 0) {
           const nextHp = Math.min(max, current + effectiveHealRate * dt);
-          this.currentHpProp.set(nextHp, registry);
+          if (nextHp >= max - 0.001) {
+            this.currentHpProp.set(max, registry);
+          } else {
+            this.currentHpProp.set(nextHp, registry);
+          }
         }
       }
+    } else if (current >= max - 0.001 && current !== max) {
+      this.currentHpProp.set(max, registry);
     }
 
     // Check death condition
