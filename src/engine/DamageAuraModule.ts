@@ -89,7 +89,14 @@ export class DamageAuraModule {
       const distSq = dx * dx + dy * dy + dz * dz;
 
       if (distSq <= radiusSq) {
-        healthMod.takeDamage(damageThisFrame, target.properties);
+        healthMod.takeDamage(damageThisFrame, target.properties, {
+          id: "damage_aura",
+          name: "Aura",
+          type: "continuous",
+          rate: rate,
+          color: "#ef4444",
+          isHeal: false,
+        });
       }
     }
   }

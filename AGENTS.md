@@ -60,6 +60,9 @@
   - `src/network/`: WebSocket room client, session manager, and relay simulator.
   - `src/server/`: Authoritative 60Hz physics world simulation, jitter buffer, contested grab arbiter.
   - `src/ui/`: DevPanel inspector, HUD, and InputManager.
+- **Git & Remote Tracking**:
+  - Remote: `https://github.com/skindin/powerCreatureGamePrototype1.git`
+  - Active Branch: `dynamic-property-references` (MANDATORY: always push to `origin dynamic-property-references`).
 
 ---
 
@@ -162,6 +165,110 @@
   - **Two-Tier Priority Allocation**: In `EnergyBus`, full-power demands (`allowPartialPower = false`) take absolute precedence over partial-power demands (`allowPartialPower = true`), evaluated in FIFO order. If a full-power ability (e.g. Climb or Jump) is initiated while partial-power abilities (Sprint, Heal) are running, the full-power ability claims 100% of its needed wattage, while partial-power abilities yield headroom and scale down proportionally to share whatever capacity remains. If bus capacity or headroom cannot satisfy 100% of a full-power ability, it receives 0 W and refuses to run.
   - **Ability Toggles & Presets**: Added `Allow Partial Power` boolean toggles conditionally rendered under each `Consumes Energy` toggle in the DevPanel inspector across Walking (default false), Sprinting (default true), Jump (default false), Climbing (default false), Pickup (default false), and Health/Healing (default true). Excluded from Throwing.
   - **Automated Verification**: Verified 100% via `scratch/test_allow_partial_power.ts` alongside the full project regression test suite.
+- **Phase 11.17 (Contention-Preserved Sprint Architecture & Continuous Mid-Air Sprinting)**:
+  - **Contention vs True Exhaustion Distinction**: Separated temporary power starvation from genuine stamina/energy exhaustion. In `EnergyBus`, added `canSupportPowerInIsolation(demandedWatts, minThreshold, dt, pool, registry)` to verify if sprinting would be supported if no competing abilities were running.
+  - **No Untoggle During Contention**: When competing abilities (e.g. Jump takeoff impulse, Climb, or Health bio-regen) consume bus capacity below the sprint threshold, sprint is NOT untoggled (`character.setSprinting(false)` is not called). The character temporarily falls back to base walk speed drawing 0 W sprint power, keeping sprint armed in the background.
+  - **Proportional Resumption**: As soon as competing abilities leave enough headroom to beat base walk speed ($> 98\text{ W}$), sprint immediately resumes at the exact achievable speed corresponding to available wattage ($5.20\text{ u/s} \to 8.06\text{ u/s}$), only reaching full speed when 100% of sprint power is available.
+  - **Continuous Mid-Air Sprinting**: Jump only charges metabolic impulse energy at the takeoff frame ($t = 0$). Mid-flight ($t > 0$), Jump is no longer consuming power, leaving the bus headroom open. When `walkInAir` is enabled, sprint does not wait until landing—it accelerates the character mid-air immediately as power allows.
+  - **True Exhaustion Untoggle**: When burst stamina reaches $0.0\text{s}$ or the energy pool is genuinely empty ("either way"), sprint cleanly untoggles, requiring the player to recover and re-toggle sprint.
+  - **Automated Verification**: Verified 100% via `scratch/test_sprint_midair_and_contention.ts` alongside the full regression test suite (`test_allow_partial_power.ts`, `test_concurrent_rationing_and_stamina.ts`, `test_locomotion_wattage.ts`, `test_stamina_drain_equation.ts`, `test_energy_consumption.ts`).
+- **Phase 11.18 (Two-Tier Coordinated Power Cap & Energy Cap Screen HUD & Asymmetric Power Decay)**:
+  - **Screen-Space HUD Widget (`EnergyHud`)**: Mounted in `.canvas-wrapper` at the bottom of the arena viewport, featuring a clean two-tier stacked layout with zero text pill clutter.
+  - **Upper Track (Power Bar - Width of Power Cap = 500 W)**:
+    - Track width strictly represents the **Power Cap** ($500\text{ W}$), sized at $22\text{px}$ height (`.energy-hud-track-power`).
+    - Glowing electric cyan live power draw bar (`#bar-hud-live-power`) showing active draw ($0\text{ W} \to 500\text{ W}$) with a clean border edge—white needle/dot completely removed.
+    - **Asymmetric Power Draw Smoothing**: Instantly snaps to higher values (instant attack) so momentary spikes like jumping ($500\text{ W}$) are immediately visible at their peak, then smoothly and quickly interpolates downwards ($\sim 350\text{ms}$ decay window, $\lambda = 9.5$) to make burst energy expenditure vivid and readable.
+    - **Multi-Tick Spike Retention (`recentPeakWattage`)**: In `EnergyBus`, tracks burst peak wattage across multi-tick accumulator frames so fixed timestep catchups never overwrite burst power draws with $0\text{ W}$ before the render frame reads them.
+    - Ability ticks proportionally placed on the power cap scale (Sprint $152\text{/s}$ at $30.4\%$, Jump $224$ at $44.8\%$, Climb $235\text{/s}$ at $47.0\%$, Heal $250\text{/s}$ at $50.0\%$, Throw $116$ at $23.2\%$).
+    - **Power Cap Marker**: Sits at the $100\%$ right edge of the top bar labeled `Power Cap 500/s`.
+    - **Hide Non-Consuming Abilities**: Completely hides Walk and any ability where `consumesEnergy` is false.
+    - **Anti-Collision Staggering**: Dynamic alternation between top and bottom tiers, plus automatic `tier-2` vertical elevation when two neighboring badges on the same side are within $9\%$ width of each other.
+  - **Lower Track (Energy & Stamina Scale - Width of Energy Cap = 10,000 J)**:
+    - Full track width represents the **Energy Cap** ($10,000\text{ J}$), explicitly showing the un-filled gap between current and max energy.
+    - **Current Energy Fill**: Amber/gold fill showing remaining pool energy ($0 \to 10,000\text{ J}$).
+    - **Current Stamina Fill**: Translucent emerald green fill showing current stamina in Joules ($E = \text{stamina} \times P_{\text{max}}$, up to $5,000\text{ J} = 50\%$).
+    - **Lower Track Live Power Bar**: Synchronized cyan power meter using the identical asymmetric instant attack and fast decay, scaled against the Energy Cap ($0 \to 500\text{ W} = 0\% \to 5\%$) so players directly see power draw relative to the Power Cap tick mark.
+    - **Power Cap Tick Mark**: Positioned at $500\text{ J}$ ($5\%$) labeled `Power Cap (500/s)`.
+    - **Stamina Cap Tick Mark**: Positioned at $5,000\text{ J}$ ($50\%$) labeled `Stamina Cap (5,000 J)`.
+    - **Energy Cap Indicator**: Sits at $100\%$ ($10,000\text{ J}$) labeled `Energy Cap (10,000 J)`.
+  - **First Jump Input Fix**: Automatically claims and activates the keyboard player on boot and executes jumps on the first Space keypress without swallowing the initial input.
+  - **Automated Verification**: Verified 100% via `scratch/test_live_power_bar_tracks.ts`, `scratch/test_energy_hud_scale_and_ticks.ts`, and `scratch/test_power_usage_asymmetric_decay.ts` alongside full project regression test suite.
+- **Phase 11.19 (Dedicated Instant Burst Architecture & Coordinated Power Peak Visualization)**:
+  - **Dedicated Instant Burst API (`requestInstantBurst`)**: Created a specialized API in `EnergyBus` for instantaneous work actions (jump, throw, pickup) rather than treating impulse work as continuous power.
+  - **Burst Capacity Limit**: Instant actions are strictly bounded by available burst capacity: $\text{burst energy} \le \text{currentStamina} \times \text{maxPower}$. If `allowPartialPower = true`, executes with the maximum affordable work fraction; if false, prevents execution when stamina is insufficient.
+  - **Proportional Power Peaks**: Replaced artificial clamping to the 500 W ceiling with an intuitive visual power peak equation: $P_{\text{peak}} = \min(\text{maxPower}, P_{\text{baseline}} + P_{\text{burst}})$. A 224 J jump performed from a standstill honestly peaks at 224 W (matching the `Jump 224` tick on the upper track), while a jump during a 152 W sprint peaks at $152 + 224 = 376\text{ W}$.
+  - **Non-Destructive Peak Reading**: Removed the destructive `recentPeakWattage = 0` read inside `getCurrentWattage()`, replacing it with a timed hold window (`recentPeakHoldTimer`) that naturally resets to continuous live wattage after 0.08s. Both `DevPanel` and `EnergyHud` now read the identical peak reliably without erasing each other's state.
+  - **First-Press Jump & Unsuspend Synchronization**: In `InputManager.ts` and `PlayerManager.ts`, pressing Space immediately unsuspends the keyboard if paused and targets `primaryCharacter` even if unindexed, ensuring the power bar flashes instantly on the very first jump.
+  - **White Dot Removed with Intact Cyan Fill**: Maintained the clean solid cyan gradient bar without needle or dot on both tracks with instant attack and smooth quick decay ($\lambda = 9.5$).
+  - **Automated Verification**: Verified 100% via `scratch/test_instant_burst_architecture.ts` alongside the full project regression test suite.
+- **Phase 11.20 (Color-Coded Power Blocks, Precedence Tags & Clean Game UI)**:
+  - **Upper Power Bar Color-Coded Blocks**: Removed all static tick marks, tick lines, and badges from the top bar. Replaced with dynamic color-coded blocks representing each active consuming ability (Sprint in Amber `#f59e0b`, Heal in Green `#22c55e`, Climb in Purple `#a855f7`, Jump in Pink `#ec4899`, Walk in Sky Blue `#38bdf8`, Pickup in Yellow `#eab308`, Throw in Rose `#f43f5e`).
+  - **Clean Ability Tags with `/s` Rate Suffix**: Time-based continuous abilities display `/s` directly after the energy rate (e.g. `Sprint 152/s`, `Heal 250/s`, `Climb 260/s`, `Walk 69/s`), while instant burst actions display the energy work without `/s` (e.g. `Jump 224`). Removed all fraction percentages, units like "Watts", and debug text.
+  - **Transparent Game-Ready HUD**: Removed the card background, borders, and backdrop-filter covering the viewport. The HUD now floats seamlessly over the gameplay with sleek, dark translucent glass bars.
+  - **Clean Unified Bottom Bar**: Both bars share identical width. Visualizes Current Energy (gold fill), Current Stamina (emerald fill), Stamina Cap (notch), and Energy Cap (notch) on the same scale, with power cap and cyan meter completely removed.
+- **Phase 11.21 (Left-to-Right Chronological Stacking, Smooth Block Interpolation & Minimalist Game HUD)**:
+  - **Left-to-Right Activation Stacking**: In `EnergyBus`, active allocations and bursts are ordered by activation sequence (`order`). When sprinting starts first and a jump follows, Sprint remains anchored on the left and Jump smoothly expands to its right. Reverse order (jump first, then sprint) places Jump on the left and Sprint on the right.
+  - **Smooth Interpolation to/from 0**: In `EnergyHud`, visual blocks track interpolated wattage (`currentWatts`). Upon activation, blocks expand smoothly from 0 width ($\alpha = 18.0$); upon deactivation/expiration, blocks smoothly contract back to 0 ($\lambda = 14.0$) before being pruned, with ability tags smoothly fading in and out alongside their blocks.
+  - **Purged 1P Header & Minimize Button**: Removed the player card header badge (`1P • Player 1`) and the minimize button completely, letting the HUD bars float cleanly with zero UI obstruction.
+  - **Removed Yellow End Line**: Completely eliminated the yellow glowing energy cap line from the right edge of the bottom bar, leaving only the emerald stamina cap notch when stamina capacity is below maximum energy.
+  - **Automated Verification**: Verified 100% via `scratch/test_left_to_right_stacking.ts`, `scratch/test_energy_hud_color_blocks.ts`, and full regression test suite.
+- **Phase 11.22 (Decoupled Tag Energy Readouts from Visual Bar Animation)**:
+  - **Stable Ability Readouts**: Decoupled the displayed number/rate in ability tags from the visual block width interpolation. Active tags display their genuine steady or allocated rate (`stableWatts`, e.g. `Sprint 152/s`, `Jump 224`), eliminating numeric counting up (`0 -> 152/s`) or down (`152/s -> 0`) as blocks smoothly animate.
+  - **Clean Entry/Exit Transitions**: Visual bar blocks continue to smoothly grow from 0 and decay back to 0 to provide clean visual continuity, while tag text stays fixed at the true ability consumption rate with smooth opacity fading.
+  - **Automated Verification**: Verified 100% via `scratch/test_energy_hud_color_blocks.ts` alongside the full project regression test suite.
+- **Phase 11.23 (Ability Naming Parity: Sprint, Walk, Jump, Heal)**:
+  - **Single-Word Ability Names**: Updated `ABILITY_METADATA` labels to `"Sprint"` and `"Walk"` to match the clean single-word naming style of `"Jump"` and `"Heal"`, dynamically resolving generic `"locomotion"` calls according to `bus.activeLocomotionId` set by `Character.ts`.
+  - **Enforced Lowercase `/s`**: Removed `text-transform: uppercase` from `.hud-power-tag` and added `text-transform: lowercase` to `.hud-tag-rate` so the `/s` time suffix strictly remains lowercase across all ability tags.
+  - **Automated Verification**: Verified 100% via `scratch/test_hud_ability_readjustment.ts`.
+- **Phase 11.24 (Exhaustion Recovery Red Tick Mark & Clean Gauge Styling)**:
+  - **Exhaustion Recovery Threshold Indicator**: Added a red tick mark (`#tick-hud-exhaustion-recovery`) on the lower reservoir track that becomes visible only when the character is exhausted (`isExhausted === true`).
+  - **Overlay Visibility Fix**: Removed the `.hidden` class from the tick markup to prevent `.hidden { display: none !important; }` from suppressing the element when `display: block` was set in script.
+  - **Clean Slender Styling**: Designed as a clean $1.5\text{px}$ notch flush inside the energy track (`top: 0; height: 100%`) without extending outside the bar or displaying protruding arrows, with `z-index: 20` and a subtle red glow (`#ef4444`).
+  - **Dynamic Positioning**: Positions precisely at $\frac{\text{maxStamina} \times \text{recoveryThresholdRatio} \times \text{maxPower}}{\text{energyCap}} \times 100\%$ (defaulting to 10.0% of the bar, corresponding to $2.0\text{s} \times 500\text{ W} = 1,000\text{ J}$ on a $10,000\text{ J}$ bar). As stamina recovers and reaches the red tick, exhaustion immediately clears and the tick cleanly hides.
+  - **Automated Verification**: Verified 100% via `scratch/test_hud_ability_readjustment.ts`.
+- **Phase 11.26 (Dual Health & Energy Screen HUD Gauges Architecture)**:
+  - **Side-by-Side Dual Gauges**: Re-architected the in-game screen HUD into two coordinated columns: Health System on the left, Energy & Power System squished into the right side (`.hud-columns-container` with 1fr 1fr grid and 16px gap).
+  - **Upper Health Modifiers Track**:
+    - Upper track displays active health modifiers with color-coded blocks and tags above it, perfectly mirroring the Power bar layout on the right.
+    - **Continuous Damage Over Time (DOT)**: Damage Aura (e.g. `Aura 20/s` in `#ef4444`) smoothly expands when entering aura radius and contracts to 0 when leaving.
+    - **Instant Damage Bursts**: Blunt collision shocks and attack impacts (e.g. `Impact 15` in `#f87171`) trigger a 0.55s burst block and tag without `/s`.
+    - **Continuous Healing Over Time (HOT)**: Passive cellular bio-regeneration (e.g. `Heal 10/s` in `#22c55e`) displays while wounded and smoothly clears when reaching full health.
+    - **Instant Healing**: Potion/pickup heals (e.g. `Heal 10` in `#22c55e`) display as burst actions.
+    - Dynamic capacity scale (`effectiveCap = Math.max(40, maxHp * 0.5, totalUnits)`) prevents block overflow.
+- **Phase 11.27 (Inverted Main/Modifier Track Layout & Distinctive Heart & Lightning Symbols)**:
+  - **Inverted Track Ordering**: Swapped bar positions in both columns while preserving mod list tags on top:
+    - Health Column: Mod list tags on top, primary Health Bar (HP) as upper track (16px), Health Modifiers Bar as lower track (14px).
+    - Energy Column: Mod list tags on top, primary Energy & Stamina Bar as upper track (16px), Power / Energy Modifiers Bar as lower track (14px).
+  - **Distinctive Heart & Lightning Symbols**:
+    - Upper HP Bar: Glowing solid red Heart (`❤` in `#ef4444`) in a dedicated 20px prefix wrapper.
+    - Lower HP Mod Bar: Subtle red Heart modifier symbol (`❤±` in `#f87171`).
+    - Upper Energy Bar: Glowing solid gold Lightning (`⚡` in `#fbbf24`) in a dedicated 20px prefix wrapper.
+- **Phase 11.28 (Vertically Split Mod Bars & Signed Mod Tag Rates Architecture)**:
+  - **Signed Mod Tag Values**: Added explicit `+` and `-` sign prefixes to all active modifier tags:
+    - Positive healing: `Heal +10/s`, `Potion +20`.
+    - Negative health damage: `Aura -20/s`, `Impact -15`, `Damage -10`.
+    - Negative energy draws: `Sprint -152/s`, `Jump -224`, `Heal -250/s`, `Climb -260/s`, `Walk -69/s`.
+  - **Vertically Split Mod Bars (Without Dividing Line)**:
+    - Modifier tracks (18px) are vertically split into two seamless halves inside the dark glass container:
+      - **Upper Lane (`top: 0; height: 50%`)**: Positive modifiers (healing gains on health; future energy generation/charging on energy).
+      - **Lower Lane (`top: 50%; height: 50%`)**: Negative modifiers (damage aura and impact shock on health; sprint/jump/climb/heal draws on energy).
+    - Blocks stack horizontally within their respective vertical lane from left to right, allowing concurrent visualization of opposing forces (e.g. green heal bar flowing on top while red damage bar flows on bottom).
+  - **Automated Verification**: Verified 100% via `scratch/test_split_mod_bars.ts`, `scratch/test_health_modifiers_hud.ts`, `scratch/test_energy_hud_color_blocks.ts`, and full regression test suite.
+- **Phase 11.29 (Thicker 1.5x Tracks, Dedicated Non-Overlapping Stamina Lane & View Menu UI Transparency Slider)**:
+  - **1.5x Thicker Tracks & Expanded Container**:
+    - Primary resource tracks (Health Bar on left, Energy & Stamina Bar on right) increased 1.5x in thickness from 16px to 24px (`height: 24px`).
+    - Secondary modifier tracks (Health Modifiers Bar on left, Power Bar on right) adjusted to two-thirds thickness at 18px (`height: 18px`), keeping them sleek and visually subordinate to the 24px primary bars.
+    - Status HUD container width expanded from 760px to 860px for greater horizontal length and readability.
+  - **Dedicated Non-Overlapping Stamina Bar (1/3 Track Thickness)**:
+    - Replaced the previous 100% height transparent overlay (`rgba(34, 197, 94, 0.45)`) with a dedicated top lane occupying exactly one-third of the 24px energy track thickness (`top: 0; height: 33.333%`, or 8px).
+    - Energy reservoir occupies the remaining two-thirds of the track thickness (`top: 33.333%; height: 66.667%`, or 16px).
+    - Stamina bar is a solid, vibrant emerald gradient (`linear-gradient(90deg, #15803d, #16a34a, #22c55e)`) with a crisp highlight border (`#86efac`), turning crimson when exhausted.
+    - Energy reservoir is a solid amber/gold gradient (`linear-gradient(90deg, #b45309, #d97706, #fbbf24)`).
+    - Stamina cap tick and exhaustion recovery tick notches are flush and contained strictly within the upper 1/3 stamina lane.
+  - **UI Transparency Slider in View Menu**:
+    - Added UI Opacity slider (`#slide-ui-opacity`) in the View Settings menu (`#view-settings-panel`), ranging from 20% to 100% with a default of 70% opacity.
+    - Dynamic live preview and persistent preference storage via `localStorage.getItem("pcg_ui_opacity")`.
+    - Applied CSS custom variable `--ui-opacity: 0.70` across all previously opaque UI elements: top navigation bar (`.top-bar`), DevPanel inspector (`#dev-sidebar`), controls bar (`.controls-overlay-bar .controls-box`), status screen HUD (`.energy-hud-container`), View Settings modal (`.view-settings-card`), Multiplayer Relay HUD, and other modals.
 
 ---
 

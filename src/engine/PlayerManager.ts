@@ -81,7 +81,7 @@ export class PlayerManager {
     this.baseCharacter.playerColor = PLAYER_COLORS[0];
     this.baseCharacter.color = PLAYER_COLORS[0];
     this.baseCharacter.name = initialHandle;
-    this.inputManager.isKeyboardActive = false;
+    this.spawnKeyboardPlayer();
     this.arena.syncEntitiesWithWalls([this.baseCharacter]);
 
     // Hook input manager on-demand join & disconnect callbacks
@@ -90,7 +90,7 @@ export class PlayerManager {
     };
 
     this.inputManager.onKeyboardJump = () => {
-      const kChar = this.players.get("keyboard")?.character;
+      const kChar = this.players.get("keyboard")?.character ?? this.primaryCharacter;
       if (kChar) {
         kChar.jump(this.arena, this.inputManager.movementVector);
       }

@@ -224,54 +224,71 @@ export class WalkingModule {
           const baseSpeedWatts = (resForceSprint * baseWalkTargetSpeed) / 0.25;
           const minSprintWatts = this.sprintAllowPartialPower ? (baseSpeedWatts + 0.001) : (requestedWatts - 0.001);
 
-          // Peek if the bus can supply sufficient power:
-          const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+          // Check if the bus can support sprinting in isolation ("either way" check):
+          const canSprintEitherWay = bus.canSupportPowerInIsolation(
+            requestedWatts,
+            minSprintWatts,
+            dt,
+            character.energyPool,
+            character.properties
+          );
 
-          if (peekedWatts < minSprintWatts) {
-            // Not enough power to sprint!
-            // Detoggle sprint, snap to base walk, and do not consume energy.
+          if (!canSprintEitherWay) {
+            // True exhaustion: even in isolation with zero competing abilities, sprint cannot run.
             character.setSprinting(false);
             sprintingNow = false;
             effectiveWalkForce = maxWalkForce;
             effectiveTargetSpeed = maxWalkSpeed;
             bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
-
-            // If walking also consumes energy, request walking power instead
-            if (this.walkConsumesEnergy) {
-              const walkBus = character.getEnergyBus(this.walkEnergyBusId);
-              if (walkBus) {
-                const CrWalk = 0.28;
-                const resForceWalk = totalMass * g * CrWalk;
-                const walkRequested = (resForceWalk * baseWalkTargetSpeed) / 0.25;
-                const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
-                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
-                if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
-                  effectiveWalkForce = 0;
-                  effectiveTargetSpeed = 0;
-                  character.isActivelyWalking = false;
-                } else {
-                  effectiveWalkForce *= fraction;
-                  effectiveTargetSpeed *= fraction;
-                }
-              }
-            }
           } else {
-            // Bus can grant sprint power! Request sprint power.
-            const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.sprintAllowPartialPower);
-            if (grantedWatts < minSprintWatts) {
-              // Edge case: if granted power dropped below threshold
-              character.setSprinting(false);
+            // Bus has stamina and energy reserves "either way". Check available power considering competing abilities:
+            const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+
+            if (peekedWatts < minSprintWatts) {
+              // Contention starvation: competing abilities (or jump takeoff impulse) are consuming capacity.
+              // Do NOT untoggle sprint! Keep sprint toggled in background, but step down to base walk for this frame.
               sprintingNow = false;
               effectiveWalkForce = maxWalkForce;
               effectiveTargetSpeed = maxWalkSpeed;
+              bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+
+              // If walking also consumes energy, request walking power instead
+              if (this.walkConsumesEnergy) {
+                const walkBus = character.getEnergyBus(this.walkEnergyBusId);
+                if (walkBus) {
+                  const CrWalk = 0.28;
+                  const resForceWalk = totalMass * g * CrWalk;
+                  const walkRequested = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+                  const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
+                  const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
+                  if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
+                    effectiveWalkForce = 0;
+                    effectiveTargetSpeed = 0;
+                    character.isActivelyWalking = false;
+                  } else {
+                    effectiveWalkForce *= fraction;
+                    effectiveTargetSpeed *= fraction;
+                  }
+                }
+              }
             } else {
-              // Achievable speed bounded between baseWalkTargetSpeed and sprintTargetSpeed
-              const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, (grantedWatts * 0.25) / resForceSprint));
-              effectiveTargetSpeed = achievableSpeed * (1.0 + loadFactor);
-              const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed
-                ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed)
-                : 1;
-              effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+              // Bus can grant sprint power (partial or full above base speed)! Request sprint power:
+              const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.sprintAllowPartialPower);
+              if (grantedWatts < minSprintWatts) {
+                // If granted power dropped below threshold due to competing demand:
+                // Step down to base walk, but DO NOT untoggle sprint!
+                sprintingNow = false;
+                effectiveWalkForce = maxWalkForce;
+                effectiveTargetSpeed = maxWalkSpeed;
+              } else {
+                // Achievable speed bounded between baseWalkTargetSpeed and sprintTargetSpeed proportional to granted watts
+                const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, (grantedWatts * 0.25) / resForceSprint));
+                effectiveTargetSpeed = achievableSpeed * (1.0 + loadFactor);
+                const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed
+                  ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed)
+                  : 1;
+                effectiveWalkForce = maxWalkForce * (1.0 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+              }
             }
           }
         }

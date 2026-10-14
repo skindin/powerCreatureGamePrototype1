@@ -2582,11 +2582,25 @@ export class DevPanel {
 
       // Quick test buttons
       this.container.querySelector("#btn-health-sub10")?.addEventListener("click", () => {
-        hm.takeDamage(10, e.properties);
+        hm.takeDamage(10, e.properties, {
+          id: "damage",
+          name: "Damage",
+          type: "instant",
+          amount: 10,
+          color: "#ef4444",
+          isHeal: false,
+        });
         this.updateInspector();
       });
       this.container.querySelector("#btn-health-add10")?.addEventListener("click", () => {
-        hm.heal(10, e.properties);
+        hm.heal(10, e.properties, {
+          id: "heal",
+          name: "Heal",
+          type: "instant",
+          amount: 10,
+          color: "#22c55e",
+          isHeal: true,
+        });
         this.updateInspector();
       });
       this.container.querySelector("#btn-health-kill")?.addEventListener("click", () => {

@@ -103,7 +103,7 @@ function getCurrentBranch() {
       return gitHead.replace('ref: refs/heads/', '');
     }
   } catch {}
-  return process.env.RAILWAY_GIT_BRANCH || 'preMultiplayer';
+  return process.env.RAILWAY_GIT_BRANCH || 'dynamic-property-references';
 }
 
 async function getLiveBuildStatus() {

@@ -116,7 +116,14 @@ export class DamageSolverModule {
 
     if (finalDamage > 0.001) {
       this.lastImpactTime = now;
-      healthModule.takeDamage(finalDamage, registry);
+      healthModule.takeDamage(finalDamage, registry, {
+        id: "impact_damage",
+        name: "Impact",
+        type: "instant",
+        amount: finalDamage,
+        color: "#f87171",
+        isHeal: false,
+      });
       return finalDamage;
     }
 

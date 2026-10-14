@@ -88,6 +88,7 @@ export class GameLoop {
   public activeMode: "local" | "boomerang" | "online" = "local";
   public onPlayerRenamed?: (playerId: string, newName: string) => void;
   public lastAppliedObjectSeq = 0;
+  public energyHud?: { update: (deltaSeconds?: number) => void };
 
   public get isSplitScreen(): boolean {
     return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
@@ -422,6 +423,7 @@ export class GameLoop {
 
     this.renderFrame(deltaSeconds);
     this.devPanel.updateInspector();
+    this.energyHud?.update(deltaSeconds);
 
     requestAnimationFrame((t) => this.tick(t));
   }

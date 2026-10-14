@@ -293,10 +293,17 @@ export class Character extends GameObject {
         if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
           return false;
         }
-        energyFraction = bus.requestEnergy(metabolicJoules, 0.05, this.energyPool, this.properties, this.jumpAllowPartialPower);
-        if (energyFraction <= 0 || (!this.jumpAllowPartialPower && energyFraction < 1.0)) {
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "jump",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: this.jumpAllowPartialPower,
+          pool: this.energyPool,
+          registry: this.properties
+        });
+        if (!burstRes.granted || (!this.jumpAllowPartialPower && burstRes.fraction < 1.0)) {
           return false;
         }
+        energyFraction = burstRes.fraction;
       }
     }
 
@@ -388,7 +395,11 @@ export class Character extends GameObject {
 
     // Pre-register active ability demands for proportional power rationing across abilities:
     // 1. Locomotion demand (Walking / Sprinting)
-    const canWalk = Boolean(this.walkingModule && this.walkingModule.enabled && this.hasFriction);
+    const canWalk = Boolean(
+      this.walkingModule &&
+      this.walkingModule.enabled &&
+      (this.isRestingOnSurface ? this.hasFriction : this.walkingModule.walkInAir)
+    );
     const inputMag = Math.hypot(movementInput.x, movementInput.y);
     const isMoving = inputMag > 0.05;
     const isActivelySprinting = Boolean(this.walkingModule?.canSprint && this.isSprinting);
@@ -417,7 +428,13 @@ export class Character extends GameObject {
       const locomotionWatts = (resForce * v) / 0.25;
       const bus = this.getEnergyBus(sprintingNow ? this.walkingModule.sprintEnergyBusId : this.walkingModule.walkEnergyBusId);
       if (bus) {
-        bus.registerDemand("locomotion", locomotionWatts);
+        const locomotionId = sprintingNow ? "sprint" : "walk";
+        bus.activeLocomotionId = locomotionId;
+        bus.registerDemand(
+          locomotionId,
+          locomotionWatts,
+          sprintingNow ? this.walkingModule.sprintAllowPartialPower : this.walkingModule.walkAllowPartialPower
+        );
       }
     }
 

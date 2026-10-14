@@ -14,6 +14,7 @@ import { RelayClient } from "./network/RelayClient.js";
 import { OnlineRoomClient } from "./network/OnlineRoomClient.js";
 import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
+import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
 
 function bootstrap(): void {
@@ -418,6 +419,11 @@ function bootstrap(): void {
   // 6c. Initialize Bugs & Suggestions (Feedback) Panel
   const feedbackPanel = new FeedbackPanel();
   void feedbackPanel;
+
+  // 6d. Initialize Energy & Power Bus Screen HUD (Phase 11.18)
+  const energyHud = new EnergyHud(gameLoop, devPanel);
+  gameLoop.energyHud = energyHud;
+  (window as any).energyHud = energyHud;
 
   // Keep dev selector synced across dynamic character spawns/removals
   const originalOnPlayersChanged = gameLoop.onPlayersChanged;
@@ -1209,6 +1215,45 @@ function bootstrap(): void {
     const val = parseFloat(mobileSlideWallHeight.value);
     if (!isNaN(val)) {
       applyVisualWallHeight(val);
+    }
+  });
+
+  // UI Transparency / Opacity Slider (Default 70%)
+  const slideUiOpacity = document.getElementById("slide-ui-opacity") as HTMLInputElement | null;
+  const valUiOpacity = document.getElementById("val-ui-opacity");
+
+  const applyUiOpacity = (opacity: number) => {
+    const clamped = Math.max(0.1, Math.min(1.0, opacity));
+    document.documentElement.style.setProperty("--ui-opacity", clamped.toString());
+    document.documentElement.style.setProperty("--ui-opacity-pct", `${Math.round(clamped * 100)}%`);
+    if (slideUiOpacity) slideUiOpacity.value = clamped.toFixed(2);
+    if (valUiOpacity) valUiOpacity.textContent = `${Math.round(clamped * 100)}%`;
+    try {
+      localStorage.setItem("pcg_ui_opacity", clamped.toString());
+    } catch {
+      // Ignore localStorage error
+    }
+  };
+
+  let savedUiOpacity = 0.70;
+  try {
+    const storedO = localStorage.getItem("pcg_ui_opacity");
+    if (storedO !== null) {
+      const parsedO = parseFloat(storedO);
+      if (!isNaN(parsedO) && parsedO >= 0.1 && parsedO <= 1.0) {
+        savedUiOpacity = parsedO;
+      }
+    }
+  } catch {
+    // Ignore localStorage error
+  }
+
+  applyUiOpacity(savedUiOpacity);
+
+  slideUiOpacity?.addEventListener("input", () => {
+    const val = parseFloat(slideUiOpacity.value);
+    if (!isNaN(val)) {
+      applyUiOpacity(val);
     }
   });
 

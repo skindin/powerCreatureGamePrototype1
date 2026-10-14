@@ -3,6 +3,28 @@ import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicPrope
 import type { Character } from "./Character.js";
 import type { Arena } from "../engine/Arena.js";
 
+export interface HealthModifierSource {
+  id: string;
+  name: string;
+  color?: string;
+  type?: "continuous" | "instant";
+  rate?: number;
+  amount?: number;
+  isHeal?: boolean;
+}
+
+export interface ActiveHealthModifier {
+  id: string;
+  name: string;
+  color: string;
+  type: "continuous" | "instant";
+  isHeal: boolean;
+  order: number;
+  rateOrAmount: number;
+  duration?: number;
+  lastReportedTick: number;
+}
+
 export interface HealthModuleOptions {
   baseMaxHp?: number;
   maxHp?: number;
@@ -18,6 +40,11 @@ export class HealthModule {
   public id = "health";
   public name = "Health & Vitality";
   public enabled = true;
+
+  /** Active health modifiers (continuous DOT/HOT and instant bursts) */
+  private _activeModifiers: Map<string, ActiveHealthModifier> = new Map();
+  private _nextModifierOrder: number = 1;
+  private _currentTick: number = 0;
 
   /** Baseline max health value */
   public baseMaxHp: number;
@@ -109,19 +136,105 @@ export class HealthModule {
     return this.maxHealRateProp.get(registry);
   }
 
-  public takeDamage(amount: number, registry?: ObjectPropertiesRegistry): void {
+  public getActiveModifiers(_registry?: ObjectPropertiesRegistry): ActiveHealthModifier[] {
+    return Array.from(this._activeModifiers.values());
+  }
+
+  public registerContinuousModifier(source: HealthModifierSource): void {
+    const existing = this._activeModifiers.get(source.id);
+    if (!existing) {
+      this._activeModifiers.set(source.id, {
+        id: source.id,
+        name: source.name,
+        color: source.color ?? (source.isHeal ? "#22c55e" : "#ef4444"),
+        type: "continuous",
+        isHeal: source.isHeal ?? false,
+        order: this._nextModifierOrder++,
+        rateOrAmount: source.rate ?? 0,
+        lastReportedTick: this._currentTick,
+      });
+    } else {
+      existing.rateOrAmount = source.rate ?? existing.rateOrAmount;
+      existing.lastReportedTick = this._currentTick;
+      if (source.name) existing.name = source.name;
+      if (source.color) existing.color = source.color;
+    }
+  }
+
+  public registerInstantModifier(source: HealthModifierSource, amount: number): void {
+    const existing = this._activeModifiers.get(source.id);
+    if (!existing) {
+      this._activeModifiers.set(source.id, {
+        id: source.id,
+        name: source.name,
+        color: source.color ?? (source.isHeal ? "#22c55e" : "#f87171"),
+        type: "instant",
+        isHeal: source.isHeal ?? false,
+        order: this._nextModifierOrder++,
+        rateOrAmount: amount,
+        duration: 0.55,
+        lastReportedTick: this._currentTick,
+      });
+    } else {
+      existing.rateOrAmount = amount;
+      existing.duration = 0.55;
+      existing.lastReportedTick = this._currentTick;
+    }
+  }
+
+  public takeDamage(amount: number, registry?: ObjectPropertiesRegistry, source?: HealthModifierSource): void {
     if (!this.enabled || amount <= 0) return;
     const cur = this.getCurrentHp(registry);
     const updated = Math.max(0, cur - amount);
     this.currentHpProp.set(updated, registry);
+
+    // Register modifier for live HUD feedback
+    if (source && source.type === "continuous") {
+      this.registerContinuousModifier({
+        id: source.id,
+        name: source.name,
+        color: source.color ?? "#ef4444",
+        type: "continuous",
+        isHeal: false,
+        rate: source.rate ?? amount * 60,
+      });
+    } else {
+      this.registerInstantModifier({
+        id: source?.id ?? "damage",
+        name: source?.name ?? "Damage",
+        color: source?.color ?? "#ef4444",
+        type: "instant",
+        isHeal: false,
+      }, source?.amount ?? amount);
+    }
   }
 
-  public heal(amount: number, registry?: ObjectPropertiesRegistry): void {
+  public heal(amount: number, registry?: ObjectPropertiesRegistry, source?: HealthModifierSource): void {
     if (!this.enabled || amount <= 0) return;
     const cur = this.getCurrentHp(registry);
     const max = this.getMaxHp(registry);
     const updated = Math.min(max, cur + amount);
     this.currentHpProp.set(updated, registry);
+
+    // Register modifier for live HUD feedback
+    if (source && source.type === "continuous") {
+      this.registerContinuousModifier({
+        id: source.id,
+        name: source.name,
+        color: source.color ?? "#22c55e",
+        type: "continuous",
+        isHeal: true,
+        rate: source.rate ?? amount * 60,
+      });
+    } else {
+      this.registerInstantModifier({
+        id: source?.id ?? "heal",
+        name: source?.name ?? "Heal",
+        color: source?.color ?? "#22c55e",
+        type: "instant",
+        isHeal: true,
+      }, source?.amount ?? amount);
+    }
   }
 
   /**
@@ -137,6 +250,7 @@ export class HealthModule {
     const max = this.getMaxHp(registry);
 
     // Passive regeneration if wounded and alive
+    let activeHealRate = 0;
     if (current > 0 && current < max - 0.001) {
       const healRate = this.getMaxHealRate(registry);
       if (healRate > 0) {
@@ -156,6 +270,7 @@ export class HealthModule {
           }
         }
         if (effectiveHealRate > 0) {
+          activeHealRate = effectiveHealRate;
           const nextHp = Math.min(max, current + effectiveHealRate * dt);
           if (nextHp >= max - 0.001) {
             this.currentHpProp.set(max, registry);
@@ -167,6 +282,38 @@ export class HealthModule {
     } else if (current >= max - 0.001 && current !== max) {
       this.currentHpProp.set(max, registry);
     }
+
+    // Register or clear passive heal modifier
+    if (activeHealRate > 0.001) {
+      this.registerContinuousModifier({
+        id: "passive_heal",
+        name: "Heal",
+        color: "#22c55e",
+        type: "continuous",
+        isHeal: true,
+        rate: activeHealRate,
+      });
+    } else {
+      this._activeModifiers.delete("passive_heal");
+    }
+
+    // Clean up expired continuous and instant modifiers
+    for (const [id, mod] of this._activeModifiers.entries()) {
+      if (mod.type === "continuous") {
+        if (mod.lastReportedTick !== this._currentTick) {
+          this._activeModifiers.delete(id);
+        }
+      } else if (mod.type === "instant") {
+        if (mod.duration !== undefined) {
+          mod.duration -= dt;
+          if (mod.duration <= 0) {
+            this._activeModifiers.delete(id);
+          }
+        }
+      }
+    }
+
+    this._currentTick++;
 
     // Check death condition
     if (this.getCurrentHp(registry) <= 0.0001) {
@@ -225,9 +372,10 @@ export class HealthModule {
     character.position.z = chosenSpawn.z;
     character.supportingSurfaceHeight = 0;
 
-    // 5. Restore full HP
+    // 5. Restore full HP and reset modifiers
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
+    this._activeModifiers.clear();
 
     this.onDeathRespawn?.(character, chosenSpawn);
   }

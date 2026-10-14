@@ -207,12 +207,13 @@ export class InputManager {
         return;
       }
 
-      // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
+      // Space key: Claim Keyboard Player 1 if not yet active, and trigger jump
       if (e.code === "Space") {
+        this.isKeyboardSuspended = false;
         if (!this.isKeyboardActive) {
           this.onKeyboardJoin?.();
-          return;
-        } else if (!e.repeat) {
+        }
+        if (!e.repeat) {
           this.onKeyboardJump?.();
         }
       }
