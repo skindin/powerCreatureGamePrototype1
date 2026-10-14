@@ -265,10 +265,11 @@
     - Stamina bar is a solid, vibrant emerald gradient (`linear-gradient(90deg, #15803d, #16a34a, #22c55e)`) with a crisp highlight border (`#86efac`), turning crimson when exhausted.
     - Energy reservoir is a solid amber/gold gradient (`linear-gradient(90deg, #b45309, #d97706, #fbbf24)`).
     - Stamina cap tick and exhaustion recovery tick notches are flush and contained strictly within the upper 1/3 stamina lane.
-  - **UI Transparency Slider in View Menu**:
-    - Added UI Opacity slider (`#slide-ui-opacity`) in the View Settings menu (`#view-settings-panel`), ranging from 20% to 100% with a default of 70% opacity.
-    - Dynamic live preview and persistent preference storage via `localStorage.getItem("pcg_ui_opacity")`.
-    - Applied CSS custom variable `--ui-opacity: 0.70` across all previously opaque UI elements: top navigation bar (`.top-bar`), DevPanel inspector (`#dev-sidebar`), controls bar (`.controls-overlay-bar .controls-box`), status screen HUD (`.energy-hud-container`), View Settings modal (`.view-settings-card`), Multiplayer Relay HUD, and other modals.
+  - **HUD Opacity Slider in View Menu (HUD Scoped Only)**:
+    - Added HUD Opacity slider (`#slide-hud-opacity`) in the View Settings menu (`#view-settings-panel`), ranging from 20% to 100% with a default of 70% opacity.
+    - Dynamic live preview and persistent preference storage via `localStorage.getItem("pcg_hud_opacity")`.
+    - Scoped transparency strictly and exclusively to the on-screen status screen HUD (`.energy-hud-container` containing health, energy, stamina, and power stat bars) via CSS variable `--hud-opacity: 0.70`.
+    - Kept all menus, sidebars, modals, and tool windows (`.top-bar`, `#dev-sidebar`, `.controls-box`, `.view-settings-card`, relay HUD, and modal dialogs) fully opaque (1.0).
 
 ---
 

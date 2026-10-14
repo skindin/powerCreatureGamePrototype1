@@ -1218,42 +1218,45 @@ function bootstrap(): void {
     }
   });
 
-  // UI Transparency / Opacity Slider (Default 70%)
-  const slideUiOpacity = document.getElementById("slide-ui-opacity") as HTMLInputElement | null;
-  const valUiOpacity = document.getElementById("val-ui-opacity");
+  // HUD Opacity Slider (Default 70%, scoped exclusively to status screen HUD stat bars)
+  const slideHudOpacity = (document.getElementById("slide-hud-opacity") || document.getElementById("slide-ui-opacity")) as HTMLInputElement | null;
+  const valHudOpacity = document.getElementById("val-hud-opacity") || document.getElementById("val-ui-opacity");
 
-  const applyUiOpacity = (opacity: number) => {
+  const applyHudOpacity = (opacity: number) => {
     const clamped = Math.max(0.1, Math.min(1.0, opacity));
-    document.documentElement.style.setProperty("--ui-opacity", clamped.toString());
-    document.documentElement.style.setProperty("--ui-opacity-pct", `${Math.round(clamped * 100)}%`);
-    if (slideUiOpacity) slideUiOpacity.value = clamped.toFixed(2);
-    if (valUiOpacity) valUiOpacity.textContent = `${Math.round(clamped * 100)}%`;
+    document.documentElement.style.setProperty("--hud-opacity", clamped.toString());
+    document.documentElement.style.setProperty("--hud-opacity-pct", `${Math.round(clamped * 100)}%`);
+    // Ensure all other menus, sidebars, and dialogs remain fully opaque (1.0)
+    document.documentElement.style.setProperty("--ui-opacity", "1.0");
+    document.documentElement.style.setProperty("--ui-opacity-pct", "100%");
+    if (slideHudOpacity) slideHudOpacity.value = clamped.toFixed(2);
+    if (valHudOpacity) valHudOpacity.textContent = `${Math.round(clamped * 100)}%`;
     try {
-      localStorage.setItem("pcg_ui_opacity", clamped.toString());
+      localStorage.setItem("pcg_hud_opacity", clamped.toString());
     } catch {
       // Ignore localStorage error
     }
   };
 
-  let savedUiOpacity = 0.70;
+  let savedHudOpacity = 0.70;
   try {
-    const storedO = localStorage.getItem("pcg_ui_opacity");
+    const storedO = localStorage.getItem("pcg_hud_opacity") || localStorage.getItem("pcg_ui_opacity");
     if (storedO !== null) {
       const parsedO = parseFloat(storedO);
       if (!isNaN(parsedO) && parsedO >= 0.1 && parsedO <= 1.0) {
-        savedUiOpacity = parsedO;
+        savedHudOpacity = parsedO;
       }
     }
   } catch {
     // Ignore localStorage error
   }
 
-  applyUiOpacity(savedUiOpacity);
+  applyHudOpacity(savedHudOpacity);
 
-  slideUiOpacity?.addEventListener("input", () => {
-    const val = parseFloat(slideUiOpacity.value);
+  slideHudOpacity?.addEventListener("input", () => {
+    const val = parseFloat(slideHudOpacity.value);
     if (!isNaN(val)) {
-      applyUiOpacity(val);
+      applyHudOpacity(val);
     }
   });
 

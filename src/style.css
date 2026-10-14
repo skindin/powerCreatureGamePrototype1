@@ -1,6 +1,8 @@
 :root {
-  --ui-opacity: 0.70;
-  --ui-opacity-pct: 70%;
+  --hud-opacity: 0.70;
+  --hud-opacity-pct: 70%;
+  --ui-opacity: 1.0;
+  --ui-opacity-pct: 100%;
   --bg-dark: #090d16;
   --panel-bg: rgba(15, 23, 42, 0.85);
   --panel-border: rgba(148, 163, 184, 0.15);
@@ -4694,7 +4696,7 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   pointer-events: auto;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
-  opacity: var(--ui-opacity, 0.70);
+  opacity: var(--hud-opacity, 0.70);
   transition: opacity 0.15s ease;
 }
 
@@ -5059,24 +5061,7 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 4px #ef4444;
 }
 
-/* ==========================================================================
-   UI TRANSPARENCY & OPACITY (Controlled via View Menu, Default 70%)
-   ========================================================================== */
-.top-bar,
-#dev-sidebar,
-.controls-overlay-bar .controls-box,
-.view-settings-card,
-.relay-hud-card,
-.players-modal-card,
-.phone-modal-card,
-.feedback-modal-card,
-.controls-modal-card,
-.energy-hud-container,
-#quick-sidebar-tab,
-#persistent-ping-hud {
-  opacity: var(--ui-opacity, 0.70);
-  transition: opacity 0.15s ease;
-}
+/* HUD opacity is scoped exclusively to .energy-hud-container; all other menus, sidebars, and dialogs remain fully opaque. */
 
 /* Responsive constraints */
 @media (max-width: 640px) {
