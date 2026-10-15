@@ -362,6 +362,10 @@
   - **Damage Dispatched Before Separation**: Collision damage is calculated and dispatched to `DamageSolverModule` *first* during the collision resolution pass before positional separation executes.
   - **Sliding Separation Preserved**: The existing inverse-mass positional separation remains completely intact, ensuring stacked objects naturally slide away from each other.
   - **Automated Verification**: Verified 100% via `scratch/test_vertical_collision_damage.ts` and clean `npm run build`.
+- **Phase 12.10 (Default Collision Damage Scale 0.05 & Threshold 25 HP)**:
+  - **Collision Damage Scale**: Set `GameObject.globalWorldCollisionDamageScale` default from `0.01` to `0.05`.
+  - **Damage Threshold**: Updated default `damageThresholdHp` in `DamageSolverModule` and DevPanel module attachment from `5.0` to `25.0` HP.
+  - **Automated Verification**: Verified via `scratch/test_vertical_collision_damage.ts` and clean `npm run build`.
 
 ---
 

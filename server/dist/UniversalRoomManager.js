@@ -5406,7 +5406,7 @@ const _GameObject = class _GameObject {
   }
 };
 /** Global world scale for converting absorbed collision shock to raw HP damage */
-__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.01);
+__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.05);
 let GameObject = _GameObject;
 class WalkingModule {
   constructor(options) {
@@ -6888,7 +6888,7 @@ class DamageSolverModule {
     __publicField(this, "lastImpactTime", 0);
     __publicField(this, "impactCooldownMs", 60);
     this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
-    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 5;
+    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 25;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
