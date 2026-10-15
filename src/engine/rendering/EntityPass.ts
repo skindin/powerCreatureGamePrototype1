@@ -119,6 +119,8 @@ export class EntityPass {
       ctx.restore();
     }
 
+    EntityPass.drawConsumablePieBackground(ctx, obj, allCharacters, x, y, renderRadius);
+
     ctx.save();
     ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
@@ -202,6 +204,8 @@ export class EntityPass {
 
     this.drawRollIndicator(ctx, obj, x, y, renderRadius);
     ctx.restore();
+
+    EntityPass.drawConsumablePieForeground(ctx, obj, allCharacters, x, y, renderRadius);
 
     if (isWithinPickupRange) {
       const grabRadius = realRadius + 2;
@@ -584,6 +588,139 @@ export class EntityPass {
       const brY = sy - ty * (L * 0.45) - ny * (W * 0.50);
 
       this.drawRoundedTriangle(ctx, apexX, apexY, blX, blY, brX, brY, cornerRadius);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders the background dark plate and translucent pie slice for a held consumable item.
+   */
+  public static drawConsumablePieBackground(
+    ctx: CanvasRenderingContext2D,
+    obj: GameObject,
+    allCharacters: Character[],
+    x: number,
+    y: number,
+    renderRadius: number
+  ): void {
+    const cMod = obj.consumableModule || obj.foodModule;
+    if (!cMod || !cMod.enabled) return;
+
+    const holdingChar = allCharacters.find((c) => c.heldObject === obj);
+    if (!holdingChar) return;
+
+    const isEating = Boolean(holdingChar.isUsingItem && holdingChar.canConsumeHeldObject());
+    const totalEnergy = cMod.getTotalEnergy(obj.properties);
+    const remainingEnergy = cMod.getRemainingEnergy(obj.properties);
+    const ratio = Math.max(0, Math.min(1, remainingEnergy / Math.max(1, totalEnergy)));
+
+    // Only display if actively eating OR if partially eaten (remaining < total - 1.0)
+    if (!isEating && ratio >= 0.999) return;
+
+    const pieRadius = Math.max(18, renderRadius + 8);
+
+    ctx.save();
+
+    // 1. Dark semi-transparent circular backing plate & track ring
+    ctx.beginPath();
+    ctx.arc(x, y, pieRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(51, 65, 85, 0.65)";
+    ctx.stroke();
+
+    // 2. Translucent pie wedge (showing the remaining consumable portion)
+    if (ratio > 0.005) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.arc(x, y, pieRadius - 1.5, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2, false);
+      ctx.closePath();
+      ctx.fillStyle = isEating ? "rgba(34, 197, 94, 0.35)" : "rgba(34, 197, 94, 0.22)";
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Renders the circular perimeter progress bar, 12 o'clock tick, and percentage badge for a held consumable.
+   */
+  public static drawConsumablePieForeground(
+    ctx: CanvasRenderingContext2D,
+    obj: GameObject,
+    allCharacters: Character[],
+    x: number,
+    y: number,
+    renderRadius: number
+  ): void {
+    const cMod = obj.consumableModule || obj.foodModule;
+    if (!cMod || !cMod.enabled) return;
+
+    const holdingChar = allCharacters.find((c) => c.heldObject === obj);
+    if (!holdingChar) return;
+
+    const isEating = Boolean(holdingChar.isUsingItem && holdingChar.canConsumeHeldObject());
+    const totalEnergy = cMod.getTotalEnergy(obj.properties);
+    const remainingEnergy = cMod.getRemainingEnergy(obj.properties);
+    const ratio = Math.max(0, Math.min(1, remainingEnergy / Math.max(1, totalEnergy)));
+
+    // Only display if actively eating OR if partially eaten (remaining < total - 1.0)
+    if (!isEating && ratio >= 0.999) return;
+
+    const pieRadius = Math.max(18, renderRadius + 8);
+
+    ctx.save();
+
+    // 1. Circular bar along the perimeter arc
+    if (ratio > 0.005) {
+      ctx.beginPath();
+      ctx.arc(x, y, pieRadius, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2, false);
+      ctx.strokeStyle = isEating ? "#22c55e" : "#16a34a";
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = "round";
+      if (isEating) {
+        ctx.shadowColor = "#4ade80";
+        ctx.shadowBlur = 8;
+      }
+      ctx.stroke();
+    }
+
+    // 2. Subtle 12 o'clock notch tick
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y - pieRadius - 2.5);
+    ctx.lineTo(x, y - pieRadius + 2.5);
+    ctx.stroke();
+
+    // 3. Overhead percentage badge when actively eating
+    if (isEating) {
+      const pctText = `${Math.ceil(ratio * 100)}%`;
+      ctx.font = "bold 10px sans-serif";
+      const textW = ctx.measureText(pctText).width;
+      const pillW = textW + 10;
+      const pillH = 14;
+      const pillX = x - pillW / 2;
+      const pillY = y - pieRadius - 16;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.7)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      } else {
+        ctx.rect(pillX, pillY, pillW, pillH);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#86efac";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(pctText, x, pillY + pillH / 2);
     }
 
     ctx.restore();

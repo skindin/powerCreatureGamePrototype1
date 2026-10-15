@@ -4653,6 +4653,7 @@ const _GameObject = class _GameObject {
     __publicField(this, "damageSolverModule", null);
     __publicField(this, "characterModule", null);
     __publicField(this, "foodModule", null);
+    __publicField(this, "consumableModule", null);
     __publicField(this, "spawnerModule", null);
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
@@ -4697,13 +4698,14 @@ const _GameObject = class _GameObject {
     this.damageAuraModule = options.damageAuraModule ?? null;
     this.damageSolverModule = options.damageSolverModule ?? null;
     this.characterModule = options.characterModule ?? null;
-    this.foodModule = options.foodModule ?? null;
+    this.consumableModule = options.consumableModule ?? options.foodModule ?? null;
+    this.foodModule = this.consumableModule;
     this.spawnerModule = options.spawnerModule ?? null;
     if (this.spawnerModule && (this.spawnerModule.spawnPosition.x === 0 && this.spawnerModule.spawnPosition.y === 0 && this.spawnerModule.spawnPosition.z === 0)) {
       this.spawnerModule.spawnPosition = { ...this.position };
     }
-    if (this.foodModule) {
-      this.foodModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
+    if (this.consumableModule) {
+      this.consumableModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
     }
   }
   /**
@@ -7723,6 +7725,85 @@ class EnergyBus {
     this.hadPhysicalExertion = false;
   }
 }
+class ConsumeModule {
+  constructor(options) {
+    __publicField(this, "id", "consume");
+    __publicField(this, "name", "Consume");
+    __publicField(this, "enabled", true);
+    /** List of consumable tags this character is capable of consuming */
+    __publicField(this, "acceptedTags", ["food"]);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if ((options == null ? void 0 : options.acceptedTags) !== void 0) {
+      this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    }
+  }
+  /**
+   * Checks whether the given held object is valid for consumption by this character.
+   */
+  canConsume(heldObj) {
+    if (!this.enabled || !heldObj) return false;
+    const mod = heldObj.consumableModule;
+    if (!mod || !mod.enabled || mod.isConsumed) return false;
+    const itemTag = (mod.tag || "").trim().toLowerCase();
+    if (!itemTag) return false;
+    return this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+  }
+  /**
+   * Performs continuous consumption of the held object.
+   */
+  consume(dt, consumer, heldObj, objects, arena) {
+    if (!this.canConsume(heldObj) || !heldObj.consumableModule) {
+      return { watts: 0, joules: 0, isDepleted: false };
+    }
+    return heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+  }
+  /**
+   * Adds an accepted tag to this character's list.
+   */
+  addTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    if (!clean || this.hasTag(clean)) return false;
+    this.acceptedTags.push(clean);
+    return true;
+  }
+  /**
+   * Removes an accepted tag from this character's list.
+   */
+  removeTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    const idx = this.acceptedTags.findIndex((t) => t.trim().toLowerCase() === clean);
+    if (idx !== -1) {
+      this.acceptedTags.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Checks if an accepted tag is present on this character.
+   */
+  hasTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    return this.acceptedTags.some((t) => t.trim().toLowerCase() === clean);
+  }
+  /**
+   * Handles registry tag rename events.
+   */
+  onTagRenamed(oldTag, newTag) {
+    const cleanOld = oldTag.trim().toLowerCase();
+    const cleanNew = newTag.trim().toLowerCase();
+    const idx = this.acceptedTags.findIndex((t) => t.trim().toLowerCase() === cleanOld);
+    if (idx !== -1) {
+      this.acceptedTags[idx] = cleanNew;
+    }
+  }
+  /**
+   * Handles registry tag deletion events.
+   */
+  onTagDeleted(deletedTag) {
+    const clean = deletedTag.trim().toLowerCase();
+    this.acceptedTags = this.acceptedTags.filter((t) => t.trim().toLowerCase() !== clean);
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     const initialColor = options.color ?? "#f59e0b";
@@ -7765,6 +7846,7 @@ class Character extends GameObject {
     __publicField(this, "wallEdgeAssistModule");
     __publicField(this, "climbingModule");
     __publicField(this, "healthModule");
+    __publicField(this, "consumeModule", new ConsumeModule());
     __publicField(this, "energyPool");
     __publicField(this, "energyBus");
     __publicField(this, "energyBusses", /* @__PURE__ */ new Map());
@@ -7783,7 +7865,6 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
-    // Item usage & eating state
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -7900,9 +7981,14 @@ class Character extends GameObject {
   get isDummy() {
     return this.role === "dummy";
   }
+  canConsumeHeldObject() {
+    return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
+  }
   get isEatingFood() {
-    var _a, _b;
-    return Boolean(((_b = (_a = this.heldObject) == null ? void 0 : _a.foodModule) == null ? void 0 : _b.enabled) && this.isUsingItem);
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
+  }
+  get isConsumingItem() {
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
   }
   /**
    * Drops or unholds the currently held object safely.
@@ -10349,10 +10435,7 @@ class ServerGameSimulation {
           if (target && (!target.isHeld || target.heldBy === char)) {
             char.pickupModule.pickup(char, target);
             if (target.spawnerModule && target.spawnerModule.enabled) {
-              const clone = target.spawnerModule.triggerClone(target, this.arena);
-              if (clone && !this.objects.includes(clone)) {
-                this.objects.push(clone);
-              }
+              target.spawnerModule.triggerClone(target, this.arena, this.objects);
             }
           }
         }
@@ -10641,8 +10724,8 @@ class ServerGameSimulation {
       }
     }
     for (const char of this.allCharacters) {
-      if (char.isUsingItem && char.heldObject && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
-        char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
+      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+        char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
       }
     }
     const allEntities = [...this.allCharacters, ...this.objects];

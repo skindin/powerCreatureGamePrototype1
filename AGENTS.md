@@ -294,6 +294,14 @@
   - **SpawnerModule World Array Fix**: Passed the active `objects` array into `triggerClone(pickedEntity, arena, objects)` so cloned replicas are pushed directly into the physical world array upon pickup, while stripping `spawnerModule` from the held item.
   - **TagSelectorControl**: Blender-style UI control supporting single-tag dropdowns with inline search, rename (✎), delete (🗑), and creation (+ Add Tag) for Consumable items, and multi-tag chip lists with dropdown selection for the Character Consume ability.
   - **Automated Verification**: Verified 100% via `scratch/test_consumable_tags_and_spawner.ts` alongside full regression suite.
+- **Phase 12.3 (Post-Eating Grab Suppression & Radial Pie Progress Gauge)**:
+  - **Post-Eating Grab Suppression**: Implemented per-entity grab suppression state machine in `PlayerManager.ts`. When an item finishes being consumed (or is released/dropped/thrown) while the grab input (LMB, Key E, Gamepad RT/B) is depressed, auto-grab is strictly suppressed. Characters will only enter the auto-grab state if the player has started seeking something to grab *since* their hands became empty (i.e. released the mouse/trigger and pressed it anew while empty-handed).
+  - **Circular Pie Consumption Gauge**: Implemented a rich radial pie/bar meter in `EntityPass.ts` rendered around held consumable items when being consumed or partially eaten:
+    - **Background Plate & Track Ring**: Dark translucent backing disk (`rgba(15, 23, 42, 0.78)`) with slate ring track framing the item without obscuring it.
+    - **Translucent Pie Wedge**: Dynamic filled pie slice from 12 o'clock clockwise proportional to the remaining consumable energy ratio.
+    - **Perimeter Circular Bar**: High-visibility glowing emerald/lime arc (`#22c55e` / `#4ade80`, `lineWidth = 3.5`, rounded line caps) tracking remaining nutrition.
+    - **Live Percentage Pill**: Floating dark badge above the pie showing live countdown (`100%` down to `0%`) while actively eating.
+  - **Automated Verification**: Verified 100% via `scratch/test_grab_suppression_and_pie.ts` alongside full regression test suite and clean `npm run build`.
 
 
 ---

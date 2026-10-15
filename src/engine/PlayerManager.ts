@@ -19,6 +19,13 @@ export interface PlayerEntry {
   wasHoldingObject?: boolean;
 }
 
+export interface GrabSuppressionState {
+  mouseGrabSuppressed: boolean;
+  keyEGrabSuppressed: boolean;
+  rtGrabSuppressed: boolean;
+  bGrabSuppressed: boolean;
+}
+
 export const PLAYER_COLORS = [
   "#f59e0b", // P1: Amber Gold
   "#06b6d4", // P2: Cyan
@@ -45,9 +52,27 @@ export class PlayerManager {
   public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
   private actionSeq: number = 0;
   private lastHeldObjectIds: Map<string, string | null> = new Map();
+  private grabSuppressedStates: Map<string, GrabSuppressionState> = new Map();
   public baseCharacter: Character;
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
+
+  /**
+   * Retrieves or initializes the grab input suppression tracking state for an entity.
+   */
+  public getGrabSuppressionState(entityId: string): GrabSuppressionState {
+    let state = this.grabSuppressedStates.get(entityId);
+    if (!state) {
+      state = {
+        mouseGrabSuppressed: false,
+        keyEGrabSuppressed: false,
+        rtGrabSuppressed: false,
+        bGrabSuppressed: false,
+      };
+      this.grabSuppressedStates.set(entityId, state);
+    }
+    return state;
+  }
 
   constructor(options: {
     arena: Arena;
@@ -461,10 +486,41 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
+
+      const isHolding = kChar.heldObject !== null;
+      const grabState = this.getGrabSuppressionState(kChar.id);
+      const isEKeyDown = input.isEKeyDepressed || input.isKeyPressed("KeyE");
+
+      if (isHolding) {
+        // Holding an object: any button held down while holding cannot initiate subsequent grabs until released
+        if (input.isMouseDown) {
+          grabState.mouseGrabSuppressed = true;
+        }
+        if (isEKeyDown) {
+          grabState.keyEGrabSuppressed = true;
+        }
+      } else {
+        // Empty-handed: releasing the button resets suppression, allowing new grab attempts
+        if (!input.isMouseDown) {
+          grabState.mouseGrabSuppressed = false;
+        }
+        if (!isEKeyDown) {
+          grabState.keyEGrabSuppressed = false;
+        }
+      }
+
+      const canMouseGrab = input.isMouseDown && !grabState.mouseGrabSuppressed;
+      const canKeyEGrab = isEKeyDown && !grabState.keyEGrabSuppressed;
+      const isKeyboardSeekingGrab = (
+        input.isKeyboardActive &&
+        !input.isKeyboardSuspended &&
+        !input.isThrowingPress &&
+        (canMouseGrab || canKeyEGrab)
+      );
       
       // Determine explicit target object in reach if grab is active
       let grabTargetObjectId: string | null = null;
-      if (input.isGrabHeld && !kChar.heldObject && kChar.pickupModule) {
+      if (isKeyboardSeekingGrab && !kChar.heldObject && kChar.pickupModule) {
         const aimTarget = isMouseAiming ? input.actualMousePos : null;
         const aimX = aimTarget ? aimTarget.x : kChar.position.x;
         const aimY = aimTarget ? aimTarget.y : kChar.position.y;
@@ -515,7 +571,7 @@ export class PlayerManager {
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: isHoldingConsumable ? (input.isEKeyDepressed || input.isKeyPressed("KeyE")) : input.isGrabHeld,
+        isGrabHeld: isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab,
         grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: input.isKeyboardThrowRequested ?? false,
@@ -556,9 +612,23 @@ export class PlayerManager {
         aimY = cChar.position.y + dirY * 3.0;
       }
 
-      const isGrab = (slot.rtHeld || slot.bHeld) ?? false;
+      const isCharHolding = cChar.heldObject !== null;
+      const gpGrabState = this.getGrabSuppressionState(cChar.id);
+
+      if (isCharHolding) {
+        if (slot.rtHeld) gpGrabState.rtGrabSuppressed = true;
+        if (slot.bHeld) gpGrabState.bGrabSuppressed = true;
+      } else {
+        if (!slot.rtHeld) gpGrabState.rtGrabSuppressed = false;
+        if (!slot.bHeld) gpGrabState.bGrabSuppressed = false;
+      }
+
+      const canRtGrab = (slot.rtHeld ?? false) && !gpGrabState.rtGrabSuppressed;
+      const canBGrab = (slot.bHeld ?? false) && !gpGrabState.bGrabSuppressed;
+      const isGamepadSeekingGrab = canRtGrab || canBGrab;
+
       let grabTargetObjectId: string | null = null;
-      if (isGrab && !cChar.heldObject && cChar.pickupModule) {
+      if (isGamepadSeekingGrab && !cChar.heldObject && cChar.pickupModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
         const target = cChar.pickupModule.findTargetObject(
           cChar,
@@ -610,7 +680,7 @@ export class PlayerManager {
         moveY: slot.movementVector.y,
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
-        isGrabHeld: isCharHoldingConsumable ? (slot.bHeld ?? false) : isGrab,
+        isGrabHeld: isCharHoldingConsumable ? canBGrab : isGamepadSeekingGrab,
         grabTargetObjectId,
         isDrop: slot.isDropRequested ?? false,
         isThrow: slot.isThrowRequested ?? false,
@@ -771,6 +841,8 @@ export class PlayerManager {
       } else if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
       }
+
+      let justDepletedConsumable = false;
       if (char.heldObject) {
         const heldPos = char.calculateHeldObjectPosition(this.arena);
         char.heldObject.position.x = heldPos.x;
@@ -783,6 +855,16 @@ export class PlayerManager {
           char.isUsingItem = true;
           const consumeResult = char.consumeModule.consume(dt, char, char.heldObject, objects, this.arena);
           char.eatRateWatts = consumeResult.watts;
+          if (consumeResult.isDepleted) {
+            justDepletedConsumable = true;
+            const grabState = this.getGrabSuppressionState(char.id);
+            grabState.mouseGrabSuppressed = true;
+            grabState.keyEGrabSuppressed = true;
+            grabState.rtGrabSuppressed = true;
+            grabState.bGrabSuppressed = true;
+            char.isUsingItem = false;
+            char.eatRateWatts = 0;
+          }
         } else {
           char.isUsingItem = false;
           char.eatRateWatts = 0;
@@ -793,7 +875,13 @@ export class PlayerManager {
       }
 
       // Explicit grab target resolution
-      if (!isEditMode && pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
+      const grabState = this.getGrabSuppressionState(char.id);
+      const isKeyboardPlayer = !entry || entry.isKeyboard;
+      const isDeviceSuppressed = isKeyboardPlayer
+        ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
+        : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed);
+      const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;
+      if (!isEditMode && isSeeking && !char.heldObject && char.pickupModule) {
         if (pkt.grabTargetObjectId !== undefined) {
           if (pkt.grabTargetObjectId !== null) {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
@@ -814,6 +902,18 @@ export class PlayerManager {
       const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
       if (currentHeldId !== prevHeldId) {
         this.lastHeldObjectIds.set(char.id, currentHeldId);
+        if (prevHeldId !== null && currentHeldId === null) {
+          // Hand just became empty (eaten, dropped, thrown)!
+          // Suppress grab if any grab/action input was held at this exact transition
+          const gState = this.getGrabSuppressionState(char.id);
+          if (this.inputManager.isMouseDown) gState.mouseGrabSuppressed = true;
+          if (this.inputManager.isEKeyDepressed || this.inputManager.isKeyPressed("KeyE")) gState.keyEGrabSuppressed = true;
+          if (entry?.slotIndex !== undefined) {
+            const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+            if (slot?.rtHeld) gState.rtGrabSuppressed = true;
+            if (slot?.bHeld) gState.bGrabSuppressed = true;
+          }
+        }
         if (currentHeldId) {
           // If the newly picked up item has a SpawnerModule, clone a replacement at the spawn position!
           if (char.heldObject && char.heldObject.spawnerModule && char.heldObject.spawnerModule.enabled) {
