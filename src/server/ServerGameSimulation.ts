@@ -587,10 +587,7 @@ export class ServerGameSimulation {
           if (target && (!target.isHeld || target.heldBy === char)) {
             char.pickupModule.pickup(char, target);
             if (target.spawnerModule && target.spawnerModule.enabled) {
-              const clone = target.spawnerModule.triggerClone(target, this.arena);
-              if (clone && !this.objects.includes(clone)) {
-                this.objects.push(clone);
-              }
+              target.spawnerModule.triggerClone(target, this.arena, this.objects);
             }
           }
         }
@@ -921,10 +918,10 @@ export class ServerGameSimulation {
       }
     }
 
-    // 4b. Process Food eating for held items
+    // 4b. Process Consumable consumption for held items
     for (const char of this.allCharacters) {
-      if (char.isUsingItem && char.heldObject && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
-        char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
+      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+        char.consumeModule.consume(dt, char, char.heldObject!, this.objects, this.arena);
       }
     }
 

@@ -12,6 +12,7 @@ import type { Arena } from "../engine/Arena.js";
 import { CharacterModule, type CharacterRole } from "./CharacterModule.js";
 import { EnergyPool } from "./EnergyPool.js";
 import { EnergyBus } from "./EnergyBus.js";
+import { ConsumeModule } from "./ConsumeModule.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
@@ -93,6 +94,7 @@ export class Character extends GameObject {
   public wallEdgeAssistModule: WallEdgeAssistModule | null;
   public climbingModule: ClimbingModule | null;
   public healthModule: HealthModule | null;
+  public consumeModule: ConsumeModule | null = new ConsumeModule();
   public energyPool: EnergyPool | null;
   public energyBus: EnergyBus | null;
   public energyBusses: Map<string, EnergyBus> = new Map();
@@ -141,12 +143,19 @@ export class Character extends GameObject {
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
 
-  // Item usage & eating state
   public isUsingItem: boolean = false;
   public eatRateWatts: number = 0;
 
+  public canConsumeHeldObject(): boolean {
+    return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
+  }
+
   public get isEatingFood(): boolean {
-    return Boolean(this.heldObject?.foodModule?.enabled && this.isUsingItem);
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
+  }
+
+  public get isConsumingItem(): boolean {
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
   }
 
   /**

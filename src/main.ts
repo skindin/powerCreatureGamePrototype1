@@ -4,7 +4,7 @@ import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
 import { DamageAuraModule } from "./engine/DamageAuraModule.js";
-import { FoodModule } from "./engine/FoodModule.js";
+import { ConsumableModule } from "./engine/ConsumableModule.js";
 import { SpawnerModule } from "./engine/SpawnerModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
@@ -306,10 +306,11 @@ function bootstrap(): void {
       color: "#22c55e",
       bounceMod: 0.2,
       visualShape: "circle",
-      foodModule: new FoodModule({
+      consumableModule: new ConsumableModule({
+        tag: "food",
         totalEnergyJoules: 2000,
         remainingEnergyJoules: 2000,
-        eatRateWatts: 400,
+        consumeRateWatts: 400,
         healRate: 0,
       }),
       spawnerModule: new SpawnerModule({

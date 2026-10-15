@@ -366,14 +366,15 @@ export class EnergyHud {
     const powerCap = Math.max(50, maxPower);
     const allocations = bus ? bus.getActiveAllocations(_char.properties) : [];
 
-    // If character is actively eating food, register an incoming positive energy modifier (+Watts)
-    if (_char.isUsingItem && _char.heldObject?.foodModule && _char.heldObject.foodModule.enabled) {
-      const eatWatts = _char.heldObject.foodModule.getEatRate(_char.heldObject.properties);
+    // If character is actively consuming an item, register an incoming positive energy modifier (+Watts)
+    if (_char.isUsingItem && _char.canConsumeHeldObject() && _char.heldObject?.consumableModule) {
+      const cMod = _char.heldObject.consumableModule;
+      const consumeWatts = cMod.getConsumeRate(_char.heldObject.properties);
       allocations.push({
-        id: "food_eat",
-        name: "Food",
+        id: "consumable_nutrition",
+        name: cMod.tag ? `Consumable (${cMod.tag})` : "Consumable",
         color: "#22c55e",
-        grantedWatts: eatWatts,
+        grantedWatts: consumeWatts,
         allowPartialPower: false,
         isPositive: true,
         isBurst: false,

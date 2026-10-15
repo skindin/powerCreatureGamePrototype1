@@ -20,9 +20,12 @@ import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { CharacterModule, type CharacterRole } from "../character/CharacterModule.js";
 import { EnergyPool } from "../character/EnergyPool.js";
 import { EnergyBus } from "../character/EnergyBus.js";
-import { FoodModule } from "../engine/FoodModule.js";
+import { ConsumableModule } from "../engine/ConsumableModule.js";
+import { ConsumeModule } from "../character/ConsumeModule.js";
 import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
+import { TagSelectorControl } from "./TagSelectorControl.js";
+import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 
 export interface CreatorPreset {
@@ -275,6 +278,39 @@ export class DevPanel {
     this.getAllCharacters = options.getAllCharacters;
 
     this.selectedEntity = this.character;
+
+    // Reactively update when consumable tags are renamed or deleted
+    consumableTagRegistry.onRename((oldTag, newTag) => {
+      for (const obj of this.objects) {
+        if (obj.consumableModule && obj.consumableModule.tag.toLowerCase() === oldTag.toLowerCase()) {
+          obj.consumableModule.tag = newTag;
+        }
+      }
+      const chars = this.getAllCharacters ? this.getAllCharacters() : [this.character];
+      for (const c of chars) {
+        if (c.consumeModule) {
+          c.consumeModule.onTagRenamed(oldTag, newTag);
+        }
+      }
+      this.renderEntityModules();
+      this.updateInspector();
+    });
+
+    consumableTagRegistry.onDelete((deletedTag) => {
+      for (const obj of this.objects) {
+        if (obj.consumableModule && obj.consumableModule.tag.toLowerCase() === deletedTag.toLowerCase()) {
+          obj.consumableModule.tag = "";
+        }
+      }
+      const chars = this.getAllCharacters ? this.getAllCharacters() : [this.character];
+      for (const c of chars) {
+        if (c.consumeModule) {
+          c.consumeModule.onTagDeleted(deletedTag);
+        }
+      }
+      this.renderEntityModules();
+      this.updateInspector();
+    });
 
     this.renderPanel();
   }
@@ -1048,8 +1084,11 @@ export class DevPanel {
     const hasEnergyBus = isChar && Boolean(char?.energyBus);
     const energyBusEnabled = isChar && Boolean(char?.energyBus?.enabled);
 
-    const hasFoodModule = Boolean(e.foodModule);
-    const foodEnabled = Boolean(e.foodModule?.enabled);
+    const hasConsumableModule = Boolean(e.consumableModule);
+    const consumableEnabled = Boolean(e.consumableModule?.enabled);
+
+    const hasConsumeModule = isChar && Boolean(char?.consumeModule);
+    const consumeEnabled = isChar && Boolean(char?.consumeModule?.enabled);
 
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
@@ -1595,37 +1634,58 @@ export class DevPanel {
       `;
     }
 
-    // Food & Edible Module
-    if (hasFoodModule && e.foodModule) {
+    // Consume Module (Character only)
+    if (hasConsumeModule && char && char.consumeModule) {
       attachedCount++;
-      const fm = e.foodModule;
-      const curEnergy = fm.getRemainingEnergy(e.properties);
-      const maxEnergy = fm.getTotalEnergy(e.properties);
-      const foodPct = maxEnergy > 0 ? Math.min(100, Math.max(0, (curEnergy / maxEnergy) * 100)) : 0;
 
       html += `
-        <div class="module-card ${!foodEnabled ? 'module-disabled' : ''}" data-module-id="food">
-          ${this.renderModuleHeader("food", "🍎 Food & Edible", renderToggleBtn("food", foodEnabled))}
-          <div id="collapse-body-mod-food" style="display: ${this.isSectionCollapsed('mod-food') ? 'none' : 'block'};">
-          ${!foodEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Food consumption is disabled</div>` : ''}
+        <div class="module-card ${!consumeEnabled ? 'module-disabled' : ''}" data-module-id="consume">
+          ${this.renderModuleHeader("consume", "🍴 Consume Ability", renderToggleBtn("consume", consumeEnabled))}
+          <div id="collapse-body-mod-consume" style="display: ${this.isSectionCollapsed('mod-consume') ? 'none' : 'block'};">
+          ${!consumeEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Item consumption is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Edible nutrition item. Holding and eating continuously transfers Joules into the character's Energy Pool, shrinking in size until 100% consumed.
+            Governs this character's ability to consume physical items. The character will only consume held items whose tags match their accepted list.
           </div>
+
+          <div id="prop-socket-consume-tags" style="margin-top: 6px;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Consumable Module (Items/Freebodies)
+    if (hasConsumableModule && e.consumableModule) {
+      attachedCount++;
+      const cm = e.consumableModule;
+      const curEnergy = cm.getRemainingEnergy(e.properties);
+      const maxEnergy = cm.getTotalEnergy(e.properties);
+      const consumablePct = maxEnergy > 0 ? Math.min(100, Math.max(0, (curEnergy / maxEnergy) * 100)) : 0;
+
+      html += `
+        <div class="module-card ${!consumableEnabled ? 'module-disabled' : ''}" data-module-id="consumable">
+          ${this.renderModuleHeader("consumable", "🍎 Consumable", renderToggleBtn("consumable", consumableEnabled))}
+          <div id="collapse-body-mod-consumable" style="display: ${this.isSectionCollapsed('mod-consumable') ? 'none' : 'block'};">
+          ${!consumableEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Consumable ingestion is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Consumable physical item. Characters with matching accepted tags can hold and consume this item to transfer energy and nutrients, shrinking until 100% consumed.
+          </div>
+
+          <div id="prop-socket-consumable-tag" style="margin-bottom: 6px;"></div>
 
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-              <span>Remaining Nutrition</span>
-              <span id="label-food-status">${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${foodPct.toFixed(0)}%)</span>
+              <span>Remaining Energy</span>
+              <span id="label-consumable-status">${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${consumablePct.toFixed(0)}%)</span>
             </div>
             <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
-              <div id="bar-food-fill" style="background: linear-gradient(90deg, #16a34a, #22c55e); height: 100%; width: ${foodPct}%; transition: width 0.1s ease;"></div>
+              <div id="bar-consumable-fill" style="background: linear-gradient(90deg, #16a34a, #22c55e); height: 100%; width: ${consumablePct}%; transition: width 0.1s ease;"></div>
             </div>
           </div>
 
-          <div id="prop-socket-food-total-energy"></div>
-          <div id="prop-socket-food-remaining-energy"></div>
-          <div id="prop-socket-food-eat-rate"></div>
-          <div id="prop-socket-food-heal-rate"></div>
+          <div id="prop-socket-consumable-total-energy"></div>
+          <div id="prop-socket-consumable-remaining-energy"></div>
+          <div id="prop-socket-consumable-consume-rate"></div>
+          <div id="prop-socket-consumable-heal-rate"></div>
           </div>
         </div>
       `;
@@ -1781,7 +1841,7 @@ export class DevPanel {
       { id: "health", name: "Health & Vitality", icon: "❤️", description: "Hit points, passive health regeneration, and death / respawn loop", isAttached: hasHealthModule },
       { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
       { id: "damageSolver", name: "Damage Solver & Armor", icon: "🛡️", description: "Converts blunt physical impacts and wall collisions into HP damage", isAttached: hasDamageSolverModule },
-      { id: "food", name: "Food & Edible", icon: "🍎", description: "Edible nutrition that continuously restores energy when eaten and shrinks until consumed", isAttached: hasFoodModule },
+      { id: "consumable", name: "Consumable", icon: "🍎", description: "Consumable physical item with customizable tag and energy/healing payload", isAttached: hasConsumableModule },
       { id: "spawner", name: "Spawner (Clone On Pickup)", icon: "📦", description: "Clones the item at its initial spawn position upon pickup for infinite supplies", isAttached: hasSpawnerModule },
       { id: "character", name: "Character Module", icon: "👤", description: "Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy", isAttached: hasCharModule },
     ];
@@ -1794,6 +1854,7 @@ export class DevPanel {
         { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },
         { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssistModule },
         { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule },
+        { id: "consume", name: "Consume Ability", icon: "🍴", description: "Consumes physical items matching accepted tags", isAttached: hasConsumeModule },
         { id: "energyPool", name: "Energy Pool", icon: "⚡", description: "Finite biochemical energy reservoir (Joules) with debug auto-refill", isAttached: hasEnergyPool },
         { id: "energyBus", name: "Energy Bus (Main)", icon: "🚌", description: "Muscle output power throughput (Watts) and burst stamina", isAttached: hasEnergyBus }
       );
@@ -1910,8 +1971,12 @@ export class DevPanel {
       case "damageSolver":
         if (e.damageSolverModule) e.damageSolverModule.enabled = !e.damageSolverModule.enabled;
         break;
+      case "consume":
+        if (char?.consumeModule) char.consumeModule.enabled = !char.consumeModule.enabled;
+        break;
+      case "consumable":
       case "food":
-        if (e.foodModule) e.foodModule.enabled = !e.foodModule.enabled;
+        if (e.consumableModule) e.consumableModule.enabled = !e.consumableModule.enabled;
         break;
       case "spawner":
         if (e.spawnerModule) e.spawnerModule.enabled = !e.spawnerModule.enabled;
@@ -2007,8 +2072,14 @@ export class DevPanel {
       case "damageSolver":
         e.damageSolverModule = null;
         break;
+      case "consume":
+        if (e instanceof Character) {
+          (e as Character).consumeModule = null;
+        }
+        break;
+      case "consumable":
       case "food":
-        e.foodModule = null;
+        e.consumableModule = null;
         break;
       case "spawner":
         e.spawnerModule = null;
@@ -2135,12 +2206,21 @@ export class DevPanel {
           damageThresholdHp: 5.0,
         });
         break;
+      case "consume":
+        if (e instanceof Character) {
+          (e as Character).consumeModule = new ConsumeModule({
+            acceptedTags: ["food"],
+          });
+        }
+        break;
+      case "consumable":
       case "food":
-        e.foodModule = new FoodModule({
+        e.consumableModule = new ConsumableModule({
+          tag: "food",
           totalEnergyJoules: 2000,
-          eatRateWatts: 400,
+          consumeRateWatts: 400,
         });
-        e.foodModule.initialColliderRadius = e.colliderRadius;
+        e.consumableModule.initialColliderRadius = e.colliderRadius;
         break;
       case "spawner":
         e.spawnerModule = new SpawnerModule({
@@ -2763,14 +2843,43 @@ export class DevPanel {
       }
     }
 
-    // Food & Edible Module controls (applicable to any entity with FoodModule)
-    if (e.foodModule) {
-      const fm = e.foodModule;
+    // Consume Module controls (Character only)
+    if (char && char.consumeModule) {
+      const consumeSocketEl = this.container.querySelector("#prop-socket-consume-tags");
+      if (consumeSocketEl) {
+        const tagCtrl = new TagSelectorControl({
+          mode: "multi",
+          label: "Accepted Consumable Tags",
+          acceptedTags: char.consumeModule.acceptedTags,
+          onTagsChanged: (tags) => {
+            char.consumeModule!.acceptedTags = tags;
+          },
+        });
+        consumeSocketEl.appendChild(tagCtrl.element);
+      }
+    }
 
-      const totalEnergySocketEl = this.container.querySelector("#prop-socket-food-total-energy");
+    // Consumable Module controls (applicable to any entity with ConsumableModule)
+    if (e.consumableModule) {
+      const cm = e.consumableModule;
+
+      const tagSocketEl = this.container.querySelector("#prop-socket-consumable-tag");
+      if (tagSocketEl) {
+        const tagCtrl = new TagSelectorControl({
+          mode: "single",
+          label: "Consumable Tag",
+          currentTag: cm.tag,
+          onTagSelected: (tag) => {
+            cm.tag = tag;
+          },
+        });
+        tagSocketEl.appendChild(tagCtrl.element);
+      }
+
+      const totalEnergySocketEl = this.container.querySelector("#prop-socket-consumable-total-energy");
       if (totalEnergySocketEl) {
         const totalCtrl = new PropertyControl({
-          property: fm.totalEnergyJoulesProp,
+          property: cm.totalEnergyJoulesProp,
           owner: e,
           label: "Total Energy (J)",
           step: 100.0,
@@ -2778,10 +2887,10 @@ export class DevPanel {
         totalEnergySocketEl.appendChild(totalCtrl.element);
       }
 
-      const remEnergySocketEl = this.container.querySelector("#prop-socket-food-remaining-energy");
+      const remEnergySocketEl = this.container.querySelector("#prop-socket-consumable-remaining-energy");
       if (remEnergySocketEl) {
         const remCtrl = new PropertyControl({
-          property: fm.remainingEnergyJoulesProp,
+          property: cm.remainingEnergyJoulesProp,
           owner: e,
           label: "Remaining Energy (J)",
           step: 50.0,
@@ -2789,21 +2898,21 @@ export class DevPanel {
         remEnergySocketEl.appendChild(remCtrl.element);
       }
 
-      const eatRateSocketEl = this.container.querySelector("#prop-socket-food-eat-rate");
-      if (eatRateSocketEl) {
+      const consumeRateSocketEl = this.container.querySelector("#prop-socket-consumable-consume-rate");
+      if (consumeRateSocketEl) {
         const rateCtrl = new PropertyControl({
-          property: fm.eatRateWattsProp,
+          property: cm.consumeRateWattsProp,
           owner: e,
-          label: "Eat Rate (Watts = J/s)",
+          label: "Consume Rate (Watts = J/s)",
           step: 25.0,
         });
-        eatRateSocketEl.appendChild(rateCtrl.element);
+        consumeRateSocketEl.appendChild(rateCtrl.element);
       }
 
-      const healRateSocketEl = this.container.querySelector("#prop-socket-food-heal-rate");
+      const healRateSocketEl = this.container.querySelector("#prop-socket-consumable-heal-rate");
       if (healRateSocketEl) {
         const healCtrl = new PropertyControl({
-          property: fm.healRateProp,
+          property: cm.healRateProp,
           owner: e,
           label: "Nutritional Healing Rate (HP/s)",
           step: 1.0,
@@ -3993,6 +4102,17 @@ export class DevPanel {
           curStaminaInput.value = curS.toFixed(2);
         }
       }
+    }
+
+    if (e.consumableModule) {
+      const cm = e.consumableModule;
+      const curE = cm.getRemainingEnergy(e.properties);
+      const maxE = cm.getTotalEnergy(e.properties);
+      const pct = maxE > 0 ? Math.min(100, Math.max(0, (curE / maxE) * 100)) : 0;
+      const barFill = this.container.querySelector("#bar-consumable-fill") as HTMLElement | null;
+      if (barFill) barFill.style.width = `${pct}%`;
+      const labelStatus = this.container.querySelector("#label-consumable-status") as HTMLElement | null;
+      if (labelStatus) labelStatus.textContent = `${curE.toFixed(0)} / ${maxE.toFixed(0)} J (${pct.toFixed(0)}%)`;
     }
   }
 

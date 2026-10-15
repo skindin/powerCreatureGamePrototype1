@@ -506,8 +506,8 @@ export class PlayerManager {
         }
       }
 
-      const isHoldingFood = Boolean(kChar.heldObject?.foodModule?.enabled);
-      const isUsingItem = isHoldingFood && input.isMouseDown && !input.isKeyboardSuspended;
+      const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
+      const isUsingItem = isHoldingConsumable && input.isMouseDown && !input.isKeyboardSuspended;
 
       map.set("keyboard", {
         playerId: "keyboard",
@@ -515,7 +515,7 @@ export class PlayerManager {
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: isHoldingFood ? (input.isEKeyDepressed || input.isKeyPressed("KeyE")) : input.isGrabHeld,
+        isGrabHeld: isHoldingConsumable ? (input.isEKeyDepressed || input.isKeyPressed("KeyE")) : input.isGrabHeld,
         grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: input.isKeyboardThrowRequested ?? false,
@@ -600,8 +600,8 @@ export class PlayerManager {
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
-      const isCharHoldingFood = Boolean(cChar.heldObject?.foodModule?.enabled);
-      const isUsingItem = isCharHoldingFood && (slot.isUsingItem ?? false);
+      const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
+      const isUsingItem = isCharHoldingConsumable && (slot.isUsingItem ?? false);
 
       map.set(entry.id, {
         playerId: entry.id,
@@ -610,7 +610,7 @@ export class PlayerManager {
         moveY: slot.movementVector.y,
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
-        isGrabHeld: isCharHoldingFood ? (slot.bHeld ?? false) : isGrab,
+        isGrabHeld: isCharHoldingConsumable ? (slot.bHeld ?? false) : isGrab,
         grabTargetObjectId,
         isDrop: slot.isDropRequested ?? false,
         isThrow: slot.isThrowRequested ?? false,
@@ -777,12 +777,12 @@ export class PlayerManager {
         char.heldObject.position.y = heldPos.y;
         char.heldObject.position.z = heldPos.z;
 
-        // Primary Item Ability: Continuous consumption when holding edible food
+        // Primary Item Ability: Continuous consumption when holding consumable item
         const isUsingItem = Boolean((pkt as any).isUsingItem);
-        if (isUsingItem && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
+        if (isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
           char.isUsingItem = true;
-          const eatResult = char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
-          char.eatRateWatts = eatResult.watts;
+          const consumeResult = char.consumeModule.consume(dt, char, char.heldObject, objects, this.arena);
+          char.eatRateWatts = consumeResult.watts;
         } else {
           char.isUsingItem = false;
           char.eatRateWatts = 0;
@@ -817,7 +817,7 @@ export class PlayerManager {
         if (currentHeldId) {
           // If the newly picked up item has a SpawnerModule, clone a replacement at the spawn position!
           if (char.heldObject && char.heldObject.spawnerModule && char.heldObject.spawnerModule.enabled) {
-            char.heldObject.spawnerModule.triggerClone(char.heldObject, this.arena);
+            char.heldObject.spawnerModule.triggerClone(char.heldObject, this.arena, objects);
           }
           if (!isReplay) {
             const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";

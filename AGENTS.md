@@ -287,10 +287,13 @@
     - Added dedicated inspector cards for `FoodModule` (Total Energy, Remaining Energy, Eat Rate, Heal Rate) and `SpawnerModule` (Enabled, Respawn Delay, Spawned Count).
     - Added `Food` and `Spawner` to the "Add Physical Behavior" dropdown for any selected entity or new object.
   - **Automated Verification**: Verified 100% via `scratch/test_food_and_spawner.ts` alongside full regression test suite.
-- **Phase 12.1 (Desktop App & Launcher Resiliency)**:
-  - **Port 3000 & 5173 Multi-Port Support**: Updated `Launcher.cs` (`LaunchGame.exe`), `desktop_app/Form1.cs` (`PowerCreatureGame.exe`), and `share.js` to prioritize port 3000 with seamless fallback to port 5173.
-  - **Shortcut Path Correction**: Updated `Power Creature Game.lnk` in project root and created Desktop shortcut pointing to active project directory `app/PowerCreatureGame.exe` instead of stale OneDrive paths.
-  - **Rebuilt Executables**: Successfully recompiled `LaunchGame.exe` via C# compiler and rebuilt `app/PowerCreatureGame.exe` & `PowerCreatureGame.dll` using .NET 8.
+- **Phase 12.2 (Consumable Module, Tag Registry, Character Consume Ability & Spawner World Array Fix)**:
+  - **ConsumableModule ("Consumable")**: Renamed food behavior to `ConsumableModule`. Attached items carry a customizable `tag` (e.g., "food", "potion", "battery"), full property sockets, dynamic volumetric shrinking, and clean world disposal when energy reaches 0 J (`objects.splice(idx, 1)`).
+  - **ConsumableTagRegistry**: Shared registry managing user-created tags with full CRUD control: create, list, inline rename (cascades to all items and characters), and inline delete (unlinks and clears references).
+  - **Character ConsumeModule ("Consume")**: First-class modular ability on `Character` with an interactive multi-tag selector (`acceptedTags`). Characters only consume held items whose tags match their accepted list.
+  - **SpawnerModule World Array Fix**: Passed the active `objects` array into `triggerClone(pickedEntity, arena, objects)` so cloned replicas are pushed directly into the physical world array upon pickup, while stripping `spawnerModule` from the held item.
+  - **TagSelectorControl**: Blender-style UI control supporting single-tag dropdowns with inline search, rename (✎), delete (🗑), and creation (+ Add Tag) for Consumable items, and multi-tag chip lists with dropdown selection for the Character Consume ability.
+  - **Automated Verification**: Verified 100% via `scratch/test_consumable_tags_and_spawner.ts` alongside full regression suite.
 
 
 ---

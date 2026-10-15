@@ -1,6 +1,6 @@
 import type { GameObject, Vector3D } from "./GameObject.js";
 import type { Arena } from "./Arena.js";
-import { FoodModule } from "./FoodModule.js";
+import { ConsumableModule } from "./ConsumableModule.js";
 
 export interface SpawnerModuleOptions {
   spawnPosition?: Partial<Vector3D>;
@@ -12,7 +12,8 @@ export interface SpawnerModuleOptions {
  * SpawnerModule gives an entity infinite reproduction behavior upon being picked up.
  * When a character picks up the entity:
  * 1. An identical replacement clone is created at its original spawnPosition with the SpawnerModule attached.
- * 2. The picked-up entity held by the character has its SpawnerModule removed, ensuring players
+ * 2. The clone is added to the active world `objects` array so it is immediately visible and physical.
+ * 3. The picked-up entity held by the character has its SpawnerModule removed, ensuring players
  *    carry clean, standard items rather than portable infinite dispensers.
  */
 export class SpawnerModule {
@@ -43,10 +44,14 @@ export class SpawnerModule {
 
   /**
    * Executed when the host entity is picked up by a character.
-   * Clones a replacement at spawnPosition, leaves it in the arena, and strips
+   * Clones a replacement at spawnPosition, leaves it in the world, and strips
    * the SpawnerModule from the picked-up entity so the player holds a normal item.
    */
-  public triggerClone(pickedEntity: GameObject, arena: Arena): GameObject | null {
+  public triggerClone(
+    pickedEntity: GameObject,
+    arena: Arena,
+    objects?: GameObject[]
+  ): GameObject | null {
     if (!this.enabled || !arena) return null;
 
     // Dynamically clone the host GameObject archetype
@@ -65,20 +70,21 @@ export class SpawnerModule {
       clonePosition.z = pickedEntity.position.z;
     }
 
-    // Configure food clone if host was edible
-    let cloneFoodModule: FoodModule | null = null;
-    if (pickedEntity.foodModule) {
-      const fm = pickedEntity.foodModule;
-      const totalEnergy = fm.totalEnergyJoulesProp.literalValue;
-      cloneFoodModule = new FoodModule({
+    // Configure consumable clone if host was consumable / edible
+    let cloneConsumableModule: ConsumableModule | null = null;
+    const srcConsumable = pickedEntity.consumableModule;
+    if (srcConsumable) {
+      const totalEnergy = srcConsumable.totalEnergyJoulesProp.literalValue;
+      cloneConsumableModule = new ConsumableModule({
+        tag: srcConsumable.tag,
         totalEnergyJoules: totalEnergy,
         remainingEnergyJoules: totalEnergy,
-        eatRateWatts: fm.eatRateWattsProp.literalValue,
-        healRate: fm.healRateProp.literalValue,
-        minScaleFloor: fm.minScaleFloor,
-        minRadiusFloor: fm.minRadiusFloor,
+        consumeRateWatts: srcConsumable.consumeRateWattsProp.literalValue,
+        healRate: srcConsumable.healRateProp.literalValue,
+        minScaleFloor: srcConsumable.minScaleFloor,
+        minRadiusFloor: srcConsumable.minRadiusFloor,
       });
-      cloneFoodModule.initialColliderRadius = fm.initialColliderRadius;
+      cloneConsumableModule.initialColliderRadius = srcConsumable.initialColliderRadius;
     }
 
     // Configure new spawner module for the stationary replacement clone
@@ -96,20 +102,27 @@ export class SpawnerModule {
       color: pickedEntity.color,
       visualShape: pickedEntity.visualShape,
       mass: pickedEntity.mass,
-      colliderRadius: pickedEntity.foodModule
-        ? (pickedEntity.foodModule.initialColliderRadius || pickedEntity.colliderRadius)
+      colliderRadius: pickedEntity.consumableModule
+        ? (pickedEntity.consumableModule.initialColliderRadius || pickedEntity.colliderRadius)
         : pickedEntity.colliderRadius,
       bounceMod: pickedEntity.bounceMod,
       hasGravity: pickedEntity.hasGravity,
       hasVerticalPosition: pickedEntity.hasVerticalPosition,
-      foodModule: cloneFoodModule,
+      consumableModule: cloneConsumableModule,
     });
 
     cloneObj.spawnerModule = cloneSpawner;
 
-    // Add replacement clone to arena entities
-    if (Array.isArray(arena.entities)) {
-      arena.entities.push(cloneObj);
+    // Synchronize clone elevation with arena walls
+    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
+      arena.syncEntitiesWithWalls([cloneObj]);
+    }
+
+    // Add replacement clone directly to the active world objects array!
+    if (objects && Array.isArray(objects)) {
+      if (!objects.includes(cloneObj)) {
+        objects.push(cloneObj);
+      }
     }
 
     // Increment spawn count

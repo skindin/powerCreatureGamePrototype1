@@ -13,7 +13,7 @@ import { DamageSolverModule } from "./DamageSolverModule.js";
 import type { ImpactEvent } from "./DamageSolverModule.js";
 import type { HealthModule } from "../character/HealthModule.js";
 import type { CharacterModule } from "../character/CharacterModule.js";
-import type { FoodModule } from "./FoodModule.js";
+import type { ConsumableModule } from "./ConsumableModule.js";
 import type { SpawnerModule } from "./SpawnerModule.js";
 
 import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
@@ -119,7 +119,8 @@ export class GameObject {
   public damageAuraModule: DamageAuraModule | null = null;
   public damageSolverModule: DamageSolverModule | null = null;
   public characterModule: CharacterModule | null = null;
-  public foodModule: FoodModule | null = null;
+  public foodModule: ConsumableModule | null = null;
+  public consumableModule: ConsumableModule | null = null;
   public spawnerModule: SpawnerModule | null = null;
 
   constructor(options: {
@@ -143,7 +144,8 @@ export class GameObject {
     damageAuraModule?: DamageAuraModule | null;
     damageSolverModule?: DamageSolverModule | null;
     characterModule?: CharacterModule | null;
-    foodModule?: FoodModule | null;
+    consumableModule?: ConsumableModule | null;
+    foodModule?: ConsumableModule | null;
     spawnerModule?: SpawnerModule | null;
     // Convenience option shorthands
     mass?: number;
@@ -223,13 +225,14 @@ export class GameObject {
     this.damageAuraModule = options.damageAuraModule ?? null;
     this.damageSolverModule = options.damageSolverModule ?? null;
     this.characterModule = options.characterModule ?? null;
-    this.foodModule = options.foodModule ?? null;
+    this.consumableModule = options.consumableModule ?? options.foodModule ?? null;
+    this.foodModule = this.consumableModule;
     this.spawnerModule = options.spawnerModule ?? null;
     if (this.spawnerModule && (this.spawnerModule.spawnPosition.x === 0 && this.spawnerModule.spawnPosition.y === 0 && this.spawnerModule.spawnPosition.z === 0)) {
       this.spawnerModule.spawnPosition = { ...this.position };
     }
-    if (this.foodModule) {
-      this.foodModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
+    if (this.consumableModule) {
+      this.consumableModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
     }
   }
 
