@@ -13,7 +13,7 @@ function assert(cond: boolean, msg: string) {
   }
 }
 
-console.log("=== Running Grab Suppression and Consumable Pie Tests ===");
+console.log("=== Running Grab & Eat Suppression and Consumable Ring Tests ===");
 
 // 1. Setup Arena, PlayerManager, Character, and Objects
 const arena = new Arena();
@@ -43,21 +43,24 @@ const apple = new GameObject({
   })
 });
 
-// A second object (e.g. clone) sitting right on the ground near the hero
+// A second object (clone) sitting right on the ground near the hero
 const cloneApple = new GameObject({
   id: "apple-clone",
   position: { x: 5.3, y: 5, z: 1 },
   consumableModule: new ConsumableModule({
     tag: "food",
-    totalEnergyJoules: 100
+    totalEnergyJoules: 100,
+    consumeRateWatts: 50
   })
 });
 
 const objects: GameObject[] = [apple, cloneApple];
 
-// Hero picks up the apple
+// Hero picks up the apple while mouse is up
+inputManager.isMouseDown = false;
 hero.pickupModule!.pickup(hero, apple);
 assert(hero.heldObject === apple, "Hero should be holding the apple");
+playerManager.applyPlayerInputs(playerManager.capturePlayerInputs(false, objects), 0.016, objects, false);
 
 // 2. Player presses and holds mouse to eat the apple
 inputManager.isMouseDown = true;
@@ -65,7 +68,7 @@ inputManager.isMouseDown = true;
 // Capture player inputs
 let inputs = playerManager.capturePlayerInputs(false, objects);
 let kPkt = inputs.get("keyboard")!;
-assert(kPkt.isUsingItem === true, "isUsingItem should be true while holding consumable and mouse is down");
+assert(kPkt.isUsingItem === true, "isUsingItem should be true while holding consumable and mouse is pressed to eat");
 assert(kPkt.isGrabHeld === false, "isGrabHeld should be false while eating consumable");
 assert(kPkt.grabTargetObjectId === null, "grabTargetObjectId should be null while eating consumable");
 
@@ -79,7 +82,7 @@ assert(apple.consumableModule!.isConsumed, "Apple should be consumed");
 assert(hero.heldObject === null, "Hero's hand should now be empty after eating");
 assert(!objects.includes(apple), "Apple should be removed from objects array");
 
-// 3. CRITICAL CHECK:
+// 3. CRITICAL CHECK 1: POST-EATING GRAB SUPPRESSION
 // Player has NOT released the mouse yet! (inputManager.isMouseDown is still true)
 console.log("Checking grab suppression while mouse is still held after eating...");
 
@@ -117,29 +120,52 @@ inputManager.actualMousePos.y = cloneApple.position.y;
 inputs = playerManager.capturePlayerInputs(false, objects);
 kPkt = inputs.get("keyboard")!;
 
-console.log("Debug info:", {
-  heroPos: hero.position,
-  heroSupportingZ: hero.supportingSurfaceHeight,
-  clonePos: cloneApple.position,
-  dist: Math.hypot(cloneApple.position.x - hero.position.x, cloneApple.position.y - hero.position.y),
-  reach: hero.pickupModule!.pickupReachProp.get(hero.properties),
-  inReach: hero.pickupModule!.isObjectInReach(hero, cloneApple, arena.wallHeight),
-  isGrabHeld: kPkt.isGrabHeld,
-  grabTargetObjectId: kPkt.grabTargetObjectId
-});
-
 assert(kPkt.isGrabHeld === true, "isGrabHeld should now be true because mouse was pressed anew after releasing!");
 assert(kPkt.grabTargetObjectId === cloneApple.id, `grabTargetObjectId should target cloneApple, got ${kPkt.grabTargetObjectId}`);
 
-console.log("Before applyPlayerInputs, grabState:", playerManager.getGrabSuppressionState(hero.id));
+// Apply inputs: hero picks up cloneApple while mouse is HELD DOWN
 playerManager.applyPlayerInputs(inputs, 0.016, objects, false);
-console.log("After applyPlayerInputs, hero.heldObject:", hero.heldObject?.id);
 assert(hero.heldObject === cloneApple, "Hero should now successfully pick up cloneApple!");
-console.log("PASS: Hero successfully grabbed item after releasing and pressing mouse anew!");
+console.log("PASS: Hero grabbed cloneApple!");
 
-// 6. Test circular pie methods exist on EntityPass
-assert(typeof EntityPass.drawConsumablePieBackground === "function", "drawConsumablePieBackground should be a function");
-assert(typeof EntityPass.drawConsumablePieForeground === "function", "drawConsumablePieForeground should be a function");
-console.log("PASS: EntityPass circular pie methods verified!");
+// 6. CRITICAL CHECK 2: POST-PICKUP EAT SUPPRESSION
+// Player is STILL holding mouse from the grab!
+console.log("Checking eat suppression: must not eat immediately upon picking up item while mouse is still held from grab...");
+inputs = playerManager.capturePlayerInputs(false, objects);
+kPkt = inputs.get("keyboard")!;
 
-console.log("ALL TESTS PASSED!");
+assert(kPkt.isUsingItem === false, "isUsingItem MUST be false because mouse was not released and repressed after pickup!");
+playerManager.applyPlayerInputs(inputs, 0.5, objects, false);
+assert(hero.eatRateWatts === 0, "eatRateWatts must be 0 - not eating!");
+assert(cloneApple.consumableModule!.remainingEnergyJoulesProp.literalValue === 100, "cloneApple energy must be unconsumed 100J!");
+
+// Run 5 more frames with mouse held down: still no eating!
+for (let f = 0; f < 5; f++) {
+  inputs = playerManager.capturePlayerInputs(false, objects);
+  playerManager.applyPlayerInputs(inputs, 0.1, objects, false);
+}
+assert(hero.eatRateWatts === 0, "Hero still must not eat while mouse remains held from grab!");
+assert(cloneApple.consumableModule!.remainingEnergyJoulesProp.literalValue === 100, "cloneApple energy still untouched!");
+console.log("PASS: Eating correctly suppressed while mouse remained held from pickup!");
+
+// 7. Now release mouse and press it anew: NOW it should eat!
+console.log("Releasing mouse and repressing to eat...");
+inputManager.isMouseDown = false;
+inputs = playerManager.capturePlayerInputs(false, objects);
+playerManager.applyPlayerInputs(inputs, 0.016, objects, false);
+
+inputManager.isMouseDown = true;
+inputs = playerManager.capturePlayerInputs(false, objects);
+kPkt = inputs.get("keyboard")!;
+
+assert(kPkt.isUsingItem === true, "isUsingItem MUST now be true after releasing and repressing mouse!");
+playerManager.applyPlayerInputs(inputs, 0.5, objects, false);
+assert(hero.eatRateWatts > 0, "eatRateWatts should be > 0 (eating active)!");
+assert(cloneApple.consumableModule!.remainingEnergyJoulesProp.literalValue < 100, "cloneApple energy should now be decreasing!");
+console.log("PASS: Successfully started eating after releasing and repressing mouse!");
+
+// 8. Test clean circular ring method exists on EntityPass
+assert(typeof EntityPass.drawConsumableEatingRing === "function", "drawConsumableEatingRing should be a function");
+console.log("PASS: EntityPass drawConsumableEatingRing verified!");
+
+console.log("ALL TESTS PASSED SUCCESSFULLY!");

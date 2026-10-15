@@ -302,6 +302,16 @@
     - **Perimeter Circular Bar**: High-visibility glowing emerald/lime arc (`#22c55e` / `#4ade80`, `lineWidth = 3.5`, rounded line caps) tracking remaining nutrition.
     - **Live Percentage Pill**: Floating dark badge above the pie showing live countdown (`100%` down to `0%`) while actively eating.
   - **Automated Verification**: Verified 100% via `scratch/test_grab_suppression_and_pie.ts` alongside full regression test suite and clean `npm run build`.
+- **Phase 12.4 (Simplified Eating Status Ring & Post-Pickup Eat Suppression)**:
+  - **Clean Circular Progress Ring (No Sprite Obscuration)**: Removed the dark backing disk plate, filled translucent pie slice, and overhead percentage pill badge from `EntityPass.ts`. Replaced with `EntityPass.drawConsumableEatingRing`:
+    - Renders a subtle circular track ring (`rgba(15, 23, 42, 0.45)`, `lineWidth = 2.5`) and an emerald progress arc (`#22c55e`, `lineWidth = 2.5`, `lineCap = "round"`).
+    - Positioned along the outer perimeter (`ringRadius = Math.max(renderRadius + stemExtra + 3, renderRadius + 5)`), completely outside the food sprite and stem/leaf geometry so the food artwork is never covered.
+    - Preserves backwards-compatibility aliases `drawConsumablePieForeground` and `drawConsumablePieBackground`.
+  - **Post-Pickup Eat Suppression (Release & Repress Required)**:
+    - Added `useItemSuppressed` flag to `GrabSuppressionState` in `PlayerManager.ts`.
+    - If the player is holding the primary feature button (Left Mouse Button or Gamepad `RT`) at the moment an item is picked up (e.g. from an auto-grab sweep or pickup hold), the character will NOT start eating immediately.
+    - The character will only begin eating once the player has released the primary button and pressed it again while holding the item.
+  - **Automated Verification**: Verified 100% via `scratch/test_grab_suppression_and_pie.ts` and clean `npm run build`.
 
 
 ---

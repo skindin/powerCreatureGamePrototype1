@@ -24,6 +24,7 @@ export interface GrabSuppressionState {
   keyEGrabSuppressed: boolean;
   rtGrabSuppressed: boolean;
   bGrabSuppressed: boolean;
+  useItemSuppressed: boolean;
 }
 
 export const PLAYER_COLORS = [
@@ -68,6 +69,7 @@ export class PlayerManager {
         keyEGrabSuppressed: false,
         rtGrabSuppressed: false,
         bGrabSuppressed: false,
+        useItemSuppressed: false,
       };
       this.grabSuppressedStates.set(entityId, state);
     }
@@ -563,7 +565,11 @@ export class PlayerManager {
       }
 
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
-      const isUsingItem = isHoldingConsumable && input.isMouseDown && !input.isKeyboardSuspended;
+      if (!input.isMouseDown) {
+        grabState.useItemSuppressed = false;
+      }
+      const canUseItem = input.isMouseDown && !grabState.useItemSuppressed;
+      const isUsingItem = isHoldingConsumable && canUseItem && !input.isKeyboardSuspended;
 
       map.set("keyboard", {
         playerId: "keyboard",
@@ -671,7 +677,11 @@ export class PlayerManager {
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
-      const isUsingItem = isCharHoldingConsumable && (slot.isUsingItem ?? false);
+      if (!slot.rtHeld) {
+        gpGrabState.useItemSuppressed = false;
+      }
+      const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed;
+      const isUsingItem = isCharHoldingConsumable && canGamepadUseItem;
 
       map.set(entry.id, {
         playerId: entry.id,
@@ -850,7 +860,8 @@ export class PlayerManager {
         char.heldObject.position.z = heldPos.z;
 
         // Primary Item Ability: Continuous consumption when holding consumable item
-        const isUsingItem = Boolean((pkt as any).isUsingItem);
+        const grabState = this.getGrabSuppressionState(char.id);
+        const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
         if (isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
           char.isUsingItem = true;
           const consumeResult = char.consumeModule.consume(dt, char, char.heldObject, objects, this.arena);
@@ -888,6 +899,12 @@ export class PlayerManager {
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
               char.pickupModule.pickup(char, targetObj);
+              const gState = this.getGrabSuppressionState(char.id);
+              if (this.inputManager.isMouseDown) gState.useItemSuppressed = true;
+              if (entry?.slotIndex !== undefined) {
+                const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+                if (slot?.rtHeld) gState.useItemSuppressed = true;
+              }
             }
           }
         } else if (aimTarget) {
@@ -915,6 +932,15 @@ export class PlayerManager {
           }
         }
         if (currentHeldId) {
+          if (prevHeldId === null) {
+            // Newly picked up: suppress eating if primary feature button was held during pickup
+            const gState = this.getGrabSuppressionState(char.id);
+            if (this.inputManager.isMouseDown) gState.useItemSuppressed = true;
+            if (entry?.slotIndex !== undefined) {
+              const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+              if (slot?.rtHeld) gState.useItemSuppressed = true;
+            }
+          }
           // If the newly picked up item has a SpawnerModule, clone a replacement at the spawn position!
           if (char.heldObject && char.heldObject.spawnerModule && char.heldObject.spawnerModule.enabled) {
             char.heldObject.spawnerModule.triggerClone(char.heldObject, this.arena, objects);
