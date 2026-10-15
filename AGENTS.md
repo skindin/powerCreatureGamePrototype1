@@ -287,6 +287,11 @@
     - Added dedicated inspector cards for `FoodModule` (Total Energy, Remaining Energy, Eat Rate, Heal Rate) and `SpawnerModule` (Enabled, Respawn Delay, Spawned Count).
     - Added `Food` and `Spawner` to the "Add Physical Behavior" dropdown for any selected entity or new object.
   - **Automated Verification**: Verified 100% via `scratch/test_food_and_spawner.ts` alongside full regression test suite.
+- **Phase 12.1 (Desktop App & Launcher Resiliency)**:
+  - **Port 3000 & 5173 Multi-Port Support**: Updated `Launcher.cs` (`LaunchGame.exe`), `desktop_app/Form1.cs` (`PowerCreatureGame.exe`), and `share.js` to prioritize port 3000 with seamless fallback to port 5173.
+  - **Shortcut Path Correction**: Updated `Power Creature Game.lnk` in project root and created Desktop shortcut pointing to active project directory `app/PowerCreatureGame.exe` instead of stale OneDrive paths.
+  - **Rebuilt Executables**: Successfully recompiled `LaunchGame.exe` via C# compiler and rebuilt `app/PowerCreatureGame.exe` & `PowerCreatureGame.dll` using .NET 8.
+
 
 ---
 
