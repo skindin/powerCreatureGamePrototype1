@@ -4655,6 +4655,10 @@ const _GameObject = class _GameObject {
     __publicField(this, "foodModule", null);
     __publicField(this, "consumableModule", null);
     __publicField(this, "spawnerModule", null);
+    /** Reference to the Scene Prefab archetype this object was instantiated from (if any) */
+    __publicField(this, "prefabId", null);
+    /** Set of property keys that have been explicitly edited on this live instance, overriding the prefab */
+    __publicField(this, "overriddenProperties", /* @__PURE__ */ new Set());
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -6989,7 +6993,7 @@ class EnergyPool {
     /**
      * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
      */
-    __publicField(this, "debugAutoRefillOnEmpty", true);
+    __publicField(this, "debugAutoRefillOnEmpty", false);
     const base = (options == null ? void 0 : options.baseMaxEnergy) ?? 1e4;
     const max = (options == null ? void 0 : options.maxEnergy) ?? base;
     const cur = (options == null ? void 0 : options.currentEnergy) ?? max;

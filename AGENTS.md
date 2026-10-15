@@ -317,9 +317,26 @@
   - **Clone Without Spawner into Hands**: An identical clone without the spawner behavior (`clone.spawnerModule = null`) is instantiated and placed directly into the character's hands (`pickupModule.pickup(char, clone)`).
   - **World Integration & Infinite Dispensing**: The clone is pushed to the active world `objects` array so it can be eaten, dropped, or thrown like any standard item. The stationary spawner increments `spawnCount` and can dispense subsequent clones repeatedly.
   - **Multiplayer & Arbiter Synchronization**: Supported across client (`PlayerManager.ts`), server simulation (`ServerGameSimulation.ts`), and contested grabs (`ContestedGrabArbiter.ts`).
-  - **Automated Verification**: Verified 100% via `scratch/test_spawner_stays_put.ts`, `scratch/test_consumable_tags_and_spawner.ts`, `scratch/test_food_and_spawner.ts`, and clean `npm run build`.
-
-
+- **Phase 12.6 (Scene Prefabs & Background Scene Spawners System)**:
+  - **Disabled Default Character Energy Auto-Refill**: In `EnergyPool.ts`, changed `debugAutoRefillOnEmpty` default to `false`. Characters no longer auto-refill to 10,000 J when exhausted, making consumables and food gathering essential for survival.
+  - **Scene Prefab Architecture (`Prefab` & `PrefabManager`)**:
+    - In-memory archetype templates created in the scene (no disk file requirement).
+    - Default "Apple" food prefab (`#ef4444`, 500 J, 100 W, `food` tag) initialized in `PrefabManager`.
+    - Dedicated collapsible "📦 Scene Prefabs" accordion section in DevPanel with live instance count badge.
+    - Editable archetype parameters: color, shape (box/circle), mass, collider radius, consumable tag, energy capacity, consume rate, and heal rate.
+    - **Override & Propagation Model**: Live instances track modified properties via `entity.overriddenProperties`. Editing prefab parameters cascades to all non-overridden live instances in the scene. Overridden instances preserve their customized values and display an override count badge with a "↺ Revert" button.
+    - "📦 Make Prefab" button on selected scene entities and "+ Add Prefab from Scene Object" modal.
+    - "➕ Spawn" button to spawn an instance directly on the arena floor.
+    - Deleting a prefab unlinks live instances (`entity.prefabId = null`) without destroying the objects in the world.
+  - **Background Scene Spawner Architecture (`SceneSpawner` & `SceneSpawnerManager`)**:
+    - Dedicated collapsible "🌱 Scene Spawners" accordion section in DevPanel.
+    - Background simulation manager updating inside `GameLoop.updatePhysics(dt)` (not a physical entity in the world).
+    - Default "Random Apple Spawner" (interval: 0.25 min / 15s, max items: 5).
+    - Configurable fields: **Interval in minutes per item** (`intervalMinutes`, e.g. 0.25 min = 15s) and **Max amount of items in scene** (`maxCount`).
+    - Periodic ground placement: randomly selects open floor tiles avoiding walls via `!arena.hasWall(x, y)`.
+    - Automated pausing when active count reaches `maxCount`.
+    - "⚡ Spawn Now" instant button and live telemetry readout ("Scene Count: X / Y" and "Next in: Z.Zs").
+  - **Automated Verification**: Verified 100% via `scratch/test_prefabs_and_scene_spawners.ts` and clean `npm run build`.
 
 ---
 

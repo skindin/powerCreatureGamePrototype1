@@ -27,6 +27,8 @@ import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
 import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { FloatScrubber } from "./FloatScrubber.js";
+import { prefabManager } from "../engine/prefab/PrefabManager.js";
+import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
 
 export interface CreatorPreset {
   name: string;
@@ -312,6 +314,15 @@ export class DevPanel {
       this.updateInspector();
     });
 
+    prefabManager.onPrefabsChanged(() => {
+      this.renderScenePrefabs();
+      this.updatePrefabInfoBadge();
+    });
+
+    sceneSpawnerManager.onSpawnersChanged(() => {
+      this.renderSceneSpawners();
+    });
+
     this.renderPanel();
   }
 
@@ -417,6 +428,7 @@ export class DevPanel {
 
     this.renderEntityModules();
     this.syncEntitySliders();
+    this.updatePrefabInfoBadge();
   }
 
   private renderPanel(): void {
@@ -497,11 +509,14 @@ export class DevPanel {
           </div>
           <select id="entity-selector" class="dev-select"></select>
           
-          <!-- Entity Actions (Duplicate / Delete) - Only for Objects -->
+          <!-- Entity Actions (Duplicate / Make Prefab / Delete) - Only for Objects -->
           <div id="object-actions-row" class="entity-actions-row" style="display: none; margin-top: 8px;">
             <button id="btn-duplicate-entity" class="btn-secondary-action">📋 Duplicate</button>
+            <button id="btn-make-prefab" class="btn-secondary-action" style="color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">📦 Make Prefab</button>
             <button id="btn-delete-entity" class="btn-secondary-action" style="color: #f87171; border-color: rgba(248, 113, 113, 0.3);">🗑️ Delete</button>
           </div>
+          <!-- Prefab status badge for selected entity -->
+          <div id="selected-entity-prefab-info" style="display: none; margin-top: 6px; padding: 4px 8px; background: rgba(168, 85, 247, 0.10); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 4px; font-size: 0.72rem; justify-content: space-between; align-items: center;"></div>
         </div>
 
         <!-- Live Diagnostics Inspector -->
@@ -894,6 +909,50 @@ export class DevPanel {
           </div>
         </div>
 
+        <!-- 📦 Scene Prefabs Section -->
+        <div class="dev-section" style="border: 1px solid rgba(168, 85, 247, 0.25); background: rgba(168, 85, 247, 0.03);">
+          ${this.renderCollapsibleHeader("scene-prefabs", "📦 Scene Prefabs", `<span id="badge-prefabs-count" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">${prefabManager.getAll().length}</span>`)}
+          <div id="collapse-body-scene-prefabs" style="display: ${this.isSectionCollapsed('scene-prefabs') ? 'none' : 'block'}; margin-top: 8px;">
+            <p class="section-desc">Scene prefab archetypes. Editing a prefab propagates changes to all live instances in the scene that do not override that property.</p>
+            
+            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+              <button id="btn-add-prefab-from-scene" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">
+                + Add Prefab from Scene Object
+              </button>
+            </div>
+            
+            <!-- Quick picker dialog when adding prefab -->
+            <div id="container-add-prefab-picker" style="display: none; padding: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; margin-bottom: 10px;">
+              <label style="display: block; font-size: 0.76rem; color: #cbd5e1; margin-bottom: 4px;">Select Scene Object to convert:</label>
+              <div style="display: flex; gap: 6px;">
+                <select id="select-add-prefab-source" class="dev-select" style="flex: 1;"></select>
+                <button id="btn-confirm-add-prefab" class="btn-spawn-primary" style="padding: 4px 10px; font-size: 0.74rem;">Convert</button>
+                <button id="btn-cancel-add-prefab" class="btn-secondary-action" style="padding: 4px 8px; font-size: 0.74rem;">Cancel</button>
+              </div>
+            </div>
+
+            <!-- List of Prefab Cards -->
+            <div id="scene-prefabs-list"></div>
+          </div>
+        </div>
+
+        <!-- 🌱 Scene Spawners Section -->
+        <div class="dev-section" style="border: 1px solid rgba(34, 197, 94, 0.25); background: rgba(34, 197, 94, 0.03);">
+          ${this.renderCollapsibleHeader("scene-spawners", "🌱 Scene Spawners", `<span id="badge-spawners-count" class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4);">${sceneSpawnerManager.getAll().length}</span>`)}
+          <div id="collapse-body-scene-spawners" style="display: ${this.isSectionCollapsed('scene-spawners') ? 'none' : 'block'}; margin-top: 8px;">
+            <p class="section-desc">Background arena item spawners. Periodically dispenses prefab instances at random open ground coordinates in the map up to a maximum scene count.</p>
+            
+            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+              <button id="btn-add-scene-spawner" class="btn-secondary-action" style="flex: 1; padding: 6px 10px; font-weight: 600; color: #4ade80; border-color: rgba(34, 197, 94, 0.4);">
+                + Add Scene Spawner
+              </button>
+            </div>
+
+            <!-- List of Spawner Cards -->
+            <div id="scene-spawners-list"></div>
+          </div>
+        </div>
+
         <!-- 🌍 World & Arena Physics -->
         <div class="dev-section">
           ${this.renderCollapsibleHeader("world-physics", "🌍 World Physics & Environment")}
@@ -918,6 +977,8 @@ export class DevPanel {
     this.updateSelectorOptions();
     this.bindEvents();
     this.renderEntityModules();
+    this.renderScenePrefabs();
+    this.renderSceneSpawners();
   }
 
   public syncEntitySliders(): void {
@@ -2311,6 +2372,12 @@ export class DevPanel {
         owner: e,
         label: "Collider Radius (u)",
         step: 0.02,
+        onUserChange: () => {
+          if (e.prefabId) {
+            e.overriddenProperties.add("colliderRadius");
+            this.updatePrefabInfoBadge();
+          }
+        },
       });
       colRadSocketEl.appendChild(colCtrl.element);
     }
@@ -2323,6 +2390,12 @@ export class DevPanel {
         owner: e,
         label: "Mass (kg)",
         step: 0.1,
+        onUserChange: () => {
+          if (e.prefabId) {
+            e.overriddenProperties.add("mass");
+            this.updatePrefabInfoBadge();
+          }
+        },
       });
       massSocketEl.appendChild(massCtrl.element);
     }
@@ -2871,6 +2944,10 @@ export class DevPanel {
           currentTag: cm.tag,
           onTagSelected: (tag) => {
             cm.tag = tag;
+            if (e.prefabId) {
+              e.overriddenProperties.add("consumable_tag");
+              this.updatePrefabInfoBadge();
+            }
           },
         });
         tagSocketEl.appendChild(tagCtrl.element);
@@ -2883,6 +2960,12 @@ export class DevPanel {
           owner: e,
           label: "Total Energy (J)",
           step: 100.0,
+          onUserChange: () => {
+            if (e.prefabId) {
+              e.overriddenProperties.add("consumable_totalEnergy");
+              this.updatePrefabInfoBadge();
+            }
+          },
         });
         totalEnergySocketEl.appendChild(totalCtrl.element);
       }
@@ -2905,6 +2988,12 @@ export class DevPanel {
           owner: e,
           label: "Consume Rate (Watts = J/s)",
           step: 25.0,
+          onUserChange: () => {
+            if (e.prefabId) {
+              e.overriddenProperties.add("consumable_consumeRate");
+              this.updatePrefabInfoBadge();
+            }
+          },
         });
         consumeRateSocketEl.appendChild(rateCtrl.element);
       }
@@ -2916,6 +3005,12 @@ export class DevPanel {
           owner: e,
           label: "Nutritional Healing Rate (HP/s)",
           step: 1.0,
+          onUserChange: () => {
+            if (e.prefabId) {
+              e.overriddenProperties.add("consumable_healRate");
+              this.updatePrefabInfoBadge();
+            }
+          },
         });
         healRateSocketEl.appendChild(healCtrl.element);
       }
@@ -3219,12 +3314,83 @@ export class DevPanel {
       this.deleteSelectedEntity();
     });
 
+    // 3b. Make Prefab & Add Prefab Actions
+    this.container.querySelector("#btn-make-prefab")?.addEventListener("click", () => {
+      if (this.selectedEntity && !(this.selectedEntity instanceof Character)) {
+        prefabManager.createFromEntity(this.selectedEntity);
+        this.renderScenePrefabs();
+        this.updatePrefabInfoBadge();
+        this.updateSelectorOptions();
+      }
+    });
+
+    const btnAddPrefabFromScene = this.container.querySelector("#btn-add-prefab-from-scene");
+    const containerAddPrefabPicker = this.container.querySelector("#container-add-prefab-picker") as HTMLElement | null;
+    const selectAddPrefabSource = this.container.querySelector("#select-add-prefab-source") as HTMLSelectElement | null;
+    const btnConfirmAddPrefab = this.container.querySelector("#btn-confirm-add-prefab");
+    const btnCancelAddPrefab = this.container.querySelector("#btn-cancel-add-prefab");
+
+    btnAddPrefabFromScene?.addEventListener("click", () => {
+      if (!containerAddPrefabPicker || !selectAddPrefabSource) return;
+      const isVisible = containerAddPrefabPicker.style.display !== "none";
+      if (isVisible) {
+        containerAddPrefabPicker.style.display = "none";
+      } else {
+        let html = "";
+        for (const obj of this.objects) {
+          const icon = obj.consumableModule ? "🍎" : (obj.visualShape === "box" ? "📦" : "⚪");
+          html += `<option value="${obj.id}">${icon} ${obj.name} (${obj.visualShape})</option>`;
+        }
+        if (this.objects.length === 0) {
+          html = `<option value="">(No scene objects in arena)</option>`;
+        }
+        selectAddPrefabSource.innerHTML = html;
+        containerAddPrefabPicker.style.display = "block";
+      }
+    });
+
+    btnCancelAddPrefab?.addEventListener("click", () => {
+      if (containerAddPrefabPicker) containerAddPrefabPicker.style.display = "none";
+    });
+
+    btnConfirmAddPrefab?.addEventListener("click", () => {
+      if (!selectAddPrefabSource || !containerAddPrefabPicker) return;
+      const objId = selectAddPrefabSource.value;
+      const foundObj = this.objects.find((o) => o.id === objId);
+      if (foundObj) {
+        prefabManager.createFromEntity(foundObj);
+        this.renderScenePrefabs();
+        this.updatePrefabInfoBadge();
+        this.updateSelectorOptions();
+      }
+      containerAddPrefabPicker.style.display = "none";
+    });
+
+    // 3c. Add Scene Spawner Action
+    this.container.querySelector("#btn-add-scene-spawner")?.addEventListener("click", () => {
+      const allPrefabs = prefabManager.getAll();
+      const defaultPrefabId = allPrefabs[0]?.id || "prefab_apple";
+      sceneSpawnerManager.create({
+        id: `spawner_${Date.now()}`,
+        name: `Spawner ${sceneSpawnerManager.getAll().length + 1}`,
+        enabled: true,
+        prefabId: defaultPrefabId,
+        intervalMinutes: 0.25,
+        maxCount: 5,
+      });
+      this.renderSceneSpawners();
+    });
+
     // 4. Shape Toggle
     const btnShapeToggle = this.container.querySelector("#toggle-entity-shape") as HTMLButtonElement;
     btnShapeToggle?.addEventListener("click", () => {
       this.selectedEntity.visualShape = this.selectedEntity.visualShape === "box" ? "circle" : "box";
       btnShapeToggle.textContent = this.selectedEntity.visualShape === "box" ? "Box 📦" : "Circle ⚪";
       btnShapeToggle.classList.toggle("active", this.selectedEntity.visualShape === "box");
+      if (this.selectedEntity.prefabId) {
+        this.selectedEntity.overriddenProperties.add("visualShape");
+        this.updatePrefabInfoBadge();
+      }
       this.updateSelectorOptions();
     });
 
@@ -4114,6 +4280,8 @@ export class DevPanel {
       const labelStatus = this.container.querySelector("#label-consumable-status") as HTMLElement | null;
       if (labelStatus) labelStatus.textContent = `${curE.toFixed(0)} / ${maxE.toFixed(0)} J (${pct.toFixed(0)}%)`;
     }
+
+    this.updateSceneSpawnersTelemetry();
   }
 
   private renderWallPresetOptions(): string {
@@ -4139,5 +4307,498 @@ export class DevPanel {
     if (badge) badge.textContent = this.getCurrentWallPresetBadge();
     const desc = this.container.querySelector("#desc-wall-map");
     if (desc) desc.textContent = this.getCurrentWallPresetDesc();
+  }
+
+  public updatePrefabInfoBadge(): void {
+    const badgeEl = this.container.querySelector("#selected-entity-prefab-info") as HTMLElement | null;
+    if (!badgeEl) return;
+
+    const e = this.selectedEntity;
+    if (!e || e instanceof Character || !e.prefabId) {
+      badgeEl.style.display = "none";
+      badgeEl.innerHTML = "";
+      return;
+    }
+
+    const prefab = prefabManager.get(e.prefabId);
+    const prefabName = prefab ? `${prefab.icon} ${prefab.name}` : e.prefabId;
+    const overridesCount = e.overriddenProperties.size;
+    const overridesBadge = overridesCount > 0
+      ? `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); margin-left: 6px;">${overridesCount} override${overridesCount > 1 ? "s" : ""}</span>`
+      : `<span style="color: #94a3b8; font-size: 0.70rem; margin-left: 6px;">(Synced)</span>`;
+
+    const revertBtn = overridesCount > 0
+      ? `<button id="btn-revert-prefab-overrides" class="btn-secondary-action" style="padding: 2px 6px; font-size: 0.68rem; margin-left: auto; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Revert overridden properties back to prefab archetype values">↺ Revert</button>`
+      : "";
+
+    badgeEl.style.display = "flex";
+    badgeEl.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        <span style="color: #c084fc; font-weight: 600;">Prefab:</span>
+        <span style="color: #e2e8f0; font-weight: 500;">${prefabName}</span>
+        ${overridesBadge}
+      </div>
+      ${revertBtn}
+    `;
+
+    if (overridesCount > 0) {
+      badgeEl.querySelector("#btn-revert-prefab-overrides")?.addEventListener("click", () => {
+        if (!prefab) return;
+        for (const propKey of e.overriddenProperties) {
+          switch (propKey) {
+            case "name": e.name = prefab.archetype.name; break;
+            case "color": e.color = prefab.archetype.color; break;
+            case "visualShape": e.visualShape = prefab.archetype.visualShape; break;
+            case "mass":
+              e.mass = prefab.archetype.mass;
+              if (e.rigidbodyModule) e.rigidbodyModule.massProp.literalValue = prefab.archetype.mass;
+              break;
+            case "colliderRadius":
+              e.colliderRadius = prefab.archetype.colliderRadius;
+              if (e.colliderModule) e.colliderModule.radius = prefab.archetype.colliderRadius;
+              break;
+            case "consumable_totalEnergy":
+              if (e.consumableModule && prefab.archetype.consumableModule) {
+                e.consumableModule.totalEnergyJoulesProp.literalValue = prefab.archetype.consumableModule.totalEnergyJoulesProp.literalValue;
+              }
+              break;
+            case "consumable_consumeRate":
+              if (e.consumableModule && prefab.archetype.consumableModule) {
+                e.consumableModule.consumeRateWattsProp.literalValue = prefab.archetype.consumableModule.consumeRateWattsProp.literalValue;
+              }
+              break;
+            case "consumable_healRate":
+              if (e.consumableModule && prefab.archetype.consumableModule) {
+                e.consumableModule.healRateProp.literalValue = prefab.archetype.consumableModule.healRateProp.literalValue;
+              }
+              break;
+            case "consumable_tag":
+              if (e.consumableModule && prefab.archetype.consumableModule) {
+                e.consumableModule.tag = prefab.archetype.consumableModule.tag;
+              }
+              break;
+          }
+        }
+        e.overriddenProperties.clear();
+        this.renderEntityModules();
+        this.syncEntitySliders();
+        this.updatePrefabInfoBadge();
+      });
+    }
+  }
+
+  public renderScenePrefabs(): void {
+    const listEl = this.container.querySelector("#scene-prefabs-list") as HTMLElement | null;
+    const badgeEl = this.container.querySelector("#badge-prefabs-count") as HTMLElement | null;
+    const allPrefabs = prefabManager.getAll();
+
+    if (badgeEl) badgeEl.textContent = allPrefabs.length.toString();
+    if (!listEl) return;
+
+    if (allPrefabs.length === 0) {
+      listEl.innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.74rem; padding: 12px 0;">
+          No scene prefabs created yet. Select any scene object and click "📦 Make Prefab".
+        </div>
+      `;
+      return;
+    }
+
+    let html = "";
+    const allTags = consumableTagRegistry.getAll();
+
+    for (const prefab of allPrefabs) {
+      const liveCount = this.objects.filter((o) => o.prefabId === prefab.id).length;
+      const arc = prefab.archetype;
+      const isConsumable = Boolean(arc.consumableModule);
+
+      let tagOptionsHtml = "";
+      for (const tagName of allTags) {
+        const isSel = arc.consumableModule && arc.consumableModule.tag.toLowerCase() === tagName.toLowerCase() ? "selected" : "";
+        tagOptionsHtml += `<option value="${tagName}" ${isSel}>${tagName}</option>`;
+      }
+
+      html += `
+        <div class="behavior-card" data-prefab-card-id="${prefab.id}" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(30, 27, 75, 0.25); margin-bottom: 10px; border-radius: 6px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+              <span style="font-size: 1.0rem;">${prefab.icon}</span>
+              <input class="dev-input input-prefab-name" data-prefab-id="${prefab.id}" value="${prefab.name}" style="flex: 1; padding: 3px 6px; font-weight: 600; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #f1f5f9;" />
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
+              <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem;">${liveCount} live</span>
+              <button class="btn-secondary-action btn-spawn-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Spawn one instance on the arena floor">➕ Spawn</button>
+              <button class="btn-icon-subtle btn-delete-prefab" data-prefab-id="${prefab.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Prefab (unlinks live instances)">🗑️</button>
+            </div>
+          </div>
+
+          <!-- Prefab Archetype Settings -->
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(168, 85, 247, 0.15);">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <label style="font-size: 0.74rem; color: #94a3b8; flex: 0 0 45px;">Visual:</label>
+              <input type="color" class="prefab-color-picker" data-prefab-id="${prefab.id}" value="${arc.color}" style="width: 28px; height: 22px; padding: 0; border: none; cursor: pointer; background: transparent; border-radius: 3px;" title="Archetype Color" />
+              <button class="btn-secondary-action prefab-shape-toggle" data-prefab-id="${prefab.id}" style="padding: 2px 8px; font-size: 0.72rem; flex: 1;">
+                ${arc.visualShape === "box" ? "Box 📦" : "Circle ⚪"}
+              </button>
+            </div>
+
+            <div id="scrub-container-prefab-mass-${prefab.id}"></div>
+            <div id="scrub-container-prefab-radius-${prefab.id}"></div>
+
+            ${isConsumable ? `
+              <div style="margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(168, 85, 247, 0.2);">
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                  <label style="font-size: 0.74rem; color: #f472b6; flex: 0 0 45px;">Tag:</label>
+                  <select class="dev-select prefab-tag-select" data-prefab-id="${prefab.id}" style="flex: 1; padding: 2px 6px; font-size: 0.74rem;">
+                    ${tagOptionsHtml}
+                  </select>
+                </div>
+                <div id="scrub-container-prefab-energy-${prefab.id}"></div>
+                <div id="scrub-container-prefab-rate-${prefab.id}"></div>
+                <div id="scrub-container-prefab-heal-${prefab.id}"></div>
+              </div>
+            ` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    listEl.innerHTML = html;
+
+    // Mount scrubbers and wire events for each prefab card
+    for (const prefab of allPrefabs) {
+      const arc = prefab.archetype;
+
+      // Mass Scrubber
+      this.setupScrubber(`scrub-container-prefab-mass-${prefab.id}`, {
+        label: "Mass (kg)",
+        value: arc.mass,
+        min: 0.1,
+        max: 50.0,
+        step: 0.1,
+        decimals: 1,
+        onChange: (val: number) => {
+          prefab.setProperty("mass", val, this.objects);
+          if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("mass")) {
+            this.syncEntitySliders();
+          }
+        },
+      });
+
+      // Radius Scrubber
+      this.setupScrubber(`scrub-container-prefab-radius-${prefab.id}`, {
+        label: "Collider Radius (u)",
+        value: arc.colliderRadius,
+        min: 0.05,
+        max: 3.0,
+        step: 0.02,
+        decimals: 2,
+        onChange: (val: number) => {
+          prefab.setProperty("colliderRadius", val, this.objects);
+          if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("colliderRadius")) {
+            this.syncEntitySliders();
+          }
+        },
+      });
+
+      if (arc.consumableModule) {
+        const cm = arc.consumableModule;
+        // Energy Scrubber
+        this.setupScrubber(`scrub-container-prefab-energy-${prefab.id}`, {
+          label: "Energy Capacity (J)",
+          value: cm.totalEnergyJoulesProp.literalValue,
+          min: 10,
+          max: 100000,
+          step: 50,
+          decimals: 0,
+          onChange: (val: number) => {
+            prefab.setProperty("consumable_totalEnergy", val, this.objects);
+            if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("consumable_totalEnergy")) {
+              this.renderEntityModules();
+            }
+          },
+        });
+
+        // Rate Scrubber
+        this.setupScrubber(`scrub-container-prefab-rate-${prefab.id}`, {
+          label: "Consume Rate (W)",
+          value: cm.consumeRateWattsProp.literalValue,
+          min: 10,
+          max: 2000,
+          step: 10,
+          decimals: 0,
+          onChange: (val: number) => {
+            prefab.setProperty("consumable_consumeRate", val, this.objects);
+            if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("consumable_consumeRate")) {
+              this.renderEntityModules();
+            }
+          },
+        });
+
+        // Heal Rate Scrubber
+        this.setupScrubber(`scrub-container-prefab-heal-${prefab.id}`, {
+          label: "Heal Rate (HP/s)",
+          value: cm.healRateProp.literalValue,
+          min: 0,
+          max: 100,
+          step: 1,
+          decimals: 1,
+          onChange: (val: number) => {
+            prefab.setProperty("consumable_healRate", val, this.objects);
+            if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("consumable_healRate")) {
+              this.renderEntityModules();
+            }
+          },
+        });
+      }
+    }
+
+    // Wire Card Click Actions
+    listEl.querySelectorAll(".input-prefab-name").forEach((input) => {
+      input.addEventListener("change", (e) => {
+        const pid = (input as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          p.name = (e.target as HTMLInputElement).value;
+          p.archetype.name = p.name;
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".prefab-color-picker").forEach((picker) => {
+      picker.addEventListener("input", (e) => {
+        const pid = (picker as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          const col = (e.target as HTMLInputElement).value;
+          p.setProperty("color", col, this.objects);
+          if (this.selectedEntity && this.selectedEntity.prefabId === pid && !this.selectedEntity.overriddenProperties.has("color")) {
+            this.syncEntitySliders();
+          }
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".prefab-shape-toggle").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          const newShape = p.archetype.visualShape === "box" ? "circle" : "box";
+          p.setProperty("visualShape", newShape, this.objects);
+          btn.textContent = newShape === "box" ? "Box 📦" : "Circle ⚪";
+          if (this.selectedEntity && this.selectedEntity.prefabId === pid && !this.selectedEntity.overriddenProperties.has("visualShape")) {
+            this.updateSelectorOptions();
+          }
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".prefab-tag-select").forEach((select) => {
+      select.addEventListener("change", (e) => {
+        const pid = (select as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          const newTag = (e.target as HTMLSelectElement).value;
+          p.setProperty("consumable_tag", newTag, this.objects);
+          if (this.selectedEntity && this.selectedEntity.prefabId === pid && !this.selectedEntity.overriddenProperties.has("consumable_tag")) {
+            this.renderEntityModules();
+          }
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-spawn-prefab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const pos = { x: this.arena.width / 2, y: this.arena.height / 2, z: 0 };
+        const spawned = prefabManager.spawn(pid, pos, this.arena, this.objects);
+        if (spawned) {
+          this.onSpawnObject(spawned);
+          this.updateSelectorOptions();
+          this.renderScenePrefabs();
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-delete-prefab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        prefabManager.delete(pid, this.objects);
+        this.renderScenePrefabs();
+        this.updatePrefabInfoBadge();
+      });
+    });
+  }
+
+  public renderSceneSpawners(): void {
+    const listEl = this.container.querySelector("#scene-spawners-list") as HTMLElement | null;
+    const badgeEl = this.container.querySelector("#badge-spawners-count") as HTMLElement | null;
+    const allSpawners = sceneSpawnerManager.getAll();
+    const allPrefabs = prefabManager.getAll();
+
+    if (badgeEl) badgeEl.textContent = allSpawners.length.toString();
+    if (!listEl) return;
+
+    if (allSpawners.length === 0) {
+      listEl.innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.74rem; padding: 12px 0;">
+          No scene spawners. Click "+ Add Scene Spawner" above to create an automated background spawner.
+        </div>
+      `;
+      return;
+    }
+
+    let html = "";
+    for (const spawner of allSpawners) {
+      let prefabOptsHtml = "";
+      for (const p of allPrefabs) {
+        const isSel = p.id === spawner.prefabId ? "selected" : "";
+        prefabOptsHtml += `<option value="${p.id}" ${isSel}>${p.icon} ${p.name}</option>`;
+      }
+      if (allPrefabs.length === 0) {
+        prefabOptsHtml = `<option value="">(No Prefabs Available)</option>`;
+      }
+
+      const activeCount = spawner.getActiveCount(this.objects);
+
+      html += `
+        <div class="behavior-card" data-spawner-card-id="${spawner.id}" style="border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(20, 83, 45, 0.2); margin-bottom: 10px; border-radius: 6px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+              <input type="checkbox" class="spawner-enabled-toggle" data-spawner-id="${spawner.id}" ${spawner.enabled ? "checked" : ""} style="cursor: pointer;" title="Enable / Disable Spawner" />
+              <input class="dev-input input-spawner-name" data-spawner-id="${spawner.id}" value="${spawner.name}" style="flex: 1; padding: 3px 6px; font-weight: 600; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; color: #f1f5f9;" />
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
+              <button class="btn-secondary-action btn-spawner-spawn-now" data-spawner-id="${spawner.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #4ade80; border-color: rgba(34, 197, 94, 0.4);" title="Spawn an item at a random open floor location immediately">⚡ Spawn Now</button>
+              <button class="btn-icon-subtle btn-delete-spawner" data-spawner-id="${spawner.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Spawner">🗑️</button>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(34, 197, 94, 0.15);">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <label style="font-size: 0.74rem; color: #94a3b8; flex: 0 0 55px;">Prefab:</label>
+              <select class="dev-select spawner-prefab-select" data-spawner-id="${spawner.id}" style="flex: 1; padding: 2px 6px; font-size: 0.74rem;">
+                ${prefabOptsHtml}
+              </select>
+            </div>
+
+            <div id="scrub-container-spawner-interval-${spawner.id}"></div>
+            <div id="scrub-container-spawner-max-${spawner.id}"></div>
+
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(34, 197, 94, 0.2); display: flex; justify-content: space-between; align-items: center;">
+              <span>Scene Count: <strong id="spawner-active-count-${spawner.id}" style="color: #4ade80;">${activeCount} / ${spawner.maxCount}</strong></span>
+              <span id="spawner-timer-${spawner.id}" style="color: #cbd5e1;"></span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    listEl.innerHTML = html;
+
+    for (const spawner of allSpawners) {
+      // Interval Scrubber (Minutes per item)
+      this.setupScrubber(`scrub-container-spawner-interval-${spawner.id}`, {
+        label: `Interval (Minutes/item - ${Math.round(spawner.intervalMinutes * 60)}s)`,
+        value: spawner.intervalMinutes,
+        min: 0.02,
+        max: 60.0,
+        step: 0.05,
+        decimals: 2,
+        suffix: " min",
+        onChange: (val: number) => {
+          spawner.intervalMinutes = Math.max(0.01, val);
+        },
+      });
+
+      // Max Count Scrubber
+      this.setupScrubber(`scrub-container-spawner-max-${spawner.id}`, {
+        label: "Max Items in Scene",
+        value: spawner.maxCount,
+        min: 1,
+        max: 100,
+        step: 1,
+        decimals: 0,
+        suffix: " items",
+        onChange: (val: number) => {
+          spawner.maxCount = Math.max(1, Math.round(val));
+        },
+      });
+    }
+
+    // Wire events
+    listEl.querySelectorAll(".input-spawner-name").forEach((input) => {
+      input.addEventListener("change", (e) => {
+        const sid = (input as HTMLElement).dataset.spawnerId!;
+        const s = sceneSpawnerManager.get(sid);
+        if (s) s.name = (e.target as HTMLInputElement).value;
+      });
+    });
+
+    listEl.querySelectorAll(".spawner-enabled-toggle").forEach((toggle) => {
+      toggle.addEventListener("change", (e) => {
+        const sid = (toggle as HTMLElement).dataset.spawnerId!;
+        const s = sceneSpawnerManager.get(sid);
+        if (s) s.enabled = (e.target as HTMLInputElement).checked;
+      });
+    });
+
+    listEl.querySelectorAll(".spawner-prefab-select").forEach((select) => {
+      select.addEventListener("change", (e) => {
+        const sid = (select as HTMLElement).dataset.spawnerId!;
+        const s = sceneSpawnerManager.get(sid);
+        if (s) s.prefabId = (e.target as HTMLSelectElement).value;
+      });
+    });
+
+    listEl.querySelectorAll(".btn-spawner-spawn-now").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sid = (btn as HTMLElement).dataset.spawnerId!;
+        const s = sceneSpawnerManager.get(sid);
+        if (s) {
+          const spawned = s.spawnNow(this.arena, this.objects, prefabManager);
+          if (spawned) {
+            this.onSpawnObject(spawned);
+            this.updateSelectorOptions();
+            this.renderScenePrefabs();
+          }
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-delete-spawner").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sid = (btn as HTMLElement).dataset.spawnerId!;
+        sceneSpawnerManager.delete(sid);
+        this.renderSceneSpawners();
+      });
+    });
+  }
+
+  public updateSceneSpawnersTelemetry(): void {
+    for (const spawner of sceneSpawnerManager.getAll()) {
+      const activeEl = this.container.querySelector(`#spawner-active-count-${spawner.id}`);
+      if (activeEl) {
+        const count = spawner.getActiveCount(this.objects);
+        activeEl.textContent = `${count} / ${spawner.maxCount}`;
+      }
+
+      const timerEl = this.container.querySelector(`#spawner-timer-${spawner.id}`) as HTMLElement | null;
+      if (timerEl) {
+        if (!spawner.enabled) {
+          timerEl.textContent = "Disabled";
+          timerEl.style.color = "#64748b";
+        } else if (spawner.getActiveCount(this.objects) >= spawner.maxCount) {
+          timerEl.textContent = "Max reached (paused)";
+          timerEl.style.color = "#fbbf24";
+        } else {
+          const targetSec = spawner.intervalMinutes * 60;
+          const leftSec = Math.max(0, targetSec - spawner.timerSeconds);
+          timerEl.textContent = `Next in: ${leftSec.toFixed(1)}s`;
+          timerEl.style.color = "#4ade80";
+        }
+      }
+    }
   }
 }

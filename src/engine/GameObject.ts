@@ -123,6 +123,12 @@ export class GameObject {
   public consumableModule: ConsumableModule | null = null;
   public spawnerModule: SpawnerModule | null = null;
 
+  /** Reference to the Scene Prefab archetype this object was instantiated from (if any) */
+  public prefabId: string | null = null;
+
+  /** Set of property keys that have been explicitly edited on this live instance, overriding the prefab */
+  public overriddenProperties: Set<string> = new Set<string>();
+
   constructor(options: {
     id?: string;
     name?: string;

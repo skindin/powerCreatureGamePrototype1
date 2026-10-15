@@ -19,6 +19,7 @@ export class PropertyControl {
   private _decimals: number;
   private _isDropdownOpen: boolean = false;
   private _searchTerm: string = "";
+  private _onUserChange?: (val: number) => void;
 
   constructor(options: {
     property: DynamicProperty;
@@ -28,6 +29,7 @@ export class PropertyControl {
     min?: number;
     max?: number;
     decimals?: number;
+    onUserChange?: (val: number) => void;
   }) {
     this._property = options.property;
     this._owner = options.owner;
@@ -36,6 +38,7 @@ export class PropertyControl {
     this._min = options.min;
     this._max = options.max;
     this._decimals = options.decimals ?? (options.step && options.step < 0.01 ? 3 : 2);
+    this._onUserChange = options.onUserChange;
 
     this._container = document.createElement("div");
     this._container.className = "prop-socket-control";
@@ -107,6 +110,7 @@ export class PropertyControl {
         const rounded = Number(parsed.toFixed(this._decimals));
         this._property.set(rounded, this._owner.properties);
         numInput.value = rounded.toString();
+        this._onUserChange?.(rounded);
       }
     });
 
@@ -134,6 +138,7 @@ export class PropertyControl {
         const rounded = Number(newVal.toFixed(this._decimals));
         this._property.set(rounded, this._owner.properties);
         numInput.value = rounded.toString();
+        this._onUserChange?.(rounded);
       };
 
       const onMouseUp = () => {

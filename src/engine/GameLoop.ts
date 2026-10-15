@@ -13,6 +13,7 @@ import { PredictionReconciliation, ReconciliationResult } from "./physics/Predic
 import { RemoteEntityInterpolator, RemoteEntitySample } from "./physics/RemoteEntityInterpolator.js";
 import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
+import { sceneSpawnerManager } from "./spawner/SceneSpawnerManager.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
@@ -530,6 +531,9 @@ export class GameLoop {
         ent.damageAuraModule.update(dt, ent, this.arena);
       }
     }
+
+    // 3c. Update background scene spawners (periodic random item dispensing)
+    sceneSpawnerManager.update(dt, this.arena, this.objects);
 
     // 4. Resolve collisions across all characters and objects via CollisionResolver
     CollisionResolver.resolveEntityCollisions(

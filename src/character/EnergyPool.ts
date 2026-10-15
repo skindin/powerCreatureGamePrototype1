@@ -22,7 +22,7 @@ export class EnergyPool {
   /**
    * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
    */
-  public debugAutoRefillOnEmpty: boolean = true;
+  public debugAutoRefillOnEmpty: boolean = false;
 
   constructor(options?: {
     baseMaxEnergy?: number;
