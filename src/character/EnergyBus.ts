@@ -25,14 +25,10 @@ export interface ActivePowerAllocation {
 
 export const ABILITY_METADATA: Record<string, { name: string; color: string }> = {
   sprint: { name: "Sprint", color: "#f59e0b" },
-  sprinting: { name: "Sprint", color: "#f59e0b" },
   walk: { name: "Walk", color: "#38bdf8" },
-  walking: { name: "Walk", color: "#38bdf8" },
-  locomotion: { name: "Walk", color: "#38bdf8" },
   jump: { name: "Jump", color: "#ec4899" },
   climb: { name: "Climb", color: "#a855f7" },
   health_regen: { name: "Heal", color: "#22c55e" },
-  heal: { name: "Heal", color: "#22c55e" },
   pickup: { name: "Pickup", color: "#eab308" },
   throw: { name: "Throw", color: "#f43f5e" },
   instant_burst: { name: "Burst", color: "#ec4899" },

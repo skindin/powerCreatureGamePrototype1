@@ -269,6 +269,12 @@
     - Added HUD Opacity slider (`#slide-hud-opacity`) in the View Settings menu (`#view-settings-panel`), ranging from 20% to 100% with a default of 70% opacity.
     - Dynamic live preview and persistent preference storage via `localStorage.getItem("pcg_hud_opacity")`.
     - Scoped transparency strictly and exclusively to the on-screen status screen HUD (`.energy-hud-container` containing health, energy, stamina, and power stat bars) via CSS variable `--hud-opacity: 0.70`.
+- **Phase 11.30 (Purged Redundant Ability Metadata Aliases)**:
+  - **Single Source of Truth in `ABILITY_METADATA`**: Cleaned up legacy alias entries (`sprinting`, `walking`, `locomotion`, `heal`) in `ABILITY_METADATA` within `EnergyBus.ts`, retaining only the canonical active identifiers currently used throughout the codebase: `sprint`, `walk`, `jump`, `climb`, `health_regen`, `pickup`, `throw`, and `instant_burst`.
+  - **Automated Verification**: Verified 100% via `npm run build`, `scratch/test_hud_ability_readjustment.ts`, and full regression test suite.
+
+---
+
 - **Phase 12 (Food & Edible Mechanics, Contextual Primary Abilities, Universal Throw & Infinite Spawner Behavior)**:
   - **Food Item & Continuous Ingestion (`FoodModule`)**:
     - **Continuous Energy Transfer**: Holding food and holding Primary Action (Left Mouse Button / Gamepad `RT`) smoothly transfers energy into the character's energy bus pool at `eatRateJoulesPerSecProp` (default 100 J/s) with optional biological healing (`healRateHpPerSecProp`, default 0 HP/s).

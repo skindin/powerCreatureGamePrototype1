@@ -14,7 +14,7 @@ console.log("=== Testing Ability Naming, Two-Tier Block Sizing, & Exhaustion Tic
 assert(ABILITY_METADATA.sprint.name === "Sprint", "sprint name is 'Sprint'");
 assert(ABILITY_METADATA.walk.name === "Walk", "walk name is 'Walk'");
 assert(ABILITY_METADATA.jump.name === "Jump", "jump name is 'Jump'");
-assert(ABILITY_METADATA.heal.name === "Heal", "heal name is 'Heal'");
+assert(ABILITY_METADATA.health_regen.name === "Heal", "health_regen name is 'Heal'");
 console.log("✓ Ability names in metadata correctly set to 'Sprint', 'Walk', 'Jump', 'Heal'");
 
 // 2. Test concurrent allocation with Jump (full-power) preempting Sprint and Heal (partial-power)
@@ -25,12 +25,12 @@ const bus = new EnergyBus({ baseMaxPower: 500, baseMaxStamina: 10 });
 // Sprint draws 152 W (partial power allowed)
 bus.requestPower(152, 0.016, pool, registry, false, "sprint", true);
 // Heal draws 250 W (partial power allowed)
-bus.requestPower(250, 0.016, pool, registry, false, "heal", true);
+bus.requestPower(250, 0.016, pool, registry, false, "health_regen", true);
 
 let allocs = bus.getActiveAllocations(registry);
 assert(allocs.length === 2, "2 continuous abilities active");
 const sprintAlloc = allocs.find(a => a.id === "sprint")!;
-const healAlloc = allocs.find(a => a.id === "heal")!;
+const healAlloc = allocs.find(a => a.id === "health_regen")!;
 assert(Math.abs(sprintAlloc.grantedWatts - 152) < 0.1, "Sprint granted full 152 W");
 assert(Math.abs(healAlloc.grantedWatts - 250) < 0.1, "Heal granted full 250 W");
 console.log("✓ Sprint and Heal both receive full power when under 500W cap");
@@ -54,7 +54,7 @@ assert(Math.abs(jumpAlloc.grantedWatts - 224) < 0.1, "Jump granted exact 224 W d
 
 // Verify Sprint and Heal were readjusted to share the remaining 276 W:
 const readjustedSprint = allocs.find(a => a.id === "sprint")!;
-const readjustedHeal = allocs.find(a => a.id === "heal")!;
+const readjustedHeal = allocs.find(a => a.id === "health_regen")!;
 const remainingHeadroom = 500 - 224; // 276 W
 const expectedSprint = (152 / (152 + 250)) * remainingHeadroom; // ~104.3 W
 const expectedHeal = (250 / (152 + 250)) * remainingHeadroom; // ~171.7 W
