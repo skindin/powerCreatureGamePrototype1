@@ -5,6 +5,7 @@ import type { Arena } from "../engine/Arena.js";
 export interface ConsumeModuleOptions {
   enabled?: boolean;
   acceptedTags?: string[];
+  involvesDirection?: boolean;
 }
 
 /**
@@ -23,8 +24,12 @@ export class ConsumeModule {
   /** List of consumable tags this character is capable of consuming */
   public acceptedTags: string[] = ["food"];
 
+  /** Whether using this ability involves aiming in a direction (false for eating/drinking/consuming) */
+  public involvesDirection: boolean = false;
+
   constructor(options?: ConsumeModuleOptions) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+    if (options?.involvesDirection !== undefined) this.involvesDirection = options.involvesDirection;
     if (options?.acceptedTags !== undefined) {
       this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
     }

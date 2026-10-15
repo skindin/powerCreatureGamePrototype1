@@ -7736,7 +7736,10 @@ class ConsumeModule {
     __publicField(this, "enabled", true);
     /** List of consumable tags this character is capable of consuming */
     __publicField(this, "acceptedTags", ["food"]);
+    /** Whether using this ability involves aiming in a direction (false for eating/drinking/consuming) */
+    __publicField(this, "involvesDirection", false);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if ((options == null ? void 0 : options.involvesDirection) !== void 0) this.involvesDirection = options.involvesDirection;
     if ((options == null ? void 0 : options.acceptedTags) !== void 0) {
       this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
     }
@@ -7988,6 +7991,23 @@ class Character extends GameObject {
   canConsumeHeldObject() {
     return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
   }
+  /**
+   * Returns true if the currently held object has an inherent primary ability other than throw.
+   */
+  hasPrimaryItemAbility() {
+    if (!this.heldObject) return false;
+    return this.canConsumeHeldObject();
+  }
+  /**
+   * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
+   */
+  isPrimaryAbilityNonDirectional() {
+    if (!this.heldObject) return false;
+    if (this.canConsumeHeldObject()) {
+      return this.consumeModule ? !this.consumeModule.involvesDirection : true;
+    }
+    return false;
+  }
   get isEatingFood() {
     return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
   }
@@ -8077,8 +8097,9 @@ class Character extends GameObject {
    * Faces in the direction the player is aiming. If not aiming (or no aim function),
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
-  updateFacingDirection(_isAimingInput, aimTargetPos, movementInput) {
-    if (this.heldObject && aimTargetPos) {
+  updateFacingDirection(isAimingInput, aimTargetPos, movementInput) {
+    const shouldFaceCursor = this.heldObject && aimTargetPos && (!this.isPrimaryAbilityNonDirectional() || isAimingInput);
+    if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;
       const dy = aimTargetPos.y - this.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
@@ -8205,8 +8226,9 @@ class Character extends GameObject {
     } else if (this.energyBus && this.energyBus.enabled) {
       this.energyBus.update(dt, this.energyPool, this.properties);
     }
+    const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     let lockedTarget = null;
-    if (autoLock && aimTargetPos && this.throwModule) {
+    if (canAimThrow && autoLock && aimTargetPos && this.throwModule) {
       lockedTarget = this.throwModule.findHoveredEntity(
         aimTargetPos.x,
         aimTargetPos.y,
@@ -8238,7 +8260,7 @@ class Character extends GameObject {
     }
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
-    if (this.heldObject && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
+    if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

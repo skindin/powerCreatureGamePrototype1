@@ -487,9 +487,26 @@ export class PlayerManager {
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
-      const isMouseAiming = !isEditMode && (input.isMouseDown || kChar.heldObject !== null);
-
       const isHolding = kChar.heldObject !== null;
+      const hasPrimaryAbility = kChar.hasPrimaryItemAbility();
+      const isPrimaryNonDirectional = kChar.isPrimaryAbilityNonDirectional();
+
+      // If holding an object with an inherent ability, Alt swaps to Throw.
+      // If object has no other ability, default ability is Throw.
+      // Ability swap stays in effect until the swapped ability is released.
+      const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
+
+      // Mouse aiming & trajectory are active when:
+      // 1. In edit mode, or
+      // 2. Mouse button is down, or
+      // 3. Holding an object whose active ability is directional (e.g. Throw or a directional ability).
+      // If the primary ability does not involve direction and Alt is not held, do NOT aim or anticipate throw.
+      const isMouseAiming = !isEditMode && (
+        (isHolding && isThrowActive) ||
+        (isHolding && !isPrimaryNonDirectional) ||
+        (!isHolding && input.isMouseDown)
+      );
+
       const grabState = this.getGrabSuppressionState(kChar.id);
       const isEKeyDown = input.isEKeyDepressed || input.isKeyPressed("KeyE");
 
@@ -539,9 +556,13 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face locked target object if locked, otherwise face aim when holding, movement direction when walking
+      // Ensure facingAngle is explicit:
+      // If holding an object:
+      // - If auto-locked onto a target, face locked target
+      // - If aiming throw or directional ability, face cursor
+      // - If primary ability does not involve direction and not aiming throw (Alt not held), do NOT face cursor; face movement direction
       if (kChar.heldObject) {
-        const lockTarget = kChar.activeTrajectory?.isAutoLocked && kChar.activeTrajectory.targetObject
+        const lockTarget = isThrowActive && kChar.activeTrajectory?.isAutoLocked && kChar.activeTrajectory.targetObject
           ? kChar.activeTrajectory.targetObject
           : null;
         if (lockTarget) {
@@ -550,11 +571,17 @@ export class PlayerManager {
           if (Math.hypot(aimDx, aimDy) > 0.05) {
             kChar.facingAngle = Math.atan2(aimDy, aimDx);
           }
-        } else {
+        } else if (isThrowActive || !isPrimaryNonDirectional) {
           const aimDx = input.actualMousePos.x - kChar.position.x;
           const aimDy = input.actualMousePos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
             kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
+        } else {
+          // Non-directional primary ability (e.g. food): face movement direction
+          const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
+          if (moveMag > 0.05) {
+            kChar.facingAngle = Math.atan2(input.movementVector.y, input.movementVector.x);
           }
         }
       } else {
@@ -572,7 +599,8 @@ export class PlayerManager {
         grabState.useItemSuppressed = true;
       }
       const canUseItem = input.isMouseDown && !grabState.useItemSuppressed && !input.justPickedUp;
-      const isUsingItem = isHoldingConsumable && canUseItem && !input.isKeyboardSuspended;
+      // Using primary ability requires NOT holding Alt (or holding LMB after starting primary ability until released)
+      const isUsingItem = isHoldingConsumable && canUseItem && !input.isAltHeld && !input.isThrowingPress && !input.isKeyboardSuspended;
 
       map.set("keyboard", {
         playerId: "keyboard",

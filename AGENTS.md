@@ -362,10 +362,12 @@
   - **Damage Dispatched Before Separation**: Collision damage is calculated and dispatched to `DamageSolverModule` *first* during the collision resolution pass before positional separation executes.
   - **Sliding Separation Preserved**: The existing inverse-mass positional separation remains completely intact, ensuring stacked objects naturally slide away from each other.
   - **Automated Verification**: Verified 100% via `scratch/test_vertical_collision_damage.ts` and clean `npm run build`.
-- **Phase 12.10 (Default Collision Damage Scale 0.05 & Threshold 25 HP)**:
-  - **Collision Damage Scale**: Set `GameObject.globalWorldCollisionDamageScale` default from `0.01` to `0.05`.
-  - **Damage Threshold**: Updated default `damageThresholdHp` in `DamageSolverModule` and DevPanel module attachment from `5.0` to `25.0` HP.
-  - **Automated Verification**: Verified via `scratch/test_vertical_collision_damage.ts` and clean `npm run build`.
+- **Phase 12.11 (Alt Ability Swaps & Non-Directional Aiming Architecture)**:
+  - **Alt Key Ability Swapping**: In `InputManager.ts`, added `isAltHeld` tracked continuously across `keydown`, `keyup`, and `blur`. Left Mouse Button always triggers the default/primary ability of the held item (e.g. eating food), but holding Alt swaps to the alternative ability (Throw) until released.
+  - **No Throw Anticipation or Trajectory**: When holding an item whose primary ability is non-directional (e.g. food consumable), the game does NOT anticipate throwing unless Alt is held or the object has no other ability. Trajectory preview is completely suppressed and `activeTrajectory` is `null`.
+  - **No Cursor Facing on Non-Directional Abilities**: If the held item's primary ability is non-directional and Alt is not held, the character does NOT snap or face towards the mouse cursor. Instead, the character faces their movement direction naturally.
+  - **Immediate Throw & Reticle on Alt**: While holding Alt, character faces the mouse cursor, trajectory is computed and rendered, and Left Mouse Button throws the held object.
+  - **Automated Verification**: Verified 100% via `scratch/test_ability_swap_alt.ts` and clean `npm run build`.
 
 ---
 

@@ -150,6 +150,25 @@ export class Character extends GameObject {
     return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
   }
 
+  /**
+   * Returns true if the currently held object has an inherent primary ability other than throw.
+   */
+  public hasPrimaryItemAbility(): boolean {
+    if (!this.heldObject) return false;
+    return this.canConsumeHeldObject();
+  }
+
+  /**
+   * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
+   */
+  public isPrimaryAbilityNonDirectional(): boolean {
+    if (!this.heldObject) return false;
+    if (this.canConsumeHeldObject()) {
+      return this.consumeModule ? !this.consumeModule.involvesDirection : true;
+    }
+    return false;
+  }
+
   public get isEatingFood(): boolean {
     return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
   }
@@ -372,12 +391,16 @@ export class Character extends GameObject {
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
   public updateFacingDirection(
-    _isAimingInput: boolean,
+    isAimingInput: boolean,
     aimTargetPos: Vector2D | null,
     movementInput?: Vector2D
   ): void {
-    // The character ONLY faces the aim cursor when holding an object!
-    if (this.heldObject && aimTargetPos) {
+    // When holding an object:
+    // If the object's primary ability does not involve direction and we are not aiming throw (isAimingInput is false),
+    // the character should NOT face the mouse cursor and should face movement direction instead!
+    const shouldFaceCursor = this.heldObject && aimTargetPos && (!this.isPrimaryAbilityNonDirectional() || isAimingInput);
+
+    if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;
       const dy = aimTargetPos.y - this.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
@@ -386,7 +409,7 @@ export class Character extends GameObject {
       }
     }
 
-    // When empty-handed, character faces the direction they are moving:
+    // When empty-handed or when held object has non-directional ability without aim, face movement direction:
     if (movementInput) {
       const inputMag = Math.hypot(movementInput.x, movementInput.y);
       if (inputMag > 0.05) {
@@ -552,9 +575,10 @@ export class Character extends GameObject {
     }
 
     // 3. Update facing orientation using intended movement input or aim.
-    // If auto-locking onto a target, orient toward the locked target!
+    // If auto-locking onto a target, orient toward the locked target only when throw is active / aiming!
+    const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     let lockedTarget: GameObject | null = null;
-    if (autoLock && aimTargetPos && this.throwModule) {
+    if (canAimThrow && autoLock && aimTargetPos && this.throwModule) {
       lockedTarget = this.throwModule.findHoveredEntity(
         aimTargetPos.x,
         aimTargetPos.y,
@@ -588,11 +612,11 @@ export class Character extends GameObject {
       this.heldObject.verticalVelocity = 0;
     }
 
-    // 5. Update trajectory preview: ONLY active when actively aiming (Right Stick or Mouse aim)
+    // 5. Update trajectory preview: ONLY active when actively aiming throw
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
 
-    if (this.heldObject && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
+    if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

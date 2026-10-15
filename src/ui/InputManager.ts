@@ -52,6 +52,7 @@ export class InputManager {
   public isQKeyDepressed = false;
   public isFKeyDepressed = false;
   public isKeyboardSprintActive = false;
+  public isAltHeld = false;
 
   public isKeyPressed(code: string): boolean {
     return this.keysPressed.has(code);
@@ -232,6 +233,7 @@ export class InputManager {
         this.isEKeyDepressed = false;
         this.isFKeyDepressed = false;
         this.isKeyboardSprintActive = false;
+        this.isAltHeld = false;
         this.isMouseDown = false;
         this.isRightMouseDown = false;
         this.updateMovementVector();
@@ -242,6 +244,12 @@ export class InputManager {
       // If suspended from Escape, ignore all game key inputs until user clicks the game view again
       if (this.isKeyboardSuspended) {
         return;
+      }
+
+      if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = true;
+        // Prevent default browser alt menu activation in browsers
+        e.preventDefault();
       }
 
       this.activeInputDevice = "keyboard";
@@ -312,6 +320,10 @@ export class InputManager {
         this.isFKeyDepressed = false;
       }
 
+      if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = false;
+      }
+
       // Automatically turn off sprint when all movement keys are released!
       if (!this.hasAnyMovementKeyPressed()) {
         this.isKeyboardSprintActive = false;
@@ -324,6 +336,7 @@ export class InputManager {
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
       this.isFKeyDepressed = false;
+      this.isAltHeld = false;
       this.keysPressed.clear();
       this.isKeyboardSprintActive = false;
       this.onStopKeyboardSprint?.();
@@ -1294,12 +1307,16 @@ export class InputManager {
       // Play Mode:
       // 1. If holding an object:
       if (activeChar.heldObject && !this.justPickedUp) {
-        // If holding consumable, primary ability is eating (handled continuously while mouse button is held down)
-        if (activeChar.heldObject.consumableModule && activeChar.heldObject.consumableModule.enabled) {
+        // If holding an item with an inherent primary ability (e.g. food consumable):
+        // Default ability is triggered by Left Mouse.
+        // Holding Alt switches to the alternative ability (Throw) until released.
+        const hasPrimaryAbility = activeChar.hasPrimaryItemAbility?.() ?? Boolean(activeChar.heldObject.consumableModule?.enabled);
+        if (hasPrimaryAbility && !this.isAltHeld) {
+          // Primary ability is triggered continuously while LMB is down in capturePlayerInputs
           return;
         }
 
-        // For standard held items, Left Click executes Throw:
+        // Execute Throw if Alt is held OR if the object has no other primary ability:
         if (activeChar.throwModule) {
           this.isKeyboardThrowRequested = true;
           this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
