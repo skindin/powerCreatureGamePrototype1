@@ -281,8 +281,8 @@
     - **Volumetric Shrinking & Visual Scale Floor**: Food visually shrinks in real-time as its remaining Joules decrease: $r(t) = r_0 \times \left(\frac{E(t)}{E_0}\right)^{1/3}$. To prevent minuscule, unclickable or barely visible crumbs if the player stops eating and drops or throws the item, a scale floor ($25\%$ of original radius: $r_{\text{min}} = 0.25 \times r_0$) is enforced until the food is fully eaten.
     - **Depletion & Full Consumption**: When remaining energy hits $0\text{ J}$ ($E \le 0.001\text{ J}$), the food is completely consumed: the character releases its grip, the item is destroyed and removed from the world, and any associated modifiers cleanly clear.
     - **Zero Speed Penalty**: Characters maintain full movement agility, running and dodging at normal speed with zero speed penalty while eating.
-  - **Contextual Primary Ability vs. Universal Throw**:
-    - **Dedicated Universal Throw Control**: Pressing `KeyF` (or Gamepad `RB`) universally launches any held object with trajectory aiming, regardless of whether the object has a primary ability.
+  - **Contextual Primary Ability vs. Throw**:
+    - **Dedicated Throw Control**: Holding `Alt` + Left Click (or Gamepad `RB`) universally launches any held object with trajectory aiming, regardless of whether the object has a primary ability.
     - **Contextual Primary Action**: Pressing Left Mouse Button (or Gamepad `RT`) executes the held item's primary capability (e.g., eating food if held). If the held object has no primary ability (e.g., plain crate or rock), it naturally falls back to throwing for seamless backwards compatibility.
     - **Drop**: Pressing `KeyQ` drops the held item in place, retaining its current shrunken scale and remaining energy.
   - **Modular Infinite Spawner Behavior (`SpawnerModule`)**:

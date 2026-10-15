@@ -50,7 +50,6 @@ export class InputManager {
   private keysPressed: Set<string> = new Set();
   public isEKeyDepressed = false;
   public isQKeyDepressed = false;
-  public isFKeyDepressed = false;
   public isKeyboardSprintActive = false;
   public isAltHeld = false;
 
@@ -174,7 +173,6 @@ export class InputManager {
   public onDropAttempt?: () => void;
   public onKeyboardPickup?: () => void;
   public onKeyboardDrop?: () => void;
-  public onKeyboardThrow?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
   public onToggleSprint?: (active?: boolean) => void;
   public onStopKeyboardSprint?: () => void;
@@ -239,7 +237,6 @@ export class InputManager {
         this.keysPressed.clear();
         this.isQKeyDepressed = false;
         this.isEKeyDepressed = false;
-        this.isFKeyDepressed = false;
         this.isKeyboardSprintActive = false;
         this.isAltHeld = false;
         this.isMouseDown = false;
@@ -289,16 +286,6 @@ export class InputManager {
 
         this.onKeyboardPickup?.();
       }
-
-      if (e.code === "KeyF") {
-        // F key: Dedicated Universal Throw! Always throws held item in aimed direction
-        if (e.repeat || this.isFKeyDepressed) return;
-        this.isFKeyDepressed = true;
-        this.isKeyboardThrowRequested = true;
-        this.isThrowingPress = true;
-
-        this.onKeyboardThrow?.();
-      }
     });
 
     window.addEventListener("keyup", (e) => {
@@ -324,10 +311,6 @@ export class InputManager {
         this.isEKeyDepressed = false;
       }
 
-      if (e.code === "KeyF") {
-        this.isFKeyDepressed = false;
-      }
-
       if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
         this.isAltHeld = false;
         if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
@@ -346,7 +329,6 @@ export class InputManager {
       this.isKeyboardSuspended = true;
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
-      this.isFKeyDepressed = false;
       this.isAltHeld = false;
       this.keysPressed.clear();
       this.isKeyboardSprintActive = false;
