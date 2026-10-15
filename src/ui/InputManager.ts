@@ -208,6 +208,14 @@ export class InputManager {
     });
 
     window.addEventListener("keydown", (e) => {
+      // If Alt is pressed or held, prevent browser menu activation, menu bar focus, and browser shortcuts
+      if (e.altKey || e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = true;
+        if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
+          e.preventDefault();
+        }
+      }
+
       // If user is focused on or typing into ANY text box or form input,
       // allow default browser behavior (typing characters, spaces, backspaces)
       // and do NOT hijack input or trigger game actions!
@@ -322,6 +330,9 @@ export class InputManager {
 
       if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
         this.isAltHeld = false;
+        if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
+          e.preventDefault();
+        }
       }
 
       // Automatically turn off sprint when all movement keys are released!
