@@ -4693,11 +4693,15 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   z-index: 55;
   width: 860px;
   max-width: calc(100% - 24px);
-  pointer-events: auto;
+  pointer-events: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
   opacity: var(--hud-opacity, 0.70);
   transition: opacity 0.15s ease;
+}
+
+.energy-hud-container * {
+  pointer-events: none;
 }
 
 /* Dual Column Layout (Health on Left, Energy & Power on Right) */
@@ -4706,12 +4710,14 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: flex-end;
+  pointer-events: none;
 }
 
 .hud-column {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  pointer-events: none;
 }
 
 /* Mini Collapsed Pill */
@@ -4726,10 +4732,15 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   padding: 6px 14px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   cursor: pointer;
+  pointer-events: auto;
   font-size: 0.8rem;
   font-weight: 600;
   color: #f8fafc;
   transition: all 0.15s ease;
+}
+
+.energy-hud-mini * {
+  pointer-events: auto;
 }
 
 .energy-hud-mini:hover {
