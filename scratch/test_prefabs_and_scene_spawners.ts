@@ -29,7 +29,7 @@ assert(Boolean(applePrefab), "Default 'prefab_apple' found in PrefabManager");
 assert(applePrefab!.archetype.name === "Apple", "Apple prefab archetype name is 'Apple'");
 assert(Boolean(applePrefab!.archetype.consumableModule), "Apple prefab has ConsumableModule");
 assert(applePrefab!.archetype.consumableModule!.tag === "food", "Apple consumable tag is 'food'");
-assert(applePrefab!.archetype.consumableModule!.totalEnergyJoulesProp.literalValue === 500, "Apple total energy is 500J");
+assert(applePrefab!.archetype.consumableModule!.totalEnergyJoulesProp.literalValue === 2000, "Apple total energy is 2000J");
 
 // 3. Verify Prefab Instantiation
 console.log("\n--- TEST 3: Prefab Instantiation & PrefabId Link ---");
@@ -41,7 +41,7 @@ assert(liveObjects.length === 1, "Instance added to liveObjects array");
 assert(appleInstance1!.prefabId === "prefab_apple", "Instance has prefabId linked");
 assert(appleInstance1!.overriddenProperties.size === 0, "Instance starts with 0 overridden properties");
 assert(appleInstance1!.consumableModule!.tag === "food", "Instance has tag 'food'");
-assert(appleInstance1!.consumableModule!.getRemainingEnergy(appleInstance1!.properties) === 500, "Instance has 500J energy");
+assert(appleInstance1!.consumableModule!.getRemainingEnergy(appleInstance1!.properties) === 2000, "Instance has 2000J energy");
 
 const appleInstance2 = pm.spawn("prefab_apple", { x: 7, y: 7, z: 0 }, arena, liveObjects);
 assert(liveObjects.length === 2, "Spawned second instance");

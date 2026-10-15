@@ -12,23 +12,24 @@ export class PrefabManager {
   }
 
   private initDefaultPrefabs(): void {
-    // 🍎 Default "Apple" food prefab
+    // 🍏 Default "Apple" food prefab matching original green apple stats
     const appleArchetype = new GameObject({
       id: "archetype_apple",
       name: "Apple",
       position: { x: 0, y: 0, z: 0 },
-      color: "#ef4444",
+      color: "#22c55e",
       visualShape: "circle",
-      mass: 0.5,
-      colliderRadius: 0.28,
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
       hasGravity: true,
       hasVerticalPosition: true,
       consumableModule: new ConsumableModule({
         tag: "food",
-        totalEnergyJoules: 500,
-        remainingEnergyJoules: 500,
-        consumeRateWatts: 100,
-        healRate: 5,
+        totalEnergyJoules: 2000,
+        remainingEnergyJoules: 2000,
+        consumeRateWatts: 400,
+        healRate: 0,
         minScaleFloor: 0.35,
         minRadiusFloor: 0.12,
       }),
@@ -37,7 +38,7 @@ export class PrefabManager {
     const applePrefab = new Prefab({
       id: "prefab_apple",
       name: "Apple",
-      icon: "🍎",
+      icon: "🍏",
       archetype: appleArchetype,
     });
 

@@ -337,6 +337,25 @@
     - Automated pausing when active count reaches `maxCount`.
     - "⚡ Spawn Now" instant button and live telemetry readout ("Scene Count: X / Y" and "Next in: Z.Zs").
   - **Automated Verification**: Verified 100% via `scratch/test_prefabs_and_scene_spawners.ts` and clean `npm run build`.
+- **Phase 12.7 (Apple Prefab Stats Parity & Post-Pickup Consumption Suppression)**:
+  - **Apple Prefab Stats Parity**:
+    - Removed hardcoded `"food-apple-spawner-1"` scene GameObject from `main.ts`.
+    - Updated default `"Apple"` prefab archetype in `PrefabManager.ts` to match the exact stats of the original green apple:
+      - Color: `"#22c55e"` (green)
+      - Mass: `0.35`
+      - Collider radius: `0.25`
+      - Bounce restitution: `0.2`
+      - Consumable energy: `2000 J` (`remainingEnergyJoules = 2000`)
+      - Consume rate: `400 W`
+      - Biological healing rate: `0 HP/s`
+      - Consumable tag: `"food"`
+      - Icon: `"🍏"`
+  - **Eliminated False HP / Energy Gain on Initial Pickup**:
+    - **Re-ordered Held Object Transition**: Moved the `currentHeldId !== prevHeldId` transition detection to the top of `PlayerManager.applyPlayerInputs` (before line 855 where `char.consumeModule.consume()` is evaluated), guaranteeing that newly acquired items never consume energy or restore HP on their initial pickup frame.
+    - **Pre-Pickup Button Suppression**: When an item enters a character's hands while the trigger button (Left Mouse Button for keyboard/mouse, Gamepad RT) was already being pressed before or during pickup, `gState.useItemSuppressed` is strictly set to `true`, and `char.isUsingItem` and `char.eatRateWatts` are zeroed out.
+    - **Explicit Release & Repress Required**: Consumable behaviors only begin once the player completely releases the activation button and presses it again after the item is in their hands.
+    - **Spawner Cloning in InputManager**: Added spawner detection in `InputManager.handleClick` and `onKeyboardPickup` to dispense a clone without spawner behavior into hands, keeping the spawner entity stationary at its location and setting `justPickedUp = true`.
+  - **Automated Verification**: Verified 100% via `scratch/test_apple_pickup_and_suppression.ts`, `scratch/test_grab_suppression_and_pie.ts`, `scratch/test_prefabs_and_scene_spawners.ts`, and clean `npm run build`.
 
 ---
 

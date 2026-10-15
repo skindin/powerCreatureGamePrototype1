@@ -1034,7 +1034,7 @@ export class InputManager {
       } else {
         slot.rtHeld = false;
 
-        const isHoldingFood = Boolean(char.heldObject?.foodModule?.enabled);
+        const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
         if (isHoldingFood) {
           // Food primary action: RT held down continuously eats
           slot.isUsingItem = rtCurrent;
@@ -1294,8 +1294,8 @@ export class InputManager {
       // Play Mode:
       // 1. If holding an object:
       if (activeChar.heldObject && !this.justPickedUp) {
-        // If holding food, primary ability is eating (handled continuously while mouse button is held down)
-        if (activeChar.heldObject.foodModule && activeChar.heldObject.foodModule.enabled) {
+        // If holding consumable, primary ability is eating (handled continuously while mouse button is held down)
+        if (activeChar.heldObject.consumableModule && activeChar.heldObject.consumableModule.enabled) {
           return;
         }
 
@@ -1314,7 +1314,19 @@ export class InputManager {
           : objects;
         const aimX = clickX;
         const aimY = clickY;
-        if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
+        const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
+        if (target && target.spawnerModule && target.spawnerModule.enabled) {
+          const clone = target.spawnerModule.triggerClone(target, arena, objects);
+          if (clone) {
+            const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
+            if (!pickedUp) {
+              const idx = objects.indexOf(clone);
+              if (idx !== -1) objects.splice(idx, 1);
+            } else {
+              this.justPickedUp = true;
+            }
+          }
+        } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
           this.justPickedUp = true;
         }
       }
@@ -1353,7 +1365,21 @@ export class InputManager {
         : objects;
       const aimX = this.actualMousePos.x;
       const aimY = this.actualMousePos.y;
-      activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
+      const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
+      if (target && target.spawnerModule && target.spawnerModule.enabled) {
+        const clone = target.spawnerModule.triggerClone(target, arena, objects);
+        if (clone) {
+          const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
+          if (!pickedUp) {
+            const idx = objects.indexOf(clone);
+            if (idx !== -1) objects.splice(idx, 1);
+          } else {
+            this.justPickedUp = true;
+          }
+        }
+      } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
+        this.justPickedUp = true;
+      }
     };
 
     this.onDropAttempt = this.onKeyboardPickup;

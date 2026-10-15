@@ -4,8 +4,6 @@ import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
 import { DamageAuraModule } from "./engine/DamageAuraModule.js";
-import { ConsumableModule } from "./engine/ConsumableModule.js";
-import { SpawnerModule } from "./engine/SpawnerModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -295,27 +293,6 @@ function bootstrap(): void {
       damageAuraModule: new DamageAuraModule({
         damageRadius: 2.2,
         damageRate: 25.0,
-      }),
-    }),
-    new GameObject({
-      id: "food-apple-spawner-1",
-      name: "Energy Apple Spawner",
-      position: { x: 4.8, y: 5.2, z: 0 },
-      mass: 0.35,
-      colliderRadius: 0.25,
-      color: "#22c55e",
-      bounceMod: 0.2,
-      visualShape: "circle",
-      consumableModule: new ConsumableModule({
-        tag: "food",
-        totalEnergyJoules: 2000,
-        remainingEnergyJoules: 2000,
-        consumeRateWatts: 400,
-        healRate: 0,
-      }),
-      spawnerModule: new SpawnerModule({
-        spawnPosition: { x: 4.8, y: 5.2, z: 0 },
-        respawnDelay: 0,
       }),
     }),
   ];
