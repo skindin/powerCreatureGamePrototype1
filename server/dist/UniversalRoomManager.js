@@ -63,11 +63,12 @@ function requireConstants() {
   };
   return constants;
 }
-throw new Error(`Could not resolve "bufferutil" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_bufferutil_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_bufferutil_ws = {};
+const __viteOptionalPeerDep_bufferutil_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_bufferutil_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws);
+const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws$1);
 var hasRequiredBufferUtil;
 function requireBufferUtil() {
   if (hasRequiredBufferUtil) return bufferUtil.exports;
@@ -576,11 +577,12 @@ function requirePermessageDeflate() {
   return permessageDeflate;
 }
 var validation = { exports: {} };
-throw new Error(`Could not resolve "utf-8-validate" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_utf8Validate_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_utf8Validate_ws = {};
+const __viteOptionalPeerDep_utf8Validate_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_utf8Validate_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws);
+const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws$1);
 var hasRequiredValidation;
 function requireValidation() {
   if (hasRequiredValidation) return validation.exports;
@@ -4650,6 +4652,8 @@ const _GameObject = class _GameObject {
     __publicField(this, "damageAuraModule", null);
     __publicField(this, "damageSolverModule", null);
     __publicField(this, "characterModule", null);
+    __publicField(this, "foodModule", null);
+    __publicField(this, "spawnerModule", null);
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -4693,6 +4697,14 @@ const _GameObject = class _GameObject {
     this.damageAuraModule = options.damageAuraModule ?? null;
     this.damageSolverModule = options.damageSolverModule ?? null;
     this.characterModule = options.characterModule ?? null;
+    this.foodModule = options.foodModule ?? null;
+    this.spawnerModule = options.spawnerModule ?? null;
+    if (this.spawnerModule && (this.spawnerModule.spawnPosition.x === 0 && this.spawnerModule.spawnPosition.y === 0 && this.spawnerModule.spawnPosition.z === 0)) {
+      this.spawnerModule.spawnPosition = { ...this.position };
+    }
+    if (this.foodModule) {
+      this.foodModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
+    }
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -7771,6 +7783,9 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
+    // Item usage & eating state
+    __publicField(this, "isUsingItem", false);
+    __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
     this.playerId = options.playerId ?? (determinedRole === "dummy" ? "dummy-1" : "keyboard");
     this.playerNumber = options.playerNumber !== void 0 ? options.playerNumber : determinedRole === "dummy" ? 0 : 1;
@@ -7884,6 +7899,21 @@ class Character extends GameObject {
   }
   get isDummy() {
     return this.role === "dummy";
+  }
+  get isEatingFood() {
+    var _a, _b;
+    return Boolean(((_b = (_a = this.heldObject) == null ? void 0 : _a.foodModule) == null ? void 0 : _b.enabled) && this.isUsingItem);
+  }
+  /**
+   * Drops or unholds the currently held object safely.
+   */
+  unhold() {
+    if (!this.heldObject) return null;
+    const obj = this.heldObject;
+    this.heldObject = null;
+    obj.isHeld = false;
+    obj.heldBy = null;
+    return obj;
   }
   /**
    * Attempts to jump using the attached JumpModule.
@@ -10318,6 +10348,12 @@ class ServerGameSimulation {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
             char.pickupModule.pickup(char, target);
+            if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, this.arena);
+              if (clone && !this.objects.includes(clone)) {
+                this.objects.push(clone);
+              }
+            }
           }
         }
       } else if (act.type === "drop") {
@@ -10602,6 +10638,11 @@ class ServerGameSimulation {
       obj.updatePosition(dt, this.arena);
       if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
         obj.healthModule.update(dt, obj, this.arena);
+      }
+    }
+    for (const char of this.allCharacters) {
+      if (char.isUsingItem && char.heldObject && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
+        char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
       }
     }
     const allEntities = [...this.allCharacters, ...this.objects];

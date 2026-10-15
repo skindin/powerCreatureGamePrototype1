@@ -78,6 +78,47 @@ export class EntityPass {
     const isBiggerWithoutHover = useBigger && (!useHover || hoverScale <= 0);
     const shouldBeTransparent = isHeld || (isBiggerWithoutHover && isOnLayer2);
 
+    // Draw Spawner Pedestal / Pad if this is an active spawner
+    if (obj.spawnerModule && obj.spawnerModule.enabled && !isHeld) {
+      ctx.save();
+      const padR = renderRadius * 1.5 + 4;
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.45)";
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(x, y, padR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "rgba(34, 197, 94, 0.10)";
+      ctx.beginPath();
+      ctx.arc(x, y, padR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4 crosshair ticks
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.65)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x - padR - 3, y); ctx.lineTo(x - padR + 3, y);
+      ctx.moveTo(x + padR - 3, y); ctx.lineTo(x + padR + 3, y);
+      ctx.moveTo(x, y - padR - 3); ctx.lineTo(x, y - padR + 3);
+      ctx.moveTo(x, y + padR - 3); ctx.lineTo(x, y + padR + 3);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Soft luminous halo for food items on ground to ensure partial crumbs are always visible
+    if (obj.foodModule && !isHeld) {
+      ctx.save();
+      const haloR = renderRadius + 4;
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, haloR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
@@ -130,6 +171,32 @@ export class EntityPass {
       const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
       ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
       ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+      ctx.stroke();
+
+      // Food Stem & Leaf details
+      if (obj.foodModule) {
+        const stemH = Math.max(4, renderRadius * 0.45);
+        ctx.strokeStyle = "#854d0e";
+        ctx.lineWidth = Math.max(1.5, renderRadius * 0.14);
+        ctx.beginPath();
+        ctx.moveTo(x, y - renderRadius + 1);
+        ctx.quadraticCurveTo(x + 2, y - renderRadius - stemH * 0.5, x + 3, y - renderRadius - stemH);
+        ctx.stroke();
+
+        ctx.fillStyle = "#22c55e";
+        ctx.beginPath();
+        ctx.ellipse(x + 4.5, y - renderRadius - stemH * 0.65, Math.max(2.5, renderRadius * 0.25), Math.max(1.5, renderRadius * 0.14), Math.PI / 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Active eating nutrient pulse particles when being consumed
+    if (isHeld && allCharacters.some((c) => c.heldObject === obj && c.isUsingItem)) {
+      const pulseT = (performance.now() % 600) / 600;
+      ctx.strokeStyle = `rgba(34, 197, 94, ${0.75 * (1 - pulseT)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, renderRadius + pulseT * 10, 0, Math.PI * 2);
       ctx.stroke();
     }
 

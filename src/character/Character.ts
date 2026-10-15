@@ -141,6 +141,26 @@ export class Character extends GameObject {
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
 
+  // Item usage & eating state
+  public isUsingItem: boolean = false;
+  public eatRateWatts: number = 0;
+
+  public get isEatingFood(): boolean {
+    return Boolean(this.heldObject?.foodModule?.enabled && this.isUsingItem);
+  }
+
+  /**
+   * Drops or unholds the currently held object safely.
+   */
+  public unhold(): GameObject | null {
+    if (!this.heldObject) return null;
+    const obj = this.heldObject;
+    this.heldObject = null;
+    obj.isHeld = false;
+    obj.heldBy = null;
+    return obj;
+  }
+
   constructor(options: {
     id?: string;
     x?: number;

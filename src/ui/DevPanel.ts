@@ -20,6 +20,8 @@ import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { CharacterModule, type CharacterRole } from "../character/CharacterModule.js";
 import { EnergyPool } from "../character/EnergyPool.js";
 import { EnergyBus } from "../character/EnergyBus.js";
+import { FoodModule } from "../engine/FoodModule.js";
+import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 
@@ -1046,6 +1048,12 @@ export class DevPanel {
     const hasEnergyBus = isChar && Boolean(char?.energyBus);
     const energyBusEnabled = isChar && Boolean(char?.energyBus?.enabled);
 
+    const hasFoodModule = Boolean(e.foodModule);
+    const foodEnabled = Boolean(e.foodModule?.enabled);
+
+    const hasSpawnerModule = Boolean(e.spawnerModule);
+    const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
+
     let html = "";
     let attachedCount = 0;
 
@@ -1587,6 +1595,64 @@ export class DevPanel {
       `;
     }
 
+    // Food & Edible Module
+    if (hasFoodModule && e.foodModule) {
+      attachedCount++;
+      const fm = e.foodModule;
+      const curEnergy = fm.getRemainingEnergy(e.properties);
+      const maxEnergy = fm.getTotalEnergy(e.properties);
+      const foodPct = maxEnergy > 0 ? Math.min(100, Math.max(0, (curEnergy / maxEnergy) * 100)) : 0;
+
+      html += `
+        <div class="module-card ${!foodEnabled ? 'module-disabled' : ''}" data-module-id="food">
+          ${this.renderModuleHeader("food", "🍎 Food & Edible", renderToggleBtn("food", foodEnabled))}
+          <div id="collapse-body-mod-food" style="display: ${this.isSectionCollapsed('mod-food') ? 'none' : 'block'};">
+          ${!foodEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Food consumption is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Edible nutrition item. Holding and eating continuously transfers Joules into the character's Energy Pool, shrinking in size until 100% consumed.
+          </div>
+
+          <div style="margin: 6px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+              <span>Remaining Nutrition</span>
+              <span id="label-food-status">${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${foodPct.toFixed(0)}%)</span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+              <div id="bar-food-fill" style="background: linear-gradient(90deg, #16a34a, #22c55e); height: 100%; width: ${foodPct}%; transition: width 0.1s ease;"></div>
+            </div>
+          </div>
+
+          <div id="prop-socket-food-total-energy"></div>
+          <div id="prop-socket-food-remaining-energy"></div>
+          <div id="prop-socket-food-eat-rate"></div>
+          <div id="prop-socket-food-heal-rate"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Spawner Module (Clone On Pickup)
+    if (hasSpawnerModule && e.spawnerModule) {
+      attachedCount++;
+      const sm = e.spawnerModule;
+
+      html += `
+        <div class="module-card ${!spawnerEnabled ? 'module-disabled' : ''}" data-module-id="spawner">
+          ${this.renderModuleHeader("spawner", "📦 Spawner (Clone On Pickup)", renderToggleBtn("spawner", spawnerEnabled))}
+          <div id="collapse-body-mod-spawner" style="display: ${this.isSectionCollapsed('mod-spawner') ? 'none' : 'block'};">
+          ${!spawnerEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Spawner replication is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Replicates an identical replacement clone at its spawn coordinates upon pickup. The picked-up item becomes a standard non-spawner object.
+          </div>
+          <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 4px;">
+            <div><strong>Spawn Anchor:</strong> (${sm.spawnPosition.x.toFixed(2)}, ${sm.spawnPosition.y.toFixed(2)}, ${sm.spawnPosition.z.toFixed(2)})</div>
+            <div><strong>Total Clones Spawned:</strong> <span style="color: #22c55e; font-weight: 600;">${sm.spawnCount}</span></div>
+          </div>
+          </div>
+        </div>
+      `;
+    }
+
     // Energy Pool Module (Character only)
     if (hasEnergyPool && char?.energyPool) {
       attachedCount++;
@@ -1715,6 +1781,8 @@ export class DevPanel {
       { id: "health", name: "Health & Vitality", icon: "❤️", description: "Hit points, passive health regeneration, and death / respawn loop", isAttached: hasHealthModule },
       { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
       { id: "damageSolver", name: "Damage Solver & Armor", icon: "🛡️", description: "Converts blunt physical impacts and wall collisions into HP damage", isAttached: hasDamageSolverModule },
+      { id: "food", name: "Food & Edible", icon: "🍎", description: "Edible nutrition that continuously restores energy when eaten and shrinks until consumed", isAttached: hasFoodModule },
+      { id: "spawner", name: "Spawner (Clone On Pickup)", icon: "📦", description: "Clones the item at its initial spawn position upon pickup for infinite supplies", isAttached: hasSpawnerModule },
       { id: "character", name: "Character Module", icon: "👤", description: "Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy", isAttached: hasCharModule },
     ];
 
@@ -1842,6 +1910,12 @@ export class DevPanel {
       case "damageSolver":
         if (e.damageSolverModule) e.damageSolverModule.enabled = !e.damageSolverModule.enabled;
         break;
+      case "food":
+        if (e.foodModule) e.foodModule.enabled = !e.foodModule.enabled;
+        break;
+      case "spawner":
+        if (e.spawnerModule) e.spawnerModule.enabled = !e.spawnerModule.enabled;
+        break;
       case "character":
         if (e.characterModule) e.characterModule.enabled = !e.characterModule.enabled;
         break;
@@ -1932,6 +2006,12 @@ export class DevPanel {
         break;
       case "damageSolver":
         e.damageSolverModule = null;
+        break;
+      case "food":
+        e.foodModule = null;
+        break;
+      case "spawner":
+        e.spawnerModule = null;
         break;
       case "character":
         e.characterModule = null;
@@ -2053,6 +2133,19 @@ export class DevPanel {
         e.damageSolverModule = new DamageSolverModule({
           impactSusceptibility: 1.0,
           damageThresholdHp: 5.0,
+        });
+        break;
+      case "food":
+        e.foodModule = new FoodModule({
+          totalEnergyJoules: 2000,
+          eatRateWatts: 400,
+        });
+        e.foodModule.initialColliderRadius = e.colliderRadius;
+        break;
+      case "spawner":
+        e.spawnerModule = new SpawnerModule({
+          spawnPosition: { ...e.position },
+          respawnDelay: 0,
         });
         break;
       case "character":
@@ -2667,6 +2760,55 @@ export class DevPanel {
           step: 1.0,
         });
         threshSocketEl.appendChild(threshCtrl.element);
+      }
+    }
+
+    // Food & Edible Module controls (applicable to any entity with FoodModule)
+    if (e.foodModule) {
+      const fm = e.foodModule;
+
+      const totalEnergySocketEl = this.container.querySelector("#prop-socket-food-total-energy");
+      if (totalEnergySocketEl) {
+        const totalCtrl = new PropertyControl({
+          property: fm.totalEnergyJoulesProp,
+          owner: e,
+          label: "Total Energy (J)",
+          step: 100.0,
+        });
+        totalEnergySocketEl.appendChild(totalCtrl.element);
+      }
+
+      const remEnergySocketEl = this.container.querySelector("#prop-socket-food-remaining-energy");
+      if (remEnergySocketEl) {
+        const remCtrl = new PropertyControl({
+          property: fm.remainingEnergyJoulesProp,
+          owner: e,
+          label: "Remaining Energy (J)",
+          step: 50.0,
+        });
+        remEnergySocketEl.appendChild(remCtrl.element);
+      }
+
+      const eatRateSocketEl = this.container.querySelector("#prop-socket-food-eat-rate");
+      if (eatRateSocketEl) {
+        const rateCtrl = new PropertyControl({
+          property: fm.eatRateWattsProp,
+          owner: e,
+          label: "Eat Rate (Watts = J/s)",
+          step: 25.0,
+        });
+        eatRateSocketEl.appendChild(rateCtrl.element);
+      }
+
+      const healRateSocketEl = this.container.querySelector("#prop-socket-food-heal-rate");
+      if (healRateSocketEl) {
+        const healCtrl = new PropertyControl({
+          property: fm.healRateProp,
+          owner: e,
+          label: "Nutritional Healing Rate (HP/s)",
+          step: 1.0,
+        });
+        healRateSocketEl.appendChild(healCtrl.element);
       }
     }
 

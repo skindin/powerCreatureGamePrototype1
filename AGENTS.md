@@ -269,7 +269,24 @@
     - Added HUD Opacity slider (`#slide-hud-opacity`) in the View Settings menu (`#view-settings-panel`), ranging from 20% to 100% with a default of 70% opacity.
     - Dynamic live preview and persistent preference storage via `localStorage.getItem("pcg_hud_opacity")`.
     - Scoped transparency strictly and exclusively to the on-screen status screen HUD (`.energy-hud-container` containing health, energy, stamina, and power stat bars) via CSS variable `--hud-opacity: 0.70`.
-    - Kept all menus, sidebars, modals, and tool windows (`.top-bar`, `#dev-sidebar`, `.controls-box`, `.view-settings-card`, relay HUD, and modal dialogs) fully opaque (1.0).
+- **Phase 12 (Food & Edible Mechanics, Contextual Primary Abilities, Universal Throw & Infinite Spawner Behavior)**:
+  - **Food Item & Continuous Ingestion (`FoodModule`)**:
+    - **Continuous Energy Transfer**: Holding food and holding Primary Action (Left Mouse Button / Gamepad `RT`) smoothly transfers energy into the character's energy bus pool at `eatRateJoulesPerSecProp` (default 100 J/s) with optional biological healing (`healRateHpPerSecProp`, default 0 HP/s).
+    - **Volumetric Shrinking & Visual Scale Floor**: Food visually shrinks in real-time as its remaining Joules decrease: $r(t) = r_0 \times \left(\frac{E(t)}{E_0}\right)^{1/3}$. To prevent minuscule, unclickable or barely visible crumbs if the player stops eating and drops or throws the item, a scale floor ($25\%$ of original radius: $r_{\text{min}} = 0.25 \times r_0$) is enforced until the food is fully eaten.
+    - **Depletion & Full Consumption**: When remaining energy hits $0\text{ J}$ ($E \le 0.001\text{ J}$), the food is completely consumed: the character releases its grip, the item is destroyed and removed from the world, and any associated modifiers cleanly clear.
+    - **Zero Speed Penalty**: Characters maintain full movement agility, running and dodging at normal speed with zero speed penalty while eating.
+  - **Contextual Primary Ability vs. Universal Throw**:
+    - **Dedicated Universal Throw Control**: Pressing `KeyF` (or Gamepad `RB`) universally launches any held object with trajectory aiming, regardless of whether the object has a primary ability.
+    - **Contextual Primary Action**: Pressing Left Mouse Button (or Gamepad `RT`) executes the held item's primary capability (e.g., eating food if held). If the held object has no primary ability (e.g., plain crate or rock), it naturally falls back to throwing for seamless backwards compatibility.
+    - **Drop**: Pressing `KeyQ` drops the held item in place, retaining its current shrunken scale and remaining energy.
+  - **Modular Infinite Spawner Behavior (`SpawnerModule`)**:
+    - **Clone-on-Pickup**: When an object with `SpawnerModule` is picked up by a player, a clone is immediately instantiated at the original spawn coordinates with identical physical properties, visuals, and stats.
+    - **Held Item Module Stripping**: The `SpawnerModule` is stripped from the held object upon pickup (`grabbedObj.removeModule(SpawnerModule)`), while the newly spawned clone retains the spawner so it can be picked up infinitely without cascading duplication while carried.
+    - **Pre-Spawned Energy Apple Spawner**: Pre-spawned in the arena at `(4.8, 1.5, 0)` with apple red tint (`#ef4444`), $500\text{ J}$ total energy, $100\text{ J/s}$ eat rate, and $+5\text{ HP/s}$ healing.
+  - **DevPanel Integration**:
+    - Added dedicated inspector cards for `FoodModule` (Total Energy, Remaining Energy, Eat Rate, Heal Rate) and `SpawnerModule` (Enabled, Respawn Delay, Spawned Count).
+    - Added `Food` and `Spawner` to the "Add Physical Behavior" dropdown for any selected entity or new object.
+  - **Automated Verification**: Verified 100% via `scratch/test_food_and_spawner.ts` alongside full regression test suite.
 
 ---
 

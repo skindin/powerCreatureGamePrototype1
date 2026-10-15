@@ -586,6 +586,12 @@ export class ServerGameSimulation {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
             char.pickupModule.pickup(char, target);
+            if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, this.arena);
+              if (clone && !this.objects.includes(clone)) {
+                this.objects.push(clone);
+              }
+            }
           }
         }
       } else if (act.type === "drop") {
@@ -915,7 +921,14 @@ export class ServerGameSimulation {
       }
     }
 
-    // 4b. Process Damage Aura emitters across all entities
+    // 4b. Process Food eating for held items
+    for (const char of this.allCharacters) {
+      if (char.isUsingItem && char.heldObject && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
+        char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
+      }
+    }
+
+    // 4c. Process Damage Aura emitters across all entities
     const allEntities = [...this.allCharacters, ...this.objects];
     for (const ent of allEntities) {
       if (ent.damageAuraModule && ent.damageAuraModule.enabled) {

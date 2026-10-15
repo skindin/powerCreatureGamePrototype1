@@ -363,9 +363,23 @@ export class EnergyHud {
    */
   private renderPowerBlocks(_char: Character, bus: EnergyBus | null, maxPower: number, dt: number): void {
     if (!this.powerBlocksContainerEl || !this.powerTagsEl) return;
-
     const powerCap = Math.max(50, maxPower);
     const allocations = bus ? bus.getActiveAllocations(_char.properties) : [];
+
+    // If character is actively eating food, register an incoming positive energy modifier (+Watts)
+    if (_char.isUsingItem && _char.heldObject?.foodModule && _char.heldObject.foodModule.enabled) {
+      const eatWatts = _char.heldObject.foodModule.getEatRate(_char.heldObject.properties);
+      allocations.push({
+        id: "food_eat",
+        name: "Food",
+        color: "#22c55e",
+        grantedWatts: eatWatts,
+        allowPartialPower: false,
+        isPositive: true,
+        isBurst: false,
+        order: 999,
+      } as any);
+    }
 
     // Track active allocations
     const activeIds = new Set<string>();

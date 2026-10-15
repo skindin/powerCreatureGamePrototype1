@@ -506,22 +506,26 @@ export class PlayerManager {
         }
       }
 
+      const isHoldingFood = Boolean(kChar.heldObject?.foodModule?.enabled);
+      const isUsingItem = isHoldingFood && input.isMouseDown && !input.isKeyboardSuspended;
+
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: input.isGrabHeld,
+        isGrabHeld: isHoldingFood ? (input.isEKeyDepressed || input.isKeyPressed("KeyE")) : input.isGrabHeld,
         grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: input.isKeyboardThrowRequested ?? false,
+        isUsingItem,
         aimX: input.actualMousePos.x,
         aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
         facingAngle: kChar.facingAngle,
-      });
+      } as any);
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
     }
@@ -596,6 +600,9 @@ export class PlayerManager {
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
+      const isCharHoldingFood = Boolean(cChar.heldObject?.foodModule?.enabled);
+      const isUsingItem = isCharHoldingFood && (slot.isUsingItem ?? false);
+
       map.set(entry.id, {
         playerId: entry.id,
         playerName: cChar.name,
@@ -603,10 +610,11 @@ export class PlayerManager {
         moveY: slot.movementVector.y,
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
-        isGrabHeld: isGrab,
+        isGrabHeld: isCharHoldingFood ? (slot.bHeld ?? false) : isGrab,
         grabTargetObjectId,
         isDrop: slot.isDropRequested ?? false,
         isThrow: slot.isThrowRequested ?? false,
+        isUsingItem,
         aimX,
         aimY,
         isAiming: true,
@@ -704,6 +712,8 @@ export class PlayerManager {
           clientLaunchVel,
           clientLaunchPos
         );
+        char.isUsingItem = false;
+        char.eatRateWatts = 0;
 
         // Once the throw completes and character is empty-handed, reset aim stick movement flags
         if (entry && entry.slotIndex !== undefined) {
@@ -766,6 +776,20 @@ export class PlayerManager {
         char.heldObject.position.x = heldPos.x;
         char.heldObject.position.y = heldPos.y;
         char.heldObject.position.z = heldPos.z;
+
+        // Primary Item Ability: Continuous consumption when holding edible food
+        const isUsingItem = Boolean((pkt as any).isUsingItem);
+        if (isUsingItem && char.heldObject.foodModule && char.heldObject.foodModule.enabled) {
+          char.isUsingItem = true;
+          const eatResult = char.heldObject.foodModule.eat(dt, char, char.heldObject, this.arena);
+          char.eatRateWatts = eatResult.watts;
+        } else {
+          char.isUsingItem = false;
+          char.eatRateWatts = 0;
+        }
+      } else {
+        char.isUsingItem = false;
+        char.eatRateWatts = 0;
       }
 
       // Explicit grab target resolution
@@ -790,17 +814,23 @@ export class PlayerManager {
       const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
       if (currentHeldId !== prevHeldId) {
         this.lastHeldObjectIds.set(char.id, currentHeldId);
-        if (currentHeldId && !isReplay) {
-          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          const action: ReliableActionCommand = {
-            actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-            type: "pickup",
-            tick: pkt.tick ?? 0,
-            timestamp: performance.now(),
-            playerId: actPlayerId,
-            targetObjectId: currentHeldId,
-          };
-          this.onReliableActionDispatched?.(action);
+        if (currentHeldId) {
+          // If the newly picked up item has a SpawnerModule, clone a replacement at the spawn position!
+          if (char.heldObject && char.heldObject.spawnerModule && char.heldObject.spawnerModule.enabled) {
+            char.heldObject.spawnerModule.triggerClone(char.heldObject, this.arena);
+          }
+          if (!isReplay) {
+            const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+            const action: ReliableActionCommand = {
+              actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
+              type: "pickup",
+              tick: pkt.tick ?? 0,
+              timestamp: performance.now(),
+              playerId: actPlayerId,
+              targetObjectId: currentHeldId,
+            };
+            this.onReliableActionDispatched?.(action);
+          }
         }
       }
     }

@@ -30,6 +30,7 @@ export interface GamepadSlotState {
   lastMovementInputAngle?: number;
   isThrowRequested?: boolean;
   isDropRequested?: boolean;
+  isUsingItem?: boolean;
 }
 
 export interface CanvasViewport {
@@ -47,9 +48,14 @@ export class InputManager {
   private arena: Arena;
   public keyboardViewport: CanvasViewport | null = null;
   private keysPressed: Set<string> = new Set();
-  private isEKeyDepressed = false;
-  private isQKeyDepressed = false;
+  public isEKeyDepressed = false;
+  public isQKeyDepressed = false;
+  public isFKeyDepressed = false;
   public isKeyboardSprintActive = false;
+
+  public isKeyPressed(code: string): boolean {
+    return this.keysPressed.has(code);
+  }
   
   // Keyboard player active state (true when keyboard & mouse character is in arena)
   public isKeyboardActive = true;
@@ -167,6 +173,7 @@ export class InputManager {
   public onDropAttempt?: () => void;
   public onKeyboardPickup?: () => void;
   public onKeyboardDrop?: () => void;
+  public onKeyboardThrow?: () => void;
   public onMouseMove?: (x: number, y: number) => void;
   public onToggleSprint?: (active?: boolean) => void;
   public onStopKeyboardSprint?: () => void;
@@ -223,6 +230,7 @@ export class InputManager {
         this.keysPressed.clear();
         this.isQKeyDepressed = false;
         this.isEKeyDepressed = false;
+        this.isFKeyDepressed = false;
         this.isKeyboardSprintActive = false;
         this.isMouseDown = false;
         this.isRightMouseDown = false;
@@ -265,6 +273,16 @@ export class InputManager {
 
         this.onKeyboardPickup?.();
       }
+
+      if (e.code === "KeyF") {
+        // F key: Dedicated Universal Throw! Always throws held item in aimed direction
+        if (e.repeat || this.isFKeyDepressed) return;
+        this.isFKeyDepressed = true;
+        this.isKeyboardThrowRequested = true;
+        this.isThrowingPress = true;
+
+        this.onKeyboardThrow?.();
+      }
     });
 
     window.addEventListener("keyup", (e) => {
@@ -290,6 +308,10 @@ export class InputManager {
         this.isEKeyDepressed = false;
       }
 
+      if (e.code === "KeyF") {
+        this.isFKeyDepressed = false;
+      }
+
       // Automatically turn off sprint when all movement keys are released!
       if (!this.hasAnyMovementKeyPressed()) {
         this.isKeyboardSprintActive = false;
@@ -301,6 +323,7 @@ export class InputManager {
       this.isKeyboardSuspended = true;
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
+      this.isFKeyDepressed = false;
       this.keysPressed.clear();
       this.isKeyboardSprintActive = false;
       this.onStopKeyboardSprint?.();
@@ -1011,11 +1034,22 @@ export class InputManager {
       } else {
         slot.rtHeld = false;
 
-        if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-          slot.isThrowRequested = true;
-        }
-        if (rbJustPressed && char.throwModule) {
-          slot.isThrowRequested = true;
+        const isHoldingFood = Boolean(char.heldObject?.foodModule?.enabled);
+        if (isHoldingFood) {
+          // Food primary action: RT held down continuously eats
+          slot.isUsingItem = rtCurrent;
+          // Dedicated throw: RB
+          if (rbJustPressed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
+        } else {
+          slot.isUsingItem = false;
+          if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
+          if (rbJustPressed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
         }
       }
 
@@ -1258,11 +1292,19 @@ export class InputManager {
       if (!activeChar) return;
 
       // Play Mode:
-      // 1. If holding an object and ready to throw (and not the same click as pickup):
-      if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
-        this.isKeyboardThrowRequested = true;
-        this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
-        return;
+      // 1. If holding an object:
+      if (activeChar.heldObject && !this.justPickedUp) {
+        // If holding food, primary ability is eating (handled continuously while mouse button is held down)
+        if (activeChar.heldObject.foodModule && activeChar.heldObject.foodModule.enabled) {
+          return;
+        }
+
+        // For standard held items, Left Click executes Throw:
+        if (activeChar.throwModule) {
+          this.isKeyboardThrowRequested = true;
+          this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
+          return;
+        }
       }
 
       // 2. If NOT holding an object: attempt pickup
