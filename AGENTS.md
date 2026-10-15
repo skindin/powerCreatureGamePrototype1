@@ -312,6 +312,13 @@
     - If the player is holding the primary feature button (Left Mouse Button or Gamepad `RT`) at the moment an item is picked up (e.g. from an auto-grab sweep or pickup hold), the character will NOT start eating immediately.
     - The character will only begin eating once the player has released the primary button and pressed it again while holding the item.
   - **Automated Verification**: Verified 100% via `scratch/test_grab_suppression_and_pie.ts` and clean `npm run build`.
+- **Phase 12.5 (Stationary Spawner Architecture & Clone-to-Hand Dispensing)**:
+  - **Spawner Stays Put**: When a character picks up from an entity with `SpawnerModule`, the spawner entity remains stationary at its world position with its `SpawnerModule` intact (`isHeld = false`, `heldBy = null`). It never moves into the character's hands and never disappears or appears at its original position.
+  - **Clone Without Spawner into Hands**: An identical clone without the spawner behavior (`clone.spawnerModule = null`) is instantiated and placed directly into the character's hands (`pickupModule.pickup(char, clone)`).
+  - **World Integration & Infinite Dispensing**: The clone is pushed to the active world `objects` array so it can be eaten, dropped, or thrown like any standard item. The stationary spawner increments `spawnCount` and can dispense subsequent clones repeatedly.
+  - **Multiplayer & Arbiter Synchronization**: Supported across client (`PlayerManager.ts`), server simulation (`ServerGameSimulation.ts`), and contested grabs (`ContestedGrabArbiter.ts`).
+  - **Automated Verification**: Verified 100% via `scratch/test_spawner_stays_put.ts`, `scratch/test_consumable_tags_and_spawner.ts`, `scratch/test_food_and_spawner.ts`, and clean `npm run build`.
+
 
 
 ---

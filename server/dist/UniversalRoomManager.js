@@ -9770,7 +9770,7 @@ class ContestedGrabArbiter {
    * Resolves a list of grab requests on a given tick, granting the target object
    * to the winning character and logging the outcome to an audit history array.
    */
-  static arbitrate(grabRequests, currentTick, auditLog) {
+  static arbitrate(grabRequests, currentTick, auditLog, arena, objects) {
     var _a, _b;
     const results = [];
     if (!grabRequests || grabRequests.length === 0) return results;
@@ -9787,7 +9787,12 @@ class ContestedGrabArbiter {
     for (const [objId, requests] of targetGroups) {
       if (requests.length === 1) {
         const req = requests[0];
-        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, req.target);
+        let itemToHold2 = req.target;
+        if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
+          const clone = req.target.spawnerModule.triggerClone(req.target, arena, objects);
+          if (clone) itemToHold2 = clone;
+        }
+        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, itemToHold2);
         continue;
       }
       requests.sort((a, b) => {
@@ -9841,7 +9846,12 @@ class ContestedGrabArbiter {
       if (auditLog) {
         auditLog.push(outcome);
       }
-      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, winner.target);
+      let itemToHold = winner.target;
+      if (winner.target.spawnerModule && winner.target.spawnerModule.enabled) {
+        const clone = winner.target.spawnerModule.triggerClone(winner.target, arena, objects);
+        if (clone) itemToHold = clone;
+      }
+      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, itemToHold);
     }
     return results;
   }
@@ -10433,10 +10443,12 @@ class ServerGameSimulation {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
-            char.pickupModule.pickup(char, target);
+            let itemToHold = target;
             if (target.spawnerModule && target.spawnerModule.enabled) {
-              target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              const clone = target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              if (clone) itemToHold = clone;
             }
+            char.pickupModule.pickup(char, itemToHold);
           }
         }
       } else if (act.type === "drop") {
@@ -10501,7 +10513,7 @@ class ServerGameSimulation {
    * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
    */
   arbitrateContestedGrabs(grabRequests) {
-    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents, this.arena, this.objects);
     for (const res of results) {
       this.pendingContestedEvents.set(res.eventId, {
         event: res,

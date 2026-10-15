@@ -35,7 +35,9 @@ export class ContestedGrabArbiter {
   public static arbitrate(
     grabRequests: ContestedGrabRequest[],
     currentTick: number,
-    auditLog?: ContestedGrabResult[]
+    auditLog?: ContestedGrabResult[],
+    arena?: any,
+    objects?: GameObject[]
   ): ContestedGrabResult[] {
     const results: ContestedGrabResult[] = [];
     if (!grabRequests || grabRequests.length === 0) return results;
@@ -56,7 +58,12 @@ export class ContestedGrabArbiter {
       if (requests.length === 1) {
         // Uncontested grab
         const req = requests[0];
-        req.char.pickupModule?.pickup(req.char, req.target);
+        let itemToHold = req.target;
+        if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
+          const clone = req.target.spawnerModule.triggerClone(req.target, arena, objects);
+          if (clone) itemToHold = clone;
+        }
+        req.char.pickupModule?.pickup(req.char, itemToHold);
         continue;
       }
 
@@ -121,7 +128,12 @@ export class ContestedGrabArbiter {
       }
 
       // Winner claims the item; losers fail to grab
-      winner.char.pickupModule?.pickup(winner.char, winner.target);
+      let itemToHold = winner.target;
+      if (winner.target.spawnerModule && winner.target.spawnerModule.enabled) {
+        const clone = winner.target.spawnerModule.triggerClone(winner.target, arena, objects);
+        if (clone) itemToHold = clone;
+      }
+      winner.char.pickupModule?.pickup(winner.char, itemToHold);
     }
 
     return results;

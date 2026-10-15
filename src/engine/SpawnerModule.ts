@@ -10,18 +10,18 @@ export interface SpawnerModuleOptions {
 
 /**
  * SpawnerModule gives an entity infinite reproduction behavior upon being picked up.
- * When a character picks up the entity:
- * 1. An identical replacement clone is created at its original spawnPosition with the SpawnerModule attached.
- * 2. The clone is added to the active world `objects` array so it is immediately visible and physical.
- * 3. The picked-up entity held by the character has its SpawnerModule removed, ensuring players
- *    carry clean, standard items rather than portable infinite dispensers.
+ * When a character attempts to pick up the spawner entity:
+ * 1. The spawner entity stays put at its location with its SpawnerModule intact.
+ * 2. An identical clone is created WITHOUT the SpawnerModule.
+ * 3. The clone is placed into the character's hands via pickupModule.pickup(character, clone).
+ * 4. The clone is added to the active world objects array so it can be eaten, dropped, or thrown normally.
  */
 export class SpawnerModule {
   public id = "spawner";
   public name = "Spawner (Clone On Pickup)";
   public enabled = true;
 
-  /** The physical anchor coordinates where the replacement item spawns */
+  /** The physical anchor coordinates where this spawner resides */
   public spawnPosition: Vector3D = { x: 0, y: 0, z: 0 };
 
   /** Number of times this spawner has generated a clone */
@@ -43,36 +43,23 @@ export class SpawnerModule {
   }
 
   /**
-   * Executed when the host entity is picked up by a character.
-   * Clones a replacement at spawnPosition, leaves it in the world, and strips
-   * the SpawnerModule from the picked-up entity so the player holds a normal item.
+   * Executed when a character picks up from this spawner entity.
+   * Creates an identical clone without spawner behavior that goes into the character's hands,
+   * while the spawner entity stays put in the arena with its SpawnerModule intact.
    */
   public triggerClone(
-    pickedEntity: GameObject,
-    arena: Arena,
+    spawnerEntity: GameObject,
+    arena?: Arena,
     objects?: GameObject[]
   ): GameObject | null {
-    if (!this.enabled || !arena) return null;
+    if (!this.enabled || !spawnerEntity) return null;
 
     // Dynamically clone the host GameObject archetype
-    const GameObjectClass = pickedEntity.constructor as any;
-
-    const clonePosition: Vector3D = {
-      x: this.spawnPosition.x,
-      y: this.spawnPosition.y,
-      z: this.spawnPosition.z,
-    };
-
-    // If initial spawn position was never recorded (e.g. placed at runtime), record current position
-    if (clonePosition.x === 0 && clonePosition.y === 0 && clonePosition.z === 0) {
-      clonePosition.x = pickedEntity.position.x;
-      clonePosition.y = pickedEntity.position.y;
-      clonePosition.z = pickedEntity.position.z;
-    }
+    const GameObjectClass = spawnerEntity.constructor as any;
 
     // Configure consumable clone if host was consumable / edible
     let cloneConsumableModule: ConsumableModule | null = null;
-    const srcConsumable = pickedEntity.consumableModule;
+    const srcConsumable = spawnerEntity.consumableModule;
     if (srcConsumable) {
       const totalEnergy = srcConsumable.totalEnergyJoulesProp.literalValue;
       cloneConsumableModule = new ConsumableModule({
@@ -87,51 +74,45 @@ export class SpawnerModule {
       cloneConsumableModule.initialColliderRadius = srcConsumable.initialColliderRadius;
     }
 
-    // Configure new spawner module for the stationary replacement clone
-    const cloneSpawner = new SpawnerModule({
-      spawnPosition: { ...clonePosition },
-      respawnDelay: this.respawnDelay,
-      enabled: true,
-    });
-    cloneSpawner.spawnCount = this.spawnCount + 1;
-
-    // Instantiate replacement clone
+    // Instantiate clone WITHOUT SpawnerModule
     const cloneObj: GameObject = new GameObjectClass({
-      name: pickedEntity.name,
-      position: clonePosition,
-      color: pickedEntity.color,
-      visualShape: pickedEntity.visualShape,
-      mass: pickedEntity.mass,
-      colliderRadius: pickedEntity.consumableModule
-        ? (pickedEntity.consumableModule.initialColliderRadius || pickedEntity.colliderRadius)
-        : pickedEntity.colliderRadius,
-      bounceMod: pickedEntity.bounceMod,
-      hasGravity: pickedEntity.hasGravity,
-      hasVerticalPosition: pickedEntity.hasVerticalPosition,
+      name: spawnerEntity.name,
+      position: {
+        x: spawnerEntity.position.x,
+        y: spawnerEntity.position.y,
+        z: spawnerEntity.position.z,
+      },
+      color: spawnerEntity.color,
+      visualShape: spawnerEntity.visualShape,
+      mass: spawnerEntity.mass,
+      colliderRadius: spawnerEntity.consumableModule
+        ? (spawnerEntity.consumableModule.initialColliderRadius || spawnerEntity.colliderRadius)
+        : spawnerEntity.colliderRadius,
+      bounceMod: spawnerEntity.bounceMod,
+      hasGravity: spawnerEntity.hasGravity,
+      hasVerticalPosition: spawnerEntity.hasVerticalPosition,
       consumableModule: cloneConsumableModule,
     });
 
-    cloneObj.spawnerModule = cloneSpawner;
+    // The clone does NOT have spawner behavior!
+    cloneObj.spawnerModule = null;
 
-    // Synchronize clone elevation with arena walls
-    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
-      arena.syncEntitiesWithWalls([cloneObj]);
+    // Synchronize clone elevation with arena walls if arena provided
+    if (arena && typeof (arena as any).syncEntitiesWithWalls === "function") {
+      (arena as any).syncEntitiesWithWalls([cloneObj]);
     }
 
-    // Add replacement clone directly to the active world objects array!
+    // Add clone directly to the active world objects array
     if (objects && Array.isArray(objects)) {
       if (!objects.includes(cloneObj)) {
         objects.push(cloneObj);
       }
     }
 
-    // Increment spawn count
+    // Spawner entity stays put in the arena with its SpawnerModule intact!
     this.spawnCount++;
-
-    // User requirement: "i don't want the one i pick up to have the spawner module."
-    // Strip SpawnerModule from the picked-up item now in the character's hands
-    pickedEntity.spawnerModule = null;
 
     return cloneObj;
   }
 }
+

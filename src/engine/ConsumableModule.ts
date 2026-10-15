@@ -258,6 +258,12 @@ export class ConsumableModule {
         objects.splice(idx, 1);
       }
     }
+    if (_arena && Array.isArray((_arena as any).entities)) {
+      const aIdx = (_arena as any).entities.indexOf(consumableObj);
+      if (aIdx !== -1) {
+        (_arena as any).entities.splice(aIdx, 1);
+      }
+    }
   }
 }
 

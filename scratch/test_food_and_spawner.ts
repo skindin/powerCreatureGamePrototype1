@@ -126,34 +126,34 @@ console.log("=== Running Food & Spawner Architecture Tests ===");
   assert(spawnerObj.spawnerModule !== null, "Spawner module initially attached to arena object");
   assert(arena.entities.length === 1, "Initially 1 entity in arena");
 
-  // Character picks up the spawner object
-  character.pickupModule!.pickup(character, spawnerObj);
-  assert(character.heldObject === spawnerObj, "Character successfully picked up the item");
-
-  // Trigger reproduction on pickup
+  // When character picks up from the spawner object:
+  // 1. Spawner stays put in the arena with its SpawnerModule intact
+  // 2. Clone is created WITHOUT SpawnerModule and placed into character's hands
   const clone = spawnerObj.spawnerModule!.triggerClone(spawnerObj, arena);
   assert(clone !== null, "Clone successfully created");
+  character.pickupModule!.pickup(character, clone!);
 
-  // CRITICAL USER REQUIREMENT: "i don't want the one i pick up to have the spawner module."
-  assert(spawnerObj.spawnerModule === null, "Picked-up item MUST have its spawnerModule stripped (null)");
-  assert(character.heldObject.spawnerModule === null, "Character held item has no spawnerModule");
+  assert(character.heldObject === clone, "Character holds the clone");
+  assert(clone!.spawnerModule === null, "Clone in hand does NOT have spawnerModule");
+  assert(spawnerObj.spawnerModule !== null, "Spawner object retains its spawnerModule");
+  assert(spawnerObj.isHeld === false, "Spawner object remains unheld / on the ground");
+  assert(spawnerObj.position.x === 4.8 && spawnerObj.position.y === 5.2, "Spawner object stays put at its location");
 
-  // Verify the replacement clone at the spawn position
-  assert(clone!.spawnerModule !== null, "Replacement clone RETAINS the spawnerModule");
-  assert(clone!.position.x === 4.8 && clone!.position.y === 5.2, "Replacement clone sits exactly at spawn position");
-  assert(clone!.foodModule !== null, "Replacement clone has full FoodModule");
-  assert(clone!.foodModule!.getRemainingEnergy() === 2000, "Replacement clone has full 2000 J energy");
-  assert(arena.entities.includes(clone!), "Replacement clone added to arena.entities");
+  // Verify the clone has full consumable/food capability
+  assert(clone!.foodModule !== null, "Clone has full FoodModule");
+  assert(clone!.foodModule!.getRemainingEnergy() === 2000, "Clone has full 2000 J energy");
 
-  // Second pickup test: pickup the clone and verify another clone is created
+  // Second pickup test: another character can pick up from the same stationary spawner!
   const character2 = new Character({ x: 4.8, y: 5.2 });
-  character2.pickupModule!.pickup(character2, clone!);
-  const secondClone = clone!.spawnerModule!.triggerClone(clone!, arena);
-  assert(clone!.spawnerModule === null, "Second picked-up item also stripped of spawnerModule");
-  assert(secondClone !== null && secondClone.spawnerModule !== null, "New stationary clone generated");
-  assert(secondClone.spawnerModule.spawnCount === 2, "Spawner tracks total spawn count = 2");
+  const secondClone = spawnerObj.spawnerModule!.triggerClone(spawnerObj, arena);
+  assert(secondClone !== null, "Second clone generated");
+  character2.pickupModule!.pickup(character2, secondClone!);
+  assert(secondClone!.spawnerModule === null, "Second clone has no spawnerModule");
+  assert(character2.heldObject === secondClone, "Second character holds second clone");
+  assert(spawnerObj.spawnerModule.spawnCount === 2, "Spawner tracks total spawn count = 2");
+  assert(spawnerObj.position.x === 4.8 && spawnerObj.position.y === 5.2, "Spawner object STILL sits at its position");
 
-  console.log("✓ SpawnerModule clone on pickup & module stripping from held item verified 100%!");
+  console.log("✓ SpawnerModule stays put & clone without spawner goes to hand verified 100%!");
 }
 
 // 4. Universal Throw (F key / RB) vs Primary Action (LMB / RT)

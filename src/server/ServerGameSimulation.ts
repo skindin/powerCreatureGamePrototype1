@@ -585,10 +585,12 @@ export class ServerGameSimulation {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
-            char.pickupModule.pickup(char, target);
+            let itemToHold = target;
             if (target.spawnerModule && target.spawnerModule.enabled) {
-              target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              const clone = target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              if (clone) itemToHold = clone;
             }
+            char.pickupModule.pickup(char, itemToHold);
           }
         }
       } else if (act.type === "drop") {
@@ -658,7 +660,7 @@ export class ServerGameSimulation {
   private arbitrateContestedGrabs(
     grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[]
   ): void {
-    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents, this.arena, this.objects);
     for (const res of results) {
       this.pendingContestedEvents.set(res.eventId, {
         event: res,

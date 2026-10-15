@@ -136,18 +136,19 @@ async function runTests() {
   assert(objects.includes(spawnerApple), "Spawner apple added to objects list");
   assert(spawnerApple.spawnerModule !== null, "Spawner apple has spawnerModule before pickup");
 
-  // Simulate character picking up spawner apple
-  char.heldObject = spawnerApple;
-  spawnerApple.isHeld = true;
-  spawnerApple.heldBy = char;
-
-  // Trigger clone on pickup
+  // When picking up from a spawner apple:
+  // The spawner stays put at its original location with its SpawnerModule intact,
+  // and a clone without SpawnerModule is dispensed into the character's hands.
   const clone = spawnerApple.spawnerModule.triggerClone(spawnerApple, arena, objects);
   assert(clone !== null, "Clone was successfully created");
-  assert(objects.includes(clone!), "Replacement clone was automatically added to objects array!");
-  assert(spawnerApple.spawnerModule === null, "Held apple had its SpawnerModule stripped!");
-  assert(clone!.spawnerModule !== null, "Clone in world retained SpawnerModule!");
-  assert(clone!.position.x === originalPos.x && clone!.position.y === originalPos.y, "Clone is positioned at original spawn position");
+  char.pickupModule!.pickup(char, clone!);
+
+  assert(objects.includes(clone!), "Dispensed clone was automatically added to objects array!");
+  assert(char.heldObject === clone, "Character holds the dispensed clone!");
+  assert(clone!.spawnerModule === null, "Clone in hand does NOT have SpawnerModule!");
+  assert(spawnerApple.spawnerModule !== null, "Spawner apple in world retained SpawnerModule!");
+  assert(spawnerApple.isHeld === false, "Spawner apple remains unheld / on the ground!");
+  assert(spawnerApple.position.x === originalPos.x && spawnerApple.position.y === originalPos.y, "Spawner apple stays put at original position!");
   assert(clone!.consumableModule?.tag === "food", "Clone has matching consumable tag 'food'");
   assert(clone!.consumableModule?.totalEnergyJoules === 500, "Clone has full 500J energy");
 

@@ -898,19 +898,46 @@ export class PlayerManager {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
-              char.pickupModule.pickup(char, targetObj);
-              const gState = this.getGrabSuppressionState(char.id);
-              if (this.inputManager.isMouseDown) gState.useItemSuppressed = true;
-              if (entry?.slotIndex !== undefined) {
-                const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
-                if (slot?.rtHeld) gState.useItemSuppressed = true;
+              let itemToHold: GameObject = targetObj;
+              if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
+                // Spawner entity stays put at its location!
+                // Dispense an identical clone without spawner behavior to go into character's hands.
+                const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
+                if (clone) {
+                  itemToHold = clone;
+                }
+              }
+              const pickedUp = char.pickupModule.pickup(char, itemToHold);
+              if (!pickedUp && itemToHold !== targetObj) {
+                // Insufficient lift energy or failed pickup: clean up orphaned clone
+                const idx = objects.indexOf(itemToHold);
+                if (idx !== -1) objects.splice(idx, 1);
+              } else if (pickedUp) {
+                const gState = this.getGrabSuppressionState(char.id);
+                if (this.inputManager.isMouseDown) gState.useItemSuppressed = true;
+                if (entry?.slotIndex !== undefined) {
+                  const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
+                  if (slot?.rtHeld) gState.useItemSuppressed = true;
+                }
               }
             }
           }
         } else if (aimTarget) {
           // Fallback for legacy calls without grabTargetObjectId
           const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
-          char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+          const target = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
+          if (target && target.spawnerModule && target.spawnerModule.enabled) {
+            const clone = target.spawnerModule.triggerClone(target, this.arena, objects);
+            if (clone) {
+              const pickedUp = char.pickupModule.pickup(char, clone);
+              if (!pickedUp) {
+                const idx = objects.indexOf(clone);
+                if (idx !== -1) objects.splice(idx, 1);
+              }
+            }
+          } else {
+            char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+          }
         }
       }
 
@@ -941,9 +968,24 @@ export class PlayerManager {
               if (slot?.rtHeld) gState.useItemSuppressed = true;
             }
           }
-          // If the newly picked up item has a SpawnerModule, clone a replacement at the spawn position!
+          // Direct pickup fallback: if spawner itself was grabbed directly by external code,
+          // spawn a clone for hands and restore spawner to its resting position.
           if (char.heldObject && char.heldObject.spawnerModule && char.heldObject.spawnerModule.enabled) {
-            char.heldObject.spawnerModule.triggerClone(char.heldObject, this.arena, objects);
+            const spawner = char.heldObject;
+            const sm = spawner.spawnerModule;
+            if (sm && char.pickupModule) {
+              const clone = sm.triggerClone(spawner, this.arena, objects);
+              if (clone) {
+                char.pickupModule.drop(char);
+                spawner.position.x = sm.spawnPosition.x || spawner.position.x;
+                spawner.position.y = sm.spawnPosition.y || spawner.position.y;
+                spawner.position.z = sm.spawnPosition.z || spawner.position.z;
+                spawner.velocity.x = 0;
+                spawner.velocity.y = 0;
+                spawner.verticalVelocity = 0;
+                char.pickupModule.pickup(char, clone);
+              }
+            }
           }
           if (!isReplay) {
             const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";

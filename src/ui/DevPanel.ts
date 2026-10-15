@@ -1702,7 +1702,7 @@ export class DevPanel {
           <div id="collapse-body-mod-spawner" style="display: ${this.isSectionCollapsed('mod-spawner') ? 'none' : 'block'};">
           ${!spawnerEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Spawner replication is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Replicates an identical replacement clone at its spawn coordinates upon pickup. The picked-up item becomes a standard non-spawner object.
+            Dispenses an identical clone directly into the character's hands upon pickup, while this spawner stays put at its location with its spawner behavior intact.
           </div>
           <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 4px;">
             <div><strong>Spawn Anchor:</strong> (${sm.spawnPosition.x.toFixed(2)}, ${sm.spawnPosition.y.toFixed(2)}, ${sm.spawnPosition.z.toFixed(2)})</div>
