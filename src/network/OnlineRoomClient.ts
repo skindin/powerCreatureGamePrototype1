@@ -118,7 +118,7 @@ export class OnlineRoomClient {
     const wsUrl = url || (() => {
       const isSecure = typeof window !== "undefined" && window.location.protocol === "https:";
       const protocol = isSecure ? "wss:" : "ws:";
-      const host = typeof window !== "undefined" ? window.location.host : "127.0.0.1:5173";
+      const host = typeof window !== "undefined" ? window.location.host : "127.0.0.1:3000";
       return `${protocol}//${host}/ws`;
     })();
 

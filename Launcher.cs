@@ -21,7 +21,7 @@ class Program
         string projectDir = AppDomain.CurrentDomain.BaseDirectory;
         Directory.SetCurrentDirectory(projectDir);
 
-        int activePort = 5173;
+        int activePort = 3000;
         bool alreadyRunning = IsServerReady(out activePort);
 
         if (alreadyRunning)
@@ -78,7 +78,7 @@ class Program
             if (!IsServerReady(out activePort))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("[ERROR] Server failed to respond on port 5173 after 12 seconds.");
+                Console.WriteLine("[ERROR] Server failed to respond on port " + activePort + " after 12 seconds.");
                 Console.WriteLine("Please check if another process is blocking the port or run 'npm run dev' manually.");
                 Console.ResetColor();
                 Console.WriteLine("Press any key to exit...");
@@ -167,7 +167,7 @@ class Program
 
     static bool IsServerReady(out int detectedPort)
     {
-        int[] candidatePorts = new int[] { 5173, 5174, 5175, 5176 };
+        int[] candidatePorts = new int[] { 3000, 5173, 5174, 5175, 5176 };
         foreach (int p in candidatePorts)
         {
             if (TryConnect(p))
@@ -176,7 +176,7 @@ class Program
                 return true;
             }
         }
-        detectedPort = 5173;
+        detectedPort = 3000;
         return false;
     }
 
