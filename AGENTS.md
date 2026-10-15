@@ -356,11 +356,12 @@
     - **Explicit Release & Repress Required**: Consumable behaviors only begin once the player completely releases the activation button and presses it again after the item is in their hands.
     - **Spawner Cloning in InputManager**: Added spawner detection in `InputManager.handleClick` and `onKeyboardPickup` to dispense a clone without spawner behavior into hands, keeping the spawner entity stationary at its location and setting `justPickedUp = true`.
   - **Automated Verification**: Verified 100% via `scratch/test_apple_pickup_and_suppression.ts`, `scratch/test_grab_suppression_and_pie.ts`, `scratch/test_prefabs_and_scene_spawners.ts`, and clean `npm run build`.
-- **Phase 12.8 (HUD Click-Through & Pointer Events Transparent Architecture)**:
-  - **Eliminated HUD Mouse Interception**: Changed `.energy-hud-container` from `pointer-events: auto` to `pointer-events: none` and added `.energy-hud-container * { pointer-events: none; }` in `src/style.css`.
-  - **Seamless Ability Activation Over HUD**: Clicking or dragging across health bars, energy tracks, or modifier tags now passes straight through to the underlying canvas without blocking attacks, throws, eating, or movement aiming.
-  - **Interactive Exceptions Preserved**: `.energy-hud-mini` and `.energy-hud-mini *` retain `pointer-events: auto` so the mini collapsed pill remains fully interactive when collapsed.
-  - **Automated Verification**: Verified 100% across test suite and clean `npm run build`.
+- **Phase 12.9 (Vertical Top-Down Collision Damage & Stacked Sliding Parity)**:
+  - **Full 3D Vertical Relative Speed in Impact Calculation**: In `CollisionResolver.ts`, both discrete TOI (`resolvePairDiscreteTOI`) and continuous swept (`resolvePairContinuousSwept`) collisions now calculate 3D vertical relative velocity ($\Delta v_z = v_{zB} - v_{zA}$) and vertical closing speed when entities overlap in 2D.
+  - **Identical Damage Scaling**: The effective impact speed incorporates vertical closing velocity ($\text{impactSpeed} = \sqrt{v_{\text{normal}}^2 + v_{z,\text{closing}}^2}$), ensuring objects landing on top of each other deal the exact same impact damage and deceleration shock as sideways collisions at the same relative speed.
+  - **Damage Dispatched Before Separation**: Collision damage is calculated and dispatched to `DamageSolverModule` *first* during the collision resolution pass before positional separation executes.
+  - **Sliding Separation Preserved**: The existing inverse-mass positional separation remains completely intact, ensuring stacked objects naturally slide away from each other.
+  - **Automated Verification**: Verified 100% via `scratch/test_vertical_collision_damage.ts` and clean `npm run build`.
 
 ---
 

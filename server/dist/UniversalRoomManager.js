@@ -8552,6 +8552,15 @@ class CollisionResolver {
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
+    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    const isClosingVertically = b.position.z >= a.position.z && relVz < -0.05 || a.position.z >= b.position.z && relVz > 0.05;
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
+    }
     const mA = a.hasMass ? a.mass : 0;
     const mB = b.hasMass ? b.mass : 0;
     const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
@@ -8587,7 +8596,18 @@ class CollisionResolver {
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
+    const normZ = closingVertSpeed > 1e-3 ? b.position.z >= a.position.z ? 1 : -1 : 0;
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "discrete_toi",
+      effectiveImpactSpeed,
+      normZ
+    );
     return true;
   }
   /**
@@ -8639,7 +8659,27 @@ class CollisionResolver {
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "continuous_swept");
+    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    const isClosingVertically = b.position.z >= a.position.z && relVz < -0.05 || a.position.z >= b.position.z && relVz > 0.05;
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
+    }
+    const normZ = closingVertSpeed > 1e-3 ? b.position.z >= a.position.z ? 1 : -1 : 0;
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "continuous_swept",
+      effectiveImpactSpeed,
+      normZ
+    );
     const remDt = dt - tHit;
     if (!a.isImmovable) {
       a.position.x += a.velocity.x * remDt;
@@ -8721,8 +8761,10 @@ class CollisionResolver {
   /**
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
-  static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType) {
-    if (velAlongNormal >= 0) return;
+  static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType, customImpactSpeed, _normZ = 0) {
+    const isClosingIn2D = velAlongNormal < 0;
+    const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
+    if (!isClosingIn2D && impactSpeed <= 0.05) return;
     a.wakeUp();
     b.wakeUp();
     const isMasslessA = !a.hasMass;
@@ -8739,101 +8781,98 @@ class CollisionResolver {
     a.lastCollisionTime = now;
     b.lastCollisionTime = now;
     if (a.isImmovable && b.isImmovable) return;
-    if (b.isImmovable) {
-      if (isMasslessA) {
+    let normalImpulse = 0;
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invMassA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invMassB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invMassSum = invMassA + invMassB;
+    if (isClosingIn2D) {
+      if (b.isImmovable) {
+        if (isMasslessA) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          a.velocity.x -= normX * closingSpeed * (1 + restitution);
+          a.velocity.y -= normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassA;
+          a.velocity.x -= normalImpulse * invMassA * normX;
+          a.velocity.y -= normalImpulse * invMassA * normY;
+        }
+      } else if (a.isImmovable) {
+        if (isMasslessB) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          b.velocity.x += normX * closingSpeed * (1 + restitution);
+          b.velocity.y += normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassB;
+          b.velocity.x += normalImpulse * invMassB * normX;
+          b.velocity.y += normalImpulse * invMassB * normY;
+        }
+      } else if (isMasslessA && isMasslessB) {
+        const impulse = -velAlongNormal * 0.5 * (1 + restitution);
+        a.velocity.x -= impulse * normX;
+        a.velocity.y -= impulse * normY;
+        b.velocity.x += impulse * normX;
+        b.velocity.y += impulse * normY;
+      } else if (!isMasslessA && isMasslessB) {
+        const closingSpeed = Math.abs(velAlongNormal);
+        b.velocity.x += normX * closingSpeed * (1 + restitution);
+        b.velocity.y += normY * closingSpeed * (1 + restitution);
+      } else if (isMasslessA && !isMasslessB) {
         const closingSpeed = Math.abs(velAlongNormal);
         a.velocity.x -= normX * closingSpeed * (1 + restitution);
         a.velocity.y -= normY * closingSpeed * (1 + restitution);
       } else {
-        const mA2 = a.mass;
-        const invMassA2 = 1 / mA2;
-        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassA2;
-        a.velocity.x -= normalImpulse2 * invMassA2 * normX;
-        a.velocity.y -= normalImpulse2 * invMassA2 * normY;
-      }
-      return;
-    }
-    if (a.isImmovable) {
-      if (isMasslessB) {
-        const closingSpeed = Math.abs(velAlongNormal);
-        b.velocity.x += normX * closingSpeed * (1 + restitution);
-        b.velocity.y += normY * closingSpeed * (1 + restitution);
-      } else {
-        const mB2 = b.mass;
-        const invMassB2 = 1 / mB2;
-        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassB2;
-        b.velocity.x += normalImpulse2 * invMassB2 * normX;
-        b.velocity.y += normalImpulse2 * invMassB2 * normY;
-      }
-      return;
-    }
-    if (isMasslessA && isMasslessB) {
-      const impulse = -velAlongNormal * 0.5 * (1 + restitution);
-      a.velocity.x -= impulse * normX;
-      a.velocity.y -= impulse * normY;
-      b.velocity.x += impulse * normX;
-      b.velocity.y += impulse * normY;
-      return;
-    }
-    if (!isMasslessA && isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      b.velocity.x += normX * closingSpeed * (1 + restitution);
-      b.velocity.y += normY * closingSpeed * (1 + restitution);
-      return;
-    }
-    if (isMasslessA && !isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      a.velocity.x -= normX * closingSpeed * (1 + restitution);
-      a.velocity.y -= normY * closingSpeed * (1 + restitution);
-      return;
-    }
-    const mA = a.mass;
-    const mB = b.mass;
-    const invMassA = 1 / mA;
-    const invMassB = 1 / mB;
-    const invMassSum = invMassA + invMassB;
-    const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
-    a.velocity.x -= normalImpulse * invMassA * normX;
-    a.velocity.y -= normalImpulse * invMassA * normY;
-    b.velocity.x += normalImpulse * invMassB * normX;
-    b.velocity.y += normalImpulse * invMassB * normY;
-    const isCharCharContact = a.isCharacter && b.isCharacter;
-    const tangX = -normY;
-    const tangY = normX;
-    const relVx = b.velocity.x - a.velocity.x;
-    const relVy = b.velocity.y - a.velocity.y;
-    const relVt = relVx * tangX + relVy * tangY;
-    if (!isCharCharContact && Math.abs(relVt) > 1e-3) {
-      const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-      const beta = 0.4;
-      const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
-      const maxFricImpulse = muObj * Math.abs(normalImpulse);
-      const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
-      a.velocity.x += fricImpulse * invMassA * tangX;
-      a.velocity.y += fricImpulse * invMassA * tangY;
-      b.velocity.x -= fricImpulse * invMassB * tangX;
-      b.velocity.y -= fricImpulse * invMassB * tangY;
-      if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
-        const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
-        a.rollModule.angularVelocity.z += spinImpulse;
-        a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
-      }
-      if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
-        const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
-        b.rollModule.angularVelocity.z -= spinImpulseB;
-        b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+        normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
+        a.velocity.x -= normalImpulse * invMassA * normX;
+        a.velocity.y -= normalImpulse * invMassA * normY;
+        b.velocity.x += normalImpulse * invMassB * normX;
+        b.velocity.y += normalImpulse * invMassB * normY;
+        const isCharCharContact = a.isCharacter && b.isCharacter;
+        const tangX = -normY;
+        const tangY = normX;
+        const relVx = b.velocity.x - a.velocity.x;
+        const relVy = b.velocity.y - a.velocity.y;
+        const relVt = relVx * tangX + relVy * tangY;
+        if (!isCharCharContact && Math.abs(relVt) > 1e-3) {
+          const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+          const beta = 0.4;
+          const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+          const maxFricImpulse = muObj * Math.abs(normalImpulse);
+          const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
+          a.velocity.x += fricImpulse * invMassA * tangX;
+          a.velocity.y += fricImpulse * invMassA * tangY;
+          b.velocity.x -= fricImpulse * invMassB * tangX;
+          b.velocity.y -= fricImpulse * invMassB * tangY;
+          if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
+            const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+            a.rollModule.angularVelocity.z += spinImpulse;
+            a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+          }
+          if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
+            const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+            b.rollModule.angularVelocity.z -= spinImpulseB;
+            b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+          }
+        }
       }
     }
-    const relSpeed = Math.abs(velAlongNormal);
+    const relSpeed = impactSpeed;
     const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const absFracA = Math.max(0, 1 - Math.min(1, bModA));
     const absFracB = Math.max(0, 1 - Math.min(1, bModB));
     let deltaVa = relSpeed * 0.5;
     let deltaVb = relSpeed * 0.5;
-    if (!isMasslessA && !isMasslessB) {
-      deltaVa = normalImpulse * invMassA;
-      deltaVb = normalImpulse * invMassB;
+    if (a.isImmovable && !b.isImmovable) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
+    } else if (!a.isImmovable && b.isImmovable) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && !isMasslessB && invMassSum > 1e-4) {
+      deltaVa = relSpeed * (invMassA / invMassSum);
+      deltaVb = relSpeed * (invMassB / invMassSum);
     } else if (isMasslessA && !isMasslessB) {
       deltaVa = relSpeed;
       deltaVb = 0;
