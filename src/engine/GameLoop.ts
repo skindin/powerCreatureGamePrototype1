@@ -16,6 +16,7 @@ import type { GhostEntityState } from "../network/RelayClient.js";
 import { sceneSpawnerManager } from "./spawner/SceneSpawnerManager.js";
 import { ConsumableModule } from "./ConsumableModule.js";
 import { RollModule } from "./RollModule.js";
+import { DamageAuraModule } from "./DamageAuraModule.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
@@ -616,6 +617,12 @@ export class GameLoop {
                 tag: sObj.consumableTag,
                 totalEnergyJoules: sObj.totalEnergyJoules ?? 2000,
                 remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 2000,
+              })
+            : undefined,
+          damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)
+            ? new DamageAuraModule({
+                damageRadius: sObj.damageAuraRadius ?? 2.5,
+                damageRate: sObj.damageAuraRate ?? 25.0,
               })
             : undefined,
           rollModule: (sObj.angX !== undefined || sObj.angY !== undefined || sObj.angZ !== undefined)

@@ -241,6 +241,7 @@ export class ConsumableModule {
     objects?: GameObject[],
     _arena?: Arena
   ): void {
+    console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${consumableObj.heldBy?.name || consumer.name}`);
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
 

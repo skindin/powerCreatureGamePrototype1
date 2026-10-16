@@ -497,11 +497,20 @@ export class OnlineSessionManager {
           (c) => c.id === ev.targetEntityId || c.playerId === ev.targetEntityId || (c.isDummy && ev.targetEntityId === "dummy-1")
         );
         if (targetChar && targetChar.healthModule) {
+          console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
           targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
             x: ev.respawnX,
             y: ev.respawnY,
             z: ev.respawnZ
           });
+          targetChar.position.x = ev.respawnX;
+          targetChar.position.y = ev.respawnY;
+          targetChar.position.z = ev.respawnZ;
+          targetChar.velocity.x = 0;
+          targetChar.velocity.y = 0;
+          if (targetChar.hasVerticalVelocity) {
+            targetChar.verticalVelocity = 0;
+          }
           this.gameLoop.interpolator.clearEntity(targetChar.playerId);
           this.gameLoop.interpolator.clearEntity(targetChar.id);
         }

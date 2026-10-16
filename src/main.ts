@@ -760,21 +760,6 @@ function bootstrap(): void {
       onlineHud?.classList.remove("hidden");
       onlineStatusPill?.classList.remove("hidden");
 
-      // Entering online mode: clear local sandbox objects so the authoritative server populates the world
-      if (gameLoop) {
-        for (const char of gameLoop.allCharacters) {
-          if (char.heldObject) {
-            char.heldObject.isHeld = false;
-            char.heldObject.heldBy = null;
-            char.heldObject = null;
-          }
-        }
-        gameLoop.objects.length = 0;
-        if (Array.isArray((arena as any).entities)) {
-          (arena as any).entities = [...gameLoop.allCharacters];
-        }
-      }
-
       onlineSession.connect();
     }
   };

@@ -968,6 +968,7 @@ export class PlayerManager {
           const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
           char.eatRateWatts = consumeResult.watts;
           if (consumeResult.isDepleted) {
+            console.log(`🍎 [PlayerManager] Local consumption of ${heldItem?.id} depleted! Removing and unlinking locally`);
             justDepletedConsumable = true;
             const grabState = this.getGrabSuppressionState(char.id);
             grabState.mouseGrabSuppressed = true;

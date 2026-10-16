@@ -38,6 +38,7 @@ export class OnlineRoomClient {
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public unacknowledgedContestedAcks = new Set<string>();
   public unacknowledgedObjectDeletionAcks = new Set<string>();
+  public unacknowledgedDeathRespawnAcks = new Set<string>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
@@ -258,6 +259,12 @@ export class OnlineRoomClient {
                 }
               }
 
+              if (Array.isArray(msg.snapshot.deathRespawnEvents) && msg.snapshot.deathRespawnEvents.length > 0) {
+                for (const ev of msg.snapshot.deathRespawnEvents) {
+                  this.unacknowledgedDeathRespawnAcks.add(ev.eventId);
+                }
+              }
+
               if (msg.snapshot.clockSync) {
                 this.onClockSync?.(msg.snapshot.clockSync);
               }
@@ -462,6 +469,10 @@ export class OnlineRoomClient {
         ? Array.from(this.unacknowledgedObjectDeletionAcks.values())
         : undefined;
 
+      const ackDeathRespawnEventIds = this.unacknowledgedDeathRespawnAcks.size > 0
+        ? Array.from(this.unacknowledgedDeathRespawnAcks.values())
+        : undefined;
+
       this.ws.send(JSON.stringify({
         type: "player_input",
         localPlayerId,
@@ -472,6 +483,7 @@ export class OnlineRoomClient {
         reliableActions,
         ackContestedEventIds,
         ackObjectDeletionEventIds,
+        ackDeathRespawnEventIds,
       }));
     } catch (_) {}
   }

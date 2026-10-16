@@ -7749,16 +7749,22 @@ class ConsumeModule {
     if (!mod || !mod.enabled || mod.isConsumed) return false;
     const itemTag = (mod.tag || "").trim().toLowerCase();
     if (!itemTag) return false;
-    return this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+    const matches = this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+    return matches;
   }
   /**
    * Performs continuous consumption of the held object.
    */
   consume(dt, consumer, heldObj, objects, arena) {
     if (!this.canConsume(heldObj) || !heldObj.consumableModule) {
+      console.warn(`🍎 [ConsumeModule] Cannot consume object ${heldObj == null ? void 0 : heldObj.id}: canConsume=${this.canConsume(heldObj)}`);
       return { watts: 0, joules: 0, isDepleted: false };
     }
-    return heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    if (res.isDepleted) {
+      console.log(`🍎 [ConsumeModule] Object ${heldObj.id} depleted! isDepleted=true`);
+    }
+    return res;
   }
   /**
    * Adds an accepted tag to this character's list.
@@ -9593,6 +9599,8 @@ class ConsumableModule {
    * Drops the object from the character's hands and removes it from the world.
    */
   finishConsumption(consumer, consumableObj, objects, _arena) {
+    var _a;
+    console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${((_a = consumableObj.heldBy) == null ? void 0 : _a.name) || consumer.name}`);
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
     if (consumer.heldObject === consumableObj) {
@@ -10537,7 +10545,9 @@ class ServerTelemetryBroadcaster {
         maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0,
         consumableTag: obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : void 0,
         remainingEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : void 0,
-        totalEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0
+        totalEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0,
+        damageAuraRadius: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRadius(obj.properties).toFixed(2)) : void 0,
+        damageAuraRate: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRate(obj.properties).toFixed(2)) : void 0
       };
     });
     const ghostCharacters = allCharacters.map((c) => {
@@ -10993,6 +11003,11 @@ class ServerGameSimulation {
     const sChar = this.characters.get(charId);
     if (!sChar) {
       return;
+    }
+    for (const pending of this.pendingDeathRespawnEvents.values()) {
+      if (pending.event.targetEntityId === charId && !pending.acks.has(charId)) {
+        return;
+      }
     }
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;

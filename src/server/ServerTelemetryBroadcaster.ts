@@ -92,6 +92,8 @@ export class ServerTelemetryBroadcaster {
         consumableTag: obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : undefined,
         remainingEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : undefined,
         totalEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : undefined,
+        damageAuraRadius: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRadius(obj.properties).toFixed(2)) : undefined,
+        damageAuraRate: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRate(obj.properties).toFixed(2)) : undefined,
       };
     });
 

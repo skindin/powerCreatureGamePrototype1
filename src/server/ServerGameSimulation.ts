@@ -480,6 +480,15 @@ export class ServerGameSimulation {
       return;
     }
 
+    // Server-authoritative death respawn lock:
+    // If there is an active unacknowledged death respawn event for this character,
+    // DO NOT accept/acknowledge client position updates until the client has acknowledged the respawn event!
+    for (const pending of this.pendingDeathRespawnEvents.values()) {
+      if (pending.event.targetEntityId === charId && !pending.acks.has(charId)) {
+        return;
+      }
+    }
+
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
 

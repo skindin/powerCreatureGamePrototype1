@@ -46,7 +46,8 @@ export class ConsumeModule {
     const itemTag = (mod.tag || "").trim().toLowerCase();
     if (!itemTag) return false;
 
-    return this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+    const matches = this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+    return matches;
   }
 
   /**
@@ -60,9 +61,14 @@ export class ConsumeModule {
     arena?: Arena
   ): { watts: number; joules: number; isDepleted: boolean } {
     if (!this.canConsume(heldObj) || !heldObj.consumableModule) {
+      console.warn(`🍎 [ConsumeModule] Cannot consume object ${heldObj?.id}: canConsume=${this.canConsume(heldObj)}`);
       return { watts: 0, joules: 0, isDepleted: false };
     }
-    return heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    if (res.isDepleted) {
+      console.log(`🍎 [ConsumeModule] Object ${heldObj.id} depleted! isDepleted=true`);
+    }
+    return res;
   }
 
   /**

@@ -40,6 +40,9 @@ export interface GhostEntityState {
   consumableTag?: string;
   remainingEnergyJoules?: number;
   totalEnergyJoules?: number;
+  // Damage Aura fields
+  damageAuraRadius?: number;
+  damageAuraRate?: number;
   // Character energy and stamina fields
   currentEnergyJoules?: number;
   maxEnergyJoules?: number;
