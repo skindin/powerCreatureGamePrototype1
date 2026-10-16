@@ -512,9 +512,14 @@ export class OnlineSessionManager {
                  p.character.playerId === ev.targetEntityId
         )?.character;
 
+        if (!targetChar && this.gameLoop.primaryCharacter) {
+          targetChar = this.gameLoop.primaryCharacter;
+        }
+
         if (targetChar) {
           console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
           (targetChar as any).isAwaitingRespawn = false;
+          (targetChar as any).isRespawnLocked = false;
           if (targetChar.healthModule) {
             targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
               x: ev.respawnX,
@@ -522,8 +527,11 @@ export class OnlineSessionManager {
               z: ev.respawnZ
             });
           }
-          // Explicitly reset all character dynamic values (HP, Energy Pool, Burst Stamina) on respawn
+          // Reset all dynamic values: HP, Energy Pool, Burst Stamina
           targetChar.resetDynamicValues();
+          if (this.gameLoop.primaryCharacter && this.gameLoop.primaryCharacter !== targetChar) {
+            this.gameLoop.primaryCharacter.resetDynamicValues();
+          }
           targetChar.position.x = ev.respawnX;
           targetChar.position.y = ev.respawnY;
           targetChar.position.z = ev.respawnZ ?? 0;
@@ -635,7 +643,12 @@ export class OnlineSessionManager {
             if (c.currentHp !== undefined && localChar.healthModule) {
               const curHp = localChar.healthModule.getCurrentHp(localChar.properties);
               if (Math.abs(curHp - c.currentHp) > 15.0) {
+                const wasDeadOrZero = curHp <= 0.0001;
                 localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+                // If server restored HP from 0 (respawn occurred), reset energy and stamina
+                if (wasDeadOrZero && c.currentHp > 10.0) {
+                  localChar.resetDynamicValues();
+                }
               }
             }
             if (c.maxHp !== undefined && localChar.healthModule) {
