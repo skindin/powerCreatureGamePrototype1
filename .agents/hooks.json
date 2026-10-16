@@ -12,5 +12,19 @@
         ]
       }
     ]
+  },
+  "anti-loop-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "view_file|grep_search",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/agent-anti-loop.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }
