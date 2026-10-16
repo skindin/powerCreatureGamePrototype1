@@ -10589,6 +10589,7 @@ class ServerTelemetryBroadcaster {
         facingAngle: Number(c.facingAngle.toFixed(4)),
         heldObjectId: c.heldObject ? c.heldObject.id : null,
         isHolding: Boolean(c.heldObject),
+        isUsingItem: Boolean(c.isUsingItem),
         isDummy: ((_a = c.characterModule) == null ? void 0 : _a.role) === "dummy" || c.controllerType === "none" || c.id === "dummy-1",
         role: ((_b = c.characterModule) == null ? void 0 : _b.role) ?? (c.controllerType === "none" ? "dummy" : "remote_player"),
         controllerType: c.controllerType,
@@ -11128,6 +11129,9 @@ class ServerGameSimulation {
     }
     if (clientChar.facingAngle !== void 0) {
       sChar.facingAngle = clientChar.facingAngle;
+    }
+    if (clientChar.isUsingItem !== void 0) {
+      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
     }
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
@@ -12172,6 +12176,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             if (sChar) {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
+              if (data.character.isUsingItem !== void 0) {
+                sChar.isUsingItem = Boolean(data.character.isUsingItem);
+              }
             }
             this.simulation.syncCharacterFromPacket(data.character);
           }

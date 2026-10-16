@@ -119,6 +119,7 @@ export class ServerTelemetryBroadcaster {
         facingAngle: Number(c.facingAngle.toFixed(4)),
         heldObjectId: c.heldObject ? c.heldObject.id : null,
         isHolding: Boolean(c.heldObject),
+        isUsingItem: Boolean(c.isUsingItem),
         isDummy: c.characterModule?.role === "dummy" || c.controllerType === "none" || c.id === "dummy-1",
         role: c.characterModule?.role ?? (c.controllerType === "none" ? "dummy" : "remote_player"),
         controllerType: c.controllerType,

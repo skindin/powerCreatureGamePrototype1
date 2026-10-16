@@ -428,6 +428,7 @@ export class OnlineRoomClient {
         facingAngle: Number(character.facingAngle.toFixed(4)),
         heldObjectId: character.heldObject ? character.heldObject.id : null,
         isHolding: Boolean(character.heldObject),
+        isUsingItem: Boolean(character.isUsingItem),
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)

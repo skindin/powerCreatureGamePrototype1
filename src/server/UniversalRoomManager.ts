@@ -664,6 +664,9 @@ export class UniversalRoomManager {
             if (sChar) {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
+              if (data.character.isUsingItem !== undefined) {
+                sChar.isUsingItem = Boolean(data.character.isUsingItem);
+              }
             }
             this.simulation.syncCharacterFromPacket(data.character);
           }

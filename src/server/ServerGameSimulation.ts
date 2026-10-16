@@ -623,6 +623,9 @@ export class ServerGameSimulation {
     if (clientChar.facingAngle !== undefined) {
       sChar.facingAngle = clientChar.facingAngle;
     }
+    if (clientChar.isUsingItem !== undefined) {
+      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
+    }
     // Note: client packets are NOT permitted to override the server's authoritative player color.
 
     // 4. Synchronize Held Object state

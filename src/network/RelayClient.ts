@@ -27,6 +27,7 @@ export interface GhostEntityState {
   facingAngle?: number;
   heldObjectId?: string | null;
   isHolding?: boolean;
+  isUsingItem?: boolean;
   angX?: number;
   angY?: number;
   angZ?: number;

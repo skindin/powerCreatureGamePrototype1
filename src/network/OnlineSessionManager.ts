@@ -604,6 +604,9 @@ export class OnlineSessionManager {
             if (c.controllerType) {
               remChar.controllerType = c.controllerType;
             }
+            if (c.isUsingItem !== undefined) {
+              remChar.isUsingItem = Boolean(c.isUsingItem);
+            }
             if (c.currentHp !== undefined && remChar.healthModule) {
               remChar.healthModule.currentHpProp.set(c.currentHp, remChar.properties);
             }

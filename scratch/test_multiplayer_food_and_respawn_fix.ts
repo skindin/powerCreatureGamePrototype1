@@ -96,6 +96,82 @@ console.log("\n[Test 1] Verifying Food Consumption Deletion in Multiplayer...");
 }
 
 // -------------------------------------------------------------
+// Test 1b: Server Parallel Consumption & Autonomous Depletion Detection
+// -------------------------------------------------------------
+console.log("\n[Test 1b] Verifying Server Autonomous Parallel Consumption & Depletion Detection...");
+{
+  const sim = new ServerGameSimulation();
+  const char = new Character({
+    id: "client_1:keyboard",
+    playerId: "client_1:keyboard",
+    name: "Player 1",
+    x: 5,
+    y: 5,
+  });
+  sim.characters.set("client_1:keyboard", char);
+
+  const smallApple = new GameObject({
+    id: "small-apple-1",
+    name: "Small Apple",
+    position: { x: 5, y: 5, z: 0 },
+    consumableModule: new ConsumableModule({
+      tag: "food",
+      totalEnergyJoules: 10,
+      remainingEnergyJoules: 10,
+      consumeRateWatts: 100, // consumes 100 W = 100 J/s -> depleted in 0.1s
+    }),
+  });
+  sim.objects.push(smallApple);
+  sim.arena.entities = [...sim.allCharacters, ...sim.objects];
+
+  // Character holds apple and signals isUsingItem = true (client only tells server it's eating it)
+  smallApple.isHeld = true;
+  smallApple.heldBy = char;
+  char.heldObject = smallApple;
+
+  // Run server simulation steps:
+  // Step 1: Client streams isUsingItem = true; 0.05s elapsed -> 5 Joules consumed in parallel on server
+  sim.queueInput({
+    playerId: "client_1:keyboard",
+    isUsingItem: true,
+    moveX: 0,
+    moveY: 0,
+    tick: 1,
+    isSprinting: false,
+    isJumpHeld: false,
+    isGrabHeld: false,
+    isLockHeld: false,
+    isAiming: false,
+  } as any);
+  sim.step(0.05);
+
+  const remaining = smallApple.consumableModule!.remainingEnergyJoulesProp.literalValue;
+  assert(remaining < 9.0 && remaining > 1.0, `Energy must decrease in parallel on server (got ${remaining})`);
+
+  // Step 2: Client continues streaming isUsingItem = true; another 0.06s elapsed -> reaches 0 Joules on server!
+  sim.queueInput({
+    playerId: "client_1:keyboard",
+    isUsingItem: true,
+    moveX: 0,
+    moveY: 0,
+    tick: 2,
+    isSprinting: false,
+    isJumpHeld: false,
+    isGrabHeld: false,
+    isLockHeld: false,
+    isAiming: false,
+  } as any);
+  sim.step(0.06);
+
+  // Verify server independently determined depletion and triggered deletion:
+  assert(!sim.objects.some((o) => o.id === "small-apple-1"), "Server must independently delete depleted apple from objects");
+  assert(char.heldObject === null, "Character hands must be cleared upon server depletion");
+  const delEvents = sim.getActiveObjectDeletionEvents();
+  assert(delEvents.some((e) => e.objectId === "small-apple-1"), "Server must broadcast ObjectDeletionEvent to all clients");
+  console.log("  ✓ Server parallel consumption and autonomous depletion detection verified 100%!");
+}
+
+// -------------------------------------------------------------
 // Test 2: Server-Authoritative Death & Respawn Lock (No Oscillation)
 // -------------------------------------------------------------
 console.log("\n[Test 2] Verifying Server-Authoritative Death Respawn Lock...");

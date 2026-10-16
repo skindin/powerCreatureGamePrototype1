@@ -398,6 +398,12 @@
     - In `HealthModule`, set `(character).isAwaitingRespawn = true` upon dying in online mode, causing `OnlineRoomClient` to suppress sending old pre-death positions while awaiting the server's authoritative respawn event.
     - In `OnlineSessionManager`, upon receiving `DeathRespawnEvent`, immediately snapped position to `(ev.respawnX, ev.respawnY, ev.respawnZ)`, cleared interpolators, cleared rollback history buffer, cleared `isAwaitingRespawn`, and sent an ACK with aligned coordinates.
   - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_food_and_respawn_fix.ts` alongside the full regression test suite (`test_health_modifiers_hud.ts`, `test_energy_hud_color_blocks.ts`, `test_locomotion_wattage.ts`, `test_sprint_detoggle_and_floor.ts`, `test_allow_partial_power.ts`, `test_background_respawn.ts`, `test_healing_stamina_drain.ts`, `test_stamina_drain_equation.ts`).
+- **Phase 12.14 (Server Parallel Food Consumption & Autonomous Depletion Authority)**:
+  - **Intent-Driven Client Telemetry**: Instead of clients dictating deletion or waiting to issue delete commands, the eating client simply streams their active intent (`isUsingItem: true`) in both input packets and character telemetry (`charTelemetry.isUsingItem`).
+  - **Authoritative Parallel Simulation**: In `ServerGameSimulation.step`, when `char.isUsingItem` is true for any character holding a consumable, the 60Hz server engine executes `char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena)` in parallel, decreasing the item's `remainingEnergyJoules` directly and authoritatively.
+  - **Autonomous Server Depletion & Broadcast**: When food runs out of energy on the server ($E \le 0.001\text{ J}$), the server autonomously declares depletion, clears the holder's hands (`char.heldObject = null`), removes the item from the world, and broadcasts reliable `ObjectDeletionEvent`s to all clients.
+  - **Remote Client Animation & Status**: `ServerTelemetryBroadcaster` broadcasts `isUsingItem` in `GhostEntityState`, allowing remote clients to display the eating progress ring, volumetric shrink, and consumption state in real time for any eating player.
+  - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_food_and_respawn_fix.ts` (Test 1b) alongside full regression suite.
 
 ---
 
