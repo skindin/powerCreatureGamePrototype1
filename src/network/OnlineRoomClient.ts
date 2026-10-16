@@ -416,8 +416,9 @@ export class OnlineRoomClient {
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)
+      // Never stream objects that are consumed or depleted!
       const myHeldObjects = (isSpawnAligned && Array.isArray(actualObjects) && actualObjects.length > 0)
-        ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
+        ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj) && !(obj.consumableModule && obj.consumableModule.isConsumed))
         : [];
 
       const objTelemetry = myHeldObjects.length > 0 ? myHeldObjects.map((obj) => ({

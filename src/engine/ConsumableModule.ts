@@ -251,7 +251,7 @@ export class ConsumableModule {
     consumableObj.isHeld = false;
     consumableObj.heldBy = null;
 
-    // Remove from objects array so it cleanly disappears from the active world!
+    // Immediately remove from objects array and arena entities so it is cleanly destroyed!
     if (objects && Array.isArray(objects)) {
       const idx = objects.indexOf(consumableObj);
       if (idx !== -1) {

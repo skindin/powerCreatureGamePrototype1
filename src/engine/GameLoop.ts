@@ -597,6 +597,10 @@ export class GameLoop {
     for (const sObj of serverObjects) {
       let localObj = this.objects.find((o) => o.id === sObj.id);
       if (!localObj) {
+        // If the object was a consumable that has already run out of energy on server (or client), do not resurrect it
+        if (sObj.remainingEnergyJoules !== undefined && sObj.remainingEnergyJoules <= 0.001) {
+          continue;
+        }
         // Authoritative server spawn: instantiate the object locally on the client!
         localObj = new GameObject({
           id: sObj.id,

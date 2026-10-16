@@ -10644,6 +10644,8 @@ class ServerGameSimulation {
     // Reliable action deduplication & ACK tracking
     __publicField(this, "processedActionIds", /* @__PURE__ */ new Set());
     __publicField(this, "recentAckedActionIds", []);
+    // Track deleted object IDs so client telemetry packets cannot resurrect deleted items (e.g. eaten food)
+    __publicField(this, "deletedObjectIds", /* @__PURE__ */ new Set());
     const width = (config == null ? void 0 : config.arenaWidth) ?? 20;
     const height = (config == null ? void 0 : config.arenaHeight) ?? 14;
     const wallH = (config == null ? void 0 : config.wallHeight) ?? 1;
@@ -10917,6 +10919,9 @@ class ServerGameSimulation {
   syncObjectsFromPacket(clientObjects, senderClientId) {
     if (!clientObjects || clientObjects.length === 0) return;
     for (const cObj of clientObjects) {
+      if (this.deletedObjectIds.has(cObj.id)) {
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
         sObj = new GameObject({
@@ -11279,7 +11284,11 @@ class ServerGameSimulation {
           catchupPkt.isLockHeld
         );
         if (catchupPkt.isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-          char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
+          const heldObj = char.heldObject;
+          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+          if (result.isDepleted) {
+            this.deletedObjectIds.add(heldObj.id);
+          }
         }
         if (((_a = char.activeTrajectory) == null ? void 0 : _a.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
@@ -11417,7 +11426,11 @@ class ServerGameSimulation {
     }
     for (const char of this.allCharacters) {
       if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-        char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
+        const heldObj = char.heldObject;
+        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+        if (result.isDepleted) {
+          this.deletedObjectIds.add(heldObj.id);
+        }
       }
     }
     const allEntities = [...this.allCharacters, ...this.objects];

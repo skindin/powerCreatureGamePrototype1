@@ -73,6 +73,9 @@ export class ServerGameSimulation {
   private processedActionIds: Set<string> = new Set();
   private recentAckedActionIds: string[] = [];
 
+  // Track deleted object IDs so client telemetry packets cannot resurrect deleted items (e.g. eaten food)
+  public deletedObjectIds: Set<string> = new Set();
+
   constructor(config?: ServerSimConfig) {
     const width = config?.arenaWidth ?? 20;
     const height = config?.arenaHeight ?? 14;
@@ -384,6 +387,9 @@ export class ServerGameSimulation {
     if (!clientObjects || clientObjects.length === 0) return;
 
     for (const cObj of clientObjects) {
+      if (this.deletedObjectIds.has(cObj.id)) {
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
         sObj = new GameObject({
@@ -822,7 +828,11 @@ export class ServerGameSimulation {
           catchupPkt.isLockHeld
         );
         if ((catchupPkt as any).isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-          char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
+          const heldObj = char.heldObject;
+          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+          if (result.isDepleted) {
+            this.deletedObjectIds.add(heldObj.id);
+          }
         }
         if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
@@ -983,7 +993,11 @@ export class ServerGameSimulation {
     // 4b. Process Consumable consumption for held items
     for (const char of this.allCharacters) {
       if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-        char.consumeModule.consume(dt, char, char.heldObject!, this.objects, this.arena);
+        const heldObj = char.heldObject!;
+        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+        if (result.isDepleted) {
+          this.deletedObjectIds.add(heldObj.id);
+        }
       }
     }
 

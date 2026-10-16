@@ -964,7 +964,8 @@ export class PlayerManager {
         const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
         if (isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
           char.isUsingItem = true;
-          const consumeResult = char.consumeModule.consume(dt, char, char.heldObject, objects, this.arena);
+          const heldItem = char.heldObject;
+          const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
           char.eatRateWatts = consumeResult.watts;
           if (consumeResult.isDepleted) {
             justDepletedConsumable = true;
@@ -975,6 +976,23 @@ export class PlayerManager {
             grabState.bGrabSuppressed = true;
             char.isUsingItem = false;
             char.eatRateWatts = 0;
+            if (char.heldObject === heldItem) {
+              char.heldObject = null;
+            }
+            if (heldItem) {
+              heldItem.isHeld = false;
+              heldItem.heldBy = null;
+              const idx = objects.indexOf(heldItem);
+              if (idx !== -1) {
+                objects.splice(idx, 1);
+              }
+              if (Array.isArray((this.arena as any).entities)) {
+                const eIdx = (this.arena as any).entities.indexOf(heldItem);
+                if (eIdx !== -1) {
+                  (this.arena as any).entities.splice(eIdx, 1);
+                }
+              }
+            }
           }
         } else {
           char.isUsingItem = false;
