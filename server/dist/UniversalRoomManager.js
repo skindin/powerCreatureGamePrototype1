@@ -6359,6 +6359,20 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+      }
+    }
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
     const steps = 90;
     const dtStep = totalTime / steps;
@@ -6506,12 +6520,25 @@ class ThrowModule {
     if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
+        if (bus.isExhausted) {
+          return null;
+        }
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-        const metabolicJoules = Math.max(5, mechWorkJoules * 3.5);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
-        if (fraction <= 0) {
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "throw",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: false,
+          pool: character.energyPool,
+          registry: character.properties
+        });
+        if (!burstRes.granted || burstRes.fraction < 1) {
           return null;
         }
       }

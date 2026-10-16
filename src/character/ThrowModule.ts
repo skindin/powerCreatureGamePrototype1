@@ -653,6 +653,22 @@ export class ThrowModule {
     );
     if (!launch) return null;
 
+    // Check if character has enough energy/stamina to execute this throw
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+      }
+    }
+
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
 
     // Fine simulation steps matching 120Hz physics precision
@@ -828,16 +844,32 @@ export class ThrowModule {
 
     // Energy consumption check based on actual kinetic work of the launch:
     // Work done on object: W = 0.5 * m * v_launch^2
-    // Muscular metabolic cost is ~3.5x mechanical work due to muscular efficiency.
+    // Muscle metabolic cost uses muscleEfficiency from the connected EnergyBus.
     if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
+        if (bus.isExhausted) {
+          return null;
+        }
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
         const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-        const metabolicJoules = Math.max(5, mechWorkJoules * 3.5);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
-        if (fraction <= 0) {
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "throw",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: false,
+          pool: character.energyPool,
+          registry: character.properties
+        });
+
+        if (!burstRes.granted || burstRes.fraction < 1.0) {
           return null;
         }
       }
