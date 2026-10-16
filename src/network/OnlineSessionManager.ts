@@ -500,7 +500,7 @@ export class OnlineSessionManager {
     if (snapshot.deathRespawnEvents && Array.isArray(snapshot.deathRespawnEvents)) {
       for (const ev of snapshot.deathRespawnEvents) {
         // Robust match for local character, serverCharId, playerId, or dummy
-        const targetChar = this.gameLoop.allCharacters.find(
+        let targetChar = this.gameLoop.allCharacters.find(
           (c) => c.id === ev.targetEntityId ||
                  c.serverCharId === ev.targetEntityId ||
                  c.playerId === ev.targetEntityId ||
