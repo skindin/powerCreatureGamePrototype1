@@ -112,8 +112,21 @@ async function runTest() {
   assert(clientApple.consumableModule!.remainingEnergyJoules === 1000, "Spawned apple has 1000 Joules");
 
   // 3. Simulate P1 eating the apple on the server for 1 second (500W * 1s = 500 Joules consumed)
-  serverP1.isUsingItem = true;
   for (let i = 0; i < 60; i++) {
+    serverSim.queueInput({
+      playerId: "player-1",
+      tick: i + 1,
+      moveX: 0,
+      moveY: 0,
+      isSprinting: false,
+      isJumpHeld: false,
+      isGrabHeld: false,
+      isDrop: false,
+      isThrow: false,
+      isAiming: false,
+      isLockHeld: false,
+      isUsingItem: true,
+    } as any);
     serverSim.step();
   }
 
@@ -135,7 +148,21 @@ async function runTest() {
   assert(clientApple.colliderRadius < 0.25, `Client apple shrunk in size: radius=${clientApple.colliderRadius.toFixed(3)}`);
 
   // 5. Finish eating the apple completely on the server (another 1.2 seconds)
-  for (let i = 0; i < 72; i++) {
+  for (let i = 60; i < 140; i++) {
+    serverSim.queueInput({
+      playerId: "player-1",
+      tick: i + 1,
+      moveX: 0,
+      moveY: 0,
+      isSprinting: false,
+      isJumpHeld: false,
+      isGrabHeld: false,
+      isDrop: false,
+      isThrow: false,
+      isAiming: false,
+      isLockHeld: false,
+      isUsingItem: true,
+    } as any);
     serverSim.step();
   }
   assert(

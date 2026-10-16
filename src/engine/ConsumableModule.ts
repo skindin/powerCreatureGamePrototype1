@@ -172,14 +172,14 @@ export class ConsumableModule {
 
     // 1. Deduct from consumable energy
     const newRemaining = Math.max(0, remaining - transferJoules);
-    this.remainingEnergyJoulesProp.literalValue = newRemaining;
+    this.remainingEnergyJoulesProp.set(newRemaining, registry);
 
     // 2. Add to consumer's EnergyPool
     if (consumer.energyPool && consumer.energyPool.enabled) {
       const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
       const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
       const updatedEnergy = Math.min(maxEnergy, curEnergy + transferJoules);
-      consumer.energyPool.currentEnergyProp.literalValue = updatedEnergy;
+      consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
     }
 
     // 3. Optional bonus health healing while consuming
@@ -242,7 +242,7 @@ export class ConsumableModule {
     _arena?: Arena
   ): void {
     this.isConsumed = true;
-    this.remainingEnergyJoulesProp.literalValue = 0;
+    this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
 
     // Detach from character's hands
     if (consumer.heldObject === consumableObj) {

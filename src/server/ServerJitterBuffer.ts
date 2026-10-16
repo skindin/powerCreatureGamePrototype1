@@ -207,6 +207,7 @@ export class PlayerJitterQueue {
       aimY: this.lastKnownInput?.aimY,
       facingAngle: this.lastKnownInput?.facingAngle,
     };
+    (neutralPacket as any).isUsingItem = (this.lastKnownInput as any)?.isUsingItem ?? false;
 
     return {
       packet: neutralPacket,

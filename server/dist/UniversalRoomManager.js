@@ -9546,12 +9546,12 @@ class ConsumableModule {
     const demandJoules = rateWatts * dt;
     const transferJoules = Math.min(remaining, demandJoules);
     const newRemaining = Math.max(0, remaining - transferJoules);
-    this.remainingEnergyJoulesProp.literalValue = newRemaining;
+    this.remainingEnergyJoulesProp.set(newRemaining, registry);
     if (consumer.energyPool && consumer.energyPool.enabled) {
       const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
       const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
       const updatedEnergy = Math.min(maxEnergy, curEnergy + transferJoules);
-      consumer.energyPool.currentEnergyProp.literalValue = updatedEnergy;
+      consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
     }
     const healHpPerSec = this.getHealRate(registry);
     if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
@@ -9594,7 +9594,7 @@ class ConsumableModule {
    */
   finishConsumption(consumer, consumableObj, objects, _arena) {
     this.isConsumed = true;
-    this.remainingEnergyJoulesProp.literalValue = 0;
+    this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
     if (consumer.heldObject === consumableObj) {
       consumer.heldObject = null;
     }
@@ -10065,7 +10065,7 @@ class PlayerJitterQueue {
    *   to prevent runaway ghost overshoot while preserving last known aim direction.
    */
   consume(serverTick) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const drainedPackets = [];
     if (!this.hasPrimed && this.queue.length > 0) {
       this.hasPrimed = true;
@@ -10116,6 +10116,7 @@ class PlayerJitterQueue {
       aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
       facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
     };
+    neutralPacket.isUsingItem = ((_d = this.lastKnownInput) == null ? void 0 : _d.isUsingItem) ?? false;
     return {
       packet: neutralPacket,
       isStarved: true,
@@ -11277,6 +11278,9 @@ class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
+        if (catchupPkt.isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+          char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
+        }
         if (((_a = char.activeTrajectory) == null ? void 0 : _a.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
@@ -11294,6 +11298,11 @@ class ServerGameSimulation {
         }
       }
       if (pkt) {
+        if (pkt.isUsingItem !== void 0) {
+          char.isUsingItem = Boolean(pkt.isUsingItem);
+        } else if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         if (char.isSprinting !== pkt.isSprinting) {
           char.setSprinting(pkt.isSprinting);
         }
@@ -11381,6 +11390,9 @@ class ServerGameSimulation {
           char.heldObject.position.z = heldPos.z;
         }
       } else {
+        if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }
     }

@@ -821,6 +821,9 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
+        if ((catchupPkt as any).isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+          char.consumeModule.consume(dt, char, char.heldObject, this.objects, this.arena);
+        }
         if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
@@ -839,6 +842,11 @@ export class ServerGameSimulation {
       }
 
       if (pkt) {
+        if ((pkt as any).isUsingItem !== undefined) {
+          char.isUsingItem = Boolean((pkt as any).isUsingItem);
+        } else if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         if (char.isSprinting !== pkt.isSprinting) {
           char.setSprinting(pkt.isSprinting);
         }
@@ -940,7 +948,10 @@ export class ServerGameSimulation {
           char.heldObject.position.z = heldPos.z;
         }
       } else {
-        // Neutral step for empty-handed player
+        // Neutral step for character without input packet this tick
+        if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }
     }

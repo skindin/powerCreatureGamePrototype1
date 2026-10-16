@@ -611,7 +611,14 @@ export class OnlineSessionManager {
             }
             if (c.currentEnergyJoules !== undefined && localChar.energyPool) {
               const curEnergy = localChar.energyPool.getCurrentEnergy(localChar.properties);
-              if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {
+              const isActivelyEating = Boolean(localChar.isUsingItem && localChar.canConsumeHeldObject());
+              // If actively eating locally, the server's snapshots are delayed by network RTT.
+              // Never roll back local energy to a lower trailing value while eating.
+              if (isActivelyEating) {
+                if (c.currentEnergyJoules > curEnergy) {
+                  localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
+                }
+              } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {
                 localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
               }
             }

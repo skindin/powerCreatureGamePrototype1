@@ -441,6 +441,9 @@ export class OnlineRoomClient {
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
         isSleeping: obj.isSleeping,
+        consumableTag: obj.consumableModule?.tag,
+        remainingEnergyJoules: obj.consumableModule ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : undefined,
+        totalEnergyJoules: obj.consumableModule ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : undefined,
       })) : undefined;
 
       const ackContestedEventIds = this.unacknowledgedContestedAcks.size > 0
