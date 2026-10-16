@@ -489,12 +489,16 @@ export class ThrowModule {
 
     const deltaZ = targetSurfaceHeight - startZ;
 
-    // Direct chord check: does a direct chord between start and destination hit an intermediate wall?
+    // 1. Scan for intermediate obstacles along the 2D path
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    let maxRequiredT = 0;
+    // Clearance margin ensures the projectile and its collider cleanly fly over the wall top
+    const clearanceMargin = 0.35;
+    let minTimeForWallClearance = 0;
 
-    for (let i = 1; i < 40; i++) {
-      const s = i / 40;
+    // Sample finely (120 samples) so narrow walls and edges are never missed
+    const scanSteps = 120;
+    for (let i = 1; i < scanSteps; i++) {
+      const s = i / scanSteps;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
 
@@ -508,14 +512,14 @@ export class ThrowModule {
           }
 
           const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const reqClearanceZ = wall.wallHeight + 0.08;
+          const reqClearanceZ = wall.wallHeight + clearanceMargin;
           const reqLift = reqClearanceZ - chordZ;
           if (reqLift > 0) {
             const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 0.0001) {
               const neededT = Math.sqrt(reqLift / denom);
-              if (neededT > maxRequiredT) {
-                maxRequiredT = neededT;
+              if (neededT > minTimeForWallClearance) {
+                minTimeForWallClearance = neededT;
               }
             }
           }
@@ -523,13 +527,12 @@ export class ThrowModule {
       }
     }
 
-    // Flattest possible arc:
-    // Ballistic equation: v_h = D / T,  v_z = deltaZ / T + 0.5 * g * T
-    // Total launch speed squared: v^2 = v_h^2 + v_z^2 = (D/T)^2 + (deltaZ/T + 0.5 * g * T)^2
-    // We want the flattest arc with v <= launchSpeed.
-    // The flattest arc corresponds to the minimum valid T that clears obstacles and can reach the target.
-    // For flat ground without obstacles, solving (D/T)^2 + (0.5 * g * T)^2 <= vMax^2 gives the standard minimum T:
-    // Let u = T^2: 0.25 * g^2 * u^2 - (vMax^2 - g * deltaZ) * u + (D^2 + deltaZ^2) = 0.
+    // 2. Ballistics solver at maximum speed:
+    // Solve for flight time T such that total launch speed = vMax (flattest trajectory possible)
+    //   v_h = D / T,  v_z = deltaZ / T + 0.5 * g * T
+    //   v_h^2 + v_z^2 = vMax^2
+    // Quadratic in u = T^2:
+    //   0.25 * g^2 * u^2 - (vMax^2 - g * deltaZ) * u + (D^2 + deltaZ^2) = 0.
     const g = arena.gravity;
     const D = actualDist;
     const vMax = launchSpeed;
@@ -538,32 +541,45 @@ export class ThrowModule {
     const cCoeff = D * D + deltaZ * deltaZ;
 
     const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
-    let minBallisticT = 0;
+    let chosenT = 0;
 
     if (disc >= 0) {
-      // Smallest positive root of u = T^2 gives the flattest (fastest, lowest vz) arc
-      const u1 = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
-      if (u1 > 0) {
-        minBallisticT = Math.sqrt(u1);
+      const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      const uHigh = (-bCoeff + Math.sqrt(disc)) / (2 * aCoeff);
+
+      const tLow = uLow > 0 ? Math.sqrt(uLow) : 0;
+      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : 0;
+
+      if (minTimeForWallClearance > 0) {
+        // Must clear intermediate wall:
+        // Pick the shortest valid trajectory that clears the wall top
+        if (tLow >= minTimeForWallClearance) {
+          chosenT = tLow;
+        } else if (minTimeForWallClearance <= tHigh) {
+          // minTimeForWallClearance provides the shortest arc that cleanly clears the obstacle
+          chosenT = minTimeForWallClearance;
+        } else {
+          chosenT = Math.max(tHigh, minTimeForWallClearance);
+        }
+      } else {
+        // No obstacle: use the flattest/fastest trajectory (tLow)
+        chosenT = tLow > 0 ? tLow : (tHigh > 0 ? tHigh : D / vMax);
       }
     } else {
-      // Target is beyond max range for a flat throw with vMax; use angle of 45 deg equivalent (peak range T)
+      // Out of range for direct reach at vMax; use peak distance angle (45 deg)
       const uPeak = -bCoeff / (2 * aCoeff);
-      if (uPeak > 0) {
-        minBallisticT = Math.sqrt(uPeak);
-      }
+      const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
+      chosenT = Math.max(tPeak, minTimeForWallClearance);
     }
 
-    if (minBallisticT <= 0) {
-      minBallisticT = Math.max(0.14, D / vMax);
+    if (chosenT <= 0) {
+      chosenT = Math.max(0.02, D / vMax);
     }
-
-    // Take the minimum T that satisfies both ballistic limits and wall clearance
-    let totalTime = Math.max(minBallisticT, maxRequiredT);
     if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / g));
+      chosenT = Math.max(chosenT, Math.sqrt((2 * deltaZ) / g));
     }
-    totalTime = Math.max(0.14, totalTime);
+    // Floor flight time at 0.02s (1 physics frame at 50Hz) so short-range throws launch at full vMax speed
+    const totalTime = Math.max(0.02, chosenT);
 
     const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;

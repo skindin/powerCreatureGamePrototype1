@@ -6230,9 +6230,11 @@ class ThrowModule {
     }
     const deltaZ = targetSurfaceHeight - startZ;
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    let maxRequiredT = 0;
-    for (let i = 1; i < 40; i++) {
-      const s = i / 40;
+    const clearanceMargin = 0.35;
+    let minTimeForWallClearance = 0;
+    const scanSteps = 120;
+    for (let i = 1; i < scanSteps; i++) {
+      const s = i / scanSteps;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
       for (const wall of arena.walls) {
@@ -6242,14 +6244,14 @@ class ThrowModule {
             continue;
           }
           const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const reqClearanceZ = wall.wallHeight + 0.08;
+          const reqClearanceZ = wall.wallHeight + clearanceMargin;
           const reqLift = reqClearanceZ - chordZ;
           if (reqLift > 0) {
             const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 1e-4) {
               const neededT = Math.sqrt(reqLift / denom);
-              if (neededT > maxRequiredT) {
-                maxRequiredT = neededT;
+              if (neededT > minTimeForWallClearance) {
+                minTimeForWallClearance = neededT;
               }
             }
           }
@@ -6263,26 +6265,35 @@ class ThrowModule {
     const bCoeff = -(vMax * vMax - g * deltaZ);
     const cCoeff = D * D + deltaZ * deltaZ;
     const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
-    let minBallisticT = 0;
+    let chosenT = 0;
     if (disc >= 0) {
-      const u1 = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
-      if (u1 > 0) {
-        minBallisticT = Math.sqrt(u1);
+      const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      const uHigh = (-bCoeff + Math.sqrt(disc)) / (2 * aCoeff);
+      const tLow = uLow > 0 ? Math.sqrt(uLow) : 0;
+      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : 0;
+      if (minTimeForWallClearance > 0) {
+        if (tLow >= minTimeForWallClearance) {
+          chosenT = tLow;
+        } else if (minTimeForWallClearance <= tHigh) {
+          chosenT = minTimeForWallClearance;
+        } else {
+          chosenT = Math.max(tHigh, minTimeForWallClearance);
+        }
+      } else {
+        chosenT = tLow > 0 ? tLow : tHigh > 0 ? tHigh : D / vMax;
       }
     } else {
       const uPeak = -bCoeff / (2 * aCoeff);
-      if (uPeak > 0) {
-        minBallisticT = Math.sqrt(uPeak);
-      }
+      const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
+      chosenT = Math.max(tPeak, minTimeForWallClearance);
     }
-    if (minBallisticT <= 0) {
-      minBallisticT = Math.max(0.14, D / vMax);
+    if (chosenT <= 0) {
+      chosenT = Math.max(0.02, D / vMax);
     }
-    let totalTime = Math.max(minBallisticT, maxRequiredT);
     if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / g));
+      chosenT = Math.max(chosenT, Math.sqrt(2 * deltaZ / g));
     }
-    totalTime = Math.max(0.14, totalTime);
+    const totalTime = Math.max(0.02, chosenT);
     const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
