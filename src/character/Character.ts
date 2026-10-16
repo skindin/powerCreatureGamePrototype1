@@ -191,6 +191,7 @@ export class Character extends GameObject {
 
   constructor(options: {
     id?: string;
+    position?: { x: number; y: number; z?: number };
     x?: number;
     y?: number;
     color?: string;
@@ -222,10 +223,14 @@ export class Character extends GameObject {
       ? options.characterModule
       : new CharacterModule({ role: determinedRole });
 
+    const initX = options.position ? options.position.x : (options.x ?? 5.0);
+    const initY = options.position ? options.position.y : (options.y ?? 7.0);
+    const initZ = options.position?.z ?? 0;
+
     super({
       id: options.id,
       name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
-      position: { x: options.x ?? 5.0, y: options.y ?? 7.0, z: 0 },
+      position: { x: initX, y: initY, z: initZ },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,

@@ -415,9 +415,23 @@
       - Evaluated recipient ownership: `currentEnergyJoules`, `maxEnergyJoules`, `currentStaminaSeconds`, `maxStaminaSeconds`, and `currentWattage` are populated ONLY for the recipient player's own characters.
       - For all other remote characters, these fields are left strictly `undefined` in `GhostEntityState`.
     - In `OnlineSessionManager.ts`, pruned remote entity synchronization so other clients never inspect or mirror remote characters' private energy or stamina attributes, keeping each client's energy reserve and burst stamina private.
-  - **Automated Verification**: Verified 100% via `scratch/test_respawn_and_privacy.ts` alongside full project regression test suite.
+- **Phase 12.16 (Shortest & Flattest Throw Trajectory and Property Overhaul)**:
+  - **Shortest & Flattest Ballistic Arc Solver**:
+    - Replaced flawed character velocity biases (`vAlong`, `vPerp`, `armAlongMax`) that artificially steepened trajectory when backpedaling and flattened it when moving toward targets.
+    - Implemented a clean, shortest and flattest trajectory solver: horizontal velocity is strictly $v_h = \frac{D}{T}$. Flight time $T$ begins at the minimum possible duration for the achievable launch speed ($T = \frac{D}{v_{\text{launch}}}$).
+    - Dense obstacle sampling checks clearance over intermediate arena walls: if a wall of height $H$ lies along the ray at fraction $s$, $T$ scales up to the minimal time required for the parabolic peak to clear the wall with a clean clearance margin: $T \ge \sqrt{\frac{2(H_{\text{req}} - \text{baselineZ})}{g \cdot s(1 - s)}}$.
+    - Ballistic vertical velocity is strictly solved from $T$ and destination altitude difference $\Delta z$: $v_z = \frac{\Delta z + \frac{1}{2}g T^2}{T}$, ensuring the flattest possible arc that clears all intermediate obstacles and lands cleanly at the target.
+  - **Simplified Throw Ability Properties & Energy Bus Scaling**:
+    - Replaced legacy `baseThrowForceProp` with `maxThrowSpeedProp` (governs maximum launch speed for lighter objects, default 14.0 u/s, with backwards-compatible aliases).
+    - Connected heavier object throws to `EnergyBus`: burst mechanical work ($E = \frac{1}{2}mv^2$) with muscle efficiency ($25\%$) is drawn against bus power/energy limits ($v = \sqrt{\frac{2 E_{\text{mech}}}{m}}$). Heavier objects naturally travel at lower launch speeds for the same effort, shifting their flattest trajectories accordingly.
+    - DevPanel inspector card updated to display `"Max Throw Speed (u/s)"`.
+  - **Aligned Release Coordinates & In-Flight Tracking**:
+    - Facing angle automatically aligns with the aim reticle prior to trajectory calculation and release, eliminating origin mismatch.
+    - Added `originalThrower` on `GameObject` so client-side in-flight prediction persists across multi-tick airborne flights even after the object exits close reach.
+  - **Automated Verification**: Verified 100% via `scratch/test_throw_controls.ts`, `scratch/test_online_throw_ballistics.ts`, and full `npm run build`.
 
 ---
+
 
 
 ## 3. Active Milestone: Phase 10 (Online Multiplayer Architecture)

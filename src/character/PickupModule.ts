@@ -148,6 +148,7 @@ export class PickupModule {
     target.heldBy = character;
     target.isInFlight = false;
     target.lastThrower = null;
+    target.originalThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -156,7 +157,10 @@ export class PickupModule {
       target.rollModule.angularVelocity.y = 0;
       target.rollModule.angularVelocity.z = 0;
     }
-    target.position.z = target.hasVerticalPosition ? 0.45 : 0; // Lifted off ground only if vertical position enabled
+    const heldPos = character.calculateHeldObjectPosition();
+    target.position.x = heldPos.x;
+    target.position.y = heldPos.y;
+    target.position.z = heldPos.z;
     return true;
   }
 
@@ -172,6 +176,7 @@ export class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null; // Instantly available to pick back up
+    dropped.originalThrower = null;
     dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;

@@ -38,36 +38,58 @@ export class ThrowModule {
   public enabled = true;
 
   // Tunable throw physics in wall-based units
-  public baseThrowForceProp: DynamicProperty;
+  public maxThrowSpeedProp: DynamicProperty;
   public maxThrowAimDistanceProp: DynamicProperty;
   public maxThrowHeightProp: DynamicProperty;
 
   /**
-   * Whether throwing consumes energy from an Energy Bus (placeholder toggle).
+   * Alias for backward compatibility with baseThrowForceProp.
    */
-  public consumesEnergy: boolean = false;
+  public get baseThrowForceProp(): DynamicProperty {
+    return this.maxThrowSpeedProp;
+  }
+  public set baseThrowForceProp(prop: DynamicProperty) {
+    this.maxThrowSpeedProp = prop;
+  }
+
+  /**
+   * Whether throwing consumes energy from an Energy Bus.
+   */
+  public consumesEnergy: boolean = true;
   public energyBusId: string = "bus_main";
 
   constructor(options?: {
+    maxThrowSpeed?: number;
     baseThrowForce?: number;
     maxThrowAimDistance?: number;
     maxThrowHeight?: number;
     consumesEnergy?: boolean;
+    energyBusId?: string;
     enabled?: boolean;
   }) {
-    this.baseThrowForceProp = new DynamicProperty(options?.baseThrowForce ?? 7.6);
+    const initialSpeed = options?.maxThrowSpeed ?? options?.baseThrowForce ?? 14.0;
+    this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
     this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.energyBusId !== undefined) this.energyBusId = options.energyBusId;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
+  public get maxThrowSpeed(): number {
+    return this.maxThrowSpeedProp.literalValue;
+  }
+
+  public set maxThrowSpeed(val: number) {
+    this.maxThrowSpeedProp.literalValue = val;
+  }
+
   public get baseThrowForce(): number {
-    return this.baseThrowForceProp.literalValue;
+    return this.maxThrowSpeed;
   }
 
   public set baseThrowForce(val: number) {
-    this.baseThrowForceProp.literalValue = val;
+    this.maxThrowSpeed = val;
   }
 
   public get maxThrowAimDistance(): number {
@@ -86,8 +108,12 @@ export class ThrowModule {
     this.maxThrowHeightProp.literalValue = val;
   }
 
+  public getMaxThrowSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowSpeedProp.get(registry);
+  }
+
   public getBaseThrowForce(registry?: ObjectPropertiesRegistry): number {
-    return this.baseThrowForceProp.get(registry);
+    return this.getMaxThrowSpeed(registry);
   }
 
   public getMaxThrowAimDistance(registry?: ObjectPropertiesRegistry): number {
@@ -289,6 +315,48 @@ export class ThrowModule {
   }
 
   /**
+   * Calculates the maximum launch speed for an object given:
+   * 1. Character's maxThrowSpeed (governs light objects) scaled by character strength.
+   * 2. Object mass and character energy bus power/energy limit (governs heavier objects).
+   */
+  public calculateMaxLaunchSpeed(
+    thrower?: Character,
+    heldObject?: GameObject | null
+  ): number {
+    const rawMaxSpeed = this.maxThrowSpeedProp.get(thrower?.properties);
+    const strength = thrower?.strength ?? 1.0;
+    const speedCap = Math.max(1.0, rawMaxSpeed * strength);
+
+    // If no held object or mass is negligible, speedCap applies
+    if (!heldObject || !heldObject.hasMass) {
+      return speedCap;
+    }
+
+    const mass = Math.max(0.1, heldObject.mass);
+
+    // Check Energy Bus power limits if consumesEnergy is enabled
+    if (this.consumesEnergy && thrower) {
+      const bus = thrower.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        // Burst power available: bus.maxPower (in Watts). Over a typical burst throw impulse (~0.08s):
+        // E_burst = maxPower * dt_impulse (Joules of muscle power).
+        // With muscle efficiency (~25%), mechWork Joules = E_burst * 0.25.
+        // E_mech = 0.5 * m * v^2  =>  v = sqrt(2 * E_mech / m).
+        const maxPower = bus.getMaxPower(thrower.properties);
+        const impulseDt = 0.08;
+        const availableMechJoules = maxPower * impulseDt * 0.25 * strength;
+        const massLimitedSpeed = Math.sqrt((2 * Math.max(1.0, availableMechJoules)) / mass);
+        return Math.min(speedCap, massLimitedSpeed);
+      }
+    }
+
+    // Baseline fallback if energy bus not attached: F = m * a scaling
+    // Standard baseline mass is 1.0u. Heavier objects scale with 1 / sqrt(mass)
+    const massLimitedSpeed = speedCap / Math.sqrt(Math.max(1.0, mass));
+    return Math.min(speedCap, massLimitedSpeed);
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
@@ -305,7 +373,7 @@ export class ThrowModule {
     hasGravity = true,
     hasVerticalVelocity = true,
     colliderRadius = 0.35,
-    charVel?: { x: number; y: number; z?: number },
+    _charVel?: { x: number; y: number; z?: number },
     candidateEntities?: GameObject[],
     hoverScale?: number,
     thrower?: Character,
@@ -408,33 +476,23 @@ export class ThrowModule {
       }
     }
 
-    // Inertial velocity integration:
-    // When moving, the character's velocity vector influences the throw.
-    // To land on target, the arm cancels sideways drift while contributing forward throw power,
-    // altering the flight time, vertical arc, and launch velocity.
-    const vxChar = charVel?.x ?? 0;
-    const vyChar = charVel?.y ?? 0;
-    const vAlong = vxChar * dirX + vyChar * dirY;
-    const vPerp = vxChar * (-dirY) + vyChar * dirX;
-
-    // Arm velocity available in target direction after countering perpendicular momentum
-    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
-    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+    const launchSpeed = Math.max(1.0, throwPower);
 
     // Straight-line horizontal flight if zero-G or no vertical velocity module
     if (!hasGravity || !hasVerticalVelocity) {
-      const totalTime = Math.max(0.14, actualDist / maxForwardSpeed);
-      const vx = dirX * maxForwardSpeed;
-      const vy = dirY * maxForwardSpeed;
+      const totalTime = Math.max(0.14, actualDist / launchSpeed);
+      const vx = dirX * (actualDist / totalTime);
+      const vy = dirY * (actualDist / totalTime);
       const vz = 0;
       return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
 
     const deltaZ = targetSurfaceHeight - startZ;
 
-    // Minimum angle trajectory calculation:
-    // Moving towards the target enables faster, flatter throws; backpedaling results in a higher lob.
-    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
+    // Shortest and flattest trajectory arc:
+    // Minimum flight time is determined by maximum horizontal launch speed.
+    // Flattest possible arc has the minimum valid flight time T:
+    const minFlightTime = Math.max(0.14, actualDist / launchSpeed);
     let totalTime = minFlightTime;
 
     // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
@@ -525,6 +583,18 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
+
+    // Orient character towards aim target so throw trajectory and held release point align
+    const aimDx = aimTargetX - character.position.x;
+    const aimDy = aimTargetY - character.position.y;
+    if (Math.hypot(aimDx, aimDy) > 0.05) {
+      character.facingAngle = Math.atan2(aimDy, aimDx);
+      const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+      held.position.x = alignedHeldPos.x;
+      held.position.y = alignedHeldPos.y;
+      held.position.z = alignedHeldPos.z;
+    }
+
     let startX = held.position.x;
     let startY = held.position.y;
     let startZ = held.position.z;
@@ -549,8 +619,7 @@ export class ThrowModule {
       }
     }
 
-    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
-    const throwPower = baseThrowForce * character.strength;
+    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
 
     const charVel = {
@@ -563,7 +632,7 @@ export class ThrowModule {
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
     const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+      startX, startY, startZ, aimTargetX, aimTargetY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
       candidateEntities, scale, character, held, autoLock
     );
     if (!launch) return null;
@@ -691,6 +760,19 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
+
+    if (!launchPos) {
+      const aimDx = aimTargetX - character.position.x;
+      const aimDy = aimTargetY - character.position.y;
+      if (Math.hypot(aimDx, aimDy) > 0.05) {
+        character.facingAngle = Math.atan2(aimDy, aimDx);
+        const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+        held.position.x = alignedHeldPos.x;
+        held.position.y = alignedHeldPos.y;
+        held.position.z = alignedHeldPos.z;
+      }
+    }
+
     let startX = launchPos ? launchPos.x : held.position.x;
     let startY = launchPos ? launchPos.y : held.position.y;
     let startZ = launchPos ? launchPos.z : held.position.z;
@@ -712,43 +794,41 @@ export class ThrowModule {
       }
     }
 
-    // Energy consumption check based on actual kinetic work:
-    // Work done on object: W = 0.5 * m * v_launch^2 + m * g * h
-    // Muscular metabolic cost is ~3.5x mechanical work due to muscular efficiency.
-    // Even if motion is resisted or heavy, the energy lost reflects the intended unresisted kinetic work!
-    let throwPowerScale = 1.0;
-    if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus) {
-        const heldMass = held.hasMass ? Math.max(0.2, held.mass) : 1.0;
-        const throwImpulseSpeed = this.baseThrowForceProp.get(character.properties) * character.strength;
-        const mechWorkJoules = 0.5 * heldMass * (throwImpulseSpeed * throwImpulseSpeed);
-        const metabolicJoules = Math.max(10, mechWorkJoules * 3.5);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
-        if (fraction <= 0) {
-          return null;
-        }
-        throwPowerScale = Math.sqrt(fraction); // E ∝ v²
-      }
-    }
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
-    const throwPower = baseThrowForce * character.strength * throwPowerScale;
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
+    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
 
     const launch = launchVel
       ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz, totalTime: 1.0, finalTargetX: aimTargetX, finalTargetY: aimTargetY, targetSurfaceHeight: 0 }
       : this.computeLaunchVelocity(
-          startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+          startX, startY, startZ, aimTargetX, aimTargetY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
           candidateEntities, scale, character, held, autoLock
         );
     if (!launch) return null;
+
+    // Energy consumption check based on actual kinetic work of the launch:
+    // Work done on object: W = 0.5 * m * v_launch^2
+    // Muscular metabolic cost is ~3.5x mechanical work due to muscular efficiency.
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const metabolicJoules = Math.max(5, mechWorkJoules * 3.5);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
+        if (fraction <= 0) {
+          return null;
+        }
+      }
+    }
 
     if (launch.isAutoLocked && launch.targetObject) {
       const dx = launch.targetObject.position.x - character.position.x;
@@ -756,16 +836,22 @@ export class ThrowModule {
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
       }
-    } else if (launchVel) {
-      // In online/direct launch mode, face the direction of the horizontal launch vector
-      if (Math.hypot(launchVel.vx, launchVel.vy) > 0.05) {
-        character.facingAngle = Math.atan2(launchVel.vy, launchVel.vx);
-      }
+    } else if (Math.hypot(launch.vx, launch.vy) > 0.05) {
+      character.facingAngle = Math.atan2(launch.vy, launch.vx);
+    }
+
+    // Refresh held object position along updated facing angle if not passed explicitly
+    if (!launchPos) {
+      const heldPos = character.calculateHeldObjectPosition(arena);
+      startX = heldPos.x;
+      startY = heldPos.y;
+      startZ = heldPos.z;
     }
 
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.originalThrower = character;
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;

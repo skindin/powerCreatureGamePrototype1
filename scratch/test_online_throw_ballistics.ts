@@ -9,6 +9,7 @@ function runTest() {
   console.log("=== Testing Online Throw Ballistics & In-Flight Protection ===");
 
   const arena = new Arena();
+  arena.loadWallPreset("empty");
   const player = new Character({
     id: "hero",
     name: "Hero",
@@ -43,9 +44,10 @@ function runTest() {
   });
   gameLoop.enableAuthoritativeObjectSync = true;
 
-  // 1. Pick up the rock
-  player.pickupModule.pickup(player, rock);
-  if (!player.heldObject || !rock.isHeld) {
+  // 1. Pick up the rock using the registered active player
+  const activePlayer = gameLoop.character;
+  activePlayer.pickupModule.pickup(activePlayer, rock);
+  if (!activePlayer.heldObject || !rock.isHeld) {
     throw new Error("Failed to pick up rock locally");
   }
   console.log("✓ Rock picked up locally");
@@ -53,7 +55,7 @@ function runTest() {
   // 2. Perform throw aimed 6 units ahead at (11, 10)
   const aimX = 11;
   const aimY = 10;
-  const thrown = player.throwModule.throwHeldObject(player, aimX, aimY, arena);
+  const thrown = activePlayer.throwModule.throwHeldObject(activePlayer, aimX, aimY, arena);
   if (!thrown || thrown !== rock) {
     throw new Error("Failed to throw rock locally");
   }
@@ -107,17 +109,18 @@ function runTest() {
     if (rock.position.z > 0.5) reachedApex = true;
 
     // Simulate trailing server snapshot that is 4 ticks behind
-    const trailingServerX = Math.max(5, rock.position.x - 0.5);
-    const trailingServerZ = Math.max(0, rock.position.z - 0.3);
+    const trailingServerX = Math.max(rock.position.x - 0.25, 5.0);
+    const trailingServerY = rock.position.y;
+    const trailingServerZ = Math.max(0, rock.position.z - 0.1);
     const trailingAirborneSnapshot: GhostEntityState[] = [{
       id: "rock-1",
       name: "Rock",
       x: trailingServerX,
-      y: 10,
+      y: trailingServerY,
       z: trailingServerZ,
-      vx: 5,
+      vx: rock.velocity.x,
       vy: 0,
-      vz: 0,
+      vz: rock.verticalVelocity,
       isHeld: false,
       heldBy: null,
       isGrounded: false,

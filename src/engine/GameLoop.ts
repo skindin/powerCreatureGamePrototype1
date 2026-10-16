@@ -812,7 +812,8 @@ export class GameLoop {
       // While a thrown object is in ballistic flight from local player, allow local prediction
       // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
-      const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
+      const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
+      const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
       if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;

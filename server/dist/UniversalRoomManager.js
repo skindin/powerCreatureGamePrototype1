@@ -4617,6 +4617,7 @@ const _GameObject = class _GameObject {
     __publicField(this, "isHeld");
     __publicField(this, "heldBy");
     __publicField(this, "lastThrower", null);
+    __publicField(this, "originalThrower", null);
     __publicField(this, "isInFlight", false);
     __publicField(this, "isCharacter", false);
     __publicField(this, "isClimbing", false);
@@ -4979,6 +4980,7 @@ const _GameObject = class _GameObject {
     }
     if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
       this.isInFlight = false;
+      this.originalThrower = null;
     }
     if (!this.hasVerticalPosition) {
       this.position.z = 0;
@@ -5818,6 +5820,7 @@ class PickupModule {
     target.heldBy = character;
     target.isInFlight = false;
     target.lastThrower = null;
+    target.originalThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -5826,7 +5829,10 @@ class PickupModule {
       target.rollModule.angularVelocity.y = 0;
       target.rollModule.angularVelocity.z = 0;
     }
-    target.position.z = target.hasVerticalPosition ? 0.45 : 0;
+    const heldPos = character.calculateHeldObjectPosition();
+    target.position.x = heldPos.x;
+    target.position.y = heldPos.y;
+    target.position.z = heldPos.z;
     return true;
   }
   /**
@@ -5840,6 +5846,7 @@ class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null;
+    dropped.originalThrower = null;
     dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;
@@ -5911,25 +5918,42 @@ class ThrowModule {
     __publicField(this, "name", "Throw Ability");
     __publicField(this, "enabled", true);
     // Tunable throw physics in wall-based units
-    __publicField(this, "baseThrowForceProp");
+    __publicField(this, "maxThrowSpeedProp");
     __publicField(this, "maxThrowAimDistanceProp");
     __publicField(this, "maxThrowHeightProp");
     /**
-     * Whether throwing consumes energy from an Energy Bus (placeholder toggle).
+     * Whether throwing consumes energy from an Energy Bus.
      */
-    __publicField(this, "consumesEnergy", false);
+    __publicField(this, "consumesEnergy", true);
     __publicField(this, "energyBusId", "bus_main");
-    this.baseThrowForceProp = new DynamicProperty((options == null ? void 0 : options.baseThrowForce) ?? 7.6);
+    const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 14;
+    this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
     this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    if ((options == null ? void 0 : options.energyBusId) !== void 0) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
+  /**
+   * Alias for backward compatibility with baseThrowForceProp.
+   */
+  get baseThrowForceProp() {
+    return this.maxThrowSpeedProp;
+  }
+  set baseThrowForceProp(prop) {
+    this.maxThrowSpeedProp = prop;
+  }
+  get maxThrowSpeed() {
+    return this.maxThrowSpeedProp.literalValue;
+  }
+  set maxThrowSpeed(val) {
+    this.maxThrowSpeedProp.literalValue = val;
+  }
   get baseThrowForce() {
-    return this.baseThrowForceProp.literalValue;
+    return this.maxThrowSpeed;
   }
   set baseThrowForce(val) {
-    this.baseThrowForceProp.literalValue = val;
+    this.maxThrowSpeed = val;
   }
   get maxThrowAimDistance() {
     return this.maxThrowAimDistanceProp.literalValue;
@@ -5943,8 +5967,11 @@ class ThrowModule {
   set maxThrowHeight(val) {
     this.maxThrowHeightProp.literalValue = val;
   }
+  getMaxThrowSpeed(registry) {
+    return this.maxThrowSpeedProp.get(registry);
+  }
   getBaseThrowForce(registry) {
-    return this.baseThrowForceProp.get(registry);
+    return this.getMaxThrowSpeed(registry);
   }
   getMaxThrowAimDistance(registry) {
     return this.maxThrowAimDistanceProp.get(registry);
@@ -6093,12 +6120,38 @@ class ThrowModule {
     return null;
   }
   /**
+   * Calculates the maximum launch speed for an object given:
+   * 1. Character's maxThrowSpeed (governs light objects) scaled by character strength.
+   * 2. Object mass and character energy bus power/energy limit (governs heavier objects).
+   */
+  calculateMaxLaunchSpeed(thrower, heldObject) {
+    const rawMaxSpeed = this.maxThrowSpeedProp.get(thrower == null ? void 0 : thrower.properties);
+    const strength = (thrower == null ? void 0 : thrower.strength) ?? 1;
+    const speedCap = Math.max(1, rawMaxSpeed * strength);
+    if (!heldObject || !heldObject.hasMass) {
+      return speedCap;
+    }
+    const mass = Math.max(0.1, heldObject.mass);
+    if (this.consumesEnergy && thrower) {
+      const bus = thrower.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const maxPower = bus.getMaxPower(thrower.properties);
+        const impulseDt = 0.08;
+        const availableMechJoules = maxPower * impulseDt * 0.25 * strength;
+        const massLimitedSpeed2 = Math.sqrt(2 * Math.max(1, availableMechJoules) / mass);
+        return Math.min(speedCap, massLimitedSpeed2);
+      }
+    }
+    const massLimitedSpeed = speedCap / Math.sqrt(Math.max(1, mass));
+    return Math.min(speedCap, massLimitedSpeed);
+  }
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
    * If autoLock is true (e.g. holding right click), locks 2D coordinates to the overlapped object center.
    */
-  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false) {
+  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, _charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false) {
     let hoveredEntity = null;
     let effectiveTargetX = targetX;
     let effectiveTargetY = targetY;
@@ -6167,21 +6220,16 @@ class ThrowModule {
         }
       }
     }
-    const vxChar = (charVel == null ? void 0 : charVel.x) ?? 0;
-    const vyChar = (charVel == null ? void 0 : charVel.y) ?? 0;
-    const vAlong = vxChar * dirX + vyChar * dirY;
-    const vPerp = vxChar * -dirY + vyChar * dirX;
-    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
-    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+    const launchSpeed = Math.max(1, throwPower);
     if (!hasGravity || !hasVerticalVelocity) {
-      const totalTime2 = Math.max(0.14, actualDist / maxForwardSpeed);
-      const vx2 = dirX * maxForwardSpeed;
-      const vy2 = dirY * maxForwardSpeed;
+      const totalTime2 = Math.max(0.14, actualDist / launchSpeed);
+      const vx2 = dirX * (actualDist / totalTime2);
+      const vy2 = dirY * (actualDist / totalTime2);
       const vz2 = 0;
       return { vx: vx2, vy: vy2, vz: vz2, totalTime: totalTime2, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
     const deltaZ = targetSurfaceHeight - startZ;
-    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
+    const minFlightTime = Math.max(0.14, actualDist / launchSpeed);
     let totalTime = minFlightTime;
     if (deltaZ > 0) {
       totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / arena.gravity));
@@ -6235,6 +6283,15 @@ class ThrowModule {
   calculateTrajectory(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
+    const aimDx = aimTargetX - character.position.x;
+    const aimDy = aimTargetY - character.position.y;
+    if (Math.hypot(aimDx, aimDy) > 0.05) {
+      character.facingAngle = Math.atan2(aimDy, aimDx);
+      const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+      held.position.x = alignedHeldPos.x;
+      held.position.y = alignedHeldPos.y;
+      held.position.z = alignedHeldPos.z;
+    }
     let startX = held.position.x;
     let startY = held.position.y;
     let startZ = held.position.z;
@@ -6254,8 +6311,7 @@ class ThrowModule {
         startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
-    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
-    const throwPower = baseThrowForce * character.strength;
+    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
     const charVel = {
       x: character.velocity.x,
@@ -6271,7 +6327,7 @@ class ThrowModule {
       aimTargetX,
       aimTargetY,
       arena,
-      throwPower,
+      maxSpeed,
       held.hasGravity,
       held.hasVerticalVelocity,
       held.colliderRadius,
@@ -6373,6 +6429,17 @@ class ThrowModule {
   throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel, launchPos) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
+    if (!launchPos) {
+      const aimDx = aimTargetX - character.position.x;
+      const aimDy = aimTargetY - character.position.y;
+      if (Math.hypot(aimDx, aimDy) > 0.05) {
+        character.facingAngle = Math.atan2(aimDy, aimDx);
+        const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+        held.position.x = alignedHeldPos.x;
+        held.position.y = alignedHeldPos.y;
+        held.position.z = alignedHeldPos.z;
+      }
+    }
     let startX = launchPos ? launchPos.x : held.position.x;
     let startY = launchPos ? launchPos.y : held.position.y;
     let startZ = launchPos ? launchPos.z : held.position.z;
@@ -6392,30 +6459,14 @@ class ThrowModule {
         startZ = Math.max(startZ, arena.wallHeight + 0.05);
       }
     }
-    let throwPowerScale = 1;
-    if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus) {
-        const heldMass = held.hasMass ? Math.max(0.2, held.mass) : 1;
-        const throwImpulseSpeed = this.baseThrowForceProp.get(character.properties) * character.strength;
-        const mechWorkJoules = 0.5 * heldMass * (throwImpulseSpeed * throwImpulseSpeed);
-        const metabolicJoules = Math.max(10, mechWorkJoules * 3.5);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
-        if (fraction <= 0) {
-          return null;
-        }
-        throwPowerScale = Math.sqrt(fraction);
-      }
-    }
-    const baseThrowForce = this.baseThrowForceProp.get(character.properties);
-    const throwPower = baseThrowForce * character.strength * throwPowerScale;
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0
     };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const launch = launchVel ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz } : this.computeLaunchVelocity(
       startX,
       startY,
@@ -6423,7 +6474,7 @@ class ThrowModule {
       aimTargetX,
       aimTargetY,
       arena,
-      throwPower,
+      maxSpeed,
       held.hasGravity,
       held.hasVerticalVelocity,
       held.colliderRadius,
@@ -6435,20 +6486,38 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const metabolicJoules = Math.max(5, mechWorkJoules * 3.5);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.08, character.energyPool, character.properties);
+        if (fraction <= 0) {
+          return null;
+        }
+      }
+    }
     if (launch.isAutoLocked && launch.targetObject) {
       const dx = launch.targetObject.position.x - character.position.x;
       const dy = launch.targetObject.position.y - character.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
       }
-    } else if (launchVel) {
-      if (Math.hypot(launchVel.vx, launchVel.vy) > 0.05) {
-        character.facingAngle = Math.atan2(launchVel.vy, launchVel.vx);
-      }
+    } else if (Math.hypot(launch.vx, launch.vy) > 0.05) {
+      character.facingAngle = Math.atan2(launch.vy, launch.vx);
+    }
+    if (!launchPos) {
+      const heldPos = character.calculateHeldObjectPosition(arena);
+      startX = heldPos.x;
+      startY = heldPos.y;
+      startZ = heldPos.z;
     }
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.originalThrower = character;
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;
@@ -7820,13 +7889,17 @@ class ConsumeModule {
 }
 class Character extends GameObject {
   constructor(options = {}) {
+    var _a;
     const initialColor = options.color ?? "#f59e0b";
     const determinedRole = options.role ?? (options.controllerType === "none" ? "dummy" : options.controllerType === "remote" ? "remote_player" : options.controllerType === "ai" ? "local_ai" : "local_player");
     const initialCharacterModule = options.characterModule !== void 0 ? options.characterModule : new CharacterModule({ role: determinedRole });
+    const initX = options.position ? options.position.x : options.x ?? 5;
+    const initY = options.position ? options.position.y : options.y ?? 7;
+    const initZ = ((_a = options.position) == null ? void 0 : _a.z) ?? 0;
     super({
       id: options.id,
       name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
-      position: { x: options.x ?? 5, y: options.y ?? 7, z: 0 },
+      position: { x: initX, y: initY, z: initZ },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,

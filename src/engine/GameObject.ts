@@ -37,6 +37,7 @@ export class GameObject {
   public isHeld: boolean;
   public heldBy: GameObject | null;
   public lastThrower: GameObject | null = null;
+  public originalThrower: GameObject | null = null;
   public isInFlight: boolean = false;
   public isCharacter = false;
   public isClimbing = false;
@@ -539,6 +540,7 @@ export class GameObject {
 
     if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
       this.isInFlight = false;
+      this.originalThrower = null;
     }
 
     if (!this.hasVerticalPosition) {

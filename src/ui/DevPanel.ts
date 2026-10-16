@@ -2619,9 +2619,9 @@ export class DevPanel {
       const throwForceSocketEl = this.container.querySelector("#prop-socket-throw-force");
       if (throwForceSocketEl && char.throwModule) {
         const tfCtrl = new PropertyControl({
-          property: char.throwModule.baseThrowForceProp,
+          property: char.throwModule.maxThrowSpeedProp,
           owner: char,
-          label: "Base Throw Power (u/s)",
+          label: "Max Throw Speed (u/s)",
           step: 0.5,
         });
         throwForceSocketEl.appendChild(tfCtrl.element);
