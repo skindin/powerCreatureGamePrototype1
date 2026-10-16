@@ -428,6 +428,10 @@
   - **Aligned Release Coordinates & In-Flight Tracking**:
     - Facing angle automatically aligns with the aim reticle prior to trajectory calculation and release, eliminating origin mismatch.
     - Added `originalThrower` on `GameObject` so client-side in-flight prediction persists across multi-tick airborne flights even after the object exits close reach.
+  - **Wall Clearance & Maximum Speed Ballistics Optimization**:
+    - Obstacle scan resolution increased to 120 steps across intermediate ray paths with `clearanceMargin = 0.35u`, guaranteeing that projectile bounding volumes fly cleanly over wall lips.
+    - Minimal flight time selection: when intermediate obstacles are present, the solver selects $T = \max(t_{\text{low}}, t_{\text{wall}})$, maintaining the shortest possible trajectory that guarantees complete clearance over the wall without hitting or dropping short.
+    - Removed arbitrary `0.14s` minimum flight time clamp that previously capped short throws to low speeds, flooring at `0.02s` (1 physics tick) so close-range throws launch at full $v_{\text{max}}$ speed.
   - **Automated Verification**: Verified 100% via `scratch/test_throw_controls.ts`, `scratch/test_online_throw_ballistics.ts`, and full `npm run build`.
 
 ---
