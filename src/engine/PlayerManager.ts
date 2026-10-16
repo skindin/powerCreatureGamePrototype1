@@ -57,6 +57,7 @@ export class PlayerManager {
   public baseCharacter: Character;
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
+  public onObjectDepleted?: (objectId: string) => void;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -970,6 +971,9 @@ export class PlayerManager {
           if (consumeResult.isDepleted) {
             console.log(`🍎 [PlayerManager] Local consumption of ${heldItem?.id} depleted! Removing and unlinking locally`);
             justDepletedConsumable = true;
+            if (heldItem?.id) {
+              this.onObjectDepleted?.(heldItem.id);
+            }
             const grabState = this.getGrabSuppressionState(char.id);
             grabState.mouseGrabSuppressed = true;
             grabState.keyEGrabSuppressed = true;

@@ -92,6 +92,7 @@ export class GameLoop {
   public activeMode: "local" | "boomerang" | "online" = "local";
   public onPlayerRenamed?: (playerId: string, newName: string) => void;
   public lastAppliedObjectSeq = -1;
+  public deletedConsumableIds = new Set<string>();
   public energyHud?: { update: (deltaSeconds?: number) => void };
 
   public get isSplitScreen(): boolean {
@@ -156,6 +157,10 @@ export class GameLoop {
 
     this.playerManager.onReliableActionDispatched = (action) => {
       this.onReliableAction?.(action);
+    };
+
+    this.playerManager.onObjectDepleted = (objectId) => {
+      this.deletedConsumableIds.add(objectId);
     };
   }
 
@@ -596,10 +601,21 @@ export class GameLoop {
     let maxDrift = 0;
 
     for (const sObj of serverObjects) {
+      if (this.deletedConsumableIds.has(sObj.id)) {
+        const existingIdx = this.objects.findIndex((o) => o.id === sObj.id);
+        if (existingIdx !== -1) {
+          const removed = this.objects.splice(existingIdx, 1)[0];
+          if (removed.heldBy && (removed.heldBy as Character).heldObject === removed) {
+            (removed.heldBy as Character).heldObject = null;
+          }
+        }
+        continue;
+      }
+
       let localObj = this.objects.find((o) => o.id === sObj.id);
       if (!localObj) {
         // If the object was a consumable that has already run out of energy on server (or client), do not resurrect it
-        if (sObj.remainingEnergyJoules !== undefined && sObj.remainingEnergyJoules <= 0.001) {
+        if (this.deletedConsumableIds.has(sObj.id) || (sObj.remainingEnergyJoules !== undefined && sObj.remainingEnergyJoules <= 0.001)) {
           continue;
         }
         // Authoritative server spawn: instantiate the object locally on the client!

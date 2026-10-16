@@ -10935,6 +10935,10 @@ class ServerGameSimulation {
       if (this.deletedObjectIds.has(cObj.id)) {
         continue;
       }
+      if (cObj.remainingEnergyJoules !== void 0 && cObj.remainingEnergyJoules <= 1e-3) {
+        this.triggerObjectDeletion(cObj.id);
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
         sObj = new GameObject({

@@ -778,6 +778,7 @@ export class OnlineSessionManager {
     if (Array.isArray(snapshot.objectDeletionEvents) && snapshot.objectDeletionEvents.length > 0) {
       for (const del of snapshot.objectDeletionEvents) {
         const objId = del.objectId;
+        this.gameLoop.deletedConsumableIds.add(objId);
         // Unconditionally delete object from gameLoop and arena
         const idx = this.gameLoop.objects.findIndex((o) => o.id === objId);
         if (idx !== -1) {

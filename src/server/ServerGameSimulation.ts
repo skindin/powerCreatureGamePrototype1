@@ -393,6 +393,10 @@ export class ServerGameSimulation {
       if (this.deletedObjectIds.has(cObj.id)) {
         continue;
       }
+      if (cObj.remainingEnergyJoules !== undefined && cObj.remainingEnergyJoules <= 0.001) {
+        this.triggerObjectDeletion(cObj.id);
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
         sObj = new GameObject({
