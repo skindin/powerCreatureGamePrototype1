@@ -245,6 +245,14 @@ export class ConsumableModule {
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
 
+    // Notify online session or consumer that this consumable was depleted and should be deleted across network
+    if (typeof (consumer as any)._onConsumableConsumed === "function") {
+      try { (consumer as any)._onConsumableConsumed(consumableObj.id); } catch (_) {}
+    }
+    if (typeof (consumableObj as any)._onConsumed === "function") {
+      try { (consumableObj as any)._onConsumed(consumableObj.id); } catch (_) {}
+    }
+
     // Detach from character's hands
     if (consumer.heldObject === consumableObj) {
       consumer.heldObject = null;

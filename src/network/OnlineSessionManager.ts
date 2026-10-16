@@ -363,9 +363,15 @@ export class OnlineSessionManager {
 
   private handleJoined(info: { clientId: string; playerNumber: number; name: string; color: string }): void {
     console.log(`🌐 [OnlineSession] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
+    const wireConsumableConsumed = (c: Character) => {
+      (c as any)._onConsumableConsumed = (objId: string) => {
+        this.client.unacknowledgedConsumedObjectIds.add(objId);
+      };
+    };
     if (this.gameLoop?.allCharacters) {
       for (const char of this.gameLoop.allCharacters) {
         (char as any)._isInOnlineMode = true;
+        wireConsumableConsumed(char);
       }
     }
     const hero = this.gameLoop?.players.get("keyboard")?.character || this.defaultCharacter;
@@ -508,6 +514,7 @@ export class OnlineSessionManager {
 
         if (targetChar) {
           console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
+          (targetChar as any).isAwaitingRespawn = false;
           if (targetChar.healthModule) {
             targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
               x: ev.respawnX,
@@ -532,6 +539,7 @@ export class OnlineSessionManager {
             this.gameLoop.interpolator.clearEntity(targetChar.serverCharId);
           }
           this.gameLoop.interpolator.clearEntity(targetChar.id);
+          this.gameLoop.historyBuffer.clear();
 
           // Now that client has snapped to the respawn position, queue the acknowledgment back to server
           this.client.acknowledgeDeathRespawn(ev.eventId);

@@ -385,8 +385,22 @@
     - Telemetry payloads (`GhostEntityState`, `ServerTelemetryBroadcaster`) broadcast `consumableTag`, `remainingEnergyJoules`, and `totalEnergyJoules` for all scene objects.
     - Remote clients display the apple's eat status, physical collider radius, and volumetric shrink in real time as other players consume food in the room.
   - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_apple_eating_sync.ts` alongside the full regression test suite and clean `npm run build`.
+- **Phase 12.13 (Multiplayer Consumable Depletion Deletion Pipeline & Server-Authoritative Respawn Lock)**:
+  - **Multiplayer Consumable Depletion & Deletion Pipeline**:
+    - Dispatched `_onConsumableConsumed` callback upon food depletion in `finishConsumption`, queued in `OnlineRoomClient.unacknowledgedConsumedObjectIds`.
+    - Streamed `consumedObjectIds` in `player_input` packets to `UniversalRoomManager`. The authoritative server immediately calls `triggerObjectDeletion(objectId)`, removing the item from `this.objects` and broadcasting a reliable `ObjectDeletionEvent` to all clients.
+    - Added server safeguard in `syncCharacterFromPacket`: if a client drops an item whose consumable energy is depleted ($\le 0.05\text{ J}$) or marked consumed, the server immediately triggers authoritative deletion rather than dropping it on the ground, completely eliminating phantom dropped food on remote clients.
+    - Synchronized `remainingEnergyJoulesProp` on existing server objects within `syncObjectsFromPacket`.
+  - **Server-Authoritative Death & Respawn Lock (Zero Oscillation)**:
+    - In `UniversalRoomManager`, explicitly set `id: serverCharId` and `serverCharId` when instantiating new characters, ensuring `targetEntityId` in `DeathRespawnEvent` reliably matches `serverCharId` across all client checks.
+    - In `HealthModule.dieAndRespawn`, marked `(character).isRespawnLocked = true` and recorded `authoritativeRespawnPos`.
+    - In `ServerGameSimulation.syncCharacterFromPacket`, enforced a strict respawn lock: all client packets with stale coordinates ($> 1.2\text{ units}$ away from the authoritative respawn point) are strictly rejected with coordinates held at `respawnPos` and velocities zeroed until the client sends a packet aligned with the server's respawn point.
+    - In `HealthModule`, set `(character).isAwaitingRespawn = true` upon dying in online mode, causing `OnlineRoomClient` to suppress sending old pre-death positions while awaiting the server's authoritative respawn event.
+    - In `OnlineSessionManager`, upon receiving `DeathRespawnEvent`, immediately snapped position to `(ev.respawnX, ev.respawnY, ev.respawnZ)`, cleared interpolators, cleared rollback history buffer, cleared `isAwaitingRespawn`, and sent an ACK with aligned coordinates.
+  - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_food_and_respawn_fix.ts` alongside the full regression test suite (`test_health_modifiers_hud.ts`, `test_energy_hud_color_blocks.ts`, `test_locomotion_wattage.ts`, `test_sprint_detoggle_and_floor.ts`, `test_allow_partial_power.ts`, `test_background_respawn.ts`, `test_healing_stamina_drain.ts`, `test_stamina_drain_equation.ts`).
 
 ---
+
 
 ## 3. Active Milestone: Phase 10 (Online Multiplayer Architecture)
 

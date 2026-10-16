@@ -320,7 +320,9 @@ export class HealthModule {
       // In online multiplayer mode, death/respawn is authoritative: the server picks the respawn location
       // and broadcasts DeathRespawnEvent so the character does not glitch between different positions.
       const isOnline = (character as any)._isInOnlineMode === true;
-      if (!isOnline) {
+      if (isOnline) {
+        (character as any).isAwaitingRespawn = true;
+      } else {
         this.dieAndRespawn(character, arena);
       }
     }
@@ -371,6 +373,8 @@ export class HealthModule {
     character.position.y = chosenSpawn.y;
     character.position.z = chosenSpawn.z;
     character.supportingSurfaceHeight = 0;
+    (character as any).isRespawnLocked = true;
+    (character as any).authoritativeRespawnPos = { ...chosenSpawn };
 
     // 5. Restore full HP and reset modifiers
     const max = this.getMaxHp(character.properties);

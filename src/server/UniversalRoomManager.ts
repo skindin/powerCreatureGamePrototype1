@@ -599,6 +599,7 @@ export class UniversalRoomManager {
             const spawnY = charEntry.spawnPos?.y ?? 7.0;
             const spawnZ = charEntry.spawnPos?.z ?? 0;
             const newChar = new Character({
+              id: serverCharId,
               x: spawnX,
               y: spawnY,
               color: charEntry.color,
@@ -610,6 +611,7 @@ export class UniversalRoomManager {
               name: charEntry.name,
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim()),
             });
+            newChar.serverCharId = serverCharId;
             newChar.position.z = spawnZ;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
@@ -626,6 +628,13 @@ export class UniversalRoomManager {
           }
 
           this.simulation.queueInput(pkt);
+
+          // Process consumed object deletions from client
+          if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
+            for (const objId of data.consumedObjectIds) {
+              this.simulation.triggerObjectDeletion(objId);
+            }
+          }
 
           // Process contested grab acknowledgments from client
           if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {

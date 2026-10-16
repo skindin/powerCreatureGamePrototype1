@@ -6815,7 +6815,9 @@ const _HealthModule = class _HealthModule {
     this._currentTick++;
     if (this.getCurrentHp(registry) <= 1e-4) {
       const isOnline = character._isInOnlineMode === true;
-      if (!isOnline) {
+      if (isOnline) {
+        character.isAwaitingRespawn = true;
+      } else {
         this.dieAndRespawn(character, arena);
       }
     }
@@ -6847,6 +6849,8 @@ const _HealthModule = class _HealthModule {
     character.position.y = chosenSpawn.y;
     character.position.z = chosenSpawn.z;
     character.supportingSurfaceHeight = 0;
+    character.isRespawnLocked = true;
+    character.authoritativeRespawnPos = { ...chosenSpawn };
     const max = this.getMaxHp(character.properties);
     this.currentHpProp.set(max, character.properties);
     this._activeModifiers.clear();
@@ -9603,6 +9607,18 @@ class ConsumableModule {
     console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${((_a = consumableObj.heldBy) == null ? void 0 : _a.name) || consumer.name}`);
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
+    if (typeof consumer._onConsumableConsumed === "function") {
+      try {
+        consumer._onConsumableConsumed(consumableObj.id);
+      } catch (_) {
+      }
+    }
+    if (typeof consumableObj._onConsumed === "function") {
+      try {
+        consumableObj._onConsumed(consumableObj.id);
+      } catch (_) {
+      }
+    }
     if (consumer.heldObject === consumableObj) {
       consumer.heldObject = null;
     }
@@ -10957,6 +10973,9 @@ class ServerGameSimulation {
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0) {
+        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
+      }
       if (cObj.isHeld) {
         const holderId = cObj.heldBy || senderClientId;
         const sChar = holderId ? this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId) : null;
@@ -11012,8 +11031,29 @@ class ServerGameSimulation {
     if (!sChar) {
       return;
     }
+    if (sChar.isRespawnLocked && sChar.authoritativeRespawnPos) {
+      const respawnPos = sChar.authoritativeRespawnPos;
+      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
+      if (distToRespawn > 1.2) {
+        sChar.position.x = respawnPos.x;
+        sChar.position.y = respawnPos.y;
+        sChar.position.z = respawnPos.z;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+      sChar.isRespawnLocked = false;
+    }
     for (const pending of this.pendingDeathRespawnEvents.values()) {
-      if (pending.event.targetEntityId === charId && !pending.acks.has(charId)) {
+      const isTarget = pending.event.targetEntityId === charId || pending.event.targetEntityId === sChar.id || pending.event.targetEntityId === sChar.playerId || pending.event.targetEntityId === sChar.serverCharId;
+      if (isTarget && !pending.acks.has(charId)) {
+        sChar.position.x = pending.event.respawnX;
+        sChar.position.y = pending.event.respawnY;
+        sChar.position.z = pending.event.respawnZ;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
         return;
       }
     }
@@ -11102,9 +11142,13 @@ class ServerGameSimulation {
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;
-      sObj.isHeld = false;
-      sObj.heldBy = null;
-      sChar.heldObject = null;
+      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
+        this.triggerObjectDeletion(sObj.id);
+      } else {
+        sObj.isHeld = false;
+        sObj.heldBy = null;
+        sChar.heldObject = null;
+      }
     }
   }
   /**
@@ -11534,11 +11578,12 @@ class ServerGameSimulation {
     for (const char of this.allCharacters) {
       if (char.healthModule && !char.healthModule.onDeathRespawn) {
         char.healthModule.onDeathRespawn = (entity, respawnPos) => {
-          const eventId = `death-${entity.id}-${this.currentTick}`;
+          const charId = entity.playerId || entity.serverCharId || entity.id;
+          const eventId = `death-${charId}-${this.currentTick}`;
           this.pendingDeathRespawnEvents.set(eventId, {
             event: {
               eventId,
-              targetEntityId: entity.id,
+              targetEntityId: charId,
               tick: this.currentTick,
               respawnX: respawnPos.x,
               respawnY: respawnPos.y,
@@ -12076,6 +12121,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
             const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
             const newChar = new Character({
+              id: serverCharId,
               x: spawnX,
               y: spawnY,
               color: charEntry.color,
@@ -12087,6 +12133,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               name: charEntry.name,
               hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim())
             });
+            newChar.serverCharId = serverCharId;
             newChar.position.z = spawnZ;
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
@@ -12100,6 +12147,11 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           }
           this.simulation.queueInput(pkt);
+          if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
+            for (const objId of data.consumedObjectIds) {
+              this.simulation.triggerObjectDeletion(objId);
+            }
+          }
           if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
             this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
           }

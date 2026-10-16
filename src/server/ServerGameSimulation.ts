@@ -418,6 +418,10 @@ export class ServerGameSimulation {
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
 
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined) {
+        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
+      }
+
       // 1. Synchronize Held State
       if (cObj.isHeld) {
         const holderId = cObj.heldBy || senderClientId;
@@ -491,10 +495,37 @@ export class ServerGameSimulation {
     }
 
     // Server-authoritative death respawn lock:
-    // If there is an active unacknowledged death respawn event for this character,
-    // DO NOT accept/acknowledge client position updates until the client has acknowledged the respawn event!
+    // If character is marked respawn-locked, only unlock when incoming packet is aligned with respawn coordinates!
+    if ((sChar as any).isRespawnLocked && (sChar as any).authoritativeRespawnPos) {
+      const respawnPos = (sChar as any).authoritativeRespawnPos;
+      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
+      if (distToRespawn > 1.2) {
+        // Keep character firmly locked at respawn coordinates
+        sChar.position.x = respawnPos.x;
+        sChar.position.y = respawnPos.y;
+        sChar.position.z = respawnPos.z;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+      // Incoming packet is aligned with respawn position: unlock character!
+      (sChar as any).isRespawnLocked = false;
+    }
+
+    // Secondary check against active unacknowledged pending death events
     for (const pending of this.pendingDeathRespawnEvents.values()) {
-      if (pending.event.targetEntityId === charId && !pending.acks.has(charId)) {
+      const isTarget = pending.event.targetEntityId === charId ||
+                       pending.event.targetEntityId === sChar.id ||
+                       pending.event.targetEntityId === sChar.playerId ||
+                       pending.event.targetEntityId === (sChar as any).serverCharId;
+      if (isTarget && !pending.acks.has(charId)) {
+        sChar.position.x = pending.event.respawnX;
+        sChar.position.y = pending.event.respawnY;
+        sChar.position.z = pending.event.respawnZ;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
         return;
       }
     }
@@ -612,9 +643,13 @@ export class ServerGameSimulation {
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;
-      sObj.isHeld = false;
-      sObj.heldBy = null;
-      sChar.heldObject = null;
+      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
+        this.triggerObjectDeletion(sObj.id);
+      } else {
+        sObj.isHeld = false;
+        sObj.heldBy = null;
+        sChar.heldObject = null;
+      }
     }
   }
 
@@ -1108,11 +1143,12 @@ export class ServerGameSimulation {
     for (const char of this.allCharacters) {
       if (char.healthModule && !char.healthModule.onDeathRespawn) {
         char.healthModule.onDeathRespawn = (entity, respawnPos) => {
-          const eventId = `death-${entity.id}-${this.currentTick}`;
+          const charId = (entity as Character).playerId || (entity as any).serverCharId || entity.id;
+          const eventId = `death-${charId}-${this.currentTick}`;
           this.pendingDeathRespawnEvents.set(eventId, {
             event: {
               eventId,
-              targetEntityId: entity.id,
+              targetEntityId: charId,
               tick: this.currentTick,
               respawnX: respawnPos.x,
               respawnY: respawnPos.y,

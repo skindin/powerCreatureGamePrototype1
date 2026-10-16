@@ -38,6 +38,7 @@ export class OnlineRoomClient {
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public unacknowledgedContestedAcks = new Set<string>();
   public unacknowledgedObjectDeletionAcks = new Set<string>();
+  public unacknowledgedConsumedObjectIds = new Set<string>();
   public unacknowledgedDeathRespawnAcks = new Set<string>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
@@ -256,6 +257,7 @@ export class OnlineRoomClient {
               if (Array.isArray(msg.snapshot.objectDeletionEvents) && msg.snapshot.objectDeletionEvents.length > 0) {
                 for (const ev of msg.snapshot.objectDeletionEvents) {
                   this.unacknowledgedObjectDeletionAcks.add(ev.eventId);
+                  this.unacknowledgedConsumedObjectIds.delete(ev.objectId);
                 }
               }
 
@@ -400,11 +402,13 @@ export class OnlineRoomClient {
         : undefined;
 
       // The client must not send any position information until its position has been corrected
-      // and it is fully connected and registered with an authoritative spawn position.
+      // and it is fully connected and registered with an authoritative spawn position,
+      // and NOT while dead/awaiting authoritative server respawn!
       const localReg = this.localPlayers.get(localPlayerId);
       const isSpawnAligned = Boolean(localReg && localReg.spawnPos);
+      const isAwaitingRespawn = Boolean(character?.isAwaitingRespawn);
 
-      const charTelemetry = (character && isSpawnAligned) ? {
+      const charTelemetry = (character && isSpawnAligned && !isAwaitingRespawn) ? {
         id: serverCharId,
         name: isCustomCharacter
           ? character.name
@@ -458,6 +462,10 @@ export class OnlineRoomClient {
         totalEnergyJoules: obj.consumableModule ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : undefined,
       })) : undefined;
 
+      const consumedObjectIds = this.unacknowledgedConsumedObjectIds.size > 0
+        ? Array.from(this.unacknowledgedConsumedObjectIds.values())
+        : undefined;
+
       const ackContestedEventIds = this.unacknowledgedContestedAcks.size > 0
         ? Array.from(this.unacknowledgedContestedAcks.values())
         : undefined;
@@ -477,6 +485,7 @@ export class OnlineRoomClient {
         packet,
         character: charTelemetry,
         objects: objTelemetry,
+        consumedObjectIds,
         reliableActions,
         ackContestedEventIds,
         ackObjectDeletionEventIds,
