@@ -493,26 +493,48 @@ export class OnlineSessionManager {
     // Process authoritative server death & respawn events
     if (snapshot.deathRespawnEvents && Array.isArray(snapshot.deathRespawnEvents)) {
       for (const ev of snapshot.deathRespawnEvents) {
+        // Robust match for local character, serverCharId, playerId, or dummy
         const targetChar = this.gameLoop.allCharacters.find(
-          (c) => c.id === ev.targetEntityId || c.playerId === ev.targetEntityId || (c.isDummy && ev.targetEntityId === "dummy-1")
-        );
-        if (targetChar && targetChar.healthModule) {
+          (c) => c.id === ev.targetEntityId ||
+                 c.serverCharId === ev.targetEntityId ||
+                 c.playerId === ev.targetEntityId ||
+                 (c.isDummy && ev.targetEntityId === "dummy-1")
+        ) || Array.from(this.gameLoop.players.values()).find(
+          (p) => p.character.serverCharId === ev.targetEntityId ||
+                 p.id === ev.targetEntityId ||
+                 p.character.id === ev.targetEntityId ||
+                 p.character.playerId === ev.targetEntityId
+        )?.character;
+
+        if (targetChar) {
           console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
-          targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
-            x: ev.respawnX,
-            y: ev.respawnY,
-            z: ev.respawnZ
-          });
+          if (targetChar.healthModule) {
+            targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
+              x: ev.respawnX,
+              y: ev.respawnY,
+              z: ev.respawnZ
+            });
+          }
           targetChar.position.x = ev.respawnX;
           targetChar.position.y = ev.respawnY;
-          targetChar.position.z = ev.respawnZ;
+          targetChar.position.z = ev.respawnZ ?? 0;
           targetChar.velocity.x = 0;
           targetChar.velocity.y = 0;
           if (targetChar.hasVerticalVelocity) {
             targetChar.verticalVelocity = 0;
           }
-          this.gameLoop.interpolator.clearEntity(targetChar.playerId);
+          targetChar.supportingSurfaceHeight = ev.respawnZ ?? 0;
+
+          if (targetChar.playerId) {
+            this.gameLoop.interpolator.clearEntity(targetChar.playerId);
+          }
+          if (targetChar.serverCharId) {
+            this.gameLoop.interpolator.clearEntity(targetChar.serverCharId);
+          }
           this.gameLoop.interpolator.clearEntity(targetChar.id);
+
+          // Now that client has snapped to the respawn position, queue the acknowledgment back to server
+          this.client.acknowledgeDeathRespawn(ev.eventId);
         }
       }
     }

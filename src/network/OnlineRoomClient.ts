@@ -259,11 +259,8 @@ export class OnlineRoomClient {
                 }
               }
 
-              if (Array.isArray(msg.snapshot.deathRespawnEvents) && msg.snapshot.deathRespawnEvents.length > 0) {
-                for (const ev of msg.snapshot.deathRespawnEvents) {
-                  this.unacknowledgedDeathRespawnAcks.add(ev.eventId);
-                }
-              }
+              // Death respawn events are processed by OnlineSessionManager which snaps the local/remote character,
+              // then explicitly calls client.acknowledgeDeathRespawn(eventId) once the position is set.
 
               if (msg.snapshot.clockSync) {
                 this.onClockSync?.(msg.snapshot.clockSync);
@@ -486,6 +483,12 @@ export class OnlineRoomClient {
         ackDeathRespawnEventIds,
       }));
     } catch (_) {}
+  }
+
+  public acknowledgeDeathRespawn(eventId: string): void {
+    if (eventId) {
+      this.unacknowledgedDeathRespawnAcks.add(eventId);
+    }
   }
 
   public renamePlayer(newName: string, localPlayerId: string = "keyboard"): void {
