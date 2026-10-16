@@ -449,6 +449,12 @@ export class ServerGameSimulation {
           sObj.heldBy.heldObject = null;
         }
         sObj.heldBy = null;
+
+        // If the object being dropped/released was a consumed/depleted item, trigger authoritative deletion immediately!
+        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.001)) {
+          this.triggerObjectDeletion(sObj.id);
+          continue;
+        }
       }
 
       // STRICT MULTIPLAYER AUTHORITY RULE:

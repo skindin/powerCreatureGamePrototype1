@@ -10983,6 +10983,10 @@ class ServerGameSimulation {
           sObj.heldBy.heldObject = null;
         }
         sObj.heldBy = null;
+        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 1e-3)) {
+          this.triggerObjectDeletion(sObj.id);
+          continue;
+        }
       }
       continue;
     }
