@@ -522,6 +522,8 @@ export class OnlineSessionManager {
               z: ev.respawnZ
             });
           }
+          // Explicitly reset all character dynamic values (HP, Energy Pool, Burst Stamina) on respawn
+          targetChar.resetDynamicValues();
           targetChar.position.x = ev.respawnX;
           targetChar.position.y = ev.respawnY;
           targetChar.position.z = ev.respawnZ ?? 0;
