@@ -4,6 +4,7 @@ import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
 import { DamageAuraModule } from "./engine/DamageAuraModule.js";
+import { ConsumableModule } from "./engine/ConsumableModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -293,6 +294,27 @@ function bootstrap(): void {
       damageAuraModule: new DamageAuraModule({
         damageRadius: 2.2,
         damageRate: 25.0,
+      }),
+    }),
+    new GameObject({
+      id: "apple-default-1",
+      name: "Apple",
+      position: { x: 5.5, y: 7.0, z: 0 },
+      color: "#22c55e",
+      visualShape: "circle",
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        totalEnergyJoules: 2000,
+        remainingEnergyJoules: 2000,
+        consumeRateWatts: 400,
+        healRate: 0,
+        minScaleFloor: 0.35,
+        minRadiusFloor: 0.12,
       }),
     }),
   ];

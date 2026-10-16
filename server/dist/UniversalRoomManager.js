@@ -9614,6 +9614,384 @@ class ConsumableModule {
     }
   }
 }
+class SceneSpawner {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "enabled", true);
+    __publicField(this, "prefabId");
+    /** Interval in minutes between spawn attempts (e.g. 0.20 min = 12s, 1.0 min = 60s) */
+    __publicField(this, "intervalMinutes", 0.2);
+    /** Maximum number of active live instances of this prefab allowed in the scene */
+    __publicField(this, "maxCount", 5);
+    /** Elapsed time in seconds towards next spawn */
+    __publicField(this, "timerSeconds", 0);
+    this.id = options.id;
+    this.name = options.name || "Scene Spawner";
+    if (options.enabled !== void 0) this.enabled = options.enabled;
+    this.prefabId = options.prefabId;
+    if (options.intervalMinutes !== void 0) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
+    if (options.maxCount !== void 0) this.maxCount = Math.max(1, options.maxCount);
+  }
+  /**
+   * Returns current count of active live instances of this prefab in the scene.
+   */
+  getActiveCount(objects) {
+    return objects.filter((o) => o.prefabId === this.prefabId).length;
+  }
+  /**
+   * Advances timer and spawns an instance when interval expires, unless maxCount is reached.
+   */
+  update(dt, arena, objects, prefabManager2) {
+    if (!this.enabled || !arena) return null;
+    const activeCount = this.getActiveCount(objects);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    this.timerSeconds += dt;
+    const targetIntervalSec = this.intervalMinutes * 60;
+    if (this.timerSeconds >= targetIntervalSec) {
+      this.timerSeconds = 0;
+      return this.spawnNow(arena, objects, prefabManager2);
+    }
+    return null;
+  }
+  /**
+   * Immediately spawns an instance of the assigned prefab at a valid random open ground spot.
+   */
+  spawnNow(arena, objects, prefabManager2) {
+    if (!arena) return null;
+    const activeCount = this.getActiveCount(objects);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    const pos = this.findRandomGroundPosition(arena);
+    const instance = prefabManager2.spawn(this.prefabId, pos, arena, objects);
+    return instance;
+  }
+  /**
+   * Finds a random open ground coordinate in the arena away from perimeter and solid walls.
+   */
+  findRandomGroundPosition(arena) {
+    const margin = 1.5;
+    const minX = margin;
+    const maxX = Math.max(margin + 1, arena.width - margin);
+    const minY = margin;
+    const maxY = Math.max(margin + 1, arena.height - margin);
+    for (let i = 0; i < 25; i++) {
+      const rx = minX + Math.random() * (maxX - minX);
+      const ry = minY + Math.random() * (maxY - minY);
+      const tileX = Math.floor(rx);
+      const tileY = Math.floor(ry);
+      if (!arena.hasWall(tileX, tileY)) {
+        return { x: rx, y: ry, z: 0 };
+      }
+    }
+    return { x: arena.width / 2, y: arena.height / 2, z: 0 };
+  }
+}
+class Prefab {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "icon");
+    __publicField(this, "archetype");
+    this.id = options.id;
+    this.name = options.name;
+    this.icon = options.icon ?? "📦";
+    this.archetype = options.archetype;
+  }
+  /**
+   * Instantiates a new live GameObject from this prefab.
+   */
+  instantiate(pos, arena) {
+    const GameObjectClass = this.archetype.constructor;
+    let cloneConsumable = null;
+    if (this.archetype.consumableModule) {
+      const src = this.archetype.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    const spawnPos = {
+      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
+      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
+      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
+    };
+    const instance = new GameObjectClass({
+      name: this.archetype.name,
+      position: spawnPos,
+      color: this.archetype.color,
+      visualShape: this.archetype.visualShape,
+      mass: this.archetype.mass,
+      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
+      bounceMod: this.archetype.bounceMod,
+      hasGravity: this.archetype.hasGravity,
+      hasVerticalPosition: this.archetype.hasVerticalPosition,
+      consumableModule: cloneConsumable
+    });
+    instance.prefabId = this.id;
+    instance.overriddenProperties = /* @__PURE__ */ new Set();
+    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
+      arena.syncEntitiesWithWalls([instance]);
+    }
+    return instance;
+  }
+  /**
+   * Updates a property on the prefab archetype and cascades the change to all
+   * live instances that have not overridden this property.
+   */
+  setProperty(propKey, value, liveObjects) {
+    this.applyPropertyToEntity(this.archetype, propKey, value);
+    for (const obj of liveObjects) {
+      if (obj.prefabId === this.id) {
+        if (!obj.overriddenProperties.has(propKey)) {
+          this.applyPropertyToEntity(obj, propKey, value);
+        }
+      }
+    }
+  }
+  applyPropertyToEntity(ent, propKey, value) {
+    switch (propKey) {
+      case "name":
+        ent.name = String(value);
+        break;
+      case "color":
+        ent.color = String(value);
+        break;
+      case "visualShape":
+        ent.visualShape = value === "box" ? "box" : "circle";
+        break;
+      case "mass":
+        ent.mass = Number(value);
+        if (ent.rigidbodyModule) ent.rigidbodyModule.massProp.literalValue = Number(value);
+        break;
+      case "colliderRadius":
+        ent.colliderRadius = Number(value);
+        if (ent.colliderModule) ent.colliderModule.radius = Number(value);
+        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
+        break;
+      case "consumable_totalEnergy":
+        if (ent.consumableModule) {
+          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
+          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
+            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
+          }
+        }
+        break;
+      case "consumable_consumeRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_healRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.healRateProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_tag":
+        if (ent.consumableModule) {
+          ent.consumableModule.tag = String(value);
+        }
+        break;
+    }
+  }
+}
+class PrefabManager {
+  constructor() {
+    __publicField(this, "prefabs", /* @__PURE__ */ new Map());
+    __publicField(this, "onPrefabChangedCallbacks", /* @__PURE__ */ new Set());
+    this.initDefaultPrefabs();
+  }
+  initDefaultPrefabs() {
+    const appleArchetype = new GameObject({
+      id: "archetype_apple",
+      name: "Apple",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#22c55e",
+      visualShape: "circle",
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        totalEnergyJoules: 2e3,
+        remainingEnergyJoules: 2e3,
+        consumeRateWatts: 400,
+        healRate: 0,
+        minScaleFloor: 0.35,
+        minRadiusFloor: 0.12
+      })
+    });
+    const applePrefab = new Prefab({
+      id: "prefab_apple",
+      name: "Apple",
+      icon: "🍏",
+      archetype: appleArchetype
+    });
+    this.prefabs.set(applePrefab.id, applePrefab);
+  }
+  getAll() {
+    return Array.from(this.prefabs.values());
+  }
+  get(id) {
+    return this.prefabs.get(id);
+  }
+  /**
+   * Creates a new Prefab from an existing scene GameObject.
+   * Links the source entity to the new prefab as its first instance.
+   */
+  createFromEntity(entity, name) {
+    const id = `prefab_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
+    const prefabName = name || entity.name || "Custom Prefab";
+    const icon = entity.consumableModule ? "🍎" : entity.visualShape === "box" ? "📦" : "⚪";
+    const GameObjectClass = entity.constructor;
+    let cloneConsumable = null;
+    if (entity.consumableModule) {
+      const src = entity.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    const archetype = new GameObjectClass({
+      name: prefabName,
+      position: { x: 0, y: 0, z: 0 },
+      color: entity.color,
+      visualShape: entity.visualShape,
+      mass: entity.mass,
+      colliderRadius: entity.consumableModule ? entity.consumableModule.initialColliderRadius || entity.colliderRadius : entity.colliderRadius,
+      bounceMod: entity.bounceMod,
+      hasGravity: entity.hasGravity,
+      hasVerticalPosition: entity.hasVerticalPosition,
+      consumableModule: cloneConsumable
+    });
+    const prefab = new Prefab({
+      id,
+      name: prefabName,
+      icon,
+      archetype
+    });
+    this.prefabs.set(id, prefab);
+    entity.prefabId = id;
+    entity.overriddenProperties.clear();
+    this.notifyChanged();
+    return prefab;
+  }
+  /**
+   * Instantiates a prefab into the scene.
+   */
+  spawn(prefabId, pos, arena, objects) {
+    const prefab = this.prefabs.get(prefabId);
+    if (!prefab) return null;
+    const instance = prefab.instantiate(pos, arena);
+    if (objects && !objects.includes(instance)) {
+      objects.push(instance);
+    }
+    return instance;
+  }
+  /**
+   * Deletes a prefab without deleting live instances.
+   * Any live instances simply have their prefabId cleared.
+   */
+  delete(prefabId, liveObjects) {
+    if (!this.prefabs.has(prefabId)) return false;
+    this.prefabs.delete(prefabId);
+    if (liveObjects) {
+      for (const obj of liveObjects) {
+        if (obj.prefabId === prefabId) {
+          obj.prefabId = null;
+          obj.overriddenProperties.clear();
+        }
+      }
+    }
+    this.notifyChanged();
+    return true;
+  }
+  onPrefabsChanged(cb) {
+    this.onPrefabChangedCallbacks.add(cb);
+    return () => this.onPrefabChangedCallbacks.delete(cb);
+  }
+  notifyChanged() {
+    for (const cb of this.onPrefabChangedCallbacks) {
+      cb();
+    }
+  }
+}
+const prefabManager = new PrefabManager();
+class SceneSpawnerManager {
+  constructor(pm = prefabManager) {
+    __publicField(this, "spawners", /* @__PURE__ */ new Map());
+    __publicField(this, "onSpawnersChangedCallbacks", /* @__PURE__ */ new Set());
+    __publicField(this, "prefabManager");
+    this.prefabManager = pm;
+    this.initDefaultSpawners();
+  }
+  initDefaultSpawners() {
+    const appleSpawner = new SceneSpawner({
+      id: "spawner_apple_default",
+      name: "Random Apple Spawner",
+      enabled: true,
+      prefabId: "prefab_apple",
+      intervalMinutes: 0.25,
+      // every 15 seconds
+      maxCount: 5
+      // up to 5 apples in scene at once
+    });
+    this.spawners.set(appleSpawner.id, appleSpawner);
+  }
+  getAll() {
+    return Array.from(this.spawners.values());
+  }
+  get(id) {
+    return this.spawners.get(id);
+  }
+  create(options) {
+    const spawner = new SceneSpawner(options);
+    this.spawners.set(spawner.id, spawner);
+    this.notifyChanged();
+    return spawner;
+  }
+  delete(id) {
+    const deleted = this.spawners.delete(id);
+    if (deleted) {
+      this.notifyChanged();
+    }
+    return deleted;
+  }
+  update(dt, arena, objects) {
+    for (const spawner of this.spawners.values()) {
+      if (spawner.enabled) {
+        spawner.update(dt, arena, objects, this.prefabManager);
+      }
+    }
+  }
+  onSpawnersChanged(cb) {
+    this.onSpawnersChangedCallbacks.add(cb);
+    return () => this.onSpawnersChangedCallbacks.delete(cb);
+  }
+  notifyChanged() {
+    for (const cb of this.onSpawnersChangedCallbacks) {
+      cb();
+    }
+  }
+}
+new SceneSpawnerManager();
 class PlayerJitterQueue {
   constructor(playerId, config) {
     __publicField(this, "playerId");
@@ -10244,6 +10622,9 @@ class ServerGameSimulation {
     __publicField(this, "currentTick", 0);
     __publicField(this, "fixedDt", 1 / 60);
     __publicField(this, "collisionMode", "dynamic");
+    // Background scene spawner manager (authoritative item dispensing on server)
+    __publicField(this, "sceneSpawnerManager");
+    __publicField(this, "prefabManager");
     // Per-player input jitter buffer (Phase 5.2)
     __publicField(this, "jitterBuffer");
     // Adaptive Clock Sync & Time Dilation (Phase 6)
@@ -10277,6 +10658,8 @@ class ServerGameSimulation {
       broadcastRateHz: (config == null ? void 0 : config.broadcastRateHz) ?? 60,
       deltaCompression: (config == null ? void 0 : config.deltaCompression) ?? true
     });
+    this.prefabManager = new PrefabManager();
+    this.sceneSpawnerManager = new SceneSpawnerManager(this.prefabManager);
   }
   get allCharacters() {
     return Array.from(this.characters.values());
@@ -10445,6 +10828,27 @@ class ServerGameSimulation {
         damageAuraModule: new DamageAuraModule({
           damageRadius: 2.2,
           damageRate: 25
+        })
+      }),
+      new GameObject({
+        id: "apple-default-1",
+        name: "Apple",
+        position: { x: 5.5, y: 7, z: 0 },
+        color: "#22c55e",
+        visualShape: "circle",
+        mass: 0.35,
+        colliderRadius: 0.25,
+        bounceMod: 0.2,
+        hasGravity: true,
+        hasVerticalPosition: true,
+        consumableModule: new ConsumableModule({
+          tag: "food",
+          totalEnergyJoules: 2e3,
+          remainingEnergyJoules: 2e3,
+          consumeRateWatts: 400,
+          healRate: 0,
+          minScaleFloor: 0.35,
+          minRadiusFloor: 0.12
         })
       })
     ];
@@ -11010,6 +11414,7 @@ class ServerGameSimulation {
         ent.damageAuraModule.update(dt, ent, this.arena);
       }
     }
+    this.sceneSpawnerManager.update(dt, this.arena, this.objects);
     for (const char of this.allCharacters) {
       if (char.healthModule && !char.healthModule.onDeathRespawn) {
         char.healthModule.onDeathRespawn = (entity, respawnPos) => {

@@ -9,6 +9,8 @@ import { GhostSnapshot, GhostEntityState, DeathRespawnEvent } from "../network/R
 import { RollModule } from "../engine/RollModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
+import { SceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
+import { PrefabManager } from "../engine/prefab/PrefabManager.js";
 import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
 import {
   AuthoritativeSnapshotManager,
@@ -44,6 +46,10 @@ export class ServerGameSimulation {
   public currentTick: number = 0;
   public fixedDt: number = 1 / 60;
   public collisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
+
+  // Background scene spawner manager (authoritative item dispensing on server)
+  public sceneSpawnerManager: SceneSpawnerManager;
+  public prefabManager: PrefabManager;
 
   // Per-player input jitter buffer (Phase 5.2)
   public jitterBuffer: ServerJitterBufferManager;
@@ -83,6 +89,8 @@ export class ServerGameSimulation {
       broadcastRateHz: config?.broadcastRateHz ?? 60,
       deltaCompression: config?.deltaCompression ?? true,
     });
+    this.prefabManager = new PrefabManager();
+    this.sceneSpawnerManager = new SceneSpawnerManager(this.prefabManager);
   }
 
   public get allCharacters(): Character[] {
@@ -277,6 +285,27 @@ export class ServerGameSimulation {
         damageAuraModule: new DamageAuraModule({
           damageRadius: 2.2,
           damageRate: 25.0,
+        }),
+      }),
+      new GameObject({
+        id: "apple-default-1",
+        name: "Apple",
+        position: { x: 5.5, y: 7.0, z: 0 },
+        color: "#22c55e",
+        visualShape: "circle",
+        mass: 0.35,
+        colliderRadius: 0.25,
+        bounceMod: 0.2,
+        hasGravity: true,
+        hasVerticalPosition: true,
+        consumableModule: new ConsumableModule({
+          tag: "food",
+          totalEnergyJoules: 2000,
+          remainingEnergyJoules: 2000,
+          consumeRateWatts: 400,
+          healRate: 0,
+          minScaleFloor: 0.35,
+          minRadiusFloor: 0.12,
         }),
       }),
     ];
@@ -954,6 +983,9 @@ export class ServerGameSimulation {
         ent.damageAuraModule.update(dt, ent, this.arena);
       }
     }
+
+    // 4d. Update background scene spawners (periodic item dispensing on authoritative server)
+    this.sceneSpawnerManager.update(dt, this.arena, this.objects);
 
     // 4c. Process death respawns hook setup for characters
     for (const char of this.allCharacters) {
