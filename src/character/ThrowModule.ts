@@ -67,7 +67,7 @@ export class ThrowModule {
     energyBusId?: string;
     enabled?: boolean;
   }) {
-    const initialSpeed = options?.maxThrowSpeed ?? options?.baseThrowForce ?? 14.0;
+    const initialSpeed = options?.maxThrowSpeed ?? options?.baseThrowForce ?? 100.0;
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
     this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
