@@ -438,8 +438,8 @@
 
 ## 3. Agent Workflow Rules
 
-1. **Strict Action-First Cap**: Maximum 2 file reads (`view_file`) or search calls per prompt before making edits or taking action. Never repeatedly view the same file or re-read already known code. Stop analyzing and execute immediately.
+1. **Direct Solve (Zero Exploratory Loops)**: Jump directly to the target file and apply the modification on Step 1 or Step 2. Do NOT run multi-turn grep searches, read multiple files sequentially, or create scratch test scripts unless explicitly requested. Stop analyzing and execute immediately.
 2. **Read First**: Read this `AGENTS.md` before starting. Deep historical notes live in `docs/history/COMPLETED_PHASES.md`.
 3. **Push on Commit**: Push to origin (`git push origin <branch>`) every single time you commit.
-4. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously. Use headless test scripts (`npx tsx scratch/test_*.ts`) for verification.
-5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested (`src/network`, `src/ui`, `src/character`, etc.) without scanning unrelated directories.
+4. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously.
+5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
