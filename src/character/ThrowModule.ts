@@ -489,40 +489,17 @@ export class ThrowModule {
 
     const deltaZ = targetSurfaceHeight - startZ;
 
-    // Shortest and flattest trajectory arc:
-    // Minimum flight time is determined by maximum horizontal launch speed.
-    // Flattest possible arc has the minimum valid flight time T:
-    const minFlightTime = Math.max(0.14, actualDist / launchSpeed);
-    let totalTime = minFlightTime;
-
-    // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
-    if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / arena.gravity));
-    }
-
-    // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
-    // If the flat trajectory would collide with an intermediate wall, increase totalTime to the minimum
-    // required to clear the wall top with a tight, minimal clearance arc.
+    // Direct chord check: does a direct chord between start and destination hit an intermediate wall?
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    const clearance = 0.25; // Clean clearance over intermediate walls
+    let maxRequiredT = 0;
 
-    // Dense sampling near the start (s < 0.1) ensures walls directly in front of the thrower are detected immediately
-    const sampleRatios: number[] = [];
-    for (let s = 0.005; s < 0.1; s += 0.005) {
-      sampleRatios.push(s);
-    }
-    for (let i = 4; i <= 40; i++) {
-      sampleRatios.push(i / 40);
-    }
-
-    for (const s of sampleRatios) {
+    for (let i = 1; i < 40; i++) {
+      const s = i / 40;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
 
-      // Check if sample intersects any wall
       for (const wall of arena.walls) {
         if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
-          // If the target itself is on top of this wall (or destination is on this wall) and we are near the end of the trajectory, skip (it's landing)
           const isTargetOnThisWall = (targetSurfaceHeight > 0 || (hoveredEntity && hoveredEntity.standingWall === wall)) &&
             finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
             finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
@@ -530,22 +507,15 @@ export class ThrowModule {
             continue;
           }
 
-          // Intermediate wall that must be cleared!
-          // Direct chord height: baselineZ = (1 - s) * startZ + s * targetSurfaceHeight
-          // Trajectory arc height: z(s) = baselineZ + 0.5 * g * totalTime^2 * s * (1 - s)
-          // We require z(s) >= wall.wallHeight + clearance
-          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const requiredHeight = wall.wallHeight + clearance;
-          const requiredDeltaZ = requiredHeight - baselineZ;
-          if (requiredDeltaZ > 0) {
-            const denom = arena.gravity * s * (1 - s);
+          const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const reqClearanceZ = wall.wallHeight + 0.08;
+          const reqLift = reqClearanceZ - chordZ;
+          if (reqLift > 0) {
+            const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 0.0001) {
-              const reqTimeSq = (2 * requiredDeltaZ) / denom;
-              if (reqTimeSq > 0) {
-                const reqTime = Math.sqrt(reqTimeSq);
-                if (reqTime > totalTime) {
-                  totalTime = reqTime;
-                }
+              const neededT = Math.sqrt(reqLift / denom);
+              if (neededT > maxRequiredT) {
+                maxRequiredT = neededT;
               }
             }
           }
@@ -553,14 +523,49 @@ export class ThrowModule {
       }
     }
 
-    if (totalTime <= 0.05) return null;
+    // Flattest possible arc:
+    // Ballistic equation: v_h = D / T,  v_z = deltaZ / T + 0.5 * g * T
+    // Total launch speed squared: v^2 = v_h^2 + v_z^2 = (D/T)^2 + (deltaZ/T + 0.5 * g * T)^2
+    // We want the flattest arc with v <= launchSpeed.
+    // The flattest arc corresponds to the minimum valid T that clears obstacles and can reach the target.
+    // For flat ground without obstacles, solving (D/T)^2 + (0.5 * g * T)^2 <= vMax^2 gives the standard minimum T:
+    // Let u = T^2: 0.25 * g^2 * u^2 - (vMax^2 - g * deltaZ) * u + (D^2 + deltaZ^2) = 0.
+    const g = arena.gravity;
+    const D = actualDist;
+    const vMax = launchSpeed;
+    const aCoeff = 0.25 * g * g;
+    const bCoeff = -(vMax * vMax - g * deltaZ);
+    const cCoeff = D * D + deltaZ * deltaZ;
 
-    // From totalTime and deltaZ, compute the exact vz to hit targetSurfaceHeight at totalTime:
-    // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
-    // vz = (deltaZ + 0.5 * g * totalTime^2) / totalTime
-    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+    let minBallisticT = 0;
 
-    // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
+    if (disc >= 0) {
+      // Smallest positive root of u = T^2 gives the flattest (fastest, lowest vz) arc
+      const u1 = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      if (u1 > 0) {
+        minBallisticT = Math.sqrt(u1);
+      }
+    } else {
+      // Target is beyond max range for a flat throw with vMax; use angle of 45 deg equivalent (peak range T)
+      const uPeak = -bCoeff / (2 * aCoeff);
+      if (uPeak > 0) {
+        minBallisticT = Math.sqrt(uPeak);
+      }
+    }
+
+    if (minBallisticT <= 0) {
+      minBallisticT = Math.max(0.14, D / vMax);
+    }
+
+    // Take the minimum T that satisfies both ballistic limits and wall clearance
+    let totalTime = Math.max(minBallisticT, maxRequiredT);
+    if (deltaZ > 0) {
+      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / g));
+    }
+    totalTime = Math.max(0.14, totalTime);
+
+    const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
@@ -599,9 +604,7 @@ export class ThrowModule {
     let startY = held.position.y;
     let startZ = held.position.z;
 
-    // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is near an adjacent wall, elevate startZ when throwing
-    // over or onto the wall so the item clears the top without clipping the rim!
+    // If starting on the ground, clamp horizontal start position outside walls
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -614,9 +617,6 @@ export class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
 
     const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
@@ -789,9 +789,6 @@ export class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
 
     const candidateEntities = entities ?? arena.entities;

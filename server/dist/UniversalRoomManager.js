@@ -6229,21 +6229,10 @@ class ThrowModule {
       return { vx: vx2, vy: vy2, vz: vz2, totalTime: totalTime2, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
     const deltaZ = targetSurfaceHeight - startZ;
-    const minFlightTime = Math.max(0.14, actualDist / launchSpeed);
-    let totalTime = minFlightTime;
-    if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / arena.gravity));
-    }
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    const clearance = 0.25;
-    const sampleRatios = [];
-    for (let s = 5e-3; s < 0.1; s += 5e-3) {
-      sampleRatios.push(s);
-    }
-    for (let i = 4; i <= 40; i++) {
-      sampleRatios.push(i / 40);
-    }
-    for (const s of sampleRatios) {
+    let maxRequiredT = 0;
+    for (let i = 1; i < 40; i++) {
+      const s = i / 40;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
       for (const wall of arena.walls) {
@@ -6252,26 +6241,49 @@ class ThrowModule {
           if (isTargetOnThisWall && s > 0.65) {
             continue;
           }
-          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const requiredHeight = wall.wallHeight + clearance;
-          const requiredDeltaZ = requiredHeight - baselineZ;
-          if (requiredDeltaZ > 0) {
-            const denom = arena.gravity * s * (1 - s);
+          const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const reqClearanceZ = wall.wallHeight + 0.08;
+          const reqLift = reqClearanceZ - chordZ;
+          if (reqLift > 0) {
+            const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 1e-4) {
-              const reqTimeSq = 2 * requiredDeltaZ / denom;
-              if (reqTimeSq > 0) {
-                const reqTime = Math.sqrt(reqTimeSq);
-                if (reqTime > totalTime) {
-                  totalTime = reqTime;
-                }
+              const neededT = Math.sqrt(reqLift / denom);
+              if (neededT > maxRequiredT) {
+                maxRequiredT = neededT;
               }
             }
           }
         }
       }
     }
-    if (totalTime <= 0.05) return null;
-    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    const g = arena.gravity;
+    const D = actualDist;
+    const vMax = launchSpeed;
+    const aCoeff = 0.25 * g * g;
+    const bCoeff = -(vMax * vMax - g * deltaZ);
+    const cCoeff = D * D + deltaZ * deltaZ;
+    const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+    let minBallisticT = 0;
+    if (disc >= 0) {
+      const u1 = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      if (u1 > 0) {
+        minBallisticT = Math.sqrt(u1);
+      }
+    } else {
+      const uPeak = -bCoeff / (2 * aCoeff);
+      if (uPeak > 0) {
+        minBallisticT = Math.sqrt(uPeak);
+      }
+    }
+    if (minBallisticT <= 0) {
+      minBallisticT = Math.max(0.14, D / vMax);
+    }
+    let totalTime = Math.max(minBallisticT, maxRequiredT);
+    if (deltaZ > 0) {
+      totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / g));
+    }
+    totalTime = Math.max(0.14, totalTime);
+    const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
@@ -6307,9 +6319,6 @@ class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
     const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
@@ -6455,9 +6464,6 @@ class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
     const candidateEntities = entities ?? arena.entities;
     const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
