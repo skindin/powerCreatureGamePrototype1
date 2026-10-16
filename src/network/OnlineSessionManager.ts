@@ -571,6 +571,19 @@ export class OnlineSessionManager {
             if (c.maxHp !== undefined && remChar.healthModule) {
               remChar.healthModule.maxHpProp.set(c.maxHp, remChar.properties);
             }
+            // Sync remote character energy and stamina for HUD/DevPanel inspection
+            if (c.currentEnergyJoules !== undefined && remChar.energyPool) {
+              remChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
+            }
+            if (c.maxEnergyJoules !== undefined && remChar.energyPool) {
+              remChar.energyPool.maxEnergyProp.literalValue = c.maxEnergyJoules;
+            }
+            const remBus = remChar.getEnergyBus("bus_main") || remChar.energyBusses.values().next().value;
+            if (remBus) {
+              if (c.currentStaminaSeconds !== undefined) remBus.currentStaminaProp.literalValue = c.currentStaminaSeconds;
+              if (c.maxStaminaSeconds !== undefined) remBus.maxStaminaProp.literalValue = c.maxStaminaSeconds;
+              if (c.currentWattage !== undefined) remBus.currentWattageProp.literalValue = c.currentWattage;
+            }
             if (c.heldObjectId) {
               const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
               if (targetObj) {
@@ -586,11 +599,28 @@ export class OnlineSessionManager {
           const p = this.gameLoop.players.get(localPlayerId);
           const localChar = p?.character || (localPlayerId === "keyboard" ? (this.gameLoop.players.get("keyboard")?.character || this.gameLoop.playerManager.baseCharacter) : null);
           if (localChar) {
+            // Local client trusts its own predicted health, energy, and stamina, but softly reconciles if server diverges
             if (c.currentHp !== undefined && localChar.healthModule) {
-              localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+              const curHp = localChar.healthModule.getCurrentHp(localChar.properties);
+              if (Math.abs(curHp - c.currentHp) > 15.0) {
+                localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+              }
             }
             if (c.maxHp !== undefined && localChar.healthModule) {
               localChar.healthModule.maxHpProp.set(c.maxHp, localChar.properties);
+            }
+            if (c.currentEnergyJoules !== undefined && localChar.energyPool) {
+              const curEnergy = localChar.energyPool.getCurrentEnergy(localChar.properties);
+              if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {
+                localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
+              }
+            }
+            const mainBus = localChar.getEnergyBus("bus_main") || localChar.energyBusses.values().next().value;
+            if (mainBus && c.currentStaminaSeconds !== undefined) {
+              const curStam = mainBus.getCurrentStamina(localChar.properties);
+              if (Math.abs(curStam - c.currentStaminaSeconds) > 2.0) {
+                mainBus.currentStaminaProp.literalValue = c.currentStaminaSeconds;
+              }
             }
             const authoritativeColor = c.playerColor || c.color || (p ? p.color : this.client.assignedColor);
             if (authoritativeColor && (localChar.color !== authoritativeColor || localChar.playerColor !== authoritativeColor)) {

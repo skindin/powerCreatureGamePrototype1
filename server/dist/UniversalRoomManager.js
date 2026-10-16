@@ -9435,6 +9435,185 @@ class DamageAuraModule {
     }
   }
 }
+class ConsumableModule {
+  constructor(options) {
+    __publicField(this, "id", "consumable");
+    __publicField(this, "name", "Consumable");
+    __publicField(this, "enabled", true);
+    /** Category/type tag of this consumable (e.g. "food", "potion", "battery") */
+    __publicField(this, "tag", "food");
+    /** Total initial energy capacity stored within this consumable (Joules) */
+    __publicField(this, "totalEnergyJoulesProp");
+    /** Current remaining energy available to be consumed (Joules) */
+    __publicField(this, "remainingEnergyJoulesProp");
+    /** Rate at which nutrition is absorbed while being consumed (Watts = Joules / sec) */
+    __publicField(this, "consumeRateWattsProp");
+    /** Optional bonus healing rate while consuming (HP / sec) */
+    __publicField(this, "healRateProp");
+    /** Minimum visual scale floor (e.g. 0.40 = 40% of original size) to keep partially eaten items visible */
+    __publicField(this, "minScaleFloor", 0.4);
+    /** Minimum absolute physical collider radius (units) */
+    __publicField(this, "minRadiusFloor", 0.15);
+    /** Track initial unscaled radius of the parent object */
+    __publicField(this, "initialColliderRadius", 0.26);
+    /** Flag indicating whether the item has been completely consumed */
+    __publicField(this, "isConsumed", false);
+    this.tag = ((options == null ? void 0 : options.tag) ?? "food").trim().toLowerCase() || "food";
+    const total = (options == null ? void 0 : options.totalEnergyJoules) ?? 2e3;
+    this.totalEnergyJoulesProp = new DynamicProperty(total);
+    this.remainingEnergyJoulesProp = new DynamicProperty((options == null ? void 0 : options.remainingEnergyJoules) ?? total);
+    this.consumeRateWattsProp = new DynamicProperty((options == null ? void 0 : options.consumeRateWatts) ?? (options == null ? void 0 : options.eatRateWatts) ?? 400);
+    this.healRateProp = new DynamicProperty((options == null ? void 0 : options.healRate) ?? 0);
+    if ((options == null ? void 0 : options.minScaleFloor) !== void 0) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);
+    if ((options == null ? void 0 : options.minRadiusFloor) !== void 0) this.minRadiusFloor = Math.max(0.08, options.minRadiusFloor);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get totalEnergyJoules() {
+    return this.totalEnergyJoulesProp.literalValue;
+  }
+  set totalEnergyJoules(val) {
+    this.totalEnergyJoulesProp.literalValue = Math.max(10, val);
+  }
+  get remainingEnergyJoules() {
+    return this.remainingEnergyJoulesProp.literalValue;
+  }
+  set remainingEnergyJoules(val) {
+    this.remainingEnergyJoulesProp.literalValue = Math.max(0, Math.min(this.totalEnergyJoules, val));
+  }
+  get consumeRateWatts() {
+    return this.consumeRateWattsProp.literalValue;
+  }
+  set consumeRateWatts(val) {
+    this.consumeRateWattsProp.literalValue = Math.max(10, val);
+  }
+  // Legacy alias for eatRateWatts
+  get eatRateWatts() {
+    return this.consumeRateWatts;
+  }
+  set eatRateWatts(val) {
+    this.consumeRateWatts = val;
+  }
+  get healRate() {
+    return this.healRateProp.literalValue;
+  }
+  set healRate(val) {
+    this.healRateProp.literalValue = Math.max(0, val);
+  }
+  getTotalEnergy(registry) {
+    return Math.max(1, this.totalEnergyJoulesProp.get(registry));
+  }
+  getRemainingEnergy(registry) {
+    return Math.max(0, this.remainingEnergyJoulesProp.get(registry));
+  }
+  getConsumeRate(registry) {
+    return Math.max(1, this.consumeRateWattsProp.get(registry));
+  }
+  getEatRate(registry) {
+    return this.getConsumeRate(registry);
+  }
+  getHealRate(registry) {
+    return Math.max(0, this.healRateProp.get(registry));
+  }
+  /**
+   * Calculates the current volumetric scale factor based on remaining energy.
+   * Uses cube-root volumetric scaling with a configurable minimum scale floor,
+   * ensuring that even low-energy crumbs remain easily visible and grabbable.
+   */
+  getScale(registry) {
+    const total = this.getTotalEnergy(registry);
+    const remaining = this.getRemainingEnergy(registry);
+    if (remaining <= 1e-3) return 0;
+    const ratio = Math.max(0, Math.min(1, remaining / total));
+    const volumetricScale = Math.cbrt(ratio);
+    return Math.max(this.minScaleFloor, volumetricScale);
+  }
+  /**
+   * Continuous consume action executed when a character consumes this held object.
+   * Transfers energy into the consumer's EnergyPool, optionally restores HP,
+   * updates physical size, and disposes of the object when 100% depleted.
+   */
+  consume(dt, consumer, consumableObj, objects, arena) {
+    if (!this.enabled || dt <= 0 || this.isConsumed) {
+      return { watts: 0, joules: 0, isDepleted: this.isConsumed };
+    }
+    const registry = consumableObj.properties;
+    const remaining = this.getRemainingEnergy(registry);
+    if (remaining <= 1e-3) {
+      this.finishConsumption(consumer, consumableObj, objects, arena);
+      return { watts: 0, joules: 0, isDepleted: true };
+    }
+    const rateWatts = this.getConsumeRate(registry);
+    const demandJoules = rateWatts * dt;
+    const transferJoules = Math.min(remaining, demandJoules);
+    const newRemaining = Math.max(0, remaining - transferJoules);
+    this.remainingEnergyJoulesProp.literalValue = newRemaining;
+    if (consumer.energyPool && consumer.energyPool.enabled) {
+      const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
+      const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
+      const updatedEnergy = Math.min(maxEnergy, curEnergy + transferJoules);
+      consumer.energyPool.currentEnergyProp.literalValue = updatedEnergy;
+    }
+    const healHpPerSec = this.getHealRate(registry);
+    if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
+      const healAmt = healHpPerSec * dt;
+      consumer.healthModule.heal(healAmt, consumer.properties, {
+        id: "consumable_nutrition",
+        name: this.tag ? `Consumable (${this.tag})` : "Consumable",
+        type: "continuous",
+        rate: healHpPerSec,
+        color: "#22c55e",
+        isHeal: true
+      });
+    }
+    if (!this.initialColliderRadius || this.initialColliderRadius <= 0) {
+      this.initialColliderRadius = consumableObj.colliderRadius > 0 ? consumableObj.colliderRadius : 0.26;
+    }
+    const currentScale = this.getScale(registry);
+    const targetRadius = Math.max(this.minRadiusFloor, this.initialColliderRadius * currentScale);
+    consumableObj.colliderRadius = targetRadius;
+    if (consumableObj.colliderModule) {
+      consumableObj.colliderModule.radius = targetRadius;
+    }
+    const isDepleted = newRemaining <= 1e-3;
+    if (isDepleted) {
+      this.finishConsumption(consumer, consumableObj, objects, arena);
+    }
+    return {
+      watts: rateWatts,
+      joules: transferJoules,
+      isDepleted
+    };
+  }
+  // Legacy eat alias
+  eat(dt, consumer, consumableObj, arena, objects) {
+    return this.consume(dt, consumer, consumableObj, objects, arena);
+  }
+  /**
+   * Finalizes the consumption of food when all Joules are drained.
+   * Drops the object from the character's hands and removes it from the world.
+   */
+  finishConsumption(consumer, consumableObj, objects, _arena) {
+    this.isConsumed = true;
+    this.remainingEnergyJoulesProp.literalValue = 0;
+    if (consumer.heldObject === consumableObj) {
+      consumer.heldObject = null;
+    }
+    consumableObj.isHeld = false;
+    consumableObj.heldBy = null;
+    if (objects && Array.isArray(objects)) {
+      const idx = objects.indexOf(consumableObj);
+      if (idx !== -1) {
+        objects.splice(idx, 1);
+      }
+    }
+    if (_arena && Array.isArray(_arena.entities)) {
+      const aIdx = _arena.entities.indexOf(consumableObj);
+      if (aIdx !== -1) {
+        _arena.entities.splice(aIdx, 1);
+      }
+    }
+  }
+}
 class PlayerJitterQueue {
   constructor(playerId, config) {
     __publicField(this, "playerId");
@@ -9976,11 +10155,15 @@ class ServerTelemetryBroadcaster {
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : void 0,
         isSleeping: obj.isSleeping,
         currentHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : void 0,
-        maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0
+        maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0,
+        consumableTag: obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : void 0,
+        remainingEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : void 0,
+        totalEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0
       };
     });
     const ghostCharacters = allCharacters.map((c) => {
       var _a, _b;
+      const mainBus = c.getEnergyBus("bus_main") || c.energyBusses.values().next().value;
       return {
         id: c.playerId || c.id || "player",
         name: c.name,
@@ -10005,7 +10188,12 @@ class ServerTelemetryBroadcaster {
         role: ((_b = c.characterModule) == null ? void 0 : _b.role) ?? (c.controllerType === "none" ? "dummy" : "remote_player"),
         controllerType: c.controllerType,
         currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
-        maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0
+        maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0,
+        currentEnergyJoules: c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : void 0,
+        maxEnergyJoules: c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : void 0,
+        currentStaminaSeconds: mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
+        maxStaminaSeconds: mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
+        currentWattage: mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0
       };
     });
     return {
@@ -10142,6 +10330,16 @@ class ServerGameSimulation {
         rollModule: o.rollModule ? new RollModule({
           rollResistance: o.rollModule.rollResistance,
           angularVelocity: { ...o.rollModule.angularVelocity }
+        }) : void 0,
+        consumableModule: o.consumableModule ? new ConsumableModule({
+          tag: o.consumableModule.tag,
+          totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
+          remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
+          consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
+          healRate: o.consumableModule.getHealRate(o.properties),
+          minScaleFloor: o.consumableModule.minScaleFloor,
+          minRadiusFloor: o.consumableModule.minRadiusFloor,
+          enabled: o.consumableModule.enabled
         }) : void 0
       });
       serverObj.isSleeping = o.isSleeping;
@@ -10322,7 +10520,12 @@ class ServerGameSimulation {
           position: { x: cObj.x, y: cObj.y, z: cObj.z },
           color: cObj.color || "#38bdf8",
           colliderRadius: cObj.radius || 0.35,
-          visualShape: cObj.shape || "circle"
+          visualShape: cObj.shape || "circle",
+          consumableModule: cObj.consumableTag ? new ConsumableModule({
+            tag: cObj.consumableTag,
+            totalEnergyJoules: cObj.totalEnergyJoules ?? 2e3,
+            remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2e3
+          }) : void 0
         });
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];

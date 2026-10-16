@@ -374,6 +374,17 @@
   - **No Cursor Facing on Non-Directional Abilities**: If the held item's primary ability is non-directional and Alt is not held, the character does NOT snap or face towards the mouse cursor. Instead, the character faces their movement direction naturally.
   - **Immediate Throw & Reticle on Alt**: While holding Alt, character faces the mouse cursor, trajectory is computed and rendered, and Left Mouse Button throws the held object.
   - **Automated Verification**: Verified 100% via `scratch/test_ability_swap_alt.ts` and clean `npm run build`.
+- **Phase 12.12 (Multiplayer Food, Energy & Consumable Replication Architecture)**:
+  - **Server Authority for Spawning & Deletion**:
+    - In online mode, clients never spawn or delete objects on their own. Background `SceneSpawnerManager` on clients is suspended (`_isInOnlineMode === true`), allowing the headless server simulation to exclusively control item spawning.
+    - Full depletion deletion is authoritative: when an apple or consumable hits 0 J on the server, it is deleted from the server world array, and omitting it from subsequent snapshot broadcasts causes connected clients to cleanly dispose of the object from their world.
+  - **Client Optimistic Prediction with Server Reconciliations**:
+    - The eating client predicts continuous consumption locally with zero lag: the held apple visibly shrinks with cube-root volumetric scaling, energy transfers into the character's energy pool, and stamina behaves smoothly.
+    - Soft reconciliation thresholds prevent jitter: client energy pool and burst stamina accept server adjustments only if divergence exceeds safe bounds (>200 J for energy, >2.0s for stamina, >15 HP for health).
+  - **Remote Observer Synchronization**:
+    - Telemetry payloads (`GhostEntityState`, `ServerTelemetryBroadcaster`) broadcast `consumableTag`, `remainingEnergyJoules`, and `totalEnergyJoules` for all scene objects.
+    - Remote clients display the apple's eat status, physical collider radius, and volumetric shrink in real time as other players consume food in the room.
+  - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_apple_eating_sync.ts` alongside the full regression test suite and clean `npm run build`.
 
 ---
 

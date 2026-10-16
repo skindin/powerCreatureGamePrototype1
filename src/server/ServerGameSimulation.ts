@@ -8,6 +8,7 @@ import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/Stat
 import { GhostSnapshot, GhostEntityState, DeathRespawnEvent } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
+import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
 import {
   AuthoritativeSnapshotManager,
@@ -147,6 +148,18 @@ export class ServerGameSimulation {
           ? new RollModule({
               rollResistance: o.rollModule.rollResistance,
               angularVelocity: { ...o.rollModule.angularVelocity },
+            })
+          : undefined,
+        consumableModule: o.consumableModule
+          ? new ConsumableModule({
+              tag: o.consumableModule.tag,
+              totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
+              remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
+              consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
+              healRate: o.consumableModule.getHealRate(o.properties),
+              minScaleFloor: o.consumableModule.minScaleFloor,
+              minRadiusFloor: o.consumableModule.minRadiusFloor,
+              enabled: o.consumableModule.enabled,
             })
           : undefined,
       });
@@ -351,6 +364,13 @@ export class ServerGameSimulation {
           color: cObj.color || "#38bdf8",
           colliderRadius: cObj.radius || 0.35,
           visualShape: cObj.shape || "circle",
+          consumableModule: cObj.consumableTag
+            ? new ConsumableModule({
+                tag: cObj.consumableTag,
+                totalEnergyJoules: cObj.totalEnergyJoules ?? 2000,
+                remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2000,
+              })
+            : undefined,
         });
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];

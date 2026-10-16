@@ -36,6 +36,16 @@ export interface GhostEntityState {
   isDummy?: boolean;
   role?: string;
   controllerType?: "local" | "remote" | "none" | "ai";
+  // Consumable item fields (food/apple sync)
+  consumableTag?: string;
+  remainingEnergyJoules?: number;
+  totalEnergyJoules?: number;
+  // Character energy and stamina fields
+  currentEnergyJoules?: number;
+  maxEnergyJoules?: number;
+  currentStaminaSeconds?: number;
+  maxStaminaSeconds?: number;
+  currentWattage?: number;
 }
 
 export interface DeathRespawnEvent {
