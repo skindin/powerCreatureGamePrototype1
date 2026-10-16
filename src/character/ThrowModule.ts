@@ -338,13 +338,14 @@ export class ThrowModule {
     if (this.consumesEnergy && thrower) {
       const bus = thrower.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
-        // Burst power available: bus.maxPower (in Watts). Over a typical burst throw impulse (~0.08s):
+        // Burst power available: bus.maxPower (in Watts). Over a typical burst throw impulse (~0.25s):
         // E_burst = maxPower * dt_impulse (Joules of muscle power).
-        // With muscle efficiency (~25%), mechWork Joules = E_burst * 0.25.
+        // With muscle efficiency (~25%), mechWork Joules = E_burst * efficiency.
         // E_mech = 0.5 * m * v^2  =>  v = sqrt(2 * E_mech / m).
         const maxPower = bus.getMaxPower(thrower.properties);
-        const impulseDt = 0.08;
-        const availableMechJoules = maxPower * impulseDt * 0.25 * strength;
+        const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
+        const impulseDt = 0.25;
+        const availableMechJoules = maxPower * impulseDt * efficiency * strength;
         const massLimitedSpeed = Math.sqrt((2 * Math.max(1.0, availableMechJoules)) / mass);
         return Math.min(speedCap, massLimitedSpeed);
       }
@@ -552,14 +553,15 @@ export class ThrowModule {
 
       if (minTimeForWallClearance > 0) {
         // Must clear intermediate wall:
-        // Pick the shortest valid trajectory that clears the wall top
+        // Pick the shortest valid trajectory that clears the wall top while respecting launch speed (between tLow and tHigh)
         if (tLow >= minTimeForWallClearance) {
           chosenT = tLow;
-        } else if (minTimeForWallClearance <= tHigh) {
-          // minTimeForWallClearance provides the shortest arc that cleanly clears the obstacle
+        } else if (tHigh >= minTimeForWallClearance) {
+          // minTimeForWallClearance provides the shortest arc that clears the wall within vMax
           chosenT = minTimeForWallClearance;
         } else {
-          chosenT = Math.max(tHigh, minTimeForWallClearance);
+          // Peak clearance arc at vMax
+          chosenT = tHigh;
         }
       } else {
         // No obstacle: use the flattest/fastest trajectory (tLow)
@@ -569,7 +571,7 @@ export class ThrowModule {
       // Out of range for direct reach at vMax; use peak distance angle (45 deg)
       const uPeak = -bCoeff / (2 * aCoeff);
       const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
-      chosenT = Math.max(tPeak, minTimeForWallClearance);
+      chosenT = tPeak;
     }
 
     if (chosenT <= 0) {
@@ -606,10 +608,10 @@ export class ThrowModule {
     const held = character.heldObject;
 
     // Orient character towards aim target so throw trajectory and held release point align
-    const aimDx = aimTargetX - character.position.x;
-    const aimDy = aimTargetY - character.position.y;
-    if (Math.hypot(aimDx, aimDy) > 0.05) {
-      character.facingAngle = Math.atan2(aimDy, aimDx);
+    const charAimDx = aimTargetX - character.position.x;
+    const charAimDy = aimTargetY - character.position.y;
+    if (Math.hypot(charAimDx, charAimDy) > 0.05) {
+      character.facingAngle = Math.atan2(charAimDy, charAimDx);
       const alignedHeldPos = character.calculateHeldObjectPosition(arena);
       held.position.x = alignedHeldPos.x;
       held.position.y = alignedHeldPos.y;
@@ -635,8 +637,30 @@ export class ThrowModule {
       startY = clamped.y;
     }
 
-    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+
+    // Check energy/power limits and calculate maximum achievable launch speed
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const maxSpeedFromEnergy = Math.sqrt((2 * maxAffordableMechWork) / heldMass);
+
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
+      }
+    }
 
     const charVel = {
       x: character.velocity.x,
@@ -647,27 +671,64 @@ export class ThrowModule {
     const candidateEntities = entities ?? arena.entities;
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+    // Compute aim direction and distance from character/held position to aim target
+    const aimDx = aimTargetX - startX;
+    const aimDy = aimTargetY - startY;
+    const aimDist = Math.hypot(aimDx, aimDy);
+
+    // Max ballistic range at launch speed: D_max = (v / g) * sqrt(v^2 + 2 * g * max(0, startZ))
+    let effectiveAimX = aimTargetX;
+    let effectiveAimY = aimTargetY;
+    if (aimDist > 0.05 && canFlyVertically) {
+      const g = arena.gravity;
+      const maxReach = (maxSpeed / g) * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
+      if (aimDist > maxReach) {
+        const clampedDist = Math.max(0.1, maxReach);
+        effectiveAimX = startX + (aimDx / aimDist) * clampedDist;
+        effectiveAimY = startY + (aimDy / aimDist) * clampedDist;
+      }
+    }
+
+    let launch = this.computeLaunchVelocity(
+      startX, startY, startZ, effectiveAimX, effectiveAimY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
       candidateEntities, scale, character, held, autoLock
     );
-    if (!launch) return null;
 
-    // Check if character has enough energy/stamina to execute this throw
-    if (this.consumesEnergy) {
+    // If still requiring more energy than available, iteratively clamp distance along the ray
+    if (launch && this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
-        if (bus.isExhausted) return null;
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
-        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
-        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
-        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
-          return null;
+        let curDist = Math.hypot(effectiveAimX - startX, effectiveAimY - startY);
+        const dirX = curDist > 0.0001 ? (effectiveAimX - startX) / curDist : 1;
+        const dirY = curDist > 0.0001 ? (effectiveAimY - startY) / curDist : 0;
+
+        for (let iter = 0; iter < 10; iter++) {
+          const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+          const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+          const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+          if (bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+            break;
+          }
+          // Reduce target distance closer along the ray
+          curDist *= 0.85;
+          if (curDist < 0.2) {
+            launch = null;
+            break;
+          }
+          effectiveAimX = startX + dirX * curDist;
+          effectiveAimY = startY + dirY * curDist;
+          launch = this.computeLaunchVelocity(
+            startX, startY, startZ, effectiveAimX, effectiveAimY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+            candidateEntities, scale, character, held, false
+          );
+          if (!launch) break;
         }
       }
     }
+
+    if (!launch) return null;
 
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
 
@@ -832,14 +893,86 @@ export class ThrowModule {
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
 
-    const maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
 
-    const launch = launchVel
+    if (this.consumesEnergy && !launchVel) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const maxSpeedFromEnergy = Math.sqrt((2 * maxAffordableMechWork) / heldMass);
+
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
+      }
+    }
+
+    const aimDx = aimTargetX - startX;
+    const aimDy = aimTargetY - startY;
+    const aimDist = Math.hypot(aimDx, aimDy);
+
+    let effectiveAimX = aimTargetX;
+    let effectiveAimY = aimTargetY;
+    if (!launchVel && aimDist > 0.05 && canFlyVertically) {
+      const g = arena.gravity;
+      const maxReach = (maxSpeed / g) * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
+      if (aimDist > maxReach) {
+        const clampedDist = Math.max(0.1, maxReach);
+        effectiveAimX = startX + (aimDx / aimDist) * clampedDist;
+        effectiveAimY = startY + (aimDy / aimDist) * clampedDist;
+      }
+    }
+
+    let launch = launchVel
       ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz, totalTime: 1.0, finalTargetX: aimTargetX, finalTargetY: aimTargetY, targetSurfaceHeight: 0 }
       : this.computeLaunchVelocity(
-          startX, startY, startZ, aimTargetX, aimTargetY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+          startX, startY, startZ, effectiveAimX, effectiveAimY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
           candidateEntities, scale, character, held, autoLock
         );
+
+    // Iteratively clamp target if needed to match reachable energy
+    if (launch && this.consumesEnergy && !launchVel) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        let curDist = Math.hypot(effectiveAimX - startX, effectiveAimY - startY);
+        const dirX = curDist > 0.0001 ? (effectiveAimX - startX) / curDist : 1;
+        const dirY = curDist > 0.0001 ? (effectiveAimY - startY) / curDist : 0;
+
+        for (let iter = 0; iter < 10; iter++) {
+          const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+          const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+          const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+          if (bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+            break;
+          }
+          curDist *= 0.85;
+          if (curDist < 0.2) {
+            launch = null;
+            break;
+          }
+          effectiveAimX = startX + dirX * curDist;
+          effectiveAimY = startY + dirY * curDist;
+          launch = this.computeLaunchVelocity(
+            startX, startY, startZ, effectiveAimX, effectiveAimY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+            candidateEntities, scale, character, held, false
+          );
+          if (!launch) break;
+        }
+      }
+    }
+
     if (!launch) return null;
 
     // Energy consumption check based on actual kinetic work of the launch:

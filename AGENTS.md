@@ -373,6 +373,11 @@
   - **No Throw Anticipation or Trajectory**: When holding an item whose primary ability is non-directional (e.g. food consumable), the game does NOT anticipate throwing unless Alt is held or the object has no other ability. Trajectory preview is completely suppressed and `activeTrajectory` is `null`.
   - **No Cursor Facing on Non-Directional Abilities**: If the held item's primary ability is non-directional and Alt is not held, the character does NOT snap or face towards the mouse cursor. Instead, the character faces their movement direction naturally.
   - **Immediate Throw & Reticle on Alt**: While holding Alt, character faces the mouse cursor, trajectory is computed and rendered, and Left Mouse Button throws the held object.
+- **Phase 12.12 (Reachable Throw Trajectory Clamping on Energy & Power Limits)**:
+  - **Reachable Trajectory Display**: When character burst stamina or energy pool is insufficient to throw an object to the exact cursor position, `calculateTrajectory` calculates the maximum reachable distance along the ray towards the cursor: $D_{\text{reach}} = \frac{v_{\text{effectiveMax}}}{g}\sqrt{v_{\text{effectiveMax}}^2 + 2 g \cdot \max(0, z_0)}$.
+  - **Closest Point Projection**: Clamps the aim target along the vector from the release point to the cursor so the trajectory to the furthest reachable point is always displayed instead of disappearing completely.
+  - **Throw Execution Parity**: `throwHeldObject` applies the identical clamping calculation, launching the projectile to the closest reachable point within available energy and burst power limits.
+  - **Automated Verification**: Verified 100% via `scratch/test_trajectory_clamp.ts` and clean `npm run build`.
   - **Automated Verification**: Verified 100% via `scratch/test_ability_swap_alt.ts` and clean `npm run build`.
 - **Phase 12.12 (Multiplayer Food, Energy & Consumable Replication Architecture)**:
   - **Server Authority for Spawning & Deletion**:
