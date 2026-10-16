@@ -789,5 +789,32 @@ export class Character extends GameObject {
 
     return { x: targetX, y: targetY, z: heldZ };
   }
+
+  /**
+   * Resets all dynamic properties and module states of the character
+   * back to their original/maximum values (such as HP, energy pool, and stamina).
+   */
+  public resetDynamicValues(): void {
+    // 1. Reset health and vitality
+    if (this.healthModule) {
+      this.healthModule.reset(this.properties);
+    }
+
+    // 2. Reset energy pool
+    if (this.energyPool) {
+      this.energyPool.reset(this.properties);
+    }
+
+    // 3. Reset all attached energy busses (stamina, exhaustion, live wattage)
+    for (const bus of this.energyBusses.values()) {
+      bus.reset(this.properties);
+    }
+
+    // 4. Reset strength if tied to properties
+    const origStrength = this.properties.get("strength");
+    if (origStrength !== undefined) {
+      this.strengthProp.set(origStrength, this.properties);
+    }
+  }
 }
 

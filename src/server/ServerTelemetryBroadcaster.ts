@@ -99,8 +99,17 @@ export class ServerTelemetryBroadcaster {
 
     const ghostCharacters: GhostEntityState[] = allCharacters.map((c) => {
       const mainBus = c.getEnergyBus("bus_main") || c.energyBusses.values().next().value;
+      // Privacy constraint: Energy, stamina, and wattage are private to each client's owned characters.
+      // Other remote clients must not receive private energy/stamina telemetry for other players.
+      const charId = c.playerId || c.id || "player";
+      const isOwnedByRecipient = !targetPId || (
+        charId === targetPId ||
+        charId.startsWith(`${targetPId}:`) ||
+        (targetPId === "keyboard" && (c === primaryChar || charId === "player" || charId === "keyboard"))
+      );
+
       return {
-        id: c.playerId || c.id || "player",
+        id: charId,
         name: c.name,
         x: Number(c.position.x.toFixed(3)),
         y: Number(c.position.y.toFixed(3)),
@@ -125,11 +134,11 @@ export class ServerTelemetryBroadcaster {
         controllerType: c.controllerType,
         currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : undefined,
         maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : undefined,
-        currentEnergyJoules: c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : undefined,
-        maxEnergyJoules: c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : undefined,
-        currentStaminaSeconds: mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : undefined,
-        maxStaminaSeconds: mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : undefined,
-        currentWattage: mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : undefined,
+        currentEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : undefined,
+        maxEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : undefined,
+        currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : undefined,
+        maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : undefined,
+        currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : undefined,
       };
     });
 

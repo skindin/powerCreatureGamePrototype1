@@ -613,19 +613,7 @@ export class OnlineSessionManager {
             if (c.maxHp !== undefined && remChar.healthModule) {
               remChar.healthModule.maxHpProp.set(c.maxHp, remChar.properties);
             }
-            // Sync remote character energy and stamina for HUD/DevPanel inspection
-            if (c.currentEnergyJoules !== undefined && remChar.energyPool) {
-              remChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
-            }
-            if (c.maxEnergyJoules !== undefined && remChar.energyPool) {
-              remChar.energyPool.maxEnergyProp.literalValue = c.maxEnergyJoules;
-            }
-            const remBus = remChar.getEnergyBus("bus_main") || remChar.energyBusses.values().next().value;
-            if (remBus) {
-              if (c.currentStaminaSeconds !== undefined) remBus.currentStaminaProp.literalValue = c.currentStaminaSeconds;
-              if (c.maxStaminaSeconds !== undefined) remBus.maxStaminaProp.literalValue = c.maxStaminaSeconds;
-              if (c.currentWattage !== undefined) remBus.currentWattageProp.literalValue = c.currentWattage;
-            }
+            // Remote character energy, stamina, and wattage are private to that client and not updated on remote entities
             if (c.heldObjectId) {
               const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
               if (targetObj) {

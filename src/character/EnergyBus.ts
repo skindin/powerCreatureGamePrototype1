@@ -276,6 +276,22 @@ export class EnergyBus {
     return this.currentStaminaProp.get(registry);
   }
 
+  /**
+   * Resets energy bus to full stamina capacity, clears exhaustion, active allocations, and demands.
+   */
+  public reset(registry?: ObjectPropertiesRegistry): void {
+    const maxS = this.getMaxStamina(registry);
+    this.currentStaminaProp.set(maxS, registry);
+    this.isExhausted = false;
+    this.livePowerDraw = 0;
+    this.currentWattageProp.set(0.0, registry);
+    this.recentPeakWattage = 0;
+    this.recentPeakHoldTimer = 0;
+    this.hadPhysicalExertion = false;
+    this.clearDemands();
+    this._activeAllocations.clear();
+  }
+
   public getStaminaRegenRate(registry?: ObjectPropertiesRegistry): number {
     return this.staminaRegenRateProp.get(registry);
   }

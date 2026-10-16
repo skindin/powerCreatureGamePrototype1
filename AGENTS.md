@@ -402,8 +402,20 @@
   - **Intent-Driven Client Telemetry**: Instead of clients dictating deletion or waiting to issue delete commands, the eating client simply streams their active intent (`isUsingItem: true`) in both input packets and character telemetry (`charTelemetry.isUsingItem`).
   - **Authoritative Parallel Simulation**: In `ServerGameSimulation.step`, when `char.isUsingItem` is true for any character holding a consumable, the 60Hz server engine executes `char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena)` in parallel, decreasing the item's `remainingEnergyJoules` directly and authoritatively.
   - **Autonomous Server Depletion & Broadcast**: When food runs out of energy on the server ($E \le 0.001\text{ J}$), the server autonomously declares depletion, clears the holder's hands (`char.heldObject = null`), removes the item from the world, and broadcasts reliable `ObjectDeletionEvent`s to all clients.
-  - **Remote Client Animation & Status**: `ServerTelemetryBroadcaster` broadcasts `isUsingItem` in `GhostEntityState`, allowing remote clients to display the eating progress ring, volumetric shrink, and consumption state in real time for any eating player.
-  - **Automated Verification**: Verified 100% via `scratch/test_multiplayer_food_and_respawn_fix.ts` (Test 1b) alongside full regression suite.
+- **Phase 12.15 (Character Dynamic Values Reset on Respawn & Private Telemetry Filtering)**:
+  - **Dynamic Values Reset Delegation Architecture (`Character.resetDynamicValues`)**:
+    - Centralized `resetDynamicValues()` on `Character.ts` which cleanly delegates to each property and capability module:
+      - `HealthModule.reset(registry)`: Restores `currentHpProp` to `maxHp` and clears active modifier maps.
+      - `EnergyPool.reset(registry)`: Refills pool back to full `maxEnergy` (10,000 J).
+      - `EnergyBus.reset(registry)`: Restores `currentStaminaProp` to `maxStamina` (10.0s), clears `isExhausted`, resets live power draws and recent peak holds, and clears demands and active allocations.
+    - Updated `HealthModule.dieAndRespawn(...)` to invoke `character.resetDynamicValues()`, guaranteeing that dying/respawning in offline or online games fully restores HP, energy, and stamina simultaneously.
+  - **Client Telemetry Privacy (Energy & Stamina Hidden from Other Clients)**:
+    - Updated `UniversalRoomManager.ts` to pass recipient `clientId` to `simulation.getGhostSnapshot(rtt, clientId)`.
+    - In `ServerTelemetryBroadcaster.createGhostSnapshot`:
+      - Evaluated recipient ownership: `currentEnergyJoules`, `maxEnergyJoules`, `currentStaminaSeconds`, `maxStaminaSeconds`, and `currentWattage` are populated ONLY for the recipient player's own characters.
+      - For all other remote characters, these fields are left strictly `undefined` in `GhostEntityState`.
+    - In `OnlineSessionManager.ts`, pruned remote entity synchronization so other clients never inspect or mirror remote characters' private energy or stamina attributes, keeping each client's energy reserve and burst stamina private.
+  - **Automated Verification**: Verified 100% via `scratch/test_respawn_and_privacy.ts` alongside full project regression test suite.
 
 ---
 

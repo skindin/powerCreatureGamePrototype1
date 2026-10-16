@@ -132,4 +132,11 @@ export class EnergyPool {
     const max = this.getMaxEnergy(registry);
     this.currentEnergyProp.set(max, registry);
   }
+
+  /**
+   * Resets energy pool to full capacity.
+   */
+  public reset(registry?: ObjectPropertiesRegistry): void {
+    this.refill(registry);
+  }
 }

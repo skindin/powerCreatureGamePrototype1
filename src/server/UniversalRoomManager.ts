@@ -179,7 +179,7 @@ export class UniversalRoomManager {
     for (const [clientId, client] of this.clients) {
       if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0, clientId);
           const clockSync = this.simulation.getLatestClockSync(clientId);
           if (clockSync) {
             snapshot.clockSync = clockSync;

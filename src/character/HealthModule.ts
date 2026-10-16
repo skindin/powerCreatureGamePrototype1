@@ -238,6 +238,15 @@ export class HealthModule {
   }
 
   /**
+   * Resets health state back to full health and clears active modifiers.
+   */
+  public reset(registry?: ObjectPropertiesRegistry): void {
+    const max = this.getMaxHp(registry);
+    this.currentHpProp.set(max, registry);
+    this._activeModifiers.clear();
+  }
+
+  /**
    * Continuous per-frame health tick:
    * Heals current HP up to maxHp at maxHealRate * dt.
    * If HP drops to 0 or below, triggers character death and respawn.
@@ -376,10 +385,8 @@ export class HealthModule {
     (character as any).isRespawnLocked = true;
     (character as any).authoritativeRespawnPos = { ...chosenSpawn };
 
-    // 5. Restore full HP and reset modifiers
-    const max = this.getMaxHp(character.properties);
-    this.currentHpProp.set(max, character.properties);
-    this._activeModifiers.clear();
+    // 5. Restore full HP, energy, and stamina across all character modules
+    character.resetDynamicValues();
 
     this.onDeathRespawn?.(character, chosenSpawn);
   }
