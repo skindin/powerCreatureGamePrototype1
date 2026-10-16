@@ -637,6 +637,11 @@ export class UniversalRoomManager {
             this.simulation.acknowledgeDeathRespawnEvents(serverCharId, data.ackDeathRespawnEventIds);
           }
 
+          // Process object deletion event acknowledgments from client
+          if (Array.isArray(data.ackObjectDeletionEventIds) && data.ackObjectDeletionEventIds.length > 0) {
+            this.simulation.acknowledgeObjectDeletionEvents(serverCharId, data.ackObjectDeletionEventIds);
+          }
+
           // Process reliable actions FIRST before syncCharacterFromPacket clears heldObject
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {

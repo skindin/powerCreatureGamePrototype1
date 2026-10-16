@@ -29,7 +29,8 @@ export class ServerTelemetryBroadcaster {
     contestedGrabEvents?: import("./ContestedGrabArbiter.js").ContestedGrabResult[],
     rttMs: number = 0,
     forPlayerId?: string,
-    deathRespawnEvents?: import("../network/RelayClient.js").DeathRespawnEvent[]
+    deathRespawnEvents?: import("../network/RelayClient.js").DeathRespawnEvent[],
+    objectDeletionEvents?: import("../network/RelayClient.js").ObjectDeletionEvent[]
   ): GhostSnapshot {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
@@ -140,6 +141,7 @@ export class ServerTelemetryBroadcaster {
       ackActionIds: recentAckedActionIds,
       contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : undefined,
       deathRespawnEvents: deathRespawnEvents && deathRespawnEvents.length > 0 ? [...deathRespawnEvents] : undefined,
+      objectDeletionEvents: objectDeletionEvents && objectDeletionEvents.length > 0 ? [...objectDeletionEvents] : undefined,
       clockSync,
     };
   }

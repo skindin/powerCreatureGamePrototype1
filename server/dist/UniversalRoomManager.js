@@ -10479,7 +10479,7 @@ class ServerTelemetryBroadcaster {
   /**
    * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
    */
-  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents) {
+  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents, objectDeletionEvents) {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
     const clockSync = latestClockSync.get(targetPId) || latestClockSync.get("keyboard");
@@ -10586,6 +10586,7 @@ class ServerTelemetryBroadcaster {
       ackActionIds: recentAckedActionIds,
       contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : void 0,
       deathRespawnEvents: deathRespawnEvents && deathRespawnEvents.length > 0 ? [...deathRespawnEvents] : void 0,
+      objectDeletionEvents: objectDeletionEvents && objectDeletionEvents.length > 0 ? [...objectDeletionEvents] : void 0,
       clockSync
     };
   }
@@ -10641,6 +10642,8 @@ class ServerGameSimulation {
     __publicField(this, "pendingContestedEvents", /* @__PURE__ */ new Map());
     // Authoritative death & respawn reliable retry map
     __publicField(this, "pendingDeathRespawnEvents", /* @__PURE__ */ new Map());
+    // Authoritative object deletion reliable retry map (e.g. eaten consumables)
+    __publicField(this, "pendingObjectDeletionEvents", /* @__PURE__ */ new Map());
     // Reliable action deduplication & ACK tracking
     __publicField(this, "processedActionIds", /* @__PURE__ */ new Set());
     __publicField(this, "recentAckedActionIds", []);
@@ -11262,6 +11265,71 @@ class ServerGameSimulation {
     return active;
   }
   /**
+   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
+   */
+  triggerObjectDeletion(objectId) {
+    this.deletedObjectIds.add(objectId);
+    const idx = this.objects.findIndex((o) => o.id === objectId);
+    if (idx !== -1) {
+      const obj = this.objects[idx];
+      if (obj.heldBy && obj.heldBy.heldObject === obj) {
+        obj.heldBy.heldObject = null;
+      }
+      obj.isHeld = false;
+      obj.heldBy = null;
+      this.objects.splice(idx, 1);
+    }
+    if (Array.isArray(this.arena.entities)) {
+      const eIdx = this.arena.entities.findIndex((e) => e.id === objectId);
+      if (eIdx !== -1) {
+        this.arena.entities.splice(eIdx, 1);
+      }
+    }
+    const eventId = `del_${objectId}_${this.currentTick}`;
+    const event = {
+      eventId,
+      objectId,
+      tick: this.currentTick
+    };
+    this.pendingObjectDeletionEvents.set(eventId, {
+      event,
+      createdTick: this.currentTick,
+      acks: /* @__PURE__ */ new Set()
+    });
+  }
+  /**
+   * Acknowledges that a client character has received and processed object deletion events.
+   */
+  acknowledgeObjectDeletionEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingObjectDeletionEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingObjectDeletionEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged object deletion events for continuous broadcast.
+   */
+  getActiveObjectDeletionEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingObjectDeletionEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        this.pendingObjectDeletionEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -11287,7 +11355,7 @@ class ServerGameSimulation {
           const heldObj = char.heldObject;
           const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
           if (result.isDepleted) {
-            this.deletedObjectIds.add(heldObj.id);
+            this.triggerObjectDeletion(heldObj.id);
           }
         }
         if (((_a = char.activeTrajectory) == null ? void 0 : _a.isAutoLocked) && char.activeTrajectory.targetObject) {
@@ -11429,7 +11497,7 @@ class ServerGameSimulation {
         const heldObj = char.heldObject;
         const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
         if (result.isDepleted) {
-          this.deletedObjectIds.add(heldObj.id);
+          this.triggerObjectDeletion(heldObj.id);
         }
       }
     }
@@ -11495,7 +11563,8 @@ class ServerGameSimulation {
       this.getActiveContestedEvents(),
       rttMs,
       forPlayerId,
-      this.getActiveDeathRespawnEvents()
+      this.getActiveDeathRespawnEvents(),
+      this.getActiveObjectDeletionEvents()
     );
   }
 }
@@ -12013,6 +12082,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           if (Array.isArray(data.ackDeathRespawnEventIds) && data.ackDeathRespawnEventIds.length > 0) {
             this.simulation.acknowledgeDeathRespawnEvents(serverCharId, data.ackDeathRespawnEventIds);
+          }
+          if (Array.isArray(data.ackObjectDeletionEventIds) && data.ackObjectDeletionEventIds.length > 0) {
+            this.simulation.acknowledgeObjectDeletionEvents(serverCharId, data.ackObjectDeletionEventIds);
           }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {

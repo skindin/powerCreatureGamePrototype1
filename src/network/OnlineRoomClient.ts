@@ -37,6 +37,7 @@ export class OnlineRoomClient {
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
   public unacknowledgedContestedAcks = new Set<string>();
+  public unacknowledgedObjectDeletionAcks = new Set<string>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
@@ -251,6 +252,12 @@ export class OnlineRoomClient {
                 this.onContestedGrabEvents?.(msg.snapshot.contestedGrabEvents);
               }
 
+              if (Array.isArray(msg.snapshot.objectDeletionEvents) && msg.snapshot.objectDeletionEvents.length > 0) {
+                for (const ev of msg.snapshot.objectDeletionEvents) {
+                  this.unacknowledgedObjectDeletionAcks.add(ev.eventId);
+                }
+              }
+
               if (msg.snapshot.clockSync) {
                 this.onClockSync?.(msg.snapshot.clockSync);
               }
@@ -451,6 +458,10 @@ export class OnlineRoomClient {
         ? Array.from(this.unacknowledgedContestedAcks.values())
         : undefined;
 
+      const ackObjectDeletionEventIds = this.unacknowledgedObjectDeletionAcks.size > 0
+        ? Array.from(this.unacknowledgedObjectDeletionAcks.values())
+        : undefined;
+
       this.ws.send(JSON.stringify({
         type: "player_input",
         localPlayerId,
@@ -460,6 +471,7 @@ export class OnlineRoomClient {
         objects: objTelemetry,
         reliableActions,
         ackContestedEventIds,
+        ackObjectDeletionEventIds,
       }));
     } catch (_) {}
   }

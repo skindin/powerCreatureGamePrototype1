@@ -765,7 +765,41 @@ export class OnlineSessionManager {
       }
     }
 
-    // 3. Sync authoritative freebody objects
+    // 3. Process Authoritative Object Deletion Events (e.g. food/apple depleted)
+    if (Array.isArray(snapshot.objectDeletionEvents) && snapshot.objectDeletionEvents.length > 0) {
+      for (const del of snapshot.objectDeletionEvents) {
+        const objId = del.objectId;
+        // Unconditionally delete object from gameLoop and arena
+        const idx = this.gameLoop.objects.findIndex((o) => o.id === objId);
+        if (idx !== -1) {
+          const targetObj = this.gameLoop.objects[idx];
+          if (targetObj.heldBy && (targetObj.heldBy as Character).heldObject === targetObj) {
+            (targetObj.heldBy as Character).heldObject = null;
+          }
+          targetObj.isHeld = false;
+          targetObj.heldBy = null;
+          this.gameLoop.objects.splice(idx, 1);
+        }
+        for (const p of this.gameLoop.players.values()) {
+          if (p.character.heldObject && p.character.heldObject.id === objId) {
+            p.character.heldObject = null;
+          }
+        }
+        for (const c of this.gameLoop.allCharacters) {
+          if (c.heldObject && c.heldObject.id === objId) {
+            c.heldObject = null;
+          }
+        }
+        if (Array.isArray((this.gameLoop.arena as any).entities)) {
+          const eIdx = (this.gameLoop.arena as any).entities.findIndex((e: any) => e.id === objId);
+          if (eIdx !== -1) {
+            (this.gameLoop.arena as any).entities.splice(eIdx, 1);
+          }
+        }
+      }
+    }
+
+    // 4. Sync authoritative freebody objects
     if (Array.isArray(snapshot.objects)) {
       this.gameLoop.syncAuthoritativeObjects(snapshot.objects, this.client.clientId || undefined, snapshot.seq);
     }

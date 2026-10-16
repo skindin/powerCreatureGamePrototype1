@@ -22,7 +22,7 @@ export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliat
 
 
 export class GameLoop {
-  private arena: Arena;
+  public arena: Arena;
   public objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;
@@ -667,7 +667,17 @@ export class GameLoop {
           } else if (Math.abs(currentRemaining - sObj.remainingEnergyJoules) > 100) {
             localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
           }
+          // If server reports remaining energy <= 0.001, finish/destroy it immediately!
+          if (sObj.remainingEnergyJoules <= 0.001) {
+            localObj.consumableModule.finishConsumption(holderChar || (localObj.heldBy as Character) || this.primaryCharacter!, localObj, this.objects, this.arena);
+            continue;
+          }
         } else {
+          // If server reports remaining energy <= 0.001, finish/destroy it immediately!
+          if (sObj.remainingEnergyJoules <= 0.001) {
+            localObj.consumableModule.finishConsumption(this.primaryCharacter!, localObj, this.objects, this.arena);
+            continue;
+          }
           // Remote observer: display the apple's authoritative eat progress and shrink in real time!
           localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
           const currentScale = localObj.consumableModule.getScale(localObj.properties);

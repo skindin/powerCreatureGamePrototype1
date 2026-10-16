@@ -5,7 +5,7 @@ import { CollisionResolver } from "../engine/physics/CollisionResolver.js";
 import { IslandManager } from "../engine/physics/IslandManager.js";
 import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { GhostSnapshot, GhostEntityState, DeathRespawnEvent } from "../network/RelayClient.js";
+import { GhostSnapshot, GhostEntityState, DeathRespawnEvent, ObjectDeletionEvent } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
@@ -68,6 +68,9 @@ export class ServerGameSimulation {
 
   // Authoritative death & respawn reliable retry map
   public pendingDeathRespawnEvents: Map<string, { event: DeathRespawnEvent; createdTick: number; acks: Set<string> }> = new Map();
+
+  // Authoritative object deletion reliable retry map (e.g. eaten consumables)
+  public pendingObjectDeletionEvents: Map<string, { event: ObjectDeletionEvent; createdTick: number; acks: Set<string> }> = new Map();
 
   // Reliable action deduplication & ACK tracking
   private processedActionIds: Set<string> = new Set();
@@ -799,6 +802,76 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
+   */
+  public triggerObjectDeletion(objectId: string): void {
+    this.deletedObjectIds.add(objectId);
+    // Remove from simulation objects and arena
+    const idx = this.objects.findIndex((o) => o.id === objectId);
+    if (idx !== -1) {
+      const obj = this.objects[idx];
+      if (obj.heldBy && (obj.heldBy as Character).heldObject === obj) {
+        (obj.heldBy as Character).heldObject = null;
+      }
+      obj.isHeld = false;
+      obj.heldBy = null;
+      this.objects.splice(idx, 1);
+    }
+    if (Array.isArray((this.arena as any).entities)) {
+      const eIdx = (this.arena as any).entities.findIndex((e: any) => e.id === objectId);
+      if (eIdx !== -1) {
+        (this.arena as any).entities.splice(eIdx, 1);
+      }
+    }
+    const eventId = `del_${objectId}_${this.currentTick}`;
+    const event: ObjectDeletionEvent = {
+      eventId,
+      objectId,
+      tick: this.currentTick,
+    };
+    this.pendingObjectDeletionEvents.set(eventId, {
+      event,
+      createdTick: this.currentTick,
+      acks: new Set(),
+    });
+  }
+
+  /**
+   * Acknowledges that a client character has received and processed object deletion events.
+   */
+  public acknowledgeObjectDeletionEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingObjectDeletionEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingObjectDeletionEvents.delete(id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Returns all active unacknowledged object deletion events for continuous broadcast.
+   */
+  public getActiveObjectDeletionEvents(): ObjectDeletionEvent[] {
+    const active: ObjectDeletionEvent[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingObjectDeletionEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        // Expired after 5 seconds of continuous retransmission
+        this.pendingObjectDeletionEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -831,7 +904,7 @@ export class ServerGameSimulation {
           const heldObj = char.heldObject;
           const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
           if (result.isDepleted) {
-            this.deletedObjectIds.add(heldObj.id);
+            this.triggerObjectDeletion(heldObj.id);
           }
         }
         if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
@@ -996,7 +1069,7 @@ export class ServerGameSimulation {
         const heldObj = char.heldObject!;
         const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
         if (result.isDepleted) {
-          this.deletedObjectIds.add(heldObj.id);
+          this.triggerObjectDeletion(heldObj.id);
         }
       }
     }
@@ -1078,7 +1151,8 @@ export class ServerGameSimulation {
       this.getActiveContestedEvents(),
       rttMs,
       forPlayerId,
-      this.getActiveDeathRespawnEvents()
+      this.getActiveDeathRespawnEvents(),
+      this.getActiveObjectDeletionEvents()
     );
   }
 }

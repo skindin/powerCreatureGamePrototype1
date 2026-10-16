@@ -48,6 +48,12 @@ export interface GhostEntityState {
   currentWattage?: number;
 }
 
+export interface ObjectDeletionEvent {
+  eventId: string;
+  objectId: string;
+  tick: number;
+}
+
 export interface DeathRespawnEvent {
   eventId: string;
   targetEntityId: string;
@@ -77,6 +83,7 @@ export interface GhostSnapshot {
   ackActionIds?: string[];
   contestedGrabEvents?: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[];
   deathRespawnEvents?: DeathRespawnEvent[];
+  objectDeletionEvents?: ObjectDeletionEvent[];
   clockSync?: ClockSyncPacket;
   worldSnapshot?: AuthoritativeWorldSnapshot;
 }
