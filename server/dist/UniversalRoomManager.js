@@ -6577,7 +6577,7 @@ class WallEdgeAssistModule {
     return this.hangDistanceProp.get(registry);
   }
 }
-const _HealthModule = class _HealthModule {
+class HealthModule {
   constructor(options) {
     __publicField(this, "id", "health");
     __publicField(this, "name", "Health & Vitality");
@@ -6746,6 +6746,14 @@ const _HealthModule = class _HealthModule {
     }
   }
   /**
+   * Resets health state back to full health and clears active modifiers.
+   */
+  reset(registry) {
+    const max = this.getMaxHp(registry);
+    this.currentHpProp.set(max, registry);
+    this._activeModifiers.clear();
+  }
+  /**
    * Continuous per-frame health tick:
    * Heals current HP up to maxHp at maxHealRate * dt.
    * If HP drops to 0 or below, triggers character death and respawn.
@@ -6824,44 +6832,17 @@ const _HealthModule = class _HealthModule {
   }
   /**
    * Resets character state on death:
-   * Drops any carried object, clears wall mounts, resets velocities,
-   * snaps to a random spawn position from the 4 online clearings, and restores full health.
+   * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */
-  dieAndRespawn(character, _arena, explicitPos) {
-    var _a;
-    if (character.heldObject) {
-      character.heldObject.isHeld = false;
-      character.heldObject.heldBy = null;
-      character.heldObject = null;
-    }
-    character.isClimbing = false;
-    character.standingWall = null;
-    if (character.wallEdgeAssistModule) {
-      character.wallEdgeAssistModule.isAssistClampArmed = false;
-      character.wallEdgeAssistModule.hasMovedOntoWall = false;
-    }
-    character.velocity = { x: 0, y: 0 };
-    character.verticalVelocity = 0;
-    const spawns = _HealthModule.RESPAWN_SPAWNS;
-    const picked = explicitPos ?? spawns[Math.floor(Math.random() * spawns.length)];
-    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
-    character.position.x = chosenSpawn.x;
-    character.position.y = chosenSpawn.y;
-    character.position.z = chosenSpawn.z;
-    character.supportingSurfaceHeight = 0;
-    character.isRespawnLocked = true;
-    character.authoritativeRespawnPos = { ...chosenSpawn };
-    const max = this.getMaxHp(character.properties);
-    this.currentHpProp.set(max, character.properties);
-    this._activeModifiers.clear();
-    (_a = this.onDeathRespawn) == null ? void 0 : _a.call(this, character, chosenSpawn);
+  dieAndRespawn(character, arena, explicitPos) {
+    character.dieAndRespawn(arena, explicitPos);
   }
-};
+}
 /**
  * Authoritative clearing spawn points (West, East, Southwest, Southeast).
  * Open clearings safely away from arena cover walls.
  */
-__publicField(_HealthModule, "RESPAWN_SPAWNS", [
+__publicField(HealthModule, "RESPAWN_SPAWNS", [
   { x: 3.5, y: 7, z: 0 },
   // Slot 1 (West open midfield)
   { x: 17, y: 3.5, z: 0 },
@@ -6871,7 +6852,6 @@ __publicField(_HealthModule, "RESPAWN_SPAWNS", [
   { x: 17, y: 11, z: 0 }
   // Slot 4 (Southeast open clearing)
 ]);
-let HealthModule = _HealthModule;
 class DamageSolverModule {
   // 60ms ~ 3-4 frames
   constructor(options) {
@@ -7083,6 +7063,12 @@ class EnergyPool {
     const max = this.getMaxEnergy(registry);
     this.currentEnergyProp.set(max, registry);
   }
+  /**
+   * Resets energy pool to full capacity.
+   */
+  reset(registry) {
+    this.refill(registry);
+  }
 }
 const ABILITY_METADATA = {
   sprint: { name: "Sprint", color: "#f59e0b" },
@@ -7270,6 +7256,21 @@ class EnergyBus {
   }
   getCurrentStamina(registry) {
     return this.currentStaminaProp.get(registry);
+  }
+  /**
+   * Resets energy bus to full stamina capacity, clears exhaustion, active allocations, and demands.
+   */
+  reset(registry) {
+    const maxS = this.getMaxStamina(registry);
+    this.currentStaminaProp.set(maxS, registry);
+    this.isExhausted = false;
+    this.livePowerDraw = 0;
+    this.currentWattageProp.set(0, registry);
+    this.recentPeakWattage = 0;
+    this.recentPeakHoldTimer = 0;
+    this.hadPhysicalExertion = false;
+    this.clearDemands();
+    this._activeAllocations.clear();
   }
   getStaminaRegenRate(registry) {
     return this.staminaRegenRateProp.get(registry);
@@ -8408,6 +8409,60 @@ class Character extends GameObject {
       if (!adjusted) break;
     }
     return { x: targetX, y: targetY, z: heldZ };
+  }
+  /**
+   * Resets all dynamic properties and module states of the character
+   * back to their original/maximum values (such as HP, energy pool, and stamina).
+   */
+  resetDynamicValues() {
+    if (this.healthModule) {
+      this.healthModule.reset(this.properties);
+    }
+    if (this.energyPool) {
+      this.energyPool.reset(this.properties);
+    }
+    for (const bus of this.energyBusses.values()) {
+      bus.reset(this.properties);
+    }
+    const origStrength = this.properties.get("strength");
+    if (origStrength !== void 0) {
+      this.strengthProp.set(origStrength, this.properties);
+    }
+  }
+  /**
+   * Primary entry point for dying and respawning.
+   * Clears held objects, climbing state, velocities, places character at spawn,
+   * and delegates each module with dynamic properties to reset to initial values.
+   */
+  dieAndRespawn(_arena, explicitPos) {
+    var _a;
+    if (this.heldObject) {
+      this.heldObject.isHeld = false;
+      this.heldObject.heldBy = null;
+      this.heldObject = null;
+    }
+    this.isClimbing = false;
+    this.standingWall = null;
+    if (this.wallEdgeAssistModule) {
+      this.wallEdgeAssistModule.isAssistClampArmed = false;
+      this.wallEdgeAssistModule.hasMovedOntoWall = false;
+    }
+    this.velocity = { x: 0, y: 0 };
+    this.verticalVelocity = 0;
+    const spawns = HealthModule.RESPAWN_SPAWNS;
+    const picked = explicitPos ?? this.spawnPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
+    this.position.x = chosenSpawn.x;
+    this.position.y = chosenSpawn.y;
+    this.position.z = chosenSpawn.z;
+    this.supportingSurfaceHeight = 0;
+    this.isRespawnLocked = true;
+    this.authoritativeRespawnPos = { ...chosenSpawn };
+    this.isAwaitingRespawn = false;
+    this.resetDynamicValues();
+    if ((_a = this.healthModule) == null ? void 0 : _a.onDeathRespawn) {
+      this.healthModule.onDeathRespawn(this, chosenSpawn);
+    }
   }
 }
 class SweptMath {
@@ -10569,8 +10624,10 @@ class ServerTelemetryBroadcaster {
     const ghostCharacters = allCharacters.map((c) => {
       var _a, _b;
       const mainBus = c.getEnergyBus("bus_main") || c.energyBusses.values().next().value;
+      const charId = c.playerId || c.id || "player";
+      const isOwnedByRecipient = !targetPId || (charId === targetPId || charId.startsWith(`${targetPId}:`) || targetPId === "keyboard" && (c === primaryChar || charId === "player" || charId === "keyboard"));
       return {
-        id: c.playerId || c.id || "player",
+        id: charId,
         name: c.name,
         x: Number(c.position.x.toFixed(3)),
         y: Number(c.position.y.toFixed(3)),
@@ -10595,11 +10652,11 @@ class ServerTelemetryBroadcaster {
         controllerType: c.controllerType,
         currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
         maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0,
-        currentEnergyJoules: c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : void 0,
-        maxEnergyJoules: c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : void 0,
-        currentStaminaSeconds: mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
-        maxStaminaSeconds: mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
-        currentWattage: mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0
+        currentEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : void 0,
+        maxEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : void 0,
+        currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
+        maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
+        currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0
       };
     });
     return {
@@ -11775,7 +11832,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     for (const [clientId, client] of this.clients) {
       if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0, clientId);
           const clockSync = this.simulation.getLatestClockSync(clientId);
           if (clockSync) {
             snapshot.clockSync = clockSync;

@@ -816,5 +816,51 @@ export class Character extends GameObject {
       this.strengthProp.set(origStrength, this.properties);
     }
   }
+
+  /**
+   * Primary entry point for dying and respawning.
+   * Clears held objects, climbing state, velocities, places character at spawn,
+   * and delegates each module with dynamic properties to reset to initial values.
+   */
+  public dieAndRespawn(_arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
+    // 1. Drop carried objects
+    if (this.heldObject) {
+      this.heldObject.isHeld = false;
+      this.heldObject.heldBy = null;
+      this.heldObject = null;
+    }
+
+    // 2. Clear climbing and wall mounts
+    this.isClimbing = false;
+    this.standingWall = null;
+    if (this.wallEdgeAssistModule) {
+      this.wallEdgeAssistModule.isAssistClampArmed = false;
+      this.wallEdgeAssistModule.hasMovedOntoWall = false;
+    }
+
+    // 3. Reset physics velocity
+    this.velocity = { x: 0, y: 0 };
+    this.verticalVelocity = 0;
+
+    // 4. Pick spawn position (explicit, assigned spawnPos, or clearing)
+    const spawns = HealthModule.RESPAWN_SPAWNS;
+    const picked = explicitPos ?? this.spawnPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
+
+    this.position.x = chosenSpawn.x;
+    this.position.y = chosenSpawn.y;
+    this.position.z = chosenSpawn.z;
+    this.supportingSurfaceHeight = 0;
+    (this as any).isRespawnLocked = true;
+    (this as any).authoritativeRespawnPos = { ...chosenSpawn };
+    (this as any).isAwaitingRespawn = false;
+
+    // 5. Delegate all dynamic properties and modules (HP, Energy Pool, Energy Busses) to reset
+    this.resetDynamicValues();
+
+    if (this.healthModule?.onDeathRespawn) {
+      this.healthModule.onDeathRespawn(this, chosenSpawn);
+    }
+  }
 }
 

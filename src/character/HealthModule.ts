@@ -350,44 +350,9 @@ export class HealthModule {
 
   /**
    * Resets character state on death:
-   * Drops any carried object, clears wall mounts, resets velocities,
-   * snaps to a random spawn position from the 4 online clearings, and restores full health.
+   * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */
-  public dieAndRespawn(character: Character, _arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
-    // 1. Drop carried objects
-    if (character.heldObject) {
-      character.heldObject.isHeld = false;
-      character.heldObject.heldBy = null;
-      character.heldObject = null;
-    }
-
-    // 2. Clear climbing and wall mounts
-    character.isClimbing = false;
-    character.standingWall = null;
-    if (character.wallEdgeAssistModule) {
-      character.wallEdgeAssistModule.isAssistClampArmed = false;
-      character.wallEdgeAssistModule.hasMovedOntoWall = false;
-    }
-
-    // 3. Reset physics velocity
-    character.velocity = { x: 0, y: 0 };
-    character.verticalVelocity = 0;
-
-    // 4. Place at explicit or random spawn clearing out of the four online points
-    const spawns = HealthModule.RESPAWN_SPAWNS;
-    const picked = explicitPos ?? spawns[Math.floor(Math.random() * spawns.length)];
-    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
-
-    character.position.x = chosenSpawn.x;
-    character.position.y = chosenSpawn.y;
-    character.position.z = chosenSpawn.z;
-    character.supportingSurfaceHeight = 0;
-    (character as any).isRespawnLocked = true;
-    (character as any).authoritativeRespawnPos = { ...chosenSpawn };
-
-    // 5. Restore full HP, energy, and stamina across all character modules
-    character.resetDynamicValues();
-
-    this.onDeathRespawn?.(character, chosenSpawn);
+  public dieAndRespawn(character: Character, arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
+    character.dieAndRespawn(arena, explicitPos);
   }
 }

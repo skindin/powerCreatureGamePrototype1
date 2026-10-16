@@ -518,23 +518,14 @@ export class OnlineSessionManager {
 
         if (targetChar) {
           console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
-          (targetChar as any).isAwaitingRespawn = false;
-          (targetChar as any).isRespawnLocked = false;
-          if (targetChar.healthModule) {
-            targetChar.healthModule.dieAndRespawn(targetChar, undefined, {
-              x: ev.respawnX,
-              y: ev.respawnY,
-              z: ev.respawnZ
-            });
-          }
-          // Reset all dynamic values: HP, Energy Pool, Burst Stamina
-          targetChar.resetDynamicValues();
+          targetChar.dieAndRespawn(this.gameLoop.arena, {
+            x: ev.respawnX,
+            y: ev.respawnY,
+            z: ev.respawnZ
+          });
           if (this.gameLoop.primaryCharacter && this.gameLoop.primaryCharacter !== targetChar) {
             this.gameLoop.primaryCharacter.resetDynamicValues();
           }
-          targetChar.position.x = ev.respawnX;
-          targetChar.position.y = ev.respawnY;
-          targetChar.position.z = ev.respawnZ ?? 0;
           targetChar.velocity.x = 0;
           targetChar.velocity.y = 0;
           if (targetChar.hasVerticalVelocity) {
