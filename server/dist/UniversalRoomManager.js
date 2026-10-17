@@ -5174,9 +5174,7 @@ const _GameObject = class _GameObject {
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
-                const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-                const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
-                this.resolveWallCollision(wall, isAscendingJump);
+                this.resolveWallCollision(wall);
               }
             }
           }
@@ -5231,9 +5229,7 @@ const _GameObject = class _GameObject {
             if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
               continue;
             }
-            const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-            const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
-            this.resolveWallCollision(wall, isAscendingJump);
+            this.resolveWallCollision(wall);
           }
         }
       }
@@ -5356,7 +5352,7 @@ const _GameObject = class _GameObject {
     }
   }
   /** Resolves 2D circle-AABB wall collision on the ground plane */
-  resolveWallCollision(wall, isAscendingJump = false) {
+  resolveWallCollision(wall) {
     if (!this.hasCollider) return;
     const r = this.colliderRadius;
     const closestX = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
@@ -5400,10 +5396,8 @@ const _GameObject = class _GameObject {
       this.lastContactNormal = { x: normalX, y: normalY };
       this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
       this.lastCollisionTime = performance.now();
-      if (!isAscendingJump) {
-        const restitution = this.isCharacter ? 0 : this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
-        this.resolveWallImpact(normalX, normalY, restitution);
-      }
+      const restitution = this.isCharacter ? 0 : this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
+      this.resolveWallImpact(normalX, normalY, restitution);
     }
   }
 };
