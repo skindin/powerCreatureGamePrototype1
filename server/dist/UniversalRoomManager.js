@@ -6408,23 +6408,19 @@ class ThrowModule {
     }
     const dirX = dx / dist;
     const dirY = dy / dist;
-    const vMin = Math.sqrt(Math.max(1, g * (dist + Math.sqrt(dist * dist + deltaZ * deltaZ))));
-    const effectiveVMin = Math.min(vMin, maxSpeed);
     let chosenVx = 0;
     let chosenVy = 0;
     let chosenVz = 0;
     let totalTime = 1;
     const aCoeff = 0.25 * g * g;
     const cCoeff = dist * dist + deltaZ * deltaZ;
-    const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
-    const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
-    const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
-    const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
+    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+    const tOpt = Math.sqrt(2 * dist3D / g);
     const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
     const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * tOpt;
     const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
     const tMin = Math.max(0.02, tFlat);
     const tMax = Math.max(tMin, tHigh);
