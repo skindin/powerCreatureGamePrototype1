@@ -8253,12 +8253,13 @@ class Character extends GameObject {
     if (!isGrounded || this.isHeld) {
       return false;
     }
+    const baseMass = Math.max(0.2, this.baseMass ?? 1.2);
     const totalMass = Math.max(0.2, this.mass);
     const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
     const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
-    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
-    if (takeoffSpeed <= 0.01) return false;
-    const mechanicalJoules = 0.5 * totalMass * (takeoffSpeed * takeoffSpeed);
+    const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
+    if (targetTakeoffSpeed <= 0.01) return false;
+    const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
     const bus = this.getEnergyBus(this.jumpEnergyBusId);
     const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
     const metabolicJoules = Math.max(15, mechanicalJoules / efficiency);
@@ -8282,8 +8283,9 @@ class Character extends GameObject {
       }
     }
     const jumped = this.jumpModule.jump(this, arena, movementInput);
-    if (jumped && energyFraction < 1) {
-      this.verticalVelocity *= Math.sqrt(energyFraction);
+    if (jumped) {
+      const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
+      this.verticalVelocity = achievableSpeed;
     }
     return jumped;
   }

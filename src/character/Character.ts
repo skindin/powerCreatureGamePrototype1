@@ -323,19 +323,18 @@ export class Character extends GameObject {
       return false;
     }
 
-    // Physical kinetic energy calculation:
-    // Takeoff speed from JumpModule: v = min(maxSpeed, jumpStrength / totalMass)
-    // Mechanical Work: W_mech = 0.5 * totalMass * v^2
-    // Muscle metabolic efficiency is scaled by muscleEfficiency from the connected EnergyBus.
+    // Base unencumbered target takeoff speed (aiming for standard jump height)
+    const baseMass = Math.max(0.2, this.baseMass ?? 1.2);
     const totalMass = Math.max(0.2, this.mass);
     const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
     const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
-    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
+    const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
 
-    if (takeoffSpeed <= 0.01) return false;
+    if (targetTakeoffSpeed <= 0.01) return false;
 
-    // Metabolic energy in Joules using forward-facing muscleEfficiency
-    const mechanicalJoules = 0.5 * totalMass * (takeoffSpeed * takeoffSpeed);
+    // Target mechanical work needed to propel the full total mass (creature + held item) to normal jump height:
+    // W_mech = 0.5 * totalMass * targetTakeoffSpeed^2
+    const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
     const bus = this.getEnergyBus(this.jumpEnergyBusId);
     const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
     const metabolicJoules = Math.max(15, mechanicalJoules / efficiency);
@@ -361,9 +360,12 @@ export class Character extends GameObject {
     }
 
     const jumped = this.jumpModule.jump(this, arena, movementInput);
-    if (jumped && energyFraction < 1) {
-      // Partial energy: jump with the maximum impulse the available energy allows
-      this.verticalVelocity *= Math.sqrt(energyFraction); // E ∝ v²
+    if (jumped) {
+      // Set takeoff velocity to the target speed scaled by available energy fraction:
+      // If full energy is granted, creature reaches full standard jump height even with heavy load!
+      // If energy is rationed or partial, velocity scales by sqrt(energyFraction) (E ∝ v²).
+      const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
+      this.verticalVelocity = achievableSpeed;
     }
     return jumped;
   }
