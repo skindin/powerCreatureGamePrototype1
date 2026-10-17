@@ -809,21 +809,15 @@ export class GameLoop {
       }
 
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
-      // While a thrown object is in ballistic flight or bouncing from local player, allow local prediction
-      // unless server reports collision/landing (sleeping) or massive divergence (> 3.0 units).
+      // While a thrown object is in ballistic flight from local player, allow local prediction
+      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
+      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      if (wasThrownByLocal && localObj.isInFlight && !localObj.isRestingOnSurface && !sObj.isSleeping) {
+      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
-        const flightDist = Math.hypot(flightDx, flightDy);
-
-        const velDot = localObj.velocity.x * sObj.vx + localObj.velocity.y * sObj.vy;
-        const isOpposingDirection = (Math.hypot(localObj.velocity.x, localObj.velocity.y) > 0.3 || Math.hypot(sObj.vx, sObj.vy) > 0.3) && velDot < -0.05;
-
-        // If velocities oppose (local client rebounded, server is trailing pre-impact)
-        // or within normal flight divergence buffer (< 1.5 units): continue local prediction!
-        if (isOpposingDirection || flightDist < 1.5) {
+        if (Math.hypot(flightDx, flightDy) < 0.6) {
           continue;
         }
       }
@@ -871,27 +865,6 @@ export class GameLoop {
 
       // 7. Smart Smooth Convergence
       const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
-      const sSpeed = Math.hypot(sObj.vx, sObj.vy);
-      const velDot = localObj.velocity.x * sObj.vx + localObj.velocity.y * sObj.vy;
-      const isOpposingVel = (localSpeed > 0.3 || sSpeed > 0.3) && velDot < -0.05;
-      const recentlyCollidedLocally = (performance.now() - localObj.lastCollisionTime) < 350;
-
-      if (isOpposingVel) {
-        if (recentlyCollidedLocally) {
-          // Local entity just bounced! Server snapshot is trailing pre-impact.
-          // Do NOT drag velocity backwards into the impact surface or pull position forward!
-          continue;
-        } else if (sSpeed > 0.3) {
-          // Server snapshot has already bounced, but local client hasn't registered impact yet.
-          // Instantaneous reflection to authoritative server rebound velocity:
-          localObj.velocity.x = sObj.vx;
-          localObj.velocity.y = sObj.vy;
-          localObj.position.x += dx * 0.40;
-          localObj.position.y += dy * 0.40;
-          continue;
-        }
-      }
-
       const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
