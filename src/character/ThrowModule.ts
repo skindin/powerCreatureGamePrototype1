@@ -731,34 +731,42 @@ export class ThrowModule {
       chosenVy = dirY * hSpeed;
     } else {
       // 2. LOCKED VECTOR DRAG:
-      // Project mouse drag vector (aimTarget - lockedTargetPos) along character->target unit vector
+      // Project mouse drag offset (aimTarget - lockedTargetPos) along character->target unit vector dirX, dirY
+      // dragOffset > 0: mouse dragged in direction (character -> target), making trajectory flatter & faster
+      // dragOffset < 0: mouse dragged in opposite direction (target -> character), making trajectory higher & steeper
       const dragDx = aimTargetX - lockedTargetPos.x;
       const dragDy = aimTargetY - lockedTargetPos.y;
-      const proj = dragDx * dirX + dragDy * dirY; // Positive = dragging forward away from char; Negative = dragging backward toward char
+      const dragOffset = dragDx * dirX + dragDy * dirY;
 
       const aCoeff = 0.25 * g * g;
       const cCoeff = dist * dist + deltaZ * deltaZ;
 
-      if (proj >= 0) {
-        // Forward: Increase launch speed towards maxSpeed (flatter & harder throw)
-        const forwardFraction = Math.min(1.0, proj / 4.0);
-        const currentSpeed = effectiveVMin + (maxSpeed - effectiveVMin) * forwardFraction;
-        const bCoeff = -(currentSpeed * currentSpeed - g * deltaZ);
-        const disc = Math.max(0, bCoeff * bCoeff - 4 * aCoeff * cCoeff);
-        const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
-        totalTime = uLow > 0 ? Math.sqrt(uLow) : dist / currentSpeed;
+      // Minimum energy / optimal angle flight time T_opt at effectiveVMin:
+      const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
+      const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
+      const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
+      const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
+
+      // Flattest valid flight time T_flat at maxSpeed:
+      const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+      const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+      const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
+      const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+
+      // Steepest / highest valid flight time T_high at maxSpeed:
+      const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
+      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+
+      // Drag sensitivity: 3.5 units of mouse travel along vector covers full range [tHigh, tFlat]
+      const dragScale = 3.5;
+      if (dragOffset >= 0) {
+        // Forward: smoothly interpolate from tOpt down to tFlat (flatter, harder throw)
+        const forwardFraction = Math.min(1.0, dragOffset / dragScale);
+        totalTime = tOpt - (tOpt - tFlat) * forwardFraction;
       } else {
-        // Backward: High arc (loftier throw landing at the exact same target)
-        const backwardFraction = Math.min(1.0, -proj / 4.0);
-        const bCoeffOpt = -(effectiveVMin * effectiveVMin - g * deltaZ);
-        const tOpt = Math.sqrt(Math.max(0.01, (-bCoeffOpt) / (2 * aCoeff)));
-
-        const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-        const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-        const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
-        const tMaxHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 1.8;
-
-        totalTime = tOpt + (tMaxHigh - tOpt) * backwardFraction;
+        // Backward: smoothly interpolate from tOpt up to tHigh (steeper, loftier arc)
+        const backwardFraction = Math.min(1.0, -dragOffset / dragScale);
+        totalTime = tOpt + (tHigh - tOpt) * backwardFraction;
       }
 
       totalTime = Math.max(0.02, totalTime);
