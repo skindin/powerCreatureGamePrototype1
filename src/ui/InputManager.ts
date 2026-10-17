@@ -196,6 +196,7 @@ export class InputManager {
     this.mousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.actualMousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.setupListeners();
+    this.updateCanvasCursorClass();
   }
 
   private setupListeners(): void {
@@ -232,6 +233,7 @@ export class InputManager {
       // Space key: Claim Keyboard Player 1 if not yet active, and trigger jump
       if (e.code === "Space") {
         this.isKeyboardSuspended = false;
+        this.updateCanvasCursorClass();
         if (!this.isKeyboardActive) {
           this.onKeyboardJoin?.();
         }
@@ -242,6 +244,7 @@ export class InputManager {
 
       if (e.code === "Escape") {
         this.isKeyboardSuspended = true;
+        this.updateCanvasCursorClass();
         this.keysPressed.clear();
         this.isQKeyDepressed = false;
         this.isEKeyDepressed = false;
@@ -335,6 +338,7 @@ export class InputManager {
 
     window.addEventListener("blur", () => {
       this.isKeyboardSuspended = true;
+      this.updateCanvasCursorClass();
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
       this.isAltHeld = false;
@@ -358,6 +362,10 @@ export class InputManager {
         this.aimLockRawDx += rawDx;
         this.aimLockRawDy += rawDy;
         this.aimLockRawDelta += rawDx + rawDy;
+        this.mousePos.x = this.lockedAimPos.x;
+        this.mousePos.y = this.lockedAimPos.y;
+        this.actualMousePos.x = this.lockedAimPos.x;
+        this.actualMousePos.y = this.lockedAimPos.y;
         return;
       }
 
@@ -389,6 +397,7 @@ export class InputManager {
       // Resume keyboard/mouse control when clicking on the game view
       const wasSuspended = this.isKeyboardSuspended;
       this.isKeyboardSuspended = false;
+      this.updateCanvasCursorClass();
 
       this.updateMousePos(e);
 
@@ -585,6 +594,15 @@ export class InputManager {
       this.actualMousePos.y = my;
       this.mousePos.x = mx;
       this.mousePos.y = my;
+    }
+  }
+
+  public updateCanvasCursorClass(): void {
+    if (typeof document === "undefined" || !this.canvas) return;
+    if (this.isKeyboardSuspended || this.devPanel?.isEditMode) {
+      this.canvas.classList.add("show-os-cursor");
+    } else {
+      this.canvas.classList.remove("show-os-cursor");
     }
   }
 
@@ -1171,6 +1189,7 @@ export class InputManager {
     getAllCharacters?: () => Character[]
   ): void {
     this.devPanel = devPanel;
+    this.updateCanvasCursorClass();
     if (devPanel) {
       this.selectedCanvasEntity = devPanel.selectedEntity;
     }

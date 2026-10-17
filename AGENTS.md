@@ -90,8 +90,8 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
 - **Multiplayer Replication**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
-- **Trajectory Modulation & Sightlines**:
-  - Pointer unfreeze drift compensation: Re-calibrates coordinate offset upon releasing right-click so mouse delta moved while frozen is never leaked into cursor position.
+- **Trajectory Modulation & Aim Lock Cursor**:
+  - In-Game Aim Lock Cursor & Drift Compensation: The canvas uses `cursor: none` during active gameplay with clean in-game aim reticle rendering. OS cursor is restored when paused, suspended, or in edit mode (`show-os-cursor`). Holding right-click locks the in-game cursor visibly in place at `lockedAimPos` without disappearing. When released, the cursor is unlocked right where it was first locked with seamless zero-drift compensation.
   - Arc Ratio Trajectory Model: Trajectory manipulation parameterized directly as `savedArcRatio` ($0.0 = \text{shortest/flattest}$, $1.0 = \text{tallest/steepest}$). Dragging UP while holding right-click heightens the arc, and dragging DOWN lowers it. Clamps without dead zone, and maintains the player's steepness intent (e.g. tracking the highest possible arc) even as distance changes and bounds contract/expand.
   - Ghost preview arcs: Rendered at whisper opacity (`0.10` in Layer 1, `0.03` above Layer 1, `0.75x` dot radius) for reachable flattest and steepest bounds, dynamically visible only while holding right-click to modulate arc height.
   - Straight dotted sightline matching arc dot radius and arc altitude layer-transparency, cleanly truncated at the landing footprint.

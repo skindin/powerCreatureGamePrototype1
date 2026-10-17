@@ -371,56 +371,9 @@ export class TrajectoryRenderer {
       const cursorX = aimTarget.x * ppu;
       const cursorY = aimTarget.y * ppu;
 
-      const scale = arena.visualAltitudeScale ?? 0.5;
       const isLocked = Boolean(traj.lockedTargetPos);
 
-      // Distinct locked reticle at the locked target landing position
-      if (traj.lockedTargetPos) {
-        const lockScrX = traj.lockedTargetPos.x * ppu;
-        const lockScrY = (traj.lockedTargetPos.y - (traj.targetSurfaceHeight ?? 0) * scale) * ppu;
 
-        ctx.save();
-        ctx.strokeStyle = "#38bdf8"; // Vibrant cyan
-        ctx.lineWidth = 2.4;
-        ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
-        ctx.shadowBlur = 6;
-
-        // Diamond reticle with crosshair
-        const bsz = 14;
-        ctx.beginPath();
-        // Diamond
-        ctx.moveTo(lockScrX, lockScrY - bsz);
-        ctx.lineTo(lockScrX + bsz, lockScrY);
-        ctx.lineTo(lockScrX, lockScrY + bsz);
-        ctx.lineTo(lockScrX - bsz, lockScrY);
-        ctx.closePath();
-        ctx.stroke();
-
-        // Cross inside diamond
-        ctx.beginPath();
-        ctx.moveTo(lockScrX - 4, lockScrY);
-        ctx.lineTo(lockScrX + 4, lockScrY);
-        ctx.moveTo(lockScrX, lockScrY - 4);
-        ctx.lineTo(lockScrX, lockScrY + 4);
-        ctx.stroke();
-
-        // Lock Label above target
-        ctx.font = "bold 10px monospace";
-        ctx.fillStyle = "#38bdf8";
-        ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
-        ctx.shadowBlur = 4;
-        ctx.fillText("[TARGET LOCKED]", lockScrX - 42, lockScrY - bsz - 4);
-
-        // Thin dashed vector connecting locked target to independent live drag cursor
-        ctx.beginPath();
-        ctx.moveTo(lockScrX, lockScrY);
-        ctx.lineTo(cursorX, cursorY);
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.restore();
-      }
 
       // If cursor is beyond the clamped throw distance, draw a subtle dashed sightline from landing target to cursor
       const distToCursor = Math.hypot(cursorX - finalHitX, cursorY - finalGroundY) / ppu;
