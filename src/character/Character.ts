@@ -17,6 +17,17 @@ import { ConsumeModule } from "./ConsumeModule.js";
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
 
+export interface AnticipatedModifier {
+  id: string;
+  abilityId: string;
+  name: string;
+  color: string;
+  amount: number;
+  isBurst: boolean;
+  isPositive?: boolean;
+  order?: number;
+}
+
 export class Character extends GameObject {
   public strengthProp: DynamicProperty;
 
@@ -142,6 +153,46 @@ export class Character extends GameObject {
   public isAiming: boolean;
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
+
+  /**
+   * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
+   * These provide a ghostly preview of the energy cost before committing to the action.
+   */
+  public getAnticipatedModifiers(): AnticipatedModifier[] {
+    const list: AnticipatedModifier[] = [];
+
+    // 1. Throw Trajectory Preview Anticipated Modifier
+    if (
+      this.activeTrajectory &&
+      this.heldObject &&
+      this.throwModule &&
+      this.throwModule.enabled &&
+      this.throwModule.consumesEnergy
+    ) {
+      const launchVel = this.activeTrajectory.launchVel;
+      if (launchVel) {
+        const heldMass = this.heldObject.hasMass ? Math.max(0.1, this.heldObject.mass) : 1.0;
+        const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const bus = this.getEnergyBus(this.throwModule.energyBusId);
+        const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+
+        list.push({
+          id: "anticipated_throw",
+          abilityId: "throw",
+          name: "Throw",
+          color: "#f43f5e",
+          amount: metabolicJoules,
+          isBurst: true,
+          isPositive: false,
+          order: 950,
+        });
+      }
+    }
+
+    return list;
+  }
 
   public isUsingItem: boolean = false;
   public eatRateWatts: number = 0;

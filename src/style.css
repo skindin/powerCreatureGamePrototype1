@@ -5078,6 +5078,31 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 4px #ef4444;
 }
 
+/* Anticipated Modifier Blocks & Tags (Ghostly, less opaque, dotted outline) */
+.hud-block-anticipated {
+  opacity: 0.50 !important;
+  border: 1.5px dotted rgba(255, 255, 255, 0.9) !important;
+  border-right: 1.5px dotted rgba(255, 255, 255, 0.9) !important;
+  box-sizing: border-box;
+  animation: hud-anticipated-pulse 2s ease-in-out infinite alternate;
+}
+
+.hud-tag-anticipated {
+  opacity: 0.65 !important;
+  border-style: dotted !important;
+  border-width: 1.5px !important;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4), inset 0 0 4px rgba(255, 255, 255, 0.15) !important;
+}
+
+@keyframes hud-anticipated-pulse {
+  from {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 0.65;
+  }
+}
+
 /* HUD opacity is scoped exclusively to .energy-hud-container; all other menus, sidebars, and dialogs remain fully opaque. */
 
 /* Responsive constraints */

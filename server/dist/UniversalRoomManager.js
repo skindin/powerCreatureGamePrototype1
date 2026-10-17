@@ -8266,6 +8266,35 @@ class Character extends GameObject {
   get isDummy() {
     return this.role === "dummy";
   }
+  /**
+   * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
+   * These provide a ghostly preview of the energy cost before committing to the action.
+   */
+  getAnticipatedModifiers() {
+    const list = [];
+    if (this.activeTrajectory && this.heldObject && this.throwModule && this.throwModule.enabled && this.throwModule.consumesEnergy) {
+      const launchVel = this.activeTrajectory.launchVel;
+      if (launchVel) {
+        const heldMass = this.heldObject.hasMass ? Math.max(0.1, this.heldObject.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const bus = this.getEnergyBus(this.throwModule.energyBusId);
+        const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        list.push({
+          id: "anticipated_throw",
+          abilityId: "throw",
+          name: "Throw",
+          color: "#f43f5e",
+          amount: metabolicJoules,
+          isBurst: true,
+          isPositive: false,
+          order: 950
+        });
+      }
+    }
+    return list;
+  }
   canConsumeHeldObject() {
     return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
   }

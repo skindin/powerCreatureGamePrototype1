@@ -15,6 +15,7 @@ interface VisualPowerBlock {
   currentWatts: number;
   targetWatts: number;
   stableWatts: number;
+  isAnticipated?: boolean;
 }
 
 interface VisualHealthBlock {
@@ -382,6 +383,22 @@ export class EnergyHud {
       } as any);
     }
 
+    // Anticipated Modifiers: Preview energy costs for uncommitted actions (e.g. Throw trajectory preview)
+    const anticipatedMods = _char.getAnticipatedModifiers ? _char.getAnticipatedModifiers() : [];
+    for (const ant of anticipatedMods) {
+      allocations.push({
+        id: ant.id,
+        name: ant.name,
+        color: ant.color,
+        grantedWatts: ant.amount,
+        allowPartialPower: false,
+        isPositive: ant.isPositive ?? false,
+        isBurst: ant.isBurst,
+        order: ant.order ?? 950,
+        isAnticipated: true,
+      } as any);
+    }
+
     // Track active allocations
     const activeIds = new Set<string>();
     for (const alloc of allocations) {
@@ -402,6 +419,7 @@ export class EnergyHud {
           currentWatts: 0,
           targetWatts: alloc.grantedWatts,
           stableWatts: alloc.grantedWatts,
+          isAnticipated: (alloc as any).isAnticipated ?? false,
         };
         this.visualBlocks.set(alloc.id, vb);
       } else {
@@ -410,6 +428,7 @@ export class EnergyHud {
         vb.isBurst = alloc.isBurst ?? false;
         vb.allowPartialPower = alloc.allowPartialPower;
         vb.isPositive = (alloc as any).isPositive ?? false;
+        vb.isAnticipated = (alloc as any).isAnticipated ?? false;
       }
     }
 
@@ -467,13 +486,19 @@ export class EnergyHud {
       const widthPct = Math.min(100 - posLeftPct, (vb.currentWatts / powerCap) * 100);
       if (widthPct <= 0.001) continue;
 
+      const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
+      const borderStyle = vb.isAnticipated
+        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
+        : "border-right: 1.5px solid rgba(255, 255, 255, 0.7);";
+      const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
+
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 50%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.7);" title="${vb.name}"></div>
+        <div class="hud-power-block hud-block-pos ${anticipatedClass}" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 50%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}"></div>
       `;
       posLeftPct += widthPct;
     }
 
-    // 2. Bottom Lane: Negative Modifiers (Power Consumption: Sprint, Jump, Heal, Climb, Walk)
+    // 2. Bottom Lane: Negative Modifiers (Power Consumption: Sprint, Jump, Heal, Climb, Walk, and Anticipated Costs)
     let fullPowerWatts = 0;
     for (const vb of negativeBlocks) {
       if (!vb.allowPartialPower && vb.currentWatts > 0.01) {
@@ -511,8 +536,14 @@ export class EnergyHud {
       if (widthPct <= 0.001) continue;
 
       // Color-coded block in the lower lane (bottom half)
+      const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
+      const borderStyle = vb.isAnticipated
+        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
+        : "border-right: 1.5px solid rgba(255, 255, 255, 0.7);";
+      const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
+
       blocksHtml += `
-        <div class="hud-power-block hud-block-neg" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 50%; height: 50%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.7);" title="${vb.name}"></div>
+        <div class="hud-power-block hud-block-neg ${anticipatedClass}" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 50%; height: 50%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: -${Math.round(vb.stableWatts)}"></div>
       `;
 
       negLeftPct += widthPct;
@@ -526,10 +557,19 @@ export class EnergyHud {
       const rateSuffix = vb.isBurst ? "" : "/s";
       const energyAmount = Math.round(vb.stableWatts);
       const sign = vb.isPositive ? "+" : "-";
-      const tagOpacity = Math.min(1, Math.max(0.1, vb.currentWatts / 15)).toFixed(2);
+
+      const tagAnticipatedClass = vb.isAnticipated ? "hud-tag-anticipated" : "";
+      const tagBorderStyle = vb.isAnticipated
+        ? `border: 1.5px dotted ${vb.color};`
+        : `border: 1.5px solid ${vb.color};`;
+      const tagBackground = vb.isAnticipated
+        ? `${vb.color}18`
+        : `${vb.color}33`;
+      const baseTagOpacity = vb.isAnticipated ? 0.65 : 1.0;
+      const tagOpacity = Math.min(baseTagOpacity, Math.max(0.1, (vb.currentWatts / 15) * baseTagOpacity)).toFixed(2);
 
       tagsHtml += `
-        <div class="hud-power-tag" style="border-color: ${vb.color}; background: ${vb.color}33; color: ${vb.color}; opacity: ${tagOpacity};" title="${vb.name}: ${sign}${energyAmount}${rateSuffix}">
+        <div class="hud-power-tag ${tagAnticipatedClass}" style="${tagBorderStyle} background: ${tagBackground}; color: ${vb.color}; opacity: ${tagOpacity};" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: ${sign}${energyAmount}${rateSuffix}">
           <span class="hud-tag-name">${vb.name}</span>
           <span class="hud-tag-rate">${sign}${energyAmount}${rateSuffix}</span>
         </div>
