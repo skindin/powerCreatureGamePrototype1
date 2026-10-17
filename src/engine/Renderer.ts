@@ -7,6 +7,7 @@ import { ShadowPass } from "./rendering/ShadowPass.js";
 import { WallRoofPass } from "./rendering/WallRoofPass.js";
 import { EntityPass } from "./rendering/EntityPass.js";
 import { HudOverlayPass } from "./rendering/HudOverlayPass.js";
+import { prefabManager } from "./prefab/PrefabManager.js";
 import type { CanvasViewport } from "../ui/InputManager.js";
 
 export type VerticalVisualMode = "bigger" | "hover" | "both";
@@ -1353,14 +1354,15 @@ export class Renderer {
       const charScale = useBigger ? Renderer.getAltitudeScale(gChar.z, arena.wallHeight) : 1.0;
       const px = gChar.x * ppu;
       const py = (gChar.y - gChar.z * hoverScale) * ppu;
-      const r = gChar.radius * ppu * charScale;
+      const charRadius = gChar.radius ?? 0.44;
+      const r = charRadius * ppu * charScale;
       const ghostColor = gChar.color || "#38bdf8";
 
       // Ghost ground shadow (drawn when elevated above ground level)
       if (gChar.z > 0.01) {
         ctx.save();
         ctx.beginPath();
-        ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu, 0, Math.PI * 2);
+        ctx.arc(gChar.x * ppu, gChar.y * ppu, charRadius * ppu, 0, Math.PI * 2);
         if (useHover && hoverScale > 0) {
           ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
           ctx.fill();
@@ -1374,7 +1376,7 @@ export class Renderer {
         if (useBigger && gChar.z > arena.wallHeight + 0.01) {
           const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
           ctx.beginPath();
-          ctx.arc(gChar.x * ppu, gChar.y * ppu, gChar.radius * ppu * wallAltScale, 0, Math.PI * 2);
+          ctx.arc(gChar.x * ppu, gChar.y * ppu, charRadius * ppu * wallAltScale, 0, Math.PI * 2);
           ctx.strokeStyle = `${ghostColor}55`;
           ctx.lineWidth = 1.2;
           ctx.setLineDash([2, 4]);
@@ -1423,19 +1425,20 @@ export class Renderer {
             objZ = gHolder.z + 0.45;
           }
         }
+        const objRadius = obj.radius ?? (obj.prefabId ? prefabManager.get(obj.prefabId)?.archetype.colliderRadius : undefined) ?? 0.25;
         const altScale = useBigger ? Renderer.getAltitudeScale(objZ, arena.wallHeight) : 1.0;
         const px = objX * ppu;
         const py = (objY - objZ * hoverScale) * ppu;
-        const r = obj.radius * ppu * altScale;
+        const r = objRadius * ppu * altScale;
 
         // Ghost ground shadow
         if (obj.z > 0.01) {
           ctx.save();
           ctx.beginPath();
           if (obj.shape === "box") {
-            ctx.rect((obj.x - obj.radius) * ppu, (obj.y - obj.radius) * ppu, obj.radius * 2 * ppu, obj.radius * 2 * ppu);
+            ctx.rect((obj.x - objRadius) * ppu, (obj.y - objRadius) * ppu, objRadius * 2 * ppu, objRadius * 2 * ppu);
           } else {
-            ctx.arc(obj.x * ppu, obj.y * ppu, obj.radius * ppu, 0, Math.PI * 2);
+            ctx.arc(obj.x * ppu, obj.y * ppu, objRadius * ppu, 0, Math.PI * 2);
           }
           if (useHover) {
             ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
@@ -1449,7 +1452,7 @@ export class Renderer {
           // Second dotted outline at wall elevation (when bigger sprites is active and z > wallHeight)
           if (useBigger && obj.z > arena.wallHeight + 0.01) {
             const wallAltScale = Renderer.getAltitudeScale(arena.wallHeight, arena.wallHeight);
-            const wallR = obj.radius * ppu * wallAltScale;
+            const wallR = objRadius * ppu * wallAltScale;
             ctx.beginPath();
             if (obj.shape === "box") {
               ctx.rect(obj.x * ppu - wallR, obj.y * ppu - wallR, wallR * 2, wallR * 2);

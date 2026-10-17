@@ -163,9 +163,13 @@ export class GameObject {
     hasGravity?: boolean;
     hasVerticalPosition?: boolean;
     hasVerticalVelocity?: boolean;
+    prefabId?: string | null;
   } = {}) {
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Entity";
+    if (options.prefabId !== undefined) {
+      this.prefabId = options.prefabId;
+    }
     this.position = {
       x: options.position?.x ?? 0,
       y: options.position?.y ?? 0,

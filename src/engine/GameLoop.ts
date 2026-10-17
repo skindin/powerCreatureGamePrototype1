@@ -14,6 +14,7 @@ import { RemoteEntityInterpolator, RemoteEntitySample } from "./physics/RemoteEn
 import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
 import { sceneSpawnerManager } from "./spawner/SceneSpawnerManager.js";
+import { prefabManager } from "./prefab/PrefabManager.js";
 import { ConsumableModule } from "./ConsumableModule.js";
 import { RollModule } from "./RollModule.js";
 import { DamageAuraModule } from "./DamageAuraModule.js";
@@ -618,47 +619,94 @@ export class GameLoop {
         if (this.deletedConsumableIds.has(sObj.id) || (sObj.remainingEnergyJoules !== undefined && sObj.remainingEnergyJoules <= 0.001)) {
           continue;
         }
-        // Authoritative server spawn: instantiate the object locally on the client!
-        localObj = new GameObject({
-          id: sObj.id,
-          name: sObj.name || "Server Object",
-          position: { x: sObj.x, y: sObj.y, z: sObj.z },
-          velocity: { x: sObj.vx, y: sObj.vy },
-          verticalVelocity: sObj.vz ?? 0,
-          color: sObj.color || "#22c55e",
-          colliderRadius: sObj.radius || 0.25,
-          visualShape: sObj.shape || "circle",
-          consumableModule: sObj.consumableTag
-            ? new ConsumableModule({
-                tag: sObj.consumableTag,
-                totalEnergyJoules: sObj.totalEnergyJoules ?? 2000,
-                remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 2000,
-              })
-            : undefined,
-          damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)
-            ? new DamageAuraModule({
-                damageRadius: sObj.damageAuraRadius ?? 2.5,
-                damageRate: sObj.damageAuraRate ?? 25.0,
-              })
-            : undefined,
-          rollModule: (sObj.angX !== undefined || sObj.angY !== undefined || sObj.angZ !== undefined)
-            ? new RollModule({
-                rollResistance: 0.0,
-                angularVelocity: { x: sObj.angX ?? 0, y: sObj.angY ?? 0, z: sObj.angZ ?? 0 },
-              })
-            : undefined,
-        });
-        if (localObj.consumableModule) {
-          localObj.consumableModule.initialColliderRadius = sObj.radius || localObj.colliderRadius;
-        }
-        if (sObj.isSleeping) {
-          localObj.putToSleep();
+
+        const pId = sObj.prefabId || (sObj.name === "Apple" || sObj.id.startsWith("apple-") ? "prefab_apple" : undefined);
+        const prefab = pId ? prefabManager.get(pId) : undefined;
+
+        if (prefab) {
+          // Tell the client to spawn an instance of the apple prefab exactly as it is!
+          localObj = prefab.instantiate({ x: sObj.x, y: sObj.y, z: sObj.z }, this.arena);
+          localObj.id = sObj.id;
+          localObj.velocity.x = sObj.vx;
+          localObj.velocity.y = sObj.vy;
+          localObj.verticalVelocity = sObj.vz ?? 0;
+          if (sObj.isSleeping) {
+            localObj.putToSleep();
+          }
+
+          // Apply overrides ONLY if server explicitly provided differing values:
+          if (sObj.name !== undefined) localObj.name = sObj.name;
+          if (sObj.color !== undefined) localObj.color = sObj.color;
+          if (sObj.shape !== undefined) localObj.visualShape = sObj.shape;
+          if (sObj.radius !== undefined) {
+            localObj.colliderRadius = sObj.radius;
+            if (localObj.consumableModule) {
+              localObj.consumableModule.initialColliderRadius = sObj.radius;
+            }
+          }
+          if (sObj.mass !== undefined) localObj.mass = sObj.mass;
+          if (sObj.bounceMod !== undefined) localObj.bounceMod = sObj.bounceMod;
+          if (sObj.consumableTag !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.tag = sObj.consumableTag;
+          }
+          if (sObj.totalEnergyJoules !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.totalEnergyJoulesProp.literalValue = sObj.totalEnergyJoules;
+          }
+          if (sObj.remainingEnergyJoules !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+          }
+        } else {
+          // Authoritative server spawn: instantiate the object locally on the client!
+          localObj = new GameObject({
+            id: sObj.id,
+            name: sObj.name || "Server Object",
+            position: { x: sObj.x, y: sObj.y, z: sObj.z },
+            velocity: { x: sObj.vx, y: sObj.vy },
+            verticalVelocity: sObj.vz ?? 0,
+            mass: sObj.mass ?? 1.0,
+            bounceMod: sObj.bounceMod ?? 0.0,
+            color: sObj.color || "#22c55e",
+            colliderRadius: sObj.radius || 0.25,
+            visualShape: sObj.shape || "circle",
+            consumableModule: sObj.consumableTag
+              ? new ConsumableModule({
+                  tag: sObj.consumableTag,
+                  totalEnergyJoules: sObj.totalEnergyJoules ?? 2000,
+                  remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 2000,
+                })
+              : undefined,
+            damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)
+              ? new DamageAuraModule({
+                  damageRadius: sObj.damageAuraRadius ?? 2.5,
+                  damageRate: sObj.damageAuraRate ?? 25.0,
+                })
+              : undefined,
+            rollModule: (sObj.angX !== undefined || sObj.angY !== undefined || sObj.angZ !== undefined)
+              ? new RollModule({
+                  rollResistance: 0.0,
+                  angularVelocity: { x: sObj.angX ?? 0, y: sObj.angY ?? 0, z: sObj.angZ ?? 0 },
+                })
+              : undefined,
+          });
+          if (localObj.consumableModule) {
+            localObj.consumableModule.initialColliderRadius = sObj.radius || localObj.colliderRadius;
+          }
+          if (sObj.isSleeping) {
+            localObj.putToSleep();
+          }
         }
         this.objects.push(localObj);
         if (Array.isArray((this.arena as any).entities)) {
           (this.arena as any).entities.push(localObj);
         }
       }
+
+      // Synchronize any explicit overrides sent from server on existing object
+      if (sObj.name !== undefined && localObj.name !== sObj.name) localObj.name = sObj.name;
+      if (sObj.color !== undefined && localObj.color !== sObj.color) localObj.color = sObj.color;
+      if (sObj.shape !== undefined && localObj.visualShape !== sObj.shape) localObj.visualShape = sObj.shape;
+      if (sObj.mass !== undefined && Math.abs(localObj.mass - sObj.mass) > 0.001) localObj.mass = sObj.mass;
+      if (sObj.bounceMod !== undefined && Math.abs((localObj.bounceMod ?? 0) - sObj.bounceMod) > 0.001) localObj.bounceMod = sObj.bounceMod;
 
       // 1. Identify if held by any local player on this machine
       const isHeldByAnyLocalPlayer = Boolean(

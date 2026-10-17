@@ -15,7 +15,10 @@ export interface GhostEntityState {
   vz?: number;
   surfaceZ?: number;
   isGrounded?: boolean;
-  radius: number;
+  radius?: number;
+  prefabId?: string;
+  mass?: number;
+  bounceMod?: number;
   color?: string;
   playerColor?: string;
   playerNumber?: number;

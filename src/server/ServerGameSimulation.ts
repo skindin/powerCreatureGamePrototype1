@@ -296,6 +296,7 @@ export class ServerGameSimulation {
       new GameObject({
         id: "apple-default-1",
         name: "Apple",
+        prefabId: "prefab_apple",
         position: { x: 5.5, y: 7.0, z: 0 },
         color: "#22c55e",
         visualShape: "circle",
@@ -399,21 +400,44 @@ export class ServerGameSimulation {
       }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
-        sObj = new GameObject({
-          id: cObj.id,
-          name: cObj.name || "Object",
-          position: { x: cObj.x, y: cObj.y, z: cObj.z },
-          color: cObj.color || "#38bdf8",
-          colliderRadius: cObj.radius || 0.35,
-          visualShape: cObj.shape || "circle",
-          consumableModule: cObj.consumableTag
-            ? new ConsumableModule({
-                tag: cObj.consumableTag,
-                totalEnergyJoules: cObj.totalEnergyJoules ?? 2000,
-                remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2000,
-              })
-            : undefined,
-        });
+        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : undefined);
+        const prefab = pId ? this.prefabManager.get(pId) : undefined;
+        if (prefab) {
+          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, this.arena);
+          sObj.id = cObj.id;
+          sObj.velocity.x = cObj.vx;
+          sObj.velocity.y = cObj.vy;
+          sObj.verticalVelocity = cObj.vz ?? 0;
+          if (cObj.name !== undefined) sObj.name = cObj.name;
+          if (cObj.color !== undefined) sObj.color = cObj.color;
+          if (cObj.shape !== undefined) sObj.visualShape = cObj.shape;
+          if (cObj.radius !== undefined) {
+            sObj.colliderRadius = cObj.radius;
+            if (sObj.consumableModule) {
+              sObj.consumableModule.initialColliderRadius = cObj.radius;
+            }
+          }
+          if (cObj.mass !== undefined) sObj.mass = cObj.mass;
+          if (cObj.bounceMod !== undefined) sObj.bounceMod = cObj.bounceMod;
+        } else {
+          sObj = new GameObject({
+            id: cObj.id,
+            name: cObj.name || "Object",
+            position: { x: cObj.x, y: cObj.y, z: cObj.z },
+            mass: cObj.mass ?? 1.0,
+            bounceMod: cObj.bounceMod ?? 0.0,
+            color: cObj.color || "#38bdf8",
+            colliderRadius: cObj.radius || 0.35,
+            visualShape: cObj.shape || "circle",
+            consumableModule: cObj.consumableTag
+              ? new ConsumableModule({
+                  tag: cObj.consumableTag,
+                  totalEnergyJoules: cObj.totalEnergyJoules ?? 2000,
+                  remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2000,
+                })
+              : undefined,
+          });
+        }
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
@@ -1235,7 +1259,8 @@ export class ServerGameSimulation {
       rttMs,
       forPlayerId,
       this.getActiveDeathRespawnEvents(),
-      this.getActiveObjectDeletionEvents()
+      this.getActiveObjectDeletionEvents(),
+      this.prefabManager
     );
   }
 }

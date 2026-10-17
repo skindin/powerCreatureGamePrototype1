@@ -299,6 +299,7 @@ function bootstrap(): void {
     new GameObject({
       id: "apple-default-1",
       name: "Apple",
+      prefabId: "prefab_apple",
       position: { x: 5.5, y: 7.0, z: 0 },
       color: "#22c55e",
       visualShape: "circle",

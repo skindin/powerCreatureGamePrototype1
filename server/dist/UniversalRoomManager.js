@@ -4667,6 +4667,9 @@ const _GameObject = class _GameObject {
     var _a, _b, _c;
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Entity";
+    if (options.prefabId !== void 0) {
+      this.prefabId = options.prefabId;
+    }
     this.position = {
       x: ((_a = options.position) == null ? void 0 : _a.x) ?? 0,
       y: ((_b = options.position) == null ? void 0 : _b.y) ?? 0,
@@ -10845,10 +10848,11 @@ class ServerTelemetryBroadcaster {
   /**
    * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
    */
-  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents, objectDeletionEvents) {
+  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents, objectDeletionEvents, prefabManagerInstance) {
     const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
     const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
     const clockSync = latestClockSync.get(targetPId) || latestClockSync.get("keyboard");
+    const pm = prefabManagerInstance || prefabManager;
     const ghostChar = {
       id: primaryChar ? primaryChar.playerId : "player",
       x: primaryChar ? Number(primaryChar.position.x.toFixed(3)) : 0,
@@ -10878,9 +10882,10 @@ class ServerTelemetryBroadcaster {
         posY = relPos.y;
         posZ = relPos.z;
       }
-      return {
+      const pId = obj.prefabId || (obj.name === "Apple" || obj.id.startsWith("apple-") ? "prefab_apple" : void 0);
+      const prefab = pId ? pm.get(pId) : void 0;
+      const baseState = {
         id: obj.id,
-        name: obj.name,
         x: Number(posX.toFixed(3)),
         y: Number(posY.toFixed(3)),
         z: Number(posZ.toFixed(3)),
@@ -10889,24 +10894,93 @@ class ServerTelemetryBroadcaster {
         vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
         surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
         isGrounded: obj.isRestingOnSurface || obj.position.z <= 5e-3,
-        radius: obj.colliderRadius,
-        color: obj.color,
-        shape: obj.visualShape,
         isHeld: obj.isHeld || Boolean(holder),
         heldBy: holder ? holder.playerId || (holder === primaryChar ? "player" : holder.id) : obj.heldBy ? obj.heldBy.playerId || obj.heldBy.id : null,
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : void 0,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : void 0,
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : void 0,
-        isSleeping: obj.isSleeping,
-        currentHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : void 0,
-        maxHp: obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0,
-        consumableTag: obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : void 0,
-        remainingEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : void 0,
-        totalEnergyJoules: obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0,
-        damageAuraRadius: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRadius(obj.properties).toFixed(2)) : void 0,
-        damageAuraRate: obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRate(obj.properties).toFixed(2)) : void 0
+        isSleeping: obj.isSleeping
       };
+      if (prefab && prefab.archetype) {
+        const arch = prefab.archetype;
+        baseState.prefabId = pId;
+        if (obj.name !== arch.name) {
+          baseState.name = obj.name;
+        }
+        if (obj.color !== arch.color) {
+          baseState.color = obj.color;
+        }
+        if (obj.visualShape !== arch.visualShape) {
+          baseState.shape = obj.visualShape;
+        }
+        const archRadius = arch.consumableModule ? arch.consumableModule.initialColliderRadius || arch.colliderRadius : arch.colliderRadius;
+        if (Math.abs(obj.colliderRadius - archRadius) > 5e-3) {
+          baseState.radius = Number(obj.colliderRadius.toFixed(3));
+        }
+        if (Math.abs(obj.mass - arch.mass) > 1e-3) {
+          baseState.mass = Number(obj.mass.toFixed(3));
+        }
+        const objBounce = obj.bounceMod ?? 0;
+        const archBounce = arch.bounceMod ?? 0;
+        if (Math.abs(objBounce - archBounce) > 1e-3) {
+          baseState.bounceMod = Number(objBounce.toFixed(3));
+        }
+        if (obj.consumableModule && obj.consumableModule.enabled) {
+          const archConsumable = arch.consumableModule && arch.consumableModule.enabled ? arch.consumableModule : null;
+          if (!archConsumable || obj.consumableModule.tag !== archConsumable.tag) {
+            baseState.consumableTag = obj.consumableModule.tag;
+          }
+          const objTotal = obj.consumableModule.getTotalEnergy(obj.properties);
+          const archTotal = archConsumable ? archConsumable.getTotalEnergy(arch.properties) : 0;
+          if (Math.abs(objTotal - archTotal) > 0.1) {
+            baseState.totalEnergyJoules = Number(objTotal.toFixed(1));
+          }
+          const objRem = obj.consumableModule.getRemainingEnergy(obj.properties);
+          if (Math.abs(objRem - objTotal) > 0.1 || archConsumable && Math.abs(objRem - archTotal) > 0.1) {
+            baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
+          }
+        }
+        if (obj.healthModule && obj.healthModule.enabled) {
+          const curHp = obj.healthModule.getCurrentHp(obj.properties);
+          const maxHp = obj.healthModule.getMaxHp(obj.properties);
+          const archCurHp = arch.healthModule && arch.healthModule.enabled ? arch.healthModule.getCurrentHp(arch.properties) : void 0;
+          const archMaxHp = arch.healthModule && arch.healthModule.enabled ? arch.healthModule.getMaxHp(arch.properties) : void 0;
+          if (archCurHp === void 0 || Math.abs(curHp - archCurHp) > 0.1) {
+            baseState.currentHp = Number(curHp.toFixed(1));
+          }
+          if (archMaxHp === void 0 || Math.abs(maxHp - archMaxHp) > 0.1) {
+            baseState.maxHp = Number(maxHp.toFixed(1));
+          }
+        }
+        if (obj.damageAuraModule && obj.damageAuraModule.enabled) {
+          const auraRadius = obj.damageAuraModule.getDamageRadius(obj.properties);
+          const auraRate = obj.damageAuraModule.getDamageRate(obj.properties);
+          const archRadius2 = arch.damageAuraModule && arch.damageAuraModule.enabled ? arch.damageAuraModule.getDamageRadius(arch.properties) : void 0;
+          const archRate = arch.damageAuraModule && arch.damageAuraModule.enabled ? arch.damageAuraModule.getDamageRate(arch.properties) : void 0;
+          if (archRadius2 === void 0 || Math.abs(auraRadius - archRadius2) > 0.05) {
+            baseState.damageAuraRadius = Number(auraRadius.toFixed(2));
+          }
+          if (archRate === void 0 || Math.abs(auraRate - archRate) > 0.05) {
+            baseState.damageAuraRate = Number(auraRate.toFixed(2));
+          }
+        }
+      } else {
+        baseState.name = obj.name;
+        baseState.radius = obj.colliderRadius;
+        baseState.color = obj.color;
+        baseState.shape = obj.visualShape;
+        baseState.mass = Number(obj.mass.toFixed(3));
+        baseState.bounceMod = obj.bounceMod !== null ? Number(obj.bounceMod.toFixed(3)) : void 0;
+        baseState.currentHp = obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : void 0;
+        baseState.maxHp = obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0;
+        baseState.consumableTag = obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : void 0;
+        baseState.remainingEnergyJoules = obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : void 0;
+        baseState.totalEnergyJoules = obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0;
+        baseState.damageAuraRadius = obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRadius(obj.properties).toFixed(2)) : void 0;
+        baseState.damageAuraRate = obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRate(obj.properties).toFixed(2)) : void 0;
+      }
+      return baseState;
     });
     const ghostCharacters = allCharacters.map((c) => {
       var _a, _b;
@@ -11210,6 +11284,7 @@ class ServerGameSimulation {
       new GameObject({
         id: "apple-default-1",
         name: "Apple",
+        prefabId: "prefab_apple",
         position: { x: 5.5, y: 7, z: 0 },
         color: "#22c55e",
         visualShape: "circle",
@@ -11302,19 +11377,42 @@ class ServerGameSimulation {
       }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
-        sObj = new GameObject({
-          id: cObj.id,
-          name: cObj.name || "Object",
-          position: { x: cObj.x, y: cObj.y, z: cObj.z },
-          color: cObj.color || "#38bdf8",
-          colliderRadius: cObj.radius || 0.35,
-          visualShape: cObj.shape || "circle",
-          consumableModule: cObj.consumableTag ? new ConsumableModule({
-            tag: cObj.consumableTag,
-            totalEnergyJoules: cObj.totalEnergyJoules ?? 2e3,
-            remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2e3
-          }) : void 0
-        });
+        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : void 0);
+        const prefab = pId ? this.prefabManager.get(pId) : void 0;
+        if (prefab) {
+          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, this.arena);
+          sObj.id = cObj.id;
+          sObj.velocity.x = cObj.vx;
+          sObj.velocity.y = cObj.vy;
+          sObj.verticalVelocity = cObj.vz ?? 0;
+          if (cObj.name !== void 0) sObj.name = cObj.name;
+          if (cObj.color !== void 0) sObj.color = cObj.color;
+          if (cObj.shape !== void 0) sObj.visualShape = cObj.shape;
+          if (cObj.radius !== void 0) {
+            sObj.colliderRadius = cObj.radius;
+            if (sObj.consumableModule) {
+              sObj.consumableModule.initialColliderRadius = cObj.radius;
+            }
+          }
+          if (cObj.mass !== void 0) sObj.mass = cObj.mass;
+          if (cObj.bounceMod !== void 0) sObj.bounceMod = cObj.bounceMod;
+        } else {
+          sObj = new GameObject({
+            id: cObj.id,
+            name: cObj.name || "Object",
+            position: { x: cObj.x, y: cObj.y, z: cObj.z },
+            mass: cObj.mass ?? 1,
+            bounceMod: cObj.bounceMod ?? 0,
+            color: cObj.color || "#38bdf8",
+            colliderRadius: cObj.radius || 0.35,
+            visualShape: cObj.shape || "circle",
+            consumableModule: cObj.consumableTag ? new ConsumableModule({
+              tag: cObj.consumableTag,
+              totalEnergyJoules: cObj.totalEnergyJoules ?? 2e3,
+              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2e3
+            }) : void 0
+          });
+        }
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
@@ -11994,7 +12092,8 @@ class ServerGameSimulation {
       rttMs,
       forPlayerId,
       this.getActiveDeathRespawnEvents(),
-      this.getActiveObjectDeletionEvents()
+      this.getActiveObjectDeletionEvents(),
+      this.prefabManager
     );
   }
 }
