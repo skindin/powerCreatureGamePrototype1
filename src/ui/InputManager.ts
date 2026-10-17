@@ -114,8 +114,9 @@ export class InputManager {
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
-  public unlockingPointer: boolean = false;
-  public ignoreMouseMoveCount: number = 0;
+  public mouseDriftOffset: Vector2D = { x: 0, y: 0 };
+  public needsDriftCompensation: boolean = false;
+  public unfreezePos: Vector2D | null = null;
 
   public get isGrabHeld(): boolean {
     return (
@@ -360,13 +361,6 @@ export class InputManager {
         return;
       }
 
-      if (this.unlockingPointer || this.ignoreMouseMoveCount > 0) {
-        if (this.ignoreMouseMoveCount > 0) {
-          this.ignoreMouseMoveCount--;
-        }
-        return;
-      }
-
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -380,10 +374,6 @@ export class InputManager {
           document.body.classList.remove("pointer-locked");
           this.canvas.classList.remove("pointer-locked");
         }
-        // Swallowing post-unlock synthetic mouse moves to prevent cursor flicker
-        this.unlockingPointer = false;
-        this.ignoreMouseMoveCount = 2;
-        this.lockedAimPos = null;
       }
     });
 
@@ -450,7 +440,9 @@ export class InputManager {
       if (e.button === 2) {
         this.isRightMouseDown = false;
         if (this.lockedAimPos) {
-          // Keep mousePos and actualMousePos pinned exactly at lockedAimPos upon release
+          // Record unfreeze position and arm drift compensation
+          this.unfreezePos = { x: this.lockedAimPos.x, y: this.lockedAimPos.y };
+          this.needsDriftCompensation = true;
           this.mousePos.x = this.lockedAimPos.x;
           this.mousePos.y = this.lockedAimPos.y;
           this.actualMousePos.x = this.lockedAimPos.x;
@@ -460,19 +452,11 @@ export class InputManager {
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
         if (document.pointerLockElement) {
-          this.unlockingPointer = true;
           try {
             document.exitPointerLock?.();
           } catch {}
-          // Safety timeout in case pointerlockchange does not fire or is delayed
-          setTimeout(() => {
-            this.unlockingPointer = false;
-            this.lockedAimPos = null;
-          }, 150);
-        } else {
-          this.lockedAimPos = null;
-          this.ignoreMouseMoveCount = 1;
         }
+        this.lockedAimPos = null;
         return;
       }
       if (e.button !== 0) return;
@@ -552,24 +536,34 @@ export class InputManager {
 
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
+    let rawMx = 0;
+    let rawMy = 0;
     if (this.keyboardViewport) {
       const vp = this.keyboardViewport;
       const canvasPixelX = (e.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
       const canvasPixelY = (e.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
-      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
-      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
-      this.actualMousePos.x = mx;
-      this.actualMousePos.y = my;
-      this.mousePos.x = mx;
-      this.mousePos.y = my;
+      rawMx = (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale);
+      rawMy = (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale);
     } else {
-      const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
-      const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
-      this.actualMousePos.x = mx;
-      this.actualMousePos.y = my;
-      this.mousePos.x = mx;
-      this.mousePos.y = my;
+      rawMx = (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width));
+      rawMy = (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height));
     }
+
+    if (this.needsDriftCompensation && this.unfreezePos) {
+      // Re-calibrate mouseDriftOffset so the unfreezing mouse position exactly equals unfreezePos
+      // with zero accumulated delta from the time it was frozen
+      this.mouseDriftOffset.x = rawMx - this.unfreezePos.x;
+      this.mouseDriftOffset.y = rawMy - this.unfreezePos.y;
+      this.needsDriftCompensation = false;
+      this.unfreezePos = null;
+    }
+
+    const mx = Math.max(0, Math.min(this.arena.width, rawMx - this.mouseDriftOffset.x));
+    const my = Math.max(0, Math.min(this.arena.height, rawMy - this.mouseDriftOffset.y));
+    this.actualMousePos.x = mx;
+    this.actualMousePos.y = my;
+    this.mousePos.x = mx;
+    this.mousePos.y = my;
   }
 
   private updateTouchPos(touch: Touch): void {

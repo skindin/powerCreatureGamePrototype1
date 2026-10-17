@@ -62,10 +62,18 @@ export class ThrowModule {
   public energyBusId: string = "bus_main";
 
   /**
-   * Remembered arc steepness factor: -1.0 (flattest at maxSpeed) to 0.0 (optimal minimum energy) to +1.0 (steepest high arc).
-   * Persists across throws so the player retains their dialed-in trajectory shape.
+   * Remembered arc ratio: 0.0 (shortest / flattest possible arc) to 1.0 (tallest / steepest possible arc).
+   * Trajectory manipulation is based on this ratio between the shortest and tallest arc available.
+   * If the target moves farther so the maximum arc height flattens, ratio 1.0 continues to track the highest possible arc.
    */
-  public savedArcSteepness: number = 0.0;
+  public savedArcRatio: number = 0.0;
+
+  public get savedArcSteepness(): number {
+    return this.savedArcRatio * 2.0 - 1.0;
+  }
+  public set savedArcSteepness(val: number) {
+    this.savedArcRatio = Math.max(0.0, Math.min(1.0, (val + 1.0) / 2.0));
+  }
 
   constructor(options?: {
     maxThrowSpeed?: number;
@@ -572,8 +580,10 @@ export class ThrowModule {
           chosenT = tHigh;
         }
       } else {
-        // No obstacle: use the flattest/fastest trajectory (tLow)
-        chosenT = tLow > 0 ? tLow : (tHigh > 0 ? tHigh : D / vMax);
+        // No obstacle: interpolate between shortest arc (tLow) and tallest arc (tHigh) via savedArcRatio
+        const tMin = tLow > 0 ? tLow : D / vMax;
+        const tMax = tHigh > 0 ? tHigh : tMin;
+        chosenT = tMin + this.savedArcRatio * (tMax - tMin);
       }
     } else {
       // Out of range for direct reach at vMax; use peak distance angle (45 deg)
@@ -744,37 +754,23 @@ export class ThrowModule {
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
 
-    const tFlatClamped = Math.max(0.02, tFlat);
-    const tHighClamped = Math.max(tFlatClamped, tHigh);
+    const tMin = Math.max(0.02, tFlat);
+    const tMax = Math.max(tMin, tHigh);
 
-    // Responsive clamping: only allow sliding if the current physical situation has room to alter the trajectory
-    const hasFlatterRange = (tOpt - tFlatClamped > 0.02);
-    const hasSteeperRange = (tHighClamped - tOpt > 0.02);
-    const minFactor = hasFlatterRange ? -1.0 : 0.0;
-    const maxFactor = hasSteeperRange ? 1.0 : 0.0;
-
-    // If right-click locked, adjust savedArcSteepness using the raw mouse delta
-    // Positive delta (forward mouse along aim vector) -> more negative factor (-1.0 = flatter)
-    // Negative delta (backward mouse along aim vector) -> more positive factor (+1.0 = higher arc)
+    // If right-click locked, adjust savedArcRatio using the raw mouse delta
+    // Positive delta (forward mouse along aim vector) -> flattens (decreases ratio toward 0.0)
+    // Negative delta (backward mouse along aim vector) -> steepens (increases ratio toward 1.0)
     if (lockedTargetPos && aimLockDelta !== 0) {
-      // 300px raw mouse movement sweeps full -1 to +1 range
-      const deltaSteepness = -aimLockDelta / 300;
-      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness + deltaSteepness));
-    } else {
-      // Immediately clamp saved steepness so reversing mouse movement responds instantly without a dead-zone
-      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness));
+      // 300px raw mouse movement sweeps full 0.0 to 1.0 range
+      const deltaRatio = -aimLockDelta / 300;
+      this.savedArcRatio = Math.max(0.0, Math.min(1.0, this.savedArcRatio + deltaRatio));
     }
 
-    // Apply remembered steepness factor within reachable bounds
-    const factor = this.savedArcSteepness;
-    if (factor < 0) {
-      // Flatter trajectory (interpolating from tOpt down to tFlatClamped)
-      totalTime = tOpt - (tOpt - tFlatClamped) * (-factor);
-    } else {
-      // Steeper high arc (interpolating from tOpt up to tHighClamped)
-      totalTime = tOpt + (tHighClamped - tOpt) * factor;
-    }
-
+    // Trajectory is parameterized directly by the ratio between shortest and tallest arc:
+    // ratio 0.0 = flattest / shortest arc (tMin)
+    // ratio 1.0 = steepest / tallest arc (tMax)
+    // ratio 0.5 = middle arc
+    totalTime = tMin + this.savedArcRatio * (tMax - tMin);
     totalTime = Math.max(0.02, totalTime);
     chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const hSpeed = dist / totalTime;
@@ -917,9 +913,9 @@ export class ThrowModule {
     };
 
     // If there is a valid range of arcs to slide between, calculate flattest and steepest ghost trajectories
-    const hasArcRange = (tHighClamped - tFlatClamped > 0.05) && (minFactor < 0 || maxFactor > 0);
-    const flattestPoints = hasArcRange ? simulateGhostArc(tFlatClamped) : undefined;
-    const steepestPoints = hasArcRange ? simulateGhostArc(tHighClamped) : undefined;
+    const hasArcRange = (tMax - tMin > 0.05);
+    const flattestPoints = hasArcRange ? simulateGhostArc(tMin) : undefined;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tMax) : undefined;
 
     const lastPoint = points[points.length - 1];
     return {

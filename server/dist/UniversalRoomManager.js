@@ -5927,10 +5927,11 @@ class ThrowModule {
     __publicField(this, "consumesEnergy", true);
     __publicField(this, "energyBusId", "bus_main");
     /**
-     * Remembered arc steepness factor: -1.0 (flattest at maxSpeed) to 0.0 (optimal minimum energy) to +1.0 (steepest high arc).
-     * Persists across throws so the player retains their dialed-in trajectory shape.
+     * Remembered arc ratio: 0.0 (shortest / flattest possible arc) to 1.0 (tallest / steepest possible arc).
+     * Trajectory manipulation is based on this ratio between the shortest and tallest arc available.
+     * If the target moves farther so the maximum arc height flattens, ratio 1.0 continues to track the highest possible arc.
      */
-    __publicField(this, "savedArcSteepness", 0);
+    __publicField(this, "savedArcRatio", 0);
     const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 100;
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
@@ -5947,6 +5948,12 @@ class ThrowModule {
   }
   set baseThrowForceProp(prop) {
     this.maxThrowSpeedProp = prop;
+  }
+  get savedArcSteepness() {
+    return this.savedArcRatio * 2 - 1;
+  }
+  set savedArcSteepness(val) {
+    this.savedArcRatio = Math.max(0, Math.min(1, (val + 1) / 2));
   }
   get maxThrowSpeed() {
     return this.maxThrowSpeedProp.literalValue;
@@ -6286,7 +6293,9 @@ class ThrowModule {
           chosenT = tHigh;
         }
       } else {
-        chosenT = tLow > 0 ? tLow : tHigh > 0 ? tHigh : D / vMax;
+        const tMin = tLow > 0 ? tLow : D / vMax;
+        const tMax = tHigh > 0 ? tHigh : tMin;
+        chosenT = tMin + this.savedArcRatio * (tMax - tMin);
       }
     } else {
       const uPeak = -bCoeff / (2 * aCoeff);
@@ -6409,24 +6418,13 @@ class ThrowModule {
     const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-    const tFlatClamped = Math.max(0.02, tFlat);
-    const tHighClamped = Math.max(tFlatClamped, tHigh);
-    const hasFlatterRange = tOpt - tFlatClamped > 0.02;
-    const hasSteeperRange = tHighClamped - tOpt > 0.02;
-    const minFactor = hasFlatterRange ? -1 : 0;
-    const maxFactor = hasSteeperRange ? 1 : 0;
+    const tMin = Math.max(0.02, tFlat);
+    const tMax = Math.max(tMin, tHigh);
     if (lockedTargetPos && aimLockDelta !== 0) {
-      const deltaSteepness = -aimLockDelta / 300;
-      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness + deltaSteepness));
-    } else {
-      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness));
+      const deltaRatio = -aimLockDelta / 300;
+      this.savedArcRatio = Math.max(0, Math.min(1, this.savedArcRatio + deltaRatio));
     }
-    const factor = this.savedArcSteepness;
-    if (factor < 0) {
-      totalTime = tOpt - (tOpt - tFlatClamped) * -factor;
-    } else {
-      totalTime = tOpt + (tHighClamped - tOpt) * factor;
-    }
+    totalTime = tMin + this.savedArcRatio * (tMax - tMin);
     totalTime = Math.max(0.02, totalTime);
     chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const hSpeed = dist / totalTime;
@@ -6536,9 +6534,9 @@ class ThrowModule {
       }
       return gPts;
     };
-    const hasArcRange = tHighClamped - tFlatClamped > 0.05 && (minFactor < 0 || maxFactor > 0);
-    const flattestPoints = hasArcRange ? simulateGhostArc(tFlatClamped) : void 0;
-    const steepestPoints = hasArcRange ? simulateGhostArc(tHighClamped) : void 0;
+    const hasArcRange = tMax - tMin > 0.05;
+    const flattestPoints = hasArcRange ? simulateGhostArc(tMin) : void 0;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tMax) : void 0;
     const lastPoint = points[points.length - 1];
     return {
       points,
