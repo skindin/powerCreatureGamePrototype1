@@ -65,20 +65,21 @@ export class TrajectoryRenderer {
     }
     const colorOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
     const colorTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.38)`;
-    const colorGhostOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.22)`;
-    const colorGhostTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
+    const colorGhostOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10)`;
+    const colorGhostTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.03)`;
 
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
     const useBigger = viewSettings.verticalVisuals === "bigger" || viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
 
     // Helper to draw a dotted arc path
-    const drawDottedArc = (arcPoints: TrajectoryPoint[], opColor: string, transColor: string) => {
+    const drawDottedArc = (arcPoints: TrajectoryPoint[], opColor: string, transColor: string, isGhost: boolean = false) => {
       let lastX = arcPoints[0].x;
       let lastY = arcPoints[0].y;
       let lastRadius = baseRadius;
       let dist3DSinceLast = 0;
       let isFirstDot = true;
+      const dotScale = isGhost ? 0.75 : 1.0;
 
       for (let i = 0; i < arcPoints.length - 1; i++) {
         const p1 = arcPoints[i];
@@ -103,7 +104,7 @@ export class TrajectoryRenderer {
           dist3DSinceLast += subLen;
 
           const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
-          const radius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
+          const radius = (useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius) * dotScale;
           const screenX = curX * ppu;
           const screenY = (curY - curZ * hoverScale) * ppu;
 
@@ -149,16 +150,19 @@ export class TrajectoryRenderer {
       }
     };
 
-    // Render ghost preview arcs for the flattest and steepest reachable curves at even lower opacity
-    if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
-      drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent);
-    }
-    if (traj.steepestPoints && traj.steepestPoints.length >= 2) {
-      drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent);
+    // Render ghost preview arcs for the flattest and steepest reachable curves only when holding right-click
+    const isLockHeld = Boolean(traj.lockedTargetPos);
+    if (isLockHeld) {
+      if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
+        drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
+      }
+      if (traj.steepestPoints && traj.steepestPoints.length >= 2) {
+        drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
+      }
     }
 
     // Render active trajectory arc
-    drawDottedArc(points, colorOpaque, colorTransparent);
+    drawDottedArc(points, colorOpaque, colorTransparent, false);
 
     // STRAIGHT DOTTED SIGHTLINE from held object release position to target land position:
     // Truncated at the end of the arc (landPoint) rather than following unbounded mouse cursor.
