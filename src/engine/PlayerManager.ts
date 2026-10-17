@@ -563,7 +563,7 @@ export class PlayerManager {
       // - If aiming throw or directional ability, face cursor
       // - If primary ability does not involve direction and not aiming throw (Alt not held), do NOT face cursor; face movement direction
       if (kChar.heldObject) {
-        if (input.lockedAimPos) {
+        if ((isThrowActive || !isPrimaryNonDirectional) && input.lockedAimPos) {
           const aimDx = input.lockedAimPos.x - kChar.position.x;
           const aimDy = input.lockedAimPos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {

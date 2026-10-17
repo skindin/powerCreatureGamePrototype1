@@ -8465,7 +8465,7 @@ class Character extends GameObject {
       this.energyBus.update(dt, this.energyPool, this.properties);
     }
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
-    const targetFacePos = lockedAimPos ? lockedAimPos : aimTargetPos;
+    const targetFacePos = canAimThrow && lockedAimPos ? lockedAimPos : aimTargetPos;
     this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
     if (this.heldObject) {
       const heldPos = this.calculateHeldObjectPosition(arena);
@@ -8489,7 +8489,7 @@ class Character extends GameObject {
         autoLock,
         lockedAimPos
       );
-      if (lockedAimPos) {
+      if (canAimThrow && lockedAimPos) {
         const lockDx = lockedAimPos.x - this.position.x;
         const lockDy = lockedAimPos.y - this.position.y;
         if (Math.hypot(lockDx, lockDy) > 0.05) {

@@ -583,9 +583,9 @@ export class Character extends GameObject {
     }
 
     // 3. Update facing orientation using intended movement input or aim.
-    // When lockedAimPos is active, face towards the locked landing point!
+    // When lockedAimPos is active and can aim throw, face towards the locked landing point!
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
-    const targetFacePos = lockedAimPos ? lockedAimPos : aimTargetPos;
+    const targetFacePos = (canAimThrow && lockedAimPos) ? lockedAimPos : aimTargetPos;
 
     this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
 
@@ -616,8 +616,8 @@ export class Character extends GameObject {
         lockedAimPos
       );
 
-      // When cursor is locked, ensure character and held item remain strictly pointed at lockedAimPos
-      if (lockedAimPos) {
+      // When cursor is locked and aiming throw, ensure character and held item remain strictly pointed at lockedAimPos
+      if (canAimThrow && lockedAimPos) {
         const lockDx = lockedAimPos.x - this.position.x;
         const lockDy = lockedAimPos.y - this.position.y;
         if (Math.hypot(lockDx, lockDy) > 0.05) {
