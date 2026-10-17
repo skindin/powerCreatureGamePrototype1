@@ -93,7 +93,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 - **Trajectory Modulation & Aim Lock Cursor**:
   - Trajectory Aim Lock & Mouse Cursor Synchronization: The physical mouse cursor remains visible at all times (`cursor: crosshair` on canvas, pointer lock disabled). Holding right-click while in aiming/throwing mode freezes the trajectory landing target and creature facing orientation solidly at `lockedAimPos` without moving across the arena. Vertical mouse movement modulates arc height (drag UP to heighten, drag DOWN to flatten). Releasing right click smoothly unlocks the aim target back to direct 1:1 synchronization with the physical mouse with zero offset.
   - Arc Ratio Trajectory Model: Trajectory manipulation parameterized directly as `savedArcRatio` ($0.0 = \text{shortest/flattest}$, $1.0 = \text{tallest/steepest}$). Dragging UP while holding right-click heightens the arc, and dragging DOWN lowers it. Clamps without dead zone, and maintains the player's steepness intent (e.g. tracking the highest possible arc) even as distance changes and bounds contract/expand.
-  - Ghost preview arcs: Rendered at whisper opacity (`0.10` in Layer 1, `0.03` above Layer 1, `0.75x` dot radius) for reachable flattest and steepest bounds, dynamically visible only while holding right-click to modulate arc height.
+  - Ghost preview arcs: Rendered at distinct preview opacity (`0.42` in Layer 1, `0.20` above Layer 1, `0.75x` dot radius) for reachable flattest and steepest bounds, dynamically visible only while holding right-click to modulate arc height.
   - Straight dotted sightline matching arc dot radius and arc altitude layer-transparency, cleanly truncated at the landing footprint.
 
 ---

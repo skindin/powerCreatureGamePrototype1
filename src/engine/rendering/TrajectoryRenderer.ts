@@ -65,8 +65,8 @@ export class TrajectoryRenderer {
     }
     const colorOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
     const colorTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.38)`;
-    const colorGhostOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10)`;
-    const colorGhostTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.03)`;
+    const colorGhostOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.42)`;
+    const colorGhostTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.20)`;
 
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
     const useBigger = viewSettings.verticalVisuals === "bigger" || viewSettings.verticalVisuals === "both";
