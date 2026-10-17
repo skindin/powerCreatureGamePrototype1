@@ -77,6 +77,80 @@ export class TrajectoryRenderer {
   }
 
   /**
+   * Calculates the vertical midpoint rail:
+   * 1. Evaluates horizontal midpoint purely as the average 2D position (average 2D X and average 2D Y value)
+   *    between the object held position and the trajectory end position.
+   * 2. Decoupled from intermediate wall collisions or interrupted points arrays so it never sticks out.
+   * 3. Calculates the parabolic peak altitudes for flattest and steepest arcs to define the vertical line.
+   */
+  public static calculateMidpointRail(
+    char: Character,
+    arena: Arena,
+    traj: TrajectoryCalculation,
+    ppu: number,
+    hoverScale: number
+  ): {
+    midScreenX: number;
+    lowScreenY: number;
+    highScreenY: number;
+    lineDy: number;
+    lineLen: number;
+  } | null {
+    if (!char.throwModule || !traj.launchPos || !traj.landPoint) return null;
+
+    const startX = traj.launchPos.x;
+    const startY = traj.launchPos.y;
+    const startZ = traj.launchPos.z;
+    const landX = traj.landPoint.x;
+    const landY = traj.landPoint.y;
+    const landZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
+
+    const dist = Math.hypot(landX - startX, landY - startY);
+    if (dist < 0.01) return null;
+
+    const deltaZ = landZ - startZ;
+    const g = arena.gravity || 9.81;
+    const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+
+    const aCoeff = 0.25 * g * g;
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+    const discMax = bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff;
+
+    let tMin = 0.1;
+    let tMax = 1.0;
+    if (discMax >= 0) {
+      const uLow = (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff);
+      const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
+      tMin = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+      tMax = uHigh > 0 ? Math.sqrt(uHigh) : tMin;
+    } else {
+      const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+      const tOpt = Math.sqrt((2 * dist3D) / g);
+      tMin = tOpt;
+      tMax = tOpt;
+    }
+
+    // Midpoint in 2D space: average 2D position (average X and average Y) between object held position and trajectory end position
+    const midX = (startX + landX) * 0.5;
+    const midY = (startY + landY) * 0.5;
+    const midZBase = (startZ + landZ) * 0.5;
+
+    // Physical altitude at the horizontal midpoint for flattest and steepest arcs
+    const zLow = midZBase + (1 / 8) * g * tMin * tMin;
+    const zHigh = midZBase + (1 / 8) * g * tMax * tMax;
+
+    const midScreenX = midX * ppu;
+    const lowScreenY = (midY - zLow * hoverScale) * ppu;
+    const highScreenY = (midY - zHigh * hoverScale) * ppu;
+
+    const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
+    const lineLen = Math.abs(lineDy);
+
+    return { midScreenX, lowScreenY, highScreenY, lineDy, lineLen };
+  }
+
+  /**
    * Trajectory Line:
    * Rendered as a dotted colored line where every fixed 3D distance interval (including vertical distance)
    * renders a dot. Dots get bigger as altitude increases, and become transparent once within Layer 2.
@@ -220,27 +294,11 @@ export class TrajectoryRenderer {
         drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
       }
 
-      // Trajectory Modulation Guide & Controls (when holding right-click):
-      // 1. Dotted line from peak of highest trajectory to peak of lowest trajectory
-      // 2. Snap circle at lowest (most efficient) trajectory peak
-      // 3. Game cursor tracking along/around the line with snap feedback & projection pip
-      const getMidPoint = (pts: TrajectoryPoint[] | undefined) => {
-        if (!pts || pts.length === 0) return null;
-        return pts[Math.floor(pts.length / 2)];
-      };
-
-      const midLow = getMidPoint(traj.flattestPoints) || getMidPoint(traj.points);
-      const midHigh = getMidPoint(traj.steepestPoints) || getMidPoint(traj.points);
-
-      if (midLow && midHigh) {
-        // Both trajectories share identical horizontal midpoint between launch and land,
-        // resulting in a perfectly vertical line in projected screen coordinates!
-        const midScreenX = midLow.x * ppu;
-        const lowScreenY = (midLow.y - midLow.z * hoverScale) * ppu;
-        const highScreenY = (midHigh.y - midHigh.z * hoverScale) * ppu;
-
-        const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
-        const lineLen = Math.abs(lineDy);
+      // Trajectory Modulation Guide Rail (when holding right-click):
+      // Dotted vertical rail at the 2D average position with clamped slider pip
+      const rail = character ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
+      if (rail) {
+        const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen } = rail;
 
         ctx.save();
 

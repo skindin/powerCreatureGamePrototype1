@@ -4,7 +4,7 @@ import { GameObject } from "./GameObject.js";
 import { InputManager } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
-import { TrajectoryPoint } from "../character/ThrowModule.js";
+import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -1447,8 +1447,12 @@ export class PlayerManager {
    * Updates trajectory height modulation when right-click lock is held:
    * 1. Uses the middle of the flattest (lowest) and steepest (highest) trajectories (forming a perfectly vertical line).
    * 2. Initializes the game cursor on that vertical dotted line if not yet initialized.
-   * 3. Tests if the game cursor is within the lock circle (2/3 size) at the optimal trajectory midpoint -> snaps to optRatio (most efficient / least energy).
-   * 4. Otherwise smoothly interpolates savedArcRatio from 0.0 to 1.0 as the cursor moves upward or downward around the circle.
+  /**
+   * Updates trajectory height modulation when right-click lock is held:
+   * 1. Uses the vertical midpoint rail calculated from the average 2D position (average X and average Y)
+   *    between the object held position and the trajectory end position.
+   * 2. Modulates savedArcRatio directly using vertical mouse movement along the rail.
+   * 3. Clamps savedArcRatio strictly between 0.0 (lowest / flattest trajectory) and 1.0 (highest / steepest trajectory).
    */
   public updateArcModulation(char: Character): void {
     const input = this.inputManager;
@@ -1459,26 +1463,13 @@ export class PlayerManager {
     const traj = char.activeTrajectory;
     if (!traj) return;
 
-    const getMidPoint = (pts: TrajectoryPoint[] | undefined) => {
-      if (!pts || pts.length === 0) return null;
-      return pts[Math.floor(pts.length / 2)];
-    };
-
-    const midLow = getMidPoint(traj.flattestPoints) || getMidPoint(traj.points);
-    const midHigh = getMidPoint(traj.steepestPoints) || getMidPoint(traj.points);
-    if (!midLow || !midHigh) return;
-
     const ppu = this.inputManager.pixelsPerUnit;
     const hoverScale = this.arena.visualAltitudeScale ?? 0.5;
 
-    // Both trajectories share the identical horizontal midpoint between launch and land,
-    // forming a perfectly vertical line in projected screen coordinates!
-    const midScreenX = midLow.x * ppu;
-    const lowScreenY = (midLow.y - midLow.z * hoverScale) * ppu;
-    const highScreenY = (midHigh.y - midHigh.z * hoverScale) * ppu;
+    const rail = TrajectoryRenderer.calculateMidpointRail(char, this.arena, traj, ppu, hoverScale);
+    if (!rail) return;
 
-    const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
-    const lineLen = Math.abs(lineDy);
+    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen } = rail;
 
     // Initialize cursor position on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
