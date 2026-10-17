@@ -94,13 +94,8 @@ export class InputManager {
   }
 
   public requestPointerLock(): void {
-    if (typeof document === "undefined" || !this.canvas) return;
-    try {
-      const p = (this.canvas as any).requestPointerLock?.();
-      if (p && typeof p.catch === "function") {
-        p.catch(() => {});
-      }
-    } catch {}
+    // Disabled: Pointer Lock natively forces the OS cursor to the center of the element in browsers.
+    // Keeping this disabled prevents the browser from centering/sticking the mouse.
   }
 
   public exitPointerLock(): void {
@@ -447,7 +442,6 @@ export class InputManager {
           this.aimLockRawDy = 0;
           this.lastClientX = e.clientX;
           this.lastClientY = e.clientY;
-          this.requestPointerLock();
         }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
