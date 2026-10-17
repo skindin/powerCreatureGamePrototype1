@@ -5175,7 +5175,7 @@ const _GameObject = class _GameObject {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
                 const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+                const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
                 this.resolveWallCollision(wall, isAscendingJump);
               }
             }
@@ -5232,7 +5232,7 @@ const _GameObject = class _GameObject {
               continue;
             }
             const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
+            const isAscendingJump = this.isCharacter && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
             this.resolveWallCollision(wall, isAscendingJump);
           }
         }
