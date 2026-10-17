@@ -646,8 +646,12 @@ export class PlayerManager {
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: input.isKeyboardThrowRequested ?? false,
         isUsingItem,
-        aimX: input.actualMousePos.x,
-        aimY: input.actualMousePos.y,
+        aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.x
+          : input.actualMousePos.x,
+        aimY: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.y
+          : input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: Boolean(input.isRightMouseDown && input.lockedAimPos),
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
