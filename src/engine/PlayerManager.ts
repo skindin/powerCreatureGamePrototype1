@@ -620,8 +620,9 @@ export class PlayerManager {
       const isUsingItem = isHoldingConsumable && canUseItem && !input.isAltHeld && !input.isThrowingPress && !input.isKeyboardSuspended;
 
       // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
-      // clear the lock:
+      // unhide and clear the lock:
       if (input.lockedAimPos && !kChar.heldObject) {
+        input.unhideCursor();
         input.lockedAimPos = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;

@@ -81,48 +81,15 @@ export class InputManager {
   // until the user clicks the game view again
   public isKeyboardSuspended = false;
 
-  private lockedCursorEl: HTMLElement | null = null;
-
-  private createLockedCursorElement(): void {
-    if (typeof document === "undefined") return;
-    let el = document.getElementById("locked-aim-cursor");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "locked-aim-cursor";
-      el.style.position = "fixed";
-      el.style.pointerEvents = "none";
-      el.style.zIndex = "999999";
-      el.style.width = "21px";
-      el.style.height = "21px";
-      el.style.transform = "translate(-50%, -50%)";
-      el.style.display = "none";
-      el.innerHTML = `
-        <svg width="21" height="21" viewBox="0 0 21 21" style="display:block;">
-          <line x1="10.5" y1="0" x2="10.5" y2="21" stroke="#ffffff" stroke-width="3" stroke-linecap="square" />
-          <line x1="0" y1="10.5" x2="21" y2="10.5" stroke="#ffffff" stroke-width="3" stroke-linecap="square" />
-          <line x1="10.5" y1="1" x2="10.5" y2="20" stroke="#000000" stroke-width="1" stroke-linecap="square" />
-          <line x1="1" y1="10.5" x2="20" y2="10.5" stroke="#000000" stroke-width="1" stroke-linecap="square" />
-        </svg>
-      `;
-      document.body.appendChild(el);
-    }
-    this.lockedCursorEl = el;
-  }
-
-  public showLockedCursor(clientX: number, clientY: number): void {
-    if (!this.lockedCursorEl) {
-      this.createLockedCursorElement();
-    }
-    if (this.lockedCursorEl) {
-      this.lockedCursorEl.style.left = `${clientX}px`;
-      this.lockedCursorEl.style.top = `${clientY}px`;
-      this.lockedCursorEl.style.display = "block";
+  public hideCursor(): void {
+    if (this.canvas) {
+      this.canvas.style.cursor = "none";
     }
   }
 
-  public hideLockedCursor(): void {
-    if (this.lockedCursorEl) {
-      this.lockedCursorEl.style.display = "none";
+  public unhideCursor(): void {
+    if (this.canvas) {
+      this.canvas.style.cursor = "crosshair";
     }
   }
 
@@ -143,13 +110,10 @@ export class InputManager {
       } catch {}
     }
     this.isPointerLocked = false;
-    this.hideLockedCursor();
-    if (this.canvas) {
-      this.canvas.style.cursor = "crosshair";
-    }
+    this.unhideCursor();
     if (typeof document !== "undefined") {
       document.body.classList.remove("pointer-locked");
-      this.canvas.classList.remove("pointer-locked");
+      this.canvas?.classList.remove("pointer-locked");
     }
   }
 
@@ -394,6 +358,7 @@ export class InputManager {
     window.addEventListener("blur", () => {
       this.isKeyboardSuspended = true;
       this.isRightMouseDown = false;
+      this.unhideCursor();
       this.lockedAimPos = null;
       this.exitPointerLock();
       this.updateCanvasCursorClass();
@@ -475,14 +440,13 @@ export class InputManager {
         this.isRightMouseDown = true;
         const canLock = this.canLockAim ? this.canLockAim() : false;
         if (canLock && !this.lockedAimPos) {
+          this.hideCursor();
           this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
           this.lastClientX = e.clientX;
           this.lastClientY = e.clientY;
-          this.showLockedCursor(e.clientX, e.clientY);
-          this.canvas.style.cursor = "none";
           this.requestPointerLock();
         }
         if (this.onRightMouseDown) {
@@ -516,6 +480,7 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
+        this.unhideCursor();
         this.lockedAimPos = null;
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
