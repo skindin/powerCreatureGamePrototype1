@@ -309,58 +309,52 @@ export class TrajectoryRenderer {
       const cursorY = aimTarget.y * ppu;
 
       const scale = arena.visualAltitudeScale ?? 0.5;
-      const targetObj = traj.targetObject;
-      const isLocked = Boolean(traj.isAutoLocked && targetObj);
+      const isLocked = Boolean(traj.lockedTargetPos);
 
-      // If auto-locked on an object, draw dedicated lock brackets and lock badge on the locked object!
-      if (isLocked && targetObj) {
-        const objVisualX = targetObj.position.x * ppu;
-        const objVisualY = (targetObj.position.y - targetObj.position.z * scale) * ppu;
-        const objR = (targetObj.hasCollider ? targetObj.colliderRadius : (targetObj.colliderModule?.radius ?? 0.35)) * ppu;
-        const bsz = Math.max(14, objR + 5);
-        const blen = Math.min(8, bsz * 0.45);
+      // Distinct locked reticle at the locked target landing position
+      if (traj.lockedTargetPos) {
+        const lockScrX = traj.lockedTargetPos.x * ppu;
+        const lockScrY = (traj.lockedTargetPos.y - (traj.targetSurfaceHeight ?? 0) * scale) * ppu;
 
         ctx.save();
-        ctx.strokeStyle = playerHex;
+        ctx.strokeStyle = "#38bdf8"; // Vibrant cyan
         ctx.lineWidth = 2.4;
         ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
-        ctx.shadowBlur = 5;
+        ctx.shadowBlur = 6;
 
-        // 4 Corner Lock Brackets around locked object:
+        // Diamond reticle with crosshair
+        const bsz = 14;
         ctx.beginPath();
-        // Top-Left
-        ctx.moveTo(objVisualX - bsz + blen, objVisualY - bsz);
-        ctx.lineTo(objVisualX - bsz, objVisualY - bsz);
-        ctx.lineTo(objVisualX - bsz, objVisualY - bsz + blen);
-        // Top-Right
-        ctx.moveTo(objVisualX + bsz - blen, objVisualY - bsz);
-        ctx.lineTo(objVisualX + bsz, objVisualY - bsz);
-        ctx.lineTo(objVisualX + bsz, objVisualY - bsz + blen);
-        // Bottom-Left
-        ctx.moveTo(objVisualX - bsz + blen, objVisualY + bsz);
-        ctx.lineTo(objVisualX - bsz, objVisualY + bsz);
-        ctx.lineTo(objVisualX - bsz, objVisualY + bsz - blen);
-        // Bottom-Right
-        ctx.moveTo(objVisualX + bsz - blen, objVisualY + bsz);
-        ctx.lineTo(objVisualX + bsz, objVisualY + bsz);
-        ctx.lineTo(objVisualX + bsz, objVisualY + bsz - blen);
+        // Diamond
+        ctx.moveTo(lockScrX, lockScrY - bsz);
+        ctx.lineTo(lockScrX + bsz, lockScrY);
+        ctx.lineTo(lockScrX, lockScrY + bsz);
+        ctx.lineTo(lockScrX - bsz, lockScrY);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Cross inside diamond
+        ctx.beginPath();
+        ctx.moveTo(lockScrX - 4, lockScrY);
+        ctx.lineTo(lockScrX + 4, lockScrY);
+        ctx.moveTo(lockScrX, lockScrY - 4);
+        ctx.lineTo(lockScrX, lockScrY + 4);
         ctx.stroke();
 
         // Lock Label above target
-        ctx.font = "bold 11px monospace";
-        ctx.fillStyle = playerHex;
+        ctx.font = "bold 10px monospace";
+        ctx.fillStyle = "#38bdf8";
         ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
         ctx.shadowBlur = 4;
-        const tag = "LOCKED";
-        ctx.fillText(`[${tag}]`, objVisualX - 22, objVisualY - bsz - 4);
+        ctx.fillText("[TARGET LOCKED]", lockScrX - 42, lockScrY - bsz - 4);
 
-        // Thin lock sightline connecting cursor to locked object
+        // Thin dashed vector connecting locked target to independent live drag cursor
         ctx.beginPath();
-        ctx.moveTo(cursorX, cursorY);
-        ctx.lineTo(objVisualX, objVisualY);
-        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.65)`;
-        ctx.lineWidth = 1.4;
-        ctx.setLineDash([3, 4]);
+        ctx.moveTo(lockScrX, lockScrY);
+        ctx.lineTo(cursorX, cursorY);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.restore();
       }

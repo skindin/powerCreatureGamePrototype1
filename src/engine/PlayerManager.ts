@@ -618,6 +618,7 @@ export class PlayerManager {
         aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
+        lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
         facingAngle: kChar.facingAngle,
       } as any);
       input.isKeyboardDropRequested = false;
@@ -731,6 +732,7 @@ export class PlayerManager {
         aimY,
         isAiming: true,
         isLockHeld: slot.isLockHeld ?? false,
+        lockedAimPos: slot.lockedAimPos ? { ...slot.lockedAimPos } : null,
         facingAngle: cChar.facingAngle,
         ...(activeLaunchVel ? {
           launchVx: activeLaunchVel.vx,
@@ -871,7 +873,8 @@ export class PlayerManager {
         this.arena,
         pkt.isJumpHeld,
         this.arena.entities,
-        pkt.isLockHeld
+        pkt.isLockHeld,
+        (pkt as any).lockedAimPos ?? null
       );
 
       if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {

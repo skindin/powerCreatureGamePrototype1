@@ -437,7 +437,8 @@ export class Character extends GameObject {
     arena: Arena,
     isClimbInput = false,
     entities?: GameObject[],
-    autoLock = false
+    autoLock = false,
+    lockedAimPos: Vector2D | null = null
   ): void {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -582,31 +583,11 @@ export class Character extends GameObject {
     }
 
     // 3. Update facing orientation using intended movement input or aim.
-    // If auto-locking onto a target, orient toward the locked target only when throw is active / aiming!
+    // When lockedAimPos is active, face towards the locked landing point!
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
-    let lockedTarget: GameObject | null = null;
-    if (canAimThrow && autoLock && aimTargetPos && this.throwModule) {
-      lockedTarget = this.throwModule.findHoveredEntity(
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena,
-        this,
-        this.heldObject,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        Infinity
-      );
-    }
+    const targetFacePos = lockedAimPos ? lockedAimPos : aimTargetPos;
 
-    if (lockedTarget) {
-      const dx = lockedTarget.position.x - this.position.x;
-      const dy = lockedTarget.position.y - this.position.y;
-      if (Math.hypot(dx, dy) > 0.05) {
-        this.facingAngle = Math.atan2(dy, dx);
-      }
-    } else {
-      this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);
-    }
+    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
 
     // 4. Update held object position if carrying one
     if (this.heldObject) {
@@ -631,21 +612,9 @@ export class Character extends GameObject {
         arena,
         entities ?? arena.entities,
         arena.visualAltitudeScale,
-        autoLock
+        autoLock,
+        lockedAimPos
       );
-      if (this.activeTrajectory?.isAutoLocked && this.activeTrajectory.targetObject) {
-        const dx = this.activeTrajectory.targetObject.position.x - this.position.x;
-        const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
-        if (Math.hypot(dx, dy) > 0.05) {
-          this.facingAngle = Math.atan2(dy, dx);
-          if (this.heldObject) {
-            const heldPos = this.calculateHeldObjectPosition(arena);
-            this.heldObject.position.x = heldPos.x;
-            this.heldObject.position.y = heldPos.y;
-            this.heldObject.position.z = heldPos.z;
-          }
-        }
-      }
     } else {
       this.activeTrajectory = null;
     }

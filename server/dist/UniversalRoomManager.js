@@ -6304,36 +6304,13 @@ class ThrowModule {
   /**
    * Pre-calculates trajectory points for real-time visualization overlay
    */
-  calculateTrajectory(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
+  calculateTrajectory(character, aimTargetX, aimTargetY, arena, _entities, hoverScale, _autoLock = false, lockedTargetPos) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
-    const candidateEntities = entities ?? arena.entities;
     const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    let lockedTarget = null;
     let targetSurfaceHeight = 0;
-    if (autoLock) {
-      lockedTarget = this.findHoveredEntity(
-        aimTargetX,
-        aimTargetY,
-        arena,
-        character,
-        held,
-        candidateEntities,
-        scale,
-        Infinity
-      );
-      if (lockedTarget) {
-        const entZ = Math.max(
-          0,
-          lockedTarget.position.z ?? 0,
-          lockedTarget.supportingSurfaceHeight ?? 0,
-          lockedTarget.standingWall ? lockedTarget.standingWall.wallHeight ?? arena.wallHeight : 0
-        );
-        targetSurfaceHeight = entZ;
-      }
-    }
-    const targetAimX = lockedTarget ? lockedTarget.position.x : aimTargetX;
-    const targetAimY = lockedTarget ? lockedTarget.position.y : aimTargetY;
+    const targetAimX = lockedTargetPos ? lockedTargetPos.x : aimTargetX;
+    const targetAimY = lockedTargetPos ? lockedTargetPos.y : aimTargetY;
     const charAimDx = targetAimX - character.position.x;
     const charAimDy = targetAimY - character.position.y;
     if (Math.hypot(charAimDx, charAimDy) > 0.05) {
@@ -6378,46 +6355,87 @@ class ThrowModule {
         maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
       }
     }
-    const charVel = {
-      x: character.velocity.x,
-      y: character.velocity.y,
-      z: character.isAboveGround ? character.verticalVelocity : 0
-    };
-    const aimDx = targetAimX - startX;
-    const aimDy = targetAimY - startY;
-    const aimDist = Math.hypot(aimDx, aimDy);
-    let effectiveAimX = targetAimX;
-    let effectiveAimY = targetAimY;
-    if (aimDist > 0.05 && canFlyVertically) {
-      const g = arena.gravity;
-      const maxReach = maxSpeed / g * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
-      if (aimDist > maxReach) {
-        const clampedDist = Math.max(0.1, maxReach);
-        effectiveAimX = startX + aimDx / aimDist * clampedDist;
-        effectiveAimY = startY + aimDy / aimDist * clampedDist;
-      }
+    const g = arena.gravity;
+    let finalTargetX = targetAimX;
+    let finalTargetY = targetAimY;
+    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
+    if (wallUnderTarget) {
+      finalTargetX = wallUnderTarget.physX;
+      finalTargetY = wallUnderTarget.physY;
+      targetSurfaceHeight = wallUnderTarget.wall.wallHeight;
+    } else {
+      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
     }
-    let launch = this.computeLaunchVelocity(
-      startX,
-      startY,
-      startZ,
-      effectiveAimX,
-      effectiveAimY,
-      arena,
-      maxSpeed,
-      held.hasGravity,
-      held.hasVerticalVelocity,
-      held.colliderRadius,
-      charVel,
-      candidateEntities,
-      scale,
-      character,
-      held,
-      autoLock
-    );
-    if (!launch) return null;
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: launchSurfaceHeight, targetObject, isAutoLocked } = launch;
-    const resolvedSurfaceHeight = isAutoLocked && lockedTarget ? targetSurfaceHeight : launchSurfaceHeight;
+    const maxThrowHeight = this.maxThrowHeightProp.get(character.properties);
+    const effectiveMaxHeight = maxThrowHeight * character.strength;
+    if (targetSurfaceHeight > startZ + effectiveMaxHeight) {
+      targetSurfaceHeight = startZ + effectiveMaxHeight;
+    }
+    let dx = finalTargetX - startX;
+    let dy = finalTargetY - startY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.1) return null;
+    const deltaZ = targetSurfaceHeight - startZ;
+    const maxReach = maxSpeed / g * Math.sqrt(Math.max(1e-3, maxSpeed * maxSpeed + 2 * g * Math.max(0, -deltaZ)));
+    if (dist > maxReach) {
+      dist = Math.max(0.1, maxReach);
+      finalTargetX = startX + dx / Math.hypot(dx, dy) * dist;
+      finalTargetY = startY + dy / Math.hypot(dx, dy) * dist;
+      dx = finalTargetX - startX;
+      dy = finalTargetY - startY;
+    }
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const vMin = Math.sqrt(Math.max(1, g * (dist + Math.sqrt(dist * dist + deltaZ * deltaZ))));
+    const effectiveVMin = Math.min(vMin, maxSpeed);
+    let chosenVx = 0;
+    let chosenVy = 0;
+    let chosenVz = 0;
+    let totalTime = 1;
+    if (!lockedTargetPos) {
+      const launchSpeed = effectiveVMin;
+      const bCoeff = -(launchSpeed * launchSpeed - g * deltaZ);
+      const aCoeff = 0.25 * g * g;
+      const u = -bCoeff / (2 * aCoeff);
+      totalTime = u > 0 ? Math.sqrt(u) : dist / launchSpeed;
+      totalTime = Math.max(0.02, totalTime);
+      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+      const hSpeed = dist / totalTime;
+      chosenVx = dirX * hSpeed;
+      chosenVy = dirY * hSpeed;
+    } else {
+      const dragDx = aimTargetX - lockedTargetPos.x;
+      const dragDy = aimTargetY - lockedTargetPos.y;
+      const proj = dragDx * dirX + dragDy * dirY;
+      const aCoeff = 0.25 * g * g;
+      const cCoeff = dist * dist + deltaZ * deltaZ;
+      if (proj >= 0) {
+        const forwardFraction = Math.min(1, proj / 4);
+        const currentSpeed = effectiveVMin + (maxSpeed - effectiveVMin) * forwardFraction;
+        const bCoeff = -(currentSpeed * currentSpeed - g * deltaZ);
+        const disc = Math.max(0, bCoeff * bCoeff - 4 * aCoeff * cCoeff);
+        const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+        totalTime = uLow > 0 ? Math.sqrt(uLow) : dist / currentSpeed;
+      } else {
+        const backwardFraction = Math.min(1, -proj / 4);
+        const bCoeffOpt = -(effectiveVMin * effectiveVMin - g * deltaZ);
+        const tOpt = Math.sqrt(Math.max(0.01, -bCoeffOpt / (2 * aCoeff)));
+        const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+        const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+        const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
+        const tMaxHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 1.8;
+        totalTime = tOpt + (tMaxHigh - tOpt) * backwardFraction;
+      }
+      totalTime = Math.max(0.02, totalTime);
+      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+      const hSpeed = dist / totalTime;
+      chosenVx = dirX * hSpeed;
+      chosenVy = dirY * hSpeed;
+    }
+    const vx = chosenVx;
+    const vy = chosenVy;
+    const vz = chosenVz;
+    const resolvedSurfaceHeight = targetSurfaceHeight;
     const steps = 90;
     const dtStep = totalTime / steps;
     const points = [];
@@ -6490,15 +6508,16 @@ class ThrowModule {
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : targetSurfaceHeight > 0,
       blockedAtWallId: blockedWallId,
-      targetObject,
+      targetObject: null,
       targetSurfaceHeight,
-      isAutoLocked,
+      isAutoLocked: Boolean(lockedTargetPos),
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
       visualShape: held.visualShape,
       launchVel: { vx, vy, vz },
-      launchPos: { x: startX, y: startY, z: startZ }
+      launchPos: { x: startX, y: startY, z: startZ },
+      lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null
     };
   }
   /**
@@ -8337,8 +8356,8 @@ class Character extends GameObject {
   /**
    * Main character update tick
    */
-  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false) {
-    var _a, _b, _c, _d, _e, _f;
+  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null) {
+    var _a, _b, _c, _d, _e;
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
@@ -8446,28 +8465,8 @@ class Character extends GameObject {
       this.energyBus.update(dt, this.energyPool, this.properties);
     }
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
-    let lockedTarget = null;
-    if (canAimThrow && autoLock && aimTargetPos && this.throwModule) {
-      lockedTarget = this.throwModule.findHoveredEntity(
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena,
-        this,
-        this.heldObject,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        Infinity
-      );
-    }
-    if (lockedTarget) {
-      const dx = lockedTarget.position.x - this.position.x;
-      const dy = lockedTarget.position.y - this.position.y;
-      if (Math.hypot(dx, dy) > 0.05) {
-        this.facingAngle = Math.atan2(dy, dx);
-      }
-    } else {
-      this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);
-    }
+    const targetFacePos = lockedAimPos ? lockedAimPos : aimTargetPos;
+    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
     if (this.heldObject) {
       const heldPos = this.calculateHeldObjectPosition(arena);
       this.heldObject.position.x = heldPos.x;
@@ -8487,21 +8486,9 @@ class Character extends GameObject {
         arena,
         entities ?? arena.entities,
         arena.visualAltitudeScale,
-        autoLock
+        autoLock,
+        lockedAimPos
       );
-      if (((_f = this.activeTrajectory) == null ? void 0 : _f.isAutoLocked) && this.activeTrajectory.targetObject) {
-        const dx = this.activeTrajectory.targetObject.position.x - this.position.x;
-        const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
-        if (Math.hypot(dx, dy) > 0.05) {
-          this.facingAngle = Math.atan2(dy, dx);
-          if (this.heldObject) {
-            const heldPos = this.calculateHeldObjectPosition(arena);
-            this.heldObject.position.x = heldPos.x;
-            this.heldObject.position.y = heldPos.y;
-            this.heldObject.position.z = heldPos.z;
-          }
-        }
-      }
     } else {
       this.activeTrajectory = null;
     }
@@ -11789,7 +11776,8 @@ class ServerGameSimulation {
           this.arena,
           pkt.isJumpHeld,
           this.arena.entities,
-          pkt.isLockHeld
+          pkt.isLockHeld,
+          pkt.lockedAimPos ?? null
         );
         if (((_b = char.activeTrajectory) == null ? void 0 : _b.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;

@@ -24,6 +24,7 @@ export interface GamepadSlotState {
   aimMovedWhileInRange?: boolean;
   aimOffset?: Vector2D;
   isLockHeld?: boolean;
+  lockedAimPos?: Vector2D | null;
   leftPaddlePressTime?: number;
   hasMovedAimStick?: boolean;
   wasHoldingObject?: boolean;
@@ -109,6 +110,7 @@ export class InputManager {
   public activeInputDevice: "keyboard" | "gamepad" = "keyboard";
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
+  public lockedAimPos: Vector2D | null = null;
 
   public get isGrabHeld(): boolean {
     return (
@@ -379,6 +381,9 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
+        if (!this.lockedAimPos) {
+          this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
+        }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
         }
@@ -410,6 +415,7 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
+        this.lockedAimPos = null;
         return;
       }
       if (e.button !== 0) return;
@@ -886,9 +892,14 @@ export class InputManager {
       slot.aimOffset.x = clampedX - char.position.x;
       slot.aimOffset.y = clampedY - char.position.y;
 
-      // Button 6 (LT / L2): Auto-lock aiming
+      // Button 6 (LT / L2): Aim Lock & Drag
       // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
       const isLtPressed = isButtonPressed(6, 0.2);
+      if (isLtPressed && !slot.isLockHeld) {
+        slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
+      } else if (!isLtPressed) {
+        slot.lockedAimPos = null;
+      }
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)

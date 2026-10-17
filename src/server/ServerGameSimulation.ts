@@ -1068,7 +1068,8 @@ export class ServerGameSimulation {
           this.arena,
           pkt.isJumpHeld,
           this.arena.entities,
-          pkt.isLockHeld
+          pkt.isLockHeld,
+          (pkt as any).lockedAimPos ?? null
         );
 
         // Explicitly enforce facing angle sent by client packet (or locked target if active)
