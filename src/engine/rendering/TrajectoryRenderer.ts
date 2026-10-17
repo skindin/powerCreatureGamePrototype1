@@ -286,7 +286,7 @@ export class TrajectoryRenderer {
       // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip
       const rail = character ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
       if (rail) {
-        const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY } = rail;
+        const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, effScreenY } = rail;
 
         ctx.save();
 
@@ -311,41 +311,31 @@ export class TrajectoryRenderer {
         ctx.lineTo(midScreenX + cap, lowScreenY);
         ctx.stroke();
 
-        // 2. Optimal Detent Point (least energy trajectory notch on the rail) and active slider pip
+        // 2. Optimal Detent Point (least energy trajectory pip on the rail) and active slider pip
         if (lineLen > 2) {
           const curRatio = character?.throwModule?.savedArcRatio ?? 0.0;
-          const isSnapped = Math.abs(curRatio - optRatio) < 0.008;
-
           ctx.setLineDash([]);
 
-          if (isSnapped) {
-            // Snapped onto the optimal point: prominent glowing green pip
-            ctx.beginPath();
-            ctx.arc(midScreenX, effScreenY, 5, 0, Math.PI * 2);
-            ctx.fillStyle = "#22c55e";
-            ctx.shadowColor = "#22c55e";
-            ctx.shadowBlur = 8;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-          } else {
-            // Unsnapped: subtle green notch dot marking the optimal point on the rail
-            ctx.beginPath();
-            ctx.arc(midScreenX, effScreenY, 2.8, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(34, 197, 94, 0.75)";
-            ctx.fill();
+          // Visual marker pip left behind at the most energy-efficient trajectory point
+          ctx.beginPath();
+          ctx.arc(midScreenX, effScreenY, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#22c55e";
+          ctx.shadowColor = "#22c55e";
+          ctx.shadowBlur = 6;
+          ctx.fill();
+          ctx.shadowBlur = 0;
 
-            // Active slider pip at interpolated trajectory height
-            const projX = midScreenX;
-            const projY = lowScreenY + curRatio * lineDy;
+          // Active slider pip at user's current trajectory height (smoothly slides without snapping)
+          const projX = midScreenX;
+          const projY = lowScreenY + curRatio * lineDy;
 
-            ctx.beginPath();
-            ctx.arc(projX, projY, 4.5, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
-            ctx.shadowBlur = 4;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-          }
+          ctx.beginPath();
+          ctx.arc(projX, projY, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+          ctx.shadowBlur = 4;
+          ctx.fill();
+          ctx.shadowBlur = 0;
         }
 
         ctx.restore();

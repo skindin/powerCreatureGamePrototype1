@@ -1472,9 +1472,9 @@ export class PlayerManager {
     const rail = TrajectoryRenderer.calculateMidpointRail(char, this.arena, traj, ppu, hoverScale);
     if (!rail) return;
 
-    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY } = rail;
+    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio } = rail;
 
-    // Initialize cursor position and active detent side on the vertical line if not yet initialized
+    // Initialize cursor position on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
       if (!char.throwModule.hasUserSetArcRatio) {
         char.throwModule.savedArcRatio = optRatio;
@@ -1484,84 +1484,24 @@ export class PlayerManager {
         x: midScreenX,
         y: lowScreenY + curRatio * lineDy,
       };
-      input.arcDetentSide = (curRatio > optRatio + 0.005) ? "higher" : "lower";
-    }
-
-    if (!input.arcDetentSide) {
-      const curRatio = char.throwModule.savedArcRatio;
-      input.arcDetentSide = (curRatio > optRatio + 0.005) ? "higher" : "lower";
     }
 
     const cursor = input.arcModulationCursor;
     cursor.x = midScreenX;
 
     if (lineLen <= 1) {
-      char.throwModule.savedArcRatio = optRatio;
       return;
     }
 
-    const BREAKTHROUGH_THRESHOLD = 16; // pixels of physical mouse pull past efficiency point required to break through
-    const rangeBelow = lowScreenY - effScreenY; // positive distance (pixels) between lowest trajectory (0.0) and efficiency point
-    const rangeAbove = effScreenY - highScreenY; // positive distance (pixels) between efficiency point and highest trajectory (1.0)
+    // Clamp cursor vertically between highScreenY (top of rail, ratio 1.0) and lowScreenY (bottom of rail, ratio 0.0)
+    // with a slight 8px overshoot padding so reaching the exact ends (0.0 and 1.0) is effortless
+    const minY = Math.min(highScreenY, lowScreenY);
+    const maxY = Math.max(highScreenY, lowScreenY);
+    cursor.y = Math.max(minY - 8, Math.min(maxY + 8, cursor.y));
 
-    if (input.arcDetentSide === "lower") {
-      // 1. Lower side (between lowest trajectory 0.0 and efficiency point optRatio)
-      // Clamped to not exceed lowScreenY + 20 downwards
-      cursor.y = Math.min(lowScreenY + 20, cursor.y);
-
-      if (cursor.y >= effScreenY) {
-        // Smoothly follow mouse between lowScreenY (0.0) and effScreenY (optRatio)
-        if (rangeBelow > 1) {
-          const progress = Math.min(1.0, Math.max(0.0, (lowScreenY - cursor.y) / rangeBelow));
-          char.throwModule.savedArcRatio = Math.max(0.0, Math.min(optRatio, optRatio * progress));
-          char.throwModule.hasUserSetArcRatio = true;
-        } else {
-          char.throwModule.savedArcRatio = optRatio;
-        }
-      } else {
-        // Clamped at the efficiency point! Trajectory stays locked to optRatio.
-        char.throwModule.savedArcRatio = optRatio;
-
-        // User is pulling UP past the efficiency point towards higher trajectory:
-        // Must pull past BREAKTHROUGH_THRESHOLD to switch to the higher side.
-        // If user pulls back down where they came from (cursor.y >= effScreenY), it immediately unclamps without resistance!
-        const pullUp = effScreenY - cursor.y;
-        if (pullUp >= BREAKTHROUGH_THRESHOLD) {
-          // Breakthrough into the higher side!
-          input.arcDetentSide = "higher";
-          cursor.y = effScreenY; // Start smoothly on the higher side
-          char.throwModule.hasUserSetArcRatio = true;
-        }
-      }
-    } else {
-      // 2. Higher side (between efficiency point optRatio and highest trajectory 1.0)
-      // Clamped to not exceed highScreenY - 20 upwards
-      cursor.y = Math.max(highScreenY - 20, cursor.y);
-
-      if (cursor.y <= effScreenY) {
-        // Smoothly follow mouse between effScreenY (optRatio) and highScreenY (1.0)
-        if (rangeAbove > 1) {
-          const progress = Math.min(1.0, Math.max(0.0, (effScreenY - cursor.y) / rangeAbove));
-          char.throwModule.savedArcRatio = Math.min(1.0, Math.max(optRatio, optRatio + (1.0 - optRatio) * progress));
-          char.throwModule.hasUserSetArcRatio = true;
-        } else {
-          char.throwModule.savedArcRatio = optRatio;
-        }
-      } else {
-        // Clamped at the efficiency point! Trajectory stays locked to optRatio.
-        char.throwModule.savedArcRatio = optRatio;
-
-        // User is pulling DOWN past the efficiency point towards lower trajectory:
-        // Must pull past BREAKTHROUGH_THRESHOLD to switch to the lower side.
-        // If user pulls back up where they came from (cursor.y <= effScreenY), it immediately unclamps without resistance!
-        const pullDown = cursor.y - effScreenY;
-        if (pullDown >= BREAKTHROUGH_THRESHOLD) {
-          // Breakthrough into the lower side!
-          input.arcDetentSide = "lower";
-          cursor.y = effScreenY; // Start smoothly on the lower side
-          char.throwModule.hasUserSetArcRatio = true;
-        }
-      }
-    }
+    // Map screen Y smoothly to arc ratio: lowScreenY = 0.0 (flattest), highScreenY = 1.0 (steepest)
+    const progress = Math.max(0.0, Math.min(1.0, (lowScreenY - cursor.y) / (lowScreenY - highScreenY)));
+    char.throwModule.savedArcRatio = progress;
+    char.throwModule.hasUserSetArcRatio = true;
   }
 }
