@@ -90,6 +90,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
 - **Multiplayer Replication**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
+  - In-flight throw prediction preserves post-collision rebound velocities during the RTT latency window (~250ms), preventing trailing pre-impact server snapshots from cancelling rebounds or causing velocity rubber-banding. Overlap relaxation strictly ignores in-flight bodies (`obj.isInFlight`).
 
 ---
 
