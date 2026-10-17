@@ -24,12 +24,15 @@ export interface GamepadSlotState {
   aimMovedWhileInRange?: boolean;
   aimOffset?: Vector2D;
   isLockHeld?: boolean;
+  lockedAimPos?: Vector2D | null;
   leftPaddlePressTime?: number;
   hasMovedAimStick?: boolean;
   wasHoldingObject?: boolean;
   lastMovementInputAngle?: number;
   isThrowRequested?: boolean;
   isDropRequested?: boolean;
+  isJumpRequested?: boolean;
+  isUsingItem?: boolean;
 }
 
 export interface CanvasViewport {
@@ -43,18 +46,28 @@ export interface CanvasViewport {
 }
 
 export class InputManager {
-  private canvas: HTMLCanvasElement;
+  public canvas: HTMLCanvasElement;
   private arena: Arena;
   public keyboardViewport: CanvasViewport | null = null;
+
+  public get pixelsPerUnit(): number {
+    return this.canvas && this.arena?.width ? this.canvas.width / this.arena.width : 50;
+  }
   private keysPressed: Set<string> = new Set();
-  private isEKeyDepressed = false;
-  private isQKeyDepressed = false;
+  public isEKeyDepressed = false;
+  public isQKeyDepressed = false;
   public isKeyboardSprintActive = false;
+  public isAltHeld = false;
+
+  public isKeyPressed(code: string): boolean {
+    return this.keysPressed.has(code);
+  }
   
   // Keyboard player active state (true when keyboard & mouse character is in arena)
   public isKeyboardActive = true;
   public isKeyboardThrowRequested = false;
   public isKeyboardDropRequested = false;
+  public isKeyboardJumpRequested = false;
 
   public mousePos: Vector2D = { x: 0, y: 0 };
   public actualMousePos: Vector2D = { x: 0, y: 0 };
@@ -74,8 +87,26 @@ export class InputManager {
   // until the user clicks the game view again
   public isKeyboardSuspended = false;
 
+  public hideCursor(): void {
+    if (this.canvas) {
+      this.canvas.style.cursor = "none";
+    }
+  }
+
+  public unhideCursor(): void {
+    if (this.canvas) {
+      this.canvas.style.cursor = "crosshair";
+    }
+  }
+
   public requestPointerLock(): void {
-    // Disabled: keep cursor free and visible at all times
+    if (typeof document === "undefined" || !this.canvas) return;
+    try {
+      const p = (this.canvas as any).requestPointerLock?.();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {});
+      }
+    } catch {}
   }
 
   public exitPointerLock(): void {
@@ -83,11 +114,6 @@ export class InputManager {
       try {
         document.exitPointerLock();
       } catch {}
-    }
-    this.isPointerLocked = false;
-    if (typeof document !== "undefined") {
-      document.body.classList.remove("pointer-locked");
-      this.canvas.classList.remove("pointer-locked");
     }
   }
 
@@ -103,6 +129,17 @@ export class InputManager {
   public activeInputDevice: "keyboard" | "gamepad" = "keyboard";
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
+  public lockedAimPos: Vector2D | null = null;
+  public recordedMousePos: Vector2D | null = null;
+  public isAwaitingUnlock: boolean = false;
+  private unlockTimeoutId: number | null = null;
+  public aimLockRawDelta: number = 0; // Legacy sum
+  public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
+  public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
+  public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
+  public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
+  public lastClientX: number | null = null;
+  public lastClientY: number | null = null;
 
   public get isGrabHeld(): boolean {
     return (
@@ -145,7 +182,11 @@ export class InputManager {
   }
 
   public get isKeyboardJumpHeld(): boolean {
-    return this.isKeyboardActive && !this.isTextInputFocused() && this.keysPressed.has("Space");
+    return (
+      this.isKeyboardActive &&
+      !this.isTextInputFocused() &&
+      (this.keysPressed.has("Space") || this.isKeyboardJumpRequested)
+    );
   }
 
   public get isClimbHeld(): boolean {
@@ -159,8 +200,8 @@ export class InputManager {
   public dragOffset: Vector2D = { x: 0, y: 0 };
 
   // Action callback hooks
-  public handleClick?: (clickX: number, clickY: number) => void;
-  public onMouseDown?: (clickX: number, clickY: number) => void;
+  public handleClick?: (clickX: number, clickY: number, e?: MouseEvent) => void;
+  public onMouseDown?: (clickX: number, clickY: number, e?: MouseEvent) => void;
   public onRightMouseDown?: (clickX: number, clickY: number) => void;
   public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
@@ -175,6 +216,7 @@ export class InputManager {
   public onKeyboardJump?: () => void;
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
+  public canLockAim?: () => boolean;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -182,6 +224,7 @@ export class InputManager {
     this.mousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.actualMousePos = { x: arena.width / 2, y: arena.height / 2 };
     this.setupListeners();
+    this.updateCanvasCursorClass();
   }
 
   private setupListeners(): void {
@@ -200,6 +243,14 @@ export class InputManager {
     });
 
     window.addEventListener("keydown", (e) => {
+      // If Alt is pressed or held, prevent browser menu activation, menu bar focus, and browser shortcuts
+      if (e.altKey || e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = true;
+        if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
+          e.preventDefault();
+        }
+      }
+
       // If user is focused on or typing into ANY text box or form input,
       // allow default browser behavior (typing characters, spaces, backspaces)
       // and do NOT hijack input or trigger game actions!
@@ -207,22 +258,28 @@ export class InputManager {
         return;
       }
 
-      // Space key: Claim Keyboard Player 1 if not yet active, otherwise trigger jump
+      // Space key: Claim Keyboard Player 1 if not yet active, and trigger jump
       if (e.code === "Space") {
+        this.isKeyboardSuspended = false;
+        this.updateCanvasCursorClass();
         if (!this.isKeyboardActive) {
           this.onKeyboardJoin?.();
-          return;
-        } else if (!e.repeat) {
+        }
+        if (!e.repeat) {
+          this.isKeyboardJumpRequested = true;
           this.onKeyboardJump?.();
         }
       }
 
       if (e.code === "Escape") {
         this.isKeyboardSuspended = true;
+        this.updateCanvasCursorClass();
         this.keysPressed.clear();
         this.isQKeyDepressed = false;
         this.isEKeyDepressed = false;
         this.isKeyboardSprintActive = false;
+        this.isKeyboardJumpRequested = false;
+        this.isAltHeld = false;
         this.isMouseDown = false;
         this.isRightMouseDown = false;
         this.updateMovementVector();
@@ -233,6 +290,12 @@ export class InputManager {
       // If suspended from Escape, ignore all game key inputs until user clicks the game view again
       if (this.isKeyboardSuspended) {
         return;
+      }
+
+      if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = true;
+        // Prevent default browser alt menu activation in browsers
+        e.preventDefault();
       }
 
       this.activeInputDevice = "keyboard";
@@ -289,6 +352,13 @@ export class InputManager {
         this.isEKeyDepressed = false;
       }
 
+      if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+        this.isAltHeld = false;
+        if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
+          e.preventDefault();
+        }
+      }
+
       // Automatically turn off sprint when all movement keys are released!
       if (!this.hasAnyMovementKeyPressed()) {
         this.isKeyboardSprintActive = false;
@@ -298,33 +368,114 @@ export class InputManager {
 
     window.addEventListener("blur", () => {
       this.isKeyboardSuspended = true;
+      this.isRightMouseDown = false;
+      this.isAwaitingUnlock = false;
+      this.unhideCursor();
+      this.lockedAimPos = null;
+      this.exitPointerLock();
+      this.updateCanvasCursorClass();
       this.isQKeyDepressed = false;
       this.isEKeyDepressed = false;
+      this.isAltHeld = false;
       this.keysPressed.clear();
       this.isKeyboardSprintActive = false;
       this.onStopKeyboardSprint?.();
       this.updateMovementVector();
     });
 
-    // Track mouse position globally so the aim cursor NEVER goes stale when the
-    // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
     window.addEventListener("mousemove", (e) => {
       if (this.isKeyboardSuspended) {
         return;
       }
       this.lastMouseMoveTime = performance.now();
+
+      if (this.isRightMouseDown && this.lockedAimPos) {
+        // While locked, take raw mouse input to increase/decrease arc height
+        const movementDy = (e.movementY !== undefined && e.movementY !== 0)
+          ? e.movementY
+          : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
+        const movementDx = (e.movementX !== undefined && e.movementX !== 0)
+          ? e.movementX
+          : (this.lastClientX !== null ? e.clientX - this.lastClientX : 0);
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
+
+        this.aimLockRawDx += movementDx;
+        this.aimLockRawDy += movementDy;
+        this.aimLockRawDelta += movementDx + movementDy;
+
+        // Allow raw mouse input to move modulation game cursor in every direction without canvas clamping
+        if (this.arcModulationCursor) {
+          this.arcModulationCursor.x += movementDx;
+          this.arcModulationCursor.y += movementDy;
+        }
+
+        // Keep game cursor snapped to recorded mouse pos
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
+        return;
+      }
+
+      // Do not move game cursor until AFTER unlocked!
+      if (this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
+        return;
+      }
+
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
       }
     });
 
-    document.addEventListener("pointerlockchange", () => {
-      this.isPointerLocked = false;
+    const completeUnlock = () => {
+      if (this.unlockTimeoutId) {
+        clearTimeout(this.unlockTimeoutId);
+        this.unlockTimeoutId = null;
+      }
+      // 1. Mouse has been first unlocked!
+      // 2. AND THEN set game cursor to recorded mouse position:
+      if (this.recordedMousePos) {
+        this.mousePos.x = this.recordedMousePos.x;
+        this.mousePos.y = this.recordedMousePos.y;
+        this.actualMousePos.x = this.recordedMousePos.x;
+        this.actualMousePos.y = this.recordedMousePos.y;
+      }
+      // 3. Make it visible:
+      this.unhideCursor();
+      // 4. And make game cursor follow mouse again:
+      this.isAwaitingUnlock = false;
+      this.lockedAimPos = null;
+      this.arcModulationCursor = null;
+      this.arcDetentSide = null;
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
-        this.canvas.classList.remove("pointer-locked");
+        this.canvas?.classList.remove("pointer-locked");
       }
+    };
+
+    document.addEventListener("pointerlockchange", () => {
+      this.isPointerLocked = (document.pointerLockElement === this.canvas);
+      if (!this.isPointerLocked && this.isAwaitingUnlock) {
+        // Defer completion to next animation frame so the browser finishes restoring hardware cursor coordinates first
+        requestAnimationFrame(() => {
+          completeUnlock();
+        });
+      }
+    });
+
+    document.addEventListener("pointerlockerror", () => {
+      this.isPointerLocked = false;
+      completeUnlock();
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
@@ -339,6 +490,7 @@ export class InputManager {
       // Resume keyboard/mouse control when clicking on the game view
       const wasSuspended = this.isKeyboardSuspended;
       this.isKeyboardSuspended = false;
+      this.updateCanvasCursorClass();
 
       this.updateMousePos(e);
 
@@ -349,6 +501,28 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
+        const canLock = this.canLockAim ? this.canLockAim() : false;
+        if (canLock && !this.lockedAimPos) {
+          // 1. Record where mouse was
+          this.recordedMousePos = { x: this.mousePos.x, y: this.mousePos.y };
+          this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
+          this.aimLockRawDelta = 0;
+          this.aimLockRawDx = 0;
+          this.aimLockRawDy = 0;
+          this.arcModulationCursor = null;
+          this.arcDetentSide = null;
+          this.lastClientX = e.clientX;
+          this.lastClientY = e.clientY;
+          // 2. Hide it
+          this.hideCursor();
+          // 3. Lock it
+          this.requestPointerLock();
+          // 4. Stop moving game cursor to mouse and keep it snapped to recorded mouse pos
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
         }
@@ -358,17 +532,23 @@ export class InputManager {
       this.isMouseDown = true;
 
       if (this.onMouseDown) {
-        this.onMouseDown(this.mousePos.x, this.mousePos.y);
+        this.onMouseDown(this.mousePos.x, this.mousePos.y, e);
       }
 
       if (this.handleClick) {
-        this.handleClick(this.mousePos.x, this.mousePos.y);
+        this.handleClick(this.mousePos.x, this.mousePos.y, e);
       }
     });
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // Prevent browser context menu
-      if (this.isKeyboardSuspended) {
+      if (this.isKeyboardSuspended || this.lockedAimPos || this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
         return;
       }
       this.updateMousePos(e);
@@ -380,6 +560,36 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
+        const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
+        this.aimLockRawDelta = 0;
+        this.aimLockRawDx = 0;
+        this.aimLockRawDy = 0;
+        this.arcModulationCursor = null;
+        this.arcDetentSide = null;
+        this.lastClientX = null;
+        this.lastClientY = null;
+
+        // Move game cursor to recorded position it was at when originally locked
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
+
+        // Unlock mouse: do NOT let game cursor follow mouse until AFTER unlocked!
+        if (wasLocked) {
+          this.isAwaitingUnlock = true;
+          this.exitPointerLock();
+          if (this.unlockTimeoutId) clearTimeout(this.unlockTimeoutId);
+          this.unlockTimeoutId = window.setTimeout(() => {
+            if (this.isAwaitingUnlock) {
+              completeUnlock();
+            }
+          }, 80);
+        } else {
+          completeUnlock();
+        }
         return;
       }
       if (e.button !== 0) return;
@@ -459,24 +669,25 @@ export class InputManager {
 
   private updateMousePos(e: MouseEvent): void {
     const rect = this.canvas.getBoundingClientRect();
+    let rawMx = 0;
+    let rawMy = 0;
     if (this.keyboardViewport) {
       const vp = this.keyboardViewport;
       const canvasPixelX = (e.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
       const canvasPixelY = (e.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
-      const mx = Math.max(0, Math.min(this.arena.width, (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale)));
-      const my = Math.max(0, Math.min(this.arena.height, (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale)));
-      this.actualMousePos.x = mx;
-      this.actualMousePos.y = my;
-      this.mousePos.x = mx;
-      this.mousePos.y = my;
+      rawMx = (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale);
+      rawMy = (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale);
     } else {
-      const mx = Math.max(0, Math.min(this.arena.width, (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width))));
-      const my = Math.max(0, Math.min(this.arena.height, (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height))));
-      this.actualMousePos.x = mx;
-      this.actualMousePos.y = my;
-      this.mousePos.x = mx;
-      this.mousePos.y = my;
+      rawMx = (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width));
+      rawMy = (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height));
     }
+
+    const mx = Math.max(0, Math.min(this.arena.width, rawMx));
+    const my = Math.max(0, Math.min(this.arena.height, rawMy));
+    this.actualMousePos.x = mx;
+    this.actualMousePos.y = my;
+    this.mousePos.x = mx;
+    this.mousePos.y = my;
   }
 
   private updateTouchPos(touch: Touch): void {
@@ -498,6 +709,15 @@ export class InputManager {
       this.actualMousePos.y = my;
       this.mousePos.x = mx;
       this.mousePos.y = my;
+    }
+  }
+
+  public updateCanvasCursorClass(): void {
+    if (typeof document === "undefined" || !this.canvas) return;
+    if (this.isKeyboardSuspended || this.devPanel?.isEditMode) {
+      this.canvas.classList.add("show-os-cursor");
+    } else {
+      this.canvas.classList.remove("show-os-cursor");
     }
   }
 
@@ -683,17 +903,17 @@ export class InputManager {
       }
 
       // Left Under-Paddle (M2) / Sprint buttons:
-      // LB (4), L3 (10), X (2), Select/Back (8), D-pad Left (14), D-pad Down (13), D-pad Up (12), plus extended M2 paddles & axes
-      const leftPaddleButtonIndices = [4, 10, 2, 8, 14, 13, 12];
+      // LB (4), L3 (10), plus extended M2 back paddles & paddle axes
+      const leftPaddleButtonIndices = [4, 10];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
-      // A (0), Y (3), Menu/Start (9), D-pad Right (15), plus extended M1 paddles & axes
-      // NOTE: Button 11 (R3 / right stick click) is explicitly EXCLUDED so clicking the right joystick never triggers climb/jump!
-      const rightPaddleButtonIndices = [0, 9, 15];
+      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles & paddle axes.
+      // NOTE: Burger / Menu / Start (Button 9) and D-pad Right (Button 15) are strictly excluded so they do NOT trigger jump!
+      const rightPaddleButtonIndices = [0];
       const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
@@ -856,14 +1076,20 @@ export class InputManager {
       slot.aimOffset.x = clampedX - char.position.x;
       slot.aimOffset.y = clampedY - char.position.y;
 
-      // Button 6 (LT / L2): Auto-lock aiming
+      // Button 6 (LT / L2): Aim Lock & Drag
       // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
       const isLtPressed = isButtonPressed(6, 0.2);
+      if (isLtPressed && !slot.isLockHeld) {
+        slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
+      } else if (!isLtPressed) {
+        slot.lockedAimPos = null;
+      }
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
-      slot.isClimbHeld = rightPaddleCurrent;
+      slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);
       if (rightPaddleJustPressed) {
+        slot.isJumpRequested = true;
         char.jump(arena, slot.movementVector);
       }
 
@@ -1010,11 +1236,22 @@ export class InputManager {
       } else {
         slot.rtHeld = false;
 
-        if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-          slot.isThrowRequested = true;
-        }
-        if (rbJustPressed && char.throwModule) {
-          slot.isThrowRequested = true;
+        const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
+        if (isHoldingFood) {
+          // Food primary action: RT held down continuously eats
+          slot.isUsingItem = rtCurrent;
+          // Dedicated throw: RB
+          if (rbJustPressed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
+        } else {
+          slot.isUsingItem = false;
+          if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
+          if (rbJustPressed && char.throwModule) {
+            slot.isThrowRequested = true;
+          }
         }
       }
 
@@ -1068,6 +1305,7 @@ export class InputManager {
     getAllCharacters?: () => Character[]
   ): void {
     this.devPanel = devPanel;
+    this.updateCanvasCursorClass();
     if (devPanel) {
       this.selectedCanvasEntity = devPanel.selectedEntity;
     }
@@ -1212,7 +1450,7 @@ export class InputManager {
       } else {
         this.hoverEntity = null;
         this.draggedEntity = null;
-        this.canvas.style.cursor = "default";
+        this.canvas.style.cursor = "crosshair";
       }
     };
 
@@ -1246,7 +1484,19 @@ export class InputManager {
       return character;
     };
 
-    this.handleClick = (clickX: number, clickY: number) => {
+    this.handleClick = (clickX: number, clickY: number, e?: MouseEvent) => {
+      // Ctrl + Left Click selects entity in the Inspector (Dev Panel) in both Play and Edit modes
+      if (e?.ctrlKey || this.isKeyPressed("ControlLeft") || this.isKeyPressed("ControlRight")) {
+        if (devPanel) {
+          const found = findEntityAt(clickX, clickY, 0.4);
+          if (found) {
+            this.selectedCanvasEntity = found;
+            devPanel.setSelectedEntity(found);
+          }
+        }
+        return;
+      }
+
       if (devPanel?.isEditMode) {
         // Handled in onMouseDown/onMouseMove
         return;
@@ -1257,11 +1507,23 @@ export class InputManager {
       if (!activeChar) return;
 
       // Play Mode:
-      // 1. If holding an object and ready to throw (and not the same click as pickup):
-      if (activeChar.heldObject && activeChar.throwModule && !this.justPickedUp) {
-        this.isKeyboardThrowRequested = true;
-        this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
-        return;
+      // 1. If holding an object:
+      if (activeChar.heldObject && !this.justPickedUp) {
+        // If holding an item with an inherent primary ability (e.g. food consumable):
+        // Default ability is triggered by Left Mouse.
+        // Holding Alt switches to the alternative ability (Throw) until released.
+        const hasPrimaryAbility = activeChar.hasPrimaryItemAbility?.() ?? Boolean(activeChar.heldObject.consumableModule?.enabled);
+        if (hasPrimaryAbility && !this.isAltHeld) {
+          // Primary ability is triggered continuously while LMB is down in capturePlayerInputs
+          return;
+        }
+
+        // Execute Throw if Alt is held OR if the object has no other primary ability:
+        if (activeChar.throwModule) {
+          this.isKeyboardThrowRequested = true;
+          this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
+          return;
+        }
       }
 
       // 2. If NOT holding an object: attempt pickup
@@ -1271,24 +1533,27 @@ export class InputManager {
           : objects;
         const aimX = clickX;
         const aimY = clickY;
-        if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
+        const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
+        if (target && target.spawnerModule && target.spawnerModule.enabled) {
+          const clone = target.spawnerModule.triggerClone(target, arena, objects);
+          if (clone) {
+            const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
+            if (!pickedUp) {
+              const idx = objects.indexOf(clone);
+              if (idx !== -1) objects.splice(idx, 1);
+            } else {
+              this.justPickedUp = true;
+            }
+          }
+        } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
           this.justPickedUp = true;
         }
       }
     };
 
-    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes, except Wall Tool)
-    this.onRightClick = (clickX: number, clickY: number) => {
-      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
-        return; // Wall erasing is handled via onRightMouseDown & drag
-      }
-      if (!devPanel) return;
-      const found = findEntityAt(clickX, clickY, 0.4);
-      if (found) {
-        this.selectedCanvasEntity = found;
-        devPanel.setSelectedEntity(found);
-      }
-      // If clicked empty space, keep the last focused entity in devPanel!
+    // Right click is reserved for item throw lock (and wall erasing in edit mode)
+    this.onRightClick = (_clickX: number, _clickY: number) => {
+      // Intentionally empty: selection is now Ctrl + Left Click so Right Click does not accidentally change selection
     };
 
     this.onKeyboardDrop = () => {
@@ -1310,7 +1575,21 @@ export class InputManager {
         : objects;
       const aimX = this.actualMousePos.x;
       const aimY = this.actualMousePos.y;
-      activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
+      const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
+      if (target && target.spawnerModule && target.spawnerModule.enabled) {
+        const clone = target.spawnerModule.triggerClone(target, arena, objects);
+        if (clone) {
+          const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
+          if (!pickedUp) {
+            const idx = objects.indexOf(clone);
+            if (idx !== -1) objects.splice(idx, 1);
+          } else {
+            this.justPickedUp = true;
+          }
+        }
+      } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
+        this.justPickedUp = true;
+      }
     };
 
     this.onDropAttempt = this.onKeyboardPickup;

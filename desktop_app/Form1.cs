@@ -33,8 +33,8 @@ public partial class Form1 : Form
     private Process? tunnelProcess = null;
     private string? publicTunnelUrl = null;
     private string projectDir = "";
-    private int currentPort = 5173;
-    private string activeUrl = "http://localhost:5173/";
+    private int currentPort = 3000;
+    private string activeUrl = "http://localhost:3000/";
     private bool isFullscreen = false;
     private string ephemeralUserDataFolder = "";
     private FormWindowState previousWindowState = FormWindowState.Normal;
@@ -255,7 +255,7 @@ public partial class Form1 : Form
         statusLabel.Text = "🟡 Starting server...";
 
         // 1. Check if server is running; if not, launch it
-        int activePort = 5173;
+        int activePort = 3000;
         bool isRunning = IsServerReady(out activePort);
 
         if (!isRunning)
@@ -593,7 +593,7 @@ public partial class Form1 : Form
 
     private bool IsServerReady(out int detectedPort)
     {
-        int[] ports = { 5173, 5174, 5175, 5176 };
+        int[] ports = { 3000, 5173, 5174, 5175, 5176 };
         foreach (int p in ports)
         {
             if (TryConnect(p))
@@ -602,7 +602,7 @@ public partial class Form1 : Form
                 return true;
             }
         }
-        detectedPort = 5173;
+        detectedPort = 3000;
         return false;
     }
 

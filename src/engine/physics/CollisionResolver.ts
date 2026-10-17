@@ -1,5 +1,6 @@
 import { Arena, Wall } from "../Arena.js";
 import { GameObject } from "../GameObject.js";
+import { SweptMath } from "./SweptMath.js";
 
 export type CollisionMode = "dynamic" | "discrete" | "continuous" | "naive";
 
@@ -106,14 +107,14 @@ export class CollisionResolver {
     a: GameObject,
     b: GameObject,
     _arena: Arena,
-    dt: number
+    _dt: number
   ): boolean {
     const minDist = a.colliderRadius + b.colliderRadius;
     const dx = b.position.x - a.position.x;
     const dy = b.position.y - a.position.y;
     const distSq = dx * dx + dy * dy;
 
-    if (distSq >= minDist * minDist || distSq <= 0.00000001) {
+    if (distSq >= minDist * minDist) {
       return false;
     }
 
@@ -124,74 +125,97 @@ export class CollisionResolver {
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
 
-    // Normal pointing from A to B
-    const normX = dx / dist;
-    const normY = dy / dist;
+    // Normal pointing from A to B (if exactly on top of each other, pick a random direction)
+    let normX: number;
+    let normY: number;
+    if (dist > 0.0001) {
+      normX = dx / dist;
+      normY = dy / dist;
+    } else {
+      const randomAngle = Math.random() * Math.PI * 2;
+      normX = Math.cos(randomAngle);
+      normY = Math.sin(randomAngle);
+    }
 
     // Relative velocity (B relative to A)
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
 
-    // Find contact fraction alpha in [0, 1] using relative motion
-    const relSpeed = Math.hypot(relVx, relVy);
-    let alpha = 0; // fraction of frame to rewind
-    if (relSpeed > 0.0001) {
-      alpha = Math.min(1.0, Math.max(0.0, overlap / (relSpeed * dt)));
+    // 3D vertical relative velocity (e.g. landing on top of each other or vertical collision)
+    const vzA = (!a.isImmovable && a.hasVerticalVelocity) ? a.verticalVelocity : 0;
+    const vzB = (!b.isImmovable && b.hasVerticalVelocity) ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+
+    // Detect if closing vertically towards each other in 3D space
+    const isClosingVertically = (b.position.z >= a.position.z && relVz < -0.05) || (a.position.z >= b.position.z && relVz > 0.05);
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+
+    // Effective closing impact speed in 3D: full vertical speed when landing on top of each other
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
     }
 
-    // Sub-tick rollback to exact tangent contact
-    const rewindDt = alpha * dt;
-    if (!a.isImmovable) {
-      a.position.x -= a.velocity.x * rewindDt;
-      a.position.y -= a.velocity.y * rewindDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x -= b.velocity.x * rewindDt;
-      b.position.y -= b.velocity.y * rewindDt;
-    }
+    // Positional separation based on inverse mass distribution
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invSum = invA + invB;
 
-    // Ensure no residual penetration at contact
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    if (contactDist < minDist && contactDist > 0.00001) {
-      const penetration = minDist - contactDist;
-      const cNormX = contactDx / contactDist;
-      const cNormY = contactDy / contactDist;
-      if (b.isImmovable) {
-        a.position.x -= cNormX * penetration;
-        a.position.y -= cNormY * penetration;
-      } else if (a.isImmovable) {
-        b.position.x += cNormX * penetration;
-        b.position.y += cNormY * penetration;
-      } else {
-        const fix = penetration * 0.5;
-        a.position.x -= cNormX * fix;
-        a.position.y -= cNormY * fix;
-        b.position.x += cNormX * fix;
-        b.position.y += cNormY * fix;
+    if (invSum > 0.0001) {
+      const fixA = overlap * (invA / invSum);
+      const fixB = overlap * (invB / invSum);
+      if (!a.isImmovable) {
+        a.position.x -= normX * fixA;
+        a.position.y -= normY * fixA;
+      }
+      if (!b.isImmovable) {
+        b.position.x += normX * fixB;
+        b.position.y += normY * fixB;
+      }
+    } else {
+      // Both massless and neither immovable: 50/50 separation
+      if (!a.isImmovable && !b.isImmovable) {
+        const fix = overlap * 0.5;
+        a.position.x -= normX * fix;
+        a.position.y -= normY * fix;
+        b.position.x += normX * fix;
+        b.position.y += normY * fix;
+      } else if (!a.isImmovable) {
+        a.position.x -= normX * overlap;
+        a.position.y -= normY * overlap;
+      } else if (!b.isImmovable) {
+        b.position.x += normX * overlap;
+        b.position.y += normY * overlap;
       }
     }
 
-    // Combined restitution
+    // Combined restitution: Character-on-character contact is purely inelastic (restitution = 0)
+    // to prevent artificial elastic bouncing or slingshotting during walking/pushing
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const restitution = Math.max(bounceA, bounceB);
+    const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
 
-    // Apply physical impulses respecting Massless vs Massive rule
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
+    // Determine 3D impact normal Z (pointing from A to B)
+    const normZ = closingVertSpeed > 0.001
+      ? (b.position.z >= a.position.z ? 1 : -1)
+      : 0;
 
-    // Advance remainder of frame with new velocities
-    const remDt = (1.0 - alpha) * dt;
-    if (!a.isImmovable) {
-      a.position.x += a.velocity.x * remDt;
-      a.position.y += a.velocity.y * remDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x += b.velocity.x * remDt;
-      b.position.y += b.velocity.y * remDt;
-    }
+    // Apply physical impulses respecting Massless vs Massive rule, with 3D impact damage calculation
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "discrete_toi",
+      effectiveImpactSpeed,
+      normZ
+    );
 
     return true;
   }
@@ -207,81 +231,85 @@ export class CollisionResolver {
     _arena: Arena,
     dt: number
   ): boolean {
-    const minDist = a.colliderRadius + b.colliderRadius;
-
     if (a.isImmovable && b.isImmovable) {
       return false;
     }
 
     // Start positions (at beginning of tick dt)
-    const pA0x = a.isImmovable ? a.position.x : (a.position.x - a.velocity.x * dt);
-    const pA0y = a.isImmovable ? a.position.y : (a.position.y - a.velocity.y * dt);
-    const pB0x = b.isImmovable ? b.position.x : (b.position.x - b.velocity.x * dt);
-    const pB0y = b.isImmovable ? b.position.y : (b.position.y - b.velocity.y * dt);
+    const pA0 = {
+      x: a.isImmovable ? a.position.x : (a.position.x - a.velocity.x * dt),
+      y: a.isImmovable ? a.position.y : (a.position.y - a.velocity.y * dt),
+    };
+    const pB0 = {
+      x: b.isImmovable ? b.position.x : (b.position.x - b.velocity.x * dt),
+      y: b.isImmovable ? b.position.y : (b.position.y - b.velocity.y * dt),
+    };
 
-    const vAx = a.isImmovable ? 0 : a.velocity.x;
-    const vAy = a.isImmovable ? 0 : a.velocity.y;
-    const vBx = b.isImmovable ? 0 : b.velocity.x;
-    const vBy = b.isImmovable ? 0 : b.velocity.y;
+    const vA = { x: a.isImmovable ? 0 : a.velocity.x, y: a.isImmovable ? 0 : a.velocity.y };
+    const vB = { x: b.isImmovable ? 0 : b.velocity.x, y: b.isImmovable ? 0 : b.velocity.y };
 
-    // Relative start position and relative velocity
-    const r0x = pB0x - pA0x;
-    const r0y = pB0y - pA0y;
-    const vRelX = vBx - vAx;
-    const vRelY = vBy - vAy;
+    const sweptHit = SweptMath.sweepCircleVsCircle(
+      pA0,
+      vA,
+      a.colliderRadius,
+      pB0,
+      vB,
+      b.colliderRadius,
+      dt
+    );
 
-    // Quadratic equation: |r0 + vRel * t|^2 = minDist^2
-    const aQuad = vRelX * vRelX + vRelY * vRelY;
-    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
-    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
-
-    // If deeply penetrating at start of frame, fallback to tangent separation
-    if (cQuad < -0.0001) {
-      return this.resolvePairDiscreteTOI(a, b, _arena, dt);
-    }
-
-    if (aQuad < 0.0000001) {
-      // Relative velocity is zero: no collision can occur during frame
+    if (!sweptHit) {
+      // If bodies were penetrating at start of frame, fallback to discrete TOI
+      const r0x = pB0.x - pA0.x;
+      const r0y = pB0.y - pA0.y;
+      const minDist = a.colliderRadius + b.colliderRadius;
+      if (r0x * r0x + r0y * r0y < minDist * minDist) {
+        return this.resolvePairDiscreteTOI(a, b, _arena, dt);
+      }
       return false;
     }
 
-    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-    if (disc < 0) {
-      return false; // Trajectories miss each other
-    }
+    const { tHit, normX, normY, velAlongNormal } = sweptHit;
 
-    // Earliest impact time
-    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
-    if (tHit > dt) {
-      return false; // Impact is outside this time step
-    }
-
-    // Advance bodies to the exact instant of impact tHit
+    // Advance bodies to exact instant of impact tHit
     if (!a.isImmovable) {
-      a.position.x = pA0x + a.velocity.x * tHit;
-      a.position.y = pA0y + a.velocity.y * tHit;
+      a.position.x = pA0.x + a.velocity.x * tHit;
+      a.position.y = pA0.y + a.velocity.y * tHit;
     }
     if (!b.isImmovable) {
-      b.position.x = pB0x + b.velocity.x * tHit;
-      b.position.y = pB0y + b.velocity.y * tHit;
+      b.position.x = pB0.x + b.velocity.x * tHit;
+      b.position.y = pB0.y + b.velocity.y * tHit;
     }
-
-    // Contact normal
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    const normX = contactDist > 0.0001 ? contactDx / contactDist : 1;
-    const normY = contactDist > 0.0001 ? contactDy / contactDist : 0;
-
-    const velAlongNormal = vRelX * normX + vRelY * normY;
 
     // Combined restitution
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
 
-    // Apply impulse
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "continuous_swept");
+    // 3D vertical relative velocity (e.g. landing on top of each other or vertical collision)
+    const vzA = (!a.isImmovable && a.hasVerticalVelocity) ? a.verticalVelocity : 0;
+    const vzB = (!b.isImmovable && b.hasVerticalVelocity) ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    const isClosingVertically = (b.position.z >= a.position.z && relVz < -0.05) || (a.position.z >= b.position.z && relVz > 0.05);
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
+    }
+    const normZ = closingVertSpeed > 0.001 ? (b.position.z >= a.position.z ? 1 : -1) : 0;
+
+    // Apply impulse with 3D impact damage calculation
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "continuous_swept",
+      effectiveImpactSpeed,
+      normZ
+    );
 
     // Advance remainder of frame
     const remDt = dt - tHit;
@@ -319,21 +347,24 @@ export class CollisionResolver {
           ? "continuous"
           : (globalMode === "discrete" ? "discrete" : entity.getEffectiveCollisionMode(dt)));
 
-    // Closest point on wall AABB
-    const cx = Math.max(wall.x, Math.min(entity.position.x, wall.x + wall.width));
-    const cy = Math.max(wall.y, Math.min(entity.position.y, wall.y + wall.height));
-    const dx = entity.position.x - cx;
-    const dy = entity.position.y - cy;
-    const distSq = dx * dx + dy * dy;
+    const wallHit = SweptMath.testCircleVsWall(
+      entity.position.x,
+      entity.position.y,
+      r,
+      entity.velocity.x,
+      entity.velocity.y,
+      wall.x,
+      wall.y,
+      wall.width,
+      wall.height,
+      dt
+    );
 
-    if (distSq >= r * r) {
+    if (!wallHit) {
       return false;
     }
 
-    const dist = Math.sqrt(distSq);
-    const normX = dist > 0.0001 ? dx / dist : (entity.velocity.x < 0 ? 1 : -1);
-    const normY = dist > 0.0001 ? dy / dist : (entity.velocity.y < 0 ? 1 : -1);
-
+    const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
     const bRestitution = entity.isCharacter ? 0 : (entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0);
 
     if (mode === "naive") {
@@ -347,14 +378,6 @@ export class CollisionResolver {
       }
       entity.lastCollisionType = "naive";
       return true;
-    }
-
-    // Rollback / Swept contact rewind:
-    const overlap = r - dist;
-    const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
-    let alpha = 0;
-    if (speed > 0.0001) {
-      alpha = Math.min(1.0, Math.max(0.0, overlap / (speed * dt)));
     }
 
     // Place at tangent touch
@@ -378,6 +401,21 @@ export class CollisionResolver {
     entity.lastContactNormal = { x: normX, y: normY };
     entity.lastCollisionTime = nowWall;
 
+    if (vn < 0) {
+      const impactSpeed = Math.abs(vn);
+      const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution));
+      const shock = impactSpeed * 60 * absFrac;
+      if (shock > 0.01) {
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY,
+        });
+      }
+    }
+
     return true;
   }
 
@@ -391,10 +429,15 @@ export class CollisionResolver {
     normY: number,
     velAlongNormal: number,
     restitution: number,
-    collisionType: "discrete_toi" | "continuous_swept"
+    collisionType: "discrete_toi" | "continuous_swept",
+    customImpactSpeed?: number,
+    _normZ: number = 0
   ): void {
-    // Only apply impulse if closing towards each other
-    if (velAlongNormal >= 0) return;
+    const isClosingIn2D = velAlongNormal < 0;
+    const impactSpeed = customImpactSpeed !== undefined ? customImpactSpeed : (isClosingIn2D ? Math.abs(velAlongNormal) : 0);
+
+    // Only apply impulse if closing towards each other in 2D or 3D
+    if (!isClosingIn2D && impactSpeed <= 0.05) return;
 
     // Wake up any sleeping bodies involved in contact
     a.wakeUp();
@@ -419,107 +462,145 @@ export class CollisionResolver {
     // Case 0: Immovable entity collisions (e.g. Remote character proxy on client)
     if (a.isImmovable && b.isImmovable) return;
 
-    if (b.isImmovable) {
-      if (isMasslessA) {
+    // Compute 2D horizontal velocities if closing along 2D normal
+    let normalImpulse = 0;
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invMassA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invMassB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invMassSum = invMassA + invMassB;
+
+    if (isClosingIn2D) {
+      if (b.isImmovable) {
+        if (isMasslessA) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          a.velocity.x -= normX * closingSpeed * (1 + restitution);
+          a.velocity.y -= normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassA;
+          a.velocity.x -= normalImpulse * invMassA * normX;
+          a.velocity.y -= normalImpulse * invMassA * normY;
+        }
+      } else if (a.isImmovable) {
+        if (isMasslessB) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          b.velocity.x += normX * closingSpeed * (1 + restitution);
+          b.velocity.y += normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassB;
+          b.velocity.x += normalImpulse * invMassB * normX;
+          b.velocity.y += normalImpulse * invMassB * normY;
+        }
+      } else if (isMasslessA && isMasslessB) {
+        const impulse = -velAlongNormal * 0.5 * (1 + restitution);
+        a.velocity.x -= impulse * normX;
+        a.velocity.y -= impulse * normY;
+        b.velocity.x += impulse * normX;
+        b.velocity.y += impulse * normY;
+      } else if (!isMasslessA && isMasslessB) {
+        const closingSpeed = Math.abs(velAlongNormal);
+        b.velocity.x += normX * closingSpeed * (1 + restitution);
+        b.velocity.y += normY * closingSpeed * (1 + restitution);
+      } else if (isMasslessA && !isMasslessB) {
         const closingSpeed = Math.abs(velAlongNormal);
         a.velocity.x -= normX * closingSpeed * (1 + restitution);
         a.velocity.y -= normY * closingSpeed * (1 + restitution);
       } else {
-        const mA = a.mass;
-        const invMassA = 1 / mA;
-        const normalImpulse = -(1 + restitution) * velAlongNormal / invMassA;
+        // Both objects are Massive (Standard conservation of momentum impulse)
+        normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
         a.velocity.x -= normalImpulse * invMassA * normX;
         a.velocity.y -= normalImpulse * invMassA * normY;
-      }
-      return;
-    }
-
-    if (a.isImmovable) {
-      if (isMasslessB) {
-        const closingSpeed = Math.abs(velAlongNormal);
-        b.velocity.x += normX * closingSpeed * (1 + restitution);
-        b.velocity.y += normY * closingSpeed * (1 + restitution);
-      } else {
-        const mB = b.mass;
-        const invMassB = 1 / mB;
-        const normalImpulse = -(1 + restitution) * velAlongNormal / invMassB;
         b.velocity.x += normalImpulse * invMassB * normX;
         b.velocity.y += normalImpulse * invMassB * normY;
+
+        // Tangential relative velocity (perpendicular to normal)
+        const isCharCharContact = a.isCharacter && b.isCharacter;
+        const tangX = -normY;
+        const tangY = normX;
+        const relVx = b.velocity.x - a.velocity.x;
+        const relVy = b.velocity.y - a.velocity.y;
+        const relVt = relVx * tangX + relVy * tangY;
+
+        if (!isCharCharContact && Math.abs(relVt) > 0.001) {
+          const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+          const beta = 0.4; // Sphere rotational inertia factor
+          const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+          const maxFricImpulse = muObj * Math.abs(normalImpulse);
+          const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
+
+          a.velocity.x += fricImpulse * invMassA * tangX;
+          a.velocity.y += fricImpulse * invMassA * tangY;
+          b.velocity.x -= fricImpulse * invMassB * tangX;
+          b.velocity.y -= fricImpulse * invMassB * tangY;
+
+          // Rotational coupling if roll module is present
+          if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
+            const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+            a.rollModule.angularVelocity.z += spinImpulse;
+            a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+          }
+
+          if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
+            const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+            b.rollModule.angularVelocity.z -= spinImpulseB;
+            b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+          }
+        }
       }
-      return;
     }
 
-    // Case 1: Both objects are massless (50/50 impulse)
-    if (isMasslessA && isMasslessB) {
-      const impulse = -velAlongNormal * 0.5 * (1 + restitution);
-      a.velocity.x -= impulse * normX;
-      a.velocity.y -= impulse * normY;
-      b.velocity.x += impulse * normX;
-      b.velocity.y += impulse * normY;
-      return;
+    // Physical Impact Shock Calculation:
+    // Change in velocity along normal for each body:
+    // deltaVa = effectiveImpactSpeed * invMassA / invMassSum
+    // Deceleration shock = deltaV / dt (scaled to 1 frame @ 60Hz: deltaV * 60)
+    // Elastic cushioning: absorbedFraction = (1 - bounceMod)
+    const relSpeed = impactSpeed;
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
+    const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA));
+    const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB));
+
+    // Compute effective deltaV for A and B based on 3D relative speed and mass ratios
+    let deltaVa = relSpeed * 0.5;
+    let deltaVb = relSpeed * 0.5;
+    if (a.isImmovable && !b.isImmovable) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
+    } else if (!a.isImmovable && b.isImmovable) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && !isMasslessB && invMassSum > 0.0001) {
+      deltaVa = relSpeed * (invMassA / invMassSum);
+      deltaVb = relSpeed * (invMassB / invMassSum);
+    } else if (isMasslessA && !isMasslessB) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && isMasslessB) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
     }
 
-    // Case 2: A is Massive, B is Massless
-    // B absorbs separation and inherits closing velocity without dampening A
-    if (!isMasslessA && isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      b.velocity.x += normX * closingSpeed * (1 + restitution);
-      b.velocity.y += normY * closingSpeed * (1 + restitution);
-      return;
+    const shockA = Math.abs(deltaVa) * 60 * absFracA;
+    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+
+    if (shockA > 0.01) {
+      a.dispatchImpact({
+        absorbedShock: shockA,
+        impactSpeed: relSpeed,
+        otherEntity: b,
+        normalX: -normX,
+        normalY: -normY,
+      });
     }
 
-    // Case 3: A is Massless, B is Massive
-    if (isMasslessA && !isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      a.velocity.x -= normX * closingSpeed * (1 + restitution);
-      a.velocity.y -= normY * closingSpeed * (1 + restitution);
-      return;
-    }
-
-    // Case 4: Both objects are Massive (Standard conservation of momentum impulse)
-    const mA = a.mass;
-    const mB = b.mass;
-    const invMassA = 1 / mA;
-    const invMassB = 1 / mB;
-    const invMassSum = invMassA + invMassB;
-    const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
-
-    a.velocity.x -= normalImpulse * invMassA * normX;
-    a.velocity.y -= normalImpulse * invMassA * normY;
-    b.velocity.x += normalImpulse * invMassB * normX;
-    b.velocity.y += normalImpulse * invMassB * normY;
-
-    // Tangential relative velocity (perpendicular to normal)
-    const tangX = -normY;
-    const tangY = normX;
-    const relVx = b.velocity.x - a.velocity.x;
-    const relVy = b.velocity.y - a.velocity.y;
-    const relVt = relVx * tangX + relVy * tangY;
-
-    if (Math.abs(relVt) > 0.001) {
-      const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-      const beta = 0.4; // Sphere rotational inertia factor
-      const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
-      const maxFricImpulse = muObj * Math.abs(normalImpulse);
-      const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
-
-      a.velocity.x += fricImpulse * invMassA * tangX;
-      a.velocity.y += fricImpulse * invMassA * tangY;
-      b.velocity.x -= fricImpulse * invMassB * tangX;
-      b.velocity.y -= fricImpulse * invMassB * tangY;
-
-      // Rotational coupling if roll module is present
-      if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
-        const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
-        a.rollModule.angularVelocity.z += spinImpulse;
-        a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
-      }
-
-      if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
-        const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
-        b.rollModule.angularVelocity.z -= spinImpulseB;
-        b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
-      }
+    if (shockB > 0.01) {
+      b.dispatchImpact({
+        absorbedShock: shockB,
+        impactSpeed: relSpeed,
+        otherEntity: a,
+        normalX: normX,
+        normalY: normY,
+      });
     }
   }
 
@@ -551,11 +632,19 @@ export class CollisionResolver {
           const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
 
-          if (dist2DSq < minDist * minDist && dist2DSq > 0.000001) {
+          if (dist2DSq < minDist * minDist) {
             const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
-            const normX = dx / dist;
-            const normY = dy / dist;
+            let normX: number;
+            let normY: number;
+            if (dist > 0.0001) {
+              normX = dx / dist;
+              normY = dy / dist;
+            } else {
+              const randomAngle = Math.random() * Math.PI * 2;
+              normX = Math.cos(randomAngle);
+              normY = Math.sin(randomAngle);
+            }
 
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);

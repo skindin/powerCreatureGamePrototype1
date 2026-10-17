@@ -1,0 +1,196 @@
+# COMPLETED_PHASES_11_AND_12.md — History & Architecture Archive for Phases 11 & 12
+
+> **Archive Note**: This document contains the detailed historical milestone notes, equations, design rationale, and verification records for Phase 11 (Dynamic Properties & Energy Busses Architecture) and Phase 12 (Food & Consumables, Prefabs, Spawners, and Trajectory Ballistics).
+> For active agent rules, sealed tiers, and current project overview, refer back to [AGENTS.md](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/AGENTS.md).
+> Earlier phases (Phases 1 through 10) are archived in [COMPLETED_PHASES.md](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/docs/history/COMPLETED_PHASES.md).
+
+---
+
+## Phase 11: Dynamic Properties & Energy Busses Architecture
+
+- **Phase 11.1 (Blender-Style Dynamic Property Sockets)**:
+  - `DynamicProperty`: Sockets with dual modes: `literalValue` or `isReference` linking to a named property string.
+  - `ObjectPropertiesRegistry`: Object-scoped dictionary of named referenceable properties with locally unique names.
+  - **Limbo State**: Deleting a reference property leaves sockets in an explicit warning/limbo state with expedited "+ Recreate" or "Unlink" quick-fixes.
+  - **Rename Propagation**: Renaming an object property string dynamically cascades to all sockets pointing to that name on the entity.
+  - **Scrub Draggable Fields**: Click-and-drag horizontal scrubber with rate proportional to initial magnitude, replacing hardcoded `<input type="range">` sliders.
+  - **DevPanel Integration**: `PropertyControl` mounted for `MassModule` and `StrengthModule`.
+  - Design document: [CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md](file:///c:/Users/tealf/Documents/aiProjects/powerCreatureGamePrototype1/docs/design/CHARACTER_PROPERTIES_AND_ENERGY_BUSSES.md).
+- **Phase 11.2 (Health, Damage Aura & Collision Damage Solver Foundation)**:
+  - `HealthModule`: `baseMaxHp`, `maxHpProp`, `currentHpProp`, `baseMaxHealRate`, `maxHealRateProp`, `consumesEnergy` toggle, and placeholder death/respawn loop.
+  - `DamageAuraModule`: Radiates continuous damage within 3D spherical radius (`damageRadiusProp`, `damageRateProp`) to any entity with a `HealthModule`.
+  - `DamageSolverModule`: Articulated defensive/armor layer converting absorbed blunt impact shock from wall/obstacle and entity collisions into HP damage scaled by impact susceptibility and global collision damage scale.
+  - **Hazard Orb**: Pre-spawned hazard orb (`#ef4444`, 2.5u radius, 20 HP/s) with `DamageAuraModule` in `main.ts` for instant testability.
+  - **Dynamic Overhead Health Bar**: Overhead HP bar drawn above characters and objects only when wounded (`currentHp < maxHp`).
+  - **Ability Energy Toggles**: `consumesEnergy` flags and DevPanel warnings added to Walking, Pickup, Throw, Jump, and Climbing abilities.
+- **Phase 11.3 (CharacterModule & Explicit Entity Role Architecture)**:
+  - `CharacterModule`: First-class modular entity role classifier (`local_player`, `local_ai`, `remote_player`, `remote_ai`, `dummy`).
+  - **Dummy Distinction**: Inert physical entity with health/combat modules; excluded from server player number/color chronological allocation (real players are assigned P1, P2...).
+  - **Local Client Trust**: Dummies are simulated locally without waiting for server input or suffering remote interpolation lag, and are excluded from `remoteOverrides`.
+  - **Renderer GUI**: Preserves grab prompts and trajectory line for all local players, resolving previous dummy selection overshadowing.
+  - **DevPanel Integration**: Added Character Module card with interactive role selector and behavior toggle/removal.
+- **Phase 11.4 (Energy Bus Ability Connections & DevPanel Accordion Collapsibles)**:
+  - `EnergyBus Connection`: Added `energyBusId` connection sockets to `WalkingModule` (walk & sprint), `PickupModule`, `ThrowModule`, `JumpModule` (via `Character.jumpEnergyBusId`), `ClimbingModule`, and `HealthModule` (healing). Each module renders a dropdown below its energy toggle to bind to any character energy bus (defaulting to `"bus_main"`).
+  - `Character.energyBusses`: Characters maintain a registry `Map<string, EnergyBus>` and `getEnergyBus(busId)` resolver.
+  - `Collapsible Sections & Behaviors`: Interactive accordion collapse (`▶` / `▼`) enabled across the entire DevPanel: Live Diagnostics, Physics & Collisions, History Buffer & Rollback Replay, Selected Physical Behaviors section, every individual attached behavior card, Add New Object creator section, every individual behavior card within the New Object creator, and World Physics & Environment.
+- **Phase 11.5 (Active Energy & Stamina Consumption Across Abilities)**:
+  - **Removed Stale UI Warnings**: Completely purged obsolete "Energy Busses not implemented yet" warnings from DevPanel cards.
+  - **Live Power Deduction & Proportional Scaling**: Wired `bus.requestPower(...)` logic into `WalkingModule` (75W walk, 350W sprint), `Character.jump` (1200W impulse), `PickupModule` (400W–500W lift), `ThrowModule` (600W–800W throw), `ClimbingModule` (80W hold, 260W vertical climb), and `HealthModule` (50W per HP/s passive regeneration). When pool energy or stamina cannot satisfy 100% of the requested power, abilities run at the maximum possible partial power fraction until fully depleted.
+  - **Live Telemetry & Status Bars**: Added dynamic frame-by-frame UI updates for Burst Stamina (`current / max (pct%)`) and Energy Reservoir (`current / max J (pct%)`), plus a dedicated `Current Wattage Used (W)` DynamicProperty socket and live power readout field on the Energy Bus card.
+  - **Exhaustion & Depletion Disabling**: Depleting the pool or draining stamina completely halts walking propulsion, cancels jumps, prevents throws and pickups, stops passive regeneration, and causes characters clinging to walls to slip. Sprint speed (not just force) drops to walk speed when sprint power is unavailable.
+  - **Physics-Based Costs**: Burst actions (jump, throw, pickup) are charged once via `EnergyBus.requestEnergy(joules, minDt, ...)` using mechanical work (½mv² for jump/throw, m·g·h for lift) ÷ 25% muscle efficiency, charged as if unresisted. Jump only charges at the grounded takeoff moment (never while airborne/held key). Climbing draws isometric hold (m·g) + ascent (m·g·v) power.
+- **Phase 11.6 (Pure Seconds Stamina Model & Wattage Depletion Equation)**:
+  - **Stamina Definition**: Stamina represents duration in seconds of continuous exertion at `maxPower`. Default `baseMaxStamina = 10.0` seconds.
+  - **Depletion Equation**: Depletion rate is strictly `current wattage / max wattage per second`. Over `dt`, `staminaDrain = (currentWatts / maxPower) * dt`.
+  - **Duration Scaling**: Drawing at 100% max wattage drains at 1.0 s/s (10s stamina lasts 10s); drawing at 50% max wattage drains at 0.5 s/s and lasts twice as long (10s stamina lasts 20s); drawing at 0W drains 0s.
+  - **Stamina Regeneration**: When not drawing power (0W), stamina recovers at `staminaRegenRate` seconds/second of rest (default 1.0 s/s).
+  - **Multi-Request Accumulation**: `EnergyBus.requestPower` cleanly accumulates power draws across concurrent abilities in each tick and publishes total wattage to `currentWattageProp`.
+  - **DevPanel Telemetry & Controls**: Updated DevPanel stamina meter to display seconds (`10.0s / 10.0s (100%)`), with 1.0s capacity scrubber steps and 0.2 s/s regen rate scrubber steps.
+  - **Automated Verification**: Verified 100% via `scratch/test_stamina_drain_equation.ts` and `scratch/test_energy_consumption.ts`.
+- **Phase 11.7 (Default Collapsed Inspector Accordions & Ability Energy Presets)**:
+  - **Default Collapsed Inspector**: All collapsible accordion headers in the DevPanel inspector (Diagnostics, Physics, History Buffer, Selected Physical Behaviors, attached behavior cards, New Object Creator modules, World Physics) are now collapsed by default via `expandedSections` set.
+  - **Ability Energy Defaults**: Configured default energy consumption across abilities on `Character`:
+    - Walking: `walkConsumesEnergy = false`
+    - Sprinting: `sprintConsumesEnergy = true`, `sprintEnergyBusId = "bus_main"`
+    - Jumping: `jumpConsumesEnergy = true`, `jumpEnergyBusId = "bus_main"`
+    - Throwing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+    - Picking Up: `consumesEnergy = false`, `energyBusId = "bus_main"`
+    - Climbing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+    - Health / Healing: `consumesEnergy = true`, `energyBusId = "bus_main"`
+  - **DevPanel Add Behavior Parity**: Newly attached abilities via DevPanel follow these exact energy defaults and bus connections.
+  - **Automated Verification**: Verified 100% via `scratch/test_ability_energy_defaults.ts`.
+- **Phase 11.8 (Locomotion Power Physics Correction)**:
+  - **Replaced Transient Acceleration with Steady-State Locomotion Work**: In `WalkingModule.ts`, replaced the erroneous rocket launch formula (`8 * m * v^2 = 624 W`) with standard steady-state biomechanical metabolic transport power: `P_metabolic = (totalMass * g * Cr * v) / 0.25`.
+  - **Sprinting & Walking Power Realism**: Sprinting at 8.06 u/s costs **151.8 W** (using running resistance `Cr = 0.40`), and walking at 5.20 u/s costs **68.6 W** (using walking resistance `Cr = 0.28`).
+  - **Speed Choke Eliminated**: Because 151.8 W is well below the bus's 250 W limit, 100% of requested power is granted, allowing full 8.06 u/s sprint speed without any speed degradation.
+  - **Automated Verification**: Verified 100% via `scratch/test_locomotion_wattage.ts`.
+- **Phase 11.9 (Forward-Facing Efficiency Sockets & Cloud Run Proxy Fix)**:
+  - **DevPanel Forward-Facing Sockets**: Added "Healing Efficiency (HP/Joule)" (hpPerJouleProp) to HealthModule card and "Muscle Metabolic Efficiency (Ratio)" (muscleEfficiencyProp) to EnergyBus card.
+  - **Environment Variables Cleanup**: Removed GITHUB_TOKEN and ENABLE_TUNNEL from .env.example.
+  - **Cloud Run Proxy & Tunnel Middleware Fix**: Narrowed isTunnel in vite.config.ts to only match loca.lt domains.
+  - **CSS Delivery Restored**: Eliminated the 302 redirect on /src/style.css, restoring full CSS styling and default accordion collapsing.
+  - **PWA Service Worker Scoping**: Restricted service worker registration to explicit loca.lt domains, ensuring Cloud Run preview iframes always fetch live un-cached source files.
+- **Phase 11.10 (Multi-Ability Proportional Power Rationing & Resting Stamina Recovery)**:
+  - **Proportional Power Rationing Formula**: When multiple abilities concurrently demand power exceeding `maxPower` (250 W), each ability receives its exact proportional share: `P_granted = (P_demanded / P_total_demanded) * maxPower`. Total power draw is strictly capped at `maxPower` (250 W), preventing excess power draw.
+  - **Physical Exertion vs Metabolic Healing Separation**: Muscular burst stamina is only depleted by physical movement/actions (`WalkingModule`, `ClimbingModule`, jumps, throws, lifts). Passive cellular bio-healing (`HealthModule`) draws power through the bus against `maxPower` and consumes Joules from `EnergyPool`, but does not drain muscular burst stamina or prevent resting stamina recovery.
+  - **Resting Stamina Recovery**: When physically resting (stationary on the ground), stamina smoothly regenerates at `staminaRegenRate` (1.0 s/s) all the way to 100% (10.0s) capacity without freezing at 2.0s or oscillating while wounded.
+  - **Airborne Jump Holding Energy Fix**: In `Character.jump`, verified physical grounding (`isGrounded`) before charging metabolic jump impulse energy, eliminating phantom energy drains while airborne with Space held. Reordered hold-to-jump buffer before `bus.update(dt)`.
+  - **Automated Verification**: Verified 100% across regression test suite.
+- **Phase 11.11 (Sprint Energy Floor & Automatic Detoggle Architecture)**:
+  - **Graceful Sprint Deceleration**: When bus power is partially granted or rationed, sprint speed decelerates smoothly between `maxSprintSpeed` (8.06 u/s) and base walk speed (5.20 u/s) proportional to granted wattage.
+  - **Base Speed Power Threshold Check (`peekPower`)**: In `EnergyBus.peekPower`, safely checks available power without deducting energy or draining stamina. If available power cannot exceed the metabolic power needed to run faster than base walk speed ($P_{\text{granted}} \le P_{\text{base}}$), sprint automatically detoggles (`character.setSprinting(false)`).
+  - **Detoggle to Free Walk**: Detoggled movement continues seamlessly at full base walk speed (5.20 u/s) drawing 0W with zero stamina drain (when `walkConsumesEnergy` is false). Players never stall, halt, or crawl slower than base walk speed due to sprint energy limits.
+  - **Input Synchronization**: Attached `onSprintChange` listeners in `PlayerManager` and `main.ts` so detoggling disarms keyboard (`isKeyboardSprintActive`) and gamepad (`slot.sprintArmed`) sprint states.
+  - **Automated Verification**: Verified 100% via `scratch/test_sprint_detoggle_and_floor.ts`.
+- **Phase 11.12 (Default Watt Capacity Update to 500 Watts)**:
+  - **Default Bus Power Capacity**: Updated default `baseMaxPower` in `EnergyBus` from 250.0 W to 500.0 W. Characters can now concurrently sprint (~152 W) and heal at full rate (250 W) with headroom, drawing up to 500 W total before rationing occurs.
+- **Phase 11.13 (Unified Stamina Depletion Across All Power Draws & Live Stamina Field)**:
+  - **Unified Stamina Depletion**: Removed the health regen exemption (`abilityId !== "health_regen"`) in `EnergyBus.requestPower`. All power drawn from the energy bus (including health regeneration at 250 W) now strictly drains burst stamina according to the universal equation `staminaDrain = (grantedWatts / maxPower) * dt`.
+  - **Resting Stamina Recovery**: When power draw drops to 0 W (e.g. character heals back to full health or rests), stamina smoothly recovers at `staminaRegenRate` (1.0 s/s).
+  - **DevPanel Live Current Stamina Socket**: Mounted a live `PropertyControl` socket for `currentStaminaProp` ("Current Stamina Left (Seconds)") directly underneath "Burst Stamina Capacity (Seconds)" in the DevPanel Energy Bus card, updating continuously in real time.
+- **Phase 11.14 (Background Physics/Health Simulation & HP Regen Wattage Equation)**:
+  - **Background Character Simulation**: Updated `PlayerManager.ts` to ensure registered player characters without input packets (e.g. keyboard suspended on window blur/background tab) continuously update physics, gravity, settling, health logic, and death/respawn with neutral inputs (`{ x: 0, y: 0 }`). Characters in damage auras smoothly perish and respawn immediately to one of the 4 clearings without waiting for window focus.
+  - **HP Regen Wattage Equation Clarification**: Confirmed that the 250 W draw during passive bio-regeneration is strictly derived from the mechanical formula $P = \frac{\text{healRate}}{\text{hpPerJoule}} = \frac{10.0\text{ HP/s}}{0.04\text{ HP/J}} = 250.0\text{ W}$, not a hardcoded ceiling.
+- **Phase 11.15 (Default Energy Capacity Update to 10,000 Joules)**:
+  - **Default Energy Pool Capacity**: Updated default `baseMaxEnergy` in `EnergyPool` from 1,000.0 J to 10,000.0 J.
+- **Phase 11.16 (Allow Partial Power & Two-Tier Priority Precedent Architecture)**:
+  - **Two-Tier Priority Allocation**: In `EnergyBus`, full-power demands (`allowPartialPower = false`) take absolute precedence over partial-power demands (`allowPartialPower = true`), evaluated in FIFO order. If a full-power ability (e.g. Climb or Jump) is initiated while partial-power abilities (Sprint, Heal) are running, the full-power ability claims 100% of its needed wattage, while partial-power abilities scale down to share remaining headroom.
+  - **Ability Toggles & Presets**: Added `Allow Partial Power` boolean toggles conditionally rendered under each `Consumes Energy` toggle in the DevPanel inspector across Walking (default false), Sprinting (default true), Jump (default false), Climbing (default false), Pickup (default false), and Health/Healing (default true). Excluded from Throwing.
+- **Phase 11.17 (Contention-Preserved Sprint Architecture & Continuous Mid-Air Sprinting)**:
+  - **Contention vs True Exhaustion Distinction**: Separated temporary power starvation from genuine stamina/energy exhaustion. In `EnergyBus`, added `canSupportPowerInIsolation` to verify if sprinting would be supported if no competing abilities were running.
+  - **No Untoggle During Contention**: When competing abilities consume bus capacity below the sprint threshold, sprint is NOT untoggled; character temporarily falls back to base walk speed drawing 0 W sprint power, keeping sprint armed in the background.
+  - **Proportional Resumption**: As soon as competing abilities leave enough headroom to beat base walk speed ($> 98\text{ W}$), sprint immediately resumes at the achievable speed.
+  - **Continuous Mid-Air Sprinting**: Jump only charges metabolic impulse energy at the takeoff frame ($t = 0$). Mid-flight ($t > 0$), Jump is no longer consuming power, allowing mid-air sprint acceleration when `walkInAir` is enabled.
+  - **True Exhaustion Untoggle**: When burst stamina reaches $0.0\text{s}$ or the energy pool is genuinely empty, sprint cleanly untoggles.
+- **Phase 11.18 (Two-Tier Coordinated Power Cap & Energy Cap Screen HUD & Asymmetric Power Decay)**:
+  - **Screen-Space HUD Widget (`EnergyHud`)**: Mounted in `.canvas-wrapper` at the bottom of the arena viewport, featuring a clean two-tier stacked layout.
+  - **Upper Track (Power Bar - Width of Power Cap = 500 W)**: Live electric cyan power draw bar with instant attack and fast decay ($\sim 350\text{ms}$, $\lambda = 9.5$). Multi-tick spike retention (`recentPeakWattage`) ensures fixed timestep catchups never overwrite burst draws before rendering.
+  - **Lower Track (Energy & Stamina Scale - Width of Energy Cap = 10,000 J)**: Amber fill for energy, translucent emerald fill for stamina.
+- **Phase 11.19 (Dedicated Instant Burst Architecture & Coordinated Power Peak Visualization)**:
+  - **Dedicated Instant Burst API (`requestInstantBurst`)**: Created a specialized API in `EnergyBus` for instantaneous work actions (jump, throw, pickup).
+  - **Burst Capacity Limit**: Instant actions bounded by $\text{burst energy} \le \text{currentStamina} \times \text{maxPower}$.
+  - **Proportional Power Peaks**: $P_{\text{peak}} = \min(\text{maxPower}, P_{\text{baseline}} + P_{\text{burst}})$.
+  - **Non-Destructive Peak Reading**: Timed hold window (`recentPeakHoldTimer`) resets to continuous live wattage after 0.08s, allowing DevPanel and EnergyHud to read identical peaks reliably.
+- **Phase 11.20 (Color-Coded Power Blocks, Precedence Tags & Clean Game UI)**:
+  - Upper power bar dynamic color-coded blocks for each active consuming ability (Sprint: Amber `#f59e0b`, Heal: Green `#22c55e`, Climb: Purple `#a855f7`, Jump: Pink `#ec4899`, Walk: Sky Blue `#38bdf8`, Pickup: Yellow `#eab308`, Throw: Rose `#f43f5e`).
+  - Clean ability tags with `/s` rate suffix for continuous actions and plain unitless work values for burst actions.
+  - Translucent glass HUD bars floating over gameplay.
+- **Phase 11.21 (Left-to-Right Chronological Stacking, Smooth Block Interpolation & Minimalist Game HUD)**:
+  - Left-to-right activation sequencing (`order`) in `EnergyBus`.
+  - Smooth block width interpolation from/to 0 on activation/expiration.
+  - Purged redundant 1P header, minimize button, and yellow end lines.
+- **Phase 11.22 (Decoupled Tag Energy Readouts from Visual Bar Animation)**:
+  - Decoupled active tag numbers (`stableWatts`) from width interpolation, eliminating confusing numeric counting up/down while blocks animate.
+- **Phase 11.23 (Ability Naming Parity: Sprint, Walk, Jump, Heal)**:
+  - Single-word ability names in `ABILITY_METADATA` and strictly lowercase `/s` suffix.
+- **Phase 11.24 (Exhaustion Recovery Red Tick Mark & Clean Gauge Styling)**:
+  - Red tick mark (`#tick-hud-exhaustion-recovery`) on lower reservoir track, visible only when exhausted, clearing at recovery threshold (default 10.0% / 1,000 J).
+- **Phase 11.26 (Dual Health & Energy Screen HUD Gauges Architecture)**:
+  - Side-by-side dual gauge columns: Health System on left, Energy & Power System on right (`.hud-columns-container` with 1fr 1fr grid).
+  - Upper Health Modifiers Track: Displays active continuous/burst health modifiers (DOT Damage Aura in red, Impact shock in light red, HOT bio-regen in green, Potion heals in emerald).
+- **Phase 11.27 (Inverted Main/Modifier Track Layout & Distinctive Heart & Lightning Symbols)**:
+  - Swapped bar positions: Mod list tags on top, primary stat bar in upper track (24px), modifiers bar in lower track (18px).
+  - Heart (`❤`) symbol for Health, Lightning (`⚡`) symbol for Energy.
+- **Phase 11.28 (Vertically Split Mod Bars & Signed Mod Tag Rates Architecture)**:
+  - Signed tag rates (`+` for healing/gains, `-` for damage/draws).
+  - Vertically split modifier tracks into upper lane (positive gains) and lower lane (negative drains).
+- **Phase 11.29 (Thicker 1.5x Tracks, Dedicated Non-Overlapping Stamina Lane & View Menu UI Transparency Slider)**:
+  - 24px primary resource bars, 18px modifier bars, 860px wide container.
+  - Dedicated non-overlapping upper 1/3 stamina lane (8px emerald bar) atop the 2/3 energy reservoir (16px amber bar).
+  - HUD Opacity slider in View Settings menu scoped exclusively to `.energy-hud-container` via `--hud-opacity`.
+- **Phase 11.30 (Purged Redundant Ability Metadata Aliases)**:
+  - Cleaned up legacy alias entries in `ABILITY_METADATA`, preserving canonical identifiers: `sprint`, `walk`, `jump`, `climb`, `health_regen`, `pickup`, `throw`, and `instant_burst`.
+
+---
+
+## Phase 12: Food, Consumables, Prefabs, Spawners & Advanced Ballistics
+
+- **Phase 12.1 (Food & Edible Mechanics, Contextual Primary Abilities, Universal Throw & Infinite Spawner Behavior)**:
+  - `FoodModule`: Continuous energy transfer on primary action hold, volumetric cube-root shrinking ($r(t) = r_0 \times (E(t)/E_0)^{1/3}$) with $25\%$ minimum scale floor, full destruction and world array cleanup on depletion.
+  - Contextual controls: Alt + LMB universally aims and launches projectiles; plain LMB executes contextual primary action (eating) or falls back to throwing; Key Q drops held items.
+  - `SpawnerModule`: Infinite dispenser cloning on pickup, stripping spawner from held copy while original replica remains on floor.
+- **Phase 12.2 (Consumable Module, Tag Registry, Character Consume Ability & Spawner World Array Fix)**:
+  - `ConsumableModule`: Generalized food behavior to `ConsumableModule` with extensible tag system (e.g. `"food"`, `"potion"`, `"battery"`).
+  - `ConsumableTagRegistry`: Shared registry for CRUD tag management with cascading rename/delete across entities.
+  - `ConsumeModule`: Character capability with multi-tag selector (`acceptedTags`) filtering edible objects.
+  - Cloned spawner replicas pushed directly into the world `objects` array.
+- **Phase 12.3 (Post-Eating Grab Suppression & Radial Pie Progress Gauge)**:
+  - Per-entity grab suppression state machine preventing accidental immediate pickups when holding LMB while food depletes.
+  - Radial eating progress meter around held items during consumption.
+- **Phase 12.4 (Simplified Eating Status Ring & Post-Pickup Eat Suppression)**:
+  - Clean perimeter progress ring outside food artwork (`drawConsumableEatingRing`), eliminating sprite obscuration.
+  - Post-pickup eat suppression requiring an explicit release and repress of LMB/RT before eating begins.
+- **Phase 12.5 (Stationary Spawner Architecture & Clone-to-Hand Dispensing)**:
+  - Spawner entity remains completely stationary on ground; clean clone without `SpawnerModule` is dispensed directly into character hands.
+  - Full synchronization across client, server simulation, and contested grab arbiter.
+- **Phase 12.6 (Scene Prefabs & Background Scene Spawners System)**:
+  - Disabled default debug energy auto-refill on empty pool.
+  - `PrefabManager`: In-memory scene archetypes (default "Apple") with live instance tracking, parameter cascade, and override/revert model.
+  - `SceneSpawnerManager`: Background manager periodically spawning prefab instances on unobstructed arena floor tiles up to a configurable maximum count.
+- **Phase 12.7 (Apple Prefab Stats Parity & Post-Pickup Consumption Suppression)**:
+  - Default "Apple" prefab tuned to original green apple stats (0.35 mass, 0.25 radius, 2000 J, 400 W consume rate, `#22c55e`).
+  - Re-ordered held object transition logic to eliminate false energy/HP ticks on initial pickup frame.
+- **Phase 12.9 (Vertical Top-Down Collision Damage & Stacked Sliding Parity)**:
+  - 3D vertical relative velocity ($\Delta v_z$) incorporated into impact speed calculation ($\sqrt{v_n^2 + v_{z,\text{closing}}^2}$), ensuring vertical drops deal identical collision shock to sideways impacts.
+  - Damage dispatched prior to inverse-mass sliding separation.
+- **Phase 12.11 (Alt Ability Swaps & Non-Directional Aiming Architecture)**:
+  - Global Alt key interception with `preventDefault()` preventing browser access key interruptions.
+  - Holding consumable suppresses throw reticle and cursor snapping; Alt forces throw aiming reticle and cursor facing.
+- **Phase 12.12 (Reachable Throw Trajectory Clamping on Energy & Power Limits)**:
+  - Trajectory solver calculates maximum reachable ballistic distance $D_{\text{reach}}$ under burst energy/power constraints and clamps aim vector to closest reachable point.
+- **Phase 12.12b (Multiplayer Food, Energy & Consumable Replication Architecture)**:
+  - Headless server authority for scene spawners and item deletion.
+  - Client optimistic continuous eating prediction with soft reconciliation thresholds (>200 J energy, >2.0s stamina, >15 HP health).
+  - Telemetry replication of consumable stats for remote observer representation.
+- **Phase 12.13 (Multiplayer Consumable Depletion Deletion Pipeline & Server-Authoritative Respawn Lock)**:
+  - Depletion event pipeline streaming `consumedObjectIds` in input packets; server issues reliable `ObjectDeletionEvent`s.
+  - Server respawn lock rejecting stale client coordinates and eliminating respawn ping-ponging/oscillation.
+- **Phase 12.14 (Server Parallel Food Consumption & Autonomous Depletion Authority)**:
+  - Parallel server simulation of `char.consumeModule.consume(...)` directly on 60Hz server tick, enabling autonomous server depletion and world removal.
+- **Phase 12.15 (Character Dynamic Values Reset on Respawn & Private Telemetry Filtering)**:
+  - Centralized `Character.resetDynamicValues()` cleanly restoring HP, energy, and stamina simultaneously on death/respawn.
+  - Energy and stamina telemetry private to owning player; remote clients do not receive or mirror opponents' private energy states.
+- **Phase 12.16 (Shortest & Flattest Throw Trajectory and Property Overhaul)**:
+  - Shortest and flattest ballistic arc solver with obstacle clearance scanning over intermediate arena walls.
+  - Replaced legacy throw force property with `maxThrowSpeedProp` (default 14.0 u/s) with bus work scaling for heavier objects.
+  - Dense wall clearance sampling (120 steps) and removal of arbitrary minimum flight time clamp.

@@ -1,3 +1,6 @@
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
+
 export interface WallEdgeAssistModuleOptions {
   preventWalkOff?: boolean;
   hangDistance?: number;
@@ -18,7 +21,7 @@ export class WallEdgeAssistModule {
    * Maximum distance the character is allowed to hang off of elevated walls
    * before the ledge guard clamps movement (in units).
    */
-  public hangDistance = 0.10;
+  public hangDistanceProp: DynamicProperty;
 
   /** Whether the assist clamp (ledge guard) is currently active/armed */
   public isAssistClampArmed = false;
@@ -34,7 +37,20 @@ export class WallEdgeAssistModule {
 
   constructor(options?: WallEdgeAssistModuleOptions) {
     if (options?.preventWalkOff !== undefined) this.preventWalkOff = options.preventWalkOff;
-    if (options?.hangDistance !== undefined) this.hangDistance = options.hangDistance;
+    this.hangDistanceProp = new DynamicProperty(options?.hangDistance ?? 0.10);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
+
+  public get hangDistance(): number {
+    return this.hangDistanceProp.literalValue;
+  }
+
+  public set hangDistance(val: number) {
+    this.hangDistanceProp.literalValue = val;
+  }
+
+  public getHangDistance(registry?: ObjectPropertiesRegistry): number {
+    return this.hangDistanceProp.get(registry);
+  }
 }
+

@@ -21,3 +21,4 @@ dist/tunnel.json
 # Visual Studio / IDE cache
 .vs/
 .vscode/
+.aistudio/

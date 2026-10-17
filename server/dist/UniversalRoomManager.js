@@ -4092,44 +4092,254 @@ __publicField(_Arena, "WALL_PRESETS", [
   }
 ]);
 let Arena = _Arena;
-class ColliderModule {
-  constructor(options = {}) {
-    __publicField(this, "radius");
-    __publicField(this, "enabled");
-    __publicField(this, "canSweep");
-    __publicField(this, "ccdThresholdRatio");
-    this.radius = options.radius ?? 0.32;
-    this.enabled = options.enabled ?? true;
-    this.canSweep = options.canSweep ?? true;
-    this.ccdThresholdRatio = options.ccdThresholdRatio ?? 0.5;
+class DynamicProperty {
+  constructor(initialValue = 0, isReference = false, referenceKey = "") {
+    __publicField(this, "isReference", false);
+    __publicField(this, "referenceKey", "");
+    __publicField(this, "literalValue", 0);
+    // Listeners for UI reactivity (e.g. syncing DevPanel inputs)
+    __publicField(this, "_listeners", /* @__PURE__ */ new Set());
+    this.literalValue = initialValue;
+    this.isReference = isReference;
+    this.referenceKey = referenceKey;
+  }
+  /**
+   * Resolves the current numeric value given an owner registry.
+   * If in reference mode and the property doesn't exist, it remains in
+   * "limbo" and returns literalValue as fallback.
+   */
+  get(registry) {
+    if (this.isReference && this.referenceKey && registry) {
+      const ref = registry.get(this.referenceKey);
+      if (ref !== void 0) {
+        return ref;
+      }
+    }
+    return this.literalValue;
+  }
+  /**
+   * Sets the numeric value.
+   * If in reference mode and the reference exists in the registry,
+   * it updates the shared registry value (which updates all sockets referencing it).
+   * Otherwise, updates the literal value.
+   */
+  set(value, registry) {
+    if (this.isReference && this.referenceKey && registry && registry.has(this.referenceKey)) {
+      registry.set(this.referenceKey, value);
+    } else {
+      this.literalValue = value;
+    }
+    this.notify();
+  }
+  /**
+   * Check if this property is in a "limbo/broken" state (referencing a key that does not exist).
+   */
+  isLimbo(registry) {
+    if (!this.isReference || !this.referenceKey) return false;
+    if (!registry) return true;
+    return !registry.has(this.referenceKey);
+  }
+  /**
+   * Switches to reference mode and links to a specific key.
+   */
+  link(referenceKey, registry) {
+    this.isReference = true;
+    this.referenceKey = referenceKey;
+    if (registry && registry.has(referenceKey)) {
+      this.literalValue = registry.get(referenceKey);
+    }
+    this.notify();
+  }
+  /**
+   * Unlinks from reference mode and becomes a standalone literal value.
+   */
+  unlink() {
+    this.isReference = false;
+    this.referenceKey = "";
+    this.notify();
+  }
+  subscribe(cb) {
+    this._listeners.add(cb);
+    return () => this._listeners.delete(cb);
+  }
+  notify() {
+    for (const cb of this._listeners) {
+      cb(this);
+    }
+  }
+  clone() {
+    const p = new DynamicProperty(this.literalValue, this.isReference, this.referenceKey);
+    return p;
   }
 }
-class MassModule {
+class ObjectPropertiesRegistry {
+  constructor(initialEntries) {
+    __publicField(this, "_properties", /* @__PURE__ */ new Map());
+    __publicField(this, "_changeListeners", /* @__PURE__ */ new Set());
+    if (initialEntries) {
+      for (const [k, v] of Object.entries(initialEntries)) {
+        this._properties.set(k, v);
+      }
+    }
+  }
+  has(name) {
+    return this._properties.has(name);
+  }
+  get(name) {
+    return this._properties.get(name);
+  }
+  set(name, value) {
+    this._properties.set(name, value);
+    this.notify();
+  }
+  /**
+   * Adds a new named property with uniqueness enforcement.
+   * If the name already exists, returns false or throws.
+   */
+  add(name, initialValue = 1) {
+    const trimmed = name.trim();
+    if (!trimmed || this._properties.has(trimmed)) {
+      return false;
+    }
+    this._properties.set(trimmed, initialValue);
+    this.notify();
+    return true;
+  }
+  /**
+   * Deletes a named property. Referencing sockets will remain referencing this string
+   * but enter a Limbo/Warning state.
+   */
+  delete(name) {
+    const deleted = this._properties.delete(name);
+    if (deleted) {
+      this.notify();
+    }
+    return deleted;
+  }
+  /**
+   * Renames a property. Updates all registered DynamicProperty sockets pointing to oldName to newName.
+   */
+  rename(oldName, newName, socketsToUpdate) {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew || trimmedNew === oldName) return false;
+    if (this._properties.has(trimmedNew)) return false;
+    const val = this._properties.get(oldName);
+    if (val === void 0) return false;
+    this._properties.delete(oldName);
+    this._properties.set(trimmedNew, val);
+    if (socketsToUpdate) {
+      for (const socket of socketsToUpdate) {
+        if (socket.isReference && socket.referenceKey === oldName) {
+          socket.referenceKey = trimmedNew;
+          socket.notify();
+        }
+      }
+    }
+    this.notify();
+    return true;
+  }
+  getAll() {
+    const list = [];
+    for (const [name, value] of this._properties.entries()) {
+      list.push({ name, value });
+    }
+    return list;
+  }
+  subscribe(cb) {
+    this._changeListeners.add(cb);
+    return () => this._changeListeners.delete(cb);
+  }
+  notify() {
+    for (const cb of this._changeListeners) {
+      cb();
+    }
+  }
+  toJSON() {
+    const out = {};
+    for (const [k, v] of this._properties.entries()) {
+      out[k] = v;
+    }
+    return out;
+  }
+  static fromJSON(data) {
+    return new ObjectPropertiesRegistry(data);
+  }
+}
+class ColliderModule {
   constructor(options = {}) {
-    __publicField(this, "mass");
+    __publicField(this, "radiusProp");
+    __publicField(this, "ccdThresholdRatioProp");
     __publicField(this, "enabled");
-    this.mass = options.mass ?? 1;
+    __publicField(this, "canSweep");
+    this.radiusProp = new DynamicProperty(options.radius ?? 0.32);
+    this.ccdThresholdRatioProp = new DynamicProperty(options.ccdThresholdRatio ?? 0.5);
     this.enabled = options.enabled ?? true;
+    this.canSweep = options.canSweep ?? true;
+  }
+  get radius() {
+    return this.radiusProp.literalValue;
+  }
+  set radius(val) {
+    this.radiusProp.literalValue = val;
+  }
+  get ccdThresholdRatio() {
+    return this.ccdThresholdRatioProp.literalValue;
+  }
+  set ccdThresholdRatio(val) {
+    this.ccdThresholdRatioProp.literalValue = val;
+  }
+  getRadius(registry) {
+    return this.radiusProp.get(registry);
+  }
+  getCcdThresholdRatio(registry) {
+    return this.ccdThresholdRatioProp.get(registry);
   }
 }
 class FrictionModule {
   constructor(options = {}) {
-    __publicField(this, "staticFrictionMod");
-    __publicField(this, "dynamicFrictionMod");
+    __publicField(this, "staticFrictionProp");
+    __publicField(this, "dynamicFrictionProp");
     __publicField(this, "enabled");
-    this.staticFrictionMod = options.staticFrictionMod ?? 1;
-    this.dynamicFrictionMod = options.dynamicFrictionMod ?? 1;
+    this.staticFrictionProp = new DynamicProperty(options.staticFrictionMod ?? 1);
+    this.dynamicFrictionProp = new DynamicProperty(options.dynamicFrictionMod ?? 1);
     this.enabled = options.enabled ?? true;
+  }
+  get staticFrictionMod() {
+    return this.staticFrictionProp.literalValue;
+  }
+  set staticFrictionMod(val) {
+    this.staticFrictionProp.literalValue = val;
+  }
+  get dynamicFrictionMod() {
+    return this.dynamicFrictionProp.literalValue;
+  }
+  set dynamicFrictionMod(val) {
+    this.dynamicFrictionProp.literalValue = val;
+  }
+  getStaticFrictionMod(registry) {
+    return this.staticFrictionProp.get(registry);
+  }
+  getDynamicFrictionMod(registry) {
+    return this.dynamicFrictionProp.get(registry);
   }
 }
 class BounceModule {
   constructor(options = {}) {
-    __publicField(this, "bounceMod");
+    __publicField(this, "bounceModProp");
     __publicField(this, "verticalBounce");
     __publicField(this, "enabled");
-    this.bounceMod = options.bounceMod ?? 0.4;
+    this.bounceModProp = new DynamicProperty(options.bounceMod ?? 0.4);
     this.verticalBounce = options.verticalBounce ?? true;
     this.enabled = options.enabled ?? true;
+  }
+  get bounceMod() {
+    return this.bounceModProp.literalValue;
+  }
+  set bounceMod(val) {
+    this.bounceModProp.literalValue = val;
+  }
+  getBounceMod(registry) {
+    return this.bounceModProp.get(registry);
   }
 }
 class GravityModule {
@@ -4140,6 +4350,7 @@ class GravityModule {
 }
 class RigidbodyModule {
   constructor(options = {}) {
+    __publicField(this, "massProp");
     __publicField(this, "velocity");
     __publicField(this, "hasVerticalVelocity");
     __publicField(this, "verticalVelocity");
@@ -4147,6 +4358,11 @@ class RigidbodyModule {
     __publicField(this, "isKinematic");
     __publicField(this, "enabled");
     var _a, _b;
+    if (options.mass instanceof DynamicProperty) {
+      this.massProp = options.mass;
+    } else {
+      this.massProp = new DynamicProperty(options.mass ?? 1);
+    }
     this.velocity = {
       x: ((_a = options.velocity) == null ? void 0 : _a.x) ?? 0,
       y: ((_b = options.velocity) == null ? void 0 : _b.y) ?? 0
@@ -4157,8 +4373,242 @@ class RigidbodyModule {
     this.isKinematic = options.isKinematic ?? false;
     this.enabled = options.enabled !== void 0 ? options.enabled : true;
   }
+  get mass() {
+    return this.massProp.literalValue;
+  }
+  set mass(val) {
+    this.massProp.literalValue = val;
+    this.massProp.notify();
+  }
 }
-class GameObject {
+class SurfaceSupportModule {
+  /**
+   * Determines the supporting surface elevation (floor z=0 or wall top z=wallHeight)
+   * and current standing wall for an entity.
+   */
+  static evaluateSupportingSurface(entity, arena) {
+    var _a, _b, _c;
+    if (!entity.hasCollider || !entity.hasVerticalPosition || !arena.walls || arena.walls.length === 0) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    const isAtWallLayer = entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05 && entity.position.z >= arena.wallHeight - 0.2 || entity.standingWall !== null;
+    if (!isAtWallLayer) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    const char = entity.isCharacter ? entity : null;
+    const isDismountFalling = Boolean(
+      ((_a = char == null ? void 0 : char.climbingModule) == null ? void 0 : _a.isDismountFreefall) || ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.climbSuppressedUntilRePress)
+    );
+    if (isDismountFalling) {
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (!entity.isCharacter) {
+      const supportingWall = arena.getSupportingWall(entity.position.x, entity.position.y, entity.colliderRadius);
+      if (supportingWall) {
+        return { surfaceHeight: supportingWall.wallHeight, standingWall: supportingWall };
+      }
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (entity.standingWall) {
+      const wallStillExists = arena.walls.find((w) => w.id === entity.standingWall.id);
+      const supportRadius = entity.colliderRadius;
+      const touchesCurrent = wallStillExists ? arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wallStillExists) : false;
+      if (touchesCurrent && wallStillExists) {
+        return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
+      }
+      if (wallStillExists && ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.dismountSuppressedUntilRelease)) {
+        return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
+      }
+      let nextSupport = null;
+      if (wallStillExists) {
+        for (const wall of arena.walls) {
+          if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
+            nextSupport = wall;
+            break;
+          }
+        }
+      } else {
+        nextSupport = arena.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
+      }
+      if (nextSupport) {
+        return { surfaceHeight: nextSupport.wallHeight, standingWall: nextSupport };
+      }
+      if (char == null ? void 0 : char.climbingModule) {
+        char.climbingModule.isDismountFreefall = true;
+      }
+      return { surfaceHeight: 0, standingWall: null };
+    }
+    if (!entity.isClimbing && entity.verticalVelocity <= 0.5 && (entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05)) {
+      const wall = arena.getSupportingWall(entity.position.x, entity.position.y, entity.colliderRadius);
+      if (wall) {
+        return { surfaceHeight: wall.wallHeight, standingWall: wall };
+      }
+    }
+    return { surfaceHeight: 0, standingWall: null };
+  }
+}
+class MotionIntegrator {
+  /**
+   * Integrates vertical velocity and position under gravity, resolving surface contact and bounces.
+   */
+  static integrateVerticalMotion(entity, surfaceHeight, dt, arena) {
+    if (entity.hasGravity && entity.hasVerticalVelocity) {
+      if (entity.position.z > surfaceHeight || entity.verticalVelocity !== 0) {
+        entity.verticalVelocity -= arena.gravity * dt;
+        entity.position.z += entity.verticalVelocity * dt;
+        if (entity.position.z <= surfaceHeight) {
+          entity.position.z = surfaceHeight;
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (!entity.isCharacter && entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
+            const impactVz = Math.abs(entity.verticalVelocity);
+            entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
+            if (entity.hasFriction && entity.rollModule && entity.rollModule.enabled) {
+              const roll = entity.rollModule;
+              const R = entity.colliderRadius > 0 ? entity.colliderRadius : 0.3;
+              const beta = 0.4;
+              const e = entity.bounceMod;
+              const normalImpulse = (1 + e) * entity.mass * impactVz;
+              const muBounce = arena.frictionCoeff * entity.dynamicGroundFrictionMod * 0.05;
+              const vSlipX = entity.velocity.x - roll.angularVelocity.y * R;
+              const vSlipY = entity.velocity.y + roll.angularVelocity.x * R;
+              const slipSpeed = Math.hypot(vSlipX, vSlipY);
+              if (slipSpeed > 1e-3 && muBounce > 0) {
+                const maxFricImpulse = muBounce * normalImpulse;
+                const stickImpulse = slipSpeed * entity.mass / (1 + 1 / beta);
+                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
+                const impX = vSlipX / slipSpeed * actualImpulse;
+                const impY = vSlipY / slipSpeed * actualImpulse;
+                entity.velocity.x -= impX / entity.mass;
+                entity.velocity.y -= impY / entity.mass;
+                roll.angularVelocity.y += impX / (beta * entity.mass * R);
+                roll.angularVelocity.x -= impY / (beta * entity.mass * R);
+              }
+              const spinDamp = Math.max(0.65, 1 - (1 - e) * 0.35);
+              roll.angularVelocity.x *= spinDamp;
+              roll.angularVelocity.y *= spinDamp;
+              roll.angularVelocity.z *= spinDamp;
+            }
+          } else {
+            entity.verticalVelocity = 0;
+          }
+        }
+      }
+    } else {
+      if (entity.hasVerticalVelocity && entity.verticalVelocity !== 0) {
+        entity.position.z += entity.verticalVelocity * dt;
+        if (entity.position.z <= surfaceHeight) {
+          entity.position.z = surfaceHeight;
+          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
+          if (entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
+            entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
+          } else {
+            entity.verticalVelocity = 0;
+          }
+        }
+      }
+    }
+  }
+  /**
+   * Applies ground friction, roll resistance, and rolling angular coupling to an entity resting on a surface.
+   */
+  static integrateGroundFrictionAndRoll(entity, surfaceHeight, dt, arena) {
+    var _a;
+    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
+    const isResting = Math.abs(entity.position.z - surfaceHeight) <= 0.02 && Math.abs(entity.verticalVelocity) <= restVzThreshold;
+    if (isResting && entity.hasFriction) {
+      const isActivelyWalking = entity.isCharacter && ((_a = entity.walkingModule) == null ? void 0 : _a.enabled) && entity.isActivelyWalking;
+      if (!isActivelyWalking) {
+        if (entity.rollModule && entity.rollModule.enabled) {
+          const roll = entity.rollModule;
+          const R = entity.colliderRadius > 0 ? entity.colliderRadius : 0.3;
+          const muG = arena.frictionCoeff * entity.dynamicGroundFrictionMod;
+          const beta = 0.4;
+          const vSlipX = entity.velocity.x - roll.angularVelocity.y * R;
+          const vSlipY = entity.velocity.y + roll.angularVelocity.x * R;
+          const slipSpeed = Math.hypot(vSlipX, vSlipY);
+          if (muG > 0 && slipSpeed > 1e-3) {
+            const maxSlipDelta = muG * (1 + 1 / beta) * dt;
+            if (slipSpeed <= maxSlipDelta) {
+              const totalMomX = entity.velocity.x + beta * roll.angularVelocity.y * R;
+              const totalMomY = entity.velocity.y - beta * roll.angularVelocity.x * R;
+              const rollVx = totalMomX / (1 + beta);
+              const rollVy = totalMomY / (1 + beta);
+              entity.velocity.x = rollVx;
+              entity.velocity.y = rollVy;
+              roll.angularVelocity.y = rollVx / R;
+              roll.angularVelocity.x = -rollVy / R;
+            } else {
+              const fx = vSlipX / slipSpeed * muG * dt;
+              const fy = vSlipY / slipSpeed * muG * dt;
+              entity.velocity.x -= fx;
+              entity.velocity.y -= fy;
+              roll.angularVelocity.y += fx / (beta * R);
+              roll.angularVelocity.x -= fy / (beta * R);
+            }
+          }
+          const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          const rollResistance = roll.rollResistanceProp.get(entity.properties);
+          if (speed > 0) {
+            if (rollResistance > 0) {
+              const decel = rollResistance * dt;
+              const newSpeed = Math.max(0, speed - decel);
+              if (newSpeed < 5e-3) {
+                entity.velocity.x = 0;
+                entity.velocity.y = 0;
+                roll.angularVelocity.x = 0;
+                roll.angularVelocity.y = 0;
+              } else {
+                const ratio = newSpeed / speed;
+                entity.velocity.x *= ratio;
+                entity.velocity.y *= ratio;
+                roll.angularVelocity.x *= ratio;
+                roll.angularVelocity.y *= ratio;
+              }
+            }
+          } else {
+            const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
+            if (spinSpeed > 0 && muG > 0) {
+              const spinDecel = muG / (beta * R) * dt;
+              const newSpin = Math.max(0, spinSpeed - spinDecel);
+              const ratio = spinSpeed > 0 ? newSpin / spinSpeed : 0;
+              roll.angularVelocity.x *= ratio;
+              roll.angularVelocity.y *= ratio;
+            }
+          }
+          if (Math.abs(roll.angularVelocity.z) > 1e-3) {
+            if (rollResistance > 0) {
+              const zDecel = rollResistance / (beta * R) * dt;
+              const signZ = Math.sign(roll.angularVelocity.z);
+              const magZ = Math.abs(roll.angularVelocity.z);
+              roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
+            }
+          }
+          roll.updateVisualPhase(dt);
+        } else {
+          const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (speed > 0) {
+            const staticThreshold = arena.staticFrictionThreshold * entity.staticGroundFrictionMod;
+            if (speed < staticThreshold) {
+              entity.velocity.x = 0;
+              entity.velocity.y = 0;
+            } else {
+              const frictionForce = arena.frictionCoeff * entity.dynamicGroundFrictionMod * dt;
+              const newSpeed = Math.max(0, speed - frictionForce);
+              const ratio = newSpeed / speed;
+              entity.velocity.x *= ratio;
+              entity.velocity.y *= ratio;
+            }
+          }
+        }
+      }
+    } else {
+      if (entity.rollModule && entity.rollModule.enabled) {
+        entity.rollModule.updateVisualPhase(dt);
+      }
+    }
+  }
+}
+const _GameObject = class _GameObject {
   constructor(options = {}) {
     __publicField(this, "id");
     __publicField(this, "name");
@@ -4167,6 +4617,7 @@ class GameObject {
     __publicField(this, "isHeld");
     __publicField(this, "heldBy");
     __publicField(this, "lastThrower", null);
+    __publicField(this, "originalThrower", null);
     __publicField(this, "isInFlight", false);
     __publicField(this, "isCharacter", false);
     __publicField(this, "isClimbing", false);
@@ -4187,16 +4638,28 @@ class GameObject {
     // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
     __publicField(this, "isImmovable", false);
     __publicField(this, "serverCharId");
+    // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
+    __publicField(this, "properties", new ObjectPropertiesRegistry());
     __publicField(this, "_staticVelocity", { x: 0, y: 0 });
     // Modular behavior components
     __publicField(this, "rigidbodyModule", null);
     __publicField(this, "colliderModule", null);
-    __publicField(this, "massModule", null);
     __publicField(this, "frictionModule", null);
     __publicField(this, "bounceModule", null);
     __publicField(this, "verticalPositionModule", null);
     __publicField(this, "gravityModule", null);
     __publicField(this, "rollModule", null);
+    __publicField(this, "healthModule", null);
+    __publicField(this, "damageAuraModule", null);
+    __publicField(this, "damageSolverModule", null);
+    __publicField(this, "characterModule", null);
+    __publicField(this, "foodModule", null);
+    __publicField(this, "consumableModule", null);
+    __publicField(this, "spawnerModule", null);
+    /** Reference to the Scene Prefab archetype this object was instantiated from (if any) */
+    __publicField(this, "prefabId", null);
+    /** Set of property keys that have been explicitly edited on this live instance, overriding the prefab */
+    __publicField(this, "overriddenProperties", /* @__PURE__ */ new Set());
     /** Elevation of the physical supporting surface directly beneath (ground or wall top) */
     __publicField(this, "supportingSurfaceHeight", 0);
     /** The specific wall the entity is currently standing on (if supported on layer 2) */
@@ -4204,6 +4667,9 @@ class GameObject {
     var _a, _b, _c;
     this.id = options.id ?? `obj-${Math.random().toString(36).substring(2, 9)}`;
     this.name = options.name ?? "Entity";
+    if (options.prefabId !== void 0) {
+      this.prefabId = options.prefabId;
+    }
     this.position = {
       x: ((_a = options.position) == null ? void 0 : _a.x) ?? 0,
       y: ((_b = options.position) == null ? void 0 : _b.y) ?? 0,
@@ -4214,13 +4680,13 @@ class GameObject {
     this.heldBy = null;
     this.visualShape = options.visualShape ?? "circle";
     this.rigidbodyModule = options.rigidbodyModule !== void 0 ? options.rigidbodyModule : options.hasRigidbody === false ? null : new RigidbodyModule({
+      mass: options.mass ?? 1,
       velocity: options.velocity ? { x: options.velocity.x ?? 0, y: options.velocity.y ?? 0 } : void 0,
       hasVerticalVelocity: options.hasVerticalVelocity !== false,
       verticalVelocity: options.verticalVelocity ?? 0,
       collisionMode: options.collisionMode ?? "dynamic"
     });
     this.colliderModule = options.colliderModule !== void 0 ? options.colliderModule : options.colliderRadius !== void 0 ? new ColliderModule({ radius: options.colliderRadius }) : new ColliderModule({ radius: 0.35 });
-    this.massModule = options.massModule !== void 0 ? options.massModule : options.mass !== void 0 ? new MassModule({ mass: options.mass }) : new MassModule({ mass: 1 });
     this.frictionModule = options.frictionModule !== void 0 ? options.frictionModule : new FrictionModule({
       staticFrictionMod: options.staticGroundFrictionMod ?? 1,
       dynamicFrictionMod: options.dynamicGroundFrictionMod ?? 1
@@ -4236,6 +4702,19 @@ class GameObject {
     }
     this.gravityModule = options.gravityModule !== void 0 ? options.gravityModule : options.hasGravity === false ? null : new GravityModule();
     this.rollModule = options.rollModule ?? null;
+    this.healthModule = options.healthModule ?? null;
+    this.damageAuraModule = options.damageAuraModule ?? null;
+    this.damageSolverModule = options.damageSolverModule ?? null;
+    this.characterModule = options.characterModule ?? null;
+    this.consumableModule = options.consumableModule ?? options.foodModule ?? null;
+    this.foodModule = this.consumableModule;
+    this.spawnerModule = options.spawnerModule ?? null;
+    if (this.spawnerModule && (this.spawnerModule.spawnPosition.x === 0 && this.spawnerModule.spawnPosition.y === 0 && this.spawnerModule.spawnPosition.z === 0)) {
+      this.spawnerModule.spawnPosition = { ...this.position };
+    }
+    if (this.consumableModule) {
+      this.consumableModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
+    }
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -4272,6 +4751,15 @@ class GameObject {
       this.rollModule.angularVelocity.y = 0;
       this.rollModule.angularVelocity.z = 0;
     }
+  }
+  /**
+   * Dispatches a physical impact shock event to attached modules (such as DamageSolverModule).
+   */
+  dispatchImpact(event, worldCollisionDamageScale = _GameObject.globalWorldCollisionDamageScale) {
+    if (this.damageSolverModule && this.damageSolverModule.enabled && this.healthModule) {
+      return this.damageSolverModule.handleImpact(event, this, this.healthModule, worldCollisionDamageScale);
+    }
+    return 0;
   }
   // --- Convenience Getters & Setters ---
   get hasRigidbody() {
@@ -4313,30 +4801,32 @@ class GameObject {
     const speed = Math.hypot(this.velocity.x, this.velocity.y);
     const r = Math.max(0.01, this.colliderRadius);
     const displacement = speed * dt;
-    const threshold = this.colliderModule.ccdThresholdRatio ?? 0.5;
+    const threshold = this.colliderModule.ccdThresholdRatioProp.get(this.properties) ?? 0.5;
     return displacement / r >= threshold ? "continuous" : "discrete";
   }
   get colliderRadius() {
-    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radius : 0;
+    return this.colliderModule && this.colliderModule.enabled ? this.colliderModule.radiusProp.get(this.properties) : 0;
   }
   set colliderRadius(val) {
     if (this.colliderModule) {
-      this.colliderModule.radius = val;
+      this.colliderModule.radiusProp.set(val, this.properties);
     } else {
       this.colliderModule = new ColliderModule({ radius: val });
     }
   }
   get hasMass() {
-    return Boolean(this.massModule && this.massModule.enabled && this.massModule.mass > 0);
+    return Boolean(
+      this.hasRigidbody && this.rigidbodyModule.enabled && this.rigidbodyModule.massProp.get(this.properties) > 0
+    );
   }
   get mass() {
-    return this.massModule && this.massModule.enabled ? this.massModule.mass : 0;
+    return this.hasRigidbody && this.rigidbodyModule.enabled ? this.rigidbodyModule.massProp.get(this.properties) : 0;
   }
   set mass(val) {
-    if (this.massModule) {
-      this.massModule.mass = val;
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(val, this.properties);
     } else {
-      this.massModule = new MassModule({ mass: val });
+      this.rigidbodyModule = new RigidbodyModule({ mass: val });
     }
   }
   /**
@@ -4346,21 +4836,21 @@ class GameObject {
     return Boolean(this.hasMass && this.frictionModule && this.frictionModule.enabled);
   }
   get staticGroundFrictionMod() {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionMod : 0;
+    return this.hasFriction && this.frictionModule ? this.frictionModule.staticFrictionProp.get(this.properties) : 0;
   }
   set staticGroundFrictionMod(val) {
     if (this.frictionModule) {
-      this.frictionModule.staticFrictionMod = val;
+      this.frictionModule.staticFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ staticFrictionMod: val });
     }
   }
   get dynamicGroundFrictionMod() {
-    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionMod : 0;
+    return this.hasFriction && this.frictionModule ? this.frictionModule.dynamicFrictionProp.get(this.properties) : 0;
   }
   set dynamicGroundFrictionMod(val) {
     if (this.frictionModule) {
-      this.frictionModule.dynamicFrictionMod = val;
+      this.frictionModule.dynamicFrictionProp.set(val, this.properties);
     } else {
       this.frictionModule = new FrictionModule({ dynamicFrictionMod: val });
     }
@@ -4372,13 +4862,13 @@ class GameObject {
     return Boolean(this.hasMass && this.bounceModule && this.bounceModule.enabled);
   }
   get bounceMod() {
-    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceMod : null;
+    return this.hasBounce && this.bounceModule ? this.bounceModule.bounceModProp.get(this.properties) : null;
   }
   set bounceMod(val) {
     if (val === null || val <= 0.01) {
       this.bounceModule = null;
     } else if (this.bounceModule) {
-      this.bounceModule.bounceMod = val;
+      this.bounceModule.bounceModProp.set(val, this.properties);
     } else {
       this.bounceModule = new BounceModule({ bounceMod: val });
     }
@@ -4455,7 +4945,7 @@ class GameObject {
   }
   /** Update physics, gravity, friction, and ground/wall collision */
   updatePosition(dt, arena) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    var _a, _b, _c, _d, _e, _f;
     if (this.isHeld) {
       return;
     }
@@ -4493,231 +4983,23 @@ class GameObject {
     }
     if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
       this.isInFlight = false;
+      this.originalThrower = null;
     }
     if (!this.hasVerticalPosition) {
       this.position.z = 0;
       this.verticalVelocity = 0;
       this.supportingSurfaceHeight = 0;
     }
-    let surfaceHeight = 0;
-    if (this.hasCollider && this.hasVerticalPosition && arena.walls.length > 0) {
-      const isAtWallLayer = this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05 && this.position.z >= arena.wallHeight - 0.2 || this.standingWall !== null;
-      if (isAtWallLayer) {
-        const char2 = this.isCharacter ? this : null;
-        const isDismountFalling = Boolean(((_b = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _b.isDismountFreefall) || ((_c = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _c.climbSuppressedUntilRePress));
-        if (isDismountFalling) {
-          this.standingWall = null;
-          surfaceHeight = 0;
-        } else if (!this.isCharacter) {
-          const supportingWall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-          if (supportingWall) {
-            this.standingWall = supportingWall;
-            surfaceHeight = supportingWall.wallHeight;
-          } else {
-            this.standingWall = null;
-            surfaceHeight = 0;
-          }
-        } else if (this.standingWall) {
-          const wallStillExists = arena.walls.find((w) => w.id === this.standingWall.id);
-          const supportRadius = this.colliderRadius;
-          const touchesCurrent = wallStillExists ? arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wallStillExists) : false;
-          if (touchesCurrent && wallStillExists) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else if (wallStillExists && ((_d = char2 == null ? void 0 : char2.climbingModule) == null ? void 0 : _d.dismountSuppressedUntilRelease)) {
-            this.standingWall = wallStillExists;
-            surfaceHeight = wallStillExists.wallHeight;
-          } else {
-            let nextSupport = null;
-            if (wallStillExists) {
-              for (const wall of arena.walls) {
-                if (arena.areWallsContiguous(wallStillExists, wall) && arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall)) {
-                  nextSupport = wall;
-                  break;
-                }
-              }
-            } else {
-              nextSupport = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
-            }
-            if (nextSupport) {
-              this.standingWall = nextSupport;
-              surfaceHeight = nextSupport.wallHeight;
-            } else {
-              this.standingWall = null;
-              surfaceHeight = 0;
-              if (char2 == null ? void 0 : char2.climbingModule) {
-                char2.climbingModule.isDismountFreefall = true;
-              }
-            }
-          }
-        } else {
-          if (!this.isClimbing && this.verticalVelocity <= 0.5 && (this.position.z >= arena.wallHeight - 0.05 || this.supportingSurfaceHeight >= arena.wallHeight - 0.05)) {
-            const wall = arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius);
-            if (wall) {
-              this.standingWall = wall;
-              surfaceHeight = wall.wallHeight;
-            }
-          }
-        }
-      } else {
-        this.standingWall = null;
-      }
-    } else {
-      this.standingWall = null;
-      surfaceHeight = 0;
-    }
+    const { surfaceHeight, standingWall } = SurfaceSupportModule.evaluateSupportingSurface(this, arena);
+    let effectiveSurfaceHeight = surfaceHeight;
+    this.standingWall = standingWall;
     if (this.isClimbing) {
-      surfaceHeight = Math.max(surfaceHeight, this.position.z);
+      effectiveSurfaceHeight = Math.max(effectiveSurfaceHeight, this.position.z);
       this.verticalVelocity = 0;
     }
-    this.supportingSurfaceHeight = surfaceHeight;
-    if (this.hasGravity && this.hasVerticalVelocity) {
-      if (this.position.z > surfaceHeight || this.verticalVelocity !== 0) {
-        this.verticalVelocity -= arena.gravity * dt;
-        this.position.z += this.verticalVelocity * dt;
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (!this.isCharacter && this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            const impactVz = Math.abs(this.verticalVelocity);
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-            if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
-              const roll = this.rollModule;
-              const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-              const beta = 0.4;
-              const e = this.bounceMod;
-              const normalImpulse = (1 + e) * this.mass * impactVz;
-              const muBounce = arena.frictionCoeff * this.dynamicGroundFrictionMod * 0.05;
-              const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-              const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-              const slipSpeed = Math.hypot(vSlipX, vSlipY);
-              if (slipSpeed > 1e-3 && muBounce > 0) {
-                const maxFricImpulse = muBounce * normalImpulse;
-                const stickImpulse = slipSpeed * this.mass / (1 + 1 / beta);
-                const actualImpulse = Math.min(stickImpulse, maxFricImpulse);
-                const impX = vSlipX / slipSpeed * actualImpulse;
-                const impY = vSlipY / slipSpeed * actualImpulse;
-                this.velocity.x -= impX / this.mass;
-                this.velocity.y -= impY / this.mass;
-                roll.angularVelocity.y += impX / (beta * this.mass * R);
-                roll.angularVelocity.x -= impY / (beta * this.mass * R);
-              }
-              const spinDamp = Math.max(0.65, 1 - (1 - e) * 0.35);
-              roll.angularVelocity.x *= spinDamp;
-              roll.angularVelocity.y *= spinDamp;
-              roll.angularVelocity.z *= spinDamp;
-            }
-          } else {
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    } else {
-      if (this.hasVerticalVelocity && this.verticalVelocity !== 0) {
-        this.position.z += this.verticalVelocity * dt;
-        if (this.position.z <= surfaceHeight) {
-          this.position.z = surfaceHeight;
-          const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
-          if (this.hasVerticalBounce && this.bounceMod !== null && this.bounceMod > 0 && Math.abs(this.verticalVelocity) > bounceThreshold) {
-            this.verticalVelocity = -this.verticalVelocity * this.bounceMod;
-          } else {
-            this.verticalVelocity = 0;
-          }
-        }
-      }
-    }
-    const restVzThreshold = Math.max(0.05, 1.1 * arena.gravity * dt);
-    const isResting = Math.abs(this.position.z - surfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= restVzThreshold;
-    if (isResting && this.hasFriction) {
-      const hasActiveWalkingModule = this.isCharacter && ((_e = this.walkingModule) == null ? void 0 : _e.enabled);
-      if (!hasActiveWalkingModule) {
-        if (this.rollModule && this.rollModule.enabled) {
-          const roll = this.rollModule;
-          const R = this.colliderRadius > 0 ? this.colliderRadius : 0.3;
-          const muG = arena.frictionCoeff * this.dynamicGroundFrictionMod;
-          const beta = 0.4;
-          const vSlipX = this.velocity.x - roll.angularVelocity.y * R;
-          const vSlipY = this.velocity.y + roll.angularVelocity.x * R;
-          const slipSpeed = Math.hypot(vSlipX, vSlipY);
-          if (muG > 0 && slipSpeed > 1e-3) {
-            const maxSlipDelta = muG * (1 + 1 / beta) * dt;
-            if (slipSpeed <= maxSlipDelta) {
-              const totalMomX = this.velocity.x + beta * roll.angularVelocity.y * R;
-              const totalMomY = this.velocity.y - beta * roll.angularVelocity.x * R;
-              const rollVx = totalMomX / (1 + beta);
-              const rollVy = totalMomY / (1 + beta);
-              this.velocity.x = rollVx;
-              this.velocity.y = rollVy;
-              roll.angularVelocity.y = rollVx / R;
-              roll.angularVelocity.x = -rollVy / R;
-            } else {
-              const fx = vSlipX / slipSpeed * muG * dt;
-              const fy = vSlipY / slipSpeed * muG * dt;
-              this.velocity.x -= fx;
-              this.velocity.y -= fy;
-              roll.angularVelocity.y += fx / (beta * R);
-              roll.angularVelocity.x -= fy / (beta * R);
-            }
-          }
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            if (roll.rollResistance > 0) {
-              const decel = roll.rollResistance * dt;
-              const newSpeed = Math.max(0, speed - decel);
-              if (newSpeed < 5e-3) {
-                this.velocity.x = 0;
-                this.velocity.y = 0;
-                roll.angularVelocity.x = 0;
-                roll.angularVelocity.y = 0;
-              } else {
-                const ratio = newSpeed / speed;
-                this.velocity.x *= ratio;
-                this.velocity.y *= ratio;
-                roll.angularVelocity.x *= ratio;
-                roll.angularVelocity.y *= ratio;
-              }
-            }
-          } else {
-            const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
-            if (spinSpeed > 0 && muG > 0) {
-              const spinDecel = muG / (beta * R) * dt;
-              const newSpin = Math.max(0, spinSpeed - spinDecel);
-              const ratio = spinSpeed > 0 ? newSpin / spinSpeed : 0;
-              roll.angularVelocity.x *= ratio;
-              roll.angularVelocity.y *= ratio;
-            }
-          }
-          if (Math.abs(roll.angularVelocity.z) > 1e-3) {
-            if (roll.rollResistance > 0) {
-              const zDecel = roll.rollResistance / (beta * R) * dt;
-              const signZ = Math.sign(roll.angularVelocity.z);
-              const magZ = Math.abs(roll.angularVelocity.z);
-              roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
-            }
-          }
-          roll.updateVisualPhase(dt);
-        } else {
-          const speed = Math.hypot(this.velocity.x, this.velocity.y);
-          if (speed > 0) {
-            const staticThreshold = arena.staticFrictionThreshold * this.staticGroundFrictionMod;
-            if (speed < staticThreshold) {
-              this.velocity.x = 0;
-              this.velocity.y = 0;
-            } else {
-              const frictionForce = arena.frictionCoeff * this.dynamicGroundFrictionMod * dt;
-              const newSpeed = Math.max(0, speed - frictionForce);
-              const ratio = newSpeed / speed;
-              this.velocity.x *= ratio;
-              this.velocity.y *= ratio;
-            }
-          }
-        }
-      }
-    } else {
-      if (this.rollModule && this.rollModule.enabled) {
-        this.rollModule.updateVisualPhase(dt);
-      }
-    }
+    this.supportingSurfaceHeight = effectiveSurfaceHeight;
+    MotionIntegrator.integrateVerticalMotion(this, effectiveSurfaceHeight, dt, arena);
+    MotionIntegrator.integrateGroundFrictionAndRoll(this, effectiveSurfaceHeight, dt, arena);
     const char = this.isCharacter ? this : null;
     const edgeMod = (char == null ? void 0 : char.wallEdgeAssistModule) ?? (char == null ? void 0 : char.climbingModule);
     const isStandingOnWallTop = Boolean(
@@ -4891,13 +5173,11 @@ class GameObject {
           }
           this.position.x = candX;
           this.position.y = candY;
-          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(((_f = char == null ? void 0 : char.climbingModule) == null ? void 0 : _f.isDismountFreefall) || ((_g = char == null ? void 0 : char.climbingModule) == null ? void 0 : _g.climbSuppressedUntilRePress)));
+          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.isDismountFreefall) || ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.climbSuppressedUntilRePress)));
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
-                const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-                const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
-                this.resolveWallCollision(wall, isAscendingJump);
+                this.resolveWallCollision(wall);
               }
             }
           }
@@ -4941,20 +5221,18 @@ class GameObject {
         this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, -1, bRestitution);
       }
-      const isDismountFallingNow = Boolean(((_h = char == null ? void 0 : char.climbingModule) == null ? void 0 : _h.isDismountFreefall) || ((_i = char == null ? void 0 : char.climbingModule) == null ? void 0 : _i.climbSuppressedUntilRePress));
+      const isDismountFallingNow = Boolean(((_d = char == null ? void 0 : char.climbingModule) == null ? void 0 : _d.isDismountFreefall) || ((_e = char == null ? void 0 : char.climbingModule) == null ? void 0 : _e.climbSuppressedUntilRePress));
       for (const wall of arena.walls) {
         if (this.position.z <= wall.wallHeight) {
           const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
-          if (isAtWallTop && (((_j = this.standingWall) == null ? void 0 : _j.id) === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
+          if (isAtWallTop && (((_f = this.standingWall) == null ? void 0 : _f.id) === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
             continue;
           }
           if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
             if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
               continue;
             }
-            const apexZ = this.hasGravity && this.hasVerticalVelocity ? this.position.z + this.verticalVelocity * this.verticalVelocity / (2 * arena.gravity) : this.position.z;
-            const isAscendingJump = (this.isCharacter || Boolean(this.lastThrower) || this.isInFlight) && this.verticalVelocity > 0 && apexZ >= wall.wallHeight - 0.05;
-            this.resolveWallCollision(wall, isAscendingJump);
+            this.resolveWallCollision(wall);
           }
         }
       }
@@ -4982,8 +5260,8 @@ class GameObject {
     if (!this.isCharacter && !this.isHeld && this.heldBy === null) {
       const speed = Math.hypot(this.velocity.x, this.velocity.y);
       const angSpeed = this.rollModule && this.rollModule.enabled ? this.rollModule.angularSpeed : 0;
-      const isResting2 = this.isRestingOnSurface;
-      if (isResting2 && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
+      const isResting = this.isRestingOnSurface;
+      if (isResting && speed < 0.02 && Math.abs(this.verticalVelocity) < 0.01 && angSpeed < 0.05) {
         this.sleepTimer++;
         if (this.sleepTimer >= 15) {
           this.putToSleep();
@@ -5029,12 +5307,25 @@ class GameObject {
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return;
     const normalVel = dot;
+    const impactSpeed = Math.abs(normalVel);
     if (restitution > 0 && this.hasMass) {
       this.velocity.x -= (1 + restitution) * normalVel * normalX;
       this.velocity.y -= (1 + restitution) * normalVel * normalY;
     } else {
       this.velocity.x -= normalVel * normalX;
       this.velocity.y -= normalVel * normalY;
+    }
+    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
+    const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod));
+    const shockDeceleration = impactSpeed * 60 * absorbedFraction;
+    if (shockDeceleration > 0.01) {
+      this.dispatchImpact({
+        absorbedShock: shockDeceleration,
+        impactSpeed,
+        otherEntity: null,
+        normalX,
+        normalY
+      });
     }
     if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
       const roll = this.rollModule;
@@ -5064,7 +5355,7 @@ class GameObject {
     }
   }
   /** Resolves 2D circle-AABB wall collision on the ground plane */
-  resolveWallCollision(wall, isAscendingJump = false) {
+  resolveWallCollision(wall) {
     if (!this.hasCollider) return;
     const r = this.colliderRadius;
     const closestX = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
@@ -5108,34 +5399,102 @@ class GameObject {
       this.lastContactNormal = { x: normalX, y: normalY };
       this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
       this.lastCollisionTime = performance.now();
-      if (!isAscendingJump) {
-        const restitution = this.isCharacter ? 0 : this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
-        this.resolveWallImpact(normalX, normalY, restitution);
-      }
+      const restitution = this.isCharacter ? 0 : this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
+      this.resolveWallImpact(normalX, normalY, restitution);
     }
   }
-}
+};
+/** Global world scale for converting absorbed collision shock to raw HP damage */
+__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.05);
+let GameObject = _GameObject;
 class WalkingModule {
   constructor(options) {
     __publicField(this, "id", "walking");
     __publicField(this, "name", "Walking Module");
     __publicField(this, "enabled", true);
     // Maximum propulsion / braking force exerted by the character's legs (in Newtons / Force units)
-    __publicField(this, "maxWalkForce", 35);
+    __publicField(this, "maxWalkForceProp");
     // Maximum physical leg stride / cadence speed cap (u/s)
-    __publicField(this, "maxWalkSpeed", 5.2);
+    __publicField(this, "maxWalkSpeedProp");
+    // Whether sprinting is allowed
+    __publicField(this, "canSprint", true);
+    // Explicit maximum speed cap when sprinting (u/s)
+    __publicField(this, "maxSprintSpeedProp");
+    // Energy consumption toggles
+    __publicField(this, "sprintConsumesEnergy", false);
+    /** Whether sprinting is allowed to run at partial power between walk speed and sprint speed */
+    __publicField(this, "sprintAllowPartialPower", true);
+    __publicField(this, "sprintEnergyBusId", "bus_main");
+    __publicField(this, "walkConsumesEnergy", false);
+    /** Whether walking is allowed to run at reduced speed/force when power cannot provide 100% */
+    __publicField(this, "walkAllowPartialPower", false);
+    __publicField(this, "walkEnergyBusId", "bus_main");
+    __publicField(this, "consumesEnergy", false);
     // Drag damping factor for backwards compatibility / reference
     __publicField(this, "dragDamping", 8.01);
     // When enabled, walking force applies in the air, granting air control / steering
     __publicField(this, "walkInAir", true);
     // Air friction multiplier applied when airborne (floating friction to stay still)
-    __publicField(this, "airFriction", 1);
-    if ((options == null ? void 0 : options.maxWalkForce) !== void 0) this.maxWalkForce = options.maxWalkForce;
-    if ((options == null ? void 0 : options.maxWalkSpeed) !== void 0) this.maxWalkSpeed = options.maxWalkSpeed;
+    __publicField(this, "airFrictionProp");
+    // Planned momentum braking state:
+    // When movement input drops to zero, computes the exact force and duration required
+    // to brake the character's release velocity to zero. The module continues executing
+    // this pre-planned deceleration until the timer expires, without fighting external pushes!
+    __publicField(this, "isBrakingPlanned", false);
+    __publicField(this, "plannedBrakeRemainingTime", 0);
+    __publicField(this, "plannedBrakeDirX", 0);
+    __publicField(this, "plannedBrakeDirY", 0);
+    __publicField(this, "plannedBrakeAccel", 0);
+    __publicField(this, "wasMovingLastTick", false);
+    this.maxWalkForceProp = new DynamicProperty((options == null ? void 0 : options.maxWalkForce) ?? 35);
+    this.maxWalkSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxWalkSpeed) ?? 5.2);
+    if ((options == null ? void 0 : options.canSprint) !== void 0) this.canSprint = options.canSprint;
+    this.maxSprintSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxSprintSpeed) ?? 8.06);
+    if ((options == null ? void 0 : options.sprintConsumesEnergy) !== void 0) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
+    if ((options == null ? void 0 : options.sprintAllowPartialPower) !== void 0) this.sprintAllowPartialPower = options.sprintAllowPartialPower;
+    if ((options == null ? void 0 : options.walkConsumesEnergy) !== void 0) this.walkConsumesEnergy = options.walkConsumesEnergy;
+    if ((options == null ? void 0 : options.walkAllowPartialPower) !== void 0) this.walkAllowPartialPower = options.walkAllowPartialPower;
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.dragDamping) !== void 0) this.dragDamping = options.dragDamping;
     if ((options == null ? void 0 : options.walkInAir) !== void 0) this.walkInAir = options.walkInAir;
-    if ((options == null ? void 0 : options.airFriction) !== void 0) this.airFriction = options.airFriction;
+    this.airFrictionProp = new DynamicProperty((options == null ? void 0 : options.airFriction) ?? 1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxWalkForce() {
+    return this.maxWalkForceProp.literalValue;
+  }
+  set maxWalkForce(val) {
+    this.maxWalkForceProp.literalValue = val;
+  }
+  get maxWalkSpeed() {
+    return this.maxWalkSpeedProp.literalValue;
+  }
+  set maxWalkSpeed(val) {
+    this.maxWalkSpeedProp.literalValue = val;
+  }
+  get maxSprintSpeed() {
+    return this.maxSprintSpeedProp.literalValue;
+  }
+  set maxSprintSpeed(val) {
+    this.maxSprintSpeedProp.literalValue = val;
+  }
+  getMaxSprintSpeed(registry) {
+    return this.maxSprintSpeedProp.get(registry);
+  }
+  get airFriction() {
+    return this.airFrictionProp.literalValue;
+  }
+  set airFriction(val) {
+    this.airFrictionProp.literalValue = val;
+  }
+  getMaxWalkForce(registry) {
+    return this.maxWalkForceProp.get(registry);
+  }
+  getMaxWalkSpeed(registry) {
+    return this.maxWalkSpeedProp.get(registry);
+  }
+  getAirFriction(registry) {
+    return this.airFrictionProp.get(registry);
   }
   /**
    * Symmetrical Force-Based Locomotion & Air Friction:
@@ -5151,14 +5510,17 @@ class WalkingModule {
     const isAirborne = !character.isRestingOnSurface;
     if (!this.enabled || isAirborne && !this.walkInAir || character.isClimbing) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     if (!character.hasMass || !character.hasStrength || character.strength <= 0) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     if (!isAirborne && (!character.hasFriction || !((_a = character.frictionModule) == null ? void 0 : _a.enabled) || character.dynamicGroundFrictionMod <= 1e-3)) {
       character.isActivelyWalking = false;
+      this.isBrakingPlanned = false;
       return;
     }
     const inputMag = Math.hypot(inputVector.x, inputVector.y);
@@ -5166,62 +5528,220 @@ class WalkingModule {
     character.isActivelyWalking = isMoving;
     const totalMass = character.hasMass ? Math.max(0.2, character.mass) : 1;
     if (totalMass <= 0.01) return;
-    const grip = isAirborne ? this.airFriction : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10);
+    const airFriction = this.airFrictionProp.get(character.properties);
+    const grip = isAirborne ? airFriction : character.dynamicGroundFrictionMod * (arena.frictionCoeff / 10);
     if (grip <= 1e-3) {
       return;
     }
     const carriedMass = character.carriedMass;
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8);
-    const sprintFactor = character.isSprinting ? 1.55 : 1;
-    const effectiveSpeed = this.maxWalkSpeed * sprintFactor / (1 + loadFactor);
-    let targetVx = 0;
-    let targetVy = 0;
+    const isActivelySprinting = this.canSprint && character.isSprinting;
+    let sprintingNow = isActivelySprinting;
+    if (sprintingNow && this.sprintConsumesEnergy) {
+      const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(character.properties) <= 1e-4)) {
+        sprintingNow = false;
+        character.setSprinting(false);
+      }
+    }
+    const maxWalkForce = this.maxWalkForceProp.get(character.properties);
+    const maxWalkSpeed = this.maxWalkSpeedProp.get(character.properties);
+    const maxSprintSpeed = this.maxSprintSpeedProp.get(character.properties);
+    let effectiveWalkForce = sprintingNow ? maxWalkForce * 1.5 : maxWalkForce;
+    let effectiveTargetSpeed = sprintingNow ? maxSprintSpeed : maxWalkSpeed;
+    const baseWalkTargetSpeed = maxWalkSpeed / (1 + loadFactor);
+    const sprintTargetSpeed = maxSprintSpeed / (1 + loadFactor);
+    const g = 9.81;
     if (isMoving) {
+      if (sprintingNow && this.sprintConsumesEnergy) {
+        const bus = character.getEnergyBus(this.sprintEnergyBusId);
+        if (bus) {
+          const CrSprint = 0.4;
+          const resForceSprint = totalMass * g * CrSprint;
+          const requestedWatts = resForceSprint * sprintTargetSpeed / 0.25;
+          const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
+          const minSprintWatts = this.sprintAllowPartialPower ? baseSpeedWatts + 1e-3 : requestedWatts - 1e-3;
+          const canSprintEitherWay = bus.canSupportPowerInIsolation(
+            requestedWatts,
+            minSprintWatts,
+            dt,
+            character.energyPool,
+            character.properties
+          );
+          if (!canSprintEitherWay) {
+            character.setSprinting(false);
+            sprintingNow = false;
+            effectiveWalkForce = maxWalkForce;
+            effectiveTargetSpeed = maxWalkSpeed;
+            bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+          } else {
+            const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+            if (peekedWatts < minSprintWatts) {
+              sprintingNow = false;
+              effectiveWalkForce = maxWalkForce;
+              effectiveTargetSpeed = maxWalkSpeed;
+              bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+              if (this.walkConsumesEnergy) {
+                const walkBus = character.getEnergyBus(this.walkEnergyBusId);
+                if (walkBus) {
+                  const CrWalk = 0.28;
+                  const resForceWalk = totalMass * g * CrWalk;
+                  const walkRequested = resForceWalk * baseWalkTargetSpeed / 0.25;
+                  const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
+                  const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
+                  if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+                    effectiveWalkForce = 0;
+                    effectiveTargetSpeed = 0;
+                    character.isActivelyWalking = false;
+                  } else {
+                    effectiveWalkForce *= fraction;
+                    effectiveTargetSpeed *= fraction;
+                  }
+                }
+              }
+            } else {
+              const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.sprintAllowPartialPower);
+              if (grantedWatts < minSprintWatts) {
+                sprintingNow = false;
+                effectiveWalkForce = maxWalkForce;
+                effectiveTargetSpeed = maxWalkSpeed;
+              } else {
+                const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, grantedWatts * 0.25 / resForceSprint));
+                effectiveTargetSpeed = achievableSpeed * (1 + loadFactor);
+                const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed) : 1;
+                effectiveWalkForce = maxWalkForce * (1 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+              }
+            }
+          }
+        }
+      } else if (!sprintingNow && this.walkConsumesEnergy) {
+        const bus = character.getEnergyBus(this.walkEnergyBusId);
+        if (bus) {
+          const Cr = 0.28;
+          const resForce = totalMass * g * Cr;
+          const requestedWatts = resForce * baseWalkTargetSpeed / 0.25;
+          const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
+          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+          if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+            effectiveWalkForce = 0;
+            effectiveTargetSpeed = 0;
+            character.isActivelyWalking = false;
+          } else {
+            effectiveWalkForce *= fraction;
+            effectiveTargetSpeed *= fraction;
+          }
+        }
+      }
+    }
+    const effectiveSpeed = effectiveTargetSpeed / (1 + loadFactor);
+    const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
+    if (isMoving) {
+      this.isBrakingPlanned = false;
+      this.wasMovingLastTick = true;
       const dirX = inputVector.x / inputMag;
       const dirY = inputVector.y / inputMag;
+      let targetVx = 0;
+      let targetVy = 0;
       if (isAirborne) {
-        const currentSpeed2 = Math.hypot(character.velocity.x, character.velocity.y);
-        const airTargetSpeed = Math.max(effectiveSpeed, currentSpeed2);
+        const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+        const airTargetSpeed = Math.max(effectiveSpeed, currentSpeed);
         targetVx = dirX * airTargetSpeed;
         targetVy = dirY * airTargetSpeed;
       } else {
         targetVx = dirX * effectiveSpeed;
         targetVy = dirY * effectiveSpeed;
       }
-    }
-    const diffX = targetVx - character.velocity.x;
-    const diffY = targetVy - character.velocity.y;
-    const diffSpeed = Math.hypot(diffX, diffY);
-    if (diffSpeed < 1e-3) {
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
-      return;
-    }
-    const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
-    const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
-    const effectiveWalkForce = character.isSprinting ? this.maxWalkForce * 1.5 : this.maxWalkForce;
-    const maxAccel = effectiveWalkForce * character.strength / totalMass * grip;
-    const maxStep = maxAccel * dt;
-    if (diffSpeed <= maxStep || !isAirborne && !isMoving && currentSpeed < staticThreshold) {
-      character.velocity.x = targetVx;
-      character.velocity.y = targetVy;
+      const diffX = targetVx - character.velocity.x;
+      const diffY = targetVy - character.velocity.y;
+      const diffSpeed = Math.hypot(diffX, diffY);
+      if (diffSpeed < 1e-3) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+        return;
+      }
+      const maxStep = maxAccel * dt;
+      if (diffSpeed <= maxStep) {
+        character.velocity.x = targetVx;
+        character.velocity.y = targetVy;
+      } else {
+        const stepRatio = maxStep / diffSpeed;
+        character.velocity.x += diffX * stepRatio;
+        character.velocity.y += diffY * stepRatio;
+      }
     } else {
-      const stepRatio = maxStep / diffSpeed;
-      character.velocity.x += diffX * stepRatio;
-      character.velocity.y += diffY * stepRatio;
+      const currentSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+      const staticThreshold = Math.max(0.02, arena.staticFrictionThreshold * character.staticGroundFrictionMod);
+      if (!this.isBrakingPlanned && this.wasMovingLastTick) {
+        this.wasMovingLastTick = false;
+        if (currentSpeed > staticThreshold && maxAccel > 1e-3) {
+          this.isBrakingPlanned = true;
+          this.plannedBrakeRemainingTime = currentSpeed / maxAccel;
+          this.plannedBrakeDirX = character.velocity.x / currentSpeed;
+          this.plannedBrakeDirY = character.velocity.y / currentSpeed;
+          this.plannedBrakeAccel = maxAccel;
+        } else {
+          if (!isAirborne && currentSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+          return;
+        }
+      } else if (!this.isBrakingPlanned) {
+        this.wasMovingLastTick = false;
+        return;
+      }
+      if (this.isBrakingPlanned) {
+        const stepDt = Math.min(dt, this.plannedBrakeRemainingTime);
+        const decelStep = this.plannedBrakeAccel * stepDt;
+        character.velocity.x -= this.plannedBrakeDirX * decelStep;
+        character.velocity.y -= this.plannedBrakeDirY * decelStep;
+        this.plannedBrakeRemainingTime -= dt;
+        if (this.plannedBrakeRemainingTime <= 1e-4) {
+          this.isBrakingPlanned = false;
+          const dot = character.velocity.x * this.plannedBrakeDirX + character.velocity.y * this.plannedBrakeDirY;
+          if (dot <= staticThreshold) {
+            character.velocity.x -= dot * this.plannedBrakeDirX;
+            character.velocity.y -= dot * this.plannedBrakeDirY;
+          }
+          const postSpeed = Math.hypot(character.velocity.x, character.velocity.y);
+          if (!isAirborne && postSpeed < staticThreshold) {
+            character.velocity.x = 0;
+            character.velocity.y = 0;
+          }
+        }
+      }
     }
   }
 }
 class PickupModule {
-  constructor() {
+  constructor(options) {
     __publicField(this, "id", "pickup");
     __publicField(this, "name", "Pickup Ability");
     __publicField(this, "enabled", true);
-    __publicField(this, "pickupReach", 1.3);
-    // 3D radius in units to reach and pick up freebodies (~1.3 wall tiles)
+    __publicField(this, "pickupReachProp");
     __publicField(this, "crossLayerReachRatio", 1);
+    // Deprecated: single 3D pickup range now governs reach across all layers
+    /**
+     * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+     */
+    __publicField(this, "consumesEnergy", false);
+    /** Whether picking up is allowed when power cannot provide 100% full lift */
+    __publicField(this, "allowPartialPower", false);
+    __publicField(this, "energyBusId", "bus_main");
+    this.pickupReachProp = new DynamicProperty((options == null ? void 0 : options.pickupReach) ?? 1.3);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
-  // Deprecated: single 3D pickup range now governs reach across all layers
+  get pickupReach() {
+    return this.pickupReachProp.literalValue;
+  }
+  set pickupReach(val) {
+    this.pickupReachProp.literalValue = val;
+  }
+  getPickupReach(registry) {
+    return this.pickupReachProp.get(registry);
+  }
   /**
    * Returns true if the object is within the character's physical grab reach using true 3D math.
    * Gets the delta magnitude of the 3D positions (dx, dy, dz) and forces the character
@@ -5244,7 +5764,8 @@ class PickupModule {
     const dy = obj.position.y - character.position.y;
     const dz = objZ - charZ;
     const deltaMagnitude = Math.hypot(dx, dy, dz);
-    return deltaMagnitude <= this.pickupReach;
+    const reach = this.pickupReachProp.get(character.properties);
+    return deltaMagnitude <= reach;
   }
   /**
    * Finds the nearest grabbable object to the mouse/aim location within character reach
@@ -5270,6 +5791,18 @@ class PickupModule {
   pickup(character, target) {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) {
+        const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
+        const liftHeight = 0.45;
+        const metabolicJoules = Math.max(5, targetMass * 9.81 * liftHeight / 0.25);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties, this.allowPartialPower);
+        if (fraction <= 0 || !this.allowPartialPower && fraction < 1) {
+          return false;
+        }
+      }
+    }
     const objVx = target.velocity.x;
     const objVy = target.velocity.y;
     const momentumRatio = target.mass / Math.max(0.2, character.mass);
@@ -5284,6 +5817,7 @@ class PickupModule {
     target.heldBy = character;
     target.isInFlight = false;
     target.lastThrower = null;
+    target.originalThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -5292,7 +5826,10 @@ class PickupModule {
       target.rollModule.angularVelocity.y = 0;
       target.rollModule.angularVelocity.z = 0;
     }
-    target.position.z = target.hasVerticalPosition ? 0.45 : 0;
+    const heldPos = character.calculateHeldObjectPosition();
+    target.position.x = heldPos.x;
+    target.position.y = heldPos.y;
+    target.position.z = heldPos.z;
     return true;
   }
   /**
@@ -5306,6 +5843,7 @@ class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null;
+    dropped.originalThrower = null;
     dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;
@@ -5372,18 +5910,86 @@ class PickupModule {
   }
 }
 class ThrowModule {
-  constructor() {
+  constructor(options) {
     __publicField(this, "id", "throw");
     __publicField(this, "name", "Throw Ability");
     __publicField(this, "enabled", true);
     // Tunable throw physics in wall-based units
-    __publicField(this, "baseThrowForce", 7.6);
-    // Base throw power in u/s
-    __publicField(this, "maxThrowAimDistance", 13);
-    // Max throw aim distance in units (~13 wall tiles)
-    __publicField(this, "maxThrowHeight", 5);
+    __publicField(this, "maxThrowSpeedProp");
+    __publicField(this, "maxThrowAimDistanceProp");
+    __publicField(this, "maxThrowHeightProp");
+    /**
+     * Whether throwing consumes energy from an Energy Bus.
+     */
+    __publicField(this, "consumesEnergy", true);
+    __publicField(this, "energyBusId", "bus_main");
+    /**
+     * Remembered arc ratio: 0.0 (shortest / flattest possible arc) to 1.0 (tallest / steepest possible arc).
+     * Trajectory manipulation is based on this ratio between the shortest and tallest arc available.
+     * If the target moves farther so the maximum arc height flattens, ratio 1.0 continues to track the highest possible arc.
+     */
+    __publicField(this, "savedArcRatio", 0);
+    __publicField(this, "hasUserSetArcRatio", false);
+    const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 100;
+    this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
+    this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
+    this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    if ((options == null ? void 0 : options.energyBusId) !== void 0) this.energyBusId = options.energyBusId;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
-  // Max throw height reach in units above release point (~5 wall heights)
+  /**
+   * Alias for backward compatibility with baseThrowForceProp.
+   */
+  get baseThrowForceProp() {
+    return this.maxThrowSpeedProp;
+  }
+  set baseThrowForceProp(prop) {
+    this.maxThrowSpeedProp = prop;
+  }
+  get savedArcSteepness() {
+    return this.savedArcRatio * 2 - 1;
+  }
+  set savedArcSteepness(val) {
+    this.savedArcRatio = Math.max(0, Math.min(1, (val + 1) / 2));
+    this.hasUserSetArcRatio = true;
+  }
+  get maxThrowSpeed() {
+    return this.maxThrowSpeedProp.literalValue;
+  }
+  set maxThrowSpeed(val) {
+    this.maxThrowSpeedProp.literalValue = val;
+  }
+  get baseThrowForce() {
+    return this.maxThrowSpeed;
+  }
+  set baseThrowForce(val) {
+    this.maxThrowSpeed = val;
+  }
+  get maxThrowAimDistance() {
+    return this.maxThrowAimDistanceProp.literalValue;
+  }
+  set maxThrowAimDistance(val) {
+    this.maxThrowAimDistanceProp.literalValue = val;
+  }
+  get maxThrowHeight() {
+    return this.maxThrowHeightProp.literalValue;
+  }
+  set maxThrowHeight(val) {
+    this.maxThrowHeightProp.literalValue = val;
+  }
+  getMaxThrowSpeed(registry) {
+    return this.maxThrowSpeedProp.get(registry);
+  }
+  getBaseThrowForce(registry) {
+    return this.getMaxThrowSpeed(registry);
+  }
+  getMaxThrowAimDistance(registry) {
+    return this.maxThrowAimDistanceProp.get(registry);
+  }
+  getMaxThrowHeight(registry) {
+    return this.maxThrowHeightProp.get(registry);
+  }
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
    */
@@ -5525,12 +6131,39 @@ class ThrowModule {
     return null;
   }
   /**
+   * Calculates the maximum launch speed for an object given:
+   * 1. Character's maxThrowSpeed (governs light objects) scaled by character strength.
+   * 2. Object mass and character energy bus power/energy limit (governs heavier objects).
+   */
+  calculateMaxLaunchSpeed(thrower, heldObject) {
+    const rawMaxSpeed = this.maxThrowSpeedProp.get(thrower == null ? void 0 : thrower.properties);
+    const strength = (thrower == null ? void 0 : thrower.strength) ?? 1;
+    const speedCap = Math.max(1, rawMaxSpeed * strength);
+    if (!heldObject || !heldObject.hasMass) {
+      return speedCap;
+    }
+    const mass = Math.max(0.05, heldObject.mass);
+    if (this.consumesEnergy && thrower) {
+      const bus = thrower.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const maxPower = bus.getMaxPower(thrower.properties);
+        const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
+        const maxBurstMetabolicJoules = maxPower * strength;
+        const availableMechJoules = maxBurstMetabolicJoules * efficiency;
+        const massLimitedSpeed2 = Math.sqrt(2 * Math.max(1, availableMechJoules) / mass);
+        return Math.min(speedCap, massLimitedSpeed2);
+      }
+    }
+    const massLimitedSpeed = speedCap * Math.sqrt(strength) / Math.sqrt(Math.max(0.1, mass));
+    return Math.min(speedCap, massLimitedSpeed);
+  }
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
    * If autoLock is true (e.g. holding right click), locks 2D coordinates to the overlapped object center.
    */
-  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false) {
+  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, _charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false) {
     let hoveredEntity = null;
     let effectiveTargetX = targetX;
     let effectiveTargetY = targetY;
@@ -5571,7 +6204,8 @@ class ThrowModule {
         targetSurfaceHeight = arena.getSupportingSurfaceHeight(targetX, targetY);
       }
     }
-    const effectiveMaxHeight = this.maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
+    const maxThrowHeight = this.maxThrowHeightProp.get(thrower == null ? void 0 : thrower.properties);
+    const effectiveMaxHeight = maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
     const maxAllowedTargetZ = startZ + effectiveMaxHeight;
     if (targetSurfaceHeight > maxAllowedTargetZ) {
       targetSurfaceHeight = maxAllowedTargetZ;
@@ -5580,7 +6214,8 @@ class ThrowModule {
     const dy = effectiveTargetY - startY;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.1) return null;
-    const actualDist = Math.min(dist, this.maxThrowAimDistance);
+    const maxThrowAimDistance = this.maxThrowAimDistanceProp.get(thrower == null ? void 0 : thrower.properties);
+    const actualDist = Math.min(dist, maxThrowAimDistance);
     const dirX = dx / dist;
     const dirY = dy / dist;
     const finalTargetX = startX + dirX * actualDist;
@@ -5597,35 +6232,21 @@ class ThrowModule {
         }
       }
     }
-    const vxChar = (charVel == null ? void 0 : charVel.x) ?? 0;
-    const vyChar = (charVel == null ? void 0 : charVel.y) ?? 0;
-    const vAlong = vxChar * dirX + vyChar * dirY;
-    const vPerp = vxChar * -dirY + vyChar * dirX;
-    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
-    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+    const launchSpeed = Math.max(1, throwPower);
     if (!hasGravity || !hasVerticalVelocity) {
-      const totalTime2 = Math.max(0.14, actualDist / maxForwardSpeed);
-      const vx2 = dirX * maxForwardSpeed;
-      const vy2 = dirY * maxForwardSpeed;
+      const totalTime2 = Math.max(0.14, actualDist / launchSpeed);
+      const vx2 = dirX * (actualDist / totalTime2);
+      const vy2 = dirY * (actualDist / totalTime2);
       const vz2 = 0;
       return { vx: vx2, vy: vy2, vz: vz2, totalTime: totalTime2, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
     const deltaZ = targetSurfaceHeight - startZ;
-    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
-    let totalTime = minFlightTime;
-    if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / arena.gravity));
-    }
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    const clearance = 0.25;
-    const sampleRatios = [];
-    for (let s = 5e-3; s < 0.1; s += 5e-3) {
-      sampleRatios.push(s);
-    }
-    for (let i = 4; i <= 40; i++) {
-      sampleRatios.push(i / 40);
-    }
-    for (const s of sampleRatios) {
+    const clearanceMargin = 0.35;
+    let minTimeForWallClearance = 0;
+    const scanSteps = 120;
+    for (let i = 1; i < scanSteps; i++) {
+      const s = i / scanSteps;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
       for (const wall of arena.walls) {
@@ -5634,26 +6255,66 @@ class ThrowModule {
           if (isTargetOnThisWall && s > 0.65) {
             continue;
           }
-          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const requiredHeight = wall.wallHeight + clearance;
-          const requiredDeltaZ = requiredHeight - baselineZ;
-          if (requiredDeltaZ > 0) {
-            const denom = arena.gravity * s * (1 - s);
+          const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const reqClearanceZ = wall.wallHeight + clearanceMargin;
+          const reqLift = reqClearanceZ - chordZ;
+          if (reqLift > 0) {
+            const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 1e-4) {
-              const reqTimeSq = 2 * requiredDeltaZ / denom;
-              if (reqTimeSq > 0) {
-                const reqTime = Math.sqrt(reqTimeSq);
-                if (reqTime > totalTime) {
-                  totalTime = reqTime;
-                }
+              const neededT = Math.sqrt(reqLift / denom);
+              if (neededT > minTimeForWallClearance) {
+                minTimeForWallClearance = neededT;
               }
             }
           }
         }
       }
     }
-    if (totalTime <= 0.05) return null;
-    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    const g = arena.gravity;
+    const D = actualDist;
+    const vMax = launchSpeed;
+    const aCoeff = 0.25 * g * g;
+    const bCoeff = -(vMax * vMax - g * deltaZ);
+    const cCoeff = D * D + deltaZ * deltaZ;
+    const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+    let chosenT = 0;
+    if (disc >= 0) {
+      const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      const uHigh = (-bCoeff + Math.sqrt(disc)) / (2 * aCoeff);
+      const tLow = uLow > 0 ? Math.sqrt(uLow) : 0;
+      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : 0;
+      if (minTimeForWallClearance > 0) {
+        if (tLow >= minTimeForWallClearance) {
+          chosenT = tLow;
+        } else if (tHigh >= minTimeForWallClearance) {
+          chosenT = minTimeForWallClearance;
+        } else {
+          chosenT = tHigh;
+        }
+      } else {
+        const tMin = tLow > 0 ? tLow : D / vMax;
+        const tMax = tHigh > 0 ? tHigh : tMin;
+        if (!this.hasUserSetArcRatio) {
+          const dist3D = Math.sqrt(D * D + deltaZ * deltaZ);
+          const tOpt = Math.sqrt(2 * dist3D / g);
+          chosenT = Math.max(tMin, Math.min(tMax, tOpt));
+        } else {
+          chosenT = tMin + this.savedArcRatio * (tMax - tMin);
+        }
+      }
+    } else {
+      const uPeak = -bCoeff / (2 * aCoeff);
+      const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
+      chosenT = tPeak;
+    }
+    if (chosenT <= 0) {
+      chosenT = Math.max(0.02, D / vMax);
+    }
+    if (deltaZ > 0) {
+      chosenT = Math.max(chosenT, Math.sqrt(2 * deltaZ / g));
+    }
+    const totalTime = Math.max(0.02, chosenT);
+    const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
@@ -5662,9 +6323,22 @@ class ThrowModule {
   /**
    * Pre-calculates trajectory points for real-time visualization overlay
    */
-  calculateTrajectory(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
+  calculateTrajectory(character, aimTargetX, aimTargetY, arena, _entities, hoverScale, _autoLock = false, lockedTargetPos, aimLockDelta = 0) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
+    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+    let targetSurfaceHeight = 0;
+    const targetAimX = lockedTargetPos ? lockedTargetPos.x : aimTargetX;
+    const targetAimY = lockedTargetPos ? lockedTargetPos.y : aimTargetY;
+    const charAimDx = targetAimX - character.position.x;
+    const charAimDy = targetAimY - character.position.y;
+    if (Math.hypot(charAimDx, charAimDy) > 0.05) {
+      character.facingAngle = Math.atan2(charAimDy, charAimDx);
+      const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+      held.position.x = alignedHeldPos.x;
+      held.position.y = alignedHeldPos.y;
+      held.position.z = alignedHeldPos.z;
+    }
     let startX = held.position.x;
     let startY = held.position.y;
     let startZ = held.position.z;
@@ -5680,44 +6354,99 @@ class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
+    }
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
       }
     }
-    const throwPower = this.baseThrowForce * character.strength;
-    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
-    const charVel = {
-      x: character.velocity.x,
-      y: character.velocity.y,
-      z: character.isAboveGround ? character.verticalVelocity : 0
-    };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    const launch = this.computeLaunchVelocity(
-      startX,
-      startY,
-      startZ,
-      aimTargetX,
-      aimTargetY,
-      arena,
-      throwPower,
-      held.hasGravity,
-      held.hasVerticalVelocity,
-      held.colliderRadius,
-      charVel,
-      candidateEntities,
-      scale,
-      character,
-      held,
-      autoLock
-    );
-    if (!launch) return null;
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
+    const g = arena.gravity;
+    let finalTargetX = targetAimX;
+    let finalTargetY = targetAimY;
+    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
+    if (wallUnderTarget) {
+      finalTargetX = wallUnderTarget.physX;
+      finalTargetY = wallUnderTarget.physY;
+      targetSurfaceHeight = wallUnderTarget.wall.wallHeight;
+    } else {
+      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    }
+    const maxThrowHeight = this.maxThrowHeightProp.get(character.properties);
+    const effectiveMaxHeight = maxThrowHeight * character.strength;
+    if (targetSurfaceHeight > startZ + effectiveMaxHeight) {
+      targetSurfaceHeight = startZ + effectiveMaxHeight;
+    }
+    let dx = finalTargetX - startX;
+    let dy = finalTargetY - startY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.1) return null;
+    const deltaZ = targetSurfaceHeight - startZ;
+    const maxReach = maxSpeed / g * Math.sqrt(Math.max(1e-3, maxSpeed * maxSpeed + 2 * g * Math.max(0, -deltaZ)));
+    if (dist > maxReach) {
+      dist = Math.max(0.1, maxReach);
+      finalTargetX = startX + dx / Math.hypot(dx, dy) * dist;
+      finalTargetY = startY + dy / Math.hypot(dx, dy) * dist;
+      dx = finalTargetX - startX;
+      dy = finalTargetY - startY;
+    }
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    let chosenVx = 0;
+    let chosenVy = 0;
+    let chosenVz = 0;
+    let totalTime = 1;
+    const aCoeff = 0.25 * g * g;
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+    const tOpt = Math.sqrt(2 * dist3D / g);
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * tOpt;
+    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+    const tMin = Math.max(0.02, tFlat);
+    const tMax = Math.max(tMin, tHigh);
+    if (lockedTargetPos && aimLockDelta !== 0) {
+      const deltaRatio = -aimLockDelta / 300;
+      this.savedArcRatio = Math.max(0, Math.min(1, this.savedArcRatio + deltaRatio));
+      this.hasUserSetArcRatio = true;
+    }
+    if (!this.hasUserSetArcRatio) {
+      const optRatio = tMax - tMin > 1e-3 ? Math.max(0, Math.min(1, (tOpt - tMin) / (tMax - tMin))) : 0;
+      this.savedArcRatio = optRatio;
+      totalTime = Math.max(tMin, Math.min(tMax, tOpt));
+    } else {
+      totalTime = tMin + this.savedArcRatio * (tMax - tMin);
+    }
+    totalTime = Math.max(0.02, totalTime);
+    chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const hSpeed = dist / totalTime;
+    chosenVx = dirX * hSpeed;
+    chosenVy = dirY * hSpeed;
+    const vx = chosenVx;
+    const vy = chosenVy;
+    const vz = chosenVz;
+    const resolvedSurfaceHeight = targetSurfaceHeight;
     const steps = 90;
     const dtStep = totalTime / steps;
     const points = [];
     let isBlocked = false;
-    let isLandingOnWallTop = targetSurfaceHeight > 0;
+    let isLandingOnWallTop = resolvedSurfaceHeight > 0;
     let blockedWallId;
     let peakHeight = startZ;
     for (let step = 0; step <= steps; step++) {
@@ -5725,7 +6454,7 @@ class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? startZ + vz * t - 0.5 * arena.gravity * t * t : startZ;
-      const currentZ = canFlyVertically ? step === steps ? targetSurfaceHeight : step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ) : startZ;
+      const currentZ = canFlyVertically ? step === steps ? resolvedSurfaceHeight : step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ) : startZ;
       const currentVz = canFlyVertically ? vz - arena.gravity * t : 0;
       if (currentZ > peakHeight) {
         peakHeight = currentZ;
@@ -5774,9 +6503,53 @@ class ThrowModule {
         break;
       }
     }
+    const simulateGhostArc = (simFlightTime) => {
+      const gTime = Math.max(0.02, simFlightTime);
+      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const gHSpd = dist / gTime;
+      const gVx = dirX * gHSpd;
+      const gVy = dirY * gHSpd;
+      const gSteps = 60;
+      const gDt = gTime / gSteps;
+      const gPts = [];
+      for (let s = 0; s <= gSteps; s++) {
+        const t = s * gDt;
+        const curX = s === gSteps ? finalTargetX : startX + gVx * t;
+        const curY = s === gSteps ? finalTargetY : startY + gVy * t;
+        const calcZ = canFlyVertically ? startZ + gVz * t - 0.5 * arena.gravity * t * t : startZ;
+        const curZ = canFlyVertically ? s === gSteps ? resolvedSurfaceHeight : s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ) : startZ;
+        let isOver = false;
+        let collides = false;
+        for (const wall of arena.walls) {
+          if (this.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
+            isOver = true;
+            if (curZ <= wall.wallHeight + 1e-3 && s > 1) {
+              collides = true;
+              break;
+            }
+          }
+        }
+        gPts.push({
+          x: curX,
+          y: curY,
+          z: curZ,
+          t,
+          couldClearWall: curZ > arena.wallHeight,
+          isOverWall: isOver,
+          collidesWall: collides
+        });
+        if (collides) break;
+      }
+      return gPts;
+    };
+    const hasArcRange = tMax - tMin > 0.05;
+    const flattestPoints = hasArcRange ? simulateGhostArc(tMin) : void 0;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tMax) : void 0;
     const lastPoint = points[points.length - 1];
     return {
       points,
+      flattestPoints,
+      steepestPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
@@ -5785,25 +6558,59 @@ class ThrowModule {
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : targetSurfaceHeight > 0,
       blockedAtWallId: blockedWallId,
-      targetObject,
+      targetObject: null,
       targetSurfaceHeight,
-      isAutoLocked,
+      isAutoLocked: Boolean(lockedTargetPos),
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
-      visualShape: held.visualShape
+      visualShape: held.visualShape,
+      launchVel: { vx, vy, vz },
+      launchPos: { x: startX, y: startY, z: startZ },
+      lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null
     };
   }
   /**
    * Executes the throw of the held object using the exact same launch parameters
    */
-  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
+  throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel, launchPos) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
-    let startX = held.position.x;
-    let startY = held.position.y;
-    let startZ = held.position.z;
-    if (character.position.z < arena.wallHeight) {
+    let targetAimX = aimTargetX;
+    let targetAimY = aimTargetY;
+    if (!launchPos) {
+      if (autoLock) {
+        const candidateEntities2 = entities ?? arena.entities;
+        const scale2 = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+        const lockedTarget = this.findHoveredEntity(
+          aimTargetX,
+          aimTargetY,
+          arena,
+          character,
+          held,
+          candidateEntities2,
+          scale2,
+          Infinity
+        );
+        if (lockedTarget) {
+          targetAimX = lockedTarget.position.x;
+          targetAimY = lockedTarget.position.y;
+        }
+      }
+      const aimDx2 = targetAimX - character.position.x;
+      const aimDy2 = targetAimY - character.position.y;
+      if (Math.hypot(aimDx2, aimDy2) > 0.05) {
+        character.facingAngle = Math.atan2(aimDy2, aimDx2);
+        const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+        held.position.x = alignedHeldPos.x;
+        held.position.y = alignedHeldPos.y;
+        held.position.z = alignedHeldPos.z;
+      }
+    }
+    let startX = launchPos ? launchPos.x : held.position.x;
+    let startY = launchPos ? launchPos.y : held.position.y;
+    let startZ = launchPos ? launchPos.z : held.position.z;
+    if (!launchPos && character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
         startY,
@@ -5815,26 +6622,55 @@ class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
-    const throwPower = this.baseThrowForce * character.strength;
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0
     };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    const launch = this.computeLaunchVelocity(
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+    if (this.consumesEnergy && !launchVel) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
+      }
+    }
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
+    const aimDist = Math.hypot(aimDx, aimDy);
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
+    if (!launchVel && aimDist > 0.05 && canFlyVertically) {
+      const g = arena.gravity;
+      const maxReach = maxSpeed / g * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
+      if (aimDist > maxReach) {
+        const clampedDist = Math.max(0.1, maxReach);
+        effectiveAimX = startX + aimDx / aimDist * clampedDist;
+        effectiveAimY = startY + aimDy / aimDist * clampedDist;
+      }
+    }
+    let launch = launchVel ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz } : this.computeLaunchVelocity(
       startX,
       startY,
       startZ,
-      aimTargetX,
-      aimTargetY,
+      effectiveAimX,
+      effectiveAimY,
       arena,
-      throwPower,
+      maxSpeed,
       held.hasGravity,
       held.hasVerticalVelocity,
       held.colliderRadius,
@@ -5846,16 +6682,51 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) {
+          return null;
+        }
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "throw",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: false,
+          pool: character.energyPool,
+          registry: character.properties
+        });
+        if (!burstRes.granted || burstRes.fraction < 1) {
+          return null;
+        }
+      }
+    }
     if (launch.isAutoLocked && launch.targetObject) {
       const dx = launch.targetObject.position.x - character.position.x;
       const dy = launch.targetObject.position.y - character.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
       }
+    } else if (Math.hypot(launch.vx, launch.vy) > 0.05) {
+      character.facingAngle = Math.atan2(launch.vy, launch.vx);
+    }
+    if (!launchPos) {
+      const heldPos = character.calculateHeldObjectPosition(arena);
+      startX = heldPos.x;
+      startY = heldPos.y;
+      startZ = heldPos.z;
     }
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.originalThrower = character;
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;
@@ -5884,17 +6755,6 @@ class ThrowModule {
     return held;
   }
 }
-class StrengthModule {
-  constructor(options = {}) {
-    __publicField(this, "id", "strength");
-    __publicField(this, "name", "Strength Module");
-    __publicField(this, "enabled", true);
-    // Strength multiplier: governs physical exertion for walking under load, throwing power, and vertical climbing
-    __publicField(this, "strength", 1);
-    this.strength = options.strength ?? 1;
-    this.enabled = options.enabled ?? true;
-  }
-}
 class JumpModule {
   constructor(options) {
     __publicField(this, "id", "jump");
@@ -5902,19 +6762,33 @@ class JumpModule {
     __publicField(this, "enabled", true);
     /**
      * Jump strength (impulse in N·s).
-     * Default 18.5 N·s provides enough propulsion to achieve the max takeoff speed (~9.67 u/s, 1.5 units height)
-     * both unencumbered (1.2kg) and when holding the Light Blue Box (0.7kg, total 1.9kg).
-     * When carrying the Heavy Red Box (2.6kg, total 3.8kg), takeoff speed drops to ~4.87 u/s (~0.39 units height).
      */
-    __publicField(this, "jumpStrength", 18.5);
+    __publicField(this, "jumpStrengthProp");
     /**
      * Maximum initial takeoff speed cap (in units per second).
-     * 9.67 u/s achieves a peak ballistic jump height of ~1.5 units under gravity 30.0 u/s^2.
      */
-    __publicField(this, "maxInitialSpeed", 9.67);
-    if ((options == null ? void 0 : options.jumpStrength) !== void 0) this.jumpStrength = options.jumpStrength;
-    if ((options == null ? void 0 : options.maxInitialSpeed) !== void 0) this.maxInitialSpeed = options.maxInitialSpeed;
+    __publicField(this, "maxInitialSpeedProp");
+    this.jumpStrengthProp = new DynamicProperty((options == null ? void 0 : options.jumpStrength) ?? 18.5);
+    this.maxInitialSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxInitialSpeed) ?? 9.67);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get jumpStrength() {
+    return this.jumpStrengthProp.literalValue;
+  }
+  set jumpStrength(val) {
+    this.jumpStrengthProp.literalValue = val;
+  }
+  get maxInitialSpeed() {
+    return this.maxInitialSpeedProp.literalValue;
+  }
+  set maxInitialSpeed(val) {
+    this.maxInitialSpeedProp.literalValue = val;
+  }
+  getJumpStrength(registry) {
+    return this.jumpStrengthProp.get(registry);
+  }
+  getMaxInitialSpeed(registry) {
+    return this.maxInitialSpeedProp.get(registry);
   }
   /**
    * Attempts to jump from the current supporting surface (ground or wall top).
@@ -5929,7 +6803,9 @@ class JumpModule {
       return false;
     }
     const totalMass = Math.max(0.2, character.mass);
-    const takeoffSpeed = Math.min(this.maxInitialSpeed, this.jumpStrength / totalMass);
+    const jumpStrength = this.jumpStrengthProp.get(character.properties);
+    const maxInitialSpeed = this.maxInitialSpeedProp.get(character.properties);
+    const takeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / totalMass);
     if (takeoffSpeed <= 0.01) return false;
     character.verticalVelocity = takeoffSpeed;
     character.position.z = Math.max(character.position.z, surfaceZ + 0.02);
@@ -5956,7 +6832,7 @@ class WallEdgeAssistModule {
      * Maximum distance the character is allowed to hang off of elevated walls
      * before the ledge guard clamps movement (in units).
      */
-    __publicField(this, "hangDistance", 0.1);
+    __publicField(this, "hangDistanceProp");
     /** Whether the assist clamp (ledge guard) is currently active/armed */
     __publicField(this, "isAssistClampArmed", false);
     /** Tracks whether character has moved onto the wall top platform after mounting */
@@ -5966,23 +6842,1280 @@ class WallEdgeAssistModule {
     __publicField(this, "mountStartX", 0);
     __publicField(this, "mountStartY", 0);
     if ((options == null ? void 0 : options.preventWalkOff) !== void 0) this.preventWalkOff = options.preventWalkOff;
-    if ((options == null ? void 0 : options.hangDistance) !== void 0) this.hangDistance = options.hangDistance;
+    this.hangDistanceProp = new DynamicProperty((options == null ? void 0 : options.hangDistance) ?? 0.1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get hangDistance() {
+    return this.hangDistanceProp.literalValue;
+  }
+  set hangDistance(val) {
+    this.hangDistanceProp.literalValue = val;
+  }
+  getHangDistance(registry) {
+    return this.hangDistanceProp.get(registry);
+  }
+}
+class HealthModule {
+  constructor(options) {
+    __publicField(this, "id", "health");
+    __publicField(this, "name", "Health & Vitality");
+    __publicField(this, "enabled", true);
+    /** Active health modifiers (continuous DOT/HOT and instant bursts) */
+    __publicField(this, "_activeModifiers", /* @__PURE__ */ new Map());
+    __publicField(this, "_nextModifierOrder", 1);
+    __publicField(this, "_currentTick", 0);
+    /** Baseline max health value */
+    __publicField(this, "baseMaxHp");
+    /** Effective maximum health (can be modified by buffs/debuffs) */
+    __publicField(this, "maxHpProp");
+    /** Current live HP */
+    __publicField(this, "currentHpProp");
+    /** Baseline max heal rate (HP / second) */
+    __publicField(this, "baseMaxHealRate");
+    /** Effective max heal rate (HP / second) */
+    __publicField(this, "maxHealRateProp");
+    /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
+    __publicField(this, "hpPerJouleProp");
+    /** Toggle indicating whether healing draws energy from an Energy Bus */
+    __publicField(this, "consumesEnergy", false);
+    /** Whether healing is allowed to run when bus power cannot provide 100% full wattage */
+    __publicField(this, "allowPartialPower", true);
+    /** ID of the Energy Bus to draw power from */
+    __publicField(this, "energyBusId", "bus_main");
+    /** Optional callback invoked when entity dies and respawns */
+    __publicField(this, "onDeathRespawn");
+    this.baseMaxHp = (options == null ? void 0 : options.baseMaxHp) ?? 100;
+    const initialMaxHp = (options == null ? void 0 : options.maxHp) ?? this.baseMaxHp;
+    this.maxHpProp = new DynamicProperty(initialMaxHp);
+    this.currentHpProp = new DynamicProperty((options == null ? void 0 : options.currentHp) ?? initialMaxHp);
+    this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 10;
+    this.maxHealRateProp = new DynamicProperty((options == null ? void 0 : options.maxHealRate) ?? this.baseMaxHealRate);
+    this.hpPerJouleProp = new DynamicProperty((options == null ? void 0 : options.hpPerJoule) ?? 0.04);
+    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxHp() {
+    return this.maxHpProp.literalValue;
+  }
+  set maxHp(val) {
+    this.maxHpProp.literalValue = Math.max(1, val);
+  }
+  get currentHp() {
+    return this.currentHpProp.literalValue;
+  }
+  set currentHp(val) {
+    this.currentHpProp.literalValue = Math.max(0, Math.min(this.maxHp, val));
+  }
+  get maxHealRate() {
+    return this.maxHealRateProp.literalValue;
+  }
+  set maxHealRate(val) {
+    this.maxHealRateProp.literalValue = Math.max(0, val);
+  }
+  get hpPerJoule() {
+    return this.hpPerJouleProp.literalValue;
+  }
+  set hpPerJoule(val) {
+    this.hpPerJouleProp.literalValue = Math.max(1e-4, val);
+  }
+  getHpPerJoule(registry) {
+    return Math.max(1e-4, this.hpPerJouleProp.get(registry));
+  }
+  getMaxHp(registry) {
+    return this.maxHpProp.get(registry);
+  }
+  getCurrentHp(registry) {
+    return this.currentHpProp.get(registry);
+  }
+  getMaxHealRate(registry) {
+    return this.maxHealRateProp.get(registry);
+  }
+  getActiveModifiers(_registry) {
+    return Array.from(this._activeModifiers.values());
+  }
+  registerContinuousModifier(source) {
+    const existing = this._activeModifiers.get(source.id);
+    if (!existing) {
+      this._activeModifiers.set(source.id, {
+        id: source.id,
+        name: source.name,
+        color: source.color ?? (source.isHeal ? "#22c55e" : "#ef4444"),
+        type: "continuous",
+        isHeal: source.isHeal ?? false,
+        order: this._nextModifierOrder++,
+        rateOrAmount: source.rate ?? 0,
+        lastReportedTick: this._currentTick
+      });
+    } else {
+      existing.rateOrAmount = source.rate ?? existing.rateOrAmount;
+      existing.lastReportedTick = this._currentTick;
+      if (source.name) existing.name = source.name;
+      if (source.color) existing.color = source.color;
+    }
+  }
+  registerInstantModifier(source, amount) {
+    const existing = this._activeModifiers.get(source.id);
+    if (!existing) {
+      this._activeModifiers.set(source.id, {
+        id: source.id,
+        name: source.name,
+        color: source.color ?? (source.isHeal ? "#22c55e" : "#f87171"),
+        type: "instant",
+        isHeal: source.isHeal ?? false,
+        order: this._nextModifierOrder++,
+        rateOrAmount: amount,
+        duration: 0.55,
+        lastReportedTick: this._currentTick
+      });
+    } else {
+      existing.rateOrAmount = amount;
+      existing.duration = 0.55;
+      existing.lastReportedTick = this._currentTick;
+    }
+  }
+  takeDamage(amount, registry, source) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentHp(registry);
+    const updated = Math.max(0, cur - amount);
+    this.currentHpProp.set(updated, registry);
+    if (source && source.type === "continuous") {
+      this.registerContinuousModifier({
+        id: source.id,
+        name: source.name,
+        color: source.color ?? "#ef4444",
+        type: "continuous",
+        isHeal: false,
+        rate: source.rate ?? amount * 60
+      });
+    } else {
+      this.registerInstantModifier({
+        id: (source == null ? void 0 : source.id) ?? "damage",
+        name: (source == null ? void 0 : source.name) ?? "Damage",
+        color: (source == null ? void 0 : source.color) ?? "#ef4444",
+        type: "instant",
+        isHeal: false
+      }, (source == null ? void 0 : source.amount) ?? amount);
+    }
+  }
+  heal(amount, registry, source) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentHp(registry);
+    const max = this.getMaxHp(registry);
+    const updated = Math.min(max, cur + amount);
+    this.currentHpProp.set(updated, registry);
+    if (source && source.type === "continuous") {
+      this.registerContinuousModifier({
+        id: source.id,
+        name: source.name,
+        color: source.color ?? "#22c55e",
+        type: "continuous",
+        isHeal: true,
+        rate: source.rate ?? amount * 60
+      });
+    } else {
+      this.registerInstantModifier({
+        id: (source == null ? void 0 : source.id) ?? "heal",
+        name: (source == null ? void 0 : source.name) ?? "Heal",
+        color: (source == null ? void 0 : source.color) ?? "#22c55e",
+        type: "instant",
+        isHeal: true
+      }, (source == null ? void 0 : source.amount) ?? amount);
+    }
+  }
+  /**
+   * Resets health state back to full health and clears active modifiers.
+   */
+  reset(registry) {
+    const max = this.getMaxHp(registry);
+    this.currentHpProp.set(max, registry);
+    this._activeModifiers.clear();
+  }
+  /**
+   * Continuous per-frame health tick:
+   * Heals current HP up to maxHp at maxHealRate * dt.
+   * If HP drops to 0 or below, triggers character death and respawn.
+   */
+  update(dt, character, arena) {
+    if (!this.enabled) return;
+    const registry = character.properties;
+    const current = this.getCurrentHp(registry);
+    const max = this.getMaxHp(registry);
+    let activeHealRate = 0;
+    if (current > 0 && current < max - 1e-3) {
+      const healRate = this.getMaxHealRate(registry);
+      if (healRate > 0) {
+        let effectiveHealRate = healRate;
+        if (this.consumesEnergy) {
+          const bus = character.getEnergyBus(this.energyBusId);
+          if (bus) {
+            const hpPerJoule = this.getHpPerJoule(registry);
+            const powerWatts = healRate / Math.max(1e-4, hpPerJoule);
+            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen", this.allowPartialPower);
+            if (granted <= 0) {
+              effectiveHealRate = 0;
+            } else {
+              effectiveHealRate = healRate * Math.min(1, granted / powerWatts);
+            }
+          }
+        }
+        if (effectiveHealRate > 0) {
+          activeHealRate = effectiveHealRate;
+          const nextHp = Math.min(max, current + effectiveHealRate * dt);
+          if (nextHp >= max - 1e-3) {
+            this.currentHpProp.set(max, registry);
+          } else {
+            this.currentHpProp.set(nextHp, registry);
+          }
+        }
+      }
+    } else if (current >= max - 1e-3 && current !== max) {
+      this.currentHpProp.set(max, registry);
+    }
+    if (activeHealRate > 1e-3) {
+      this.registerContinuousModifier({
+        id: "passive_heal",
+        name: "Heal",
+        color: "#22c55e",
+        type: "continuous",
+        isHeal: true,
+        rate: activeHealRate
+      });
+    } else {
+      this._activeModifiers.delete("passive_heal");
+    }
+    for (const [id, mod] of this._activeModifiers.entries()) {
+      if (mod.type === "continuous") {
+        if (mod.lastReportedTick !== this._currentTick) {
+          this._activeModifiers.delete(id);
+        }
+      } else if (mod.type === "instant") {
+        if (mod.duration !== void 0) {
+          mod.duration -= dt;
+          if (mod.duration <= 0) {
+            this._activeModifiers.delete(id);
+          }
+        }
+      }
+    }
+    this._currentTick++;
+    if (this.getCurrentHp(registry) <= 1e-4) {
+      const isOnline = character._isInOnlineMode === true;
+      if (isOnline) {
+        character.isAwaitingRespawn = true;
+      } else {
+        this.dieAndRespawn(character, arena);
+      }
+    }
+  }
+  /**
+   * Resets character state on death:
+   * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
+   */
+  dieAndRespawn(character, arena, explicitPos) {
+    character.dieAndRespawn(arena, explicitPos);
+  }
+}
+/**
+ * Authoritative clearing spawn points (West, East, Southwest, Southeast).
+ * Open clearings safely away from arena cover walls.
+ */
+__publicField(HealthModule, "RESPAWN_SPAWNS", [
+  { x: 3.5, y: 7, z: 0 },
+  // Slot 1 (West open midfield)
+  { x: 17, y: 3.5, z: 0 },
+  // Slot 2 (East open clearing)
+  { x: 3.5, y: 11, z: 0 },
+  // Slot 3 (Southwest open clearing)
+  { x: 17, y: 11, z: 0 }
+  // Slot 4 (Southeast open clearing)
+]);
+class DamageSolverModule {
+  // 60ms ~ 3-4 frames
+  constructor(options) {
+    __publicField(this, "id", "damageSolver");
+    __publicField(this, "name", "Damage Solver & Armor");
+    __publicField(this, "enabled", true);
+    /**
+     * Multiplier / susceptibility percentage for blunt physical impacts.
+     * 1.0 = 100% normal damage, 0.0 = completely immune, 0.5 = 50% armored resistance.
+     */
+    __publicField(this, "impactSusceptibilityProp");
+    /**
+     * Flat amount of HP subtracted from the incoming scaled impact damage before health is lost.
+     * Clamps the final HP deduction at 0 (e.g., a threshold of 5.0 HP absorbs the first 5 HP of any impact).
+     */
+    __publicField(this, "damageThresholdHpProp");
+    /** Cooldown timer to prevent multi-substep collision spam in a single frame */
+    __publicField(this, "lastImpactTime", 0);
+    __publicField(this, "impactCooldownMs", 60);
+    this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
+    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 25;
+    this.damageThresholdHpProp = new DynamicProperty(initialThresh);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get minShockThresholdProp() {
+    return this.damageThresholdHpProp;
+  }
+  getImpactSusceptibility(registry) {
+    return this.impactSusceptibilityProp.get(registry);
+  }
+  getDamageThresholdHp(registry) {
+    return this.damageThresholdHpProp.get(registry);
+  }
+  /** Backwards compatibility alias for getDamageThresholdHp */
+  getMinShockThreshold(registry) {
+    return this.getDamageThresholdHp(registry);
+  }
+  /**
+   * Evaluates an incoming physical impact shock event against thresholds
+   * and deducts damage from the entity's HealthModule.
+   *
+   * Formula:
+   *   baseDamage = absorbedShock * worldCollisionDamageScale * susceptibility
+   *   finalDamage = max(0, baseDamage - damageThresholdHp)
+   */
+  handleImpact(event, entity, healthModule, worldCollisionDamageScale) {
+    if (!this.enabled || !healthModule || !healthModule.enabled) return 0;
+    const now = performance.now();
+    if (now - this.lastImpactTime < this.impactCooldownMs) {
+      return 0;
+    }
+    const registry = entity.properties;
+    const susceptibility = this.getImpactSusceptibility(registry);
+    if (susceptibility <= 0) return 0;
+    const baseDamage = event.absorbedShock * worldCollisionDamageScale * susceptibility;
+    if (baseDamage <= 1e-4) return 0;
+    const thresholdHp = this.getDamageThresholdHp(registry);
+    const finalDamage = Math.max(0, baseDamage - thresholdHp);
+    if (finalDamage > 1e-3) {
+      this.lastImpactTime = now;
+      healthModule.takeDamage(finalDamage, registry, {
+        id: "impact_damage",
+        name: "Impact",
+        type: "instant",
+        amount: finalDamage,
+        color: "#f87171",
+        isHeal: false
+      });
+      return finalDamage;
+    }
+    return 0;
+  }
+}
+class CharacterModule {
+  constructor(options) {
+    __publicField(this, "id", "character");
+    __publicField(this, "name", "Character Module");
+    __publicField(this, "enabled", true);
+    __publicField(this, "role");
+    if (options == null ? void 0 : options.role) {
+      this.role = options.role;
+    } else if (options == null ? void 0 : options.isDummy) {
+      this.role = "dummy";
+    } else {
+      this.role = "local_player";
+    }
+  }
+  get isDummy() {
+    return this.role === "dummy";
+  }
+  set isDummy(val) {
+    if (val) {
+      this.role = "dummy";
+    } else if (this.role === "dummy") {
+      this.role = "local_player";
+    }
+  }
+  get isPlayer() {
+    return this.role === "local_player" || this.role === "remote_player";
+  }
+  get isAI() {
+    return this.role === "local_ai" || this.role === "remote_ai";
+  }
+  get isLocal() {
+    return this.role === "local_player" || this.role === "local_ai" || this.role === "dummy";
+  }
+  get isRemote() {
+    return this.role === "remote_player" || this.role === "remote_ai";
+  }
+}
+class EnergyPool {
+  constructor(options) {
+    __publicField(this, "id", "energy_pool");
+    __publicField(this, "name", "Energy Pool");
+    __publicField(this, "enabled", true);
+    __publicField(this, "baseMaxEnergyProp");
+    __publicField(this, "maxEnergyProp");
+    __publicField(this, "currentEnergyProp");
+    /**
+     * When enabled, energy consumption is bypassed (godmode / testing).
+     */
+    __publicField(this, "infiniteEnergy", false);
+    /**
+     * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
+     */
+    __publicField(this, "debugAutoRefillOnEmpty", false);
+    const base = (options == null ? void 0 : options.baseMaxEnergy) ?? 1e4;
+    const max = (options == null ? void 0 : options.maxEnergy) ?? base;
+    const cur = (options == null ? void 0 : options.currentEnergy) ?? max;
+    this.baseMaxEnergyProp = new DynamicProperty(base);
+    this.maxEnergyProp = new DynamicProperty(max);
+    this.currentEnergyProp = new DynamicProperty(cur);
+    if ((options == null ? void 0 : options.infiniteEnergy) !== void 0) this.infiniteEnergy = options.infiniteEnergy;
+    if ((options == null ? void 0 : options.debugAutoRefillOnEmpty) !== void 0) this.debugAutoRefillOnEmpty = options.debugAutoRefillOnEmpty;
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  getBaseMaxEnergy(registry) {
+    return this.baseMaxEnergyProp.get(registry);
+  }
+  getMaxEnergy(registry) {
+    return this.maxEnergyProp.get(registry);
+  }
+  getCurrentEnergy(registry) {
+    return this.currentEnergyProp.get(registry);
+  }
+  setCurrentEnergy(val, registry) {
+    const max = this.getMaxEnergy(registry);
+    const clamped = Math.max(0, Math.min(max, val));
+    this.currentEnergyProp.set(clamped, registry);
+  }
+  /**
+   * Attempts to consume energy from the pool.
+   * Returns true if enough energy was available (or if infiniteEnergy is enabled).
+   */
+  consume(amount, registry) {
+    if (!this.enabled || amount <= 0) return true;
+    if (this.infiniteEnergy) return true;
+    const cur = this.getCurrentEnergy(registry);
+    if (cur >= amount) {
+      const next = cur - amount;
+      this.currentEnergyProp.set(next, registry);
+      if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return true;
+    }
+    this.currentEnergyProp.set(0, registry);
+    if (this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return false;
+  }
+  /**
+   * Consumes up to `amount` Joules from the pool.
+   * Returns the actual Joules granted (which may be between 0 and amount).
+   */
+  consumePartial(amount, registry) {
+    if (!this.enabled || amount <= 0) return 0;
+    if (this.infiniteEnergy) return amount;
+    const cur = this.getCurrentEnergy(registry);
+    if (cur <= 1e-4) {
+      this.currentEnergyProp.set(0, registry);
+      if (this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return 0;
+    }
+    const granted = Math.min(cur, amount);
+    const next = cur - granted;
+    this.currentEnergyProp.set(next, registry);
+    if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return granted;
+  }
+  /**
+   * Adds energy to the pool (e.g. from eating food or healing items).
+   */
+  addEnergy(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentEnergy(registry);
+    const max = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(Math.min(max, cur + amount), registry);
+  }
+  /**
+   * Refills current energy back to 100% capacity.
+   */
+  refill(registry) {
+    const max = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(max, registry);
+  }
+  /**
+   * Resets energy pool to full capacity.
+   */
+  reset(registry) {
+    this.refill(registry);
+  }
+}
+const ABILITY_METADATA = {
+  sprint: { name: "Sprint", color: "#f59e0b" },
+  walk: { name: "Walk", color: "#38bdf8" },
+  jump: { name: "Jump", color: "#ec4899" },
+  climb: { name: "Climb", color: "#a855f7" },
+  health_regen: { name: "Heal", color: "#22c55e" },
+  pickup: { name: "Pickup", color: "#eab308" },
+  throw: { name: "Throw", color: "#f43f5e" },
+  instant_burst: { name: "Burst", color: "#ec4899" }
+};
+class EnergyBus {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "enabled", true);
+    // Dynamically tracks whether continuous locomotion is currently sprinting or walking
+    __publicField(this, "activeLocomotionId", "sprint");
+    // Sockets for live dynamic bus properties
+    __publicField(this, "baseMaxPowerProp");
+    __publicField(this, "maxPowerProp");
+    __publicField(this, "baseMaxStaminaProp");
+    __publicField(this, "maxStaminaProp");
+    __publicField(this, "currentStaminaProp");
+    __publicField(this, "staminaRegenRateProp");
+    /**
+     * Exhaustion threshold: when stamina hits 0, bus becomes exhausted.
+     * Remains exhausted until stamina recovers back to recoveryThresholdRatio (default 20%).
+     */
+    __publicField(this, "isExhausted", false);
+    __publicField(this, "recoveryThresholdRatio", 0.2);
+    // Muscle mechanical-to-metabolic efficiency ratio (default 0.25 = 25% efficiency)
+    __publicField(this, "muscleEfficiencyProp");
+    // Live telemetry for DevPanel & ability inspection
+    __publicField(this, "livePowerDraw", 0);
+    __publicField(this, "currentWattageProp");
+    __publicField(this, "hadPhysicalExertion", false);
+    // Registered ability power demands
+    __publicField(this, "_demands", /* @__PURE__ */ new Map());
+    __publicField(this, "_totalDemand", 0);
+    __publicField(this, "_currentTick", 0);
+    __publicField(this, "_nextOrderId", 0);
+    // Active color-coded power allocations for visualization and telemetry
+    __publicField(this, "_activeAllocations", /* @__PURE__ */ new Map());
+    // Retains peak power spike between render frames to prevent multi-tick fixed timesteps from dropping spikes
+    __publicField(this, "recentPeakWattage", 0);
+    __publicField(this, "recentPeakHoldTimer", 0);
+    this.id = (options == null ? void 0 : options.id) ?? "bus_main";
+    this.name = (options == null ? void 0 : options.name) ?? "Main";
+    const basePower = (options == null ? void 0 : options.baseMaxPower) ?? 500;
+    const maxPower = (options == null ? void 0 : options.maxPower) ?? basePower;
+    const baseStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 10;
+    const maxStamina = (options == null ? void 0 : options.maxStamina) ?? baseStamina;
+    const curStamina = (options == null ? void 0 : options.currentStamina) ?? maxStamina;
+    this.baseMaxPowerProp = new DynamicProperty(basePower);
+    this.maxPowerProp = new DynamicProperty(maxPower);
+    this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
+    this.maxStaminaProp = new DynamicProperty(maxStamina);
+    this.currentStaminaProp = new DynamicProperty(curStamina);
+    this.staminaRegenRateProp = new DynamicProperty((options == null ? void 0 : options.staminaRegenRate) ?? 1);
+    this.muscleEfficiencyProp = new DynamicProperty((options == null ? void 0 : options.muscleEfficiency) ?? 0.25);
+    this.currentWattageProp = new DynamicProperty(0);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  /**
+   * Returns active power allocations sorted chronologically by activation order (stacking left to right).
+   * Automatically readjusts prior partial-power allocations when full-power abilities (continuous or burst)
+   * consume bus headroom, ensuring full-power abilities get their exact demanded bar share without being clipped.
+   */
+  getActiveAllocations(registry) {
+    const list = Array.from(this._activeAllocations.values());
+    if (list.length === 0) return [];
+    const maxP = Math.max(1, this.getMaxPower(registry));
+    const fullAllocs = [];
+    const partialAllocs = [];
+    for (const alloc of list) {
+      if (!alloc.allowPartialPower) {
+        fullAllocs.push(alloc);
+      } else {
+        partialAllocs.push(alloc);
+      }
+    }
+    fullAllocs.sort((a, b) => a.order - b.order);
+    let allocatedFullWatts = 0;
+    for (const alloc of fullAllocs) {
+      if (allocatedFullWatts + alloc.demandedWatts <= maxP + 1e-4) {
+        alloc.grantedWatts = alloc.demandedWatts;
+        alloc.fraction = 1;
+        allocatedFullWatts += alloc.demandedWatts;
+      } else {
+        alloc.grantedWatts = 0;
+        alloc.fraction = 0;
+      }
+    }
+    const remainingHeadroom = Math.max(0, maxP - allocatedFullWatts);
+    let totalPartialDemanded = 0;
+    for (const alloc of partialAllocs) {
+      totalPartialDemanded += alloc.demandedWatts;
+    }
+    for (const alloc of partialAllocs) {
+      if (totalPartialDemanded <= remainingHeadroom + 1e-4) {
+        alloc.grantedWatts = alloc.demandedWatts;
+        alloc.fraction = 1;
+      } else if (totalPartialDemanded > 1e-4) {
+        alloc.grantedWatts = alloc.demandedWatts / totalPartialDemanded * remainingHeadroom;
+        alloc.fraction = alloc.grantedWatts / alloc.demandedWatts;
+      } else {
+        alloc.grantedWatts = 0;
+        alloc.fraction = 0;
+      }
+    }
+    return list.sort((a, b) => a.order - b.order);
+  }
+  /**
+   * Resets active demands and live power draw at the start of a tick.
+   */
+  beginTick() {
+    this.livePowerDraw = 0;
+    this.hadPhysicalExertion = false;
+  }
+  /**
+   * Registers or updates an ability's power demand.
+   */
+  registerDemand(abilityId, demandedWatts, allowPartialPower = true) {
+    const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
+    if (demandedWatts > 1e-3) {
+      const existing = this._demands.get(effectiveAbilityId);
+      if (existing) {
+        existing.demandedWatts = demandedWatts;
+        existing.allowPartialPower = allowPartialPower;
+        existing.lastRequestedTick = this._currentTick;
+      } else {
+        this._nextOrderId++;
+        this._demands.set(effectiveAbilityId, {
+          demandedWatts,
+          allowPartialPower,
+          order: this._nextOrderId,
+          lastRequestedTick: this._currentTick
+        });
+      }
+    } else {
+      this._demands.delete(effectiveAbilityId);
+    }
+    let sum = 0;
+    for (const d of this._demands.values()) {
+      sum += d.demandedWatts;
+    }
+    this._totalDemand = sum;
+  }
+  getDemand(abilityId) {
+    var _a;
+    return ((_a = this._demands.get(abilityId)) == null ? void 0 : _a.demandedWatts) ?? 0;
+  }
+  getTotalDemand() {
+    return this._totalDemand;
+  }
+  clearDemands() {
+    this._demands.clear();
+    this._totalDemand = 0;
+  }
+  get muscleEfficiency() {
+    return this.muscleEfficiencyProp.literalValue;
+  }
+  set muscleEfficiency(val) {
+    this.muscleEfficiencyProp.literalValue = Math.max(0.01, Math.min(1, val));
+  }
+  getMuscleEfficiency(registry) {
+    return Math.max(0.01, Math.min(1, this.muscleEfficiencyProp.get(registry)));
+  }
+  getCurrentWattage(registry) {
+    const val = this.currentWattageProp.get(registry);
+    return Math.max(val, this.recentPeakWattage);
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
+  }
+  getMaxStamina(registry) {
+    return this.maxStaminaProp.get(registry);
+  }
+  get currentStamina() {
+    return this.currentStaminaProp.literalValue;
+  }
+  set currentStamina(val) {
+    this.currentStaminaProp.literalValue = Math.max(0, val);
+  }
+  getCurrentStamina(registry) {
+    return this.currentStaminaProp.get(registry);
+  }
+  /**
+   * Resets energy bus to full stamina capacity, clears exhaustion, active allocations, and demands.
+   */
+  reset(registry) {
+    const maxS = this.getMaxStamina(registry);
+    this.currentStaminaProp.set(maxS, registry);
+    this.isExhausted = false;
+    this.livePowerDraw = 0;
+    this.currentWattageProp.set(0, registry);
+    this.recentPeakWattage = 0;
+    this.recentPeakHoldTimer = 0;
+    this.hadPhysicalExertion = false;
+    this.clearDemands();
+    this._activeAllocations.clear();
+  }
+  getStaminaRegenRate(registry) {
+    return this.staminaRegenRateProp.get(registry);
+  }
+  /**
+   * Checks if the bus can satisfy 100% full power for the requested watts and dt
+   * taking into account priority allocation, stamina, and energy pool.
+   */
+  canSatisfyFullPower(demandedWatts, dt, pool, registry, abilityId) {
+    if (!this.enabled || dt <= 0 || demandedWatts <= 0) return false;
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if (this.isExhausted || maxP <= 0 || curS <= 1e-4) return false;
+    let allocatedFull = 0;
+    for (const [id, rec] of this._demands.entries()) {
+      if (id !== abilityId && !rec.allowPartialPower) {
+        if (allocatedFull + rec.demandedWatts <= maxP + 1e-4) {
+          allocatedFull += rec.demandedWatts;
+        }
+      }
+    }
+    if (allocatedFull + demandedWatts > maxP + 1e-4) return false;
+    const maxWattsFromStamina = maxP * (curS / dt);
+    if (demandedWatts > maxWattsFromStamina + 1e-3) return false;
+    if (pool && !pool.infiniteEnergy) {
+      const curPoolE = pool.getCurrentEnergy(registry);
+      if (curPoolE < demandedWatts * dt - 1e-3) return false;
+    }
+    return true;
+  }
+  /**
+   * Checks if the bus can satisfy 100% full energy for an instantaneous impulse action.
+   * Instant burst actions are limited by available burst capacity: currentStamina * maxPower.
+   */
+  canSatisfyFullEnergy(joules, _minDt, pool, registry) {
+    if (joules <= 0) return true;
+    if (!this.enabled) return false;
+    if (this.isExhausted) return false;
+    const maxP = Math.max(1, this.getMaxPower(registry));
+    const curStamina = this.getCurrentStamina(registry);
+    const maxBurstCapacity = curStamina * maxP;
+    if (joules > maxBurstCapacity) return false;
+    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) < joules) return false;
+    return true;
+  }
+  /**
+   * Evaluates whether the bus has sufficient burst stamina, energy pool reserves,
+   * and power rating to support the requested power in isolation (assuming zero
+   * other abilities are drawing power).
+   * Used to distinguish between true exhaustion (which untoggles abilities like sprint)
+   * versus temporary contention starvation from competing abilities.
+   */
+  canSupportPowerInIsolation(_demandedWatts, minWattsThreshold, dt, pool, registry) {
+    if (!this.enabled || dt <= 0) return false;
+    if (this.isExhausted) return false;
+    const curStamina = this.getCurrentStamina(registry);
+    if (curStamina <= 1e-3) return false;
+    const maxP = this.getMaxPower(registry);
+    if (maxP < minWattsThreshold - 1e-3) return false;
+    if (pool && !pool.infiniteEnergy) {
+      const curEnergy = pool.getCurrentEnergy(registry);
+      if (curEnergy < minWattsThreshold * dt - 1e-3) return false;
+    }
+    return true;
+  }
+  /**
+   * Peeks how much power (in Watts) would be granted without consuming pool energy or draining stamina.
+   */
+  peekPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false, allowPartialPower = true, abilityId) {
+    if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
+      return 0;
+    }
+    const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if (this.isExhausted && !allowWhenExhausted || maxP <= 0 || curS <= 1e-4) {
+      return 0;
+    }
+    const fullDemands = [];
+    const partialDemands = [];
+    let includedCurrent = false;
+    for (const [id, rec] of this._demands.entries()) {
+      if (id === effectiveAbilityId) {
+        includedCurrent = true;
+        const updatedRec = { ...rec, demandedWatts: requestedPowerWatts, allowPartialPower };
+        if (!allowPartialPower) fullDemands.push({ id, rec: updatedRec });
+        else partialDemands.push({ id, rec: updatedRec });
+      } else {
+        if (!rec.allowPartialPower) fullDemands.push({ id, rec });
+        else partialDemands.push({ id, rec });
+      }
+    }
+    if (!includedCurrent) {
+      const dummyRec = {
+        demandedWatts: requestedPowerWatts,
+        allowPartialPower,
+        order: this._nextOrderId + 1,
+        lastRequestedTick: this._currentTick
+      };
+      if (!allowPartialPower) fullDemands.push({ id: effectiveAbilityId ?? "__peek", rec: dummyRec });
+      else partialDemands.push({ id: effectiveAbilityId ?? "__peek", rec: dummyRec });
+    }
+    fullDemands.sort((a, b) => a.rec.order - b.rec.order);
+    let allocatedFullWatts = 0;
+    let thisFullAllocated = 0;
+    for (const item of fullDemands) {
+      if (allocatedFullWatts + item.rec.demandedWatts <= maxP + 1e-4) {
+        allocatedFullWatts += item.rec.demandedWatts;
+        if (item.id === (effectiveAbilityId ?? "__peek")) {
+          thisFullAllocated = item.rec.demandedWatts;
+        }
+      } else {
+        if (item.id === (effectiveAbilityId ?? "__peek")) {
+          thisFullAllocated = 0;
+        }
+      }
+    }
+    for (const alloc of this._activeAllocations.values()) {
+      if (alloc.isBurst && !alloc.allowPartialPower && alloc.burstTimer && alloc.burstTimer > 0) {
+        if (alloc.id !== effectiveAbilityId) {
+          allocatedFullWatts += alloc.grantedWatts;
+        }
+      }
+    }
+    let targetWatts = 0;
+    if (!allowPartialPower) {
+      targetWatts = thisFullAllocated;
+      if (targetWatts < requestedPowerWatts - 1e-3) return 0;
+    } else {
+      const remainingHeadroom = Math.max(0, maxP - allocatedFullWatts);
+      let totalPartialDemanded = 0;
+      for (const item of partialDemands) {
+        totalPartialDemanded += item.rec.demandedWatts;
+      }
+      if (totalPartialDemanded <= remainingHeadroom + 1e-4) {
+        targetWatts = requestedPowerWatts;
+      } else if (totalPartialDemanded > 1e-4) {
+        targetWatts = requestedPowerWatts / totalPartialDemanded * remainingHeadroom;
+      } else {
+        targetWatts = 0;
+      }
+    }
+    if (targetWatts <= 1e-4) return 0;
+    const maxWattsFromStamina = maxP * (curS / dt);
+    if (!allowPartialPower && targetWatts > maxWattsFromStamina + 1e-3) return 0;
+    targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
+    if (targetWatts <= 1e-4) return 0;
+    if (pool) {
+      if (pool.infiniteEnergy) return targetWatts;
+      const curPoolE = pool.getCurrentEnergy(registry);
+      if (curPoolE <= 1e-4) return 0;
+      const energyNeededJoules = targetWatts * dt;
+      if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) return 0;
+      const grantedJoules = Math.min(curPoolE, energyNeededJoules);
+      return grantedJoules / dt;
+    }
+    return targetWatts;
+  }
+  /**
+   * Requests power draw (in Watts) over dt seconds.
+   * Priority Model:
+   * - Tier 1: Full-power demands (!allowPartialPower) evaluated in FIFO order.
+   * - Tier 2: Partial-power demands (allowPartialPower) share remaining headroom.
+   */
+  requestPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false, abilityId, allowPartialPower = true) {
+    var _a;
+    if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
+      return 0;
+    }
+    const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
+    const maxP = this.getMaxPower(registry);
+    const curS = this.getCurrentStamina(registry);
+    if (this.isExhausted && !allowWhenExhausted || maxP <= 0 || curS <= 1e-4) {
+      return 0;
+    }
+    if (effectiveAbilityId) {
+      this.registerDemand(effectiveAbilityId, requestedPowerWatts, allowPartialPower);
+    }
+    const fullDemands = [];
+    const partialDemands = [];
+    for (const [id, rec] of this._demands.entries()) {
+      if (!rec.allowPartialPower) {
+        fullDemands.push({ id, rec });
+      } else {
+        partialDemands.push({ id, rec });
+      }
+    }
+    fullDemands.sort((a, b) => a.rec.order - b.rec.order);
+    let allocatedFullWatts = 0;
+    let thisFullAllocated = 0;
+    for (const item of fullDemands) {
+      if (allocatedFullWatts + item.rec.demandedWatts <= maxP + 1e-4) {
+        allocatedFullWatts += item.rec.demandedWatts;
+        if (item.id === effectiveAbilityId) {
+          thisFullAllocated = item.rec.demandedWatts;
+        }
+      } else {
+        if (item.id === effectiveAbilityId) {
+          thisFullAllocated = 0;
+        }
+      }
+    }
+    for (const alloc of this._activeAllocations.values()) {
+      if (alloc.isBurst && !alloc.allowPartialPower && alloc.burstTimer && alloc.burstTimer > 0) {
+        if (alloc.id !== effectiveAbilityId) {
+          allocatedFullWatts += alloc.grantedWatts;
+        }
+      }
+    }
+    let targetWatts = 0;
+    if (!allowPartialPower) {
+      targetWatts = thisFullAllocated;
+      if (targetWatts < requestedPowerWatts - 1e-3) {
+        return 0;
+      }
+    } else {
+      const remainingHeadroom = Math.max(0, maxP - allocatedFullWatts);
+      let totalPartialDemanded = 0;
+      for (const item of partialDemands) {
+        totalPartialDemanded += item.rec.demandedWatts;
+      }
+      if (totalPartialDemanded <= remainingHeadroom + 1e-4) {
+        targetWatts = requestedPowerWatts;
+      } else if (totalPartialDemanded > 1e-4) {
+        targetWatts = requestedPowerWatts / totalPartialDemanded * remainingHeadroom;
+      } else {
+        targetWatts = 0;
+      }
+    }
+    if (targetWatts <= 1e-4) {
+      return 0;
+    }
+    const maxWattsFromStamina = maxP * (curS / dt);
+    if (!allowPartialPower && targetWatts > maxWattsFromStamina + 1e-3) {
+      return 0;
+    }
+    targetWatts = Math.min(targetWatts, Math.max(0, maxWattsFromStamina));
+    if (targetWatts <= 1e-4) {
+      this.isExhausted = true;
+      return 0;
+    }
+    let grantedWatts = targetWatts;
+    const energyNeededJoules = targetWatts * dt;
+    if (pool) {
+      if (!pool.infiniteEnergy) {
+        const curPoolE = pool.getCurrentEnergy(registry);
+        if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) {
+          return 0;
+        }
+      }
+      const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
+      if (grantedJoules <= 1e-4) {
+        return 0;
+      }
+      grantedWatts = grantedJoules / dt;
+    }
+    if (!allowPartialPower && grantedWatts < requestedPowerWatts - 1e-3) {
+      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      return 0;
+    }
+    if (grantedWatts > 0 && maxP > 0) {
+      this.hadPhysicalExertion = true;
+      const staminaDrain = grantedWatts / maxP * dt;
+      const nextS = Math.max(0, curS - staminaDrain);
+      this.currentStaminaProp.set(nextS, registry);
+      if (nextS <= 1e-4) {
+        this.isExhausted = true;
+      }
+    }
+    if (effectiveAbilityId) {
+      if (grantedWatts > 1e-3) {
+        const meta = ABILITY_METADATA[effectiveAbilityId] || {
+          name: effectiveAbilityId.charAt(0).toUpperCase() + effectiveAbilityId.slice(1),
+          color: "#06b6d4"
+        };
+        this._activeAllocations.set(effectiveAbilityId, {
+          id: effectiveAbilityId,
+          name: meta.name,
+          color: meta.color,
+          demandedWatts: requestedPowerWatts,
+          grantedWatts,
+          fraction: requestedPowerWatts > 0 ? grantedWatts / requestedPowerWatts : 1,
+          allowPartialPower,
+          order: ((_a = this._demands.get(effectiveAbilityId)) == null ? void 0 : _a.order) ?? this._nextOrderId,
+          isBurst: false,
+          lastTick: this._currentTick
+        });
+      } else {
+        this._activeAllocations.delete(effectiveAbilityId);
+      }
+    }
+    this.livePowerDraw += grantedWatts;
+    this.recentPeakWattage = Math.max(this.recentPeakWattage, this.livePowerDraw);
+    this.currentWattageProp.set(this.livePowerDraw, registry);
+    return grantedWatts;
+  }
+  /**
+   * Dedicated API for instantaneous work actions (jump, throw, pickup).
+   * Limits consumption to available burst capacity: currentStamina * maxPower.
+   * Deduces Joules from EnergyPool and drains burst stamina by (grantedJoules / maxPower) seconds.
+   * Emits a visual equivalent power surge so the power bar peaks at:
+   *   current continuous power + burst power consumption (where 1 Joule = 1 Watt equivalent).
+   */
+  requestInstantBurst(options) {
+    const {
+      abilityId: _abilityId,
+      demandedJoules,
+      allowPartialPower = false,
+      pool,
+      registry
+    } = options;
+    if (demandedJoules <= 0) {
+      return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
+    }
+    if (!this.enabled) {
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    const maxPower = Math.max(1, this.getMaxPower(registry));
+    const curStamina = this.getCurrentStamina(registry);
+    const maxBurstCapacity = Math.max(0, curStamina * maxPower);
+    const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry) : Infinity;
+    const availableJoules = Math.min(poolEnergy, maxBurstCapacity);
+    if (curStamina <= 1e-4) {
+      this.isExhausted = true;
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    if (availableJoules <= 1e-3) {
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    let grantedJoules = 0;
+    let fraction = 0;
+    if (demandedJoules <= availableJoules) {
+      grantedJoules = demandedJoules;
+      fraction = 1;
+    } else if (allowPartialPower) {
+      grantedJoules = availableJoules;
+      fraction = availableJoules / demandedJoules;
+    } else {
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    if (pool && !pool.infiniteEnergy) {
+      pool.consumePartial(grantedJoules, registry);
+    }
+    const staminaDrain = grantedJoules / maxPower;
+    const nextStamina = Math.max(0, curStamina - staminaDrain);
+    this.currentStaminaProp.set(nextStamina, registry);
+    if (nextStamina <= 1e-4) {
+      this.isExhausted = true;
+    }
+    this.hadPhysicalExertion = true;
+    const continuousBaseline = this.livePowerDraw;
+    const burstWatts = grantedJoules;
+    const peakWatts = Math.min(maxPower, continuousBaseline + burstWatts);
+    this.recentPeakWattage = Math.max(this.recentPeakWattage, peakWatts);
+    this.recentPeakHoldTimer = 0.08;
+    if (grantedJoules > 1e-3) {
+      this._nextOrderId++;
+      const meta = ABILITY_METADATA[options.abilityId] || {
+        name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
+        color: "#ec4899"
+      };
+      const visualGrantedWatts = Math.min(maxPower, grantedJoules);
+      this._activeAllocations.set(options.abilityId, {
+        id: options.abilityId,
+        name: meta.name,
+        color: meta.color,
+        demandedWatts: options.demandedJoules,
+        grantedWatts: visualGrantedWatts,
+        fraction,
+        allowPartialPower: options.allowPartialPower ?? false,
+        order: this._nextOrderId,
+        isBurst: true,
+        burstTimer: 0.55,
+        lastTick: this._currentTick
+      });
+    }
+    return {
+      granted: true,
+      grantedJoules,
+      fraction,
+      peakWatts
+    };
+  }
+  /**
+   * Charges a discrete burst of metabolic energy (Joules) for an instantaneous action.
+   * Delegates to requestInstantBurst so burst limits and visual peaks are unified.
+   */
+  requestEnergy(joules, minDt, pool, registry, allowPartialPower = true, abilityId = "instant_burst") {
+    const inferredId = abilityId !== "instant_burst" ? abilityId : Math.abs(minDt - 0.15) < 0.01 ? "pickup" : Math.abs(minDt - 0.08) < 0.01 ? "throw" : "instant_burst";
+    const res = this.requestInstantBurst({
+      abilityId: inferredId,
+      demandedJoules: joules,
+      allowPartialPower,
+      pool,
+      registry
+    });
+    return res.fraction;
+  }
+  /**
+   * Advances passive stamina regeneration only when the bus is resting (0 power drawn).
+   * Also cleans up demands and active allocations that were not requested in the tick.
+   */
+  update(dt, _pool, registry) {
+    if (!this.enabled || dt <= 0) return;
+    this._currentTick++;
+    for (const [id, rec] of this._demands.entries()) {
+      if (rec.lastRequestedTick < this._currentTick - 1) {
+        this._demands.delete(id);
+      }
+    }
+    let sum = 0;
+    for (const d of this._demands.values()) {
+      sum += d.demandedWatts;
+    }
+    this._totalDemand = sum;
+    for (const [id, alloc] of this._activeAllocations.entries()) {
+      if (alloc.isBurst) {
+        if (alloc.burstTimer !== void 0) {
+          alloc.burstTimer -= dt;
+          if (alloc.burstTimer <= 0) {
+            this._activeAllocations.delete(id);
+          }
+        }
+      } else {
+        if (alloc.lastTick !== void 0 && alloc.lastTick < this._currentTick - 1) {
+          this._activeAllocations.delete(id);
+        }
+      }
+    }
+    this.currentWattageProp.set(this.livePowerDraw, registry);
+    if (this.recentPeakHoldTimer > 0) {
+      this.recentPeakHoldTimer -= dt;
+      if (this.recentPeakHoldTimer <= 0) {
+        this.recentPeakWattage = this.livePowerDraw;
+      }
+    } else {
+      this.recentPeakWattage = this.livePowerDraw;
+    }
+    this.livePowerDraw = 0;
+    const maxS = this.getMaxStamina(registry);
+    let curS = this.getCurrentStamina(registry);
+    const regen = this.getStaminaRegenRate(registry);
+    const isResting = !this.hadPhysicalExertion;
+    if (isResting && curS < maxS) {
+      curS = Math.min(maxS, curS + regen * dt);
+      this.currentStaminaProp.set(curS, registry);
+    }
+    if (this.isExhausted) {
+      const recoveryThreshold = maxS * this.recoveryThresholdRatio;
+      if (curS >= recoveryThreshold) {
+        this.isExhausted = false;
+      }
+    }
+    this.hadPhysicalExertion = false;
+  }
+}
+class ConsumeModule {
+  constructor(options) {
+    __publicField(this, "id", "consume");
+    __publicField(this, "name", "Consume");
+    __publicField(this, "enabled", true);
+    /** List of consumable tags this character is capable of consuming */
+    __publicField(this, "acceptedTags", ["food"]);
+    /** Whether using this ability involves aiming in a direction (false for eating/drinking/consuming) */
+    __publicField(this, "involvesDirection", false);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if ((options == null ? void 0 : options.involvesDirection) !== void 0) this.involvesDirection = options.involvesDirection;
+    if ((options == null ? void 0 : options.acceptedTags) !== void 0) {
+      this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    }
+  }
+  /**
+   * Checks whether the given held object is valid for consumption by this character.
+   */
+  canConsume(heldObj) {
+    if (!this.enabled || !heldObj) return false;
+    const mod = heldObj.consumableModule;
+    if (!mod || !mod.enabled || mod.isConsumed) return false;
+    const itemTag = (mod.tag || "").trim().toLowerCase();
+    if (!itemTag) return false;
+    const matches = this.acceptedTags.some((t) => t.trim().toLowerCase() === itemTag);
+    return matches;
+  }
+  /**
+   * Performs continuous consumption of the held object.
+   */
+  consume(dt, consumer, heldObj, objects, arena) {
+    if (!this.canConsume(heldObj) || !heldObj.consumableModule) {
+      console.warn(`🍎 [ConsumeModule] Cannot consume object ${heldObj == null ? void 0 : heldObj.id}: canConsume=${this.canConsume(heldObj)}`);
+      return { watts: 0, joules: 0, isDepleted: false };
+    }
+    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    if (res.isDepleted) {
+      console.log(`🍎 [ConsumeModule] Object ${heldObj.id} depleted! isDepleted=true`);
+    }
+    return res;
+  }
+  /**
+   * Adds an accepted tag to this character's list.
+   */
+  addTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    if (!clean || this.hasTag(clean)) return false;
+    this.acceptedTags.push(clean);
+    return true;
+  }
+  /**
+   * Removes an accepted tag from this character's list.
+   */
+  removeTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    const idx = this.acceptedTags.findIndex((t) => t.trim().toLowerCase() === clean);
+    if (idx !== -1) {
+      this.acceptedTags.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Checks if an accepted tag is present on this character.
+   */
+  hasTag(tag) {
+    const clean = tag.trim().toLowerCase();
+    return this.acceptedTags.some((t) => t.trim().toLowerCase() === clean);
+  }
+  /**
+   * Handles registry tag rename events.
+   */
+  onTagRenamed(oldTag, newTag) {
+    const cleanOld = oldTag.trim().toLowerCase();
+    const cleanNew = newTag.trim().toLowerCase();
+    const idx = this.acceptedTags.findIndex((t) => t.trim().toLowerCase() === cleanOld);
+    if (idx !== -1) {
+      this.acceptedTags[idx] = cleanNew;
+    }
+  }
+  /**
+   * Handles registry tag deletion events.
+   */
+  onTagDeleted(deletedTag) {
+    const clean = deletedTag.trim().toLowerCase();
+    this.acceptedTags = this.acceptedTags.filter((t) => t.trim().toLowerCase() !== clean);
   }
 }
 class Character extends GameObject {
   constructor(options = {}) {
+    var _a;
     const initialColor = options.color ?? "#f59e0b";
+    const determinedRole = options.role ?? (options.controllerType === "none" ? "dummy" : options.controllerType === "remote" ? "remote_player" : options.controllerType === "ai" ? "local_ai" : "local_player");
+    const initialCharacterModule = options.characterModule !== void 0 ? options.characterModule : new CharacterModule({ role: determinedRole });
+    const initX = options.position ? options.position.x : options.x ?? 5;
+    const initY = options.position ? options.position.y : options.y ?? 7;
+    const initZ = ((_a = options.position) == null ? void 0 : _a.z) ?? 0;
     super({
       id: options.id,
-      name: options.name ?? `Player ${options.playerNumber ?? 1}`,
-      position: { x: options.x ?? 5, y: options.y ?? 7, z: 0 },
+      name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
+      position: { x: initX, y: initY, z: initZ },
       mass: options.mass ?? 1.2,
       colliderRadius: options.colliderRadius ?? 0.44,
       color: initialColor,
-      bounceMod: 0.1
+      bounceMod: 0.1,
+      dynamicGroundFrictionMod: options.dynamicGroundFrictionMod ?? 2,
+      staticGroundFrictionMod: options.staticGroundFrictionMod ?? 2,
+      damageSolverModule: options.damageSolverModule !== void 0 ? options.damageSolverModule : new DamageSolverModule(),
+      characterModule: initialCharacterModule
     });
-    __publicField(this, "strengthModule");
+    __publicField(this, "strengthProp");
     __publicField(this, "facingAngle");
     // Angle in radians
     __publicField(this, "lastMovementInputAngle", 0);
@@ -5996,6 +8129,8 @@ class Character extends GameObject {
     __publicField(this, "onSprintChange");
     // Base mass when not carrying anything
     __publicField(this, "baseMass", 1.2);
+    /** Spawn location used when respawning or resetting */
+    __publicField(this, "spawnPos");
     // Removable Modules
     __publicField(this, "walkingModule");
     __publicField(this, "pickupModule");
@@ -6003,7 +8138,18 @@ class Character extends GameObject {
     __publicField(this, "jumpModule");
     __publicField(this, "wallEdgeAssistModule");
     __publicField(this, "climbingModule");
+    __publicField(this, "healthModule");
+    __publicField(this, "consumeModule", new ConsumeModule());
+    __publicField(this, "energyPool");
+    __publicField(this, "energyBus");
+    __publicField(this, "energyBusses", /* @__PURE__ */ new Map());
+    /** Toggle indicating if jumping consumes energy from an Energy Bus */
+    __publicField(this, "jumpConsumesEnergy", true);
+    /** Whether jumping is allowed to run at partial impulse when bus power cannot provide 100% */
+    __publicField(this, "jumpAllowPartialPower", false);
+    __publicField(this, "jumpEnergyBusId", "bus_main");
     // Player identity & multiplayer slot
+    __publicField(this, "controllerType", "local");
     __publicField(this, "playerId", "keyboard");
     __publicField(this, "playerNumber", 1);
     __publicField(this, "playerColor", "#f59e0b");
@@ -6012,38 +8158,67 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
-    this.playerId = options.playerId ?? "keyboard";
-    this.playerNumber = options.playerNumber ?? 1;
+    __publicField(this, "isUsingItem", false);
+    __publicField(this, "eatRateWatts", 0);
+    this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
+    this.playerId = options.playerId ?? (determinedRole === "dummy" ? "dummy-1" : "keyboard");
+    this.playerNumber = options.playerNumber !== void 0 ? options.playerNumber : determinedRole === "dummy" ? 0 : 1;
     this.playerColor = initialColor;
     const isExplicitCustom = options.name ? !/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()) : false;
     this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
     this.baseMass = options.mass ?? 1.2;
-    this.strength = options.strength ?? 1;
     this.facingAngle = 0;
     this.heldObject = null;
     this.isAiming = false;
     this.aimTarget = null;
     this.activeTrajectory = null;
-    this.strengthModule = new StrengthModule({ strength: options.strength ?? 1 });
-    this.walkingModule = new WalkingModule();
-    this.pickupModule = new PickupModule();
-    this.throwModule = new ThrowModule();
-    this.jumpModule = new JumpModule();
-    this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    this.strengthProp = new DynamicProperty(options.strength ?? (determinedRole === "dummy" ? 0 : 1));
+    this.properties.add("strength", this.strengthProp.literalValue);
+    if (determinedRole === "dummy") {
+      this.walkingModule = null;
+      this.pickupModule = null;
+      this.throwModule = null;
+      this.jumpModule = null;
+      this.wallEdgeAssistModule = null;
+    } else {
+      this.walkingModule = new WalkingModule({
+        walkConsumesEnergy: false,
+        walkAllowPartialPower: false,
+        sprintConsumesEnergy: true,
+        sprintAllowPartialPower: true
+      });
+      this.walkingModule.walkEnergyBusId = "bus_main";
+      this.walkingModule.sprintEnergyBusId = "bus_main";
+      this.pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
+      this.pickupModule.energyBusId = "bus_main";
+      this.throwModule = new ThrowModule({ consumesEnergy: true });
+      this.throwModule.energyBusId = "bus_main";
+      this.jumpModule = new JumpModule();
+      this.jumpConsumesEnergy = true;
+      this.jumpAllowPartialPower = true;
+      this.jumpEnergyBusId = "bus_main";
+      this.wallEdgeAssistModule = new WallEdgeAssistModule();
+    }
     this.climbingModule = null;
+    this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
+    this.healthModule.energyBusId = "bus_main";
+    this.energyPool = new EnergyPool();
+    this.energyBus = new EnergyBus();
+    this.energyBusses.set(this.energyBus.id, this.energyBus);
+    this.properties.add("hpPerJoule", this.healthModule.hpPerJoule);
+    this.properties.add("muscleEfficiency", this.energyBus.muscleEfficiency);
+    if (!this.damageSolverModule) {
+      this.damageSolverModule = new DamageSolverModule();
+    }
   }
   get hasStrength() {
-    return Boolean(this.strengthModule && this.strengthModule.enabled && this.strengthModule.strength > 0);
+    return this.strength > 0;
   }
   get strength() {
-    return this.hasStrength ? this.strengthModule.strength : 0;
+    return this.strengthProp.get(this.properties);
   }
   set strength(val) {
-    if (this.strengthModule) {
-      this.strengthModule.strength = Math.max(0.1, val);
-    } else {
-      this.strengthModule = new StrengthModule({ strength: val });
-    }
+    this.strengthProp.set(Math.max(0.1, val), this.properties);
   }
   setSprinting(sprint) {
     var _a;
@@ -6056,35 +8231,162 @@ class Character extends GameObject {
    * Effective mass: base character mass plus the mass of any currently carried object.
    */
   get mass() {
-    const base = this.hasMass ? this.baseMass : 0;
+    const base = this.hasMass && this.rigidbodyModule ? this.rigidbodyModule.massProp.get(this.properties) : 0;
     const carried = this.heldObject && this.heldObject.hasMass ? this.heldObject.mass : 0;
     return base + carried;
   }
   set mass(val) {
     this.baseMass = Math.max(0.1, val);
-    if (this.massModule) {
-      this.massModule.mass = this.baseMass;
+    if (this.rigidbodyModule) {
+      this.rigidbodyModule.massProp.set(this.baseMass, this.properties);
     }
   }
   get carriedMass() {
     return this.heldObject && this.heldObject.hasMass ? this.heldObject.mass : 0;
   }
   get hangDistance() {
-    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistance : 0.1;
+    return this.wallEdgeAssistModule ? this.wallEdgeAssistModule.hangDistanceProp.get(this.properties) : 0.1;
   }
   set hangDistance(val) {
     if (this.wallEdgeAssistModule) {
-      this.wallEdgeAssistModule.hangDistance = Math.max(0, val);
+      this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
+  }
+  /**
+   * Retrieves an EnergyBus by ID, falling back to the default energyBus if matching or requested
+   */
+  getEnergyBus(busId) {
+    if (!busId || busId === "default" || busId === "bus_main") {
+      return this.energyBus;
+    }
+    return this.energyBusses.get(busId) || this.energyBus;
+  }
+  get role() {
+    return this.characterModule ? this.characterModule.role : "local_player";
+  }
+  set role(val) {
+    if (this.characterModule) {
+      this.characterModule.role = val;
+    } else {
+      this.characterModule = new CharacterModule({ role: val });
+    }
+  }
+  get isDummy() {
+    return this.role === "dummy";
+  }
+  /**
+   * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
+   * These provide a ghostly preview of the energy cost before committing to the action.
+   */
+  getAnticipatedModifiers() {
+    const list = [];
+    if (this.activeTrajectory && this.heldObject && this.throwModule && this.throwModule.enabled && this.throwModule.consumesEnergy) {
+      const launchVel = this.activeTrajectory.launchVel;
+      if (launchVel) {
+        const heldMass = this.heldObject.hasMass ? Math.max(0.1, this.heldObject.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const bus = this.getEnergyBus(this.throwModule.energyBusId);
+        const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        list.push({
+          id: "anticipated_throw",
+          abilityId: "throw",
+          name: "Throw",
+          color: "#f43f5e",
+          amount: metabolicJoules,
+          isBurst: true,
+          isPositive: false,
+          order: 950
+        });
+      }
+    }
+    return list;
+  }
+  canConsumeHeldObject() {
+    return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
+  }
+  /**
+   * Returns true if the currently held object has an inherent primary ability other than throw.
+   */
+  hasPrimaryItemAbility() {
+    if (!this.heldObject) return false;
+    return this.canConsumeHeldObject();
+  }
+  /**
+   * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
+   */
+  isPrimaryAbilityNonDirectional() {
+    if (!this.heldObject) return false;
+    if (this.canConsumeHeldObject()) {
+      return this.consumeModule ? !this.consumeModule.involvesDirection : true;
+    }
+    return false;
+  }
+  get isEatingFood() {
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
+  }
+  get isConsumingItem() {
+    return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
+  }
+  /**
+   * Drops or unholds the currently held object safely.
+   */
+  unhold() {
+    if (!this.heldObject) return null;
+    const obj = this.heldObject;
+    this.heldObject = null;
+    obj.isHeld = false;
+    obj.heldBy = null;
+    return obj;
   }
   /**
    * Attempts to jump using the attached JumpModule.
    */
   jump(arena, movementInput) {
-    if (this.jumpModule) {
-      return this.jumpModule.jump(this, arena, movementInput);
+    if (!this.jumpModule || !this.jumpModule.enabled || !this.hasVerticalPosition) {
+      return false;
     }
-    return false;
+    const surfaceZ = this.supportingSurfaceHeight ?? 0;
+    const isGrounded = this.isRestingOnSurface || Math.abs(this.position.z - surfaceZ) <= 0.08 && Math.abs(this.verticalVelocity) <= 0.8;
+    if (!isGrounded || this.isHeld) {
+      return false;
+    }
+    const baseMass = Math.max(0.2, this.baseMass ?? 1.2);
+    const totalMass = Math.max(0.2, this.mass);
+    const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
+    const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
+    const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
+    if (targetTakeoffSpeed <= 0.01) return false;
+    const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
+    const bus = this.getEnergyBus(this.jumpEnergyBusId);
+    const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+    const metabolicJoules = Math.max(15, mechanicalJoules / efficiency);
+    let energyFraction = 1;
+    if (this.jumpConsumesEnergy) {
+      if (bus) {
+        if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
+          return false;
+        }
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "jump",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: this.jumpAllowPartialPower,
+          pool: this.energyPool,
+          registry: this.properties
+        });
+        if (!burstRes.granted || !this.jumpAllowPartialPower && burstRes.fraction < 1) {
+          return false;
+        }
+        energyFraction = burstRes.fraction;
+      }
+    }
+    const jumped = this.jumpModule.jump(this, arena, movementInput);
+    if (jumped) {
+      const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
+      this.verticalVelocity = achievableSpeed;
+    }
+    return jumped;
   }
   /**
    * Safely releases any held objects, clears references, and dismounts
@@ -6112,8 +8414,9 @@ class Character extends GameObject {
    * Faces in the direction the player is aiming. If not aiming (or no aim function),
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
-  updateFacingDirection(_isAimingInput, aimTargetPos, movementInput) {
-    if (this.heldObject && aimTargetPos) {
+  updateFacingDirection(isAimingInput, aimTargetPos, movementInput) {
+    const shouldFaceCursor = this.heldObject && aimTargetPos && (!this.isPrimaryAbilityNonDirectional() || isAimingInput);
+    if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;
       const dy = aimTargetPos.y - this.position.y;
       if (Math.hypot(dx, dy) > 0.05) {
@@ -6132,46 +8435,117 @@ class Character extends GameObject {
   /**
    * Main character update tick
    */
-  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false) {
-    var _a;
+  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
+    var _a, _b, _c, _d, _e;
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
-    if (this.climbingModule) {
-      this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
+    if (this.energyBusses.size > 0) {
+      for (const bus of this.energyBusses.values()) {
+        if (bus && bus.enabled) bus.beginTick();
+      }
+    } else if (this.energyBus && this.energyBus.enabled) {
+      this.energyBus.beginTick();
     }
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    const canWalk = Boolean(
+      this.walkingModule && this.walkingModule.enabled && (this.isRestingOnSurface ? this.hasFriction : this.walkingModule.walkInAir)
+    );
+    const inputMag = Math.hypot(movementInput.x, movementInput.y);
+    const isMoving = inputMag > 0.05;
+    const isActivelySprinting = Boolean(((_a = this.walkingModule) == null ? void 0 : _a.canSprint) && this.isSprinting);
+    let sprintingNow = isActivelySprinting;
+    if (sprintingNow && ((_b = this.walkingModule) == null ? void 0 : _b.sprintConsumesEnergy)) {
+      const sprintBus = this.getEnergyBus(this.walkingModule.sprintEnergyBusId);
+      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(this.properties) <= 1e-4)) {
+        sprintingNow = false;
+        this.setSprinting(false);
+      }
+    }
+    const locomotionConsumesEnergy = sprintingNow ? (_c = this.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = this.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
+    if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule) {
+      const carriedMass = this.carriedMass;
+      const loadFactor = carriedMass / (Math.max(0.1, this.strength) * 8);
+      const targetSpeed = sprintingNow ? this.walkingModule.maxSprintSpeedProp.get(this.properties) : this.walkingModule.maxWalkSpeedProp.get(this.properties);
+      const v = targetSpeed / (1 + loadFactor);
+      const g = 9.81;
+      const Cr = sprintingNow ? 0.4 : 0.28;
+      const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1;
+      const resForce = totalMass * g * Cr;
+      const locomotionWatts = resForce * v / 0.25;
+      const bus = this.getEnergyBus(sprintingNow ? this.walkingModule.sprintEnergyBusId : this.walkingModule.walkEnergyBusId);
+      if (bus) {
+        const locomotionId = sprintingNow ? "sprint" : "walk";
+        bus.activeLocomotionId = locomotionId;
+        bus.registerDemand(
+          locomotionId,
+          locomotionWatts,
+          sprintingNow ? this.walkingModule.sprintAllowPartialPower : this.walkingModule.walkAllowPartialPower
+        );
+      }
+    }
+    if (this.healthModule && this.healthModule.enabled && this.healthModule.consumesEnergy) {
+      const curHp = this.healthModule.getCurrentHp(this.properties);
+      const maxHp = this.healthModule.getMaxHp(this.properties);
+      if (curHp > 0 && curHp < maxHp - 1e-3) {
+        const healRate = this.healthModule.getMaxHealRate(this.properties);
+        if (healRate > 0) {
+          const hpPerJoule = this.healthModule.getHpPerJoule(this.properties);
+          const healthWatts = healRate / Math.max(1e-4, hpPerJoule);
+          const bus = this.getEnergyBus(this.healthModule.energyBusId);
+          if (bus) {
+            bus.registerDemand("health_regen", healthWatts);
+          }
+        }
+      }
+    }
+    const canClimb = Boolean(
+      this.climbingModule && this.climbingModule.enabled && this.hasVerticalPosition && this.hasStrength
+    );
+    if (canClimb && this.isClimbing && ((_e = this.climbingModule) == null ? void 0 : _e.consumesEnergy)) {
+      const totalMass = this.mass;
+      const g = arena.gravity || 9.81;
+      const isometricHoldingWatts = totalMass * g * 0.35 / 0.25;
+      const maxAscentSpeed = this.climbingModule.maxClimbSpeedProp.get(this.properties);
+      const ascentWatts = isClimbInput ? totalMass * g * maxAscentSpeed / 0.25 : 0;
+      const climbWatts = isometricHoldingWatts + ascentWatts;
+      const bus = this.getEnergyBus(this.climbingModule.energyBusId);
+      if (bus) {
+        bus.registerDemand("climbing", climbWatts);
+      }
+    }
+    if (canClimb) {
+      this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
+    } else if (this.isClimbing) {
+      this.isClimbing = false;
+    }
+    const canJump = Boolean(this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition);
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
-    if (this.walkingModule) {
+    if (canWalk) {
       this.walkingModule.update(this, movementInput, dt, arena);
+    } else {
+      this.isActivelyWalking = false;
     }
     this.updatePosition(dt, arena);
-    if (isClimbInput && !this.isClimbing && this.jumpModule && this.jumpModule.enabled) {
+    if (this.healthModule && this.healthModule.enabled) {
+      this.healthModule.update(dt, this, arena);
+    }
+    if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
-    let lockedTarget = null;
-    if (autoLock && aimTargetPos && this.throwModule) {
-      lockedTarget = this.throwModule.findHoveredEntity(
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena,
-        this,
-        this.heldObject,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        Infinity
-      );
-    }
-    if (lockedTarget) {
-      const dx = lockedTarget.position.x - this.position.x;
-      const dy = lockedTarget.position.y - this.position.y;
-      if (Math.hypot(dx, dy) > 0.05) {
-        this.facingAngle = Math.atan2(dy, dx);
+    if (this.energyBusses.size > 0) {
+      for (const bus of this.energyBusses.values()) {
+        if (bus && bus.enabled) {
+          bus.update(dt, this.energyPool, this.properties);
+        }
       }
-    } else {
-      this.updateFacingDirection(isAimingInput, aimTargetPos, movementInput);
+    } else if (this.energyBus && this.energyBus.enabled) {
+      this.energyBus.update(dt, this.energyPool, this.properties);
     }
+    const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
+    const targetFacePos = canAimThrow && lockedAimPos ? lockedAimPos : aimTargetPos;
+    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
     if (this.heldObject) {
       const heldPos = this.calculateHeldObjectPosition(arena);
       this.heldObject.position.x = heldPos.x;
@@ -6183,7 +8557,7 @@ class Character extends GameObject {
     }
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
-    if (this.heldObject && this.throwModule && isAimingInput && aimTargetPos) {
+    if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,
@@ -6191,19 +8565,19 @@ class Character extends GameObject {
         arena,
         entities ?? arena.entities,
         arena.visualAltitudeScale,
-        autoLock
+        autoLock,
+        lockedAimPos,
+        aimLockDelta
       );
-      if (((_a = this.activeTrajectory) == null ? void 0 : _a.isAutoLocked) && this.activeTrajectory.targetObject) {
-        const dx = this.activeTrajectory.targetObject.position.x - this.position.x;
-        const dy = this.activeTrajectory.targetObject.position.y - this.position.y;
-        if (Math.hypot(dx, dy) > 0.05) {
-          this.facingAngle = Math.atan2(dy, dx);
-          if (this.heldObject) {
-            const heldPos = this.calculateHeldObjectPosition(arena);
-            this.heldObject.position.x = heldPos.x;
-            this.heldObject.position.y = heldPos.y;
-            this.heldObject.position.z = heldPos.z;
-          }
+      if (canAimThrow && lockedAimPos) {
+        const lockDx = lockedAimPos.x - this.position.x;
+        const lockDy = lockedAimPos.y - this.position.y;
+        if (Math.hypot(lockDx, lockDy) > 0.05) {
+          this.facingAngle = Math.atan2(lockDy, lockDx);
+          const heldPos = this.calculateHeldObjectPosition(arena);
+          this.heldObject.position.x = heldPos.x;
+          this.heldObject.position.y = heldPos.y;
+          this.heldObject.position.z = heldPos.z;
         }
       }
     } else {
@@ -6326,6 +8700,143 @@ class Character extends GameObject {
     }
     return { x: targetX, y: targetY, z: heldZ };
   }
+  /**
+   * Resets all dynamic properties and module states of the character
+   * back to their original/maximum values (such as HP, energy pool, and stamina).
+   */
+  resetDynamicValues() {
+    if (this.healthModule) {
+      this.healthModule.reset(this.properties);
+    }
+    if (this.energyPool) {
+      this.energyPool.reset(this.properties);
+    }
+    for (const bus of this.energyBusses.values()) {
+      bus.reset(this.properties);
+    }
+    const origStrength = this.properties.get("strength");
+    if (origStrength !== void 0) {
+      this.strengthProp.set(origStrength, this.properties);
+    }
+  }
+  /**
+   * Primary entry point for dying and respawning.
+   * Clears held objects, climbing state, velocities, places character at spawn,
+   * and delegates each module with dynamic properties to reset to initial values.
+   */
+  dieAndRespawn(_arena, explicitPos) {
+    var _a;
+    if (this.heldObject) {
+      this.heldObject.isHeld = false;
+      this.heldObject.heldBy = null;
+      this.heldObject = null;
+    }
+    this.isClimbing = false;
+    this.standingWall = null;
+    if (this.wallEdgeAssistModule) {
+      this.wallEdgeAssistModule.isAssistClampArmed = false;
+      this.wallEdgeAssistModule.hasMovedOntoWall = false;
+    }
+    this.velocity = { x: 0, y: 0 };
+    this.verticalVelocity = 0;
+    const spawns = HealthModule.RESPAWN_SPAWNS;
+    const picked = explicitPos ?? this.spawnPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
+    this.position.x = chosenSpawn.x;
+    this.position.y = chosenSpawn.y;
+    this.position.z = chosenSpawn.z;
+    this.supportingSurfaceHeight = 0;
+    this.isRespawnLocked = true;
+    this.authoritativeRespawnPos = { ...chosenSpawn };
+    this.isAwaitingRespawn = false;
+    this.resetDynamicValues();
+    if ((_a = this.healthModule) == null ? void 0 : _a.onDeathRespawn) {
+      this.healthModule.onDeathRespawn(this, chosenSpawn);
+    }
+  }
+}
+class SweptMath {
+  /**
+   * Solves quadratic earliest Time-of-Impact for two moving spheres over interval dt.
+   * Tests: || (pB0 + vB * t) - (pA0 + vA * t) ||^2 = (rA + rB)^2 for t in [0, dt].
+   * Returns hit details if an impact occurs, or null if trajectories miss or separate.
+   */
+  static sweepCircleVsCircle(pA0, vA, rA, pB0, vB, rB, dt) {
+    const minDist = rA + rB;
+    const r0x = pB0.x - pA0.x;
+    const r0y = pB0.y - pA0.y;
+    const vRelX = vB.x - vA.x;
+    const vRelY = vB.y - vA.y;
+    const aQuad = vRelX * vRelX + vRelY * vRelY;
+    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
+    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
+    if (cQuad < -1e-4) {
+      return null;
+    }
+    if (aQuad < 1e-7) {
+      return null;
+    }
+    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+    if (disc < 0) {
+      return null;
+    }
+    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
+    if (tHit > dt) {
+      return null;
+    }
+    const pAtX = pA0.x + vA.x * tHit;
+    const pAtY = pA0.y + vA.y * tHit;
+    const pBtX = pB0.x + vB.x * tHit;
+    const pBtY = pB0.y + vB.y * tHit;
+    const contactDx = pBtX - pAtX;
+    const contactDy = pBtY - pAtY;
+    const contactDist = Math.hypot(contactDx, contactDy);
+    const normX = contactDist > 1e-4 ? contactDx / contactDist : 1;
+    const normY = contactDist > 1e-4 ? contactDy / contactDist : 0;
+    const velAlongNormal = vRelX * normX + vRelY * normY;
+    if (velAlongNormal >= -1e-4) {
+      return null;
+    }
+    return {
+      tHit,
+      contactDx,
+      contactDy,
+      contactDist,
+      normX,
+      normY,
+      velAlongNormal
+    };
+  }
+  /**
+   * Tests contact between a moving circle and an axis-aligned bounding box wall.
+   */
+  static testCircleVsWall(posX, posY, radius, velX, velY, wallX, wallY, wallWidth, wallHeight, dt) {
+    const cx = Math.max(wallX, Math.min(posX, wallX + wallWidth));
+    const cy = Math.max(wallY, Math.min(posY, wallY + wallHeight));
+    const dx = posX - cx;
+    const dy = posY - cy;
+    const distSq = dx * dx + dy * dy;
+    if (distSq >= radius * radius) {
+      return null;
+    }
+    const dist = Math.sqrt(distSq);
+    const normX = dist > 1e-4 ? dx / dist : velX < 0 ? 1 : -1;
+    const normY = dist > 1e-4 ? dy / dist : velY < 0 ? 1 : -1;
+    const overlap = radius - dist;
+    const speed = Math.hypot(velX, velY);
+    let alpha = 0;
+    if (speed > 1e-4) {
+      alpha = Math.min(1, Math.max(0, overlap / (speed * dt)));
+    }
+    return {
+      tHitFraction: alpha,
+      cx,
+      cy,
+      normX,
+      normY,
+      overlap
+    };
+  }
 }
 class CollisionResolver {
   /**
@@ -6388,12 +8899,12 @@ class CollisionResolver {
    * Objects have stepped forward. If overlapping, rolls both bodies back along their travel paths
    * to the exact tangent contact point, applies mass/restitution impulses, then finishes the step.
    */
-  static resolvePairDiscreteTOI(a, b, _arena, dt) {
+  static resolvePairDiscreteTOI(a, b, _arena, _dt) {
     const minDist = a.colliderRadius + b.colliderRadius;
     const dx = b.position.x - a.position.x;
     const dy = b.position.y - a.position.y;
     const distSq = dx * dx + dy * dy;
-    if (distSq >= minDist * minDist || distSq <= 1e-8) {
+    if (distSq >= minDist * minDist) {
       return false;
     }
     if (a.isImmovable && b.isImmovable) {
@@ -6401,59 +8912,75 @@ class CollisionResolver {
     }
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
-    const normX = dx / dist;
-    const normY = dy / dist;
+    let normX;
+    let normY;
+    if (dist > 1e-4) {
+      normX = dx / dist;
+      normY = dy / dist;
+    } else {
+      const randomAngle = Math.random() * Math.PI * 2;
+      normX = Math.cos(randomAngle);
+      normY = Math.sin(randomAngle);
+    }
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
-    const relSpeed = Math.hypot(relVx, relVy);
-    let alpha = 0;
-    if (relSpeed > 1e-4) {
-      alpha = Math.min(1, Math.max(0, overlap / (relSpeed * dt)));
+    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    const isClosingVertically = b.position.z >= a.position.z && relVz < -0.05 || a.position.z >= b.position.z && relVz > 0.05;
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
     }
-    const rewindDt = alpha * dt;
-    if (!a.isImmovable) {
-      a.position.x -= a.velocity.x * rewindDt;
-      a.position.y -= a.velocity.y * rewindDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x -= b.velocity.x * rewindDt;
-      b.position.y -= b.velocity.y * rewindDt;
-    }
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    if (contactDist < minDist && contactDist > 1e-5) {
-      const penetration = minDist - contactDist;
-      const cNormX = contactDx / contactDist;
-      const cNormY = contactDy / contactDist;
-      if (b.isImmovable) {
-        a.position.x -= cNormX * penetration;
-        a.position.y -= cNormY * penetration;
-      } else if (a.isImmovable) {
-        b.position.x += cNormX * penetration;
-        b.position.y += cNormY * penetration;
-      } else {
-        const fix = penetration * 0.5;
-        a.position.x -= cNormX * fix;
-        a.position.y -= cNormY * fix;
-        b.position.x += cNormX * fix;
-        b.position.y += cNormY * fix;
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invSum = invA + invB;
+    if (invSum > 1e-4) {
+      const fixA = overlap * (invA / invSum);
+      const fixB = overlap * (invB / invSum);
+      if (!a.isImmovable) {
+        a.position.x -= normX * fixA;
+        a.position.y -= normY * fixA;
+      }
+      if (!b.isImmovable) {
+        b.position.x += normX * fixB;
+        b.position.y += normY * fixB;
+      }
+    } else {
+      if (!a.isImmovable && !b.isImmovable) {
+        const fix = overlap * 0.5;
+        a.position.x -= normX * fix;
+        a.position.y -= normY * fix;
+        b.position.x += normX * fix;
+        b.position.y += normY * fix;
+      } else if (!a.isImmovable) {
+        a.position.x -= normX * overlap;
+        a.position.y -= normY * overlap;
+      } else if (!b.isImmovable) {
+        b.position.x += normX * overlap;
+        b.position.y += normY * overlap;
       }
     }
+    const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const restitution = Math.max(bounceA, bounceB);
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "discrete_toi");
-    const remDt = (1 - alpha) * dt;
-    if (!a.isImmovable) {
-      a.position.x += a.velocity.x * remDt;
-      a.position.y += a.velocity.y * remDt;
-    }
-    if (!b.isImmovable) {
-      b.position.x += b.velocity.x * remDt;
-      b.position.y += b.velocity.y * remDt;
-    }
+    const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
+    const normZ = closingVertSpeed > 1e-3 ? b.position.z >= a.position.z ? 1 : -1 : 0;
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "discrete_toi",
+      effectiveImpactSpeed,
+      normZ
+    );
     return true;
   }
   /**
@@ -6462,57 +8989,70 @@ class CollisionResolver {
    * advances to exact time of impact, reflects velocities, and steps remainder.
    */
   static resolvePairContinuousSwept(a, b, _arena, dt) {
-    const minDist = a.colliderRadius + b.colliderRadius;
     if (a.isImmovable && b.isImmovable) {
       return false;
     }
-    const pA0x = a.isImmovable ? a.position.x : a.position.x - a.velocity.x * dt;
-    const pA0y = a.isImmovable ? a.position.y : a.position.y - a.velocity.y * dt;
-    const pB0x = b.isImmovable ? b.position.x : b.position.x - b.velocity.x * dt;
-    const pB0y = b.isImmovable ? b.position.y : b.position.y - b.velocity.y * dt;
-    const vAx = a.isImmovable ? 0 : a.velocity.x;
-    const vAy = a.isImmovable ? 0 : a.velocity.y;
-    const vBx = b.isImmovable ? 0 : b.velocity.x;
-    const vBy = b.isImmovable ? 0 : b.velocity.y;
-    const r0x = pB0x - pA0x;
-    const r0y = pB0y - pA0y;
-    const vRelX = vBx - vAx;
-    const vRelY = vBy - vAy;
-    const aQuad = vRelX * vRelX + vRelY * vRelY;
-    const bQuad = 2 * (r0x * vRelX + r0y * vRelY);
-    const cQuad = r0x * r0x + r0y * r0y - minDist * minDist;
-    if (cQuad < -1e-4) {
-      return this.resolvePairDiscreteTOI(a, b, _arena, dt);
-    }
-    if (aQuad < 1e-7) {
+    const pA0 = {
+      x: a.isImmovable ? a.position.x : a.position.x - a.velocity.x * dt,
+      y: a.isImmovable ? a.position.y : a.position.y - a.velocity.y * dt
+    };
+    const pB0 = {
+      x: b.isImmovable ? b.position.x : b.position.x - b.velocity.x * dt,
+      y: b.isImmovable ? b.position.y : b.position.y - b.velocity.y * dt
+    };
+    const vA = { x: a.isImmovable ? 0 : a.velocity.x, y: a.isImmovable ? 0 : a.velocity.y };
+    const vB = { x: b.isImmovable ? 0 : b.velocity.x, y: b.isImmovable ? 0 : b.velocity.y };
+    const sweptHit = SweptMath.sweepCircleVsCircle(
+      pA0,
+      vA,
+      a.colliderRadius,
+      pB0,
+      vB,
+      b.colliderRadius,
+      dt
+    );
+    if (!sweptHit) {
+      const r0x = pB0.x - pA0.x;
+      const r0y = pB0.y - pA0.y;
+      const minDist = a.colliderRadius + b.colliderRadius;
+      if (r0x * r0x + r0y * r0y < minDist * minDist) {
+        return this.resolvePairDiscreteTOI(a, b, _arena, dt);
+      }
       return false;
     }
-    const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-    if (disc < 0) {
-      return false;
-    }
-    const tHit = Math.max(0, (-bQuad - Math.sqrt(Math.max(0, disc))) / (2 * aQuad));
-    if (tHit > dt) {
-      return false;
-    }
+    const { tHit, normX, normY, velAlongNormal } = sweptHit;
     if (!a.isImmovable) {
-      a.position.x = pA0x + a.velocity.x * tHit;
-      a.position.y = pA0y + a.velocity.y * tHit;
+      a.position.x = pA0.x + a.velocity.x * tHit;
+      a.position.y = pA0.y + a.velocity.y * tHit;
     }
     if (!b.isImmovable) {
-      b.position.x = pB0x + b.velocity.x * tHit;
-      b.position.y = pB0y + b.velocity.y * tHit;
+      b.position.x = pB0.x + b.velocity.x * tHit;
+      b.position.y = pB0.y + b.velocity.y * tHit;
     }
-    const contactDx = b.position.x - a.position.x;
-    const contactDy = b.position.y - a.position.y;
-    const contactDist = Math.hypot(contactDx, contactDy);
-    const normX = contactDist > 1e-4 ? contactDx / contactDist : 1;
-    const normY = contactDist > 1e-4 ? contactDy / contactDist : 0;
-    const velAlongNormal = vRelX * normX + vRelY * normY;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = Math.max(bounceA, bounceB);
-    this.applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, "continuous_swept");
+    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    const isClosingVertically = b.position.z >= a.position.z && relVz < -0.05 || a.position.z >= b.position.z && relVz > 0.05;
+    const closingVertSpeed = isClosingVertically ? Math.abs(relVz) : 0;
+    let effectiveImpactSpeed = velAlongNormal < 0 ? Math.abs(velAlongNormal) : 0;
+    if (closingVertSpeed > 0.05) {
+      effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
+    }
+    const normZ = closingVertSpeed > 1e-3 ? b.position.z >= a.position.z ? 1 : -1 : 0;
+    this.applyImpulseAtContact(
+      a,
+      b,
+      normX,
+      normY,
+      velAlongNormal,
+      restitution,
+      "continuous_swept",
+      effectiveImpactSpeed,
+      normZ
+    );
     const remDt = dt - tHit;
     if (!a.isImmovable) {
       a.position.x += a.velocity.x * remDt;
@@ -6532,17 +9072,22 @@ class CollisionResolver {
     if (entity.position.z > wall.wallHeight) return false;
     const r = entity.colliderRadius;
     const mode = globalMode === "naive" ? "naive" : globalMode === "continuous" ? "continuous" : globalMode === "discrete" ? "discrete" : entity.getEffectiveCollisionMode(dt);
-    const cx = Math.max(wall.x, Math.min(entity.position.x, wall.x + wall.width));
-    const cy = Math.max(wall.y, Math.min(entity.position.y, wall.y + wall.height));
-    const dx = entity.position.x - cx;
-    const dy = entity.position.y - cy;
-    const distSq = dx * dx + dy * dy;
-    if (distSq >= r * r) {
+    const wallHit = SweptMath.testCircleVsWall(
+      entity.position.x,
+      entity.position.y,
+      r,
+      entity.velocity.x,
+      entity.velocity.y,
+      wall.x,
+      wall.y,
+      wall.width,
+      wall.height,
+      dt
+    );
+    if (!wallHit) {
       return false;
     }
-    const dist = Math.sqrt(distSq);
-    const normX = dist > 1e-4 ? dx / dist : entity.velocity.x < 0 ? 1 : -1;
-    const normY = dist > 1e-4 ? dy / dist : entity.velocity.y < 0 ? 1 : -1;
+    const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
     const bRestitution = entity.isCharacter ? 0 : entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0;
     if (mode === "naive") {
       entity.position.x = cx + normX * r;
@@ -6554,12 +9099,6 @@ class CollisionResolver {
       }
       entity.lastCollisionType = "naive";
       return true;
-    }
-    const overlap = r - dist;
-    const speed = Math.hypot(entity.velocity.x, entity.velocity.y);
-    let alpha = 0;
-    if (speed > 1e-4) {
-      alpha = Math.min(1, Math.max(0, overlap / (speed * dt)));
     }
     entity.position.x = cx + normX * (r + 1e-3);
     entity.position.y = cy + normY * (r + 1e-3);
@@ -6576,13 +9115,29 @@ class CollisionResolver {
     entity.lastContactPoint = { x: cx, y: cy };
     entity.lastContactNormal = { x: normX, y: normY };
     entity.lastCollisionTime = nowWall;
+    if (vn < 0) {
+      const impactSpeed = Math.abs(vn);
+      const absFrac = Math.max(0, 1 - Math.min(1, bRestitution));
+      const shock = impactSpeed * 60 * absFrac;
+      if (shock > 0.01) {
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY
+        });
+      }
+    }
     return true;
   }
   /**
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
-  static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType) {
-    if (velAlongNormal >= 0) return;
+  static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType, customImpactSpeed, _normZ = 0) {
+    const isClosingIn2D = velAlongNormal < 0;
+    const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
+    if (!isClosingIn2D && impactSpeed <= 0.05) return;
     a.wakeUp();
     b.wakeUp();
     const isMasslessA = !a.hasMass;
@@ -6599,89 +9154,124 @@ class CollisionResolver {
     a.lastCollisionTime = now;
     b.lastCollisionTime = now;
     if (a.isImmovable && b.isImmovable) return;
-    if (b.isImmovable) {
-      if (isMasslessA) {
+    let normalImpulse = 0;
+    const mA = a.hasMass ? a.mass : 0;
+    const mB = b.hasMass ? b.mass : 0;
+    const invMassA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
+    const invMassB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invMassSum = invMassA + invMassB;
+    if (isClosingIn2D) {
+      if (b.isImmovable) {
+        if (isMasslessA) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          a.velocity.x -= normX * closingSpeed * (1 + restitution);
+          a.velocity.y -= normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassA;
+          a.velocity.x -= normalImpulse * invMassA * normX;
+          a.velocity.y -= normalImpulse * invMassA * normY;
+        }
+      } else if (a.isImmovable) {
+        if (isMasslessB) {
+          const closingSpeed = Math.abs(velAlongNormal);
+          b.velocity.x += normX * closingSpeed * (1 + restitution);
+          b.velocity.y += normY * closingSpeed * (1 + restitution);
+        } else {
+          normalImpulse = -(1 + restitution) * velAlongNormal / invMassB;
+          b.velocity.x += normalImpulse * invMassB * normX;
+          b.velocity.y += normalImpulse * invMassB * normY;
+        }
+      } else if (isMasslessA && isMasslessB) {
+        const impulse = -velAlongNormal * 0.5 * (1 + restitution);
+        a.velocity.x -= impulse * normX;
+        a.velocity.y -= impulse * normY;
+        b.velocity.x += impulse * normX;
+        b.velocity.y += impulse * normY;
+      } else if (!isMasslessA && isMasslessB) {
+        const closingSpeed = Math.abs(velAlongNormal);
+        b.velocity.x += normX * closingSpeed * (1 + restitution);
+        b.velocity.y += normY * closingSpeed * (1 + restitution);
+      } else if (isMasslessA && !isMasslessB) {
         const closingSpeed = Math.abs(velAlongNormal);
         a.velocity.x -= normX * closingSpeed * (1 + restitution);
         a.velocity.y -= normY * closingSpeed * (1 + restitution);
       } else {
-        const mA2 = a.mass;
-        const invMassA2 = 1 / mA2;
-        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassA2;
-        a.velocity.x -= normalImpulse2 * invMassA2 * normX;
-        a.velocity.y -= normalImpulse2 * invMassA2 * normY;
+        normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
+        a.velocity.x -= normalImpulse * invMassA * normX;
+        a.velocity.y -= normalImpulse * invMassA * normY;
+        b.velocity.x += normalImpulse * invMassB * normX;
+        b.velocity.y += normalImpulse * invMassB * normY;
+        const isCharCharContact = a.isCharacter && b.isCharacter;
+        const tangX = -normY;
+        const tangY = normX;
+        const relVx = b.velocity.x - a.velocity.x;
+        const relVy = b.velocity.y - a.velocity.y;
+        const relVt = relVx * tangX + relVy * tangY;
+        if (!isCharCharContact && Math.abs(relVt) > 1e-3) {
+          const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
+          const beta = 0.4;
+          const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
+          const maxFricImpulse = muObj * Math.abs(normalImpulse);
+          const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
+          a.velocity.x += fricImpulse * invMassA * tangX;
+          a.velocity.y += fricImpulse * invMassA * tangY;
+          b.velocity.x -= fricImpulse * invMassB * tangX;
+          b.velocity.y -= fricImpulse * invMassB * tangY;
+          if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
+            const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
+            a.rollModule.angularVelocity.z += spinImpulse;
+            a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
+          }
+          if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
+            const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
+            b.rollModule.angularVelocity.z -= spinImpulseB;
+            b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
+          }
+        }
       }
-      return;
     }
-    if (a.isImmovable) {
-      if (isMasslessB) {
-        const closingSpeed = Math.abs(velAlongNormal);
-        b.velocity.x += normX * closingSpeed * (1 + restitution);
-        b.velocity.y += normY * closingSpeed * (1 + restitution);
-      } else {
-        const mB2 = b.mass;
-        const invMassB2 = 1 / mB2;
-        const normalImpulse2 = -(1 + restitution) * velAlongNormal / invMassB2;
-        b.velocity.x += normalImpulse2 * invMassB2 * normX;
-        b.velocity.y += normalImpulse2 * invMassB2 * normY;
-      }
-      return;
+    const relSpeed = impactSpeed;
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
+    const absFracA = Math.max(0, 1 - Math.min(1, bModA));
+    const absFracB = Math.max(0, 1 - Math.min(1, bModB));
+    let deltaVa = relSpeed * 0.5;
+    let deltaVb = relSpeed * 0.5;
+    if (a.isImmovable && !b.isImmovable) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
+    } else if (!a.isImmovable && b.isImmovable) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && !isMasslessB && invMassSum > 1e-4) {
+      deltaVa = relSpeed * (invMassA / invMassSum);
+      deltaVb = relSpeed * (invMassB / invMassSum);
+    } else if (isMasslessA && !isMasslessB) {
+      deltaVa = relSpeed;
+      deltaVb = 0;
+    } else if (!isMasslessA && isMasslessB) {
+      deltaVa = 0;
+      deltaVb = relSpeed;
     }
-    if (isMasslessA && isMasslessB) {
-      const impulse = -velAlongNormal * 0.5 * (1 + restitution);
-      a.velocity.x -= impulse * normX;
-      a.velocity.y -= impulse * normY;
-      b.velocity.x += impulse * normX;
-      b.velocity.y += impulse * normY;
-      return;
+    const shockA = Math.abs(deltaVa) * 60 * absFracA;
+    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+    if (shockA > 0.01) {
+      a.dispatchImpact({
+        absorbedShock: shockA,
+        impactSpeed: relSpeed,
+        otherEntity: b,
+        normalX: -normX,
+        normalY: -normY
+      });
     }
-    if (!isMasslessA && isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      b.velocity.x += normX * closingSpeed * (1 + restitution);
-      b.velocity.y += normY * closingSpeed * (1 + restitution);
-      return;
-    }
-    if (isMasslessA && !isMasslessB) {
-      const closingSpeed = Math.abs(velAlongNormal);
-      a.velocity.x -= normX * closingSpeed * (1 + restitution);
-      a.velocity.y -= normY * closingSpeed * (1 + restitution);
-      return;
-    }
-    const mA = a.mass;
-    const mB = b.mass;
-    const invMassA = 1 / mA;
-    const invMassB = 1 / mB;
-    const invMassSum = invMassA + invMassB;
-    const normalImpulse = -(1 + restitution) * velAlongNormal / invMassSum;
-    a.velocity.x -= normalImpulse * invMassA * normX;
-    a.velocity.y -= normalImpulse * invMassA * normY;
-    b.velocity.x += normalImpulse * invMassB * normX;
-    b.velocity.y += normalImpulse * invMassB * normY;
-    const tangX = -normY;
-    const tangY = normX;
-    const relVx = b.velocity.x - a.velocity.x;
-    const relVy = b.velocity.y - a.velocity.y;
-    const relVt = relVx * tangX + relVy * tangY;
-    if (Math.abs(relVt) > 1e-3) {
-      const muObj = 0.35 * Math.sqrt(a.dynamicGroundFrictionMod * b.dynamicGroundFrictionMod);
-      const beta = 0.4;
-      const stickImpulse = Math.abs(relVt) / (invMassSum * (1 + 1 / beta));
-      const maxFricImpulse = muObj * Math.abs(normalImpulse);
-      const fricImpulse = Math.min(stickImpulse, maxFricImpulse) * Math.sign(relVt);
-      a.velocity.x += fricImpulse * invMassA * tangX;
-      a.velocity.y += fricImpulse * invMassA * tangY;
-      b.velocity.x -= fricImpulse * invMassB * tangX;
-      b.velocity.y -= fricImpulse * invMassB * tangY;
-      if (a.rollModule && a.rollModule.enabled && a.colliderRadius > 0) {
-        const spinImpulse = fricImpulse / (beta * a.mass * a.colliderRadius);
-        a.rollModule.angularVelocity.z += spinImpulse;
-        a.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, a.rollModule.angularVelocity.z));
-      }
-      if (b.rollModule && b.rollModule.enabled && b.colliderRadius > 0) {
-        const spinImpulseB = fricImpulse / (beta * b.mass * b.colliderRadius);
-        b.rollModule.angularVelocity.z -= spinImpulseB;
-        b.rollModule.angularVelocity.z = Math.max(-30, Math.min(30, b.rollModule.angularVelocity.z));
-      }
+    if (shockB > 0.01) {
+      b.dispatchImpact({
+        absorbedShock: shockB,
+        impactSpeed: relSpeed,
+        otherEntity: a,
+        normalX: normX,
+        normalY: normY
+      });
     }
   }
   /**
@@ -6704,11 +9294,19 @@ class CollisionResolver {
           const dy = b.position.y - a.position.y;
           const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
-          if (dist2DSq < minDist * minDist && dist2DSq > 1e-6) {
+          if (dist2DSq < minDist * minDist) {
             const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
-            const normX = dx / dist;
-            const normY = dy / dist;
+            let normX;
+            let normY;
+            if (dist > 1e-4) {
+              normX = dx / dist;
+              normY = dy / dist;
+            } else {
+              const randomAngle = Math.random() * Math.PI * 2;
+              normX = Math.cos(randomAngle);
+              normY = Math.sin(randomAngle);
+            }
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
             const velAlongNormal = relVx * normX + relVy * normY;
@@ -7084,7 +9682,7 @@ class RollModule {
      * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
      * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
      */
-    __publicField(this, "rollResistance", 0.4);
+    __publicField(this, "rollResistanceProp");
     /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
     __publicField(this, "visualPhase", 0);
     var _a, _b, _c;
@@ -7094,7 +9692,16 @@ class RollModule {
       y: ((_b = options.angularVelocity) == null ? void 0 : _b.y) ?? 0,
       z: ((_c = options.angularVelocity) == null ? void 0 : _c.z) ?? 0
     };
-    this.rollResistance = options.rollResistance ?? 0.4;
+    this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
+  }
+  get rollResistance() {
+    return this.rollResistanceProp.literalValue;
+  }
+  set rollResistance(val) {
+    this.rollResistanceProp.literalValue = val;
+  }
+  getRollResistance(registry) {
+    return this.rollResistanceProp.get(registry);
   }
   /**
    * Total magnitude of 3D angular velocity (|ω| in rad/s)
@@ -7112,6 +9719,648 @@ class RollModule {
     }
   }
 }
+class DamageAuraModule {
+  constructor(options) {
+    __publicField(this, "id", "damageAura");
+    __publicField(this, "name", "Damage Aura");
+    __publicField(this, "enabled", true);
+    /** Radius in world units within which objects take damage */
+    __publicField(this, "damageRadiusProp");
+    /** Health points drained per second (HP / s) */
+    __publicField(this, "damageRateProp");
+    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
+    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get damageRadius() {
+    return this.damageRadiusProp.literalValue;
+  }
+  set damageRadius(val) {
+    this.damageRadiusProp.literalValue = Math.max(0.1, val);
+  }
+  get damageRate() {
+    return this.damageRateProp.literalValue;
+  }
+  set damageRate(val) {
+    this.damageRateProp.literalValue = Math.max(0, val);
+  }
+  getDamageRadius(registry) {
+    return this.damageRadiusProp.get(registry);
+  }
+  getDamageRate(registry) {
+    return this.damageRateProp.get(registry);
+  }
+  /**
+   * Continuous update tick:
+   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
+   */
+  update(dt, sourceEntity, arenaOrTargets) {
+    if (!this.enabled || dt <= 0) return;
+    const registry = sourceEntity.properties;
+    const radius = this.getDamageRadius(registry);
+    const rate = this.getDamageRate(registry);
+    if (radius <= 0.01 || rate <= 0) return;
+    const damageThisFrame = rate * dt;
+    const srcX = sourceEntity.position.x;
+    const srcY = sourceEntity.position.y;
+    const srcZ = sourceEntity.position.z ?? 0;
+    const radiusSq = radius * radius;
+    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
+    for (const target of entities) {
+      if (target === sourceEntity) continue;
+      const healthMod = target.healthModule;
+      if (!healthMod || !healthMod.enabled) continue;
+      const targetX = target.position.x;
+      const targetY = target.position.y;
+      const targetZ = target.position.z ?? 0;
+      const dx = targetX - srcX;
+      const dy = targetY - srcY;
+      const dz = targetZ - srcZ;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq <= radiusSq) {
+        healthMod.takeDamage(damageThisFrame, target.properties, {
+          id: "damage_aura",
+          name: "Aura",
+          type: "continuous",
+          rate,
+          color: "#ef4444",
+          isHeal: false
+        });
+      }
+    }
+  }
+}
+class ConsumableModule {
+  constructor(options) {
+    __publicField(this, "id", "consumable");
+    __publicField(this, "name", "Consumable");
+    __publicField(this, "enabled", true);
+    /** Category/type tag of this consumable (e.g. "food", "potion", "battery") */
+    __publicField(this, "tag", "food");
+    /** Total initial energy capacity stored within this consumable (Joules) */
+    __publicField(this, "totalEnergyJoulesProp");
+    /** Current remaining energy available to be consumed (Joules) */
+    __publicField(this, "remainingEnergyJoulesProp");
+    /** Rate at which nutrition is absorbed while being consumed (Watts = Joules / sec) */
+    __publicField(this, "consumeRateWattsProp");
+    /** Optional bonus healing rate while consuming (HP / sec) */
+    __publicField(this, "healRateProp");
+    /** Minimum visual scale floor (e.g. 0.40 = 40% of original size) to keep partially eaten items visible */
+    __publicField(this, "minScaleFloor", 0.4);
+    /** Minimum absolute physical collider radius (units) */
+    __publicField(this, "minRadiusFloor", 0.15);
+    /** Track initial unscaled radius of the parent object */
+    __publicField(this, "initialColliderRadius", 0.26);
+    /** Flag indicating whether the item has been completely consumed */
+    __publicField(this, "isConsumed", false);
+    this.tag = ((options == null ? void 0 : options.tag) ?? "food").trim().toLowerCase() || "food";
+    const total = (options == null ? void 0 : options.totalEnergyJoules) ?? 2e3;
+    this.totalEnergyJoulesProp = new DynamicProperty(total);
+    this.remainingEnergyJoulesProp = new DynamicProperty((options == null ? void 0 : options.remainingEnergyJoules) ?? total);
+    this.consumeRateWattsProp = new DynamicProperty((options == null ? void 0 : options.consumeRateWatts) ?? (options == null ? void 0 : options.eatRateWatts) ?? 400);
+    this.healRateProp = new DynamicProperty((options == null ? void 0 : options.healRate) ?? 0);
+    if ((options == null ? void 0 : options.minScaleFloor) !== void 0) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);
+    if ((options == null ? void 0 : options.minRadiusFloor) !== void 0) this.minRadiusFloor = Math.max(0.08, options.minRadiusFloor);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get totalEnergyJoules() {
+    return this.totalEnergyJoulesProp.literalValue;
+  }
+  set totalEnergyJoules(val) {
+    this.totalEnergyJoulesProp.literalValue = Math.max(10, val);
+  }
+  get remainingEnergyJoules() {
+    return this.remainingEnergyJoulesProp.literalValue;
+  }
+  set remainingEnergyJoules(val) {
+    this.remainingEnergyJoulesProp.literalValue = Math.max(0, Math.min(this.totalEnergyJoules, val));
+  }
+  get consumeRateWatts() {
+    return this.consumeRateWattsProp.literalValue;
+  }
+  set consumeRateWatts(val) {
+    this.consumeRateWattsProp.literalValue = Math.max(10, val);
+  }
+  // Legacy alias for eatRateWatts
+  get eatRateWatts() {
+    return this.consumeRateWatts;
+  }
+  set eatRateWatts(val) {
+    this.consumeRateWatts = val;
+  }
+  get healRate() {
+    return this.healRateProp.literalValue;
+  }
+  set healRate(val) {
+    this.healRateProp.literalValue = Math.max(0, val);
+  }
+  getTotalEnergy(registry) {
+    return Math.max(1, this.totalEnergyJoulesProp.get(registry));
+  }
+  getRemainingEnergy(registry) {
+    return Math.max(0, this.remainingEnergyJoulesProp.get(registry));
+  }
+  getConsumeRate(registry) {
+    return Math.max(1, this.consumeRateWattsProp.get(registry));
+  }
+  getEatRate(registry) {
+    return this.getConsumeRate(registry);
+  }
+  getHealRate(registry) {
+    return Math.max(0, this.healRateProp.get(registry));
+  }
+  /**
+   * Calculates the current volumetric scale factor based on remaining energy.
+   * Uses cube-root volumetric scaling with a configurable minimum scale floor,
+   * ensuring that even low-energy crumbs remain easily visible and grabbable.
+   */
+  getScale(registry) {
+    const total = this.getTotalEnergy(registry);
+    const remaining = this.getRemainingEnergy(registry);
+    if (remaining <= 1e-3) return 0;
+    const ratio = Math.max(0, Math.min(1, remaining / total));
+    const volumetricScale = Math.cbrt(ratio);
+    return Math.max(this.minScaleFloor, volumetricScale);
+  }
+  /**
+   * Continuous consume action executed when a character consumes this held object.
+   * Transfers energy into the consumer's EnergyPool, optionally restores HP,
+   * updates physical size, and disposes of the object when 100% depleted.
+   */
+  consume(dt, consumer, consumableObj, objects, arena) {
+    if (!this.enabled || dt <= 0 || this.isConsumed) {
+      return { watts: 0, joules: 0, isDepleted: this.isConsumed };
+    }
+    const registry = consumableObj.properties;
+    const remaining = this.getRemainingEnergy(registry);
+    if (remaining <= 1e-3) {
+      this.finishConsumption(consumer, consumableObj, objects, arena);
+      return { watts: 0, joules: 0, isDepleted: true };
+    }
+    const rateWatts = this.getConsumeRate(registry);
+    const demandJoules = rateWatts * dt;
+    const transferJoules = Math.min(remaining, demandJoules);
+    const newRemaining = Math.max(0, remaining - transferJoules);
+    this.remainingEnergyJoulesProp.set(newRemaining, registry);
+    if (consumer.energyPool && consumer.energyPool.enabled) {
+      const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
+      const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
+      const updatedEnergy = Math.min(maxEnergy, curEnergy + transferJoules);
+      consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
+    }
+    const healHpPerSec = this.getHealRate(registry);
+    if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
+      const healAmt = healHpPerSec * dt;
+      consumer.healthModule.heal(healAmt, consumer.properties, {
+        id: "consumable_nutrition",
+        name: this.tag ? `Consumable (${this.tag})` : "Consumable",
+        type: "continuous",
+        rate: healHpPerSec,
+        color: "#22c55e",
+        isHeal: true
+      });
+    }
+    if (!this.initialColliderRadius || this.initialColliderRadius <= 0) {
+      this.initialColliderRadius = consumableObj.colliderRadius > 0 ? consumableObj.colliderRadius : 0.26;
+    }
+    const currentScale = this.getScale(registry);
+    const targetRadius = Math.max(this.minRadiusFloor, this.initialColliderRadius * currentScale);
+    consumableObj.colliderRadius = targetRadius;
+    if (consumableObj.colliderModule) {
+      consumableObj.colliderModule.radius = targetRadius;
+    }
+    const isDepleted = newRemaining <= 1e-3;
+    if (isDepleted) {
+      this.finishConsumption(consumer, consumableObj, objects, arena);
+    }
+    return {
+      watts: rateWatts,
+      joules: transferJoules,
+      isDepleted
+    };
+  }
+  // Legacy eat alias
+  eat(dt, consumer, consumableObj, arena, objects) {
+    return this.consume(dt, consumer, consumableObj, objects, arena);
+  }
+  /**
+   * Finalizes the consumption of food when all Joules are drained.
+   * Drops the object from the character's hands and removes it from the world.
+   */
+  finishConsumption(consumer, consumableObj, objects, _arena) {
+    var _a;
+    console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${((_a = consumableObj.heldBy) == null ? void 0 : _a.name) || consumer.name}`);
+    this.isConsumed = true;
+    this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
+    if (typeof consumer._onConsumableConsumed === "function") {
+      try {
+        consumer._onConsumableConsumed(consumableObj.id);
+      } catch (_) {
+      }
+    }
+    if (typeof consumableObj._onConsumed === "function") {
+      try {
+        consumableObj._onConsumed(consumableObj.id);
+      } catch (_) {
+      }
+    }
+    if (consumer.heldObject === consumableObj) {
+      consumer.heldObject = null;
+    }
+    consumableObj.isHeld = false;
+    consumableObj.heldBy = null;
+    if (objects && Array.isArray(objects)) {
+      const idx = objects.indexOf(consumableObj);
+      if (idx !== -1) {
+        objects.splice(idx, 1);
+      }
+    }
+    if (_arena && Array.isArray(_arena.entities)) {
+      const aIdx = _arena.entities.indexOf(consumableObj);
+      if (aIdx !== -1) {
+        _arena.entities.splice(aIdx, 1);
+      }
+    }
+  }
+}
+class SceneSpawner {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "enabled", true);
+    __publicField(this, "prefabId");
+    /** Interval in minutes between spawn attempts (e.g. 0.20 min = 12s, 1.0 min = 60s) */
+    __publicField(this, "intervalMinutes", 0.2);
+    /** Maximum number of active live instances of this prefab allowed in the scene */
+    __publicField(this, "maxCount", 5);
+    /** Elapsed time in seconds towards next spawn */
+    __publicField(this, "timerSeconds", 0);
+    this.id = options.id;
+    this.name = options.name || "Scene Spawner";
+    if (options.enabled !== void 0) this.enabled = options.enabled;
+    this.prefabId = options.prefabId;
+    if (options.intervalMinutes !== void 0) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
+    if (options.maxCount !== void 0) this.maxCount = Math.max(1, options.maxCount);
+  }
+  /**
+   * Returns current count of active live instances of this prefab in the scene.
+   */
+  getActiveCount(objects) {
+    return objects.filter((o) => o.prefabId === this.prefabId).length;
+  }
+  /**
+   * Advances timer and spawns an instance when interval expires, unless maxCount is reached.
+   */
+  update(dt, arena, objects, prefabManager2) {
+    if (!this.enabled || !arena) return null;
+    const activeCount = this.getActiveCount(objects);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    this.timerSeconds += dt;
+    const targetIntervalSec = this.intervalMinutes * 60;
+    if (this.timerSeconds >= targetIntervalSec) {
+      this.timerSeconds = 0;
+      return this.spawnNow(arena, objects, prefabManager2);
+    }
+    return null;
+  }
+  /**
+   * Immediately spawns an instance of the assigned prefab at a valid random open ground spot.
+   */
+  spawnNow(arena, objects, prefabManager2) {
+    if (!arena) return null;
+    const activeCount = this.getActiveCount(objects);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    const pos = this.findRandomGroundPosition(arena);
+    const instance = prefabManager2.spawn(this.prefabId, pos, arena, objects);
+    return instance;
+  }
+  /**
+   * Finds a random open ground coordinate in the arena away from perimeter and solid walls.
+   */
+  findRandomGroundPosition(arena) {
+    const margin = 1.5;
+    const minX = margin;
+    const maxX = Math.max(margin + 1, arena.width - margin);
+    const minY = margin;
+    const maxY = Math.max(margin + 1, arena.height - margin);
+    for (let i = 0; i < 25; i++) {
+      const rx = minX + Math.random() * (maxX - minX);
+      const ry = minY + Math.random() * (maxY - minY);
+      const tileX = Math.floor(rx);
+      const tileY = Math.floor(ry);
+      if (!arena.hasWall(tileX, tileY)) {
+        return { x: rx, y: ry, z: 0 };
+      }
+    }
+    return { x: arena.width / 2, y: arena.height / 2, z: 0 };
+  }
+}
+class Prefab {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "icon");
+    __publicField(this, "archetype");
+    this.id = options.id;
+    this.name = options.name;
+    this.icon = options.icon ?? "📦";
+    this.archetype = options.archetype;
+  }
+  /**
+   * Instantiates a new live GameObject from this prefab.
+   */
+  instantiate(pos, arena) {
+    const GameObjectClass = this.archetype.constructor;
+    let cloneConsumable = null;
+    if (this.archetype.consumableModule) {
+      const src = this.archetype.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    const spawnPos = {
+      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
+      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
+      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
+    };
+    const instance = new GameObjectClass({
+      name: this.archetype.name,
+      position: spawnPos,
+      color: this.archetype.color,
+      visualShape: this.archetype.visualShape,
+      mass: this.archetype.mass,
+      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
+      bounceMod: this.archetype.bounceMod,
+      hasGravity: this.archetype.hasGravity,
+      hasVerticalPosition: this.archetype.hasVerticalPosition,
+      consumableModule: cloneConsumable
+    });
+    instance.prefabId = this.id;
+    instance.overriddenProperties = /* @__PURE__ */ new Set();
+    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
+      arena.syncEntitiesWithWalls([instance]);
+    }
+    return instance;
+  }
+  /**
+   * Updates a property on the prefab archetype and cascades the change to all
+   * live instances that have not overridden this property.
+   */
+  setProperty(propKey, value, liveObjects) {
+    this.applyPropertyToEntity(this.archetype, propKey, value);
+    for (const obj of liveObjects) {
+      if (obj.prefabId === this.id) {
+        if (!obj.overriddenProperties.has(propKey)) {
+          this.applyPropertyToEntity(obj, propKey, value);
+        }
+      }
+    }
+  }
+  applyPropertyToEntity(ent, propKey, value) {
+    switch (propKey) {
+      case "name":
+        ent.name = String(value);
+        break;
+      case "color":
+        ent.color = String(value);
+        break;
+      case "visualShape":
+        ent.visualShape = value === "box" ? "box" : "circle";
+        break;
+      case "mass":
+        ent.mass = Number(value);
+        if (ent.rigidbodyModule) ent.rigidbodyModule.massProp.literalValue = Number(value);
+        break;
+      case "colliderRadius":
+        ent.colliderRadius = Number(value);
+        if (ent.colliderModule) ent.colliderModule.radius = Number(value);
+        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
+        break;
+      case "consumable_totalEnergy":
+        if (ent.consumableModule) {
+          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
+          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
+            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
+          }
+        }
+        break;
+      case "consumable_consumeRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_healRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.healRateProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_tag":
+        if (ent.consumableModule) {
+          ent.consumableModule.tag = String(value);
+        }
+        break;
+    }
+  }
+}
+class PrefabManager {
+  constructor() {
+    __publicField(this, "prefabs", /* @__PURE__ */ new Map());
+    __publicField(this, "onPrefabChangedCallbacks", /* @__PURE__ */ new Set());
+    this.initDefaultPrefabs();
+  }
+  initDefaultPrefabs() {
+    const appleArchetype = new GameObject({
+      id: "archetype_apple",
+      name: "Apple",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#22c55e",
+      visualShape: "circle",
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        totalEnergyJoules: 2e3,
+        remainingEnergyJoules: 2e3,
+        consumeRateWatts: 400,
+        healRate: 0,
+        minScaleFloor: 0.35,
+        minRadiusFloor: 0.12
+      })
+    });
+    const applePrefab = new Prefab({
+      id: "prefab_apple",
+      name: "Apple",
+      icon: "🍏",
+      archetype: appleArchetype
+    });
+    this.prefabs.set(applePrefab.id, applePrefab);
+  }
+  getAll() {
+    return Array.from(this.prefabs.values());
+  }
+  get(id) {
+    return this.prefabs.get(id);
+  }
+  /**
+   * Creates a new Prefab from an existing scene GameObject.
+   * Links the source entity to the new prefab as its first instance.
+   */
+  createFromEntity(entity, name) {
+    const id = `prefab_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
+    const prefabName = name || entity.name || "Custom Prefab";
+    const icon = entity.consumableModule ? "🍎" : entity.visualShape === "box" ? "📦" : "⚪";
+    const GameObjectClass = entity.constructor;
+    let cloneConsumable = null;
+    if (entity.consumableModule) {
+      const src = entity.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    const archetype = new GameObjectClass({
+      name: prefabName,
+      position: { x: 0, y: 0, z: 0 },
+      color: entity.color,
+      visualShape: entity.visualShape,
+      mass: entity.mass,
+      colliderRadius: entity.consumableModule ? entity.consumableModule.initialColliderRadius || entity.colliderRadius : entity.colliderRadius,
+      bounceMod: entity.bounceMod,
+      hasGravity: entity.hasGravity,
+      hasVerticalPosition: entity.hasVerticalPosition,
+      consumableModule: cloneConsumable
+    });
+    const prefab = new Prefab({
+      id,
+      name: prefabName,
+      icon,
+      archetype
+    });
+    this.prefabs.set(id, prefab);
+    entity.prefabId = id;
+    entity.overriddenProperties.clear();
+    this.notifyChanged();
+    return prefab;
+  }
+  /**
+   * Instantiates a prefab into the scene.
+   */
+  spawn(prefabId, pos, arena, objects) {
+    const prefab = this.prefabs.get(prefabId);
+    if (!prefab) return null;
+    const instance = prefab.instantiate(pos, arena);
+    if (objects && !objects.includes(instance)) {
+      objects.push(instance);
+    }
+    return instance;
+  }
+  /**
+   * Deletes a prefab without deleting live instances.
+   * Any live instances simply have their prefabId cleared.
+   */
+  delete(prefabId, liveObjects) {
+    if (!this.prefabs.has(prefabId)) return false;
+    this.prefabs.delete(prefabId);
+    if (liveObjects) {
+      for (const obj of liveObjects) {
+        if (obj.prefabId === prefabId) {
+          obj.prefabId = null;
+          obj.overriddenProperties.clear();
+        }
+      }
+    }
+    this.notifyChanged();
+    return true;
+  }
+  onPrefabsChanged(cb) {
+    this.onPrefabChangedCallbacks.add(cb);
+    return () => this.onPrefabChangedCallbacks.delete(cb);
+  }
+  notifyChanged() {
+    for (const cb of this.onPrefabChangedCallbacks) {
+      cb();
+    }
+  }
+}
+const prefabManager = new PrefabManager();
+class SceneSpawnerManager {
+  constructor(pm = prefabManager) {
+    __publicField(this, "spawners", /* @__PURE__ */ new Map());
+    __publicField(this, "onSpawnersChangedCallbacks", /* @__PURE__ */ new Set());
+    __publicField(this, "prefabManager");
+    this.prefabManager = pm;
+    this.initDefaultSpawners();
+  }
+  initDefaultSpawners() {
+    const appleSpawner = new SceneSpawner({
+      id: "spawner_apple_default",
+      name: "Random Apple Spawner",
+      enabled: true,
+      prefabId: "prefab_apple",
+      intervalMinutes: 0.25,
+      // every 15 seconds
+      maxCount: 5
+      // up to 5 apples in scene at once
+    });
+    this.spawners.set(appleSpawner.id, appleSpawner);
+  }
+  getAll() {
+    return Array.from(this.spawners.values());
+  }
+  get(id) {
+    return this.spawners.get(id);
+  }
+  create(options) {
+    const spawner = new SceneSpawner(options);
+    this.spawners.set(spawner.id, spawner);
+    this.notifyChanged();
+    return spawner;
+  }
+  delete(id) {
+    const deleted = this.spawners.delete(id);
+    if (deleted) {
+      this.notifyChanged();
+    }
+    return deleted;
+  }
+  update(dt, arena, objects) {
+    for (const spawner of this.spawners.values()) {
+      if (spawner.enabled) {
+        spawner.update(dt, arena, objects, this.prefabManager);
+      }
+    }
+  }
+  onSpawnersChanged(cb) {
+    this.onSpawnersChangedCallbacks.add(cb);
+    return () => this.onSpawnersChangedCallbacks.delete(cb);
+  }
+  notifyChanged() {
+    for (const cb of this.onSpawnersChangedCallbacks) {
+      cb();
+    }
+  }
+}
+new SceneSpawnerManager();
 class PlayerJitterQueue {
   constructor(playerId, config) {
     __publicField(this, "playerId");
@@ -7128,6 +10377,7 @@ class PlayerJitterQueue {
     __publicField(this, "burstDrains", 0);
     __publicField(this, "receivedCount", 0);
     __publicField(this, "consumedCount", 0);
+    __publicField(this, "hasPrimed", false);
     this.playerId = playerId;
     this.targetDepth = (config == null ? void 0 : config.targetDepth) ?? 2;
     this.maxCapacity = (config == null ? void 0 : config.maxCapacity) ?? 60;
@@ -7177,13 +10427,18 @@ class PlayerJitterQueue {
    *
    * - If queue has burst backlog exceeding target depth, excess intermediate packets
    *   are drained and returned in `drainedPackets` so the caller can apply fast-forward updates.
-   * - If queue has available inputs, pops the oldest sorted packet.
+   * - If queue has available inputs and is primed, pops the oldest sorted packet.
+   * - When a player first joins, waits until targetDepth (e.g. 2 packets) are primed before consuming,
+   *   preventing high-ping players from stuttering in half-speed slow motion.
    * - If queue is starved (empty), generates a safe neutral packet with zero movement
    *   to prevent runaway ghost overshoot while preserving last known aim direction.
    */
   consume(serverTick) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const drainedPackets = [];
+    if (!this.hasPrimed && this.queue.length > 0) {
+      this.hasPrimed = true;
+    }
     if (this.queue.length > this.burstDrainThreshold) {
       const excessCount = this.queue.length - (this.targetDepth + 1);
       for (let i = 0; i < excessCount; i++) {
@@ -7230,6 +10485,7 @@ class PlayerJitterQueue {
       aimY: (_b = this.lastKnownInput) == null ? void 0 : _b.aimY,
       facingAngle: (_c = this.lastKnownInput) == null ? void 0 : _c.facingAngle
     };
+    neutralPacket.isUsingItem = ((_d = this.lastKnownInput) == null ? void 0 : _d.isUsingItem) ?? false;
     return {
       packet: neutralPacket,
       isStarved: true,
@@ -7249,6 +10505,7 @@ class PlayerJitterQueue {
     this.queue = [];
     this.lastConsumedTick = null;
     this.lastKnownInput = null;
+    this.hasPrimed = false;
   }
   /**
    * Returns telemetry statistics for this jitter buffer queue.
@@ -7496,6 +10753,313 @@ class AuthoritativeSnapshotManager {
     this.lastBroadcastTick = 0;
   }
 }
+class ContestedGrabArbiter {
+  /**
+   * Resolves a list of grab requests on a given tick, granting the target object
+   * to the winning character and logging the outcome to an audit history array.
+   */
+  static arbitrate(grabRequests, currentTick, auditLog, arena, objects) {
+    var _a, _b;
+    const results = [];
+    if (!grabRequests || grabRequests.length === 0) return results;
+    const targetGroups = /* @__PURE__ */ new Map();
+    for (const req of grabRequests) {
+      const objId = req.target.id;
+      let group = targetGroups.get(objId);
+      if (!group) {
+        group = [];
+        targetGroups.set(objId, group);
+      }
+      group.push(req);
+    }
+    for (const [objId, requests] of targetGroups) {
+      if (requests.length === 1) {
+        const req = requests[0];
+        let itemToHold2 = req.target;
+        if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
+          const clone = req.target.spawnerModule.triggerClone(req.target, arena, objects);
+          if (clone) itemToHold2 = clone;
+        }
+        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, itemToHold2);
+        continue;
+      }
+      requests.sort((a, b) => {
+        if (Math.abs(b.char.strength - a.char.strength) > 1e-3) {
+          return b.char.strength - a.char.strength;
+        }
+        const distA = Math.hypot(
+          a.target.position.x - a.char.position.x,
+          a.target.position.y - a.char.position.y,
+          a.target.position.z - a.char.position.z
+        );
+        const distB = Math.hypot(
+          b.target.position.x - b.char.position.x,
+          b.target.position.y - b.char.position.y,
+          b.target.position.z - b.char.position.z
+        );
+        if (Math.abs(distA - distB) > 1e-3) {
+          return distA - distB;
+        }
+        return a.char.playerId.localeCompare(b.char.playerId);
+      });
+      const winner = requests[0];
+      const losers = requests.slice(1);
+      let reason = "id_priority";
+      if (Math.abs(winner.char.strength - losers[0].char.strength) > 1e-3) {
+        reason = "strength";
+      } else {
+        const distWin = Math.hypot(
+          winner.target.position.x - winner.char.position.x,
+          winner.target.position.y - winner.char.position.y,
+          winner.target.position.z - winner.char.position.z
+        );
+        const distLose = Math.hypot(
+          losers[0].target.position.x - losers[0].char.position.x,
+          losers[0].target.position.y - losers[0].char.position.y,
+          losers[0].target.position.z - losers[0].char.position.z
+        );
+        if (Math.abs(distWin - distLose) > 1e-3) {
+          reason = "proximity";
+        }
+      }
+      const outcome = {
+        eventId: `grab-${objId}-${currentTick}-${winner.char.playerId}`,
+        tick: currentTick,
+        targetObjectId: objId,
+        winnerPlayerId: winner.char.playerId,
+        loserPlayerIds: losers.map((l) => l.char.playerId),
+        reason
+      };
+      results.push(outcome);
+      if (auditLog) {
+        auditLog.push(outcome);
+      }
+      let itemToHold = winner.target;
+      if (winner.target.spawnerModule && winner.target.spawnerModule.enabled) {
+        const clone = winner.target.spawnerModule.triggerClone(winner.target, arena, objects);
+        if (clone) itemToHold = clone;
+      }
+      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, itemToHold);
+    }
+    return results;
+  }
+}
+class ServerTelemetryBroadcaster {
+  /**
+   * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
+   */
+  static createGhostSnapshot(currentTick, allCharacters, charactersMap, objects, arena, latestClockSync, recentAckedActionIds, contestedGrabEvents, rttMs = 0, forPlayerId, deathRespawnEvents, objectDeletionEvents, prefabManagerInstance) {
+    const primaryChar = charactersMap.get("keyboard") || allCharacters[0];
+    const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
+    const clockSync = latestClockSync.get(targetPId) || latestClockSync.get("keyboard");
+    const pm = prefabManagerInstance || prefabManager;
+    const ghostChar = {
+      id: primaryChar ? primaryChar.playerId : "player",
+      x: primaryChar ? Number(primaryChar.position.x.toFixed(3)) : 0,
+      y: primaryChar ? Number(primaryChar.position.y.toFixed(3)) : 0,
+      z: primaryChar ? Number(primaryChar.position.z.toFixed(3)) : 0,
+      vx: primaryChar ? Number(primaryChar.velocity.x.toFixed(3)) : 0,
+      vy: primaryChar ? Number(primaryChar.velocity.y.toFixed(3)) : 0,
+      vz: primaryChar ? Number((primaryChar.hasVerticalVelocity ? primaryChar.verticalVelocity : 0).toFixed(3)) : 0,
+      surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
+      isGrounded: primaryChar ? primaryChar.isRestingOnSurface || primaryChar.position.z <= 5e-3 : true,
+      radius: primaryChar ? primaryChar.colliderRadius : 0.44,
+      color: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
+      playerColor: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
+      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
+      isClimbing: primaryChar ? primaryChar.isClimbing : false,
+      isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
+      facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0
+    };
+    const ghostObjects = objects.map((obj) => {
+      const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || allCharacters.find((c) => c.heldObject === obj);
+      let posX = obj.position.x;
+      let posY = obj.position.y;
+      let posZ = obj.position.z;
+      if ((obj.isHeld || holder) && holder) {
+        const relPos = holder.calculateHeldObjectPosition(arena);
+        posX = relPos.x;
+        posY = relPos.y;
+        posZ = relPos.z;
+      }
+      const pId = obj.prefabId || (obj.name === "Apple" || obj.id.startsWith("apple-") ? "prefab_apple" : void 0);
+      const prefab = pId ? pm.get(pId) : void 0;
+      const baseState = {
+        id: obj.id,
+        x: Number(posX.toFixed(3)),
+        y: Number(posY.toFixed(3)),
+        z: Number(posZ.toFixed(3)),
+        vx: Number(obj.velocity.x.toFixed(3)),
+        vy: Number(obj.velocity.y.toFixed(3)),
+        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: obj.isRestingOnSurface || obj.position.z <= 5e-3,
+        isHeld: obj.isHeld || Boolean(holder),
+        heldBy: holder ? holder.playerId || (holder === primaryChar ? "player" : holder.id) : obj.heldBy ? obj.heldBy.playerId || obj.heldBy.id : null,
+        isAboveWalls: obj.isAboveWalls,
+        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : void 0,
+        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : void 0,
+        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : void 0,
+        isSleeping: obj.isSleeping
+      };
+      if (prefab && prefab.archetype) {
+        const arch = prefab.archetype;
+        baseState.prefabId = pId;
+        if (obj.name !== arch.name) {
+          baseState.name = obj.name;
+        }
+        if (obj.color !== arch.color) {
+          baseState.color = obj.color;
+        }
+        if (obj.visualShape !== arch.visualShape) {
+          baseState.shape = obj.visualShape;
+        }
+        const archRadius = arch.consumableModule ? arch.consumableModule.initialColliderRadius || arch.colliderRadius : arch.colliderRadius;
+        if (Math.abs(obj.colliderRadius - archRadius) > 5e-3) {
+          baseState.radius = Number(obj.colliderRadius.toFixed(3));
+        }
+        if (Math.abs(obj.mass - arch.mass) > 1e-3) {
+          baseState.mass = Number(obj.mass.toFixed(3));
+        }
+        const objBounce = obj.bounceMod ?? 0;
+        const archBounce = arch.bounceMod ?? 0;
+        if (Math.abs(objBounce - archBounce) > 1e-3) {
+          baseState.bounceMod = Number(objBounce.toFixed(3));
+        }
+        if (obj.consumableModule && obj.consumableModule.enabled) {
+          const archConsumable = arch.consumableModule && arch.consumableModule.enabled ? arch.consumableModule : null;
+          if (!archConsumable || obj.consumableModule.tag !== archConsumable.tag) {
+            baseState.consumableTag = obj.consumableModule.tag;
+          }
+          const objTotal = obj.consumableModule.getTotalEnergy(obj.properties);
+          const archTotal = archConsumable ? archConsumable.getTotalEnergy(arch.properties) : 0;
+          if (Math.abs(objTotal - archTotal) > 0.1) {
+            baseState.totalEnergyJoules = Number(objTotal.toFixed(1));
+          }
+          const objRem = obj.consumableModule.getRemainingEnergy(obj.properties);
+          if (Math.abs(objRem - objTotal) > 0.1 || archConsumable && Math.abs(objRem - archTotal) > 0.1) {
+            baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
+          }
+        }
+        if (obj.healthModule && obj.healthModule.enabled) {
+          const curHp = obj.healthModule.getCurrentHp(obj.properties);
+          const maxHp = obj.healthModule.getMaxHp(obj.properties);
+          const archCurHp = arch.healthModule && arch.healthModule.enabled ? arch.healthModule.getCurrentHp(arch.properties) : void 0;
+          const archMaxHp = arch.healthModule && arch.healthModule.enabled ? arch.healthModule.getMaxHp(arch.properties) : void 0;
+          if (archCurHp === void 0 || Math.abs(curHp - archCurHp) > 0.1) {
+            baseState.currentHp = Number(curHp.toFixed(1));
+          }
+          if (archMaxHp === void 0 || Math.abs(maxHp - archMaxHp) > 0.1) {
+            baseState.maxHp = Number(maxHp.toFixed(1));
+          }
+        }
+        if (obj.damageAuraModule && obj.damageAuraModule.enabled) {
+          const auraRadius = obj.damageAuraModule.getDamageRadius(obj.properties);
+          const auraRate = obj.damageAuraModule.getDamageRate(obj.properties);
+          const archRadius2 = arch.damageAuraModule && arch.damageAuraModule.enabled ? arch.damageAuraModule.getDamageRadius(arch.properties) : void 0;
+          const archRate = arch.damageAuraModule && arch.damageAuraModule.enabled ? arch.damageAuraModule.getDamageRate(arch.properties) : void 0;
+          if (archRadius2 === void 0 || Math.abs(auraRadius - archRadius2) > 0.05) {
+            baseState.damageAuraRadius = Number(auraRadius.toFixed(2));
+          }
+          if (archRate === void 0 || Math.abs(auraRate - archRate) > 0.05) {
+            baseState.damageAuraRate = Number(auraRate.toFixed(2));
+          }
+        }
+      } else {
+        baseState.name = obj.name;
+        baseState.radius = obj.colliderRadius;
+        baseState.color = obj.color;
+        baseState.shape = obj.visualShape;
+        baseState.mass = Number(obj.mass.toFixed(3));
+        baseState.bounceMod = obj.bounceMod !== null ? Number(obj.bounceMod.toFixed(3)) : void 0;
+        baseState.currentHp = obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getCurrentHp(obj.properties).toFixed(1)) : void 0;
+        baseState.maxHp = obj.healthModule && obj.healthModule.enabled ? Number(obj.healthModule.getMaxHp(obj.properties).toFixed(1)) : void 0;
+        baseState.consumableTag = obj.consumableModule && obj.consumableModule.enabled ? obj.consumableModule.tag : void 0;
+        baseState.remainingEnergyJoules = obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : void 0;
+        baseState.totalEnergyJoules = obj.consumableModule && obj.consumableModule.enabled ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : void 0;
+        baseState.damageAuraRadius = obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRadius(obj.properties).toFixed(2)) : void 0;
+        baseState.damageAuraRate = obj.damageAuraModule && obj.damageAuraModule.enabled ? Number(obj.damageAuraModule.getDamageRate(obj.properties).toFixed(2)) : void 0;
+      }
+      return baseState;
+    });
+    const ghostCharacters = allCharacters.map((c) => {
+      var _a, _b;
+      const mainBus = c.getEnergyBus("bus_main") || c.energyBusses.values().next().value;
+      const charId = c.playerId || c.id || "player";
+      const isOwnedByRecipient = !targetPId || (charId === targetPId || charId.startsWith(`${targetPId}:`) || targetPId === "keyboard" && (c === primaryChar || charId === "player" || charId === "keyboard"));
+      return {
+        id: charId,
+        name: c.name,
+        x: Number(c.position.x.toFixed(3)),
+        y: Number(c.position.y.toFixed(3)),
+        z: Number(c.position.z.toFixed(3)),
+        vx: Number(c.velocity.x.toFixed(3)),
+        vy: Number(c.velocity.y.toFixed(3)),
+        vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
+        surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
+        isGrounded: c.isRestingOnSurface || c.position.z <= 5e-3,
+        radius: c.colliderRadius,
+        color: c.playerColor || c.color,
+        playerColor: c.playerColor || c.color,
+        playerNumber: c.playerNumber,
+        isClimbing: c.isClimbing,
+        isAboveWalls: c.isAboveWalls,
+        facingAngle: Number(c.facingAngle.toFixed(4)),
+        heldObjectId: c.heldObject ? c.heldObject.id : null,
+        isHolding: Boolean(c.heldObject),
+        isUsingItem: Boolean(c.isUsingItem),
+        isDummy: ((_a = c.characterModule) == null ? void 0 : _a.role) === "dummy" || c.controllerType === "none" || c.id === "dummy-1",
+        role: ((_b = c.characterModule) == null ? void 0 : _b.role) ?? (c.controllerType === "none" ? "dummy" : "remote_player"),
+        controllerType: c.controllerType,
+        currentHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getCurrentHp(c.properties).toFixed(1)) : void 0,
+        maxHp: c.healthModule && c.healthModule.enabled ? Number(c.healthModule.getMaxHp(c.properties).toFixed(1)) : void 0,
+        currentEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getCurrentEnergy(c.properties).toFixed(1)) : void 0,
+        maxEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : void 0,
+        currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
+        maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
+        currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0
+      };
+    });
+    return {
+      seq: currentTick,
+      sentAt: performance.now(),
+      receivedAt: performance.now(),
+      rttMs,
+      character: ghostChar,
+      characters: ghostCharacters,
+      objects: ghostObjects,
+      ackActionIds: recentAckedActionIds,
+      contestedGrabEvents: contestedGrabEvents && contestedGrabEvents.length > 0 ? [...contestedGrabEvents] : void 0,
+      deathRespawnEvents: deathRespawnEvents && deathRespawnEvents.length > 0 ? [...deathRespawnEvents] : void 0,
+      objectDeletionEvents: objectDeletionEvents && objectDeletionEvents.length > 0 ? [...objectDeletionEvents] : void 0,
+      clockSync
+    };
+  }
+  /**
+   * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast.
+   */
+  static createAuthoritativeWorldSnapshot(simulation, forceKeyframe = false) {
+    const lastProcessedInputTick = {};
+    for (const [pId] of simulation.characters) {
+      const stats = simulation.jitterBuffer.getStats(pId);
+      if (stats && stats.lastConsumedTick !== null) {
+        lastProcessedInputTick[pId] = stats.lastConsumedTick;
+      }
+    }
+    const primaryChar = simulation.characters.get("keyboard") || simulation.allCharacters[0];
+    const targetPId = primaryChar ? primaryChar.playerId : "keyboard";
+    const clockSync = simulation.latestClockSync.get(targetPId) || simulation.latestClockSync.get("keyboard") || void 0;
+    return simulation.snapshotManager.createSnapshot(
+      simulation.currentTick,
+      simulation.allCharacters,
+      simulation.objects,
+      lastProcessedInputTick,
+      simulation.getRecentAckedActionIds(),
+      clockSync,
+      forceKeyframe
+    );
+  }
+}
 class ServerGameSimulation {
   constructor(config) {
     __publicField(this, "arena");
@@ -7505,6 +11069,9 @@ class ServerGameSimulation {
     __publicField(this, "currentTick", 0);
     __publicField(this, "fixedDt", 1 / 60);
     __publicField(this, "collisionMode", "dynamic");
+    // Background scene spawner manager (authoritative item dispensing on server)
+    __publicField(this, "sceneSpawnerManager");
+    __publicField(this, "prefabManager");
     // Per-player input jitter buffer (Phase 5.2)
     __publicField(this, "jitterBuffer");
     // Adaptive Clock Sync & Time Dilation (Phase 6)
@@ -7515,11 +11082,18 @@ class ServerGameSimulation {
     __publicField(this, "snapshotManager");
     __publicField(this, "clientAckedTicks", /* @__PURE__ */ new Map());
     // Client confirmed server ticks (7.3)
-    // Contested grab arbitration audit log
+    // Contested grab arbitration audit log & active reliable retry map
     __publicField(this, "contestedGrabEvents", []);
+    __publicField(this, "pendingContestedEvents", /* @__PURE__ */ new Map());
+    // Authoritative death & respawn reliable retry map
+    __publicField(this, "pendingDeathRespawnEvents", /* @__PURE__ */ new Map());
+    // Authoritative object deletion reliable retry map (e.g. eaten consumables)
+    __publicField(this, "pendingObjectDeletionEvents", /* @__PURE__ */ new Map());
     // Reliable action deduplication & ACK tracking
     __publicField(this, "processedActionIds", /* @__PURE__ */ new Set());
     __publicField(this, "recentAckedActionIds", []);
+    // Track deleted object IDs so client telemetry packets cannot resurrect deleted items (e.g. eaten food)
+    __publicField(this, "deletedObjectIds", /* @__PURE__ */ new Set());
     const width = (config == null ? void 0 : config.arenaWidth) ?? 20;
     const height = (config == null ? void 0 : config.arenaHeight) ?? 14;
     const wallH = (config == null ? void 0 : config.wallHeight) ?? 1;
@@ -7535,6 +11109,8 @@ class ServerGameSimulation {
       broadcastRateHz: (config == null ? void 0 : config.broadcastRateHz) ?? 60,
       deltaCompression: (config == null ? void 0 : config.deltaCompression) ?? true
     });
+    this.prefabManager = new PrefabManager();
+    this.sceneSpawnerManager = new SceneSpawnerManager(this.prefabManager);
   }
   get allCharacters() {
     return Array.from(this.characters.values());
@@ -7588,6 +11164,16 @@ class ServerGameSimulation {
         rollModule: o.rollModule ? new RollModule({
           rollResistance: o.rollModule.rollResistance,
           angularVelocity: { ...o.rollModule.angularVelocity }
+        }) : void 0,
+        consumableModule: o.consumableModule ? new ConsumableModule({
+          tag: o.consumableModule.tag,
+          totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
+          remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
+          consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
+          healRate: o.consumableModule.getHealRate(o.properties),
+          minScaleFloor: o.consumableModule.minScaleFloor,
+          minRadiusFloor: o.consumableModule.minRadiusFloor,
+          enabled: o.consumableModule.enabled
         }) : void 0
       });
       serverObj.isSleeping = o.isSleeping;
@@ -7624,6 +11210,19 @@ class ServerGameSimulation {
       name: "Server Player 1"
     });
     this.characters.set(player1.playerId, player1);
+    const dummy = new Character({
+      id: "dummy-1",
+      x: 6.8,
+      y: 7,
+      color: "#64748b",
+      colliderRadius: 0.44,
+      mass: 1.5,
+      strength: 0,
+      name: "Sparring Dummy",
+      controllerType: "none",
+      role: "dummy"
+    });
+    this.characters.set(dummy.id, dummy);
     this.objects = [
       new GameObject({
         id: "stone-1",
@@ -7667,6 +11266,41 @@ class ServerGameSimulation {
         rollModule: new RollModule({
           rollResistance: 0,
           angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 }
+        })
+      }),
+      new GameObject({
+        id: "hazard-orb-1",
+        name: "Hazard Orb (Damage Aura)",
+        position: { x: 10, y: 7, z: 0 },
+        mass: 5,
+        colliderRadius: 0.35,
+        color: "#ef4444",
+        bounceMod: 0.1,
+        damageAuraModule: new DamageAuraModule({
+          damageRadius: 2.2,
+          damageRate: 25
+        })
+      }),
+      new GameObject({
+        id: "apple-default-1",
+        name: "Apple",
+        prefabId: "prefab_apple",
+        position: { x: 5.5, y: 7, z: 0 },
+        color: "#22c55e",
+        visualShape: "circle",
+        mass: 0.35,
+        colliderRadius: 0.25,
+        bounceMod: 0.2,
+        hasGravity: true,
+        hasVerticalPosition: true,
+        consumableModule: new ConsumableModule({
+          tag: "food",
+          totalEnergyJoules: 2e3,
+          remainingEnergyJoules: 2e3,
+          consumeRateWatts: 400,
+          healRate: 0,
+          minScaleFloor: 0.35,
+          minRadiusFloor: 0.12
         })
       })
     ];
@@ -7734,18 +11368,56 @@ class ServerGameSimulation {
   syncObjectsFromPacket(clientObjects, senderClientId) {
     if (!clientObjects || clientObjects.length === 0) return;
     for (const cObj of clientObjects) {
+      if (this.deletedObjectIds.has(cObj.id)) {
+        continue;
+      }
+      if (cObj.remainingEnergyJoules !== void 0 && cObj.remainingEnergyJoules <= 1e-3) {
+        this.triggerObjectDeletion(cObj.id);
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
-        sObj = new GameObject({
-          id: cObj.id,
-          name: cObj.name || "Object",
-          position: { x: cObj.x, y: cObj.y, z: cObj.z },
-          color: cObj.color || "#38bdf8",
-          colliderRadius: cObj.radius || 0.35,
-          visualShape: cObj.shape || "circle"
-        });
+        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : void 0);
+        const prefab = pId ? this.prefabManager.get(pId) : void 0;
+        if (prefab) {
+          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, this.arena);
+          sObj.id = cObj.id;
+          sObj.velocity.x = cObj.vx;
+          sObj.velocity.y = cObj.vy;
+          sObj.verticalVelocity = cObj.vz ?? 0;
+          if (cObj.name !== void 0) sObj.name = cObj.name;
+          if (cObj.color !== void 0) sObj.color = cObj.color;
+          if (cObj.shape !== void 0) sObj.visualShape = cObj.shape;
+          if (cObj.radius !== void 0) {
+            sObj.colliderRadius = cObj.radius;
+            if (sObj.consumableModule) {
+              sObj.consumableModule.initialColliderRadius = cObj.radius;
+            }
+          }
+          if (cObj.mass !== void 0) sObj.mass = cObj.mass;
+          if (cObj.bounceMod !== void 0) sObj.bounceMod = cObj.bounceMod;
+        } else {
+          sObj = new GameObject({
+            id: cObj.id,
+            name: cObj.name || "Object",
+            position: { x: cObj.x, y: cObj.y, z: cObj.z },
+            mass: cObj.mass ?? 1,
+            bounceMod: cObj.bounceMod ?? 0,
+            color: cObj.color || "#38bdf8",
+            colliderRadius: cObj.radius || 0.35,
+            visualShape: cObj.shape || "circle",
+            consumableModule: cObj.consumableTag ? new ConsumableModule({
+              tag: cObj.consumableTag,
+              totalEnergyJoules: cObj.totalEnergyJoules ?? 2e3,
+              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2e3
+            }) : void 0
+          });
+        }
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
+      }
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0) {
+        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
       }
       if (cObj.isHeld) {
         const holderId = cObj.heldBy || senderClientId;
@@ -7773,6 +11445,10 @@ class ServerGameSimulation {
           sObj.heldBy.heldObject = null;
         }
         sObj.heldBy = null;
+        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 1e-3)) {
+          this.triggerObjectDeletion(sObj.id);
+          continue;
+        }
       }
       continue;
     }
@@ -7798,6 +11474,32 @@ class ServerGameSimulation {
     if (!sChar) {
       return;
     }
+    if (sChar.isRespawnLocked && sChar.authoritativeRespawnPos) {
+      const respawnPos = sChar.authoritativeRespawnPos;
+      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
+      if (distToRespawn > 1.2) {
+        sChar.position.x = respawnPos.x;
+        sChar.position.y = respawnPos.y;
+        sChar.position.z = respawnPos.z;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+      sChar.isRespawnLocked = false;
+    }
+    for (const pending of this.pendingDeathRespawnEvents.values()) {
+      const isTarget = pending.event.targetEntityId === charId || pending.event.targetEntityId === sChar.id || pending.event.targetEntityId === sChar.playerId || pending.event.targetEntityId === sChar.serverCharId;
+      if (isTarget && !pending.acks.has(charId)) {
+        sChar.position.x = pending.event.respawnX;
+        sChar.position.y = pending.event.respawnY;
+        sChar.position.z = pending.event.respawnZ;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+    }
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
     const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
@@ -7811,6 +11513,12 @@ class ServerGameSimulation {
       sChar.velocity.y = clientChar.vy;
     }
     if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
+      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
+      const isServerGrounded = sChar.isRestingOnSurface || Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8;
+      if (isServerGrounded && !sChar.isClimbing && !sChar.isHeld && !hasRecentImpact && clientChar.vz > 1) {
+        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : void 0;
+        sChar.jump(this.arena, moveInput);
+      }
       if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
         sChar.verticalVelocity = clientChar.vz;
       }
@@ -7833,6 +11541,27 @@ class ServerGameSimulation {
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
     }
+    for (const obj of this.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = sChar.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - sChar.position.x;
+      const oy = obj.position.y - sChar.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = sChar.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.03;
+          const nx = oDist > 1e-3 ? ox / oDist : 1;
+          const ny = oDist > 1e-3 ? oy / oDist : 0;
+          sChar.position.x -= nx * (overlap * 0.5);
+          sChar.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;
     }
@@ -7849,12 +11578,12 @@ class ServerGameSimulation {
     if (clientChar.facingAngle !== void 0) {
       sChar.facingAngle = clientChar.facingAngle;
     }
+    if (clientChar.isUsingItem !== void 0) {
+      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
+    }
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj) {
-        sChar.heldObject = sObj;
-        sObj.isHeld = true;
-        sObj.heldBy = sChar;
+      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
         const relPos = sChar.calculateHeldObjectPosition(this.arena);
         sObj.position.x = relPos.x;
         sObj.position.y = relPos.y;
@@ -7865,9 +11594,13 @@ class ServerGameSimulation {
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;
-      sObj.isHeld = false;
-      sObj.heldBy = null;
-      sChar.heldObject = null;
+      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
+        this.triggerObjectDeletion(sObj.id);
+      } else {
+        sObj.isHeld = false;
+        sObj.heldBy = null;
+        sChar.heldObject = null;
+      }
     }
   }
   /**
@@ -7906,7 +11639,12 @@ class ServerGameSimulation {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
-            char.pickupModule.pickup(char, target);
+            let itemToHold = target;
+            if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              if (clone) itemToHold = clone;
+            }
+            char.pickupModule.pickup(char, itemToHold);
           }
         }
       } else if (act.type === "drop") {
@@ -7937,6 +11675,16 @@ class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = act.launchVx !== void 0 ? {
+            vx: act.launchVx,
+            vy: act.launchVy,
+            vz: act.launchVz ?? 0
+          } : void 0;
+          const launchPos = act.launchStartX !== void 0 ? {
+            x: act.launchStartX,
+            y: act.launchStartY,
+            z: act.launchStartZ ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -7944,7 +11692,9 @@ class ServerGameSimulation {
             this.arena,
             void 0,
             void 0,
-            act.isLockHeld ?? false
+            act.isLockHeld ?? false,
+            launchVel,
+            launchPos
           );
         }
       }
@@ -7956,73 +11706,147 @@ class ServerGameSimulation {
   }
   /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
+   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
    */
   arbitrateContestedGrabs(grabRequests) {
-    var _a, _b;
-    const targetGroups = /* @__PURE__ */ new Map();
-    for (const req of grabRequests) {
-      const objId = req.target.id;
-      let group = targetGroups.get(objId);
-      if (!group) {
-        group = [];
-        targetGroups.set(objId, group);
-      }
-      group.push(req);
-    }
-    for (const [objId, requests] of targetGroups) {
-      if (requests.length === 1) {
-        const req = requests[0];
-        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, req.target);
-        continue;
-      }
-      requests.sort((a, b) => {
-        if (Math.abs(b.char.strength - a.char.strength) > 1e-3) {
-          return b.char.strength - a.char.strength;
-        }
-        const distA = Math.hypot(
-          a.target.position.x - a.char.position.x,
-          a.target.position.y - a.char.position.y,
-          a.target.position.z - a.char.position.z
-        );
-        const distB = Math.hypot(
-          b.target.position.x - b.char.position.x,
-          b.target.position.y - b.char.position.y,
-          b.target.position.z - b.char.position.z
-        );
-        if (Math.abs(distA - distB) > 1e-3) {
-          return distA - distB;
-        }
-        return a.char.playerId.localeCompare(b.char.playerId);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents, this.arena, this.objects);
+    for (const res of results) {
+      this.pendingContestedEvents.set(res.eventId, {
+        event: res,
+        createdTick: this.currentTick,
+        acks: /* @__PURE__ */ new Set()
       });
-      const winner = requests[0];
-      const losers = requests.slice(1);
-      let reason = "id_priority";
-      if (Math.abs(winner.char.strength - losers[0].char.strength) > 1e-3) {
-        reason = "strength";
+    }
+  }
+  /**
+   * Acknowledges that a client character has received and processed contested grab events.
+   */
+  acknowledgeContestedEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingContestedEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
+        const allAcked = needed.every((pId) => pending.acks.has(pId));
+        if (allAcked) {
+          this.pendingContestedEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged contested grab events for broadcast.
+   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
+   */
+  getActiveContestedEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingContestedEvents.entries()) {
+      if (nowTick - record.createdTick > 180) {
+        this.pendingContestedEvents.delete(id);
       } else {
-        const distWin = Math.hypot(
-          winner.target.position.x - winner.char.position.x,
-          winner.target.position.y - winner.char.position.y,
-          winner.target.position.z - winner.char.position.z
-        );
-        const distLose = Math.hypot(
-          losers[0].target.position.x - losers[0].char.position.x,
-          losers[0].target.position.y - losers[0].char.position.y,
-          losers[0].target.position.z - losers[0].char.position.z
-        );
-        if (Math.abs(distWin - distLose) > 1e-3) {
-          reason = "proximity";
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
+   * Acknowledges that a client character has received and processed death & respawn events.
+   */
+  acknowledgeDeathRespawnEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingDeathRespawnEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingDeathRespawnEvents.delete(id);
         }
       }
-      this.contestedGrabEvents.push({
-        tick: this.currentTick,
-        targetObjectId: objId,
-        winnerPlayerId: winner.char.playerId,
-        loserPlayerIds: losers.map((l) => l.char.playerId),
-        reason
-      });
-      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, winner.target);
     }
+  }
+  /**
+   * Returns all active unacknowledged death respawn events for continuous broadcast.
+   */
+  getActiveDeathRespawnEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingDeathRespawnEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        this.pendingDeathRespawnEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
+   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
+   */
+  triggerObjectDeletion(objectId) {
+    this.deletedObjectIds.add(objectId);
+    const idx = this.objects.findIndex((o) => o.id === objectId);
+    if (idx !== -1) {
+      const obj = this.objects[idx];
+      if (obj.heldBy && obj.heldBy.heldObject === obj) {
+        obj.heldBy.heldObject = null;
+      }
+      obj.isHeld = false;
+      obj.heldBy = null;
+      this.objects.splice(idx, 1);
+    }
+    if (Array.isArray(this.arena.entities)) {
+      const eIdx = this.arena.entities.findIndex((e) => e.id === objectId);
+      if (eIdx !== -1) {
+        this.arena.entities.splice(eIdx, 1);
+      }
+    }
+    const eventId = `del_${objectId}_${this.currentTick}`;
+    const event = {
+      eventId,
+      objectId,
+      tick: this.currentTick
+    };
+    this.pendingObjectDeletionEvents.set(eventId, {
+      event,
+      createdTick: this.currentTick,
+      acks: /* @__PURE__ */ new Set()
+    });
+  }
+  /**
+   * Acknowledges that a client character has received and processed object deletion events.
+   */
+  acknowledgeObjectDeletionEvents(clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingObjectDeletionEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingObjectDeletionEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged object deletion events for continuous broadcast.
+   */
+  getActiveObjectDeletionEvents() {
+    const active = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingObjectDeletionEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        this.pendingObjectDeletionEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
   }
   /**
    * Advances the authoritative simulation by 1 fixed physics tick.
@@ -8046,6 +11870,13 @@ class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
+        if (catchupPkt.isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+          const heldObj = char.heldObject;
+          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+          if (result.isDepleted) {
+            this.triggerObjectDeletion(heldObj.id);
+          }
+        }
         if (((_a = char.activeTrajectory) == null ? void 0 : _a.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
@@ -8063,6 +11894,11 @@ class ServerGameSimulation {
         }
       }
       if (pkt) {
+        if (pkt.isUsingItem !== void 0) {
+          char.isUsingItem = Boolean(pkt.isUsingItem);
+        } else if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         if (char.isSprinting !== pkt.isSprinting) {
           char.setSprinting(pkt.isSprinting);
         }
@@ -8073,6 +11909,16 @@ class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : pkt.aimX !== void 0 ? pkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = aimTarget ? aimTarget.y : pkt.aimY !== void 0 ? pkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = pkt.launchVx !== void 0 ? {
+            vx: pkt.launchVx,
+            vy: pkt.launchVy,
+            vz: pkt.launchVz ?? 0
+          } : void 0;
+          const launchPos = pkt.launchStartX !== void 0 ? {
+            x: pkt.launchStartX,
+            y: pkt.launchStartY,
+            z: pkt.launchStartZ ?? 0
+          } : void 0;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -8080,7 +11926,9 @@ class ServerGameSimulation {
             this.arena,
             void 0,
             void 0,
-            pkt.isLockHeld
+            pkt.isLockHeld,
+            launchVel,
+            launchPos
           );
         }
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
@@ -8120,9 +11968,17 @@ class ServerGameSimulation {
           this.arena,
           pkt.isJumpHeld,
           this.arena.entities,
-          pkt.isLockHeld
+          pkt.isLockHeld,
+          pkt.lockedAimPos ?? null
         );
-        if (((_b = char.activeTrajectory) == null ? void 0 : _b.isAutoLocked) && char.activeTrajectory.targetObject) {
+        if (pkt.lockedAimPos) {
+          const lPos = pkt.lockedAimPos;
+          const dx = lPos.x - char.position.x;
+          const dy = lPos.y - char.position.y;
+          if (Math.hypot(dx, dy) > 0.05) {
+            char.facingAngle = Math.atan2(dy, dx);
+          }
+        } else if (((_b = char.activeTrajectory) == null ? void 0 : _b.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
           if (Math.hypot(dx, dy) > 0.05) {
@@ -8138,6 +11994,9 @@ class ServerGameSimulation {
           char.heldObject.position.z = heldPos.z;
         }
       } else {
+        if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }
     }
@@ -8156,6 +12015,46 @@ class ServerGameSimulation {
         continue;
       }
       obj.updatePosition(dt, this.arena);
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj, this.arena);
+      }
+    }
+    for (const char of this.allCharacters) {
+      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+        const heldObj = char.heldObject;
+        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+        if (result.isDepleted) {
+          this.triggerObjectDeletion(heldObj.id);
+        }
+      }
+    }
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
+    }
+    this.sceneSpawnerManager.update(dt, this.arena, this.objects);
+    for (const char of this.allCharacters) {
+      if (char.healthModule && !char.healthModule.onDeathRespawn) {
+        char.healthModule.onDeathRespawn = (entity, respawnPos) => {
+          const charId = entity.playerId || entity.serverCharId || entity.id;
+          const eventId = `death-${charId}-${this.currentTick}`;
+          this.pendingDeathRespawnEvents.set(eventId, {
+            event: {
+              eventId,
+              targetEntityId: charId,
+              tick: this.currentTick,
+              respawnX: respawnPos.x,
+              respawnY: respawnPos.y,
+              respawnZ: respawnPos.z,
+              maxHp: entity.healthModule ? entity.healthModule.getMaxHp(entity.properties) : 100
+            },
+            createdTick: this.currentTick,
+            acks: /* @__PURE__ */ new Set()
+          });
+        };
+      }
     }
     CollisionResolver.resolveEntityCollisions(
       [...this.allCharacters, ...this.objects],
@@ -8174,118 +12073,28 @@ class ServerGameSimulation {
    * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast (Phase 7).
    */
   getAuthoritativeWorldSnapshot(forceKeyframe = false) {
-    const lastProcessedInputTick = {};
-    for (const [pId] of this.characters) {
-      const stats = this.jitterBuffer.getStats(pId);
-      if (stats && stats.lastConsumedTick !== null) {
-        lastProcessedInputTick[pId] = stats.lastConsumedTick;
-      }
-    }
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = primaryChar ? primaryChar.playerId : "keyboard";
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard") || void 0;
-    return this.snapshotManager.createSnapshot(
-      this.currentTick,
-      this.allCharacters,
-      this.objects,
-      lastProcessedInputTick,
-      this.getRecentAckedActionIds(),
-      clockSync,
-      forceKeyframe
-    );
+    return ServerTelemetryBroadcaster.createAuthoritativeWorldSnapshot(this, forceKeyframe);
   }
   /**
    * Produces a GhostSnapshot suitable for rendering or network broadcast.
    * Directly reflects the true physical state of the authoritative simulation.
    */
   getGhostSnapshot(rttMs = 0, forPlayerId) {
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard");
-    const ghostChar = {
-      id: primaryChar ? primaryChar.playerId : "player",
-      x: primaryChar ? Number(primaryChar.position.x.toFixed(3)) : 0,
-      y: primaryChar ? Number(primaryChar.position.y.toFixed(3)) : 0,
-      z: primaryChar ? Number(primaryChar.position.z.toFixed(3)) : 0,
-      vx: primaryChar ? Number(primaryChar.velocity.x.toFixed(3)) : 0,
-      vy: primaryChar ? Number(primaryChar.velocity.y.toFixed(3)) : 0,
-      vz: primaryChar ? Number((primaryChar.hasVerticalVelocity ? primaryChar.verticalVelocity : 0).toFixed(3)) : 0,
-      surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
-      isGrounded: primaryChar ? primaryChar.isRestingOnSurface || primaryChar.position.z <= 5e-3 : true,
-      radius: primaryChar ? primaryChar.colliderRadius : 0.44,
-      color: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
-      playerColor: primaryChar ? primaryChar.playerColor || primaryChar.color : "#f59e0b",
-      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
-      isClimbing: primaryChar ? primaryChar.isClimbing : false,
-      isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
-      facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0
-    };
-    const ghostObjects = this.objects.map((obj) => {
-      const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || this.allCharacters.find((c) => c.heldObject === obj);
-      let posX = obj.position.x;
-      let posY = obj.position.y;
-      let posZ = obj.position.z;
-      if ((obj.isHeld || holder) && holder) {
-        const relPos = holder.calculateHeldObjectPosition(this.arena);
-        posX = relPos.x;
-        posY = relPos.y;
-        posZ = relPos.z;
-      }
-      return {
-        id: obj.id,
-        name: obj.name,
-        x: Number(posX.toFixed(3)),
-        y: Number(posY.toFixed(3)),
-        z: Number(posZ.toFixed(3)),
-        vx: Number(obj.velocity.x.toFixed(3)),
-        vy: Number(obj.velocity.y.toFixed(3)),
-        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
-        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
-        isGrounded: obj.isRestingOnSurface || obj.position.z <= 5e-3,
-        radius: obj.colliderRadius,
-        color: obj.color,
-        shape: obj.visualShape,
-        isHeld: obj.isHeld || Boolean(holder),
-        heldBy: holder ? holder.playerId || (holder === primaryChar ? "player" : holder.id) : obj.heldBy ? obj.heldBy.playerId || obj.heldBy.id : null,
-        isAboveWalls: obj.isAboveWalls,
-        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : void 0,
-        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : void 0,
-        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : void 0,
-        isSleeping: obj.isSleeping
-      };
-    });
-    const ghostCharacters = this.allCharacters.map((c) => ({
-      id: c.playerId || c.id || "player",
-      name: c.name,
-      x: Number(c.position.x.toFixed(3)),
-      y: Number(c.position.y.toFixed(3)),
-      z: Number(c.position.z.toFixed(3)),
-      vx: Number(c.velocity.x.toFixed(3)),
-      vy: Number(c.velocity.y.toFixed(3)),
-      vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
-      surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
-      isGrounded: c.isRestingOnSurface || c.position.z <= 5e-3,
-      radius: c.colliderRadius,
-      color: c.playerColor || c.color,
-      playerColor: c.playerColor || c.color,
-      playerNumber: c.playerNumber,
-      isClimbing: c.isClimbing,
-      isAboveWalls: c.isAboveWalls,
-      facingAngle: Number(c.facingAngle.toFixed(4)),
-      heldObjectId: c.heldObject ? c.heldObject.id : null,
-      isHolding: Boolean(c.heldObject)
-    }));
-    return {
-      seq: this.currentTick,
-      sentAt: performance.now(),
-      receivedAt: performance.now(),
+    return ServerTelemetryBroadcaster.createGhostSnapshot(
+      this.currentTick,
+      this.allCharacters,
+      this.characters,
+      this.objects,
+      this.arena,
+      this.latestClockSync,
+      this.getRecentAckedActionIds(),
+      this.getActiveContestedEvents(),
       rttMs,
-      character: ghostChar,
-      characters: ghostCharacters,
-      objects: ghostObjects,
-      ackActionIds: this.getRecentAckedActionIds(),
-      clockSync
-    };
+      forPlayerId,
+      this.getActiveDeathRespawnEvents(),
+      this.getActiveObjectDeletionEvents(),
+      this.prefabManager
+    );
   }
 }
 const PLAYER_COLORS = [
@@ -8423,7 +12232,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     for (const [clientId, client] of this.clients) {
       if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0, clientId);
           const clockSync = this.simulation.getLatestClockSync(clientId);
           if (clockSync) {
             snapshot.clockSync = clockSync;
@@ -8442,10 +12251,21 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     }
   }
   allocatePlayerNumber() {
+    var _a;
     const used = /* @__PURE__ */ new Set();
     for (const char of this.simulation.characters.values()) {
+      if (((_a = char.characterModule) == null ? void 0 : _a.role) === "dummy" || char.controllerType === "none" || char.id === "dummy-1") {
+        continue;
+      }
       if (char.playerNumber && char.playerNumber > 0) {
         used.add(char.playerNumber);
+      }
+    }
+    for (const client of this.clients.values()) {
+      for (const entry of client.characters.values()) {
+        if (entry.playerNumber && entry.playerNumber > 0) {
+          used.add(entry.playerNumber);
+        }
       }
     }
     for (let i = 1; i <= 16; i++) {
@@ -8505,7 +12325,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.needsMapReload = false;
     console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
-  registerCharacter(client, localPlayerId, name) {
+  registerCharacter(client, localPlayerId, name, _spawnPos) {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
       if (name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())) {
@@ -8525,8 +12345,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const spawnX = 4.8 + (playerNumber - 1) % 4 * 1.6;
-    const spawnY = 7 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    const spawnX = 4.8;
+    const spawnY = 7;
+    const spawnZ = 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -8539,6 +12360,40 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name: charName,
       hasCustomName: isExplicitCustom
     });
+    character.position.z = spawnZ;
+    const otherEntities = [
+      ...this.simulation.allCharacters,
+      ...this.simulation.objects
+    ];
+    for (const ent of otherEntities) {
+      if (ent.isHeld) continue;
+      const minDistance = character.colliderRadius + ent.colliderRadius;
+      const ox = ent.position.x - character.position.x;
+      const oy = ent.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const entZ = ent.position.z;
+        if (Math.abs(charZ - entZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          let nx;
+          let ny;
+          if (oDist > 1e-3) {
+            nx = ox / oDist;
+            ny = oy / oDist;
+          } else {
+            const randomAngle = Math.random() * Math.PI * 2;
+            nx = Math.cos(randomAngle);
+            ny = Math.sin(randomAngle);
+          }
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          ent.position.x += nx * (overlap * 0.5);
+          ent.position.y += ny * (overlap * 0.5);
+          ent.wakeUp();
+        }
+      }
+    }
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
     const entry = {
@@ -8546,7 +12401,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       serverCharId,
       playerNumber,
       color,
-      name: charName
+      name: charName,
+      spawnPos: { x: character.position.x, y: character.position.y, z: character.position.z }
     };
     client.characters.set(localPlayerId, entry);
     console.log(
@@ -8604,15 +12460,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     };
     this.clients.set(clientId, client);
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
-    if (this.simulation.characters.has("player-1")) {
-      const p1 = this.simulation.characters.get("player-1");
-      p1 == null ? void 0 : p1.cleanupBeforeRemoval();
-      this.simulation.characters.delete("player-1");
-    }
-    const primaryEntry = this.registerCharacter(client, "keyboard");
-    primaryEntry.isDefaultPlaceholder = true;
     ws.on("message", (raw) => {
-      var _a;
+      var _a, _b, _c, _d;
       try {
         client.lastSeen = Date.now();
         const text = raw.toString();
@@ -8635,7 +12484,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name, lp.spawnPos);
                 if (lp.localPlayerId !== "keyboard") {
                   reg.isDefaultPlaceholder = false;
                 }
@@ -8643,7 +12492,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           } else {
             if (!client.characters.has("keyboard")) {
-              this.registerCharacter(client, "keyboard", data.name);
+              this.registerCharacter(client, "keyboard", data.name, data.spawnPos);
             } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
               const entry = client.characters.get("keyboard");
               if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
@@ -8656,13 +12505,16 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               }
             }
           }
-          const primary = client.characters.get("keyboard") || client.characters.values().next().value || primaryEntry;
+          const primary = client.characters.get("keyboard") || client.characters.values().next().value;
+          const playerNumber = primary ? primary.playerNumber : 1;
+          const name = primary ? primary.name : "Player 1";
+          const color = primary ? primary.color : PLAYER_COLORS[0];
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber: primary.playerNumber,
-            name: primary.name,
-            color: primary.color,
+            playerNumber,
+            name,
+            color,
             registeredPlayers: Array.from(client.characters.values()),
             arena: {
               width: this.simulation.arena.width,
@@ -8681,7 +12533,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             console.log(`🌐 [UniversalRoom] Replacing unused default placeholder "keyboard" with first real player "${localPlayerId}" for client ${clientId}`);
             this.unregisterCharacter(client, "keyboard");
           }
-          const entry = this.registerCharacter(client, localPlayerId, data.name);
+          const entry = this.registerCharacter(client, localPlayerId, data.name, data.spawnPos);
           entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",
@@ -8689,7 +12541,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             serverCharId: entry.serverCharId,
             playerNumber: entry.playerNumber,
             color: entry.color,
-            name: entry.name
+            name: entry.name,
+            spawnPos: entry.spawnPos
           }));
           return;
         }
@@ -8723,7 +12576,30 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               client.hasReceivedKeyboardInput = true;
             }
           }
-          const sChar = this.simulation.characters.get(serverCharId);
+          let sChar = this.simulation.characters.get(serverCharId);
+          if (!sChar) {
+            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? 3.5;
+            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
+            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
+            const newChar = new Character({
+              id: serverCharId,
+              x: spawnX,
+              y: spawnY,
+              color: charEntry.color,
+              colliderRadius: 0.44,
+              mass: 1.2,
+              strength: 1,
+              playerId: serverCharId,
+              playerNumber: charEntry.playerNumber,
+              name: charEntry.name,
+              hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim())
+            });
+            newChar.serverCharId = serverCharId;
+            newChar.position.z = spawnZ;
+            this.simulation.characters.set(serverCharId, newChar);
+            this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+            sChar = newChar;
+          }
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
             if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {
               sChar.name = pkt.playerName.trim();
@@ -8732,6 +12608,20 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             }
           }
           this.simulation.queueInput(pkt);
+          if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
+            for (const objId of data.consumedObjectIds) {
+              this.simulation.triggerObjectDeletion(objId);
+            }
+          }
+          if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
+            this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
+          }
+          if (Array.isArray(data.ackDeathRespawnEventIds) && data.ackDeathRespawnEventIds.length > 0) {
+            this.simulation.acknowledgeDeathRespawnEvents(serverCharId, data.ackDeathRespawnEventIds);
+          }
+          if (Array.isArray(data.ackObjectDeletionEventIds) && data.ackObjectDeletionEventIds.length > 0) {
+            this.simulation.acknowledgeObjectDeletionEvents(serverCharId, data.ackObjectDeletionEventIds);
+          }
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
             for (const act of data.reliableActions) {
               act.playerId = this.resolveActionPlayerId(client, act, serverCharId);
@@ -8743,6 +12633,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             if (sChar) {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
+              if (data.character.isUsingItem !== void 0) {
+                sChar.isUsingItem = Boolean(data.character.isUsingItem);
+              }
             }
             this.simulation.syncCharacterFromPacket(data.character);
           }
@@ -8804,10 +12697,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     });
     ws.send(JSON.stringify({
       type: "room_welcome",
-      clientId,
-      playerNumber: primaryEntry.playerNumber,
-      name: primaryEntry.name,
-      color: primaryEntry.color
+      clientId
     }));
   }
   handleDisconnection(clientId) {

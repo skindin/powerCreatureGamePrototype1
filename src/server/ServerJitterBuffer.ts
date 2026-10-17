@@ -74,6 +74,7 @@ export class PlayerJitterQueue {
   private burstDrains: number = 0;
   private receivedCount: number = 0;
   private consumedCount: number = 0;
+  private hasPrimed: boolean = false;
 
   constructor(playerId: string, config?: JitterBufferConfig) {
     this.playerId = playerId;
@@ -140,12 +141,19 @@ export class PlayerJitterQueue {
    *
    * - If queue has burst backlog exceeding target depth, excess intermediate packets
    *   are drained and returned in `drainedPackets` so the caller can apply fast-forward updates.
-   * - If queue has available inputs, pops the oldest sorted packet.
+   * - If queue has available inputs and is primed, pops the oldest sorted packet.
+   * - When a player first joins, waits until targetDepth (e.g. 2 packets) are primed before consuming,
+   *   preventing high-ping players from stuttering in half-speed slow motion.
    * - If queue is starved (empty), generates a safe neutral packet with zero movement
    *   to prevent runaway ghost overshoot while preserving last known aim direction.
    */
   public consume(serverTick?: number): JitterConsumeResult {
     const drainedPackets: PlayerInputPacket[] = [];
+
+    // If queue is not empty, ensure hasPrimed is marked true
+    if (!this.hasPrimed && this.queue.length > 0) {
+      this.hasPrimed = true;
+    }
 
     // 1. Drain burst backlog if queue has backed up (> burstDrainThreshold)
     // We retain targetDepth packets in the queue so the next ticks remain buffered.
@@ -199,6 +207,7 @@ export class PlayerJitterQueue {
       aimY: this.lastKnownInput?.aimY,
       facingAngle: this.lastKnownInput?.facingAngle,
     };
+    (neutralPacket as any).isUsingItem = (this.lastKnownInput as any)?.isUsingItem ?? false;
 
     return {
       packet: neutralPacket,
@@ -221,6 +230,7 @@ export class PlayerJitterQueue {
     this.queue = [];
     this.lastConsumedTick = null;
     this.lastKnownInput = null;
+    this.hasPrimed = false;
   }
 
   /**

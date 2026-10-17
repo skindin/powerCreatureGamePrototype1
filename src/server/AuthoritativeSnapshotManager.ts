@@ -21,6 +21,8 @@ export interface CompressedEntityState {
   isClimbing: boolean;
   facingAngle?: number;
   isSleeping?: boolean;
+  hp?: number;
+  maxHp?: number;
 }
 
 /**

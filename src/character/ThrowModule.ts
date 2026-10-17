@@ -14,6 +14,8 @@ export interface TrajectoryPoint {
 
 export interface TrajectoryCalculation {
   points: TrajectoryPoint[];
+  flattestPoints?: TrajectoryPoint[];
+  steepestPoints?: TrajectoryPoint[];
   landPoint: { x: number; y: number; z?: number };
   isBlockedByWall: boolean;
   blockedAtWallId?: string;
@@ -25,7 +27,13 @@ export interface TrajectoryCalculation {
   flightTime?: number;
   colliderRadius?: number;
   visualShape?: "circle" | "box";
+  launchVel?: { vx: number; vy: number; vz: number };
+  launchPos?: { x: number; y: number; z: number };
+  lockedTargetPos?: { x: number; y: number } | null;
 }
+
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export class ThrowModule {
   public id = "throw";
@@ -33,9 +41,107 @@ export class ThrowModule {
   public enabled = true;
 
   // Tunable throw physics in wall-based units
-  public baseThrowForce = 7.6; // Base throw power in u/s
-  public maxThrowAimDistance = 13.0; // Max throw aim distance in units (~13 wall tiles)
-  public maxThrowHeight = 5.0; // Max throw height reach in units above release point (~5 wall heights)
+  public maxThrowSpeedProp: DynamicProperty;
+  public maxThrowAimDistanceProp: DynamicProperty;
+  public maxThrowHeightProp: DynamicProperty;
+
+  /**
+   * Alias for backward compatibility with baseThrowForceProp.
+   */
+  public get baseThrowForceProp(): DynamicProperty {
+    return this.maxThrowSpeedProp;
+  }
+  public set baseThrowForceProp(prop: DynamicProperty) {
+    this.maxThrowSpeedProp = prop;
+  }
+
+  /**
+   * Whether throwing consumes energy from an Energy Bus.
+   */
+  public consumesEnergy: boolean = true;
+  public energyBusId: string = "bus_main";
+
+  /**
+   * Remembered arc ratio: 0.0 (shortest / flattest possible arc) to 1.0 (tallest / steepest possible arc).
+   * Trajectory manipulation is based on this ratio between the shortest and tallest arc available.
+   * If the target moves farther so the maximum arc height flattens, ratio 1.0 continues to track the highest possible arc.
+   */
+  public savedArcRatio: number = 0.0;
+  public hasUserSetArcRatio: boolean = false;
+
+  public get savedArcSteepness(): number {
+    return this.savedArcRatio * 2.0 - 1.0;
+  }
+  public set savedArcSteepness(val: number) {
+    this.savedArcRatio = Math.max(0.0, Math.min(1.0, (val + 1.0) / 2.0));
+    this.hasUserSetArcRatio = true;
+  }
+
+  constructor(options?: {
+    maxThrowSpeed?: number;
+    baseThrowForce?: number;
+    maxThrowAimDistance?: number;
+    maxThrowHeight?: number;
+    consumesEnergy?: boolean;
+    energyBusId?: string;
+    enabled?: boolean;
+  }) {
+    const initialSpeed = options?.maxThrowSpeed ?? options?.baseThrowForce ?? 100.0;
+    this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
+    this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
+    this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.energyBusId !== undefined) this.energyBusId = options.energyBusId;
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get maxThrowSpeed(): number {
+    return this.maxThrowSpeedProp.literalValue;
+  }
+
+  public set maxThrowSpeed(val: number) {
+    this.maxThrowSpeedProp.literalValue = val;
+  }
+
+  public get baseThrowForce(): number {
+    return this.maxThrowSpeed;
+  }
+
+  public set baseThrowForce(val: number) {
+    this.maxThrowSpeed = val;
+  }
+
+  public get maxThrowAimDistance(): number {
+    return this.maxThrowAimDistanceProp.literalValue;
+  }
+
+  public set maxThrowAimDistance(val: number) {
+    this.maxThrowAimDistanceProp.literalValue = val;
+  }
+
+  public get maxThrowHeight(): number {
+    return this.maxThrowHeightProp.literalValue;
+  }
+
+  public set maxThrowHeight(val: number) {
+    this.maxThrowHeightProp.literalValue = val;
+  }
+
+  public getMaxThrowSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowSpeedProp.get(registry);
+  }
+
+  public getBaseThrowForce(registry?: ObjectPropertiesRegistry): number {
+    return this.getMaxThrowSpeed(registry);
+  }
+
+  public getMaxThrowAimDistance(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowAimDistanceProp.get(registry);
+  }
+
+  public getMaxThrowHeight(registry?: ObjectPropertiesRegistry): number {
+    return this.maxThrowHeightProp.get(registry);
+  }
 
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
@@ -228,6 +334,48 @@ export class ThrowModule {
   }
 
   /**
+   * Calculates the maximum launch speed for an object given:
+   * 1. Character's maxThrowSpeed (governs light objects) scaled by character strength.
+   * 2. Object mass and character energy bus power/energy limit (governs heavier objects).
+   */
+  public calculateMaxLaunchSpeed(
+    thrower?: Character,
+    heldObject?: GameObject | null
+  ): number {
+    const rawMaxSpeed = this.maxThrowSpeedProp.get(thrower?.properties);
+    const strength = thrower?.strength ?? 1.0;
+    const speedCap = Math.max(1.0, rawMaxSpeed * strength);
+
+    // If no held object or mass is negligible, speedCap applies
+    if (!heldObject || !heldObject.hasMass) {
+      return speedCap;
+    }
+
+    const mass = Math.max(0.05, heldObject.mass);
+
+    // If consumesEnergy, max throw speed is governed by maxThrowSpeed * strength (speedCap),
+    // bounded by available burst power/energy (up to full burst capacity):
+    // E_metabolic <= maxPower (1.0s full burst exertion = 500 Joules of muscle energy)
+    // W_mech = E_metabolic * efficiency * strength
+    // v_max = sqrt(2 * W_mech / m)
+    if (this.consumesEnergy && thrower) {
+      const bus = thrower.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        const maxPower = bus.getMaxPower(thrower.properties);
+        const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
+        const maxBurstMetabolicJoules = maxPower * strength; // 500 Joules for max effort burst
+        const availableMechJoules = maxBurstMetabolicJoules * efficiency;
+        const massLimitedSpeed = Math.sqrt((2 * Math.max(1.0, availableMechJoules)) / mass);
+        return Math.min(speedCap, massLimitedSpeed);
+      }
+    }
+
+    // Baseline fallback: F = m * a scaling against 1.0u reference mass
+    const massLimitedSpeed = (speedCap * Math.sqrt(strength)) / Math.sqrt(Math.max(0.1, mass));
+    return Math.min(speedCap, massLimitedSpeed);
+  }
+
+  /**
    * Computes launch velocities vx, vy, vz given start position, target position, arena parameters, and strength.
    * Adjusts total flight time and launch angles so the object lands EXACTLY at the targeted position,
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
@@ -244,7 +392,7 @@ export class ThrowModule {
     hasGravity = true,
     hasVerticalVelocity = true,
     colliderRadius = 0.35,
-    charVel?: { x: number; y: number; z?: number },
+    _charVel?: { x: number; y: number; z?: number },
     candidateEntities?: GameObject[],
     hoverScale?: number,
     thrower?: Character,
@@ -312,7 +460,8 @@ export class ThrowModule {
     }
 
     // Limit how high the player can throw objects (effective max vertical target height above release)
-    const effectiveMaxHeight = this.maxThrowHeight * (thrower?.strength ?? 1.0);
+    const maxThrowHeight = this.maxThrowHeightProp.get(thrower?.properties);
+    const effectiveMaxHeight = maxThrowHeight * (thrower?.strength ?? 1.0);
     const maxAllowedTargetZ = startZ + effectiveMaxHeight;
     if (targetSurfaceHeight > maxAllowedTargetZ) {
       targetSurfaceHeight = maxAllowedTargetZ;
@@ -324,7 +473,8 @@ export class ThrowModule {
     if (dist < 0.1) return null;
 
     // Clamp aim distance to character reach
-    const actualDist = Math.min(dist, this.maxThrowAimDistance);
+    const maxThrowAimDistance = this.maxThrowAimDistanceProp.get(thrower?.properties);
+    const actualDist = Math.min(dist, maxThrowAimDistance);
     const dirX = dx / dist;
     const dirY = dy / dist;
     const finalTargetX = startX + dirX * actualDist;
@@ -345,63 +495,34 @@ export class ThrowModule {
       }
     }
 
-    // Inertial velocity integration:
-    // When moving, the character's velocity vector influences the throw.
-    // To land on target, the arm cancels sideways drift while contributing forward throw power,
-    // altering the flight time, vertical arc, and launch velocity.
-    const vxChar = charVel?.x ?? 0;
-    const vyChar = charVel?.y ?? 0;
-    const vAlong = vxChar * dirX + vyChar * dirY;
-    const vPerp = vxChar * (-dirY) + vyChar * dirX;
-
-    // Arm velocity available in target direction after countering perpendicular momentum
-    const armAlongMax = Math.sqrt(Math.max(0.25, throwPower * throwPower - vPerp * vPerp));
-    const maxForwardSpeed = Math.max(1.5, vAlong + armAlongMax);
+    const launchSpeed = Math.max(1.0, throwPower);
 
     // Straight-line horizontal flight if zero-G or no vertical velocity module
     if (!hasGravity || !hasVerticalVelocity) {
-      const totalTime = Math.max(0.14, actualDist / maxForwardSpeed);
-      const vx = dirX * maxForwardSpeed;
-      const vy = dirY * maxForwardSpeed;
+      const totalTime = Math.max(0.14, actualDist / launchSpeed);
+      const vx = dirX * (actualDist / totalTime);
+      const vy = dirY * (actualDist / totalTime);
       const vz = 0;
       return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: hoveredEntity };
     }
 
     const deltaZ = targetSurfaceHeight - startZ;
 
-    // Minimum angle trajectory calculation:
-    // Moving towards the target enables faster, flatter throws; backpedaling results in a higher lob.
-    const minFlightTime = Math.max(0.14, actualDist / maxForwardSpeed);
-    let totalTime = minFlightTime;
-
-    // If target is elevated onto a wall (deltaZ > 0), ensure flight time allows ascending to wall height
-    if (deltaZ > 0) {
-      totalTime = Math.max(totalTime, Math.sqrt((2 * deltaZ) / arena.gravity));
-    }
-
-    // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
-    // If the flat trajectory would collide with an intermediate wall, increase totalTime to the minimum
-    // required to clear the wall top with a tight, minimal clearance arc.
+    // 1. Scan for intermediate obstacles along the 2D path
     const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
-    const clearance = 0.25; // Clean clearance over intermediate walls
+    // Clearance margin ensures the projectile and its collider cleanly fly over the wall top
+    const clearanceMargin = 0.35;
+    let minTimeForWallClearance = 0;
 
-    // Dense sampling near the start (s < 0.1) ensures walls directly in front of the thrower are detected immediately
-    const sampleRatios: number[] = [];
-    for (let s = 0.005; s < 0.1; s += 0.005) {
-      sampleRatios.push(s);
-    }
-    for (let i = 4; i <= 40; i++) {
-      sampleRatios.push(i / 40);
-    }
-
-    for (const s of sampleRatios) {
+    // Sample finely (120 samples) so narrow walls and edges are never missed
+    const scanSteps = 120;
+    for (let i = 1; i < scanSteps; i++) {
+      const s = i / scanSteps;
       const sampleX = startX + (finalTargetX - startX) * s;
       const sampleY = startY + (finalTargetY - startY) * s;
 
-      // Check if sample intersects any wall
       for (const wall of arena.walls) {
         if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
-          // If the target itself is on top of this wall (or destination is on this wall) and we are near the end of the trajectory, skip (it's landing)
           const isTargetOnThisWall = (targetSurfaceHeight > 0 || (hoveredEntity && hoveredEntity.standingWall === wall)) &&
             finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
             finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
@@ -409,22 +530,15 @@ export class ThrowModule {
             continue;
           }
 
-          // Intermediate wall that must be cleared!
-          // Direct chord height: baselineZ = (1 - s) * startZ + s * targetSurfaceHeight
-          // Trajectory arc height: z(s) = baselineZ + 0.5 * g * totalTime^2 * s * (1 - s)
-          // We require z(s) >= wall.wallHeight + clearance
-          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
-          const requiredHeight = wall.wallHeight + clearance;
-          const requiredDeltaZ = requiredHeight - baselineZ;
-          if (requiredDeltaZ > 0) {
-            const denom = arena.gravity * s * (1 - s);
+          const chordZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const reqClearanceZ = wall.wallHeight + clearanceMargin;
+          const reqLift = reqClearanceZ - chordZ;
+          if (reqLift > 0) {
+            const denom = 0.5 * arena.gravity * s * (1 - s);
             if (denom > 0.0001) {
-              const reqTimeSq = (2 * requiredDeltaZ) / denom;
-              if (reqTimeSq > 0) {
-                const reqTime = Math.sqrt(reqTimeSq);
-                if (reqTime > totalTime) {
-                  totalTime = reqTime;
-                }
+              const neededT = Math.sqrt(reqLift / denom);
+              if (neededT > minTimeForWallClearance) {
+                minTimeForWallClearance = neededT;
               }
             }
           }
@@ -432,14 +546,70 @@ export class ThrowModule {
       }
     }
 
-    if (totalTime <= 0.05) return null;
+    // 2. Ballistics solver at maximum speed:
+    // Solve for flight time T such that total launch speed = vMax (flattest trajectory possible)
+    //   v_h = D / T,  v_z = deltaZ / T + 0.5 * g * T
+    //   v_h^2 + v_z^2 = vMax^2
+    // Quadratic in u = T^2:
+    //   0.25 * g^2 * u^2 - (vMax^2 - g * deltaZ) * u + (D^2 + deltaZ^2) = 0.
+    const g = arena.gravity;
+    const D = actualDist;
+    const vMax = launchSpeed;
+    const aCoeff = 0.25 * g * g;
+    const bCoeff = -(vMax * vMax - g * deltaZ);
+    const cCoeff = D * D + deltaZ * deltaZ;
 
-    // From totalTime and deltaZ, compute the exact vz to hit targetSurfaceHeight at totalTime:
-    // targetSurfaceHeight = startZ + vz * totalTime - 0.5 * g * totalTime^2
-    // vz = (deltaZ + 0.5 * g * totalTime^2) / totalTime
-    const vz = (deltaZ + 0.5 * arena.gravity * totalTime * totalTime) / totalTime;
+    const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+    let chosenT = 0;
 
-    // Horizontal speed required to land EXACTLY at (finalTargetX, finalTargetY) at totalTime
+    if (disc >= 0) {
+      const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
+      const uHigh = (-bCoeff + Math.sqrt(disc)) / (2 * aCoeff);
+
+      const tLow = uLow > 0 ? Math.sqrt(uLow) : 0;
+      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : 0;
+
+      if (minTimeForWallClearance > 0) {
+        // Must clear intermediate wall:
+        // Pick the shortest valid trajectory that clears the wall top while respecting launch speed (between tLow and tHigh)
+        if (tLow >= minTimeForWallClearance) {
+          chosenT = tLow;
+        } else if (tHigh >= minTimeForWallClearance) {
+          // minTimeForWallClearance provides the shortest arc that clears the wall within vMax
+          chosenT = minTimeForWallClearance;
+        } else {
+          // Peak clearance arc at vMax
+          chosenT = tHigh;
+        }
+      } else {
+        // No obstacle: interpolate between shortest arc (tLow) and tallest arc (tHigh) via savedArcRatio
+        const tMin = tLow > 0 ? tLow : D / vMax;
+        const tMax = tHigh > 0 ? tHigh : tMin;
+        if (!this.hasUserSetArcRatio) {
+          const dist3D = Math.sqrt(D * D + deltaZ * deltaZ);
+          const tOpt = Math.sqrt((2 * dist3D) / g);
+          chosenT = Math.max(tMin, Math.min(tMax, tOpt));
+        } else {
+          chosenT = tMin + this.savedArcRatio * (tMax - tMin);
+        }
+      }
+    } else {
+      // Out of range for direct reach at vMax; use peak distance angle (45 deg)
+      const uPeak = -bCoeff / (2 * aCoeff);
+      const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
+      chosenT = tPeak;
+    }
+
+    if (chosenT <= 0) {
+      chosenT = Math.max(0.02, D / vMax);
+    }
+    if (deltaZ > 0) {
+      chosenT = Math.max(chosenT, Math.sqrt((2 * deltaZ) / g));
+    }
+    // Floor flight time at 0.02s (1 physics frame at 50Hz) so short-range throws launch at full vMax speed
+    const totalTime = Math.max(0.02, chosenT);
+
+    const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
@@ -455,20 +625,37 @@ export class ThrowModule {
     aimTargetX: number,
     aimTargetY: number,
     arena: Arena,
-    entities?: GameObject[],
+    _entities?: GameObject[],
     hoverScale?: number,
-    autoLock = false
+    _autoLock = false,
+    lockedTargetPos?: { x: number; y: number } | null,
+    aimLockDelta = 0
   ): TrajectoryCalculation | null {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
+    let targetSurfaceHeight = 0;
+
+    // Orient character towards the locked landing position if active, or aimTarget
+    const targetAimX = lockedTargetPos ? lockedTargetPos.x : aimTargetX;
+    const targetAimY = lockedTargetPos ? lockedTargetPos.y : aimTargetY;
+    const charAimDx = targetAimX - character.position.x;
+    const charAimDy = targetAimY - character.position.y;
+    if (Math.hypot(charAimDx, charAimDy) > 0.05) {
+      character.facingAngle = Math.atan2(charAimDy, charAimDx);
+      const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+      held.position.x = alignedHeldPos.x;
+      held.position.y = alignedHeldPos.y;
+      held.position.z = alignedHeldPos.z;
+    }
+
     let startX = held.position.x;
     let startY = held.position.y;
     let startZ = held.position.z;
 
-    // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is near an adjacent wall, elevate startZ when throwing
-    // over or onto the wall so the item clears the top without clipping the rim!
+    // If starting on the ground, clamp horizontal start position outside walls
     if (character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
@@ -481,30 +668,124 @@ export class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
+    }
+
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+
+    // Check energy/power limits and calculate maximum achievable launch speed
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const maxSpeedFromEnergy = Math.sqrt((2 * maxAffordableMechWork) / heldMass);
+
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
       }
     }
 
-    const throwPower = this.baseThrowForce * character.strength;
-    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+    const g = arena.gravity;
 
-    const charVel = {
-      x: character.velocity.x,
-      y: character.velocity.y,
-      z: character.isAboveGround ? character.verticalVelocity : 0,
-    };
+    // Calculate target position and surface height
+    let finalTargetX = targetAimX;
+    let finalTargetY = targetAimY;
+    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
+    if (wallUnderTarget) {
+      finalTargetX = wallUnderTarget.physX;
+      finalTargetY = wallUnderTarget.physY;
+      targetSurfaceHeight = wallUnderTarget.wall.wallHeight;
+    } else {
+      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    }
 
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+    const maxThrowHeight = this.maxThrowHeightProp.get(character.properties);
+    const effectiveMaxHeight = maxThrowHeight * character.strength;
+    if (targetSurfaceHeight > startZ + effectiveMaxHeight) {
+      targetSurfaceHeight = startZ + effectiveMaxHeight;
+    }
 
-    const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
-      candidateEntities, scale, character, held, autoLock
-    );
-    if (!launch) return null;
+    let dx = finalTargetX - startX;
+    let dy = finalTargetY - startY;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.1) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
+    // Ballistic reach limit at max launch speed:
+    const deltaZ = targetSurfaceHeight - startZ;
+    const maxReach = (maxSpeed / g) * Math.sqrt(Math.max(0.001, maxSpeed * maxSpeed + 2 * g * Math.max(0, -deltaZ)));
+    if (dist > maxReach) {
+      dist = Math.max(0.1, maxReach);
+      finalTargetX = startX + (dx / Math.hypot(dx, dy)) * dist;
+      finalTargetY = startY + (dy / Math.hypot(dx, dy)) * dist;
+      dx = finalTargetX - startX;
+      dy = finalTargetY - startY;
+    }
+
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    let chosenVx = 0;
+    let chosenVy = 0;
+    let chosenVz = 0;
+    let totalTime = 1.0;
+
+    const aCoeff = 0.25 * g * g;
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+
+    // 1. Compute baseline optimal (minimum energy) flight time T_opt:
+    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+    const tOpt = Math.sqrt((2 * dist3D) / g);
+
+    // 2. Compute flattest flight time T_flat at maxSpeed:
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * tOpt;
+    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+
+    // 3. Compute steepest flight time T_high at maxSpeed:
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+
+    const tMin = Math.max(0.02, tFlat);
+    const tMax = Math.max(tMin, tHigh);
+
+    // If right-click locked, adjust savedArcRatio using vertical mouse delta
+    // Dragging UP (rawDy < 0) -> positive deltaRatio -> heightens arc (increases ratio toward 1.0)
+    // Dragging DOWN (rawDy > 0) -> negative deltaRatio -> lowers arc (decreases ratio toward 0.0)
+    if (lockedTargetPos && aimLockDelta !== 0) {
+      // 300px raw mouse movement sweeps full 0.0 to 1.0 range
+      const deltaRatio = -aimLockDelta / 300;
+      this.savedArcRatio = Math.max(0.0, Math.min(1.0, this.savedArcRatio + deltaRatio));
+      this.hasUserSetArcRatio = true;
+    }
+
+    // Default to most efficient trajectory (optRatio / tOpt) if the player hasn't customized their arc yet
+    if (!this.hasUserSetArcRatio) {
+      const optRatio = (tMax - tMin > 0.001) ? Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin))) : 0.0;
+      this.savedArcRatio = optRatio;
+      totalTime = Math.max(tMin, Math.min(tMax, tOpt));
+    } else {
+      totalTime = tMin + this.savedArcRatio * (tMax - tMin);
+    }
+    totalTime = Math.max(0.02, totalTime);
+    chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const hSpeed = dist / totalTime;
+    chosenVx = dirX * hSpeed;
+    chosenVy = dirY * hSpeed;
+
+    const vx = chosenVx;
+    const vy = chosenVy;
+    const vz = chosenVz;
+    const resolvedSurfaceHeight = targetSurfaceHeight;
 
     // Fine simulation steps matching 120Hz physics precision
     const steps = 90;
@@ -512,7 +793,7 @@ export class ThrowModule {
     const points: TrajectoryPoint[] = [];
 
     let isBlocked = false;
-    let isLandingOnWallTop = targetSurfaceHeight > 0;
+    let isLandingOnWallTop = resolvedSurfaceHeight > 0;
     let blockedWallId: string | undefined;
     let peakHeight = startZ;
 
@@ -522,7 +803,7 @@ export class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
-      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : (step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
+      const currentZ = canFlyVertically ? (step === steps ? resolvedSurfaceHeight : (step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
       const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
 
       if (currentZ > peakHeight) {
@@ -587,9 +868,65 @@ export class ThrowModule {
       }
     }
 
+    // Helper to simulate boundary arc points for ghost previews
+    const simulateGhostArc = (simFlightTime: number): TrajectoryPoint[] => {
+      const gTime = Math.max(0.02, simFlightTime);
+      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const gHSpd = dist / gTime;
+      const gVx = dirX * gHSpd;
+      const gVy = dirY * gHSpd;
+
+      const gSteps = 60;
+      const gDt = gTime / gSteps;
+      const gPts: TrajectoryPoint[] = [];
+
+      for (let s = 0; s <= gSteps; s++) {
+        const t = s * gDt;
+        const curX = s === gSteps ? finalTargetX : startX + gVx * t;
+        const curY = s === gSteps ? finalTargetY : startY + gVy * t;
+        const calcZ = canFlyVertically ? (startZ + gVz * t - 0.5 * arena.gravity * t * t) : startZ;
+        const curZ = canFlyVertically
+          ? (s === gSteps ? resolvedSurfaceHeight : (s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ)))
+          : startZ;
+
+        let isOver = false;
+        let collides = false;
+
+        for (const wall of arena.walls) {
+          if (this.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
+            isOver = true;
+            if (curZ <= wall.wallHeight + 0.001 && s > 1) {
+              collides = true;
+              break;
+            }
+          }
+        }
+
+        gPts.push({
+          x: curX,
+          y: curY,
+          z: curZ,
+          t,
+          couldClearWall: curZ > arena.wallHeight,
+          isOverWall: isOver,
+          collidesWall: collides,
+        });
+
+        if (collides) break;
+      }
+      return gPts;
+    };
+
+    // If there is a valid range of arcs to slide between, calculate flattest and steepest ghost trajectories
+    const hasArcRange = (tMax - tMin > 0.05);
+    const flattestPoints = hasArcRange ? simulateGhostArc(tMin) : undefined;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tMax) : undefined;
+
     const lastPoint = points[points.length - 1];
     return {
       points,
+      flattestPoints,
+      steepestPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
@@ -598,13 +935,16 @@ export class ThrowModule {
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : (targetSurfaceHeight > 0),
       blockedAtWallId: blockedWallId,
-      targetObject,
+      targetObject: null,
       targetSurfaceHeight,
-      isAutoLocked,
+      isAutoLocked: Boolean(lockedTargetPos),
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
       visualShape: held.visualShape,
+      launchVel: { vx, vy, vz },
+      launchPos: { x: startX, y: startY, z: startZ },
+      lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null,
     };
   }
 
@@ -618,19 +958,52 @@ export class ThrowModule {
     arena: Arena,
     entities?: GameObject[],
     hoverScale?: number,
-    autoLock = false
+    autoLock = false,
+    launchVel?: { vx: number; vy: number; vz: number },
+    launchPos?: { x: number; y: number; z: number }
   ): GameObject | null {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
-    let startX = held.position.x;
-    let startY = held.position.y;
-    let startZ = held.position.z;
+    let targetAimX = aimTargetX;
+    let targetAimY = aimTargetY;
 
-    // If starting on the ground, clamp start position outside walls.
-    // If the clamped start is near an adjacent wall, elevate startZ when throwing
-    // over or onto the wall so the item clears the top without clipping the rim!
-    if (character.position.z < arena.wallHeight) {
+    if (!launchPos) {
+      if (autoLock) {
+        const candidateEntities = entities ?? arena.entities;
+        const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+        const lockedTarget = this.findHoveredEntity(
+          aimTargetX,
+          aimTargetY,
+          arena,
+          character,
+          held,
+          candidateEntities,
+          scale,
+          Infinity
+        );
+        if (lockedTarget) {
+          targetAimX = lockedTarget.position.x;
+          targetAimY = lockedTarget.position.y;
+        }
+      }
+
+      const aimDx = targetAimX - character.position.x;
+      const aimDy = targetAimY - character.position.y;
+      if (Math.hypot(aimDx, aimDy) > 0.05) {
+        character.facingAngle = Math.atan2(aimDy, aimDx);
+        const alignedHeldPos = character.calculateHeldObjectPosition(arena);
+        held.position.x = alignedHeldPos.x;
+        held.position.y = alignedHeldPos.y;
+        held.position.z = alignedHeldPos.z;
+      }
+    }
+
+    let startX = launchPos ? launchPos.x : held.position.x;
+    let startY = launchPos ? launchPos.y : held.position.y;
+    let startZ = launchPos ? launchPos.z : held.position.z;
+
+    if (!launchPos && character.position.z < arena.wallHeight) {
       const clamped = ThrowModule.clampStartOutsideWalls(
         startX,
         startY,
@@ -642,25 +1015,98 @@ export class ThrowModule {
       );
       startX = clamped.x;
       startY = clamped.y;
-      if (clamped.nearWall) {
-        startZ = Math.max(startZ, arena.wallHeight + 0.05);
-      }
     }
 
-    const throwPower = this.baseThrowForce * character.strength;
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+
     const charVel = {
       x: character.velocity.x,
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    const launch = this.computeLaunchVelocity(
-      startX, startY, startZ, aimTargetX, aimTargetY, arena, throwPower, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
-      candidateEntities, scale, character, held, autoLock
-    );
+    let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
+    const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
+
+    if (this.consumesEnergy && !launchVel) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) return null;
+
+        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const maxPower = bus.maxPowerProp.get(character.properties);
+        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+
+        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const maxSpeedFromEnergy = Math.sqrt((2 * maxAffordableMechWork) / heldMass);
+
+        if (maxSpeedFromEnergy < 0.5) return null;
+        maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
+      }
+    }
+
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
+    const aimDist = Math.hypot(aimDx, aimDy);
+
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
+    if (!launchVel && aimDist > 0.05 && canFlyVertically) {
+      const g = arena.gravity;
+      const maxReach = (maxSpeed / g) * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
+      if (aimDist > maxReach) {
+        const clampedDist = Math.max(0.1, maxReach);
+        effectiveAimX = startX + (aimDx / aimDist) * clampedDist;
+        effectiveAimY = startY + (aimDy / aimDist) * clampedDist;
+      }
+    }
+
+    let launch = launchVel
+      ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz, totalTime: 1.0, finalTargetX: aimTargetX, finalTargetY: aimTargetY, targetSurfaceHeight: 0 }
+      : this.computeLaunchVelocity(
+          startX, startY, startZ, effectiveAimX, effectiveAimY, arena, maxSpeed, held.hasGravity, held.hasVerticalVelocity, held.colliderRadius, charVel,
+          candidateEntities, scale, character, held, autoLock
+        );
+
     if (!launch) return null;
+
+    // Energy consumption check based on actual kinetic work of the launch:
+    // Work done on object: W = 0.5 * m * v_launch^2
+    // Muscle metabolic cost uses muscleEfficiency from the connected EnergyBus.
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus && bus.enabled) {
+        if (bus.isExhausted) {
+          return null;
+        }
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+
+        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+          return null;
+        }
+
+        const burstRes = bus.requestInstantBurst({
+          abilityId: "throw",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: false,
+          pool: character.energyPool,
+          registry: character.properties
+        });
+
+        if (!burstRes.granted || burstRes.fraction < 1.0) {
+          return null;
+        }
+      }
+    }
 
     if (launch.isAutoLocked && launch.targetObject) {
       const dx = launch.targetObject.position.x - character.position.x;
@@ -668,11 +1114,22 @@ export class ThrowModule {
       if (Math.hypot(dx, dy) > 0.05) {
         character.facingAngle = Math.atan2(dy, dx);
       }
+    } else if (Math.hypot(launch.vx, launch.vy) > 0.05) {
+      character.facingAngle = Math.atan2(launch.vy, launch.vx);
+    }
+
+    // Refresh held object position along updated facing angle if not passed explicitly
+    if (!launchPos) {
+      const heldPos = character.calculateHeldObjectPosition(arena);
+      startX = heldPos.x;
+      startY = heldPos.y;
+      startZ = heldPos.z;
     }
 
     held.isHeld = false;
     held.heldBy = null;
     held.lastThrower = character;
+    held.originalThrower = character;
     held.isInFlight = true;
     held.wakeUp();
     held.position.x = startX;

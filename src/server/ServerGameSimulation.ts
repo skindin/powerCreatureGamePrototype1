@@ -5,13 +5,21 @@ import { CollisionResolver } from "../engine/physics/CollisionResolver.js";
 import { IslandManager } from "../engine/physics/IslandManager.js";
 import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { GhostSnapshot, GhostEntityState } from "../network/RelayClient.js";
+import { GhostSnapshot, GhostEntityState, DeathRespawnEvent, ObjectDeletionEvent } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
+import { DamageAuraModule } from "../engine/DamageAuraModule.js";
+import { ConsumableModule } from "../engine/ConsumableModule.js";
+import { SceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
+import { PrefabManager } from "../engine/prefab/PrefabManager.js";
 import { ServerJitterBufferManager, JitterBufferStats, ClockSyncPacket } from "./ServerJitterBuffer.js";
 import {
   AuthoritativeSnapshotManager,
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
+import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
+import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
+
+export type { ContestedGrabResult, DeathRespawnEvent };
 
 export interface ServerSimConfig {
   arenaWidth?: number;
@@ -22,14 +30,6 @@ export interface ServerSimConfig {
   jitterTargetDepth?: number;
   broadcastRateHz?: 30 | 60;
   deltaCompression?: boolean;
-}
-
-export interface ContestedGrabResult {
-  tick: number;
-  targetObjectId: string;
-  winnerPlayerId: string;
-  loserPlayerIds: string[];
-  reason: "strength" | "proximity" | "id_priority";
 }
 
 /**
@@ -47,6 +47,10 @@ export class ServerGameSimulation {
   public fixedDt: number = 1 / 60;
   public collisionMode: "dynamic" | "discrete" | "continuous" | "naive" = "dynamic";
 
+  // Background scene spawner manager (authoritative item dispensing on server)
+  public sceneSpawnerManager: SceneSpawnerManager;
+  public prefabManager: PrefabManager;
+
   // Per-player input jitter buffer (Phase 5.2)
   public jitterBuffer: ServerJitterBufferManager;
 
@@ -58,12 +62,22 @@ export class ServerGameSimulation {
   public snapshotManager: AuthoritativeSnapshotManager;
   public clientAckedTicks: Map<string, number> = new Map(); // Client confirmed server ticks (7.3)
 
-  // Contested grab arbitration audit log
+  // Contested grab arbitration audit log & active reliable retry map
   public contestedGrabEvents: ContestedGrabResult[] = [];
+  public pendingContestedEvents: Map<string, { event: ContestedGrabResult; createdTick: number; acks: Set<string> }> = new Map();
+
+  // Authoritative death & respawn reliable retry map
+  public pendingDeathRespawnEvents: Map<string, { event: DeathRespawnEvent; createdTick: number; acks: Set<string> }> = new Map();
+
+  // Authoritative object deletion reliable retry map (e.g. eaten consumables)
+  public pendingObjectDeletionEvents: Map<string, { event: ObjectDeletionEvent; createdTick: number; acks: Set<string> }> = new Map();
 
   // Reliable action deduplication & ACK tracking
   private processedActionIds: Set<string> = new Set();
   private recentAckedActionIds: string[] = [];
+
+  // Track deleted object IDs so client telemetry packets cannot resurrect deleted items (e.g. eaten food)
+  public deletedObjectIds: Set<string> = new Set();
 
   constructor(config?: ServerSimConfig) {
     const width = config?.arenaWidth ?? 20;
@@ -81,6 +95,8 @@ export class ServerGameSimulation {
       broadcastRateHz: config?.broadcastRateHz ?? 60,
       deltaCompression: config?.deltaCompression ?? true,
     });
+    this.prefabManager = new PrefabManager();
+    this.sceneSpawnerManager = new SceneSpawnerManager(this.prefabManager);
   }
 
   public get allCharacters(): Character[] {
@@ -148,6 +164,18 @@ export class ServerGameSimulation {
               angularVelocity: { ...o.rollModule.angularVelocity },
             })
           : undefined,
+        consumableModule: o.consumableModule
+          ? new ConsumableModule({
+              tag: o.consumableModule.tag,
+              totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
+              remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
+              consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
+              healRate: o.consumableModule.getHealRate(o.properties),
+              minScaleFloor: o.consumableModule.minScaleFloor,
+              minRadiusFloor: o.consumableModule.minRadiusFloor,
+              enabled: o.consumableModule.enabled,
+            })
+          : undefined,
       });
       serverObj.isSleeping = o.isSleeping;
       return serverObj;
@@ -190,6 +218,21 @@ export class ServerGameSimulation {
       name: "Server Player 1",
     });
     this.characters.set(player1.playerId, player1);
+
+    // Spawn authoritative Sparring Dummy (inert character with controllerType "none")
+    const dummy = new Character({
+      id: "dummy-1",
+      x: 6.8,
+      y: 7.0,
+      color: "#64748b",
+      colliderRadius: 0.44,
+      mass: 1.5,
+      strength: 0,
+      name: "Sparring Dummy",
+      controllerType: "none",
+      role: "dummy",
+    });
+    this.characters.set(dummy.id, dummy);
 
     // Spawn default freebody test objects
     this.objects = [
@@ -235,6 +278,41 @@ export class ServerGameSimulation {
         rollModule: new RollModule({
           rollResistance: 0.0,
           angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
+        }),
+      }),
+      new GameObject({
+        id: "hazard-orb-1",
+        name: "Hazard Orb (Damage Aura)",
+        position: { x: 10.0, y: 7.0, z: 0 },
+        mass: 5.0,
+        colliderRadius: 0.35,
+        color: "#ef4444",
+        bounceMod: 0.1,
+        damageAuraModule: new DamageAuraModule({
+          damageRadius: 2.2,
+          damageRate: 25.0,
+        }),
+      }),
+      new GameObject({
+        id: "apple-default-1",
+        name: "Apple",
+        prefabId: "prefab_apple",
+        position: { x: 5.5, y: 7.0, z: 0 },
+        color: "#22c55e",
+        visualShape: "circle",
+        mass: 0.35,
+        colliderRadius: 0.25,
+        bounceMod: 0.2,
+        hasGravity: true,
+        hasVerticalPosition: true,
+        consumableModule: new ConsumableModule({
+          tag: "food",
+          totalEnergyJoules: 2000,
+          remainingEnergyJoules: 2000,
+          consumeRateWatts: 400,
+          healRate: 0,
+          minScaleFloor: 0.35,
+          minRadiusFloor: 0.12,
         }),
       }),
     ];
@@ -313,18 +391,59 @@ export class ServerGameSimulation {
     if (!clientObjects || clientObjects.length === 0) return;
 
     for (const cObj of clientObjects) {
+      if (this.deletedObjectIds.has(cObj.id)) {
+        continue;
+      }
+      if (cObj.remainingEnergyJoules !== undefined && cObj.remainingEnergyJoules <= 0.001) {
+        this.triggerObjectDeletion(cObj.id);
+        continue;
+      }
       let sObj = this.objects.find((o) => o.id === cObj.id);
       if (!sObj) {
-        sObj = new GameObject({
-          id: cObj.id,
-          name: cObj.name || "Object",
-          position: { x: cObj.x, y: cObj.y, z: cObj.z },
-          color: cObj.color || "#38bdf8",
-          colliderRadius: cObj.radius || 0.35,
-          visualShape: cObj.shape || "circle",
-        });
+        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : undefined);
+        const prefab = pId ? this.prefabManager.get(pId) : undefined;
+        if (prefab) {
+          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, this.arena);
+          sObj.id = cObj.id;
+          sObj.velocity.x = cObj.vx;
+          sObj.velocity.y = cObj.vy;
+          sObj.verticalVelocity = cObj.vz ?? 0;
+          if (cObj.name !== undefined) sObj.name = cObj.name;
+          if (cObj.color !== undefined) sObj.color = cObj.color;
+          if (cObj.shape !== undefined) sObj.visualShape = cObj.shape;
+          if (cObj.radius !== undefined) {
+            sObj.colliderRadius = cObj.radius;
+            if (sObj.consumableModule) {
+              sObj.consumableModule.initialColliderRadius = cObj.radius;
+            }
+          }
+          if (cObj.mass !== undefined) sObj.mass = cObj.mass;
+          if (cObj.bounceMod !== undefined) sObj.bounceMod = cObj.bounceMod;
+        } else {
+          sObj = new GameObject({
+            id: cObj.id,
+            name: cObj.name || "Object",
+            position: { x: cObj.x, y: cObj.y, z: cObj.z },
+            mass: cObj.mass ?? 1.0,
+            bounceMod: cObj.bounceMod ?? 0.0,
+            color: cObj.color || "#38bdf8",
+            colliderRadius: cObj.radius || 0.35,
+            visualShape: cObj.shape || "circle",
+            consumableModule: cObj.consumableTag
+              ? new ConsumableModule({
+                  tag: cObj.consumableTag,
+                  totalEnergyJoules: cObj.totalEnergyJoules ?? 2000,
+                  remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2000,
+                })
+              : undefined,
+          });
+        }
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
+      }
+
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined) {
+        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
       }
 
       // 1. Synchronize Held State
@@ -358,6 +477,12 @@ export class ServerGameSimulation {
           sObj.heldBy.heldObject = null;
         }
         sObj.heldBy = null;
+
+        // If the object being dropped/released was a consumed/depleted item, trigger authoritative deletion immediately!
+        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.001)) {
+          this.triggerObjectDeletion(sObj.id);
+          continue;
+        }
       }
 
       // STRICT MULTIPLAYER AUTHORITY RULE:
@@ -393,6 +518,42 @@ export class ServerGameSimulation {
       return;
     }
 
+    // Server-authoritative death respawn lock:
+    // If character is marked respawn-locked, only unlock when incoming packet is aligned with respawn coordinates!
+    if ((sChar as any).isRespawnLocked && (sChar as any).authoritativeRespawnPos) {
+      const respawnPos = (sChar as any).authoritativeRespawnPos;
+      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
+      if (distToRespawn > 1.2) {
+        // Keep character firmly locked at respawn coordinates
+        sChar.position.x = respawnPos.x;
+        sChar.position.y = respawnPos.y;
+        sChar.position.z = respawnPos.z;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+      // Incoming packet is aligned with respawn position: unlock character!
+      (sChar as any).isRespawnLocked = false;
+    }
+
+    // Secondary check against active unacknowledged pending death events
+    for (const pending of this.pendingDeathRespawnEvents.values()) {
+      const isTarget = pending.event.targetEntityId === charId ||
+                       pending.event.targetEntityId === sChar.id ||
+                       pending.event.targetEntityId === sChar.playerId ||
+                       pending.event.targetEntityId === (sChar as any).serverCharId;
+      if (isTarget && !pending.acks.has(charId)) {
+        sChar.position.x = pending.event.respawnX;
+        sChar.position.y = pending.event.respawnY;
+        sChar.position.z = pending.event.respawnZ;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+    }
+
     const now = performance.now();
     const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
 
@@ -412,6 +573,23 @@ export class ServerGameSimulation {
     }
 
     if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
+      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
+      const isServerGrounded = sChar.isRestingOnSurface ||
+        (Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8);
+
+      // If client took off jumping while server character was grounded, authoritatively execute jump
+      // so energy and stamina are deducted and synchronized on the authoritative server
+      if (
+        isServerGrounded &&
+        !sChar.isClimbing &&
+        !sChar.isHeld &&
+        !hasRecentImpact &&
+        clientChar.vz > 1.0
+      ) {
+        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : undefined;
+        sChar.jump(this.arena, moveInput);
+      }
+
       if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
         sChar.verticalVelocity = clientChar.vz;
       }
@@ -442,6 +620,33 @@ export class ServerGameSimulation {
       sChar.position.z = clientChar.z;
     }
 
+    // 2b. Gentle Overlap Relaxation:
+    // If the character is overlapping any dynamic freebody object, gently move
+    // the overlapping object and character away from each other so they no longer overlap.
+    // This prevents 60Hz push/re-assert oscillations when a player was touching an object before joining.
+    for (const obj of this.objects) {
+      if (obj.isHeld) continue;
+      const minDistance = sChar.colliderRadius + obj.colliderRadius;
+      const ox = obj.position.x - sChar.position.x;
+      const oy = obj.position.y - sChar.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = sChar.position.z;
+        const objZ = obj.position.z;
+        if (Math.abs(charZ - objZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.03;
+          const nx = oDist > 0.001 ? ox / oDist : 1;
+          const ny = oDist > 0.001 ? oy / oDist : 0;
+          // Gently ease apart: move each body by half the overlap
+          sChar.position.x -= nx * (overlap * 0.5);
+          sChar.position.y -= ny * (overlap * 0.5);
+          obj.position.x += nx * (overlap * 0.5);
+          obj.position.y += ny * (overlap * 0.5);
+          obj.wakeUp();
+        }
+      }
+    }
+
     // 3. Synchronize Surface & Elevation States
     if (clientChar.surfaceZ !== undefined) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;
@@ -459,15 +664,19 @@ export class ServerGameSimulation {
     if (clientChar.facingAngle !== undefined) {
       sChar.facingAngle = clientChar.facingAngle;
     }
+    if (clientChar.isUsingItem !== undefined) {
+      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
+    }
     // Note: client packets are NOT permitted to override the server's authoritative player color.
 
     // 4. Synchronize Held Object state
+    // Authoritative Server Protection: A client cannot simply claim an object upon joining or telemetry.
+    // An object is only kept held if the server's authoritative state already has it held by this character,
+    // or if the client explicitly releases/drops an object it was holding.
     if (clientChar.heldObjectId) {
       const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj) {
-        sChar.heldObject = sObj;
-        sObj.isHeld = true;
-        sObj.heldBy = sChar;
+      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
+        // Keep synced with hands
         const relPos = sChar.calculateHeldObjectPosition(this.arena);
         sObj.position.x = relPos.x;
         sObj.position.y = relPos.y;
@@ -478,9 +687,13 @@ export class ServerGameSimulation {
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;
-      sObj.isHeld = false;
-      sObj.heldBy = null;
-      sChar.heldObject = null;
+      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
+        this.triggerObjectDeletion(sObj.id);
+      } else {
+        sObj.isHeld = false;
+        sObj.heldBy = null;
+        sChar.heldObject = null;
+      }
     }
   }
 
@@ -528,7 +741,12 @@ export class ServerGameSimulation {
         if (!char.heldObject && char.pickupModule && act.targetObjectId) {
           const target = this.objects.find((o) => o.id === act.targetObjectId);
           if (target && (!target.isHeld || target.heldBy === char)) {
-            char.pickupModule.pickup(char, target);
+            let itemToHold = target;
+            if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, this.arena, this.objects);
+              if (clone) itemToHold = clone;
+            }
+            char.pickupModule.pickup(char, itemToHold);
           }
         }
       } else if (act.type === "drop") {
@@ -559,6 +777,16 @@ export class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? (char.position.x + Math.cos(char.facingAngle) * 3);
           const aimY = act.aimY ?? (char.position.y + Math.sin(char.facingAngle) * 3);
+          const launchVel = (act as any).launchVx !== undefined ? {
+            vx: (act as any).launchVx,
+            vy: (act as any).launchVy,
+            vz: (act as any).launchVz ?? 0
+          } : undefined;
+          const launchPos = (act as any).launchStartX !== undefined ? {
+            x: (act as any).launchStartX,
+            y: (act as any).launchStartY,
+            z: (act as any).launchStartZ ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -566,7 +794,9 @@ export class ServerGameSimulation {
             this.arena,
             undefined,
             undefined,
-            act.isLockHeld ?? false
+            act.isLockHeld ?? false,
+            launchVel,
+            launchPos
           );
         }
       }
@@ -581,87 +811,162 @@ export class ServerGameSimulation {
 
   /**
    * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
+   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
    */
   private arbitrateContestedGrabs(
     grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[]
   ): void {
-    // Group requests by target object ID
-    const targetGroups = new Map<string, { char: Character; target: GameObject; pkt: PlayerInputPacket }[]>();
-    for (const req of grabRequests) {
-      const objId = req.target.id;
-      let group = targetGroups.get(objId);
-      if (!group) {
-        group = [];
-        targetGroups.set(objId, group);
-      }
-      group.push(req);
-    }
-
-    for (const [objId, requests] of targetGroups) {
-      if (requests.length === 1) {
-        // Uncontested grab
-        const req = requests[0];
-        req.char.pickupModule?.pickup(req.char, req.target);
-        continue;
-      }
-
-      // CONTESTED GRAB TIEBREAKER:
-      // 1) Higher creature strength wins
-      // 2) Closest 3D distance wins
-      // 3) Lower playerId string hash wins
-      requests.sort((a, b) => {
-        if (Math.abs(b.char.strength - a.char.strength) > 0.001) {
-          return b.char.strength - a.char.strength;
-        }
-        const distA = Math.hypot(
-          a.target.position.x - a.char.position.x,
-          a.target.position.y - a.char.position.y,
-          a.target.position.z - a.char.position.z
-        );
-        const distB = Math.hypot(
-          b.target.position.x - b.char.position.x,
-          b.target.position.y - b.char.position.y,
-          b.target.position.z - b.char.position.z
-        );
-        if (Math.abs(distA - distB) > 0.001) {
-          return distA - distB;
-        }
-        return a.char.playerId.localeCompare(b.char.playerId);
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents, this.arena, this.objects);
+    for (const res of results) {
+      this.pendingContestedEvents.set(res.eventId, {
+        event: res,
+        createdTick: this.currentTick,
+        acks: new Set<string>(),
       });
+    }
+  }
 
-      const winner = requests[0];
-      const losers = requests.slice(1);
+  /**
+   * Acknowledges that a client character has received and processed contested grab events.
+   */
+  public acknowledgeContestedEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingContestedEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        // Check if all involved parties (winner + all losers) have acknowledged
+        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
+        const allAcked = needed.every((pId) => pending.acks.has(pId));
+        if (allAcked) {
+          this.pendingContestedEvents.delete(id);
+        }
+      }
+    }
+  }
 
-      let reason: "strength" | "proximity" | "id_priority" = "id_priority";
-      if (Math.abs(winner.char.strength - losers[0].char.strength) > 0.001) {
-        reason = "strength";
+  /**
+   * Returns all active unacknowledged contested grab events for broadcast.
+   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
+   */
+  public getActiveContestedEvents(): ContestedGrabResult[] {
+    const active: ContestedGrabResult[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingContestedEvents.entries()) {
+      if (nowTick - record.createdTick > 180) {
+        // Expired after 3 seconds of continuous transmission
+        this.pendingContestedEvents.delete(id);
       } else {
-        const distWin = Math.hypot(
-          winner.target.position.x - winner.char.position.x,
-          winner.target.position.y - winner.char.position.y,
-          winner.target.position.z - winner.char.position.z
-        );
-        const distLose = Math.hypot(
-          losers[0].target.position.x - losers[0].char.position.x,
-          losers[0].target.position.y - losers[0].char.position.y,
-          losers[0].target.position.z - losers[0].char.position.z
-        );
-        if (Math.abs(distWin - distLose) > 0.001) {
-          reason = "proximity";
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+
+  /**
+   * Acknowledges that a client character has received and processed death & respawn events.
+   */
+  public acknowledgeDeathRespawnEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingDeathRespawnEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        // Clean up once all registered connected players have acknowledged
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingDeathRespawnEvents.delete(id);
         }
       }
-
-      this.contestedGrabEvents.push({
-        tick: this.currentTick,
-        targetObjectId: objId,
-        winnerPlayerId: winner.char.playerId,
-        loserPlayerIds: losers.map((l) => l.char.playerId),
-        reason,
-      });
-
-      // Winner claims the item; losers fail to grab
-      winner.char.pickupModule?.pickup(winner.char, winner.target);
     }
+  }
+
+  /**
+   * Returns all active unacknowledged death respawn events for continuous broadcast.
+   */
+  public getActiveDeathRespawnEvents(): DeathRespawnEvent[] {
+    const active: DeathRespawnEvent[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingDeathRespawnEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        // Expired after 5 seconds of continuous retransmission
+        this.pendingDeathRespawnEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+
+  /**
+   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
+   */
+  public triggerObjectDeletion(objectId: string): void {
+    this.deletedObjectIds.add(objectId);
+    // Remove from simulation objects and arena
+    const idx = this.objects.findIndex((o) => o.id === objectId);
+    if (idx !== -1) {
+      const obj = this.objects[idx];
+      if (obj.heldBy && (obj.heldBy as Character).heldObject === obj) {
+        (obj.heldBy as Character).heldObject = null;
+      }
+      obj.isHeld = false;
+      obj.heldBy = null;
+      this.objects.splice(idx, 1);
+    }
+    if (Array.isArray((this.arena as any).entities)) {
+      const eIdx = (this.arena as any).entities.findIndex((e: any) => e.id === objectId);
+      if (eIdx !== -1) {
+        (this.arena as any).entities.splice(eIdx, 1);
+      }
+    }
+    const eventId = `del_${objectId}_${this.currentTick}`;
+    const event: ObjectDeletionEvent = {
+      eventId,
+      objectId,
+      tick: this.currentTick,
+    };
+    this.pendingObjectDeletionEvents.set(eventId, {
+      event,
+      createdTick: this.currentTick,
+      acks: new Set(),
+    });
+  }
+
+  /**
+   * Acknowledges that a client character has received and processed object deletion events.
+   */
+  public acknowledgeObjectDeletionEvents(clientCharId: string, eventIds: string[]): void {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = this.pendingObjectDeletionEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          this.pendingObjectDeletionEvents.delete(id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Returns all active unacknowledged object deletion events for continuous broadcast.
+   */
+  public getActiveObjectDeletionEvents(): ObjectDeletionEvent[] {
+    const active: ObjectDeletionEvent[] = [];
+    const nowTick = this.currentTick;
+    for (const [id, record] of this.pendingObjectDeletionEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        // Expired after 5 seconds of continuous retransmission
+        this.pendingObjectDeletionEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
   }
 
   /**
@@ -693,6 +998,13 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
+        if ((catchupPkt as any).isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+          const heldObj = char.heldObject;
+          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+          if (result.isDepleted) {
+            this.triggerObjectDeletion(heldObj.id);
+          }
+        }
         if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
@@ -711,6 +1023,11 @@ export class ServerGameSimulation {
       }
 
       if (pkt) {
+        if ((pkt as any).isUsingItem !== undefined) {
+          char.isUsingItem = Boolean((pkt as any).isUsingItem);
+        } else if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         if (char.isSprinting !== pkt.isSprinting) {
           char.setSprinting(pkt.isSprinting);
         }
@@ -726,6 +1043,16 @@ export class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : (pkt.aimX !== undefined ? pkt.aimX : (char.position.x + Math.cos(char.facingAngle) * 3));
           const aimY = aimTarget ? aimTarget.y : (pkt.aimY !== undefined ? pkt.aimY : (char.position.y + Math.sin(char.facingAngle) * 3));
+          const launchVel = (pkt as any).launchVx !== undefined ? {
+            vx: (pkt as any).launchVx,
+            vy: (pkt as any).launchVy,
+            vz: (pkt as any).launchVz ?? 0
+          } : undefined;
+          const launchPos = (pkt as any).launchStartX !== undefined ? {
+            x: (pkt as any).launchStartX,
+            y: (pkt as any).launchStartY,
+            z: (pkt as any).launchStartZ ?? 0
+          } : undefined;
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -733,7 +1060,9 @@ export class ServerGameSimulation {
             this.arena,
             undefined,
             undefined,
-            pkt.isLockHeld
+            pkt.isLockHeld,
+            launchVel,
+            launchPos
           );
         }
 
@@ -780,11 +1109,19 @@ export class ServerGameSimulation {
           this.arena,
           pkt.isJumpHeld,
           this.arena.entities,
-          pkt.isLockHeld
+          pkt.isLockHeld,
+          (pkt as any).lockedAimPos ?? null
         );
 
         // Explicitly enforce facing angle sent by client packet (or locked target if active)
-        if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
+        if ((pkt as any).lockedAimPos) {
+          const lPos = (pkt as any).lockedAimPos;
+          const dx = lPos.x - char.position.x;
+          const dy = lPos.y - char.position.y;
+          if (Math.hypot(dx, dy) > 0.05) {
+            char.facingAngle = Math.atan2(dy, dx);
+          }
+        } else if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
           if (Math.hypot(dx, dy) > 0.05) {
@@ -800,7 +1137,10 @@ export class ServerGameSimulation {
           char.heldObject.position.z = heldPos.z;
         }
       } else {
-        // Neutral step for empty-handed player
+        // Neutral step for character without input packet this tick
+        if (!char.heldObject || !char.canConsumeHeldObject()) {
+          char.isUsingItem = false;
+        }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }
     }
@@ -823,6 +1163,55 @@ export class ServerGameSimulation {
         continue;
       }
       obj.updatePosition(dt, this.arena);
+      // Process health logic on objects that are not characters
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj as any, this.arena);
+      }
+    }
+
+    // 4b. Process Consumable consumption for held items
+    for (const char of this.allCharacters) {
+      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+        const heldObj = char.heldObject!;
+        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+        if (result.isDepleted) {
+          this.triggerObjectDeletion(heldObj.id);
+        }
+      }
+    }
+
+    // 4c. Process Damage Aura emitters across all entities
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
+    }
+
+    // 4d. Update background scene spawners (periodic item dispensing on authoritative server)
+    this.sceneSpawnerManager.update(dt, this.arena, this.objects);
+
+    // 4c. Process death respawns hook setup for characters
+    for (const char of this.allCharacters) {
+      if (char.healthModule && !char.healthModule.onDeathRespawn) {
+        char.healthModule.onDeathRespawn = (entity, respawnPos) => {
+          const charId = (entity as Character).playerId || (entity as any).serverCharId || entity.id;
+          const eventId = `death-${charId}-${this.currentTick}`;
+          this.pendingDeathRespawnEvents.set(eventId, {
+            event: {
+              eventId,
+              targetEntityId: charId,
+              tick: this.currentTick,
+              respawnX: respawnPos.x,
+              respawnY: respawnPos.y,
+              respawnZ: respawnPos.z,
+              maxHp: entity.healthModule ? entity.healthModule.getMaxHp(entity.properties) : 100,
+            },
+            createdTick: this.currentTick,
+            acks: new Set<string>(),
+          });
+        };
+      }
     }
 
     // 5. Deterministic collision resolution across all entities
@@ -850,26 +1239,7 @@ export class ServerGameSimulation {
    * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast (Phase 7).
    */
   public getAuthoritativeWorldSnapshot(forceKeyframe: boolean = false): AuthoritativeWorldSnapshot {
-    const lastProcessedInputTick: { [playerId: string]: number } = {};
-    for (const [pId] of this.characters) {
-      const stats = this.jitterBuffer.getStats(pId);
-      if (stats && stats.lastConsumedTick !== null) {
-        lastProcessedInputTick[pId] = stats.lastConsumedTick;
-      }
-    }
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = primaryChar ? primaryChar.playerId : "keyboard";
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard") || undefined;
-
-    return this.snapshotManager.createSnapshot(
-      this.currentTick,
-      this.allCharacters,
-      this.objects,
-      lastProcessedInputTick,
-      this.getRecentAckedActionIds(),
-      clockSync,
-      forceKeyframe
-    );
+    return ServerTelemetryBroadcaster.createAuthoritativeWorldSnapshot(this, forceKeyframe);
   }
 
   /**
@@ -877,96 +1247,20 @@ export class ServerGameSimulation {
    * Directly reflects the true physical state of the authoritative simulation.
    */
   public getGhostSnapshot(rttMs: number = 0, forPlayerId?: string): GhostSnapshot {
-    const primaryChar = this.characters.get("keyboard") || this.allCharacters[0];
-    const targetPId = forPlayerId || (primaryChar ? primaryChar.playerId : "keyboard");
-    const clockSync = this.latestClockSync.get(targetPId) || this.latestClockSync.get("keyboard");
-
-    const ghostChar: GhostEntityState = {
-      id: primaryChar ? primaryChar.playerId : "player",
-      x: primaryChar ? Number(primaryChar.position.x.toFixed(3)) : 0,
-      y: primaryChar ? Number(primaryChar.position.y.toFixed(3)) : 0,
-      z: primaryChar ? Number(primaryChar.position.z.toFixed(3)) : 0,
-      vx: primaryChar ? Number(primaryChar.velocity.x.toFixed(3)) : 0,
-      vy: primaryChar ? Number(primaryChar.velocity.y.toFixed(3)) : 0,
-      vz: primaryChar ? Number((primaryChar.hasVerticalVelocity ? primaryChar.verticalVelocity : 0).toFixed(3)) : 0,
-      surfaceZ: primaryChar ? Number((primaryChar.supportingSurfaceHeight ?? 0).toFixed(3)) : 0,
-      isGrounded: primaryChar ? (primaryChar.isRestingOnSurface || primaryChar.position.z <= 0.005) : true,
-      radius: primaryChar ? primaryChar.colliderRadius : 0.44,
-      color: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
-      playerColor: primaryChar ? (primaryChar.playerColor || primaryChar.color) : "#f59e0b",
-      playerNumber: primaryChar ? primaryChar.playerNumber : 1,
-      isClimbing: primaryChar ? primaryChar.isClimbing : false,
-      isAboveWalls: primaryChar ? primaryChar.isAboveWalls : false,
-      facingAngle: primaryChar ? Number(primaryChar.facingAngle.toFixed(4)) : 0,
-    };
-
-    const ghostObjects: GhostEntityState[] = this.objects.map((obj) => {
-      const holder = (obj.heldBy instanceof Character ? obj.heldBy : null) || this.allCharacters.find((c) => c.heldObject === obj);
-      let posX = obj.position.x;
-      let posY = obj.position.y;
-      let posZ = obj.position.z;
-      if ((obj.isHeld || holder) && holder) {
-        const relPos = holder.calculateHeldObjectPosition(this.arena);
-        posX = relPos.x;
-        posY = relPos.y;
-        posZ = relPos.z;
-      }
-      return {
-        id: obj.id,
-        name: obj.name,
-        x: Number(posX.toFixed(3)),
-        y: Number(posY.toFixed(3)),
-        z: Number(posZ.toFixed(3)),
-        vx: Number(obj.velocity.x.toFixed(3)),
-        vy: Number(obj.velocity.y.toFixed(3)),
-        vz: Number((obj.hasVerticalVelocity ? obj.verticalVelocity : 0).toFixed(3)),
-        surfaceZ: Number((obj.supportingSurfaceHeight ?? 0).toFixed(3)),
-        isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
-        radius: obj.colliderRadius,
-        color: obj.color,
-        shape: obj.visualShape,
-        isHeld: obj.isHeld || Boolean(holder),
-        heldBy: holder ? (holder.playerId || (holder === primaryChar ? "player" : holder.id)) : (obj.heldBy ? ((obj.heldBy as Character).playerId || obj.heldBy.id) : null),
-        isAboveWalls: obj.isAboveWalls,
-        angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
-        angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
-        angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
-        isSleeping: obj.isSleeping,
-      };
-    });
-
-    const ghostCharacters: GhostEntityState[] = this.allCharacters.map((c) => ({
-      id: c.playerId || c.id || "player",
-      name: c.name,
-      x: Number(c.position.x.toFixed(3)),
-      y: Number(c.position.y.toFixed(3)),
-      z: Number(c.position.z.toFixed(3)),
-      vx: Number(c.velocity.x.toFixed(3)),
-      vy: Number(c.velocity.y.toFixed(3)),
-      vz: Number((c.hasVerticalVelocity ? c.verticalVelocity : 0).toFixed(3)),
-      surfaceZ: Number((c.supportingSurfaceHeight ?? 0).toFixed(3)),
-      isGrounded: c.isRestingOnSurface || c.position.z <= 0.005,
-      radius: c.colliderRadius,
-      color: c.playerColor || c.color,
-      playerColor: c.playerColor || c.color,
-      playerNumber: c.playerNumber,
-      isClimbing: c.isClimbing,
-      isAboveWalls: c.isAboveWalls,
-      facingAngle: Number(c.facingAngle.toFixed(4)),
-      heldObjectId: c.heldObject ? c.heldObject.id : null,
-      isHolding: Boolean(c.heldObject),
-    }));
-
-    return {
-      seq: this.currentTick,
-      sentAt: performance.now(),
-      receivedAt: performance.now(),
+    return ServerTelemetryBroadcaster.createGhostSnapshot(
+      this.currentTick,
+      this.allCharacters,
+      this.characters,
+      this.objects,
+      this.arena,
+      this.latestClockSync,
+      this.getRecentAckedActionIds(),
+      this.getActiveContestedEvents(),
       rttMs,
-      character: ghostChar,
-      characters: ghostCharacters,
-      objects: ghostObjects,
-      ackActionIds: this.getRecentAckedActionIds(),
-      clockSync,
-    };
+      forPlayerId,
+      this.getActiveDeathRespawnEvents(),
+      this.getActiveObjectDeletionEvents(),
+      this.prefabManager
+    );
   }
 }

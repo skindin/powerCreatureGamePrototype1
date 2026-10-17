@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
 import { ServerGameSimulation } from "./ServerGameSimulation.js";
 import { Character } from "../character/Character.js";
+import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 
@@ -16,6 +17,7 @@ export interface ClientCharacterEntry {
   color: string;
   name: string;
   isDefaultPlaceholder?: boolean;
+  spawnPos?: { x: number; y: number; z: number };
 }
 
 export interface ConnectedRoomClient {
@@ -177,7 +179,7 @@ export class UniversalRoomManager {
     for (const [clientId, client] of this.clients) {
       if (client.ws.readyState === WebSocket.OPEN) {
         try {
-          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0);
+          const snapshot = this.simulation.getGhostSnapshot(client.lastPingMs || 0, clientId);
           const clockSync = this.simulation.getLatestClockSync(clientId);
           if (clockSync) {
             snapshot.clockSync = clockSync;
@@ -200,8 +202,18 @@ export class UniversalRoomManager {
   public allocatePlayerNumber(): number {
     const used = new Set<number>();
     for (const char of this.simulation.characters.values()) {
+      if (char.characterModule?.role === "dummy" || char.controllerType === "none" || char.id === "dummy-1") {
+        continue;
+      }
       if (char.playerNumber && char.playerNumber > 0) {
         used.add(char.playerNumber);
+      }
+    }
+    for (const client of this.clients.values()) {
+      for (const entry of client.characters.values()) {
+        if (entry.playerNumber && entry.playerNumber > 0) {
+          used.add(entry.playerNumber);
+        }
       }
     }
     for (let i = 1; i <= 16; i++) {
@@ -276,7 +288,8 @@ export class UniversalRoomManager {
   public registerCharacter(
     client: ConnectedRoomClient,
     localPlayerId: string,
-    name?: string
+    name?: string,
+    _spawnPos?: { x: number; y: number; z?: number }
   ): ClientCharacterEntry {
     const existing = client.characters.get(localPlayerId);
     if (existing) {
@@ -305,8 +318,11 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    const spawnX = 4.8 + ((playerNumber - 1) % 4) * 1.6;
-    const spawnY = 7.0 + Math.floor((playerNumber - 1) / 4) * 1.5;
+    // SERVER-AUTHORITATIVE DEDICATED SPAWN POSITION:
+    // All players start at the dedicated spawn position (4.8, 7.0, 0).
+    const spawnX = 4.8;
+    const spawnY = 7.0;
+    const spawnZ = 0;
 
     const character = new Character({
       x: spawnX,
@@ -320,6 +336,44 @@ export class UniversalRoomManager {
       name: charName,
       hasCustomName: isExplicitCustom,
     });
+    character.position.z = spawnZ;
+
+    // Gentle overlap resolution on spawn: if character overlaps an existing creature or object,
+    // gently separate them away from each other. If directly on top of each other, choose a random direction.
+    const otherEntities: (Character | GameObject)[] = [
+      ...this.simulation.allCharacters,
+      ...this.simulation.objects,
+    ];
+    for (const ent of otherEntities) {
+      if (ent.isHeld) continue;
+      const minDistance = character.colliderRadius + ent.colliderRadius;
+      const ox = ent.position.x - character.position.x;
+      const oy = ent.position.y - character.position.y;
+      const oDist = Math.hypot(ox, oy);
+      if (oDist < minDistance) {
+        const charZ = character.position.z;
+        const entZ = ent.position.z;
+        if (Math.abs(charZ - entZ) < 0.8) {
+          const overlap = minDistance - oDist + 0.04;
+          let nx: number;
+          let ny: number;
+          if (oDist > 0.001) {
+            nx = ox / oDist;
+            ny = oy / oDist;
+          } else {
+            const randomAngle = Math.random() * Math.PI * 2;
+            nx = Math.cos(randomAngle);
+            ny = Math.sin(randomAngle);
+          }
+          character.position.x -= nx * (overlap * 0.5);
+          character.position.y -= ny * (overlap * 0.5);
+          ent.position.x += nx * (overlap * 0.5);
+          ent.position.y += ny * (overlap * 0.5);
+          ent.wakeUp();
+        }
+      }
+    }
+
     this.simulation.characters.set(serverCharId, character);
     this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
 
@@ -329,6 +383,7 @@ export class UniversalRoomManager {
       playerNumber,
       color,
       name: charName,
+      spawnPos: { x: character.position.x, y: character.position.y, z: character.position.z },
     };
     client.characters.set(localPlayerId, entry);
 
@@ -395,16 +450,8 @@ export class UniversalRoomManager {
 
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
 
-    // Remove dummy placeholder character if present
-    if (this.simulation.characters.has("player-1")) {
-      const p1 = this.simulation.characters.get("player-1");
-      p1?.cleanupBeforeRemoval();
-      this.simulation.characters.delete("player-1");
-    }
-
-    // Register initial default player for this connection
-    const primaryEntry = this.registerCharacter(client, "keyboard");
-    primaryEntry.isDefaultPlaceholder = true;
+    // Note: Do NOT register or spawn any character on raw WebSocket connection.
+    // The server waits until the client sends join_room with its chosen spawn position.
 
     // Listen for incoming messages
     ws.on("message", (raw) => {
@@ -431,7 +478,7 @@ export class UniversalRoomManager {
             }
             for (const lp of data.localPlayers) {
               if (lp.localPlayerId) {
-                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name);
+                const reg = this.registerCharacter(client, lp.localPlayerId, lp.name, lp.spawnPos);
                 if (lp.localPlayerId !== "keyboard") {
                   reg.isDefaultPlaceholder = false;
                 }
@@ -440,7 +487,7 @@ export class UniversalRoomManager {
           } else {
             // Default: ensure "keyboard" is registered
             if (!client.characters.has("keyboard")) {
-              this.registerCharacter(client, "keyboard", data.name);
+              this.registerCharacter(client, "keyboard", data.name, data.spawnPos);
             } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
               const entry = client.characters.get("keyboard")!;
               if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
@@ -454,14 +501,17 @@ export class UniversalRoomManager {
             }
           }
 
-          const primary = client.characters.get("keyboard") || client.characters.values().next().value || primaryEntry;
+          const primary = client.characters.get("keyboard") || client.characters.values().next().value;
+          const playerNumber = primary ? primary.playerNumber : 1;
+          const name = primary ? primary.name : "Player 1";
+          const color = primary ? primary.color : PLAYER_COLORS[0];
 
           ws.send(JSON.stringify({
             type: "room_joined",
             clientId,
-            playerNumber: primary.playerNumber,
-            name: primary.name,
-            color: primary.color,
+            playerNumber,
+            name,
+            color,
             registeredPlayers: Array.from(client.characters.values()),
             arena: {
               width: this.simulation.arena.width,
@@ -492,7 +542,7 @@ export class UniversalRoomManager {
             this.unregisterCharacter(client, "keyboard");
           }
 
-          const entry = this.registerCharacter(client, localPlayerId, data.name);
+          const entry = this.registerCharacter(client, localPlayerId, data.name, data.spawnPos);
           entry.isDefaultPlaceholder = false;
           ws.send(JSON.stringify({
             type: "player_added",
@@ -501,6 +551,7 @@ export class UniversalRoomManager {
             playerNumber: entry.playerNumber,
             color: entry.color,
             name: entry.name,
+            spawnPos: entry.spawnPos,
           }));
           return;
         }
@@ -541,7 +592,32 @@ export class UniversalRoomManager {
             }
           }
 
-          const sChar = this.simulation.characters.get(serverCharId);
+          let sChar = this.simulation.characters.get(serverCharId);
+          if (!sChar) {
+            // Instantiate physical character using server-authoritative spawn position!
+            const spawnX = charEntry.spawnPos?.x ?? 3.5;
+            const spawnY = charEntry.spawnPos?.y ?? 7.0;
+            const spawnZ = charEntry.spawnPos?.z ?? 0;
+            const newChar = new Character({
+              id: serverCharId,
+              x: spawnX,
+              y: spawnY,
+              color: charEntry.color,
+              colliderRadius: 0.44,
+              mass: 1.2,
+              strength: 1.0,
+              playerId: serverCharId,
+              playerNumber: charEntry.playerNumber,
+              name: charEntry.name,
+              hasCustomName: !/^Player(\s+\d+)?$/i.test(charEntry.name.trim()),
+            });
+            newChar.serverCharId = serverCharId;
+            newChar.position.z = spawnZ;
+            this.simulation.characters.set(serverCharId, newChar);
+            this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
+            sChar = newChar;
+          }
+
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
             // Only adopt explicit custom name from packet, never overwrite with default template name
             if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {
@@ -552,6 +628,28 @@ export class UniversalRoomManager {
           }
 
           this.simulation.queueInput(pkt);
+
+          // Process consumed object deletions from client
+          if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
+            for (const objId of data.consumedObjectIds) {
+              this.simulation.triggerObjectDeletion(objId);
+            }
+          }
+
+          // Process contested grab acknowledgments from client
+          if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {
+            this.simulation.acknowledgeContestedEvents(serverCharId, data.ackContestedEventIds);
+          }
+
+          // Process death & respawn event acknowledgments from client
+          if (Array.isArray(data.ackDeathRespawnEventIds) && data.ackDeathRespawnEventIds.length > 0) {
+            this.simulation.acknowledgeDeathRespawnEvents(serverCharId, data.ackDeathRespawnEventIds);
+          }
+
+          // Process object deletion event acknowledgments from client
+          if (Array.isArray(data.ackObjectDeletionEventIds) && data.ackObjectDeletionEventIds.length > 0) {
+            this.simulation.acknowledgeObjectDeletionEvents(serverCharId, data.ackObjectDeletionEventIds);
+          }
 
           // Process reliable actions FIRST before syncCharacterFromPacket clears heldObject
           if (Array.isArray(data.reliableActions) && data.reliableActions.length > 0) {
@@ -566,6 +664,9 @@ export class UniversalRoomManager {
             if (sChar) {
               data.character.name = sChar.name;
               data.character.color = sChar.color;
+              if (data.character.isUsingItem !== undefined) {
+                sChar.isUsingItem = Boolean(data.character.isUsingItem);
+              }
             }
             this.simulation.syncCharacterFromPacket(data.character);
           }
@@ -637,9 +738,6 @@ export class UniversalRoomManager {
     ws.send(JSON.stringify({
       type: "room_welcome",
       clientId,
-      playerNumber: primaryEntry.playerNumber,
-      name: primaryEntry.name,
-      color: primaryEntry.color,
     }));
   }
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = 5173;
+const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 const tunnelJsonPath = path.join(__dirname, 'public', 'tunnel.json');
 
@@ -26,6 +26,13 @@ function checkServerRunning(port) {
 
 async function main() {
   console.log('⚡ Power Creature Game — Nationwide Share Tool');
+
+  let PORT = DEFAULT_PORT;
+  if (await checkServerRunning(3000)) {
+    PORT = 3000;
+  } else if (await checkServerRunning(5173)) {
+    PORT = 5173;
+  }
   console.log(`Checking local server on port ${PORT}...`);
 
   const isRunning = await checkServerRunning(PORT);

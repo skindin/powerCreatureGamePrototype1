@@ -1,7 +1,10 @@
+import "./style.css";
 import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
 import { RollModule } from "./engine/RollModule.js";
+import { DamageAuraModule } from "./engine/DamageAuraModule.js";
+import { ConsumableModule } from "./engine/ConsumableModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -10,8 +13,9 @@ import { FeedbackPanel } from "./ui/FeedbackPanel.js";
 import { GameLoop, PLAYER_COLORS } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
 import { OnlineRoomClient } from "./network/OnlineRoomClient.js";
-import type { PlayerInputPacket } from "./engine/physics/StateHistoryBuffer.js";
+import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
+import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
 
 function bootstrap(): void {
@@ -219,6 +223,20 @@ function bootstrap(): void {
     name: initialPlayerHandle,
   });
 
+  // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)
+  const dummyCharacter = new Character({
+    id: "dummy-1",
+    x: 6.8,
+    y: 7.0,
+    color: "#64748b", // Neutral slate gray
+    colliderRadius: 0.44,
+    mass: 1.5,
+    strength: 0,
+    name: "Sparring Dummy",
+    controllerType: "none",
+    role: "dummy",
+  });
+
   // 3. Initialize Initial Freebody Objects in unit coordinates
   const objects: GameObject[] = [
     new GameObject({
@@ -265,15 +283,50 @@ function bootstrap(): void {
         angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
       }),
     }),
+    new GameObject({
+      id: "hazard-orb-1",
+      name: "Hazard Orb (Damage Aura)",
+      position: { x: 10.0, y: 7.0, z: 0 },
+      mass: 5.0,
+      colliderRadius: 0.35,
+      color: "#ef4444",
+      bounceMod: 0.1,
+      damageAuraModule: new DamageAuraModule({
+        damageRadius: 2.2,
+        damageRate: 25.0,
+      }),
+    }),
+    new GameObject({
+      id: "apple-default-1",
+      name: "Apple",
+      prefabId: "prefab_apple",
+      position: { x: 5.5, y: 7.0, z: 0 },
+      color: "#22c55e",
+      visualShape: "circle",
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        totalEnergyJoules: 2000,
+        remainingEnergyJoules: 2000,
+        consumeRateWatts: 400,
+        healRate: 0,
+        minScaleFloor: 0.35,
+        minRadiusFloor: 0.12,
+      }),
+    }),
   ];
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
-  arena.syncEntitiesWithWalls([character, ...objects]);
+  arena.syncEntitiesWithWalls([character, dummyCharacter, ...objects]);
 
   // 4. Initialize Renderer & Dev Panel
   let gameLoop: GameLoop | null = null;
   const getAllActiveCharacters = (): Character[] => {
-    return gameLoop ? gameLoop.allCharacters : [character];
+    return gameLoop ? gameLoop.allCharacters : [character, dummyCharacter];
   };
 
   const renderer = new Renderer(ctx);
@@ -321,6 +374,11 @@ function bootstrap(): void {
   inputManager.onStopKeyboardSprint = () => {
     character.setSprinting(false);
   };
+  character.onSprintChange = (sprinting: boolean) => {
+    if (!sprinting) {
+      inputManager.isKeyboardSprintActive = false;
+    }
+  };
 
   // Gamepad Connection Indicator
   const controllerBadge = document.getElementById("controller-badge");
@@ -343,14 +401,14 @@ function bootstrap(): void {
     }
   };
 
-  // Register PWA Service Worker for offline play on HTTPS/tunnel, unregister on localhost for live updates
+  // Register PWA Service Worker for offline play on explicit tunnel, unregister on cloud/dev for live updates
   if ("serviceWorker" in navigator) {
-    if (window.location.protocol === "https:") {
+    if (window.location.hostname.includes("loca.lt")) {
       navigator.serviceWorker.register("/sw.js").catch((err) => {
         console.warn("PWA ServiceWorker registration notice:", err);
       });
     } else {
-      // On localhost / desktop app: unregister service workers so changes are always 100% live
+      // On dev / cloud run preview / localhost: unregister service workers so changes and styles are always 100% live
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (const registration of registrations) {
           registration.unregister();
@@ -368,7 +426,9 @@ function bootstrap(): void {
     inputManager,
     devPanel,
   });
+  gameLoop.playerManager.dummyCharacters.push(dummyCharacter);
   (window as any).gameLoop = gameLoop;
+  (window as any).dummyCharacter = dummyCharacter;
 
   devPanel.getGameLoop = () => gameLoop;
   devPanel.getRenderer = () => renderer;
@@ -382,6 +442,11 @@ function bootstrap(): void {
   // 6c. Initialize Bugs & Suggestions (Feedback) Panel
   const feedbackPanel = new FeedbackPanel();
   void feedbackPanel;
+
+  // 6d. Initialize Energy & Power Bus Screen HUD (Phase 11.18)
+  const energyHud = new EnergyHud(gameLoop, devPanel);
+  gameLoop.energyHud = energyHud;
+  (window as any).energyHud = energyHud;
 
   // Keep dev selector synced across dynamic character spawns/removals
   const originalOnPlayersChanged = gameLoop.onPlayersChanged;
@@ -471,6 +536,26 @@ function bootstrap(): void {
   const onlineRttCurrent = document.getElementById("online-rtt-current");
   const onlinePlayersCount = document.getElementById("online-players-count");
   const onlineRosterList = document.getElementById("online-roster-list");
+  const persistentPingHud = document.getElementById("persistent-ping-hud");
+  const persistentPingVal = document.getElementById("persistent-ping-val");
+
+  // Encapsulated Online Session Manager
+  const onlineSession = new OnlineSessionManager(onlineClient, {
+    badgeStatus: onlineBadgeStatus,
+    connectBtn: onlineConnectBtn,
+    statusPill: onlineStatusPill,
+    pingDisplay: onlinePingDisplay,
+    playerBadge: onlinePlayerBadge,
+    nameDisplay: onlineNameDisplay,
+    mySlot: onlineMySlot,
+    myName: onlineMyName,
+    rttCurrent: onlineRttCurrent,
+    playersCount: onlinePlayersCount,
+    rosterList: onlineRosterList,
+    persistentPingHud,
+    persistentPingVal,
+  });
+  onlineSession.setGameLoop(gameLoop, character);
 
   // Player Name Prompt Modal
   const playerNameModal = document.getElementById("player-name-modal");
@@ -549,23 +634,7 @@ function bootstrap(): void {
   });
 
   onlineConnectBtn?.addEventListener("click", () => {
-    if (onlineClient.status === "connected") {
-      onlineClient.disconnect();
-    } else {
-      onlineClient.localPlayers.clear();
-      if (gameLoop?.playerManager) {
-        for (const p of gameLoop.playerManager.players.values()) {
-          onlineClient.localPlayers.set(p.id, {
-            localPlayerId: p.id,
-            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "keyboard") : `${onlineClient.clientId || "client"}:${p.id}`,
-            playerNumber: p.playerNumber,
-            color: p.color,
-            name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
-          });
-        }
-      }
-      onlineClient.connect();
-    }
+    onlineSession.toggleConnect();
   });
 
   btnCopyOnlineUrl?.addEventListener("click", () => {
@@ -646,7 +715,8 @@ function bootstrap(): void {
     mobileModeOnlineBtn?.classList.toggle("active", mode === "online");
 
     if (mode === "local") {
-      onlineClient.disconnect();
+      persistentPingHud?.classList.add("hidden");
+      onlineSession.disconnect();
       onlineHud?.classList.add("hidden");
       onlineStatusPill?.classList.add("hidden");
 
@@ -672,7 +742,8 @@ function bootstrap(): void {
         base.name = "Player 1";
       }
     } else if (mode === "boomerang") {
-      onlineClient.disconnect();
+      persistentPingHud?.classList.remove("hidden");
+      onlineSession.disconnect();
       onlineHud?.classList.add("hidden");
       onlineStatusPill?.classList.add("hidden");
       gameLoop?.playerManager.clearRemoteCharacters();
@@ -682,39 +753,15 @@ function bootstrap(): void {
       relayClient.syncServerWorld(arena, gameLoop?.allCharacters || [character], gameLoop?.objects || objects);
       relayClient.connect();
     } else if (mode === "online") {
+      persistentPingHud?.classList.remove("hidden");
       relayClient.disconnect();
       relayHud?.classList.add("hidden");
       relayStatusPill?.classList.add("hidden");
 
       onlineHud?.classList.remove("hidden");
       onlineStatusPill?.classList.remove("hidden");
-      
-      // Populate localPlayers on client before connecting so join_room includes all active players on this machine
-      onlineClient.localPlayers.clear();
-      if (gameLoop?.playerManager) {
-        for (const p of gameLoop.playerManager.players.values()) {
-          onlineClient.localPlayers.set(p.id, {
-            localPlayerId: p.id,
-            serverCharId: p.id === "keyboard" ? (onlineClient.clientId || "keyboard") : `${onlineClient.clientId || "client"}:${p.id}`,
-            playerNumber: p.playerNumber,
-            color: p.color,
-            name: p.character.hasCustomName ? p.character.name : `Player ${p.playerNumber}`,
-          });
-        }
-      }
 
-      onlineClient.connect();
-
-      // If already connected, notify server of any additional local players
-      if (onlineClient.status === "connected" && gameLoop?.playerManager) {
-        if (!gameLoop.playerManager.players.has("keyboard") && onlineClient.localPlayers.has("keyboard")) {
-          onlineClient.removePlayer("keyboard");
-          onlineClient.localPlayers.delete("keyboard");
-        }
-        for (const p of gameLoop.playerManager.players.values()) {
-          onlineClient.addPlayer(p.id, p.character.hasCustomName ? p.character.name : undefined);
-        }
-      }
+      onlineSession.connect();
     }
   };
 
@@ -725,358 +772,7 @@ function bootstrap(): void {
   mobileModeBoomerangBtn?.addEventListener("click", () => setGameMode("boomerang"));
   mobileModeOnlineBtn?.addEventListener("click", () => setGameMode("online"));
 
-  // Dedicated Online Client Telemetry & Snapshot Callbacks
-  onlineClient.onStatsChange = (stats) => {
-    if (onlineBadgeStatus) {
-      onlineBadgeStatus.textContent = stats.status;
-      onlineBadgeStatus.className = `relay-badge-status ${stats.status}`;
-    }
-    if (onlineConnectBtn) {
-      onlineConnectBtn.textContent = stats.status === "connected" ? "Disconnect" : "Connect";
-    }
-    const dot = onlineStatusPill?.querySelector(".status-dot");
-    if (dot) {
-      dot.className = `status-dot ${stats.status}`;
-    }
-    if (onlinePingDisplay) {
-      onlinePingDisplay.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : stats.status;
-    }
-    const assignedColor = stats.color || onlineClient.assignedColor || PLAYER_COLORS[0];
-    if (onlinePlayerBadge) {
-      onlinePlayerBadge.textContent = `P${stats.playerNumber}`;
-      onlinePlayerBadge.style.color = assignedColor;
-      onlinePlayerBadge.style.background = `${assignedColor}33`;
-    }
-    if (onlineNameDisplay) {
-      onlineNameDisplay.textContent = stats.playerName;
-    }
-    if (onlineMyName) {
-      onlineMyName.textContent = stats.playerName;
-    }
-    if (onlineMySlot) {
-      onlineMySlot.textContent = `P${stats.playerNumber} ${stats.playerNumber === 1 ? '(Host)' : ''}`;
-      onlineMySlot.style.color = assignedColor;
-      onlineMySlot.style.background = `${assignedColor}33`;
-    }
-    if (onlineRttCurrent) {
-      onlineRttCurrent.textContent = stats.status === "connected" ? `${stats.pingMs} ms` : "-- ms";
-      if (stats.pingMs < 70) onlineRttCurrent.style.color = "#22c55e";
-      else if (stats.pingMs < 140) onlineRttCurrent.style.color = "#f59e0b";
-      else onlineRttCurrent.style.color = "#ef4444";
-    }
-    if (onlinePlayersCount) {
-      onlinePlayersCount.textContent = `${stats.playerCount} Connected`;
-    }
-
-    if (stats.status === "disconnected" || stats.status === "error") {
-      gameLoop?.playerManager.clearRemoteCharacters();
-      gameLoop?.interpolator.clearAll();
-      for (const obj of gameLoop?.objects || []) {
-        if (obj.heldBy && (obj.heldBy as any).playerId && (obj.heldBy as any).playerId !== "keyboard" && !gameLoop?.players.has((obj.heldBy as any).playerId)) {
-          obj.isHeld = false;
-          obj.heldBy = null;
-          obj.wakeUp();
-        }
-      }
-      if (onlineRosterList) {
-        onlineRosterList.innerHTML = `<span style="color: #64748b; font-size: 0.78rem;">Not connected</span>`;
-      }
-      if (onlinePlayersCount) {
-        onlinePlayersCount.textContent = `0 Connected`;
-      }
-    }
-  };
-
-  onlineClient.onJoined = (info) => {
-    console.log(`🌐 [OnlineRoom] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
-    const hero = gameLoop?.players.get("keyboard")?.character || character;
-    const localChosenName = onlineClient.playerName && onlineClient.playerName.trim().length > 0
-      ? onlineClient.playerName.trim()
-      : (localStorage.getItem("pcg_player_handle") || info.name);
-    if (hero) {
-      hero.playerId = "keyboard";
-      hero.playerNumber = info.playerNumber;
-      hero.color = info.color;
-      hero.playerColor = info.color;
-      hero.name = localChosenName;
-    }
-    if (gameLoop?.playerManager?.baseCharacter) {
-      const base = gameLoop.playerManager.baseCharacter;
-      base.playerId = "keyboard";
-      base.playerNumber = info.playerNumber;
-      base.color = info.color;
-      base.playerColor = info.color;
-      base.name = localChosenName;
-    }
-    if (gameLoop?.playerManager) {
-      for (const p of gameLoop.playerManager.players.values()) {
-        if (p.character === hero || p.id === "keyboard") {
-          p.color = info.color;
-          p.playerNumber = info.playerNumber;
-        }
-      }
-    }
-    if (onlineMySlot) {
-      onlineMySlot.textContent = `P${info.playerNumber} ${info.playerNumber === 1 ? '(Host)' : ''}`;
-      onlineMySlot.style.color = info.color;
-      onlineMySlot.style.background = `${info.color}33`;
-    }
-    if (onlinePlayerBadge) {
-      onlinePlayerBadge.textContent = `P${info.playerNumber}`;
-      onlinePlayerBadge.style.color = info.color;
-      onlinePlayerBadge.style.background = `${info.color}33`;
-    }
-    if (onlineMyName) {
-      onlineMyName.textContent = info.name;
-    }
-  };
-
-  onlineClient.onPlayerRegistered = (info) => {
-    console.log(`🌐 [OnlineRoom] Local player ${info.localPlayerId} registered as P${info.playerNumber} (${info.color}, "${info.name}") serverId=${info.serverCharId}`);
-    const p = gameLoop?.playerManager.players.get(info.localPlayerId);
-    if (p) {
-      p.character.playerNumber = info.playerNumber;
-      p.character.color = info.color;
-      p.character.playerColor = info.color;
-      p.character.serverCharId = info.serverCharId;
-      if (!p.character.hasCustomName) {
-        p.character.name = info.name || `Player ${info.playerNumber}`;
-      }
-      p.color = info.color;
-      p.playerNumber = info.playerNumber;
-      p.name = p.character.name;
-    } else if (info.localPlayerId === "keyboard" && gameLoop?.playerManager.baseCharacter) {
-      const base = gameLoop.playerManager.baseCharacter;
-      base.playerNumber = info.playerNumber;
-      base.color = info.color;
-      base.playerColor = info.color;
-      base.serverCharId = info.serverCharId;
-      if (!base.hasCustomName) {
-        base.name = info.name || `Player ${info.playerNumber}`;
-      }
-    }
-    gameLoop?.playerManager.onPlayersChanged?.();
-  };
-
-  if (gameLoop?.playerManager) {
-    gameLoop.playerManager.onPlayerJoined = (player) => {
-      if (activeGameMode === "online" && onlineClient.status === "connected") {
-        if (player.id !== "keyboard" && !gameLoop.playerManager.players.has("keyboard") && onlineClient.localPlayers.has("keyboard")) {
-          onlineClient.removePlayer("keyboard");
-          onlineClient.localPlayers.delete("keyboard");
-        }
-        onlineClient.addPlayer(player.id, player.character.hasCustomName ? player.character.name : undefined);
-      }
-    };
-
-    gameLoop.playerManager.onPlayerRemoved = (playerId) => {
-      if (activeGameMode === "online" && onlineClient.status === "connected") {
-        onlineClient.removePlayer(playerId);
-      }
-    };
-  }
-
-  onlineClient.getLocalPlayers = () => {
-    const list: Array<{ localPlayerId: string; name?: string }> = [];
-    if (gameLoop?.playerManager) {
-      for (const p of gameLoop.playerManager.players.values()) {
-        list.push({
-          localPlayerId: p.id,
-          name: p.character.hasCustomName ? p.character.name : undefined,
-        });
-      }
-    }
-    return list;
-  };
-
-  onlineClient.onPlayerLeft = (charId: string) => {
-    console.log(`🌐 [OnlineRoom] Remote player left: ${charId}`);
-    gameLoop?.playerManager.removeRemoteCharacter(charId);
-    gameLoop?.interpolator.clearEntity(charId);
-    for (const obj of gameLoop?.objects || []) {
-      if (obj.heldBy && (obj.heldBy as any).playerId === charId) {
-        obj.isHeld = false;
-        obj.heldBy = null;
-        obj.wakeUp();
-      }
-    }
-  };
-
-  // Ensure prompt cleanup when closing the tab or navigating away
-  window.addEventListener("beforeunload", () => {
-    if (onlineClient.status === "connected") {
-      onlineClient.disconnect();
-    }
-  });
-  window.addEventListener("pagehide", () => {
-    if (onlineClient.status === "connected") {
-      onlineClient.disconnect();
-    }
-  });
-
-  onlineClient.onSnapshotReceived = (snapshot) => {
-    if (activeGameMode !== "online" || !gameLoop) return;
-
-    // 1. Sync characters in playerManager
-    if (Array.isArray(snapshot.characters)) {
-      const activeCharIds = new Set<string>();
-      for (const c of snapshot.characters) {
-        activeCharIds.add(c.id);
-        const isLocal = c.id === onlineClient.clientId || (onlineClient.clientId !== null && c.id.startsWith(`${onlineClient.clientId}:`));
-        if (!isLocal) {
-          gameLoop.playerManager.syncRemoteCharacter(c);
-          const remChar = gameLoop.playerManager.remotePlayers.get(c.id);
-          if (remChar) {
-            if (c.name && remChar.name !== c.name) {
-              remChar.name = c.name;
-            }
-            if (c.heldObjectId) {
-              const targetObj = gameLoop.objects.find((o) => o.id === c.heldObjectId);
-              if (targetObj) {
-                remChar.heldObject = targetObj;
-                targetObj.isHeld = true;
-                targetObj.heldBy = remChar;
-              }
-            } else if (remChar.heldObject && !c.isHolding) {
-              // Remote player released object: hand-off is performed cleanly with authoritative velocity in syncAuthoritativeObjects
-            }
-          }
-        } else {
-          // Local client character! Ensure authoritative server-assigned color, number and name are preserved
-          const localPlayerId = c.id.includes(":") ? c.id.split(":")[1] : "keyboard";
-          const p = gameLoop.players.get(localPlayerId);
-          const localChar = p?.character || (localPlayerId === "keyboard" ? (gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter) : null);
-          if (localChar) {
-            const authoritativeColor = c.playerColor || c.color || (p ? p.color : onlineClient.assignedColor);
-            if (authoritativeColor && (localChar.color !== authoritativeColor || localChar.playerColor !== authoritativeColor)) {
-              localChar.color = authoritativeColor;
-              localChar.playerColor = authoritativeColor;
-              if (p) p.color = authoritativeColor;
-            }
-            if (c.playerNumber !== undefined && localChar.playerNumber !== c.playerNumber) {
-              localChar.playerNumber = c.playerNumber;
-              if (p) p.playerNumber = c.playerNumber;
-            }
-            if (!localChar.hasCustomName) {
-              const authoritativeName = c.name || `Player ${localChar.playerNumber || 1}`;
-              localChar.name = authoritativeName;
-              if (p) p.name = authoritativeName;
-            }
-          }
-        }
-      }
-      // Remove disconnected remote players
-      for (const remId of gameLoop.playerManager.remotePlayers.keys()) {
-        if (!activeCharIds.has(remId)) {
-          gameLoop.playerManager.removeRemoteCharacter(remId);
-          gameLoop.interpolator.clearEntity(remId);
-          for (const obj of gameLoop.objects) {
-            if (obj.heldBy && (obj.heldBy as any).playerId === remId) {
-              obj.isHeld = false;
-              obj.heldBy = null;
-              obj.wakeUp();
-            }
-          }
-        }
-      }
-
-      // Update Roster chips UI
-      if (onlineRosterList) {
-        onlineRosterList.innerHTML = "";
-        for (const c of snapshot.characters) {
-          const isMe = c.id === onlineClient.clientId || (onlineClient.clientId !== null && c.id.startsWith(`${onlineClient.clientId}:`));
-          const chipColor = c.playerColor || c.color || (isMe ? onlineClient.assignedColor : '#38bdf8') || '#38bdf8';
-          const chip = document.createElement("div");
-          chip.style.cssText = `display: flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.85); border: 1px solid ${isMe ? `${chipColor}bb` : 'rgba(148, 163, 184, 0.25)'}; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 600;`;
-          
-          let displayName = c.name || `Player ${c.playerNumber || 1}`;
-          if (isMe) {
-            const localPlayerId = c.id.includes(":") ? c.id.split(":")[1] : "keyboard";
-            const p = gameLoop.players.get(localPlayerId);
-            const localChar = p?.character || (localPlayerId === "keyboard" ? (gameLoop.players.get("keyboard")?.character || gameLoop.playerManager.baseCharacter) : null);
-            if (localChar?.hasCustomName && localChar?.name) {
-              displayName = localChar.name;
-            } else if (localPlayerId === "keyboard" && onlineClient.hasCustomName && onlineClient.playerName) {
-              displayName = onlineClient.playerName;
-            }
-          }
-          chip.innerHTML = `
-            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${chipColor}; box-shadow: 0 0 6px ${chipColor};"></span>
-            <span style="color: ${isMe ? chipColor : '#f1f5f9'}; font-weight: ${isMe ? '700' : '600'};">${displayName} ${isMe ? '(You)' : ''}</span>
-          `;
-          onlineRosterList.appendChild(chip);
-        }
-      }
-    }
-
-    // 2. Push snapshot samples to RemoteEntityInterpolator
-    const samples: any[] = [];
-    const ghostChars = (snapshot.characters && snapshot.characters.length > 0)
-      ? snapshot.characters
-      : (snapshot.character ? [snapshot.character] : []);
-
-    for (const gc of ghostChars) {
-      samples.push({
-        id: gc.id,
-        x: gc.x,
-        y: gc.y,
-        z: gc.z,
-        vx: gc.vx,
-        vy: gc.vy,
-        vz: gc.vz || 0,
-        facingAngle: gc.facingAngle ?? 0,
-        isClimbing: gc.isClimbing,
-        isAboveWalls: gc.isAboveWalls,
-        isGrounded: gc.isGrounded,
-        surfaceZ: gc.surfaceZ,
-        heldObjectId: gc.heldObjectId || (gc.isHolding ? "held" : null),
-        heldBy: gc.heldBy,
-        color: gc.color,
-        radius: gc.radius,
-      });
-    }
-    gameLoop.interpolator.pushSnapshot(snapshot.seq, samples, performance.now());
-
-    // 2b. Synchronize external server pushes & impulses on the local character
-    const localChar = gameLoop.primaryCharacter;
-    const localServerId = localChar?.serverCharId || onlineClient.clientId;
-    if (localChar && localServerId) {
-      const myServerState = ghostChars.find((gc) => gc.id === localServerId);
-      if (myServerState) {
-        const dx = myServerState.x - localChar.position.x;
-        const dy = myServerState.y - localChar.position.y;
-        const dist = Math.hypot(dx, dy);
-
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
-          }
-        }
-      }
-    }
-
-    // 3. Sync authoritative freebody objects
-    if (Array.isArray(snapshot.objects)) {
-      gameLoop.syncAuthoritativeObjects(snapshot.objects, onlineClient.clientId || undefined, snapshot.seq);
-    }
-  };
-
-  onlineClient.onWorldSnapshotReceived = (_worldSnapshot) => {
-    // In live online multiplayer, voluntary player locomotion is authoritatively simulated by the local client at 60fps.
-    // Unconditional rewind/re-simulation against WAN-delayed network snapshots caused 60Hz re-simulation fighting (movement jitter)
-    // and burst re-simulation (initial spawn super-speed). ReconcileWorldSnapshot is retained for DevPanel tackle tests.
-  };
-
-  onlineClient.onClockSync = (sync) => {
-    if (activeGameMode === "online" && gameLoop) {
-      gameLoop.applyClockSync(sync);
-    }
-  };
+  // Relay Client Telemetry & Callbacks (Boomerang Mode)
 
   relayClient.onStatsChange = (stats) => {
     if (relayBadgeStatus) {
@@ -1123,6 +819,17 @@ function bootstrap(): void {
       if (stats.lastRttMs < 70) rttCurrent.style.color = "#22c55e";
       else if (stats.lastRttMs < 140) rttCurrent.style.color = "#f59e0b";
       else rttCurrent.style.color = "#ef4444";
+    }
+
+    // Update Persistent Top-Left Ping HUD if in boomerang mode
+    if (activeGameMode === "boomerang") {
+      if (persistentPingVal) {
+        persistentPingVal.textContent = stats.status === "connected" ? `${Math.round(stats.lastRttMs)} ms` : stats.status;
+        if (stats.lastRttMs < 70) persistentPingVal.style.color = "#22c55e";
+        else if (stats.lastRttMs < 140) persistentPingVal.style.color = "#f59e0b";
+        else persistentPingVal.style.color = "#ef4444";
+      }
+      persistentPingHud?.classList.remove("hidden");
     }
 
     if (rttSub) {
@@ -1534,6 +1241,48 @@ function bootstrap(): void {
     }
   });
 
+  // HUD Opacity Slider (Default 70%, scoped exclusively to status screen HUD stat bars)
+  const slideHudOpacity = (document.getElementById("slide-hud-opacity") || document.getElementById("slide-ui-opacity")) as HTMLInputElement | null;
+  const valHudOpacity = document.getElementById("val-hud-opacity") || document.getElementById("val-ui-opacity");
+
+  const applyHudOpacity = (opacity: number) => {
+    const clamped = Math.max(0.1, Math.min(1.0, opacity));
+    document.documentElement.style.setProperty("--hud-opacity", clamped.toString());
+    document.documentElement.style.setProperty("--hud-opacity-pct", `${Math.round(clamped * 100)}%`);
+    // Ensure all other menus, sidebars, and dialogs remain fully opaque (1.0)
+    document.documentElement.style.setProperty("--ui-opacity", "1.0");
+    document.documentElement.style.setProperty("--ui-opacity-pct", "100%");
+    if (slideHudOpacity) slideHudOpacity.value = clamped.toFixed(2);
+    if (valHudOpacity) valHudOpacity.textContent = `${Math.round(clamped * 100)}%`;
+    try {
+      localStorage.setItem("pcg_hud_opacity", clamped.toString());
+    } catch {
+      // Ignore localStorage error
+    }
+  };
+
+  let savedHudOpacity = 0.70;
+  try {
+    const storedO = localStorage.getItem("pcg_hud_opacity") || localStorage.getItem("pcg_ui_opacity");
+    if (storedO !== null) {
+      const parsedO = parseFloat(storedO);
+      if (!isNaN(parsedO) && parsedO >= 0.1 && parsedO <= 1.0) {
+        savedHudOpacity = parsedO;
+      }
+    }
+  } catch {
+    // Ignore localStorage error
+  }
+
+  applyHudOpacity(savedHudOpacity);
+
+  slideHudOpacity?.addEventListener("input", () => {
+    const val = parseFloat(slideHudOpacity.value);
+    if (!isNaN(val)) {
+      applyHudOpacity(val);
+    }
+  });
+
   // View Settings remains open while testing gameplay modes; close via '✕', 'V', 'Esc', or toggle button
 
   // Phone Connect Modal Logic
@@ -1939,40 +1688,7 @@ function bootstrap(): void {
       // 2. Stream client input packets and world telemetry across the WAN relay loopback
       relayClient.sendInput(gameLoop.lastInputs, gameLoop.currentTick, gameLoop.allCharacters, gameLoop.objects, nowMs);
     } else if (activeGameMode === "online") {
-      // Stream local inputs + character telemetry + object telemetry for ALL active local players on this machine
-      const activePlayers = Array.from(gameLoop.players.values());
-      if (activePlayers.length > 0) {
-        for (const p of activePlayers) {
-          const pkt: PlayerInputPacket = gameLoop.lastInputs.get(p.id) || {
-            playerId: p.id,
-            playerName: p.character.name || onlineClient.playerName,
-            tick: gameLoop.currentTick,
-            moveX: 0,
-            moveY: 0,
-            isSprinting: p.character.isSprinting ?? false,
-            isJumpHeld: false,
-            isGrabHeld: false,
-            isLockHeld: false,
-            isAiming: false,
-          };
-          onlineClient.sendPlayerInput(p.id, pkt, p.character, gameLoop.objects);
-        }
-      } else {
-        const hero = gameLoop.primaryCharacter;
-        const kbPkt: PlayerInputPacket = {
-          playerId: "keyboard",
-          playerName: hero?.name || onlineClient.playerName,
-          tick: gameLoop.currentTick,
-          moveX: 0,
-          moveY: 0,
-          isSprinting: hero?.isSprinting ?? false,
-          isJumpHeld: false,
-          isGrabHeld: false,
-          isLockHeld: false,
-          isAiming: false,
-        };
-        onlineClient.sendPlayerInput("keyboard", kbPkt, hero, gameLoop.objects);
-      }
+      onlineSession.sendTickTelemetry();
     }
   };
 

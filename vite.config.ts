@@ -77,7 +77,7 @@ function getCurrentBranch(): string {
       return gitHead.replace('ref: refs/heads/', '');
     }
   } catch {}
-  return process.env.RAILWAY_GIT_BRANCH || 'preMultiplayer';
+  return process.env.RAILWAY_GIT_BRANCH || 'dynamic-property-references';
 }
 
 async function getLiveBuildStatus() {
@@ -139,6 +139,7 @@ function autoTunnelPlugin(): Plugin {
 
   async function connectTunnel(port: number) {
     if (isClosing) return;
+    if (process.env.ENABLE_TUNNEL !== 'true') return;
     try {
       // Do not override local_host so the Host header reflects pcg-arena-teal.loca.lt
       const tunnel = await localtunnel({
@@ -220,8 +221,6 @@ function autoTunnelPlugin(): Plugin {
         const isTunnel =
           forwardedHost.includes('loca.lt') ||
           host.includes('loca.lt') ||
-          req.headers['x-forwarded-proto'] === 'https' ||
-          Boolean(req.headers['x-forwarded-for']) ||
           Boolean(req.headers['bypass-tunnel-reminder']);
 
         const rawUrl = req.url || '/';
@@ -309,12 +308,7 @@ function autoTunnelPlugin(): Plugin {
         }
 
         if (isTunnel) {
-          // If a client tries requesting raw unbundled /src files, redirect to fresh /
-          if (req.url && req.url.startsWith('/src/')) {
-            res.writeHead(302, { Location: '/' });
-            res.end();
-            return;
-          }
+
 
           if (serveDistFile(req.url || '/', res)) {
             return;
@@ -343,13 +337,13 @@ function autoTunnelPlugin(): Plugin {
       // 3. Start tunnel
       server.httpServer?.once('listening', () => {
         const addr = server.httpServer?.address();
-        const port = typeof addr === 'object' && addr?.port ? addr.port : 5173;
+        const port = typeof addr === 'object' && addr?.port ? addr.port : 3000;
         connectTunnel(port);
       });
 
       if (server.httpServer?.listening) {
         const addr = server.httpServer.address();
-        const port = typeof addr === 'object' && addr?.port ? addr.port : 5173;
+        const port = typeof addr === 'object' && addr?.port ? addr.port : 3000;
         connectTunnel(port);
       }
 
@@ -366,8 +360,8 @@ export default defineConfig(({ command }) => ({
     noExternal: ['ws'],
   },
   server: {
-    host: true, // Listen on all network addresses (0.0.0.0)
-    port: 5173,
+    host: '0.0.0.0', // Listen on all network addresses (0.0.0.0)
+    port: 3000,
     allowedHosts: true, // Allow external tunnel hosts (e.g. *.loca.lt, ngrok, LAN IPs)
     watch: {
       ignored: [

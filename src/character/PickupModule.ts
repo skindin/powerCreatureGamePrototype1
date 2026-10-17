@@ -1,12 +1,41 @@
 import type { Character } from "./Character.js";
 import { GameObject } from "../engine/GameObject.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export class PickupModule {
   public id = "pickup";
   public name = "Pickup Ability";
   public enabled = true;
-  public pickupReach = 1.3; // 3D radius in units to reach and pick up freebodies (~1.3 wall tiles)
+  public pickupReachProp: DynamicProperty;
   public crossLayerReachRatio = 1.0; // Deprecated: single 3D pickup range now governs reach across all layers
+
+  /**
+   * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+   */
+  public consumesEnergy: boolean = false;
+  /** Whether picking up is allowed when power cannot provide 100% full lift */
+  public allowPartialPower: boolean = false;
+  public energyBusId: string = "bus_main";
+
+  constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; allowPartialPower?: boolean; enabled?: boolean }) {
+    this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get pickupReach(): number {
+    return this.pickupReachProp.literalValue;
+  }
+
+  public set pickupReach(val: number) {
+    this.pickupReachProp.literalValue = val;
+  }
+
+  public getPickupReach(registry?: ObjectPropertiesRegistry): number {
+    return this.pickupReachProp.get(registry);
+  }
 
   /**
    * Returns true if the object is within the character's physical grab reach using true 3D math.
@@ -41,7 +70,8 @@ export class PickupModule {
     const deltaMagnitude = Math.hypot(dx, dy, dz);
 
     // Force the character to have to be within a single pickup range
-    return deltaMagnitude <= this.pickupReach;
+    const reach = this.pickupReachProp.get(character.properties);
+    return deltaMagnitude <= reach;
   }
 
   /**
@@ -82,6 +112,23 @@ export class PickupModule {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
 
+    // Energy consumption: physical work of lifting the object to hand height.
+    // W_mech = m * g * h, metabolic cost = W_mech / 0.25 (muscle efficiency).
+    // Cost is charged for the intended lift regardless of whether the object is heavy/resisted.
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) {
+        const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
+        const liftHeight = 0.45;
+        const metabolicJoules = Math.max(5, (targetMass * 9.81 * liftHeight) / 0.25);
+        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties, this.allowPartialPower);
+        if (fraction <= 0 || (!this.allowPartialPower && fraction < 1.0)) {
+          // Not enough energy to complete the lift
+          return false;
+        }
+      }
+    }
+
     // Apply incoming object force/momentum to the character (symmetric with throw recoil)
     const objVx = target.velocity.x;
     const objVy = target.velocity.y;
@@ -101,6 +148,7 @@ export class PickupModule {
     target.heldBy = character;
     target.isInFlight = false;
     target.lastThrower = null;
+    target.originalThrower = null;
     target.velocity.x = 0;
     target.velocity.y = 0;
     target.verticalVelocity = 0;
@@ -109,7 +157,10 @@ export class PickupModule {
       target.rollModule.angularVelocity.y = 0;
       target.rollModule.angularVelocity.z = 0;
     }
-    target.position.z = target.hasVerticalPosition ? 0.45 : 0; // Lifted off ground only if vertical position enabled
+    const heldPos = character.calculateHeldObjectPosition();
+    target.position.x = heldPos.x;
+    target.position.y = heldPos.y;
+    target.position.z = heldPos.z;
     return true;
   }
 
@@ -125,6 +176,7 @@ export class PickupModule {
     dropped.isHeld = false;
     dropped.heldBy = null;
     dropped.lastThrower = null; // Instantly available to pick back up
+    dropped.originalThrower = null;
     dropped.isInFlight = false;
     dropped.velocity.x = character.velocity.x;
     dropped.velocity.y = character.velocity.y;

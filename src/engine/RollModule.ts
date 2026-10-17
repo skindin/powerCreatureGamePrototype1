@@ -1,4 +1,6 @@
 import { Vector3D } from "./GameObject.js";
+import { DynamicProperty } from "./properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
 
 export class RollModule {
   public enabled: boolean = true;
@@ -10,7 +12,7 @@ export class RollModule {
    * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
    * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
    */
-  public rollResistance: number = 0.4;
+  public rollResistanceProp: DynamicProperty;
 
   /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
   public visualPhase: number = 0;
@@ -26,7 +28,19 @@ export class RollModule {
       y: options.angularVelocity?.y ?? 0,
       z: options.angularVelocity?.z ?? 0,
     };
-    this.rollResistance = options.rollResistance ?? 0.4;
+    this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
+  }
+
+  public get rollResistance(): number {
+    return this.rollResistanceProp.literalValue;
+  }
+
+  public set rollResistance(val: number) {
+    this.rollResistanceProp.literalValue = val;
+  }
+
+  public getRollResistance(registry?: ObjectPropertiesRegistry): number {
+    return this.rollResistanceProp.get(registry);
   }
 
   /**

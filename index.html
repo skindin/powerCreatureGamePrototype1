@@ -13,8 +13,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Power Creature" />
     <meta name="screen-orientation" content="landscape" />
-    <title>Power Creature Prototype 1 - Phase 1.1 Physics & Controls</title>
-    <link rel="stylesheet" href="./src/style.css" />
+    <title>Power Creature Game</title>
+    <meta name="description" content="A top-down 2D action arena and interactive physics sandbox where creatures fight, sprint, climb, and throw dynamic freebodies across an arena with physical wall heights." />
+    <meta property="og:title" content="Power Creature Game" />
+    <meta property="og:description" content="A top-down 2D action arena and interactive physics sandbox where creatures fight, sprint, climb, and throw dynamic freebodies across an arena with physical wall heights." />
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app-layout">
@@ -584,7 +587,11 @@
                   </div>
                   <div class="guide-row">
                     <span class="guide-keys"><span class="key-badge kb-badge">L-Click</span></span>
-                    <div class="guide-desc"><strong>Throw / Grab</strong><span>Throws held item; grabs reachable object if empty-handed</span></div>
+                    <div class="guide-desc"><strong>Primary Action / Eat</strong><span>Hold to eat when holding food; throws standard items; grabs when empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge kb-badge">Alt</span> + <span class="key-badge kb-badge">L-Click</span></span>
+                    <div class="guide-desc"><strong>Throw Item</strong><span>Throws held item (including food/consumables) in aimed direction</span></div>
                   </div>
                   <div class="guide-row">
                     <span class="guide-keys"><span class="key-badge kb-badge">R-Click</span></span>
@@ -622,8 +629,12 @@
                     <div class="guide-desc"><strong>Drop Item</strong><span>Drops held item onto the ground</span></div>
                   </div>
                   <div class="guide-row">
-                    <span class="guide-keys"><span class="key-badge pad-badge">RT</span> / <span class="key-badge pad-badge">RB</span></span>
-                    <div class="guide-desc"><strong>Throw / Grab</strong><span>RT throws held item (or grabs); RB is dedicated instant throw</span></div>
+                    <span class="guide-keys"><span class="key-badge pad-badge">RT</span></span>
+                    <div class="guide-desc"><strong>Primary Action / Eat</strong><span>Hold to eat when holding food; throws standard items; grabs when empty-handed</span></div>
+                  </div>
+                  <div class="guide-row">
+                    <span class="guide-keys"><span class="key-badge pad-badge">RB</span></span>
+                    <div class="guide-desc"><strong>Universal Throw</strong><span>Dedicated instant throw for any held item</span></div>
                   </div>
                   <div class="guide-row">
                     <span class="guide-keys"><span class="key-badge pad-badge">LT</span></span>
@@ -700,6 +711,22 @@
                 <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">0.0</span>
                 <input type="range" id="slide-visual-wall-height" min="0.0" max="1.0" step="0.05" value="0.5" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;" />
                 <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">1.0</span>
+              </div>
+            </div>
+
+            <!-- HUD Opacity Slider (Default 70%) -->
+            <div class="settings-section" id="visual-hud-opacity-section">
+              <div class="settings-section-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <h3>HUD Opacity</h3>
+                  <span id="val-hud-opacity" style="font-family: monospace; font-size: 0.82rem; color: var(--accent-cyan); font-weight: 700;">70%</span>
+                </div>
+                <p class="settings-section-desc">Adjust transparency of on-screen status HUD & stat bars (default 70%).</p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">20%</span>
+                <input type="range" id="slide-hud-opacity" min="0.20" max="1.00" step="0.05" value="0.70" style="flex: 1; accent-color: var(--accent-cyan); cursor: pointer;" />
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">100%</span>
               </div>
             </div>
           </div>
@@ -866,7 +893,9 @@
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item" title="Drop: Q key or Gamepad Y button. Drops held item onto the ground"><span class="key-badge kb-badge">Q</span> / <span class="key-badge pad-badge">Y</span> Drop</span>
                 <span class="ctrl-divider">•</span>
-                <span class="ctrl-item" title="Throw / Quick Grab: Left Click, Gamepad Right Trigger (RT), or Right Bumper (RB). Throws held item or grabs target when empty-handed"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> Throw</span>
+                <span class="ctrl-item" title="Primary Action: Left Click or Gamepad RT. Eats food when holding food, or throws standard items (or quick-grabs)"><span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RT</span> Use/Eat</span>
+                <span class="ctrl-divider">•</span>
+                <span class="ctrl-item" title="Throw: Alt + Left Click or Gamepad RB. Throws held item"><span class="key-badge kb-badge">Alt</span>+<span class="key-badge kb-badge">L-Click</span> / <span class="key-badge pad-badge">RB</span> Throw</span>
                 <span class="ctrl-divider">•</span>
                 <span class="ctrl-item" title="Aim Lock: Right Click or Gamepad Left Trigger (LT) locks aim reticle onto target"><span class="key-badge kb-badge">R-Click</span> / <span class="key-badge pad-badge">LT</span> Lock</span>
                 <span class="ctrl-divider">•</span>
@@ -880,6 +909,11 @@
           </div>
 
           <main class="canvas-wrapper">
+            <!-- Persistent Top-Left Ping HUD (Always visible in multiplayer modes even when top bar/menus are hidden) -->
+            <div id="persistent-ping-hud" class="persistent-ping-hud hidden" title="Multiplayer Ping (always visible in multiplayer)">
+              <span class="ping-signal-icon">📶</span>
+              <span id="persistent-ping-val">-- ms</span>
+            </div>
             <canvas id="game-canvas"></canvas>
           </main>
 

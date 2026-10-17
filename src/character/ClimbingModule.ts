@@ -1,6 +1,8 @@
 import type { Character } from "./Character.js";
 import { Vector2D } from "../engine/GameObject.js";
 import type { Arena, Wall } from "../engine/Arena.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export class ClimbingModule {
   public id = "climbing";
@@ -8,10 +10,10 @@ export class ClimbingModule {
   public enabled = true;
 
   // Maximum adhesive grip force before character slips and cannot climb/cling (in Newtons)
-  public maxAdhesion = 105.0;
+  public maxAdhesionProp: DynamicProperty;
 
   // Maximum vertical speed cap when climbing walls (in units per second)
-  public maxClimbSpeed = 3.0;
+  public maxClimbSpeedProp: DynamicProperty;
 
   // Whether to allow climbing sideways along wall faces while maintaining mid-layer altitude
   public horizontalClimb = false;
@@ -36,14 +38,52 @@ export class ClimbingModule {
   // Previous frame climb key state to detect fresh presses
   private wasClimbHeldLastTick = false;
 
+  /**
+   * Whether climbing consumes energy from an Energy Bus (placeholder toggle).
+   */
+  public consumesEnergy: boolean = false;
+  /** Whether climbing is allowed to run when power cannot provide 100% */
+  public allowPartialPower: boolean = false;
+  public energyBusId: string = "bus_main";
+
   constructor(options?: {
     maxAdhesion?: number;
     maxClimbSpeed?: number;
     horizontalClimb?: boolean;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+    enabled?: boolean;
   }) {
-    if (options?.maxAdhesion !== undefined) this.maxAdhesion = options.maxAdhesion;
-    if (options?.maxClimbSpeed !== undefined) this.maxClimbSpeed = options.maxClimbSpeed;
+    this.maxAdhesionProp = new DynamicProperty(options?.maxAdhesion ?? 105.0);
+    this.maxClimbSpeedProp = new DynamicProperty(options?.maxClimbSpeed ?? 3.0);
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
+    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
+    if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get maxAdhesion(): number {
+    return this.maxAdhesionProp.literalValue;
+  }
+
+  public set maxAdhesion(val: number) {
+    this.maxAdhesionProp.literalValue = val;
+  }
+
+  public get maxClimbSpeed(): number {
+    return this.maxClimbSpeedProp.literalValue;
+  }
+
+  public set maxClimbSpeed(val: number) {
+    this.maxClimbSpeedProp.literalValue = val;
+  }
+
+  public getMaxAdhesion(registry?: ObjectPropertiesRegistry): number {
+    return this.maxAdhesionProp.get(registry);
+  }
+
+  public getMaxClimbSpeed(registry?: ObjectPropertiesRegistry): number {
+    return this.maxClimbSpeedProp.get(registry);
   }
 
   /**
@@ -132,7 +172,8 @@ export class ClimbingModule {
     // If the downward gravitational force of total mass exceeds maxAdhesion, grip fails and character slips
     const totalMass = character.mass;
     const requiredForce = totalMass * arena.gravity;
-    if (requiredForce > this.maxAdhesion) {
+    const maxAdhesion = this.maxAdhesionProp.get(character.properties);
+    if (requiredForce > maxAdhesion) {
       character.isClimbing = false;
       return false;
     }
@@ -166,12 +207,43 @@ export class ClimbingModule {
       character.verticalVelocity = 0;
       (character as any).standingWall = null;
 
+      // Energy consumption check while clinging/climbing:
+      // Physical Work against gravity:
+      // When holding position (isometric contraction): muscles must generate upward force F = m * g to resist falling.
+      // Isometric human/creature muscle maintenance power is ~ 0.3 * m * g / efficiency (approx 30% work rate).
+      // When ascending: mechanical power P_mech = m * g * v_ascent.
+      // With muscle efficiency ~25%: P_metabolic = (m * g * v_ascent) / 0.25 = 4 * m * g * v_ascent.
+      // Even if movement is blocked, attempting to climb exerts full intended force!
+      let climbPowerScale = 1.0;
+      if (this.consumesEnergy) {
+        const bus = character.getEnergyBus(this.energyBusId);
+        if (bus) {
+          const g = arena.gravity || 9.81;
+          const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
+          const maxAscentSpeed = this.maxClimbSpeedProp.get(character.properties);
+          const ascentWatts = isClimbHeld ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
+          const powerReq = isometricHoldingWatts + ascentWatts;
+
+          const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties, false, "climbing", this.allowPartialPower);
+          if (granted <= 0 || bus.isExhausted || (!this.allowPartialPower && granted < powerReq - 0.001)) {
+            // Stamina / energy exhausted or full power unsatisfied: slip from the wall and fall
+            character.isClimbing = false;
+            this.climbSuppressedUntilRelease = true;
+            bus.registerDemand("climbing", 0, this.allowPartialPower);
+            return false;
+          }
+          climbPowerScale = Math.min(1.0, granted / powerReq);
+        }
+      }
+
+      const maxClimbSpeed = this.maxClimbSpeedProp.get(character.properties);
+
       // Handle horizontal traverse along the wall face if horizontalClimb is enabled
       if (this.horizontalClimb && hasMoveInput && Math.abs(inputDotTangent) >= 0.1) {
         const baseMass = character.baseMass;
         const traverseSpeed = Math.max(
           0.5,
-          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+          Math.min(maxClimbSpeed, (maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
         );
         character.velocity.x = tangentX * inputDotTangent * traverseSpeed;
         character.velocity.y = tangentY * inputDotTangent * traverseSpeed;
@@ -185,9 +257,9 @@ export class ClimbingModule {
       if (isClimbHeld) {
         const baseMass = character.baseMass;
         const effectiveClimbSpeed = Math.max(
-          0.2,
-          Math.min(this.maxClimbSpeed, (this.maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
-        );
+          0.1,
+          Math.min(maxClimbSpeed, (maxClimbSpeed * baseMass * character.strength) / Math.max(0.1, totalMass))
+        ) * climbPowerScale;
         character.position.z += effectiveClimbSpeed * dt;
 
         // When reaching or exceeding wall top, mount onto wall smoothly without teleporting / jolting
@@ -199,11 +271,15 @@ export class ClimbingModule {
           character.isClimbing = false;
           this.dismountSuppressedUntilRelease = false;
 
-          // Pull onto wall platform slightly so character is firmly on top of the wall
+          // Smoothly finish climb onto wall platform without forward jump/pop
+          character.velocity.x = 0;
+          character.velocity.y = 0;
           if (shortestDist > 0.001) {
-            const mountNudge = Math.min(r * 0.5, 0.18);
-            character.position.x = (character.position.x + targetDx) - wallNormalX * (r - mountNudge);
-            character.position.y = (character.position.y + targetDy) - wallNormalY * (r - mountNudge);
+            // Place character flush against the wall edge without launching inward
+            const surfaceX = character.position.x + targetDx;
+            const surfaceY = character.position.y + targetDy;
+            character.position.x = surfaceX - wallNormalX * r;
+            character.position.y = surfaceY - wallNormalY * r;
           }
           if (character.wallEdgeAssistModule) {
             character.wallEdgeAssistModule.hasMovedOntoWall = false;
@@ -223,6 +299,20 @@ export class ClimbingModule {
     // they latch on and start climbing from their current height immediately!
     const contactTolerance = 0.03;
     if (isClimbHeld && hasMoveInput && targetDot > 0.01 && shortestDist <= r + contactTolerance && character.position.z < targetWall.wallHeight) {
+      if (this.consumesEnergy) {
+        const bus = character.getEnergyBus(this.energyBusId);
+        if (bus) {
+          const g = arena.gravity || 9.81;
+          const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
+          const maxAscentSpeed = this.maxClimbSpeedProp.get(character.properties);
+          const powerReq = isometricHoldingWatts + (totalMass * g * maxAscentSpeed) / 0.25;
+          if (!this.allowPartialPower && !bus.canSatisfyFullPower(powerReq, dt, character.energyPool, character.properties, "climbing")) {
+            character.isClimbing = false;
+            return false;
+          }
+        }
+      }
+
       // Ensure any micro-gap to the wall is completely closed before climbing begins
       if (shortestDist > 0.001) {
         const wallNormalX = targetDx / shortestDist;
@@ -250,6 +340,10 @@ export class ClimbingModule {
       return true;
     }
 
+    if (this.consumesEnergy) {
+      const bus = character.getEnergyBus(this.energyBusId);
+      if (bus) bus.registerDemand("climbing", 0, this.allowPartialPower);
+    }
     character.isClimbing = false;
     return false;
   }

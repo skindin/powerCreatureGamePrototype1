@@ -13,13 +13,18 @@ import { PredictionReconciliation, ReconciliationResult } from "./physics/Predic
 import { RemoteEntityInterpolator, RemoteEntitySample } from "./physics/RemoteEntityInterpolator.js";
 import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshotManager.js";
 import type { GhostEntityState } from "../network/RelayClient.js";
+import { sceneSpawnerManager } from "./spawner/SceneSpawnerManager.js";
+import { prefabManager } from "./prefab/PrefabManager.js";
+import { ConsumableModule } from "./ConsumableModule.js";
+import { RollModule } from "./RollModule.js";
+import { DamageAuraModule } from "./DamageAuraModule.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
 
 
 export class GameLoop {
-  private arena: Arena;
+  public arena: Arena;
   public objects: GameObject[];
   private renderer: Renderer;
   private inputManager: InputManager;
@@ -71,6 +76,13 @@ export class GameLoop {
   public latestClockSync: import("../server/ServerJitterBuffer.js").ClockSyncPacket | null = null;
   public isPhysicsPaused = false;
   public globalCollisionMode: CollisionMode = "dynamic";
+  /** World physics conversion multiplier for converting absorbed impact shock to raw HP damage */
+  public get worldCollisionDamageScale(): number {
+    return GameObject.globalWorldCollisionDamageScale;
+  }
+  public set worldCollisionDamageScale(val: number) {
+    GameObject.globalWorldCollisionDamageScale = val;
+  }
   public lastSnapshot: WorldSnapshot | null = null;
   public lastInputs = new Map<string, PlayerInputPacket>();
   public historyBuffer = new StateHistoryBuffer(60, 30);
@@ -80,7 +92,9 @@ export class GameLoop {
   public isMultiplayerMode = false;
   public activeMode: "local" | "boomerang" | "online" = "local";
   public onPlayerRenamed?: (playerId: string, newName: string) => void;
-  public lastAppliedObjectSeq = 0;
+  public lastAppliedObjectSeq = -1;
+  public deletedConsumableIds = new Set<string>();
+  public energyHud?: { update: (deltaSeconds?: number) => void };
 
   public get isSplitScreen(): boolean {
     return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
@@ -144,6 +158,10 @@ export class GameLoop {
 
     this.playerManager.onReliableActionDispatched = (action) => {
       this.onReliableAction?.(action);
+    };
+
+    this.playerManager.onObjectDepleted = (objectId) => {
+      this.deletedConsumableIds.add(objectId);
     };
   }
 
@@ -334,7 +352,10 @@ export class GameLoop {
       // Revert to full-canvas mouse coordinate mapping
       this.inputManager.setKeyboardViewport(null);
 
-      const localHeroChar = this.playerManager.players.get("keyboard")?.character || this.allCharacters[0] || null;
+      const localHeroChar = this.playerManager.players.get("keyboard")?.character
+        || Array.from(this.playerManager.players.values())[0]?.character
+        || this.playerManager.baseCharacter
+        || null;
 
       // Sample remote player interpolated states for all non-local characters
       const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
@@ -342,6 +363,7 @@ export class GameLoop {
       const rttMs = ghostData?.rttMs ?? 0;
       for (const char of this.allCharacters) {
         if (localHeroChar && char === localHeroChar) continue;
+        if (char.isDummy || char.characterModule?.role === "dummy") continue;
         const isLocalChar = Array.from(this.playerManager.players.values()).some((p) => p.character === char);
         if (isLocalChar) continue;
         const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);
@@ -411,6 +433,7 @@ export class GameLoop {
 
     this.renderFrame(deltaSeconds);
     this.devPanel.updateInspector();
+    this.energyHud?.update(deltaSeconds);
 
     requestAnimationFrame((t) => this.tick(t));
   }
@@ -504,6 +527,24 @@ export class GameLoop {
     for (const obj of this.objects) {
       if (input.draggedEntity === obj) continue;
       obj.updatePosition(dt, this.arena);
+      // Process health logic on objects that are not characters
+      if (obj.healthModule && obj.healthModule.enabled && !obj.isCharacter) {
+        obj.healthModule.update(dt, obj as any, this.arena);
+      }
+    }
+
+    // 3b. Process Damage Aura emitters across all entities
+    const allEntities = [...this.allCharacters, ...this.objects];
+    for (const ent of allEntities) {
+      if (ent.damageAuraModule && ent.damageAuraModule.enabled) {
+        ent.damageAuraModule.update(dt, ent, this.arena);
+      }
+    }
+
+    // 3c. Update background scene spawners (periodic random item dispensing in offline mode)
+    const isOnline = (this.primaryCharacter as any)?._isInOnlineMode === true;
+    if (!isOnline) {
+      sceneSpawnerManager.update(dt, this.arena, this.objects);
     }
 
     // 4. Resolve collisions across all characters and objects via CollisionResolver
@@ -547,7 +588,7 @@ export class GameLoop {
    */
   public syncAuthoritativeObjects(serverObjects: GhostEntityState[], localClientId?: string, serverSeq?: number): void {
     if (!this.enableAuthoritativeObjectSync) return;
-    if (!serverObjects || serverObjects.length === 0) return;
+    if (!serverObjects) return;
     if (this.devPanel?.isEditMode) return;
 
     // Reject out-of-order or duplicate server snapshots
@@ -561,8 +602,111 @@ export class GameLoop {
     let maxDrift = 0;
 
     for (const sObj of serverObjects) {
-      const localObj = this.objects.find((o) => o.id === sObj.id);
-      if (!localObj) continue;
+      if (this.deletedConsumableIds.has(sObj.id)) {
+        const existingIdx = this.objects.findIndex((o) => o.id === sObj.id);
+        if (existingIdx !== -1) {
+          const removed = this.objects.splice(existingIdx, 1)[0];
+          if (removed.heldBy && (removed.heldBy as Character).heldObject === removed) {
+            (removed.heldBy as Character).heldObject = null;
+          }
+        }
+        continue;
+      }
+
+      let localObj = this.objects.find((o) => o.id === sObj.id);
+      if (!localObj) {
+        // If the object was a consumable that has already run out of energy on server (or client), do not resurrect it
+        if (this.deletedConsumableIds.has(sObj.id) || (sObj.remainingEnergyJoules !== undefined && sObj.remainingEnergyJoules <= 0.001)) {
+          continue;
+        }
+
+        const pId = sObj.prefabId || (sObj.name === "Apple" || sObj.id.startsWith("apple-") ? "prefab_apple" : undefined);
+        const prefab = pId ? prefabManager.get(pId) : undefined;
+
+        if (prefab) {
+          // Tell the client to spawn an instance of the apple prefab exactly as it is!
+          localObj = prefab.instantiate({ x: sObj.x, y: sObj.y, z: sObj.z }, this.arena);
+          localObj.id = sObj.id;
+          localObj.velocity.x = sObj.vx;
+          localObj.velocity.y = sObj.vy;
+          localObj.verticalVelocity = sObj.vz ?? 0;
+          if (sObj.isSleeping) {
+            localObj.putToSleep();
+          }
+
+          // Apply overrides ONLY if server explicitly provided differing values:
+          if (sObj.name !== undefined) localObj.name = sObj.name;
+          if (sObj.color !== undefined) localObj.color = sObj.color;
+          if (sObj.shape !== undefined) localObj.visualShape = sObj.shape;
+          if (sObj.radius !== undefined) {
+            localObj.colliderRadius = sObj.radius;
+            if (localObj.consumableModule) {
+              localObj.consumableModule.initialColliderRadius = sObj.radius;
+            }
+          }
+          if (sObj.mass !== undefined) localObj.mass = sObj.mass;
+          if (sObj.bounceMod !== undefined) localObj.bounceMod = sObj.bounceMod;
+          if (sObj.consumableTag !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.tag = sObj.consumableTag;
+          }
+          if (sObj.totalEnergyJoules !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.totalEnergyJoulesProp.literalValue = sObj.totalEnergyJoules;
+          }
+          if (sObj.remainingEnergyJoules !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+          }
+        } else {
+          // Authoritative server spawn: instantiate the object locally on the client!
+          localObj = new GameObject({
+            id: sObj.id,
+            name: sObj.name || "Server Object",
+            position: { x: sObj.x, y: sObj.y, z: sObj.z },
+            velocity: { x: sObj.vx, y: sObj.vy },
+            verticalVelocity: sObj.vz ?? 0,
+            mass: sObj.mass ?? 1.0,
+            bounceMod: sObj.bounceMod ?? 0.0,
+            color: sObj.color || "#22c55e",
+            colliderRadius: sObj.radius || 0.25,
+            visualShape: sObj.shape || "circle",
+            consumableModule: sObj.consumableTag
+              ? new ConsumableModule({
+                  tag: sObj.consumableTag,
+                  totalEnergyJoules: sObj.totalEnergyJoules ?? 2000,
+                  remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 2000,
+                })
+              : undefined,
+            damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)
+              ? new DamageAuraModule({
+                  damageRadius: sObj.damageAuraRadius ?? 2.5,
+                  damageRate: sObj.damageAuraRate ?? 25.0,
+                })
+              : undefined,
+            rollModule: (sObj.angX !== undefined || sObj.angY !== undefined || sObj.angZ !== undefined)
+              ? new RollModule({
+                  rollResistance: 0.0,
+                  angularVelocity: { x: sObj.angX ?? 0, y: sObj.angY ?? 0, z: sObj.angZ ?? 0 },
+                })
+              : undefined,
+          });
+          if (localObj.consumableModule) {
+            localObj.consumableModule.initialColliderRadius = sObj.radius || localObj.colliderRadius;
+          }
+          if (sObj.isSleeping) {
+            localObj.putToSleep();
+          }
+        }
+        this.objects.push(localObj);
+        if (Array.isArray((this.arena as any).entities)) {
+          (this.arena as any).entities.push(localObj);
+        }
+      }
+
+      // Synchronize any explicit overrides sent from server on existing object
+      if (sObj.name !== undefined && localObj.name !== sObj.name) localObj.name = sObj.name;
+      if (sObj.color !== undefined && localObj.color !== sObj.color) localObj.color = sObj.color;
+      if (sObj.shape !== undefined && localObj.visualShape !== sObj.shape) localObj.visualShape = sObj.shape;
+      if (sObj.mass !== undefined && Math.abs(localObj.mass - sObj.mass) > 0.001) localObj.mass = sObj.mass;
+      if (sObj.bounceMod !== undefined && Math.abs((localObj.bounceMod ?? 0) - sObj.bounceMod) > 0.001) localObj.bounceMod = sObj.bounceMod;
 
       // 1. Identify if held by any local player on this machine
       const isHeldByAnyLocalPlayer = Boolean(
@@ -574,8 +718,72 @@ export class GameLoop {
         )
       );
 
-      // 1a. If currently held by any local character on this machine, local holder transform governs
-      if (isHeldByAnyLocalPlayer) continue;
+      // Consumable status synchronization:
+      // If the object is consumable (e.g. apple), sync remaining energy and physical scale:
+      if (localObj.consumableModule && sObj.remainingEnergyJoules !== undefined) {
+        if (!localObj.consumableModule.initialColliderRadius || localObj.consumableModule.initialColliderRadius <= 0) {
+          localObj.consumableModule.initialColliderRadius = localObj.colliderRadius;
+        }
+        if (isHeldByAnyLocalPlayer) {
+          // Local holder prediction: only softly reconcile if drift exceeds tolerance (> 100 Joules)
+          const currentRemaining = localObj.consumableModule.getRemainingEnergy(localObj.properties);
+          const holderChar = localObj.heldBy instanceof Character ? localObj.heldBy : null;
+          const isHolderEating = Boolean(holderChar && holderChar.isUsingItem && holderChar.canConsumeHeldObject());
+          // If actively eating locally, the server's snapshot trails by network latency.
+          // Never roll back the apple to a higher (un-eaten) remaining energy while eating.
+          if (isHolderEating) {
+            if (sObj.remainingEnergyJoules < currentRemaining) {
+              localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+            }
+          } else if (Math.abs(currentRemaining - sObj.remainingEnergyJoules) > 100) {
+            localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+          }
+          // If server reports remaining energy <= 0.001, finish/destroy it immediately!
+          if (sObj.remainingEnergyJoules <= 0.001) {
+            localObj.consumableModule.finishConsumption(holderChar || (localObj.heldBy as Character) || this.primaryCharacter!, localObj, this.objects, this.arena);
+            continue;
+          }
+        } else {
+          // If server reports remaining energy <= 0.001, finish/destroy it immediately!
+          if (sObj.remainingEnergyJoules <= 0.001) {
+            localObj.consumableModule.finishConsumption(this.primaryCharacter!, localObj, this.objects, this.arena);
+            continue;
+          }
+          // Remote observer: display the apple's authoritative eat progress and shrink in real time!
+          localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+          const currentScale = localObj.consumableModule.getScale(localObj.properties);
+          const initialRadius = localObj.consumableModule.initialColliderRadius;
+          const targetRadius = Math.max(localObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+          localObj.colliderRadius = targetRadius;
+          if (localObj.colliderModule) {
+            localObj.colliderModule.radius = targetRadius;
+          }
+        }
+      }
+
+      // If the server explicitly says a remote player holds this object,
+      // force local client to relinquish possession if it mistakenly thought it was holding it!
+      const sHeldBy = sObj.heldBy;
+      const isServerHeldByRemote = Boolean(
+        sObj.isHeld && sHeldBy &&
+        !Array.from(this.players.values()).some((p) =>
+          sHeldBy === p.id ||
+          sHeldBy === p.character.playerId ||
+          sHeldBy === p.character.serverCharId ||
+          (localClientId && (sHeldBy === localClientId || sHeldBy.startsWith(`${localClientId}:`)))
+        )
+      );
+
+      if (isHeldByAnyLocalPlayer && isServerHeldByRemote) {
+        // Relinquish false local hold
+        if (localObj.heldBy instanceof Character && localObj.heldBy.heldObject === localObj) {
+          localObj.heldBy.heldObject = null;
+        }
+        localObj.isHeld = false;
+        localObj.heldBy = null;
+      } else if (isHeldByAnyLocalPlayer) {
+        continue;
+      }
 
       // 2. If dragged by user mouse in editor, user drag governs
       if (this.inputManager?.draggedEntity === localObj) continue;
@@ -652,7 +860,8 @@ export class GameLoop {
       // While a thrown object is in ballistic flight from local player, allow local prediction
       // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
-      const wasThrownByLocal = Boolean(localObj.lastThrower && isLocalChar(localObj.lastThrower as Character));
+      const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
+      const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
       if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
@@ -717,6 +926,30 @@ export class GameLoop {
         localObj.rollModule.angularVelocity.x += (sObj.angX - localObj.rollModule.angularVelocity.x) * blend;
         localObj.rollModule.angularVelocity.y += (sObj.angY - localObj.rollModule.angularVelocity.y) * blend;
         localObj.rollModule.angularVelocity.z += (sObj.angZ - localObj.rollModule.angularVelocity.z) * blend;
+      }
+    }
+
+    // 8. Server-authoritative object deletion (e.g. food eaten or depleted items removed on server)
+    const serverObjIds = new Set(serverObjects.map((o) => o.id));
+    for (let i = this.objects.length - 1; i >= 0; i--) {
+      const obj = this.objects[i];
+      // If serverObjects is a full snapshot and this object is absent from the server:
+      if (!serverObjIds.has(obj.id)) {
+        // If it was a consumable or depleted item, remove it locally
+        if (obj.consumableModule || (obj.isHeld && (obj.heldBy as Character)?.role === "remote_player") || obj.id.startsWith("inst_") || obj.id.startsWith("spawner_")) {
+          if (obj.heldBy && (obj.heldBy as Character).heldObject === obj) {
+            (obj.heldBy as Character).heldObject = null;
+          }
+          obj.isHeld = false;
+          obj.heldBy = null;
+          this.objects.splice(i, 1);
+          if (Array.isArray((this.arena as any).entities)) {
+            const eIdx = (this.arena as any).entities.indexOf(obj);
+            if (eIdx !== -1) {
+              (this.arena as any).entities.splice(eIdx, 1);
+            }
+          }
+        }
       }
     }
 

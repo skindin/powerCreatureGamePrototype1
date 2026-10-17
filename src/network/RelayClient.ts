@@ -15,7 +15,10 @@ export interface GhostEntityState {
   vz?: number;
   surfaceZ?: number;
   isGrounded?: boolean;
-  radius: number;
+  radius?: number;
+  prefabId?: string;
+  mass?: number;
+  bounceMod?: number;
   color?: string;
   playerColor?: string;
   playerNumber?: number;
@@ -27,10 +30,45 @@ export interface GhostEntityState {
   facingAngle?: number;
   heldObjectId?: string | null;
   isHolding?: boolean;
+  isUsingItem?: boolean;
   angX?: number;
   angY?: number;
   angZ?: number;
   isSleeping?: boolean;
+  currentHp?: number;
+  maxHp?: number;
+  isDummy?: boolean;
+  role?: string;
+  controllerType?: "local" | "remote" | "none" | "ai";
+  // Consumable item fields (food/apple sync)
+  consumableTag?: string;
+  remainingEnergyJoules?: number;
+  totalEnergyJoules?: number;
+  // Damage Aura fields
+  damageAuraRadius?: number;
+  damageAuraRate?: number;
+  // Character energy and stamina fields
+  currentEnergyJoules?: number;
+  maxEnergyJoules?: number;
+  currentStaminaSeconds?: number;
+  maxStaminaSeconds?: number;
+  currentWattage?: number;
+}
+
+export interface ObjectDeletionEvent {
+  eventId: string;
+  objectId: string;
+  tick: number;
+}
+
+export interface DeathRespawnEvent {
+  eventId: string;
+  targetEntityId: string;
+  tick: number;
+  respawnX: number;
+  respawnY: number;
+  respawnZ: number;
+  maxHp: number;
 }
 
 import { ClockSyncPacket } from "../server/ServerJitterBuffer.js";
@@ -50,6 +88,9 @@ export interface GhostSnapshot {
   objects: GhostEntityState[];
   source?: "physics_sim" | "echo";
   ackActionIds?: string[];
+  contestedGrabEvents?: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[];
+  deathRespawnEvents?: DeathRespawnEvent[];
+  objectDeletionEvents?: ObjectDeletionEvent[];
   clockSync?: ClockSyncPacket;
   worldSnapshot?: AuthoritativeWorldSnapshot;
 }

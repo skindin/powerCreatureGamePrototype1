@@ -36,19 +36,24 @@ export class OnlineRoomClient {
   public assignedColor: string = "#f59e0b";
 
   public unacknowledgedActions = new Map<string, ReliableActionCommand>();
+  public unacknowledgedContestedAcks = new Set<string>();
+  public unacknowledgedObjectDeletionAcks = new Set<string>();
+  public unacknowledgedConsumedObjectIds = new Set<string>();
+  public unacknowledgedDeathRespawnAcks = new Set<string>();
   public latestGhostSnapshot: GhostSnapshot | null = null;
-  public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }>();
+  public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
   public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
-  public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string }) => void;
+  public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }) => void;
   public onPlayerRemoved?: (localPlayerId: string) => void;
   public onPlayerLeft?: (charId: string) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
+  public onContestedGrabEvents?: (events: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[]) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
-  public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string }>;
+  public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }>;
 
   constructor(initialName?: string) {
     if (initialName) {
@@ -116,7 +121,7 @@ export class OnlineRoomClient {
     const wsUrl = url || (() => {
       const isSecure = typeof window !== "undefined" && window.location.protocol === "https:";
       const protocol = isSecure ? "wss:" : "ws:";
-      const host = typeof window !== "undefined" ? window.location.host : "127.0.0.1:5173";
+      const host = typeof window !== "undefined" ? window.location.host : "127.0.0.1:3000";
       return `${protocol}//${host}/ws`;
     })();
 
@@ -133,7 +138,7 @@ export class OnlineRoomClient {
         this.notifyStats();
 
         // Send join room request with all local players currently active on this client
-        let activeLocalPlayers: Array<{ localPlayerId: string; name?: string }> = [];
+        let activeLocalPlayers: Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }> = [];
         if (this.getLocalPlayers) {
           activeLocalPlayers = this.getLocalPlayers();
         } else {
@@ -149,7 +154,7 @@ export class OnlineRoomClient {
           type: "join_room",
           name: this.hasCustomName ? this.playerName : undefined,
           localPlayers: activeLocalPlayers.length > 0
-            ? activeLocalPlayers
+            ? activeLocalPlayers.map(p => ({ localPlayerId: p.localPlayerId, name: p.name }))
             : [{ localPlayerId: "keyboard", name: this.hasCustomName ? this.playerName : undefined }],
         }));
 
@@ -241,6 +246,23 @@ export class OnlineRoomClient {
               if (Array.isArray(msg.snapshot.ackActionIds)) {
                 this.acknowledgeActions(msg.snapshot.ackActionIds);
               }
+
+              if (Array.isArray(msg.snapshot.contestedGrabEvents) && msg.snapshot.contestedGrabEvents.length > 0) {
+                for (const ev of msg.snapshot.contestedGrabEvents) {
+                  this.unacknowledgedContestedAcks.add(ev.eventId);
+                }
+                this.onContestedGrabEvents?.(msg.snapshot.contestedGrabEvents);
+              }
+
+              if (Array.isArray(msg.snapshot.objectDeletionEvents) && msg.snapshot.objectDeletionEvents.length > 0) {
+                for (const ev of msg.snapshot.objectDeletionEvents) {
+                  this.unacknowledgedObjectDeletionAcks.add(ev.eventId);
+                  this.unacknowledgedConsumedObjectIds.delete(ev.objectId);
+                }
+              }
+
+              // Death respawn events are processed by OnlineSessionManager which snaps the local/remote character,
+              // then explicitly calls client.acknowledgeDeathRespawn(eventId) once the position is set.
 
               if (msg.snapshot.clockSync) {
                 this.onClockSync?.(msg.snapshot.clockSync);
@@ -340,13 +362,29 @@ export class OnlineRoomClient {
    * Enables the authoritative server to maintain locked coordinates and velocity for each local character.
    */
   public sendPlayerInput(
-    localPlayerId: string,
-    packet: PlayerInputPacket,
-    character?: any,
+    localPlayerIdOrPacket: string | PlayerInputPacket,
+    packetOrCharacter?: PlayerInputPacket | any,
+    characterOrObjects?: any,
     objects?: any[]
   ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
+      let localPlayerId: string;
+      let packet: PlayerInputPacket;
+      let character: any;
+      let actualObjects: any[] | undefined = objects;
+
+      if (typeof localPlayerIdOrPacket === "string") {
+        localPlayerId = localPlayerIdOrPacket;
+        packet = packetOrCharacter;
+        character = characterOrObjects;
+      } else {
+        localPlayerId = "keyboard";
+        packet = localPlayerIdOrPacket;
+        character = packetOrCharacter;
+        actualObjects = characterOrObjects;
+      }
+
       const serverCharId = this.getServerCharId(localPlayerId);
       packet.playerId = serverCharId;
 
@@ -363,7 +401,14 @@ export class OnlineRoomClient {
         ? Array.from(this.unacknowledgedActions.values())
         : undefined;
 
-      const charTelemetry = character ? {
+      // The client must not send any position information until its position has been corrected
+      // and it is fully connected and registered with an authoritative spawn position,
+      // and NOT while dead/awaiting authoritative server respawn!
+      const localReg = this.localPlayers.get(localPlayerId);
+      const isSpawnAligned = Boolean(localReg && localReg.spawnPos);
+      const isAwaitingRespawn = Boolean(character?.isAwaitingRespawn);
+
+      const charTelemetry = (character && isSpawnAligned && !isAwaitingRespawn) ? {
         id: serverCharId,
         name: isCustomCharacter
           ? character.name
@@ -383,11 +428,13 @@ export class OnlineRoomClient {
         facingAngle: Number(character.facingAngle.toFixed(4)),
         heldObjectId: character.heldObject ? character.heldObject.id : null,
         isHolding: Boolean(character.heldObject),
+        isUsingItem: Boolean(character.isUsingItem),
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)
-      const myHeldObjects = (Array.isArray(objects) && objects.length > 0)
-        ? objects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj))
+      // Never stream objects that are consumed or depleted!
+      const myHeldObjects = (isSpawnAligned && Array.isArray(actualObjects) && actualObjects.length > 0)
+        ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj) && !(obj.consumableModule && obj.consumableModule.isConsumed))
         : [];
 
       const objTelemetry = myHeldObjects.length > 0 ? myHeldObjects.map((obj) => ({
@@ -411,7 +458,26 @@ export class OnlineRoomClient {
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,
         angZ: obj.rollModule ? Number(obj.rollModule.angularVelocity.z.toFixed(3)) : undefined,
         isSleeping: obj.isSleeping,
+        consumableTag: obj.consumableModule?.tag,
+        remainingEnergyJoules: obj.consumableModule ? Number(obj.consumableModule.getRemainingEnergy(obj.properties).toFixed(1)) : undefined,
+        totalEnergyJoules: obj.consumableModule ? Number(obj.consumableModule.getTotalEnergy(obj.properties).toFixed(1)) : undefined,
       })) : undefined;
+
+      const consumedObjectIds = this.unacknowledgedConsumedObjectIds.size > 0
+        ? Array.from(this.unacknowledgedConsumedObjectIds.values())
+        : undefined;
+
+      const ackContestedEventIds = this.unacknowledgedContestedAcks.size > 0
+        ? Array.from(this.unacknowledgedContestedAcks.values())
+        : undefined;
+
+      const ackObjectDeletionEventIds = this.unacknowledgedObjectDeletionAcks.size > 0
+        ? Array.from(this.unacknowledgedObjectDeletionAcks.values())
+        : undefined;
+
+      const ackDeathRespawnEventIds = this.unacknowledgedDeathRespawnAcks.size > 0
+        ? Array.from(this.unacknowledgedDeathRespawnAcks.values())
+        : undefined;
 
       this.ws.send(JSON.stringify({
         type: "player_input",
@@ -420,9 +486,19 @@ export class OnlineRoomClient {
         packet,
         character: charTelemetry,
         objects: objTelemetry,
+        consumedObjectIds,
         reliableActions,
+        ackContestedEventIds,
+        ackObjectDeletionEventIds,
+        ackDeathRespawnEventIds,
       }));
     } catch (_) {}
+  }
+
+  public acknowledgeDeathRespawn(eventId: string): void {
+    if (eventId) {
+      this.unacknowledgedDeathRespawnAcks.add(eventId);
+    }
   }
 
   public renamePlayer(newName: string, localPlayerId: string = "keyboard"): void {
