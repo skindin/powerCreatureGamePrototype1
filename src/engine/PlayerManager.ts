@@ -563,12 +563,9 @@ export class PlayerManager {
       // - If aiming throw or directional ability, face cursor
       // - If primary ability does not involve direction and not aiming throw (Alt not held), do NOT face cursor; face movement direction
       if (kChar.heldObject) {
-        const lockTarget = isThrowActive && kChar.activeTrajectory?.isAutoLocked && kChar.activeTrajectory.targetObject
-          ? kChar.activeTrajectory.targetObject
-          : null;
-        if (lockTarget) {
-          const aimDx = lockTarget.position.x - kChar.position.x;
-          const aimDy = lockTarget.position.y - kChar.position.y;
+        if (input.lockedAimPos) {
+          const aimDx = input.lockedAimPos.x - kChar.position.x;
+          const aimDy = input.lockedAimPos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
             kChar.facingAngle = Math.atan2(aimDy, aimDx);
           }
@@ -683,12 +680,9 @@ export class PlayerManager {
 
       // Ensure facingAngle is explicit: face locked target object if locked, otherwise face aim when holding, movement direction when walking
       if (cChar.heldObject) {
-        const lockTarget = cChar.activeTrajectory?.isAutoLocked && cChar.activeTrajectory.targetObject
-          ? cChar.activeTrajectory.targetObject
-          : null;
-        if (lockTarget) {
-          const aimDx = lockTarget.position.x - cChar.position.x;
-          const aimDy = lockTarget.position.y - cChar.position.y;
+        if (slot.lockedAimPos) {
+          const aimDx = slot.lockedAimPos.x - cChar.position.x;
+          const aimDy = slot.lockedAimPos.y - cChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
             cChar.facingAngle = Math.atan2(aimDy, aimDx);
           }

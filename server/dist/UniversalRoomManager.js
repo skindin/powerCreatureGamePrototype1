@@ -8489,6 +8489,17 @@ class Character extends GameObject {
         autoLock,
         lockedAimPos
       );
+      if (lockedAimPos) {
+        const lockDx = lockedAimPos.x - this.position.x;
+        const lockDy = lockedAimPos.y - this.position.y;
+        if (Math.hypot(lockDx, lockDy) > 0.05) {
+          this.facingAngle = Math.atan2(lockDy, lockDx);
+          const heldPos = this.calculateHeldObjectPosition(arena);
+          this.heldObject.position.x = heldPos.x;
+          this.heldObject.position.y = heldPos.y;
+          this.heldObject.position.z = heldPos.z;
+        }
+      }
     } else {
       this.activeTrajectory = null;
     }
@@ -11779,7 +11790,14 @@ class ServerGameSimulation {
           pkt.isLockHeld,
           pkt.lockedAimPos ?? null
         );
-        if (((_b = char.activeTrajectory) == null ? void 0 : _b.isAutoLocked) && char.activeTrajectory.targetObject) {
+        if (pkt.lockedAimPos) {
+          const lPos = pkt.lockedAimPos;
+          const dx = lPos.x - char.position.x;
+          const dy = lPos.y - char.position.y;
+          if (Math.hypot(dx, dy) > 0.05) {
+            char.facingAngle = Math.atan2(dy, dx);
+          }
+        } else if (((_b = char.activeTrajectory) == null ? void 0 : _b.isAutoLocked) && char.activeTrajectory.targetObject) {
           const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
           const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
           if (Math.hypot(dx, dy) > 0.05) {

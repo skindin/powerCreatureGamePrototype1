@@ -615,6 +615,19 @@ export class Character extends GameObject {
         autoLock,
         lockedAimPos
       );
+
+      // When cursor is locked, ensure character and held item remain strictly pointed at lockedAimPos
+      if (lockedAimPos) {
+        const lockDx = lockedAimPos.x - this.position.x;
+        const lockDy = lockedAimPos.y - this.position.y;
+        if (Math.hypot(lockDx, lockDy) > 0.05) {
+          this.facingAngle = Math.atan2(lockDy, lockDx);
+          const heldPos = this.calculateHeldObjectPosition(arena);
+          this.heldObject.position.x = heldPos.x;
+          this.heldObject.position.y = heldPos.y;
+          this.heldObject.position.z = heldPos.z;
+        }
+      }
     } else {
       this.activeTrajectory = null;
     }
