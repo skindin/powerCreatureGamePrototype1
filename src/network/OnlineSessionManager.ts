@@ -654,7 +654,7 @@ export class OnlineSessionManager {
                 if (c.currentEnergyJoules > curEnergy) {
                   localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
                 }
-              } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {
+              } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 1200.0) {
                 localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
               }
             }

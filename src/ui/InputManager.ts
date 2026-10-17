@@ -31,6 +31,7 @@ export interface GamepadSlotState {
   lastMovementInputAngle?: number;
   isThrowRequested?: boolean;
   isDropRequested?: boolean;
+  isJumpRequested?: boolean;
   isUsingItem?: boolean;
 }
 
@@ -66,6 +67,7 @@ export class InputManager {
   public isKeyboardActive = true;
   public isKeyboardThrowRequested = false;
   public isKeyboardDropRequested = false;
+  public isKeyboardJumpRequested = false;
 
   public mousePos: Vector2D = { x: 0, y: 0 };
   public actualMousePos: Vector2D = { x: 0, y: 0 };
@@ -180,7 +182,11 @@ export class InputManager {
   }
 
   public get isKeyboardJumpHeld(): boolean {
-    return this.isKeyboardActive && !this.isTextInputFocused() && this.keysPressed.has("Space");
+    return (
+      this.isKeyboardActive &&
+      !this.isTextInputFocused() &&
+      (this.keysPressed.has("Space") || this.isKeyboardJumpRequested)
+    );
   }
 
   public get isClimbHeld(): boolean {
@@ -260,6 +266,7 @@ export class InputManager {
           this.onKeyboardJoin?.();
         }
         if (!e.repeat) {
+          this.isKeyboardJumpRequested = true;
           this.onKeyboardJump?.();
         }
       }
@@ -271,6 +278,7 @@ export class InputManager {
         this.isQKeyDepressed = false;
         this.isEKeyDepressed = false;
         this.isKeyboardSprintActive = false;
+        this.isKeyboardJumpRequested = false;
         this.isAltHeld = false;
         this.isMouseDown = false;
         this.isRightMouseDown = false;
@@ -1079,8 +1087,9 @@ export class InputManager {
       slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
-      slot.isClimbHeld = rightPaddleCurrent;
+      slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);
       if (rightPaddleJustPressed) {
+        slot.isJumpRequested = true;
         char.jump(arena, slot.movementVector);
       }
 

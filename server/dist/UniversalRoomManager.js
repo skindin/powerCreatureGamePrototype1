@@ -11425,6 +11425,12 @@ class ServerGameSimulation {
       sChar.velocity.y = clientChar.vy;
     }
     if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
+      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
+      const isServerGrounded = sChar.isRestingOnSurface || Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8;
+      if (isServerGrounded && !sChar.isClimbing && !sChar.isHeld && !hasRecentImpact && clientChar.vz > 1) {
+        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : void 0;
+        sChar.jump(this.arena, moveInput);
+      }
       if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
         sChar.verticalVelocity = clientChar.vz;
       }

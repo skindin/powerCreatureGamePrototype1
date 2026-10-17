@@ -549,6 +549,23 @@ export class ServerGameSimulation {
     }
 
     if (sChar.hasVerticalVelocity && clientChar.vz !== undefined) {
+      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
+      const isServerGrounded = sChar.isRestingOnSurface ||
+        (Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8);
+
+      // If client took off jumping while server character was grounded, authoritatively execute jump
+      // so energy and stamina are deducted and synchronized on the authoritative server
+      if (
+        isServerGrounded &&
+        !sChar.isClimbing &&
+        !sChar.isHeld &&
+        !hasRecentImpact &&
+        clientChar.vz > 1.0
+      ) {
+        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : undefined;
+        sChar.jump(this.arena, moveInput);
+      }
+
       if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
         sChar.verticalVelocity = clientChar.vz;
       }

@@ -666,6 +666,7 @@ export class PlayerManager {
       input.aimLockRawDy = 0;
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
+      input.isKeyboardJumpRequested = false;
     }
 
     // 2. Gamepads
@@ -787,6 +788,7 @@ export class PlayerManager {
       } as any);
       slot.isDropRequested = false;
       slot.isThrowRequested = false;
+      slot.isJumpRequested = false;
     }
 
     return map;
