@@ -5926,7 +5926,7 @@ class ThrowModule {
      */
     __publicField(this, "consumesEnergy", true);
     __publicField(this, "energyBusId", "bus_main");
-    const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 14;
+    const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 100;
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
     this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
@@ -6307,8 +6307,35 @@ class ThrowModule {
   calculateTrajectory(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
-    const charAimDx = aimTargetX - character.position.x;
-    const charAimDy = aimTargetY - character.position.y;
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+    let lockedTarget = null;
+    let targetSurfaceHeight = 0;
+    if (autoLock) {
+      lockedTarget = this.findHoveredEntity(
+        aimTargetX,
+        aimTargetY,
+        arena,
+        character,
+        held,
+        candidateEntities,
+        scale,
+        Infinity
+      );
+      if (lockedTarget) {
+        const entZ = Math.max(
+          0,
+          lockedTarget.position.z ?? 0,
+          lockedTarget.supportingSurfaceHeight ?? 0,
+          lockedTarget.standingWall ? lockedTarget.standingWall.wallHeight ?? arena.wallHeight : 0
+        );
+        targetSurfaceHeight = entZ;
+      }
+    }
+    const targetAimX = lockedTarget ? lockedTarget.position.x : aimTargetX;
+    const targetAimY = lockedTarget ? lockedTarget.position.y : aimTargetY;
+    const charAimDx = targetAimX - character.position.x;
+    const charAimDy = targetAimY - character.position.y;
     if (Math.hypot(charAimDx, charAimDy) > 0.05) {
       character.facingAngle = Math.atan2(charAimDy, charAimDx);
       const alignedHeldPos = character.calculateHeldObjectPosition(arena);
@@ -6356,13 +6383,11 @@ class ThrowModule {
       y: character.velocity.y,
       z: character.isAboveGround ? character.verticalVelocity : 0
     };
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    const aimDx = aimTargetX - startX;
-    const aimDy = aimTargetY - startY;
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
     const aimDist = Math.hypot(aimDx, aimDy);
-    let effectiveAimX = aimTargetX;
-    let effectiveAimY = aimTargetY;
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
     if (aimDist > 0.05 && canFlyVertically) {
       const g = arena.gravity;
       const maxReach = maxSpeed / g * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
@@ -6391,12 +6416,13 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: launchSurfaceHeight, targetObject, isAutoLocked } = launch;
+    const resolvedSurfaceHeight = isAutoLocked && lockedTarget ? targetSurfaceHeight : launchSurfaceHeight;
     const steps = 90;
     const dtStep = totalTime / steps;
     const points = [];
     let isBlocked = false;
-    let isLandingOnWallTop = targetSurfaceHeight > 0;
+    let isLandingOnWallTop = resolvedSurfaceHeight > 0;
     let blockedWallId;
     let peakHeight = startZ;
     for (let step = 0; step <= steps; step++) {
@@ -6404,7 +6430,7 @@ class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? startZ + vz * t - 0.5 * arena.gravity * t * t : startZ;
-      const currentZ = canFlyVertically ? step === steps ? targetSurfaceHeight : step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ) : startZ;
+      const currentZ = canFlyVertically ? step === steps ? resolvedSurfaceHeight : step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ) : startZ;
       const currentVz = canFlyVertically ? vz - arena.gravity * t : 0;
       if (currentZ > peakHeight) {
         peakHeight = currentZ;
@@ -6481,9 +6507,29 @@ class ThrowModule {
   throwHeldObject(character, aimTargetX, aimTargetY, arena, entities, hoverScale, autoLock = false, launchVel, launchPos) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
+    let targetAimX = aimTargetX;
+    let targetAimY = aimTargetY;
     if (!launchPos) {
-      const aimDx2 = aimTargetX - character.position.x;
-      const aimDy2 = aimTargetY - character.position.y;
+      if (autoLock) {
+        const candidateEntities2 = entities ?? arena.entities;
+        const scale2 = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+        const lockedTarget = this.findHoveredEntity(
+          aimTargetX,
+          aimTargetY,
+          arena,
+          character,
+          held,
+          candidateEntities2,
+          scale2,
+          Infinity
+        );
+        if (lockedTarget) {
+          targetAimX = lockedTarget.position.x;
+          targetAimY = lockedTarget.position.y;
+        }
+      }
+      const aimDx2 = targetAimX - character.position.x;
+      const aimDy2 = targetAimY - character.position.y;
       if (Math.hypot(aimDx2, aimDy2) > 0.05) {
         character.facingAngle = Math.atan2(aimDy2, aimDx2);
         const alignedHeldPos = character.calculateHeldObjectPosition(arena);
@@ -6534,11 +6580,11 @@ class ThrowModule {
         maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
       }
     }
-    const aimDx = aimTargetX - startX;
-    const aimDy = aimTargetY - startY;
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
     const aimDist = Math.hypot(aimDx, aimDy);
-    let effectiveAimX = aimTargetX;
-    let effectiveAimY = aimTargetY;
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
     if (!launchVel && aimDist > 0.05 && canFlyVertically) {
       const g = arena.gravity;
       const maxReach = maxSpeed / g * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
@@ -7686,13 +7732,9 @@ class EnergyBus {
       }
       const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
       if (grantedJoules <= 1e-4) {
-        this.isExhausted = true;
         return 0;
       }
       grantedWatts = grantedJoules / dt;
-      if (pool.getCurrentEnergy(registry) <= 1e-4) {
-        this.isExhausted = true;
-      }
     }
     if (!allowPartialPower && grantedWatts < requestedPowerWatts - 1e-3) {
       if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
@@ -7760,8 +7802,11 @@ class EnergyBus {
     const maxBurstCapacity = Math.max(0, curStamina * maxPower);
     const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry) : Infinity;
     const availableJoules = Math.min(poolEnergy, maxBurstCapacity);
-    if (availableJoules <= 1e-3) {
+    if (curStamina <= 1e-4) {
       this.isExhausted = true;
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    if (availableJoules <= 1e-3) {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     let grantedJoules = 0;
@@ -7836,7 +7881,7 @@ class EnergyBus {
    * Advances passive stamina regeneration only when the bus is resting (0 power drawn).
    * Also cleans up demands and active allocations that were not requested in the tick.
    */
-  update(dt, pool, registry) {
+  update(dt, _pool, registry) {
     if (!this.enabled || dt <= 0) return;
     this._currentTick++;
     for (const [id, rec] of this._demands.entries()) {
@@ -7886,9 +7931,6 @@ class EnergyBus {
       if (curS >= recoveryThreshold) {
         this.isExhausted = false;
       }
-    }
-    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) <= 1e-4) {
-      this.isExhausted = true;
     }
     this.hadPhysicalExertion = false;
   }

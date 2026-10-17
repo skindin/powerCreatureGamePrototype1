@@ -165,8 +165,8 @@ export class InputManager {
   public dragOffset: Vector2D = { x: 0, y: 0 };
 
   // Action callback hooks
-  public handleClick?: (clickX: number, clickY: number) => void;
-  public onMouseDown?: (clickX: number, clickY: number) => void;
+  public handleClick?: (clickX: number, clickY: number, e?: MouseEvent) => void;
+  public onMouseDown?: (clickX: number, clickY: number, e?: MouseEvent) => void;
   public onRightMouseDown?: (clickX: number, clickY: number) => void;
   public onMouseUp?: (clickX: number, clickY: number) => void;
   public onRightClick?: (clickX: number, clickY: number) => void;
@@ -388,11 +388,11 @@ export class InputManager {
       this.isMouseDown = true;
 
       if (this.onMouseDown) {
-        this.onMouseDown(this.mousePos.x, this.mousePos.y);
+        this.onMouseDown(this.mousePos.x, this.mousePos.y, e);
       }
 
       if (this.handleClick) {
-        this.handleClick(this.mousePos.x, this.mousePos.y);
+        this.handleClick(this.mousePos.x, this.mousePos.y, e);
       }
     });
 
@@ -1287,7 +1287,19 @@ export class InputManager {
       return character;
     };
 
-    this.handleClick = (clickX: number, clickY: number) => {
+    this.handleClick = (clickX: number, clickY: number, e?: MouseEvent) => {
+      // Ctrl + Left Click selects entity in the Inspector (Dev Panel) in both Play and Edit modes
+      if (e?.ctrlKey || this.isKeyPressed("ControlLeft") || this.isKeyPressed("ControlRight")) {
+        if (devPanel) {
+          const found = findEntityAt(clickX, clickY, 0.4);
+          if (found) {
+            this.selectedCanvasEntity = found;
+            devPanel.setSelectedEntity(found);
+          }
+        }
+        return;
+      }
+
       if (devPanel?.isEditMode) {
         // Handled in onMouseDown/onMouseMove
         return;
@@ -1342,18 +1354,9 @@ export class InputManager {
       }
     };
 
-    // Right click selects any entity in the Dev Panel (works in both Play & Edit modes, except Wall Tool)
-    this.onRightClick = (clickX: number, clickY: number) => {
-      if (devPanel?.isEditMode && devPanel.editTool === "walls") {
-        return; // Wall erasing is handled via onRightMouseDown & drag
-      }
-      if (!devPanel) return;
-      const found = findEntityAt(clickX, clickY, 0.4);
-      if (found) {
-        this.selectedCanvasEntity = found;
-        devPanel.setSelectedEntity(found);
-      }
-      // If clicked empty space, keep the last focused entity in devPanel!
+    // Right click is reserved for item throw lock (and wall erasing in edit mode)
+    this.onRightClick = (_clickX: number, _clickY: number) => {
+      // Intentionally empty: selection is now Ctrl + Left Click so Right Click does not accidentally change selection
     };
 
     this.onKeyboardDrop = () => {

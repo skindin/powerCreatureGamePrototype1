@@ -619,13 +619,9 @@ export class EnergyBus {
       }
       const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
       if (grantedJoules <= 0.0001) {
-        this.isExhausted = true;
         return 0;
       }
       grantedWatts = grantedJoules / dt;
-      if (pool.getCurrentEnergy(registry) <= 0.0001) {
-        this.isExhausted = true;
-      }
     }
 
     if (!allowPartialPower && grantedWatts < requestedPowerWatts - 0.001) {
@@ -709,8 +705,11 @@ export class EnergyBus {
     const poolEnergy = pool ? (pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry)) : Infinity;
     const availableJoules = Math.min(poolEnergy, maxBurstCapacity);
 
-    if (availableJoules <= 0.001) {
+    if (curStamina <= 0.0001) {
       this.isExhausted = true;
+      return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
+    }
+    if (availableJoules <= 0.001) {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
 
@@ -809,7 +808,7 @@ export class EnergyBus {
    * Advances passive stamina regeneration only when the bus is resting (0 power drawn).
    * Also cleans up demands and active allocations that were not requested in the tick.
    */
-  public update(dt: number, pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
+  public update(dt: number, _pool?: EnergyPool | null, registry?: ObjectPropertiesRegistry): void {
     if (!this.enabled || dt <= 0) return;
 
     this._currentTick++;
@@ -870,11 +869,6 @@ export class EnergyBus {
       if (curS >= recoveryThreshold) {
         this.isExhausted = false;
       }
-    }
-
-    // If pool has 0 energy, stay exhausted
-    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) <= 0.0001) {
-      this.isExhausted = true;
     }
 
     this.hadPhysicalExertion = false;

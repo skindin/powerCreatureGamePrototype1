@@ -605,10 +605,39 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
+    const candidateEntities = entities ?? arena.entities;
+    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
-    // Orient character towards aim target so throw trajectory and held release point align
-    const charAimDx = aimTargetX - character.position.x;
-    const charAimDy = aimTargetY - character.position.y;
+    // If autoLock is requested, check if we are locked onto an entity first
+    let lockedTarget: GameObject | null = null;
+    let targetSurfaceHeight = 0;
+    if (autoLock) {
+      lockedTarget = this.findHoveredEntity(
+        aimTargetX,
+        aimTargetY,
+        arena,
+        character,
+        held,
+        candidateEntities,
+        scale,
+        Infinity
+      );
+      if (lockedTarget) {
+        const entZ = Math.max(
+          0,
+          lockedTarget.position.z ?? 0,
+          lockedTarget.supportingSurfaceHeight ?? 0,
+          lockedTarget.standingWall ? (lockedTarget.standingWall.wallHeight ?? arena.wallHeight) : 0
+        );
+        targetSurfaceHeight = entZ;
+      }
+    }
+
+    // Orient character towards the locked target if locked, or raw aimTarget otherwise
+    const targetAimX = lockedTarget ? lockedTarget.position.x : aimTargetX;
+    const targetAimY = lockedTarget ? lockedTarget.position.y : aimTargetY;
+    const charAimDx = targetAimX - character.position.x;
+    const charAimDy = targetAimY - character.position.y;
     if (Math.hypot(charAimDx, charAimDy) > 0.05) {
       character.facingAngle = Math.atan2(charAimDy, charAimDx);
       const alignedHeldPos = character.calculateHeldObjectPosition(arena);
@@ -667,17 +696,14 @@ export class ThrowModule {
       z: character.isAboveGround ? character.verticalVelocity : 0,
     };
 
-    const candidateEntities = entities ?? arena.entities;
-    const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
-
     // Compute aim direction and distance from character/held position to aim target
-    const aimDx = aimTargetX - startX;
-    const aimDy = aimTargetY - startY;
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
     const aimDist = Math.hypot(aimDx, aimDy);
 
     // Max ballistic range at launch speed: D_max = (v / g) * sqrt(v^2 + 2 * g * max(0, startZ))
-    let effectiveAimX = aimTargetX;
-    let effectiveAimY = aimTargetY;
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
     if (aimDist > 0.05 && canFlyVertically) {
       const g = arena.gravity;
       const maxReach = (maxSpeed / g) * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));
@@ -695,7 +721,8 @@ export class ThrowModule {
 
     if (!launch) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked } = launch;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: launchSurfaceHeight, targetObject, isAutoLocked } = launch;
+    const resolvedSurfaceHeight = isAutoLocked && lockedTarget ? targetSurfaceHeight : launchSurfaceHeight;
 
     // Fine simulation steps matching 120Hz physics precision
     const steps = 90;
@@ -703,7 +730,7 @@ export class ThrowModule {
     const points: TrajectoryPoint[] = [];
 
     let isBlocked = false;
-    let isLandingOnWallTop = targetSurfaceHeight > 0;
+    let isLandingOnWallTop = resolvedSurfaceHeight > 0;
     let blockedWallId: string | undefined;
     let peakHeight = startZ;
 
@@ -713,7 +740,7 @@ export class ThrowModule {
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
       const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
-      const currentZ = canFlyVertically ? (step === steps ? targetSurfaceHeight : (step > steps - 3 ? Math.max(targetSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
+      const currentZ = canFlyVertically ? (step === steps ? resolvedSurfaceHeight : (step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
       const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
 
       if (currentZ > peakHeight) {
@@ -818,10 +845,31 @@ export class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
 
     const held = character.heldObject;
+    let targetAimX = aimTargetX;
+    let targetAimY = aimTargetY;
 
     if (!launchPos) {
-      const aimDx = aimTargetX - character.position.x;
-      const aimDy = aimTargetY - character.position.y;
+      if (autoLock) {
+        const candidateEntities = entities ?? arena.entities;
+        const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
+        const lockedTarget = this.findHoveredEntity(
+          aimTargetX,
+          aimTargetY,
+          arena,
+          character,
+          held,
+          candidateEntities,
+          scale,
+          Infinity
+        );
+        if (lockedTarget) {
+          targetAimX = lockedTarget.position.x;
+          targetAimY = lockedTarget.position.y;
+        }
+      }
+
+      const aimDx = targetAimX - character.position.x;
+      const aimDy = targetAimY - character.position.y;
       if (Math.hypot(aimDx, aimDy) > 0.05) {
         character.facingAngle = Math.atan2(aimDy, aimDx);
         const alignedHeldPos = character.calculateHeldObjectPosition(arena);
@@ -882,12 +930,12 @@ export class ThrowModule {
       }
     }
 
-    const aimDx = aimTargetX - startX;
-    const aimDy = aimTargetY - startY;
+    const aimDx = targetAimX - startX;
+    const aimDy = targetAimY - startY;
     const aimDist = Math.hypot(aimDx, aimDy);
 
-    let effectiveAimX = aimTargetX;
-    let effectiveAimY = aimTargetY;
+    let effectiveAimX = targetAimX;
+    let effectiveAimY = targetAimY;
     if (!launchVel && aimDist > 0.05 && canFlyVertically) {
       const g = arena.gravity;
       const maxReach = (maxSpeed / g) * Math.sqrt(maxSpeed * maxSpeed + 2 * g * Math.max(0, startZ));

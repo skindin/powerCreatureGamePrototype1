@@ -1,4 +1,18 @@
 {
+  "anti-loop-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "view_file|grep_search|list_dir",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/agent-anti-loop.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "file-lock-guard": {
     "PreToolUse": [
       {
@@ -7,20 +21,6 @@
           {
             "type": "command",
             "command": "node scripts/agent-file-guard.js",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
-  "anti-loop-guard": {
-    "PreToolUse": [
-      {
-        "matcher": "view_file|grep_search",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node scripts/agent-anti-loop.js",
             "timeout": 5
           }
         ]
