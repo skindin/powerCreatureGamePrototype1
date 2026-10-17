@@ -152,12 +152,131 @@ export class TrajectoryRenderer {
 
     // Render ghost preview arcs for the flattest and steepest reachable curves only when holding right-click
     const isLockHeld = Boolean(traj.lockedTargetPos);
+    let isSnapped = false;
     if (isLockHeld) {
       if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
         drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
       }
       if (traj.steepestPoints && traj.steepestPoints.length >= 2) {
         drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
+      }
+
+      // Trajectory Modulation Guide & Controls (when holding right-click):
+      // 1. Dotted line from peak of highest trajectory to peak of lowest trajectory
+      // 2. Snap circle at lowest (most efficient) trajectory peak
+      // 3. Game cursor tracking along/around the line with snap feedback & projection pip
+      const findPeak = (pts: TrajectoryPoint[] | undefined) => {
+        if (!pts || pts.length === 0) return null;
+        let highest = pts[0];
+        for (let i = 1; i < pts.length; i++) {
+          if (pts[i].z > highest.z) highest = pts[i];
+        }
+        return highest;
+      };
+
+      const peakLow = findPeak(traj.flattestPoints) || findPeak(traj.points);
+      const peakHigh = findPeak(traj.steepestPoints) || findPeak(traj.points);
+
+      if (peakLow && peakHigh) {
+        const lowScreenX = peakLow.x * ppu;
+        const lowScreenY = (peakLow.y - peakLow.z * hoverScale) * ppu;
+        const highScreenX = peakHigh.x * ppu;
+        const highScreenY = (peakHigh.y - peakHigh.z * hoverScale) * ppu;
+
+        const lineDx = highScreenX - lowScreenX;
+        const lineDy = highScreenY - lowScreenY;
+        const lineLen = Math.hypot(lineDx, lineDy);
+
+        const snapRadius = Math.max(16, Math.min(26, lineLen * 0.28));
+
+        const cursorScreenX = aimTarget ? aimTarget.x * ppu : lowScreenX;
+        const cursorScreenY = aimTarget ? aimTarget.y * ppu : lowScreenY;
+        const distToLow = Math.hypot(cursorScreenX - lowScreenX, cursorScreenY - lowScreenY);
+        isSnapped = distToLow <= snapRadius;
+
+        ctx.save();
+
+        // 1. Dotted line from highest peak to lowest peak
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(highScreenX, highScreenY);
+        ctx.lineTo(lowScreenX, lowScreenY);
+        ctx.stroke();
+
+        // Highest peak marker: subtle end-cap tick
+        ctx.setLineDash([]);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.lineWidth = 1.6;
+        const cap = 4;
+        ctx.beginPath();
+        ctx.moveTo(highScreenX - cap, highScreenY);
+        ctx.lineTo(highScreenX + cap, highScreenY);
+        ctx.moveTo(highScreenX, highScreenY - cap);
+        ctx.lineTo(highScreenX, highScreenY + cap);
+        ctx.stroke();
+
+        // 2. Snap circle along the line at the lowest (most efficient) trajectory peak
+        ctx.beginPath();
+        ctx.arc(lowScreenX, lowScreenY, snapRadius, 0, Math.PI * 2);
+        if (isSnapped) {
+          ctx.fillStyle = "rgba(34, 197, 94, 0.3)";
+          ctx.fill();
+          ctx.strokeStyle = "#22c55e";
+          ctx.lineWidth = 2.4;
+          ctx.shadowColor = "#22c55e";
+          ctx.shadowBlur = 8;
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "rgba(34, 197, 94, 0.08)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(34, 197, 94, 0.65)";
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+
+        // Center pip of snap circle
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(lowScreenX, lowScreenY, isSnapped ? 3.0 : 2.0, 0, Math.PI * 2);
+        ctx.fillStyle = isSnapped ? "#22c55e" : "rgba(34, 197, 94, 0.85)";
+        ctx.fill();
+
+        // 3. If game cursor is outside snap circle, draw projection connector and slider pip on the guide line
+        if (!isSnapped && lineLen > 2) {
+          const uX = lineDx / lineLen;
+          const uY = lineDy / lineLen;
+          const projDist = (cursorScreenX - lowScreenX) * uX + (cursorScreenY - lowScreenY) * uY;
+          const clampedProj = Math.max(0, Math.min(lineLen, projDist));
+          const projX = lowScreenX + clampedProj * uX;
+          const projY = lowScreenY + clampedProj * uY;
+
+          // Guideline connector to projected point on the line
+          const distToProj = Math.hypot(cursorScreenX - projX, cursorScreenY - projY);
+          if (distToProj > 3) {
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([2, 3]);
+            ctx.beginPath();
+            ctx.moveTo(cursorScreenX, cursorScreenY);
+            ctx.lineTo(projX, projY);
+            ctx.stroke();
+          }
+
+          // Slider pip on the dotted line at projected position
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(projX, projY, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+          ctx.shadowBlur = 3;
+          ctx.fill();
+        }
+
+        ctx.restore();
       }
     }
 
@@ -391,7 +510,8 @@ export class TrajectoryRenderer {
       }
 
       // ALWAYS draw the player's aim reticle at the exact cursor position!
-      this.drawAimReticle(cursorX, cursorY, playerHex, isLocked);
+      const reticleColor = (isLocked && isSnapped) ? "#22c55e" : playerHex;
+      this.drawAimReticle(cursorX, cursorY, reticleColor, isLocked);
     }
 
     ctx.restore();

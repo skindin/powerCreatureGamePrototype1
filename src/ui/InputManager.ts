@@ -45,9 +45,13 @@ export interface CanvasViewport {
 }
 
 export class InputManager {
-  private canvas: HTMLCanvasElement;
+  public canvas: HTMLCanvasElement;
   private arena: Arena;
   public keyboardViewport: CanvasViewport | null = null;
+
+  public get pixelsPerUnit(): number {
+    return this.canvas && this.arena?.width ? this.canvas.width / this.arena.width : 50;
+  }
   private keysPressed: Set<string> = new Set();
   public isEKeyDepressed = false;
   public isQKeyDepressed = false;
@@ -130,6 +134,7 @@ export class InputManager {
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
+  public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
   public lastClientX: number | null = null;
   public lastClientY: number | null = null;
 
@@ -390,6 +395,16 @@ export class InputManager {
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
 
+        // Allow raw mouse input to move modulation game cursor in every direction
+        if (this.arcModulationCursor) {
+          this.arcModulationCursor.x += movementDx;
+          this.arcModulationCursor.y += movementDy;
+          if (this.canvas) {
+            this.arcModulationCursor.x = Math.max(8, Math.min(this.canvas.width - 8, this.arcModulationCursor.x));
+            this.arcModulationCursor.y = Math.max(8, Math.min(this.canvas.height - 8, this.arcModulationCursor.y));
+          }
+        }
+
         // Keep game cursor snapped to recorded mouse pos
         if (this.recordedMousePos) {
           this.mousePos.x = this.recordedMousePos.x;
@@ -435,6 +450,7 @@ export class InputManager {
       // 4. And make game cursor follow mouse again:
       this.isAwaitingUnlock = false;
       this.lockedAimPos = null;
+      this.arcModulationCursor = null;
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
         this.canvas?.classList.remove("pointer-locked");
@@ -487,6 +503,7 @@ export class InputManager {
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
+          this.arcModulationCursor = null;
           this.lastClientX = e.clientX;
           this.lastClientY = e.clientY;
           // 2. Hide it
@@ -540,6 +557,7 @@ export class InputManager {
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
+        this.arcModulationCursor = null;
         this.lastClientX = null;
         this.lastClientY = null;
 

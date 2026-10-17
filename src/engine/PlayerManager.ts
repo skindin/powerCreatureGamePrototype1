@@ -4,6 +4,7 @@ import { GameObject } from "./GameObject.js";
 import { InputManager } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
+import { TrajectoryPoint } from "../character/ThrowModule.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -629,6 +630,7 @@ export class PlayerManager {
           input.actualMousePos.y = input.recordedMousePos.y;
         }
         input.lockedAimPos = null;
+        input.arcModulationCursor = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
@@ -655,7 +657,7 @@ export class PlayerManager {
         isAiming: isMouseAiming,
         isLockHeld: Boolean(input.isRightMouseDown && input.lockedAimPos),
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
-        aimLockDelta: input.aimLockRawDy,
+        aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
       } as any);
       input.aimLockRawDelta = 0; // Consume delta
@@ -900,6 +902,10 @@ export class PlayerManager {
         if (!isReplay) {
           this.onReliableActionDispatched?.(action);
         }
+      }
+
+      if (entry?.isKeyboard) {
+        this.updateArcModulation(char);
       }
 
       char.updateCharacter(
@@ -1315,7 +1321,14 @@ export class PlayerManager {
         entry.wasCursorVisible = true;
         this.inputManager.isCursorVisible = true;
 
-        const aimPos = this.inputManager.mousePos;
+        const ppu = this.inputManager.pixelsPerUnit;
+        const aimPos = (this.inputManager.isRightMouseDown && this.inputManager.lockedAimPos && this.inputManager.arcModulationCursor)
+          ? {
+              x: this.inputManager.arcModulationCursor.x / ppu,
+              y: this.inputManager.arcModulationCursor.y / ppu,
+            }
+          : this.inputManager.mousePos;
+
         activeAimCursors.push({
           x: aimPos.x,
           y: aimPos.y,
@@ -1432,5 +1445,74 @@ export class PlayerManager {
     }
 
     return { targetGrabEntities, activeAimCursors };
+  }
+
+  /**
+   * Updates trajectory height modulation when right-click lock is held:
+   * 1. Finds the peak of the flattest (lowest) and steepest (highest) trajectories.
+   * 2. Initializes the game cursor on that dotted line if not yet initialized.
+   * 3. Tests if the game cursor is within the snap circle at the lowest peak -> snaps to 0.0 (most efficient).
+   * 4. Otherwise projects the cursor onto the line vector and smoothly interpolates savedArcRatio from 0.0 to 1.0.
+   */
+  public updateArcModulation(char: Character): void {
+    const input = this.inputManager;
+    if (!input.isRightMouseDown || !input.lockedAimPos || !char.heldObject || !char.throwModule) {
+      return;
+    }
+
+    const traj = char.activeTrajectory;
+    if (!traj) return;
+
+    const findPeak = (pts: TrajectoryPoint[] | undefined) => {
+      if (!pts || pts.length === 0) return null;
+      let highest = pts[0];
+      for (let i = 1; i < pts.length; i++) {
+        if (pts[i].z > highest.z) highest = pts[i];
+      }
+      return highest;
+    };
+
+    const peakLow = findPeak(traj.flattestPoints) || findPeak(traj.points);
+    const peakHigh = findPeak(traj.steepestPoints) || findPeak(traj.points);
+    if (!peakLow || !peakHigh) return;
+
+    const ppu = this.inputManager.pixelsPerUnit;
+    const hoverScale = this.arena.visualAltitudeScale ?? 0.5;
+
+    // Screen-space coordinates of peak points
+    const lowScreenX = peakLow.x * ppu;
+    const lowScreenY = (peakLow.y - peakLow.z * hoverScale) * ppu;
+    const highScreenX = peakHigh.x * ppu;
+    const highScreenY = (peakHigh.y - peakHigh.z * hoverScale) * ppu;
+
+    const lineDx = highScreenX - lowScreenX;
+    const lineDy = highScreenY - lowScreenY;
+    const lineLen = Math.hypot(lineDx, lineDy);
+
+    // Initialize cursor position on the line if not yet initialized
+    if (!input.arcModulationCursor) {
+      const curRatio = char.throwModule.savedArcRatio;
+      input.arcModulationCursor = {
+        x: lowScreenX + curRatio * lineDx,
+        y: lowScreenY + curRatio * lineDy,
+      };
+    }
+
+    const cursor = input.arcModulationCursor;
+    // Snap circle placed at the lowest (most efficient) trajectory peak
+    const snapRadius = Math.max(16, Math.min(26, lineLen * 0.28));
+    const distToLow = Math.hypot(cursor.x - lowScreenX, cursor.y - lowScreenY);
+
+    if (distToLow <= snapRadius) {
+      // Snapped to most efficient trajectory!
+      char.throwModule.savedArcRatio = 0.0;
+    } else if (lineLen > 2) {
+      // Outside snap circle: smoothly interpolate from lowest to highest trajectory
+      const uX = lineDx / lineLen;
+      const uY = lineDy / lineLen;
+      const proj = (cursor.x - lowScreenX) * uX + (cursor.y - lowScreenY) * uY;
+      const t = Math.max(0.0, Math.min(1.0, (proj - snapRadius) / Math.max(1, lineLen - snapRadius)));
+      char.throwModule.savedArcRatio = t;
+    }
   }
 }
