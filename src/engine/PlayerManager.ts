@@ -1449,10 +1449,10 @@ export class PlayerManager {
 
   /**
    * Updates trajectory height modulation when right-click lock is held:
-   * 1. Finds the peak of the flattest (lowest) and steepest (highest) trajectories.
-   * 2. Initializes the game cursor on that dotted line if not yet initialized.
-   * 3. Tests if the game cursor is within the snap circle at the lowest peak -> snaps to 0.0 (most efficient).
-   * 4. Otherwise projects the cursor onto the line vector and smoothly interpolates savedArcRatio from 0.0 to 1.0.
+   * 1. Uses the middle of the flattest (lowest) and steepest (highest) trajectories (forming a perfectly vertical line).
+   * 2. Initializes the game cursor on that vertical dotted line if not yet initialized.
+   * 3. Tests if the game cursor is within the lock circle (twice as big) at the lowest midpoint -> snaps to 0.0 (most efficient).
+   * 4. Otherwise smoothly interpolates savedArcRatio from 0.0 to 1.0 as the cursor moves upward.
    */
   public updateArcModulation(char: Character): void {
     const input = this.inputManager;
@@ -1463,54 +1463,48 @@ export class PlayerManager {
     const traj = char.activeTrajectory;
     if (!traj) return;
 
-    const findPeak = (pts: TrajectoryPoint[] | undefined) => {
+    const getMidPoint = (pts: TrajectoryPoint[] | undefined) => {
       if (!pts || pts.length === 0) return null;
-      let highest = pts[0];
-      for (let i = 1; i < pts.length; i++) {
-        if (pts[i].z > highest.z) highest = pts[i];
-      }
-      return highest;
+      return pts[Math.floor(pts.length / 2)];
     };
 
-    const peakLow = findPeak(traj.flattestPoints) || findPeak(traj.points);
-    const peakHigh = findPeak(traj.steepestPoints) || findPeak(traj.points);
-    if (!peakLow || !peakHigh) return;
+    const midLow = getMidPoint(traj.flattestPoints) || getMidPoint(traj.points);
+    const midHigh = getMidPoint(traj.steepestPoints) || getMidPoint(traj.points);
+    if (!midLow || !midHigh) return;
 
     const ppu = this.inputManager.pixelsPerUnit;
     const hoverScale = this.arena.visualAltitudeScale ?? 0.5;
 
-    // Screen-space coordinates of peak points
-    const lowScreenX = peakLow.x * ppu;
-    const lowScreenY = (peakLow.y - peakLow.z * hoverScale) * ppu;
-    const highScreenX = peakHigh.x * ppu;
-    const highScreenY = (peakHigh.y - peakHigh.z * hoverScale) * ppu;
+    // Both trajectories share the identical horizontal midpoint between launch and land,
+    // forming a perfectly vertical line in projected screen coordinates!
+    const midScreenX = midLow.x * ppu;
+    const lowScreenY = (midLow.y - midLow.z * hoverScale) * ppu;
+    const highScreenY = (midHigh.y - midHigh.z * hoverScale) * ppu;
 
-    const lineDx = highScreenX - lowScreenX;
-    const lineDy = highScreenY - lowScreenY;
-    const lineLen = Math.hypot(lineDx, lineDy);
+    const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
+    const lineLen = Math.abs(lineDy);
 
-    // Initialize cursor position on the line if not yet initialized
+    // Initialize cursor position on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
       const curRatio = char.throwModule.savedArcRatio;
       input.arcModulationCursor = {
-        x: lowScreenX + curRatio * lineDx,
+        x: midScreenX,
         y: lowScreenY + curRatio * lineDy,
       };
     }
 
     const cursor = input.arcModulationCursor;
-    // Snap circle placed at the lowest (most efficient) trajectory peak
-    const snapRadius = Math.max(16, Math.min(26, lineLen * 0.28));
-    const distToLow = Math.hypot(cursor.x - lowScreenX, cursor.y - lowScreenY);
+    // Lock circle placed at the lowest (most efficient) trajectory midpoint (twice as big: 32px to 52px)
+    const snapRadius = Math.max(32, Math.min(52, lineLen * 0.45));
+    const distToLow = Math.hypot(cursor.x - midScreenX, cursor.y - lowScreenY);
 
     if (distToLow <= snapRadius) {
       // Snapped to most efficient trajectory!
       char.throwModule.savedArcRatio = 0.0;
     } else if (lineLen > 2) {
-      // Outside snap circle: smoothly interpolate from lowest to highest trajectory
-      const uX = lineDx / lineLen;
-      const uY = lineDy / lineLen;
-      const proj = (cursor.x - lowScreenX) * uX + (cursor.y - lowScreenY) * uY;
+      // Outside lock circle: smoothly interpolate from lowest to highest trajectory
+      const uY = lineDy / lineLen; // -1
+      const proj = (cursor.y - lowScreenY) * uY; // positive when moving upward
       const t = Math.max(0.0, Math.min(1.0, (proj - snapRadius) / Math.max(1, lineLen - snapRadius)));
       char.throwModule.savedArcRatio = t;
     }
