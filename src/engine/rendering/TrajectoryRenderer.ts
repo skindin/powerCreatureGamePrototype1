@@ -151,6 +151,45 @@ export class TrajectoryRenderer {
       }
     }
 
+    // STRAIGHT DOTTED SIGHTLINE from held object release position to target cursor:
+    // User requested both the dotted arc AND a straight dotted line from object position to cursor,
+    // with dots within Layer 1 at full opacity, and lower opacity for heights above Layer 1.
+    if (aimTarget && traj.launchPos) {
+      const startX = traj.launchPos.x;
+      const startY = traj.launchPos.y;
+      const startZ = traj.launchPos.z;
+      const endX = aimTarget.x;
+      const endY = aimTarget.y;
+      const endZ = traj.targetSurfaceHeight ?? 0;
+
+      const lineDx = endX - startX;
+      const lineDy = endY - startY;
+      const lineDz = endZ - startZ;
+      const lineDist3D = Math.hypot(lineDx, lineDy, lineDz);
+
+      if (lineDist3D > 0.3) {
+        const straightDotSpacing = base3DSpacing * 1.1;
+        const totalStraightDots = Math.floor(lineDist3D / straightDotSpacing);
+        const straightRadius = Math.max(1.5, baseRadius * 0.65);
+
+        for (let d = 1; d <= totalStraightDots; d++) {
+          const frac = d / (totalStraightDots + 1);
+          const ptX = startX + lineDx * frac;
+          const ptY = startY + lineDy * frac;
+          const ptZ = startZ + lineDz * frac;
+
+          const ptScreenX = ptX * ppu;
+          const ptScreenY = (ptY - ptZ * hoverScale) * ppu;
+
+          const isLayer2 = ptZ >= layer2Threshold;
+          ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
+          ctx.beginPath();
+          ctx.arc(ptScreenX, ptScreenY, straightRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
     ctx.shadowBlur = 0;
 
     // Impact or Landing Marker:

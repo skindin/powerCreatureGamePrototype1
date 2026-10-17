@@ -438,7 +438,8 @@ export class Character extends GameObject {
     isClimbInput = false,
     entities?: GameObject[],
     autoLock = false,
-    lockedAimPos: Vector2D | null = null
+    lockedAimPos: Vector2D | null = null,
+    aimLockDelta = 0
   ): void {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -613,7 +614,8 @@ export class Character extends GameObject {
         entities ?? arena.entities,
         arena.visualAltitudeScale,
         autoLock,
-        lockedAimPos
+        lockedAimPos,
+        aimLockDelta
       );
 
       // When cursor is locked and aiming throw, ensure character and held item remain strictly pointed at lockedAimPos

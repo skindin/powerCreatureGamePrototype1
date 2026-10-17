@@ -111,6 +111,7 @@ export class InputManager {
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
   public lockedAimPos: Vector2D | null = null;
+  public aimLockRawDelta: number = 0; // Accumulated raw mouse movement along character->target vector
 
   public get isGrabHeld(): boolean {
     return (
@@ -338,13 +339,21 @@ export class InputManager {
       this.updateMovementVector();
     });
 
-    // Track mouse position globally so the aim cursor NEVER goes stale when the
-    // mouse drifts outside the canvas bounds (e.g. header bar, inspector sidebar).
     window.addEventListener("mousemove", (e) => {
       if (this.isKeyboardSuspended) {
         return;
       }
       this.lastMouseMoveTime = performance.now();
+
+      if (this.isRightMouseDown && this.lockedAimPos) {
+        // While right-click locked, cursor is fixed at lockedAimPos.
+        // Accumulate raw physical movement deltas for trajectory modulation:
+        const rawDx = e.movementX ?? 0;
+        const rawDy = e.movementY ?? 0;
+        this.aimLockRawDelta += rawDx + rawDy;
+        return;
+      }
+
       this.updateMousePos(e);
       if (this.onMouseMove) {
         this.onMouseMove(this.mousePos.x, this.mousePos.y);
@@ -383,6 +392,10 @@ export class InputManager {
         this.isRightMouseDown = true;
         if (!this.lockedAimPos) {
           this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
+          this.aimLockRawDelta = 0;
+          try {
+            this.canvas.requestPointerLock?.();
+          } catch {}
         }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
@@ -416,6 +429,12 @@ export class InputManager {
       if (e.button === 2) {
         this.isRightMouseDown = false;
         this.lockedAimPos = null;
+        this.aimLockRawDelta = 0;
+        if (document.pointerLockElement) {
+          try {
+            document.exitPointerLock?.();
+          } catch {}
+        }
         return;
       }
       if (e.button !== 0) return;

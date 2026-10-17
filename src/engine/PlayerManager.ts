@@ -616,8 +616,10 @@ export class PlayerManager {
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
+        aimLockDelta: input.aimLockRawDelta,
         facingAngle: kChar.facingAngle,
       } as any);
+      input.aimLockRawDelta = 0; // Consume delta
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
     }
@@ -868,7 +870,8 @@ export class PlayerManager {
         pkt.isJumpHeld,
         this.arena.entities,
         pkt.isLockHeld,
-        (pkt as any).lockedAimPos ?? null
+        (pkt as any).lockedAimPos ?? null,
+        (pkt as any).aimLockDelta ?? 0
       );
 
       if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {

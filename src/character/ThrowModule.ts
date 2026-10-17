@@ -59,6 +59,12 @@ export class ThrowModule {
   public consumesEnergy: boolean = true;
   public energyBusId: string = "bus_main";
 
+  /**
+   * Remembered arc steepness factor: -1.0 (flattest at maxSpeed) to 0.0 (optimal minimum energy) to +1.0 (steepest high arc).
+   * Persists across throws so the player retains their dialed-in trajectory shape.
+   */
+  public savedArcSteepness: number = 0.0;
+
   constructor(options?: {
     maxThrowSpeed?: number;
     baseThrowForce?: number;
@@ -602,7 +608,8 @@ export class ThrowModule {
     _entities?: GameObject[],
     hoverScale?: number,
     _autoLock = false,
-    lockedTargetPos?: { x: number; y: number } | null
+    lockedTargetPos?: { x: number; y: number } | null,
+    aimLockDelta = 0
   ): TrajectoryCalculation | null {
     if (!this.enabled || !character.heldObject) return null;
 
@@ -716,65 +723,49 @@ export class ThrowModule {
     let chosenVz = 0;
     let totalTime = 1.0;
 
-    if (!lockedTargetPos) {
-      // 1. FREE AIM: Minimum energy / minimum launch speed required to land at closest point
-      const launchSpeed = effectiveVMin;
-      const bCoeff = -(launchSpeed * launchSpeed - g * deltaZ);
-      const aCoeff = 0.25 * g * g;
-      const u = (-bCoeff) / (2 * aCoeff);
-      totalTime = u > 0 ? Math.sqrt(u) : dist / launchSpeed;
-      totalTime = Math.max(0.02, totalTime);
+    const aCoeff = 0.25 * g * g;
+    const cCoeff = dist * dist + deltaZ * deltaZ;
 
-      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
-      const hSpeed = dist / totalTime;
-      chosenVx = dirX * hSpeed;
-      chosenVy = dirY * hSpeed;
-    } else {
-      // 2. LOCKED VECTOR DRAG:
-      // Project mouse drag offset (aimTarget - lockedTargetPos) along character->target unit vector dirX, dirY
-      // dragOffset > 0: mouse dragged in direction (character -> target), making trajectory flatter & faster
-      // dragOffset < 0: mouse dragged in opposite direction (target -> character), making trajectory higher & steeper
-      const dragDx = aimTargetX - lockedTargetPos.x;
-      const dragDy = aimTargetY - lockedTargetPos.y;
-      const dragOffset = dragDx * dirX + dragDy * dirY;
+    // 1. Compute baseline optimal (minimum energy) flight time T_opt at effectiveVMin:
+    const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
+    const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
+    const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
+    const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
 
-      const aCoeff = 0.25 * g * g;
-      const cCoeff = dist * dist + deltaZ * deltaZ;
+    // 2. Compute flattest flight time T_flat at maxSpeed:
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
+    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
 
-      // Minimum energy / optimal angle flight time T_opt at effectiveVMin:
-      const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
-      const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
-      const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
-      const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
+    // 3. Compute steepest flight time T_high at maxSpeed:
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
 
-      // Flattest valid flight time T_flat at maxSpeed:
-      const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-      const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-      const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
-      const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-
-      // Steepest / highest valid flight time T_high at maxSpeed:
-      const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
-      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-
-      // Drag sensitivity: 3.5 units of mouse travel along vector covers full range [tHigh, tFlat]
-      const dragScale = 3.5;
-      if (dragOffset >= 0) {
-        // Forward: smoothly interpolate from tOpt down to tFlat (flatter, harder throw)
-        const forwardFraction = Math.min(1.0, dragOffset / dragScale);
-        totalTime = tOpt - (tOpt - tFlat) * forwardFraction;
-      } else {
-        // Backward: smoothly interpolate from tOpt up to tHigh (steeper, loftier arc)
-        const backwardFraction = Math.min(1.0, -dragOffset / dragScale);
-        totalTime = tOpt + (tHigh - tOpt) * backwardFraction;
-      }
-
-      totalTime = Math.max(0.02, totalTime);
-      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
-      const hSpeed = dist / totalTime;
-      chosenVx = dirX * hSpeed;
-      chosenVy = dirY * hSpeed;
+    // If right-click locked, adjust savedArcSteepness using the raw mouse delta
+    // Positive delta (forward mouse) -> more negative factor (-1.0 = flatter)
+    // Negative delta (backward mouse) -> more positive factor (+1.0 = higher arc)
+    if (lockedTargetPos && aimLockDelta !== 0) {
+      // 300px raw mouse movement sweeps full -1 to +1 range
+      const deltaSteepness = -aimLockDelta / 300;
+      this.savedArcSteepness = Math.max(-1.0, Math.min(1.0, this.savedArcSteepness + deltaSteepness));
     }
+
+    // Apply remembered steepness factor (-1.0 to +1.0)
+    const factor = this.savedArcSteepness;
+    if (factor < 0) {
+      // Flatter trajectory (interpolating from tOpt down to tFlat)
+      totalTime = tOpt - (tOpt - tFlat) * (-factor);
+    } else {
+      // Steeper high arc (interpolating from tOpt up to tHigh)
+      totalTime = tOpt + (tHigh - tOpt) * factor;
+    }
+
+    totalTime = Math.max(0.02, totalTime);
+    chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const hSpeed = dist / totalTime;
+    chosenVx = dirX * hSpeed;
+    chosenVy = dirY * hSpeed;
 
     const vx = chosenVx;
     const vy = chosenVy;

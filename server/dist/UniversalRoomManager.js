@@ -5926,6 +5926,11 @@ class ThrowModule {
      */
     __publicField(this, "consumesEnergy", true);
     __publicField(this, "energyBusId", "bus_main");
+    /**
+     * Remembered arc steepness factor: -1.0 (flattest at maxSpeed) to 0.0 (optimal minimum energy) to +1.0 (steepest high arc).
+     * Persists across throws so the player retains their dialed-in trajectory shape.
+     */
+    __publicField(this, "savedArcSteepness", 0);
     const initialSpeed = (options == null ? void 0 : options.maxThrowSpeed) ?? (options == null ? void 0 : options.baseThrowForce) ?? 100;
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
@@ -6304,7 +6309,7 @@ class ThrowModule {
   /**
    * Pre-calculates trajectory points for real-time visualization overlay
    */
-  calculateTrajectory(character, aimTargetX, aimTargetY, arena, _entities, hoverScale, _autoLock = false, lockedTargetPos) {
+  calculateTrajectory(character, aimTargetX, aimTargetY, arena, _entities, hoverScale, _autoLock = false, lockedTargetPos, aimLockDelta = 0) {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
     const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
@@ -6392,47 +6397,33 @@ class ThrowModule {
     let chosenVy = 0;
     let chosenVz = 0;
     let totalTime = 1;
-    if (!lockedTargetPos) {
-      const launchSpeed = effectiveVMin;
-      const bCoeff = -(launchSpeed * launchSpeed - g * deltaZ);
-      const aCoeff = 0.25 * g * g;
-      const u = -bCoeff / (2 * aCoeff);
-      totalTime = u > 0 ? Math.sqrt(u) : dist / launchSpeed;
-      totalTime = Math.max(0.02, totalTime);
-      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
-      const hSpeed = dist / totalTime;
-      chosenVx = dirX * hSpeed;
-      chosenVy = dirY * hSpeed;
-    } else {
-      const dragDx = aimTargetX - lockedTargetPos.x;
-      const dragDy = aimTargetY - lockedTargetPos.y;
-      const dragOffset = dragDx * dirX + dragDy * dirY;
-      const aCoeff = 0.25 * g * g;
-      const cCoeff = dist * dist + deltaZ * deltaZ;
-      const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
-      const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
-      const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
-      const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
-      const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-      const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-      const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
-      const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-      const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
-      const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-      const dragScale = 3.5;
-      if (dragOffset >= 0) {
-        const forwardFraction = Math.min(1, dragOffset / dragScale);
-        totalTime = tOpt - (tOpt - tFlat) * forwardFraction;
-      } else {
-        const backwardFraction = Math.min(1, -dragOffset / dragScale);
-        totalTime = tOpt + (tHigh - tOpt) * backwardFraction;
-      }
-      totalTime = Math.max(0.02, totalTime);
-      chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
-      const hSpeed = dist / totalTime;
-      chosenVx = dirX * hSpeed;
-      chosenVy = dirY * hSpeed;
+    const aCoeff = 0.25 * g * g;
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+    const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
+    const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
+    const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
+    const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
+    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+    if (lockedTargetPos && aimLockDelta !== 0) {
+      const deltaSteepness = -aimLockDelta / 300;
+      this.savedArcSteepness = Math.max(-1, Math.min(1, this.savedArcSteepness + deltaSteepness));
     }
+    const factor = this.savedArcSteepness;
+    if (factor < 0) {
+      totalTime = tOpt - (tOpt - tFlat) * -factor;
+    } else {
+      totalTime = tOpt + (tHigh - tOpt) * factor;
+    }
+    totalTime = Math.max(0.02, totalTime);
+    chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const hSpeed = dist / totalTime;
+    chosenVx = dirX * hSpeed;
+    chosenVy = dirY * hSpeed;
     const vx = chosenVx;
     const vy = chosenVy;
     const vz = chosenVz;
@@ -8357,7 +8348,7 @@ class Character extends GameObject {
   /**
    * Main character update tick
    */
-  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null) {
+  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
     var _a, _b, _c, _d, _e;
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -8488,7 +8479,8 @@ class Character extends GameObject {
         entities ?? arena.entities,
         arena.visualAltitudeScale,
         autoLock,
-        lockedAimPos
+        lockedAimPos,
+        aimLockDelta
       );
       if (canAimThrow && lockedAimPos) {
         const lockDx = lockedAimPos.x - this.position.x;
