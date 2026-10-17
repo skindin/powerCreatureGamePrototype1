@@ -67,12 +67,14 @@ export class ThrowModule {
    * If the target moves farther so the maximum arc height flattens, ratio 1.0 continues to track the highest possible arc.
    */
   public savedArcRatio: number = 0.0;
+  public hasUserSetArcRatio: boolean = false;
 
   public get savedArcSteepness(): number {
     return this.savedArcRatio * 2.0 - 1.0;
   }
   public set savedArcSteepness(val: number) {
     this.savedArcRatio = Math.max(0.0, Math.min(1.0, (val + 1.0) / 2.0));
+    this.hasUserSetArcRatio = true;
   }
 
   constructor(options?: {
@@ -583,7 +585,13 @@ export class ThrowModule {
         // No obstacle: interpolate between shortest arc (tLow) and tallest arc (tHigh) via savedArcRatio
         const tMin = tLow > 0 ? tLow : D / vMax;
         const tMax = tHigh > 0 ? tHigh : tMin;
-        chosenT = tMin + this.savedArcRatio * (tMax - tMin);
+        if (!this.hasUserSetArcRatio) {
+          const dist3D = Math.sqrt(D * D + deltaZ * deltaZ);
+          const tOpt = Math.sqrt((2 * dist3D) / g);
+          chosenT = Math.max(tMin, Math.min(tMax, tOpt));
+        } else {
+          chosenT = tMin + this.savedArcRatio * (tMax - tMin);
+        }
       }
     } else {
       // Out of range for direct reach at vMax; use peak distance angle (45 deg)
@@ -764,13 +772,17 @@ export class ThrowModule {
       // 300px raw mouse movement sweeps full 0.0 to 1.0 range
       const deltaRatio = -aimLockDelta / 300;
       this.savedArcRatio = Math.max(0.0, Math.min(1.0, this.savedArcRatio + deltaRatio));
+      this.hasUserSetArcRatio = true;
     }
 
-    // Trajectory is parameterized directly by the ratio between shortest and tallest arc:
-    // ratio 0.0 = flattest / shortest arc (tMin)
-    // ratio 1.0 = steepest / tallest arc (tMax)
-    // ratio 0.5 = middle arc
-    totalTime = tMin + this.savedArcRatio * (tMax - tMin);
+    // Default to most efficient trajectory (optRatio / tOpt) if the player hasn't customized their arc yet
+    if (!this.hasUserSetArcRatio) {
+      const optRatio = (tMax - tMin > 0.001) ? Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin))) : 0.0;
+      this.savedArcRatio = optRatio;
+      totalTime = Math.max(tMin, Math.min(tMax, tOpt));
+    } else {
+      totalTime = tMin + this.savedArcRatio * (tMax - tMin);
+    }
     totalTime = Math.max(0.02, totalTime);
     chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const hSpeed = dist / totalTime;

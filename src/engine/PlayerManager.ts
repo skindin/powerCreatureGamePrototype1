@@ -1474,6 +1474,9 @@ export class PlayerManager {
 
     // Initialize cursor position and active detent side on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
+      if (!char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = optRatio;
+      }
       const curRatio = char.throwModule.savedArcRatio;
       input.arcModulationCursor = {
         x: midScreenX,
@@ -1509,6 +1512,7 @@ export class PlayerManager {
         if (rangeBelow > 1) {
           const progress = Math.min(1.0, Math.max(0.0, (lowScreenY - cursor.y) / rangeBelow));
           char.throwModule.savedArcRatio = Math.max(0.0, Math.min(optRatio, optRatio * progress));
+          char.throwModule.hasUserSetArcRatio = true;
         } else {
           char.throwModule.savedArcRatio = optRatio;
         }
@@ -1524,6 +1528,7 @@ export class PlayerManager {
           // Breakthrough into the higher side!
           input.arcDetentSide = "higher";
           cursor.y = effScreenY; // Start smoothly on the higher side
+          char.throwModule.hasUserSetArcRatio = true;
         }
       }
     } else {
@@ -1536,6 +1541,7 @@ export class PlayerManager {
         if (rangeAbove > 1) {
           const progress = Math.min(1.0, Math.max(0.0, (effScreenY - cursor.y) / rangeAbove));
           char.throwModule.savedArcRatio = Math.min(1.0, Math.max(optRatio, optRatio + (1.0 - optRatio) * progress));
+          char.throwModule.hasUserSetArcRatio = true;
         } else {
           char.throwModule.savedArcRatio = optRatio;
         }
@@ -1551,6 +1557,7 @@ export class PlayerManager {
           // Breakthrough into the lower side!
           input.arcDetentSide = "lower";
           cursor.y = effScreenY; // Start smoothly on the lower side
+          char.throwModule.hasUserSetArcRatio = true;
         }
       }
     }
