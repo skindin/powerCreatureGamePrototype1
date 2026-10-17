@@ -85,6 +85,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 - **Consumable & Prefab Systems**:
   - `ConsumableModule`: Held items provide energy/health transfer with cube-root volumetric shrinking.
   - `PrefabManager` & `SceneSpawnerManager`: In-memory archetypes and background periodic ground item spawners.
+  - **Prefab-Aware Network Replication**: Server telemetry transmits `prefabId` and omits static archetype properties (`name`, `mass`, `radius`, `color`, `shape`, `bounceMod`, `totalEnergyJoules`, `consumableTag`) unless divergent from the archetype. Clients instantiate authoritative entities directly from the local `Prefab` archetype.
 - **HUD & Status Displays**:
   - Dual-column status gauges: Left for Health & Modifiers (HP bar, damage aura/shocks, bio-regen), Right for Energy & Modifiers (Energy/Stamina bars, active power draws).
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
