@@ -626,6 +626,7 @@ export class PlayerManager {
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
+        input.exitPointerLock();
       }
 
       map.set("keyboard", {
