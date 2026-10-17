@@ -90,7 +90,6 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
 - **Multiplayer Replication**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
-- **Trajectory Modulation**: Right-click holding locks trajectory aim and modulates arc height via mouse vertical deltas; flattest/steepest ghost bounds render during modulation.
 
 ---
 
