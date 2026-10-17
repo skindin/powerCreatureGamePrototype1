@@ -1500,8 +1500,8 @@ export class PlayerManager {
     }
 
     const cursor = input.arcModulationCursor;
-    // Lock circle placed at the most efficient trajectory midpoint (about 2/3 previous size: 22px to 35px)
-    const snapRadius = Math.max(22, Math.min(35, lineLen * 0.30));
+    // Lock circle placed at the most efficient trajectory midpoint (2/3 size: 18px to 32px)
+    const snapRadius = Math.max(18, Math.min(32, lineLen * 0.25));
     const distToEff = Math.hypot(cursor.x - midScreenX, cursor.y - effScreenY);
 
     if (distToEff <= snapRadius) {
@@ -1513,27 +1513,28 @@ export class PlayerManager {
       // lowScreenY is the lowest trajectory (bottom of line, largest screen Y).
       // highScreenY is the highest trajectory (top of line, smallest screen Y).
       // effScreenY is at optRatio.
-      if (cursor.y > effScreenY + snapRadius) {
+      if (cursor.y > effScreenY) {
         // Below the lock circle towards lowest trajectory (ratio down to 0.0)
-        const spanBelow = lowScreenY - (effScreenY + snapRadius);
-        if (spanBelow > 1) {
-          const progress = Math.min(1.0, (cursor.y - (effScreenY + snapRadius)) / spanBelow);
+        const distFromCenter = cursor.y - effScreenY;
+        const totalSpanBelow = lowScreenY - effScreenY;
+        const travelSpan = totalSpanBelow - snapRadius;
+        if (travelSpan > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (distFromCenter - snapRadius) / travelSpan));
           char.throwModule.savedArcRatio = Math.max(0.0, optRatio * (1.0 - progress));
         } else {
-          char.throwModule.savedArcRatio = 0.0;
-        }
-      } else if (cursor.y < effScreenY - snapRadius) {
-        // Above the lock circle towards highest trajectory (ratio up to 1.0)
-        const spanAbove = (effScreenY - snapRadius) - highScreenY;
-        if (spanAbove > 1) {
-          const progress = Math.min(1.0, ((effScreenY - snapRadius) - cursor.y) / spanAbove);
-          char.throwModule.savedArcRatio = Math.min(1.0, optRatio + (1.0 - optRatio) * progress);
-        } else {
-          char.throwModule.savedArcRatio = 1.0;
+          char.throwModule.savedArcRatio = cursor.y >= lowScreenY ? 0.0 : optRatio;
         }
       } else {
-        // Horizontally outside the circle around the same height: snap to optRatio
-        char.throwModule.savedArcRatio = optRatio;
+        // Above the lock circle towards highest trajectory (ratio up to 1.0)
+        const distFromCenter = effScreenY - cursor.y;
+        const totalSpanAbove = effScreenY - highScreenY;
+        const travelSpan = totalSpanAbove - snapRadius;
+        if (travelSpan > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (distFromCenter - snapRadius) / travelSpan));
+          char.throwModule.savedArcRatio = Math.min(1.0, optRatio + (1.0 - optRatio) * progress);
+        } else {
+          char.throwModule.savedArcRatio = cursor.y <= highScreenY ? 1.0 : optRatio;
+        }
       }
     }
   }

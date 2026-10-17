@@ -35,35 +35,45 @@ export class TrajectoryRenderer {
 
     const deltaZ = landZ - startZ;
     const g = arena.gravity || 9.81;
-    const maxSpeed = char.throwModule.maxThrowSpeedProp.get(char.properties);
 
-    const vMin = Math.sqrt(Math.max(1.0, g * (dist + Math.sqrt(dist * dist + deltaZ * deltaZ))));
-    const effectiveVMin = Math.min(vMin, maxSpeed);
+    // 1. Get exact tMin and tMax directly from the simulated ghost trajectories (flattest and steepest)
+    let tMin = 0;
+    let tMax = 0;
 
-    const aCoeff = 0.25 * g * g;
-    const cCoeff = dist * dist + deltaZ * deltaZ;
+    if (traj.flattestPoints && traj.flattestPoints.length > 0) {
+      tMin = traj.flattestPoints[traj.flattestPoints.length - 1].t;
+    }
+    if (traj.steepestPoints && traj.steepestPoints.length > 0) {
+      tMax = traj.steepestPoints[traj.steepestPoints.length - 1].t;
+    }
 
-    // Optimal flight time at minimum required velocity (least kinetic energy)
-    const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
-    const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
-    const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
-    const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
-
-    // Flattest flight time at maxSpeed
-    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
-    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-
-    // Steepest flight time at maxSpeed
-    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
-    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-
-    const tMin = Math.max(0.02, tFlat);
-    const tMax = Math.max(tMin, tHigh);
+    // Fallback if ghost points are not yet populated on this frame
+    if (tMax <= tMin || tMax <= 0) {
+      const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+      const aCoeff = 0.25 * g * g;
+      const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+      const cCoeff = dist * dist + deltaZ * deltaZ;
+      const discMax = bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff;
+      if (discMax >= 0) {
+        const uLow = (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff);
+        const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
+        tMin = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+        tMax = uHigh > 0 ? Math.sqrt(uHigh) : tMin;
+      }
+    }
 
     if (tMax - tMin <= 0.001) return 0.0;
-    return Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin)));
+
+    // 2. The flight time T_opt that minimizes launch speed (and kinetic work E = 0.5 * m * v^2)
+    // for ballistic motion to target (dist, deltaZ) under gravity g:
+    //   v^2(T) = (dist^2 + deltaZ^2)/T^2 + g*deltaZ + 0.25*g^2*T^2
+    // Minimum of v^2(T) occurs when d(v^2)/dT = 0:
+    //   T_opt = sqrt( 2 * sqrt(dist^2 + deltaZ^2) / g )
+    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+    const tOpt = Math.sqrt((2 * dist3D) / g);
+
+    const optRatio = (tOpt - tMin) / (tMax - tMin);
+    return Math.max(0.0, Math.min(1.0, optRatio));
   }
 
   /**
@@ -236,8 +246,8 @@ export class TrajectoryRenderer {
         const optRatio = character ? TrajectoryRenderer.computeOptimalRatio(character, arena, traj) : 0.0;
         const effScreenY = lowScreenY + optRatio * lineDy;
 
-        // Lock circle placed at the most efficient trajectory midpoint (2/3 size: 22px to 35px)
-        const snapRadius = Math.max(22, Math.min(35, lineLen * 0.30));
+        // Lock circle placed at the most efficient trajectory midpoint (2/3 size: 18px to 32px)
+        const snapRadius = Math.max(18, Math.min(32, lineLen * 0.25));
 
         const cursorScreenX = aimTarget ? aimTarget.x * ppu : midScreenX;
         const cursorScreenY = aimTarget ? aimTarget.y * ppu : effScreenY;
