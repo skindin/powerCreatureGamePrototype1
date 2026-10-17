@@ -242,21 +242,9 @@ export class TrajectoryRenderer {
         const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
         const lineLen = Math.abs(lineDy);
 
-        // Optimal trajectory ratio (least energy required) and its screen Y coordinate
-        const optRatio = character ? TrajectoryRenderer.computeOptimalRatio(character, arena, traj) : 0.0;
-        const effScreenY = lowScreenY + optRatio * lineDy;
-
-        // Lock circle placed at the most efficient trajectory midpoint (2/3 size: 18px to 32px)
-        const snapRadius = Math.max(18, Math.min(32, lineLen * 0.25));
-
-        const cursorScreenX = aimTarget ? aimTarget.x * ppu : midScreenX;
-        const cursorScreenY = aimTarget ? aimTarget.y * ppu : effScreenY;
-        const distToEff = Math.hypot(cursorScreenX - midScreenX, cursorScreenY - effScreenY);
-        isSnapped = distToEff <= snapRadius;
-
         ctx.save();
 
-        // 1. Dotted line from highest peak to lowest peak
+        // 1. Dotted vertical rail from highest peak to lowest peak
         ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
         ctx.lineWidth = 1.8;
         ctx.setLineDash([4, 4]);
@@ -277,59 +265,18 @@ export class TrajectoryRenderer {
         ctx.lineTo(midScreenX + cap, lowScreenY);
         ctx.stroke();
 
-        // 2. Lock circle along the line at the most EFFICIENT (least energy) trajectory midpoint
-        ctx.beginPath();
-        ctx.arc(midScreenX, effScreenY, snapRadius, 0, Math.PI * 2);
-        if (isSnapped) {
-          ctx.fillStyle = "rgba(34, 197, 94, 0.3)";
-          ctx.fill();
-          ctx.strokeStyle = "#22c55e";
-          ctx.lineWidth = 2.4;
-          ctx.shadowColor = "#22c55e";
-          ctx.shadowBlur = 10;
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = "rgba(34, 197, 94, 0.08)";
-          ctx.fill();
-          ctx.strokeStyle = "rgba(34, 197, 94, 0.65)";
-          ctx.lineWidth = 1.6;
-          ctx.setLineDash([3, 3]);
-          ctx.stroke();
-        }
-        ctx.shadowBlur = 0;
-
-        // Center pip of optimal lock circle
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.arc(midScreenX, effScreenY, isSnapped ? 3.5 : 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = isSnapped ? "#22c55e" : "rgba(34, 197, 94, 0.85)";
-        ctx.fill();
-
-        // 3. If game cursor is outside lock circle, draw projection connector and slider pip on the vertical line
-        if (!isSnapped && lineLen > 2) {
-          const curRatio = character?.throwModule?.savedArcRatio ?? optRatio;
+        // 2. Slider pip clamped on the vertical rail at the active trajectory height
+        if (lineLen > 2) {
+          const curRatio = character?.throwModule?.savedArcRatio ?? 0.0;
           const projX = midScreenX;
           const projY = lowScreenY + curRatio * lineDy;
 
-          // Guideline connector to projected point on the line
-          const distToProj = Math.hypot(cursorScreenX - projX, cursorScreenY - projY);
-          if (distToProj > 3) {
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-            ctx.lineWidth = 1.2;
-            ctx.setLineDash([2, 3]);
-            ctx.beginPath();
-            ctx.moveTo(cursorScreenX, cursorScreenY);
-            ctx.lineTo(projX, projY);
-            ctx.stroke();
-          }
-
-          // Slider pip on the dotted line at active interpolated position
           ctx.setLineDash([]);
           ctx.beginPath();
-          ctx.arc(projX, projY, 4, 0, Math.PI * 2);
+          ctx.arc(projX, projY, 4.5, 0, Math.PI * 2);
           ctx.fillStyle = "#ffffff";
-          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-          ctx.shadowBlur = 3;
+          ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+          ctx.shadowBlur = 4;
           ctx.fill();
         }
 
