@@ -114,9 +114,8 @@ export class InputManager {
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
-  public mouseDriftOffset: Vector2D = { x: 0, y: 0 };
-  public needsDriftCompensation: boolean = false;
-  public unfreezePos: Vector2D | null = null;
+  public lastClientX: number | null = null;
+  public lastClientY: number | null = null;
 
   public get isGrabHeld(): boolean {
     return (
@@ -356,13 +355,20 @@ export class InputManager {
       this.lastMouseMoveTime = performance.now();
 
       if (this.isRightMouseDown && this.lockedAimPos) {
-        // While right-click locked, cursor is fixed at lockedAimPos.
-        // Accumulate raw physical movement deltas for trajectory modulation:
-        const rawDx = e.movementX ?? 0;
-        const rawDy = e.movementY ?? 0;
-        this.aimLockRawDx += rawDx;
-        this.aimLockRawDy += rawDy;
-        this.aimLockRawDelta += rawDx + rawDy;
+        // While right-click locked, trajectory aim is fixed at lockedAimPos.
+        // Accumulate physical movement deltas for trajectory modulation:
+        const movementDy = (e.movementY !== undefined && e.movementY !== 0)
+          ? e.movementY
+          : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
+        const movementDx = (e.movementX !== undefined && e.movementX !== 0)
+          ? e.movementX
+          : (this.lastClientX !== null ? e.clientX - this.lastClientX : 0);
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
+
+        this.aimLockRawDx += movementDx;
+        this.aimLockRawDy += movementDy;
+        this.aimLockRawDelta += movementDx + movementDy;
         this.mousePos.x = this.lockedAimPos.x;
         this.mousePos.y = this.lockedAimPos.y;
         this.actualMousePos.x = this.lockedAimPos.x;
@@ -415,9 +421,8 @@ export class InputManager {
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
-          try {
-            this.canvas.requestPointerLock?.();
-          } catch {}
+          this.lastClientX = e.clientX;
+          this.lastClientY = e.clientY;
         }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
@@ -450,24 +455,16 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
-        if (this.lockedAimPos) {
-          // Record unfreeze position and arm drift compensation
-          this.unfreezePos = { x: this.lockedAimPos.x, y: this.lockedAimPos.y };
-          this.needsDriftCompensation = true;
-          this.mousePos.x = this.lockedAimPos.x;
-          this.mousePos.y = this.lockedAimPos.y;
-          this.actualMousePos.x = this.lockedAimPos.x;
-          this.actualMousePos.y = this.lockedAimPos.y;
-        }
+        this.lockedAimPos = null;
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
-        if (document.pointerLockElement) {
-          try {
-            document.exitPointerLock?.();
-          } catch {}
+        this.lastClientX = null;
+        this.lastClientY = null;
+        this.updateMousePos(e);
+        if (this.onMouseMove) {
+          this.onMouseMove(this.mousePos.x, this.mousePos.y);
         }
-        this.lockedAimPos = null;
         return;
       }
       if (e.button !== 0) return;
@@ -560,17 +557,8 @@ export class InputManager {
       rawMy = (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height));
     }
 
-    if (this.needsDriftCompensation && this.unfreezePos) {
-      // Re-calibrate mouseDriftOffset so the unfreezing mouse position exactly equals unfreezePos
-      // with zero accumulated delta from the time it was frozen
-      this.mouseDriftOffset.x = rawMx - this.unfreezePos.x;
-      this.mouseDriftOffset.y = rawMy - this.unfreezePos.y;
-      this.needsDriftCompensation = false;
-      this.unfreezePos = null;
-    }
-
-    const mx = Math.max(0, Math.min(this.arena.width, rawMx - this.mouseDriftOffset.x));
-    const my = Math.max(0, Math.min(this.arena.height, rawMy - this.mouseDriftOffset.y));
+    const mx = Math.max(0, Math.min(this.arena.width, rawMx));
+    const my = Math.max(0, Math.min(this.arena.height, rawMy));
     this.actualMousePos.x = mx;
     this.actualMousePos.y = my;
     this.mousePos.x = mx;
@@ -1336,7 +1324,7 @@ export class InputManager {
       } else {
         this.hoverEntity = null;
         this.draggedEntity = null;
-        this.canvas.style.cursor = "default";
+        this.canvas.style.cursor = "crosshair";
       }
     };
 

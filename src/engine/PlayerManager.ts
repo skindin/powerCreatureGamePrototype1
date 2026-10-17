@@ -144,13 +144,13 @@ export class PlayerManager {
   public isKeyboardAimingTrajectory(): boolean {
     if (this.inputManager.devPanel?.isEditMode) return false;
     const kChar = this.players.get("keyboard")?.character ?? this.primaryCharacter;
-    if (!kChar || !kChar.heldObject || !kChar.throwModule || !kChar.throwModule.enabled || !kChar.hasStrength) {
+    if (!kChar || !kChar.heldObject) {
       return false;
     }
-    const hasPrimaryAbility = kChar.hasPrimaryItemAbility();
-    const isPrimaryNonDirectional = kChar.isPrimaryAbilityNonDirectional();
-    const isThrowActive = !hasPrimaryAbility || this.inputManager.isAltHeld || (this.inputManager.isThrowingPress && this.inputManager.isMouseDown);
-    return isThrowActive || !isPrimaryNonDirectional;
+    if (kChar.isPrimaryAbilityNonDirectional()) {
+      return Boolean(this.inputManager.isAltHeld || this.inputManager.isThrowingPress || this.inputManager.isRightMouseDown);
+    }
+    return true;
   }
 
   public get allCharacters(): Character[] {
@@ -582,7 +582,7 @@ export class PlayerManager {
       // - If aiming throw or directional ability, face cursor
       // - If primary ability does not involve direction and not aiming throw (Alt not held), do NOT face cursor; face movement direction
       if (kChar.heldObject) {
-        if ((isThrowActive || !isPrimaryNonDirectional) && input.lockedAimPos) {
+        if (input.lockedAimPos) {
           const aimDx = input.lockedAimPos.x - kChar.position.x;
           const aimDy = input.lockedAimPos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -619,18 +619,13 @@ export class PlayerManager {
       // Using primary ability requires NOT holding Alt (or holding LMB after starting primary ability until released)
       const isUsingItem = isHoldingConsumable && canUseItem && !input.isAltHeld && !input.isThrowingPress && !input.isKeyboardSuspended;
 
-      // If cursor was locked, but character is no longer in aiming/throwing/trajectory mode (e.g. object thrown, dropped, or consumed),
-      // immediately unlock the cursor with drift compensation:
-      if (input.lockedAimPos && !this.isKeyboardAimingTrajectory()) {
-        input.unfreezePos = { x: input.lockedAimPos.x, y: input.lockedAimPos.y };
-        input.needsDriftCompensation = true;
+      // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
+      // clear the lock:
+      if (input.lockedAimPos && !kChar.heldObject) {
         input.lockedAimPos = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
-        if (typeof document !== "undefined" && document.pointerLockElement) {
-          try { document.exitPointerLock?.(); } catch {}
-        }
       }
 
       map.set("keyboard", {

@@ -1098,7 +1098,7 @@ body {
   background: #0f172a;
   box-shadow: 0 12px 40px -6px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(148, 163, 184, 0.18), 0 0 30px rgba(56, 189, 248, 0.05);
   border-radius: var(--radius-md);
-  cursor: none;
+  cursor: crosshair;
   display: block;
 }
 
