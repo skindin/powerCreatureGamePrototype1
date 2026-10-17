@@ -7841,12 +7841,13 @@ class EnergyBus {
         name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
         color: "#ec4899"
       };
+      const visualGrantedWatts = Math.min(maxPower, grantedJoules);
       this._activeAllocations.set(options.abilityId, {
         id: options.abilityId,
         name: meta.name,
         color: meta.color,
         demandedWatts: options.demandedJoules,
-        grantedWatts: grantedJoules,
+        grantedWatts: visualGrantedWatts,
         fraction,
         allowPartialPower: options.allowPartialPower ?? false,
         order: this._nextOrderId,
@@ -8125,7 +8126,7 @@ class Character extends GameObject {
       this.throwModule.energyBusId = "bus_main";
       this.jumpModule = new JumpModule();
       this.jumpConsumesEnergy = true;
-      this.jumpAllowPartialPower = false;
+      this.jumpAllowPartialPower = true;
       this.jumpEnergyBusId = "bus_main";
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
     }

@@ -755,12 +755,14 @@ export class EnergyBus {
         name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
         color: "#ec4899",
       };
+      // Visual display in the power track is capped at maxPower (500 W)
+      const visualGrantedWatts = Math.min(maxPower, grantedJoules);
       this._activeAllocations.set(options.abilityId, {
         id: options.abilityId,
         name: meta.name,
         color: meta.color,
         demandedWatts: options.demandedJoules,
-        grantedWatts: grantedJoules,
+        grantedWatts: visualGrantedWatts,
         fraction,
         allowPartialPower: options.allowPartialPower ?? false,
         order: this._nextOrderId,

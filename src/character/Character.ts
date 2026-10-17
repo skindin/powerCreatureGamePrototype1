@@ -287,7 +287,7 @@ export class Character extends GameObject {
 
       this.jumpModule = new JumpModule();
       this.jumpConsumesEnergy = true;
-      this.jumpAllowPartialPower = false;
+      this.jumpAllowPartialPower = true;
       this.jumpEnergyBusId = "bus_main";
 
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
