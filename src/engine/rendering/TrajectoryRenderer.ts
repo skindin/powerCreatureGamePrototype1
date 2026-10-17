@@ -26,48 +26,32 @@ export class TrajectoryRenderer {
     const startX = traj.launchPos.x;
     const startY = traj.launchPos.y;
     const startZ = traj.launchPos.z;
-    const landX = traj.landPoint.x;
-    const landY = traj.landPoint.y;
-    const landZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
+    const targetX = traj.lockedTargetPos ? traj.lockedTargetPos.x : (char.aimTarget ? char.aimTarget.x : traj.landPoint.x);
+    const targetY = traj.lockedTargetPos ? traj.lockedTargetPos.y : (char.aimTarget ? char.aimTarget.y : traj.landPoint.y);
+    const targetZ = traj.targetSurfaceHeight ?? (traj.landPoint.z ?? 0);
 
-    const dist = Math.hypot(landX - startX, landY - startY);
+    const dist = Math.hypot(targetX - startX, targetY - startY);
     if (dist < 0.01) return 0.0;
 
-    const deltaZ = landZ - startZ;
+    const deltaZ = targetZ - startZ;
     const g = arena.gravity || 9.81;
 
-    // 1. Get exact tMin and tMax directly from the simulated ghost trajectories (flattest and steepest)
-    let tMin = 0;
-    let tMax = 0;
+    const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+    const aCoeff = 0.25 * g * g;
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+    const discMax = bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff;
+    if (discMax < 0) return 0.0;
 
-    if (traj.flattestPoints && traj.flattestPoints.length > 0) {
-      tMin = traj.flattestPoints[traj.flattestPoints.length - 1].t;
-    }
-    if (traj.steepestPoints && traj.steepestPoints.length > 0) {
-      tMax = traj.steepestPoints[traj.steepestPoints.length - 1].t;
-    }
-
-    // Fallback if ghost points are not yet populated on this frame
-    if (tMax <= tMin || tMax <= 0) {
-      const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
-      const aCoeff = 0.25 * g * g;
-      const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-      const cCoeff = dist * dist + deltaZ * deltaZ;
-      const discMax = bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff;
-      if (discMax >= 0) {
-        const uLow = (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff);
-        const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
-        tMin = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-        tMax = uHigh > 0 ? Math.sqrt(uHigh) : tMin;
-      }
-    }
+    const uLow = (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff);
+    const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
+    const tMin = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+    const tMax = uHigh > 0 ? Math.sqrt(uHigh) : tMin;
 
     if (tMax - tMin <= 0.001) return 0.0;
 
-    // 2. The flight time T_opt that minimizes launch speed (and kinetic work E = 0.5 * m * v^2)
+    // The flight time T_opt that minimizes launch speed (and kinetic work E = 0.5 * m * v^2)
     // for ballistic motion to target (dist, deltaZ) under gravity g:
-    //   v^2(T) = (dist^2 + deltaZ^2)/T^2 + g*deltaZ + 0.25*g^2*T^2
-    // Minimum of v^2(T) occurs when d(v^2)/dT = 0:
     //   T_opt = sqrt( 2 * sqrt(dist^2 + deltaZ^2) / g )
     const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
     const tOpt = Math.sqrt((2 * dist3D) / g);
@@ -79,7 +63,7 @@ export class TrajectoryRenderer {
   /**
    * Calculates the vertical midpoint rail:
    * 1. Evaluates horizontal midpoint purely as the average 2D position (average 2D X and average 2D Y value)
-   *    between the object held position and the trajectory end position.
+   *    between the object held position and the intended target destination (immune to wall collisions).
    * 2. Decoupled from intermediate wall collisions or interrupted points arrays so it never sticks out.
    * 3. Calculates the parabolic peak altitudes for flattest and steepest arcs to define the vertical line.
    */
@@ -103,14 +87,14 @@ export class TrajectoryRenderer {
     const startX = traj.launchPos.x;
     const startY = traj.launchPos.y;
     const startZ = traj.launchPos.z;
-    const landX = traj.landPoint.x;
-    const landY = traj.landPoint.y;
-    const landZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
+    const targetX = traj.lockedTargetPos ? traj.lockedTargetPos.x : (char.aimTarget ? char.aimTarget.x : traj.landPoint.x);
+    const targetY = traj.lockedTargetPos ? traj.lockedTargetPos.y : (char.aimTarget ? char.aimTarget.y : traj.landPoint.y);
+    const targetZ = traj.targetSurfaceHeight ?? (traj.landPoint.z ?? 0);
 
-    const dist = Math.hypot(landX - startX, landY - startY);
+    const dist = Math.hypot(targetX - startX, targetY - startY);
     if (dist < 0.01) return null;
 
-    const deltaZ = landZ - startZ;
+    const deltaZ = targetZ - startZ;
     const g = arena.gravity || 9.81;
     const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
 
@@ -134,10 +118,10 @@ export class TrajectoryRenderer {
     const tOpt = Math.sqrt((2 * dist3D) / g);
     const optRatio = (tMax - tMin > 0.001) ? Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin))) : 0.0;
 
-    // Midpoint in 2D space: average 2D position (average X and average Y) between object held position and trajectory end position
-    const midX = (startX + landX) * 0.5;
-    const midY = (startY + landY) * 0.5;
-    const midZBase = (startZ + landZ) * 0.5;
+    // Midpoint in 2D space: average 2D position (average X and average Y) between object held position and intended trajectory target position
+    const midX = (startX + targetX) * 0.5;
+    const midY = (startY + targetY) * 0.5;
+    const midZBase = (startZ + targetZ) * 0.5;
 
     // Physical altitude at the horizontal midpoint for flattest and steepest arcs
     const zLow = midZBase + (1 / 8) * g * tMin * tMin;

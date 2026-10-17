@@ -395,14 +395,10 @@ export class InputManager {
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
 
-        // Allow raw mouse input to move modulation game cursor in every direction
+        // Allow raw mouse input to move modulation game cursor in every direction without canvas clamping
         if (this.arcModulationCursor) {
           this.arcModulationCursor.x += movementDx;
           this.arcModulationCursor.y += movementDy;
-          if (this.canvas) {
-            this.arcModulationCursor.x = Math.max(8, Math.min(this.canvas.width - 8, this.arcModulationCursor.x));
-            this.arcModulationCursor.y = Math.max(8, Math.min(this.canvas.height - 8, this.arcModulationCursor.y));
-          }
         }
 
         // Keep game cursor snapped to recorded mouse pos
