@@ -157,36 +157,43 @@ export class CollisionResolver {
       effectiveImpactSpeed = Math.hypot(effectiveImpactSpeed, closingVertSpeed);
     }
 
+    // Remote player proxy immobility: remote characters on clients follow network interpolators.
+    // They act as solid obstacles for freebodies (projectiles/objects) rather than having their colliders knocked off-sync.
+    const isRemoteProxyA = a.isCharacter && (a as any).role === "remote_player";
+    const isRemoteProxyB = b.isCharacter && (b as any).role === "remote_player";
+    const effImmovableA = a.isImmovable || (isRemoteProxyA && !b.isCharacter);
+    const effImmovableB = b.isImmovable || (isRemoteProxyB && !a.isCharacter);
+
     // Positional separation based on inverse mass distribution
     const mA = a.hasMass ? a.mass : 0;
     const mB = b.hasMass ? b.mass : 0;
-    const invA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
-    const invB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invA = effImmovableA || !a.hasMass ? 0 : 1 / mA;
+    const invB = effImmovableB || !b.hasMass ? 0 : 1 / mB;
     const invSum = invA + invB;
 
     if (invSum > 0.0001) {
       const fixA = overlap * (invA / invSum);
       const fixB = overlap * (invB / invSum);
-      if (!a.isImmovable) {
+      if (!effImmovableA) {
         a.position.x -= normX * fixA;
         a.position.y -= normY * fixA;
       }
-      if (!b.isImmovable) {
+      if (!effImmovableB) {
         b.position.x += normX * fixB;
         b.position.y += normY * fixB;
       }
     } else {
       // Both massless and neither immovable: 50/50 separation
-      if (!a.isImmovable && !b.isImmovable) {
+      if (!effImmovableA && !effImmovableB) {
         const fix = overlap * 0.5;
         a.position.x -= normX * fix;
         a.position.y -= normY * fix;
         b.position.x += normX * fix;
         b.position.y += normY * fix;
-      } else if (!a.isImmovable) {
+      } else if (!effImmovableA) {
         a.position.x -= normX * overlap;
         a.position.y -= normY * overlap;
-      } else if (!b.isImmovable) {
+      } else if (!effImmovableB) {
         b.position.x += normX * overlap;
         b.position.y += normY * overlap;
       }
@@ -231,22 +238,27 @@ export class CollisionResolver {
     _arena: Arena,
     dt: number
   ): boolean {
-    if (a.isImmovable && b.isImmovable) {
+    const isRemoteProxyA = a.isCharacter && (a as any).role === "remote_player";
+    const isRemoteProxyB = b.isCharacter && (b as any).role === "remote_player";
+    const effImmovableA = a.isImmovable || (isRemoteProxyA && !b.isCharacter);
+    const effImmovableB = b.isImmovable || (isRemoteProxyB && !a.isCharacter);
+
+    if (effImmovableA && effImmovableB) {
       return false;
     }
 
     // Start positions (at beginning of tick dt)
     const pA0 = {
-      x: a.isImmovable ? a.position.x : (a.position.x - a.velocity.x * dt),
-      y: a.isImmovable ? a.position.y : (a.position.y - a.velocity.y * dt),
+      x: effImmovableA ? a.position.x : (a.position.x - a.velocity.x * dt),
+      y: effImmovableA ? a.position.y : (a.position.y - a.velocity.y * dt),
     };
     const pB0 = {
-      x: b.isImmovable ? b.position.x : (b.position.x - b.velocity.x * dt),
-      y: b.isImmovable ? b.position.y : (b.position.y - b.velocity.y * dt),
+      x: effImmovableB ? b.position.x : (b.position.x - b.velocity.x * dt),
+      y: effImmovableB ? b.position.y : (b.position.y - b.velocity.y * dt),
     };
 
-    const vA = { x: a.isImmovable ? 0 : a.velocity.x, y: a.isImmovable ? 0 : a.velocity.y };
-    const vB = { x: b.isImmovable ? 0 : b.velocity.x, y: b.isImmovable ? 0 : b.velocity.y };
+    const vA = { x: effImmovableA ? 0 : a.velocity.x, y: effImmovableA ? 0 : a.velocity.y };
+    const vB = { x: effImmovableB ? 0 : b.velocity.y, y: effImmovableB ? 0 : b.velocity.y };
 
     const sweptHit = SweptMath.sweepCircleVsCircle(
       pA0,
@@ -272,11 +284,11 @@ export class CollisionResolver {
     const { tHit, normX, normY, velAlongNormal } = sweptHit;
 
     // Advance bodies to exact instant of impact tHit
-    if (!a.isImmovable) {
+    if (!effImmovableA) {
       a.position.x = pA0.x + a.velocity.x * tHit;
       a.position.y = pA0.y + a.velocity.y * tHit;
     }
-    if (!b.isImmovable) {
+    if (!effImmovableB) {
       b.position.x = pB0.x + b.velocity.x * tHit;
       b.position.y = pB0.y + b.velocity.y * tHit;
     }
@@ -456,22 +468,28 @@ export class CollisionResolver {
     b.lastContactNormal = { x: normX, y: normY };
     a.lastCollisionType = collisionType;
     b.lastCollisionType = collisionType;
-    a.lastCollisionTime = now;
-    b.lastCollisionTime = now;
+    const isRemoteProxyA = a.isCharacter && (a as any).role === "remote_player";
+    const isRemoteProxyB = b.isCharacter && (b as any).role === "remote_player";
+    const effImmovableA = a.isImmovable || (isRemoteProxyA && !b.isCharacter);
+    const effImmovableB = b.isImmovable || (isRemoteProxyB && !a.isCharacter);
+
+    // Only update lastCollisionTime if not an immovable remote proxy for this interaction
+    if (!effImmovableA || b.isCharacter) a.lastCollisionTime = now;
+    if (!effImmovableB || a.isCharacter) b.lastCollisionTime = now;
 
     // Case 0: Immovable entity collisions (e.g. Remote character proxy on client)
-    if (a.isImmovable && b.isImmovable) return;
+    if (effImmovableA && effImmovableB) return;
 
     // Compute 2D horizontal velocities if closing along 2D normal
     let normalImpulse = 0;
     const mA = a.hasMass ? a.mass : 0;
     const mB = b.hasMass ? b.mass : 0;
-    const invMassA = a.isImmovable || !a.hasMass ? 0 : 1 / mA;
-    const invMassB = b.isImmovable || !b.hasMass ? 0 : 1 / mB;
+    const invMassA = effImmovableA || !a.hasMass ? 0 : 1 / mA;
+    const invMassB = effImmovableB || !b.hasMass ? 0 : 1 / mB;
     const invMassSum = invMassA + invMassB;
 
     if (isClosingIn2D) {
-      if (b.isImmovable) {
+      if (effImmovableB) {
         if (isMasslessA) {
           const closingSpeed = Math.abs(velAlongNormal);
           a.velocity.x -= normX * closingSpeed * (1 + restitution);
@@ -481,7 +499,7 @@ export class CollisionResolver {
           a.velocity.x -= normalImpulse * invMassA * normX;
           a.velocity.y -= normalImpulse * invMassA * normY;
         }
-      } else if (a.isImmovable) {
+      } else if (effImmovableA) {
         if (isMasslessB) {
           const closingSpeed = Math.abs(velAlongNormal);
           b.velocity.x += normX * closingSpeed * (1 + restitution);
