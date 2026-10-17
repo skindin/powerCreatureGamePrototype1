@@ -483,11 +483,9 @@ export class GameLoop {
           rc.position.x += dx * blend;
           rc.position.y += dy * blend;
           rc.position.z += (interp.z - rc.position.z) * blend;
-          const isInterpMoving = Math.hypot(interp.vx, interp.vy) > 0.1;
-          if (isInterpMoving) {
-            rc.velocity.x += (interp.vx - rc.velocity.x) * blend;
-            rc.velocity.y += (interp.vy - rc.velocity.y) * blend;
-          }
+          // Blend velocity smoothly toward interp velocity so the impulse naturally decays
+          rc.velocity.x += (interp.vx - rc.velocity.x) * (blend * 0.5);
+          rc.velocity.y += (interp.vy - rc.velocity.y) * (blend * 0.5);
         } else {
           // Normal state: follow interpolated network position smoothly
           if (dist > 0.02) {
@@ -810,14 +808,19 @@ export class GameLoop {
 
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
       // While a thrown object is in ballistic flight from local player, allow local prediction
-      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
-      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      // unless server reports collision/landing (sleeping) or significant divergence.
+      // During recent impact and rebound (~250ms), expand divergence tolerance (1.8u) to prevent
+      // trailing pre-impact server snapshots from snapping the rebound backwards.
+      const isFlightActive = localObj.isInFlight && !localObj.isRestingOnSurface;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
+      const nowSync = performance.now();
+      const hasRecentCollision = localObj.lastCollisionTime > 0 && (nowSync - localObj.lastCollisionTime < 250);
+      if (wasThrownByLocal && isFlightActive && !sObj.isSleeping) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.6) {
+        const maxFlightDiv = hasRecentCollision ? 1.8 : 0.6;
+        if (Math.hypot(flightDx, flightDy) < maxFlightDiv) {
           continue;
         }
       }
@@ -865,12 +868,17 @@ export class GameLoop {
 
       // 7. Smart Smooth Convergence
       const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+      const velDot = localObj.velocity.x * sObj.vx + localObj.velocity.y * sObj.vy;
+      const isReboundingAgainstTrailingServer = hasRecentCollision && velDot < 0;
+
       const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
       localObj.position.z += dz * blend;
-      localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
-      localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
+      if (!isReboundingAgainstTrailingServer) {
+        localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
+        localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
+      }
       if (sObj.vz !== undefined) {
         localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
       }

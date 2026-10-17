@@ -772,7 +772,7 @@ export class OnlineSessionManager {
         // Gentle local overlap relaxation: if local character is overlapping an object,
         // gently push them apart so local collision resolver and server sync don't fight
         for (const obj of this.gameLoop.objects) {
-          if (obj.isHeld) continue;
+          if (obj.isHeld || obj.isInFlight) continue;
           const minDistance = localChar.colliderRadius + obj.colliderRadius;
           const ox = obj.position.x - localChar.position.x;
           const oy = obj.position.y - localChar.position.y;

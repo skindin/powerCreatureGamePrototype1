@@ -601,7 +601,7 @@ export class ServerGameSimulation {
     // the overlapping object and character away from each other so they no longer overlap.
     // This prevents 60Hz push/re-assert oscillations when a player was touching an object before joining.
     for (const obj of this.objects) {
-      if (obj.isHeld) continue;
+      if (obj.isHeld || obj.isInFlight) continue;
       const minDistance = sChar.colliderRadius + obj.colliderRadius;
       const ox = obj.position.x - sChar.position.x;
       const oy = obj.position.y - sChar.position.y;
