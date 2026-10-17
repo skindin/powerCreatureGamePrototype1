@@ -631,6 +631,7 @@ export class PlayerManager {
         }
         input.lockedAimPos = null;
         input.arcModulationCursor = null;
+        input.arcDetentSide = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
@@ -1471,49 +1472,85 @@ export class PlayerManager {
 
     const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY } = rail;
 
-    // Initialize cursor position on the vertical line if not yet initialized
+    // Initialize cursor position and active detent side on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
       const curRatio = char.throwModule.savedArcRatio;
       input.arcModulationCursor = {
         x: midScreenX,
         y: lowScreenY + curRatio * lineDy,
       };
+      input.arcDetentSide = (curRatio > optRatio + 0.005) ? "higher" : "lower";
+    }
+
+    if (!input.arcDetentSide) {
+      const curRatio = char.throwModule.savedArcRatio;
+      input.arcDetentSide = (curRatio > optRatio + 0.005) ? "higher" : "lower";
     }
 
     const cursor = input.arcModulationCursor;
-    // Keep cursor on the vertical rail X and clamp Y to rail bounds (with 20px margin)
     cursor.x = midScreenX;
-    cursor.y = Math.min(lowScreenY + 20, Math.max(highScreenY - 20, cursor.y));
 
-    if (lineLen > 2) {
-      // Sticky snap detent: stops trajectory at the optimal point until moving way past it
-      const snapDistance = Math.max(16, Math.min(26, lineLen * 0.22));
-      const distToEff = Math.abs(cursor.y - effScreenY);
+    if (lineLen <= 1) {
+      char.throwModule.savedArcRatio = optRatio;
+      return;
+    }
 
-      if (distToEff <= snapDistance) {
-        // Snapped/stuck at the optimal trajectory point!
-        char.throwModule.savedArcRatio = optRatio;
-      } else if (cursor.y > effScreenY) {
-        // Moved way past the optimal point downward towards lowest trajectory (0.0)
-        const distBelow = cursor.y - effScreenY;
-        const totalBelow = lowScreenY - effScreenY;
-        const travelBelow = totalBelow - snapDistance;
-        if (travelBelow > 1) {
-          const progress = Math.min(1.0, Math.max(0.0, (distBelow - snapDistance) / travelBelow));
-          char.throwModule.savedArcRatio = Math.max(0.0, optRatio * (1.0 - progress));
+    const BREAKTHROUGH_THRESHOLD = 16; // pixels of physical mouse pull past efficiency point required to break through
+    const rangeBelow = lowScreenY - effScreenY; // positive distance (pixels) between lowest trajectory (0.0) and efficiency point
+    const rangeAbove = effScreenY - highScreenY; // positive distance (pixels) between efficiency point and highest trajectory (1.0)
+
+    if (input.arcDetentSide === "lower") {
+      // 1. Lower side (between lowest trajectory 0.0 and efficiency point optRatio)
+      // Clamped to not exceed lowScreenY + 20 downwards
+      cursor.y = Math.min(lowScreenY + 20, cursor.y);
+
+      if (cursor.y >= effScreenY) {
+        // Smoothly follow mouse between lowScreenY (0.0) and effScreenY (optRatio)
+        if (rangeBelow > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (lowScreenY - cursor.y) / rangeBelow));
+          char.throwModule.savedArcRatio = Math.max(0.0, Math.min(optRatio, optRatio * progress));
         } else {
-          char.throwModule.savedArcRatio = 0.0;
+          char.throwModule.savedArcRatio = optRatio;
         }
       } else {
-        // Moved way past the optimal point upward towards highest trajectory (1.0)
-        const distAbove = effScreenY - cursor.y;
-        const totalAbove = effScreenY - highScreenY;
-        const travelAbove = totalAbove - snapDistance;
-        if (travelAbove > 1) {
-          const progress = Math.min(1.0, Math.max(0.0, (distAbove - snapDistance) / travelAbove));
-          char.throwModule.savedArcRatio = Math.min(1.0, optRatio + (1.0 - optRatio) * progress);
+        // Clamped at the efficiency point! Trajectory stays locked to optRatio.
+        char.throwModule.savedArcRatio = optRatio;
+
+        // User is pulling UP past the efficiency point towards higher trajectory:
+        // Must pull past BREAKTHROUGH_THRESHOLD to switch to the higher side.
+        // If user pulls back down where they came from (cursor.y >= effScreenY), it immediately unclamps without resistance!
+        const pullUp = effScreenY - cursor.y;
+        if (pullUp >= BREAKTHROUGH_THRESHOLD) {
+          // Breakthrough into the higher side!
+          input.arcDetentSide = "higher";
+          cursor.y = effScreenY; // Start smoothly on the higher side
+        }
+      }
+    } else {
+      // 2. Higher side (between efficiency point optRatio and highest trajectory 1.0)
+      // Clamped to not exceed highScreenY - 20 upwards
+      cursor.y = Math.max(highScreenY - 20, cursor.y);
+
+      if (cursor.y <= effScreenY) {
+        // Smoothly follow mouse between effScreenY (optRatio) and highScreenY (1.0)
+        if (rangeAbove > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (effScreenY - cursor.y) / rangeAbove));
+          char.throwModule.savedArcRatio = Math.min(1.0, Math.max(optRatio, optRatio + (1.0 - optRatio) * progress));
         } else {
-          char.throwModule.savedArcRatio = 1.0;
+          char.throwModule.savedArcRatio = optRatio;
+        }
+      } else {
+        // Clamped at the efficiency point! Trajectory stays locked to optRatio.
+        char.throwModule.savedArcRatio = optRatio;
+
+        // User is pulling DOWN past the efficiency point towards lower trajectory:
+        // Must pull past BREAKTHROUGH_THRESHOLD to switch to the lower side.
+        // If user pulls back up where they came from (cursor.y <= effScreenY), it immediately unclamps without resistance!
+        const pullDown = cursor.y - effScreenY;
+        if (pullDown >= BREAKTHROUGH_THRESHOLD) {
+          // Breakthrough into the lower side!
+          input.arcDetentSide = "lower";
+          cursor.y = effScreenY; // Start smoothly on the lower side
         }
       }
     }

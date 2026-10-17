@@ -135,6 +135,7 @@ export class InputManager {
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
   public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
+  public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
   public lastClientX: number | null = null;
   public lastClientY: number | null = null;
 
@@ -447,6 +448,7 @@ export class InputManager {
       this.isAwaitingUnlock = false;
       this.lockedAimPos = null;
       this.arcModulationCursor = null;
+      this.arcDetentSide = null;
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
         this.canvas?.classList.remove("pointer-locked");
@@ -500,6 +502,7 @@ export class InputManager {
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
           this.arcModulationCursor = null;
+          this.arcDetentSide = null;
           this.lastClientX = e.clientX;
           this.lastClientY = e.clientY;
           // 2. Hide it
@@ -554,6 +557,7 @@ export class InputManager {
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
         this.arcModulationCursor = null;
+        this.arcDetentSide = null;
         this.lastClientX = null;
         this.lastClientY = null;
 
