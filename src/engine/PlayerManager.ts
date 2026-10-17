@@ -1469,7 +1469,7 @@ export class PlayerManager {
     const rail = TrajectoryRenderer.calculateMidpointRail(char, this.arena, traj, ppu, hoverScale);
     if (!rail) return;
 
-    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen } = rail;
+    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY } = rail;
 
     // Initialize cursor position on the vertical line if not yet initialized
     if (!input.arcModulationCursor) {
@@ -1481,14 +1481,41 @@ export class PlayerManager {
     }
 
     const cursor = input.arcModulationCursor;
-    // Keep cursor on the vertical rail X and clamp Y to rail bounds (with 15px margin)
+    // Keep cursor on the vertical rail X and clamp Y to rail bounds (with 20px margin)
     cursor.x = midScreenX;
-    cursor.y = Math.min(lowScreenY + 15, Math.max(highScreenY - 15, cursor.y));
+    cursor.y = Math.min(lowScreenY + 20, Math.max(highScreenY - 20, cursor.y));
 
     if (lineLen > 2) {
-      // Clamped directly along the rail from lowest (0.0) to highest (1.0)
-      const t = (cursor.y - lowScreenY) / lineDy;
-      char.throwModule.savedArcRatio = Math.max(0.0, Math.min(1.0, t));
+      // Sticky snap detent: stops trajectory at the optimal point until moving way past it
+      const snapDistance = Math.max(16, Math.min(26, lineLen * 0.22));
+      const distToEff = Math.abs(cursor.y - effScreenY);
+
+      if (distToEff <= snapDistance) {
+        // Snapped/stuck at the optimal trajectory point!
+        char.throwModule.savedArcRatio = optRatio;
+      } else if (cursor.y > effScreenY) {
+        // Moved way past the optimal point downward towards lowest trajectory (0.0)
+        const distBelow = cursor.y - effScreenY;
+        const totalBelow = lowScreenY - effScreenY;
+        const travelBelow = totalBelow - snapDistance;
+        if (travelBelow > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (distBelow - snapDistance) / travelBelow));
+          char.throwModule.savedArcRatio = Math.max(0.0, optRatio * (1.0 - progress));
+        } else {
+          char.throwModule.savedArcRatio = 0.0;
+        }
+      } else {
+        // Moved way past the optimal point upward towards highest trajectory (1.0)
+        const distAbove = effScreenY - cursor.y;
+        const totalAbove = effScreenY - highScreenY;
+        const travelAbove = totalAbove - snapDistance;
+        if (travelAbove > 1) {
+          const progress = Math.min(1.0, Math.max(0.0, (distAbove - snapDistance) / travelAbove));
+          char.throwModule.savedArcRatio = Math.min(1.0, optRatio + (1.0 - optRatio) * progress);
+        } else {
+          char.throwModule.savedArcRatio = 1.0;
+        }
+      }
     }
   }
 }

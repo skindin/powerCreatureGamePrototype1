@@ -95,6 +95,8 @@ export class TrajectoryRenderer {
     highScreenY: number;
     lineDy: number;
     lineLen: number;
+    optRatio: number;
+    effScreenY: number;
   } | null {
     if (!char.throwModule || !traj.launchPos || !traj.landPoint) return null;
 
@@ -125,11 +127,12 @@ export class TrajectoryRenderer {
       tMin = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
       tMax = uHigh > 0 ? Math.sqrt(uHigh) : tMin;
     } else {
-      const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
-      const tOpt = Math.sqrt((2 * dist3D) / g);
-      tMin = tOpt;
-      tMax = tOpt;
+      tMin = 0.5;
+      tMax = 0.5;
     }
+    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
+    const tOpt = Math.sqrt((2 * dist3D) / g);
+    const optRatio = (tMax - tMin > 0.001) ? Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin))) : 0.0;
 
     // Midpoint in 2D space: average 2D position (average X and average Y) between object held position and trajectory end position
     const midX = (startX + landX) * 0.5;
@@ -146,8 +149,9 @@ export class TrajectoryRenderer {
 
     const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
     const lineLen = Math.abs(lineDy);
+    const effScreenY = lowScreenY + optRatio * lineDy;
 
-    return { midScreenX, lowScreenY, highScreenY, lineDy, lineLen };
+    return { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY };
   }
 
   /**
@@ -295,10 +299,10 @@ export class TrajectoryRenderer {
       }
 
       // Trajectory Modulation Guide Rail (when holding right-click):
-      // Dotted vertical rail at the 2D average position with clamped slider pip
+      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip
       const rail = character ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
       if (rail) {
-        const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen } = rail;
+        const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio, effScreenY } = rail;
 
         ctx.save();
 
@@ -323,19 +327,41 @@ export class TrajectoryRenderer {
         ctx.lineTo(midScreenX + cap, lowScreenY);
         ctx.stroke();
 
-        // 2. Slider pip clamped on the vertical rail at the active trajectory height
+        // 2. Optimal Detent Point (least energy trajectory notch on the rail) and active slider pip
         if (lineLen > 2) {
           const curRatio = character?.throwModule?.savedArcRatio ?? 0.0;
-          const projX = midScreenX;
-          const projY = lowScreenY + curRatio * lineDy;
+          const isSnapped = Math.abs(curRatio - optRatio) < 0.008;
 
           ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.arc(projX, projY, 4.5, 0, Math.PI * 2);
-          ctx.fillStyle = "#ffffff";
-          ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
-          ctx.shadowBlur = 4;
-          ctx.fill();
+
+          if (isSnapped) {
+            // Snapped onto the optimal point: prominent glowing green pip
+            ctx.beginPath();
+            ctx.arc(midScreenX, effScreenY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = "#22c55e";
+            ctx.shadowColor = "#22c55e";
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          } else {
+            // Unsnapped: subtle green notch dot marking the optimal point on the rail
+            ctx.beginPath();
+            ctx.arc(midScreenX, effScreenY, 2.8, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(34, 197, 94, 0.75)";
+            ctx.fill();
+
+            // Active slider pip at interpolated trajectory height
+            const projX = midScreenX;
+            const projY = lowScreenY + curRatio * lineDy;
+
+            ctx.beginPath();
+            ctx.arc(projX, projY, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "rgba(0, 0, 0, 0.75)";
+            ctx.shadowBlur = 4;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
         }
 
         ctx.restore();
