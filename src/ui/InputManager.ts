@@ -189,6 +189,7 @@ export class InputManager {
   public onKeyboardJump?: () => void;
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
+  public canLockAim?: () => boolean;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -408,7 +409,8 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
-        if (!this.lockedAimPos) {
+        const canLock = this.canLockAim ? this.canLockAim() : false;
+        if (canLock && !this.lockedAimPos) {
           this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;

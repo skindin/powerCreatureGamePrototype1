@@ -132,6 +132,25 @@ export class PlayerManager {
     this.inputManager.onGamepadDisconnected = (slotIndex: number) => {
       this.removeGamepadPlayer(slotIndex);
     };
+
+    this.inputManager.canLockAim = () => {
+      return this.isKeyboardAimingTrajectory();
+    };
+  }
+
+  /**
+   * Checks whether the local keyboard player is currently in aiming / throwing / trajectory mode.
+   */
+  public isKeyboardAimingTrajectory(): boolean {
+    if (this.inputManager.devPanel?.isEditMode) return false;
+    const kChar = this.players.get("keyboard")?.character ?? this.primaryCharacter;
+    if (!kChar || !kChar.heldObject || !kChar.throwModule || !kChar.throwModule.enabled || !kChar.hasStrength) {
+      return false;
+    }
+    const hasPrimaryAbility = kChar.hasPrimaryItemAbility();
+    const isPrimaryNonDirectional = kChar.isPrimaryAbilityNonDirectional();
+    const isThrowActive = !hasPrimaryAbility || this.inputManager.isAltHeld || (this.inputManager.isThrowingPress && this.inputManager.isMouseDown);
+    return isThrowActive || !isPrimaryNonDirectional;
   }
 
   public get allCharacters(): Character[] {
@@ -600,6 +619,20 @@ export class PlayerManager {
       // Using primary ability requires NOT holding Alt (or holding LMB after starting primary ability until released)
       const isUsingItem = isHoldingConsumable && canUseItem && !input.isAltHeld && !input.isThrowingPress && !input.isKeyboardSuspended;
 
+      // If cursor was locked, but character is no longer in aiming/throwing/trajectory mode (e.g. object thrown, dropped, or consumed),
+      // immediately unlock the cursor with drift compensation:
+      if (input.lockedAimPos && !this.isKeyboardAimingTrajectory()) {
+        input.unfreezePos = { x: input.lockedAimPos.x, y: input.lockedAimPos.y };
+        input.needsDriftCompensation = true;
+        input.lockedAimPos = null;
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+        if (typeof document !== "undefined" && document.pointerLockElement) {
+          try { document.exitPointerLock?.(); } catch {}
+        }
+      }
+
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
@@ -614,7 +647,7 @@ export class PlayerManager {
         aimX: input.actualMousePos.x,
         aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
-        isLockHeld: input.isRightMouseDown,
+        isLockHeld: Boolean(input.isRightMouseDown && input.lockedAimPos),
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
         aimLockDelta: input.aimLockRawDy,
         facingAngle: kChar.facingAngle,
