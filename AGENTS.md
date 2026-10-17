@@ -92,7 +92,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
 - **Trajectory Modulation & Sightlines**:
   - Pointer unfreeze drift compensation: Re-calibrates coordinate offset upon releasing right-click so mouse delta moved while frozen is never leaked into cursor position.
-  - Arc Ratio Trajectory Model: Trajectory manipulation parameterized directly as `savedArcRatio` ($0.0 = \text{shortest/flattest}$, $1.0 = \text{tallest/steepest}$). Clamps without dead zone, and maintains the player's steepness intent (e.g. tracking the highest possible arc) even as distance changes and bounds contract/expand.
+  - Arc Ratio Trajectory Model: Trajectory manipulation parameterized directly as `savedArcRatio` ($0.0 = \text{shortest/flattest}$, $1.0 = \text{tallest/steepest}$). Dragging UP while holding right-click heightens the arc, and dragging DOWN lowers it. Clamps without dead zone, and maintains the player's steepness intent (e.g. tracking the highest possible arc) even as distance changes and bounds contract/expand.
   - Ghost preview arcs rendered at lower opacity for reachable flattest and steepest bounds when an arc range exists ($T_{\text{max}} - T_{\text{min}} > 0.05$).
   - Straight dotted sightline matching arc dot radius and arc altitude layer-transparency, cleanly truncated at the landing footprint.
 

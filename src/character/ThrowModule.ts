@@ -757,9 +757,9 @@ export class ThrowModule {
     const tMin = Math.max(0.02, tFlat);
     const tMax = Math.max(tMin, tHigh);
 
-    // If right-click locked, adjust savedArcRatio using the raw mouse delta
-    // Positive delta (forward mouse along aim vector) -> flattens (decreases ratio toward 0.0)
-    // Negative delta (backward mouse along aim vector) -> steepens (increases ratio toward 1.0)
+    // If right-click locked, adjust savedArcRatio using vertical mouse delta
+    // Dragging UP (rawDy < 0) -> positive deltaRatio -> heightens arc (increases ratio toward 1.0)
+    // Dragging DOWN (rawDy > 0) -> negative deltaRatio -> lowers arc (decreases ratio toward 0.0)
     if (lockedTargetPos && aimLockDelta !== 0) {
       // 300px raw mouse movement sweeps full 0.0 to 1.0 range
       const deltaRatio = -aimLockDelta / 300;
