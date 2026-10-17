@@ -18,6 +18,55 @@ export class TrajectoryRenderer {
   }
 
   /**
+   * Computes the parametric arc ratio [0.0, 1.0] corresponding to the most energy-efficient
+   * ballistic throw trajectory (minimum kinetic work / launch speed required to reach the target).
+   */
+  public static computeOptimalRatio(char: Character, arena: Arena, traj: TrajectoryCalculation): number {
+    if (!char.throwModule || !traj.launchPos || !traj.landPoint) return 0.0;
+    const startX = traj.launchPos.x;
+    const startY = traj.launchPos.y;
+    const startZ = traj.launchPos.z;
+    const landX = traj.landPoint.x;
+    const landY = traj.landPoint.y;
+    const landZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
+
+    const dist = Math.hypot(landX - startX, landY - startY);
+    if (dist < 0.01) return 0.0;
+
+    const deltaZ = landZ - startZ;
+    const g = arena.gravity || 9.81;
+    const maxSpeed = char.throwModule.maxThrowSpeedProp.get(char.properties);
+
+    const vMin = Math.sqrt(Math.max(1.0, g * (dist + Math.sqrt(dist * dist + deltaZ * deltaZ))));
+    const effectiveVMin = Math.min(vMin, maxSpeed);
+
+    const aCoeff = 0.25 * g * g;
+    const cCoeff = dist * dist + deltaZ * deltaZ;
+
+    // Optimal flight time at minimum required velocity (least kinetic energy)
+    const bCoeffMin = -(effectiveVMin * effectiveVMin - g * deltaZ);
+    const discMin = Math.max(0, bCoeffMin * bCoeffMin - 4 * aCoeff * cCoeff);
+    const uOpt = (-bCoeffMin - Math.sqrt(discMin)) / (2 * aCoeff);
+    const tOpt = uOpt > 0 ? Math.sqrt(uOpt) : dist / effectiveVMin;
+
+    // Flattest flight time at maxSpeed
+    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : uOpt;
+    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
+
+    // Steepest flight time at maxSpeed
+    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+
+    const tMin = Math.max(0.02, tFlat);
+    const tMax = Math.max(tMin, tHigh);
+
+    if (tMax - tMin <= 0.001) return 0.0;
+    return Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin)));
+  }
+
+  /**
    * Trajectory Line:
    * Rendered as a dotted colored line where every fixed 3D distance interval (including vertical distance)
    * renders a dot. Dots get bigger as altitude increases, and become transparent once within Layer 2.
@@ -183,13 +232,17 @@ export class TrajectoryRenderer {
         const lineDy = highScreenY - lowScreenY; // negative (upward on screen)
         const lineLen = Math.abs(lineDy);
 
-        // Lock circle placed at the lowest trajectory midpoint (twice as big: 32px to 52px)
-        const snapRadius = Math.max(32, Math.min(52, lineLen * 0.45));
+        // Optimal trajectory ratio (least energy required) and its screen Y coordinate
+        const optRatio = character ? TrajectoryRenderer.computeOptimalRatio(character, arena, traj) : 0.0;
+        const effScreenY = lowScreenY + optRatio * lineDy;
+
+        // Lock circle placed at the most efficient trajectory midpoint (2/3 size: 22px to 35px)
+        const snapRadius = Math.max(22, Math.min(35, lineLen * 0.30));
 
         const cursorScreenX = aimTarget ? aimTarget.x * ppu : midScreenX;
-        const cursorScreenY = aimTarget ? aimTarget.y * ppu : lowScreenY;
-        const distToLow = Math.hypot(cursorScreenX - midScreenX, cursorScreenY - lowScreenY);
-        isSnapped = distToLow <= snapRadius;
+        const cursorScreenY = aimTarget ? aimTarget.y * ppu : effScreenY;
+        const distToEff = Math.hypot(cursorScreenX - midScreenX, cursorScreenY - effScreenY);
+        isSnapped = distToEff <= snapRadius;
 
         ctx.save();
 
@@ -202,7 +255,7 @@ export class TrajectoryRenderer {
         ctx.lineTo(midScreenX, lowScreenY);
         ctx.stroke();
 
-        // Highest peak marker: subtle end-cap tick
+        // Highest and lowest peak markers: subtle end-cap ticks
         ctx.setLineDash([]);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
         ctx.lineWidth = 1.6;
@@ -210,11 +263,13 @@ export class TrajectoryRenderer {
         ctx.beginPath();
         ctx.moveTo(midScreenX - cap, highScreenY);
         ctx.lineTo(midScreenX + cap, highScreenY);
+        ctx.moveTo(midScreenX - cap, lowScreenY);
+        ctx.lineTo(midScreenX + cap, lowScreenY);
         ctx.stroke();
 
-        // 2. Lock circle along the line at the lowest (most efficient) midpoint (twice as big)
+        // 2. Lock circle along the line at the most EFFICIENT (least energy) trajectory midpoint
         ctx.beginPath();
-        ctx.arc(midScreenX, lowScreenY, snapRadius, 0, Math.PI * 2);
+        ctx.arc(midScreenX, effScreenY, snapRadius, 0, Math.PI * 2);
         if (isSnapped) {
           ctx.fillStyle = "rgba(34, 197, 94, 0.3)";
           ctx.fill();
@@ -233,20 +288,18 @@ export class TrajectoryRenderer {
         }
         ctx.shadowBlur = 0;
 
-        // Center pip of lock circle
+        // Center pip of optimal lock circle
         ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.arc(midScreenX, lowScreenY, isSnapped ? 3.5 : 2.5, 0, Math.PI * 2);
+        ctx.arc(midScreenX, effScreenY, isSnapped ? 3.5 : 2.5, 0, Math.PI * 2);
         ctx.fillStyle = isSnapped ? "#22c55e" : "rgba(34, 197, 94, 0.85)";
         ctx.fill();
 
         // 3. If game cursor is outside lock circle, draw projection connector and slider pip on the vertical line
         if (!isSnapped && lineLen > 2) {
-          const uY = lineDy / lineLen; // -1
-          const projDist = (cursorScreenY - lowScreenY) * uY;
-          const clampedProj = Math.max(0, Math.min(lineLen, projDist));
+          const curRatio = character?.throwModule?.savedArcRatio ?? optRatio;
           const projX = midScreenX;
-          const projY = lowScreenY + clampedProj * uY;
+          const projY = lowScreenY + curRatio * lineDy;
 
           // Guideline connector to projected point on the line
           const distToProj = Math.hypot(cursorScreenX - projX, cursorScreenY - projY);
@@ -260,7 +313,7 @@ export class TrajectoryRenderer {
             ctx.stroke();
           }
 
-          // Slider pip on the dotted line at projected position
+          // Slider pip on the dotted line at active interpolated position
           ctx.setLineDash([]);
           ctx.beginPath();
           ctx.arc(projX, projY, 4, 0, Math.PI * 2);
