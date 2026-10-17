@@ -111,7 +111,11 @@ export class InputManager {
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
   public lockedAimPos: Vector2D | null = null;
-  public aimLockRawDelta: number = 0; // Accumulated raw mouse movement along character->target vector
+  public aimLockRawDelta: number = 0; // Legacy sum
+  public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
+  public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
+  public unlockingPointer: boolean = false;
+  public ignoreMouseMoveCount: number = 0;
 
   public get isGrabHeld(): boolean {
     return (
@@ -350,7 +354,16 @@ export class InputManager {
         // Accumulate raw physical movement deltas for trajectory modulation:
         const rawDx = e.movementX ?? 0;
         const rawDy = e.movementY ?? 0;
+        this.aimLockRawDx += rawDx;
+        this.aimLockRawDy += rawDy;
         this.aimLockRawDelta += rawDx + rawDy;
+        return;
+      }
+
+      if (this.unlockingPointer || this.ignoreMouseMoveCount > 0) {
+        if (this.ignoreMouseMoveCount > 0) {
+          this.ignoreMouseMoveCount--;
+        }
         return;
       }
 
@@ -361,10 +374,16 @@ export class InputManager {
     });
 
     document.addEventListener("pointerlockchange", () => {
-      this.isPointerLocked = false;
-      if (typeof document !== "undefined") {
-        document.body.classList.remove("pointer-locked");
-        this.canvas.classList.remove("pointer-locked");
+      this.isPointerLocked = (document.pointerLockElement === this.canvas);
+      if (!document.pointerLockElement) {
+        if (typeof document !== "undefined") {
+          document.body.classList.remove("pointer-locked");
+          this.canvas.classList.remove("pointer-locked");
+        }
+        // Swallowing post-unlock synthetic mouse moves to prevent cursor flicker
+        this.unlockingPointer = false;
+        this.ignoreMouseMoveCount = 2;
+        this.lockedAimPos = null;
       }
     });
 
@@ -393,6 +412,8 @@ export class InputManager {
         if (!this.lockedAimPos) {
           this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
           this.aimLockRawDelta = 0;
+          this.aimLockRawDx = 0;
+          this.aimLockRawDy = 0;
           try {
             this.canvas.requestPointerLock?.();
           } catch {}
@@ -428,12 +449,29 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
-        this.lockedAimPos = null;
+        if (this.lockedAimPos) {
+          // Keep mousePos and actualMousePos pinned exactly at lockedAimPos upon release
+          this.mousePos.x = this.lockedAimPos.x;
+          this.mousePos.y = this.lockedAimPos.y;
+          this.actualMousePos.x = this.lockedAimPos.x;
+          this.actualMousePos.y = this.lockedAimPos.y;
+        }
         this.aimLockRawDelta = 0;
+        this.aimLockRawDx = 0;
+        this.aimLockRawDy = 0;
         if (document.pointerLockElement) {
+          this.unlockingPointer = true;
           try {
             document.exitPointerLock?.();
           } catch {}
+          // Safety timeout in case pointerlockchange does not fire or is delayed
+          setTimeout(() => {
+            this.unlockingPointer = false;
+            this.lockedAimPos = null;
+          }, 150);
+        } else {
+          this.lockedAimPos = null;
+          this.ignoreMouseMoveCount = 1;
         }
         return;
       }

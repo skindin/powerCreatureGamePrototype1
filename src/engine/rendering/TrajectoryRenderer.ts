@@ -1,7 +1,7 @@
 import { Arena } from "../Arena.js";
 import { Vector2D } from "../GameObject.js";
 import { Character } from "../../character/Character.js";
-import { TrajectoryCalculation } from "../../character/ThrowModule.js";
+import { TrajectoryCalculation, TrajectoryPoint } from "../../character/ThrowModule.js";
 import { ViewSettings } from "../Renderer.js";
 
 /**
@@ -65,102 +65,111 @@ export class TrajectoryRenderer {
     }
     const colorOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
     const colorTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.38)`;
+    const colorGhostOpaque = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.22)`;
+    const colorGhostTransparent = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)`;
 
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
     const useBigger = viewSettings.verticalVisuals === "bigger" || viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
 
-    let lastX = points[0].x;
-    let lastY = points[0].y;
-    let lastRadius = baseRadius;
-    let dist3DSinceLast = 0;
-    let isFirstDot = true;
+    // Helper to draw a dotted arc path
+    const drawDottedArc = (arcPoints: TrajectoryPoint[], opColor: string, transColor: string) => {
+      let lastX = arcPoints[0].x;
+      let lastY = arcPoints[0].y;
+      let lastRadius = baseRadius;
+      let dist3DSinceLast = 0;
+      let isFirstDot = true;
 
-    // Step through piecewise 3D linear segments and sample dots with 2D overlap prevention
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const dz = p2.z - p1.z;
-      const segLen = Math.hypot(dx, dy, dz);
-      if (segLen <= 0.0001) continue;
+      for (let i = 0; i < arcPoints.length - 1; i++) {
+        const p1 = arcPoints[i];
+        const p2 = arcPoints[i + 1];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dz = p2.z - p1.z;
+        const segLen = Math.hypot(dx, dy, dz);
+        if (segLen <= 0.0001) continue;
 
-      // Sub-sample each segment finely so we can accurately position dots
-      const subSteps = Math.max(1, Math.ceil(segLen / 0.02));
-      const subDx = dx / subSteps;
-      const subDy = dy / subSteps;
-      const subDz = dz / subSteps;
-      const subLen = segLen / subSteps;
+        const subSteps = Math.max(1, Math.ceil(segLen / 0.02));
+        const subDx = dx / subSteps;
+        const subDy = dy / subSteps;
+        const subDz = dz / subSteps;
+        const subLen = segLen / subSteps;
 
-      for (let s = 1; s <= subSteps; s++) {
-        const curX = p1.x + subDx * s;
-        const curY = p1.y + subDy * s;
-        const curZ = p1.z + subDz * s;
+        for (let s = 1; s <= subSteps; s++) {
+          const curX = p1.x + subDx * s;
+          const curY = p1.y + subDy * s;
+          const curZ = p1.z + subDz * s;
 
-        dist3DSinceLast += subLen;
+          dist3DSinceLast += subLen;
 
-        const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
-        const radius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
-        const screenX = curX * ppu;
-        const screenY = (curY - curZ * hoverScale) * ppu;
+          const altRatio = Math.max(0, curZ) / Math.max(0.1, arena.wallHeight);
+          const radius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
+          const screenX = curX * ppu;
+          const screenY = (curY - curZ * hoverScale) * ppu;
 
-        if (isFirstDot) {
-          if (dist3DSinceLast >= base3DSpacing * 0.5) {
-            const isLayer2 = curZ >= layer2Threshold;
-            ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
-            ctx.beginPath();
-            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-            ctx.fill();
+          if (isFirstDot) {
+            if (dist3DSinceLast >= base3DSpacing * 0.5) {
+              const isLayer2 = curZ >= layer2Threshold;
+              ctx.fillStyle = isLayer2 ? transColor : opColor;
+              ctx.beginPath();
+              ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+              ctx.fill();
 
-            lastX = screenX;
-            lastY = screenY;
-            lastRadius = radius;
-            dist3DSinceLast = 0;
-            isFirstDot = false;
+              lastX = screenX;
+              lastY = screenY;
+              lastRadius = radius;
+              dist3DSinceLast = 0;
+              isFirstDot = false;
+            }
+            continue;
           }
-          continue;
-        }
 
-        // 2D distance on screen in pixels from the previous placed dot
-        const dist2DPx = Math.hypot(screenX - lastX, screenY - lastY);
+          const dist2DPx = Math.hypot(screenX - lastX, screenY - lastY);
+          const min2DSpacingPx = Math.max(18, lastRadius + radius + 7);
 
-        // When dots get close to each other in 2D (due to steep vertical arc),
-        // decrease how often dots are placed so dots never bunch up or overlap!
-        const min2DSpacingPx = Math.max(18, lastRadius + radius + 7);
+          if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
+            const landZ = traj.landPoint.z ?? (traj.isLandingOnWallTop ? arena.wallHeight : 0);
+            const targetScreenY = (traj.landPoint.y - landZ * hoverScale) * ppu;
+            const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - targetScreenY);
+            const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
+            if (distToLandPx > landRadiusPx * 0.8) {
+              const isLayer2 = curZ >= layer2Threshold;
+              ctx.fillStyle = isLayer2 ? transColor : opColor;
+              ctx.beginPath();
+              ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+              ctx.fill();
 
-        if (dist3DSinceLast >= base3DSpacing && dist2DPx >= min2DSpacingPx) {
-          // Don't draw dot on top of the landing target
-          const landZ = traj.landPoint.z ?? (traj.isLandingOnWallTop ? arena.wallHeight : 0);
-          const targetScreenY = (traj.landPoint.y - landZ * hoverScale) * ppu;
-          const distToLandPx = Math.hypot(screenX - traj.landPoint.x * ppu, screenY - targetScreenY);
-          const landRadiusPx = (traj.colliderRadius ?? 0.35) * ppu;
-          if (distToLandPx > landRadiusPx * 0.8) {
-            const isLayer2 = curZ >= layer2Threshold;
-            ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
-            ctx.beginPath();
-            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-            ctx.fill();
-
-            lastX = screenX;
-            lastY = screenY;
-            lastRadius = radius;
-            dist3DSinceLast = 0;
+              lastX = screenX;
+              lastY = screenY;
+              lastRadius = radius;
+              dist3DSinceLast = 0;
+            }
           }
         }
       }
+    };
+
+    // Render ghost preview arcs for the flattest and steepest reachable curves at even lower opacity
+    if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
+      drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent);
+    }
+    if (traj.steepestPoints && traj.steepestPoints.length >= 2) {
+      drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent);
     }
 
-    // STRAIGHT DOTTED SIGHTLINE from held object release position to target cursor:
-    // User requested both the dotted arc AND a straight dotted line from object position to cursor,
-    // with dots within Layer 1 at full opacity, and lower opacity for heights above Layer 1.
-    if (aimTarget && traj.launchPos) {
+    // Render active trajectory arc
+    drawDottedArc(points, colorOpaque, colorTransparent);
+
+    // STRAIGHT DOTTED SIGHTLINE from held object release position to target land position:
+    // Truncated at the end of the arc (landPoint) rather than following unbounded mouse cursor.
+    // Dots share the exact same sizing and layer transparency as the corresponding points along the arc.
+    if (traj.launchPos && traj.landPoint) {
       const startX = traj.launchPos.x;
       const startY = traj.launchPos.y;
       const startZ = traj.launchPos.z;
-      const endX = aimTarget.x;
-      const endY = aimTarget.y;
-      const endZ = traj.targetSurfaceHeight ?? 0;
+      const endX = traj.landPoint.x;
+      const endY = traj.landPoint.y;
+      const endZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
 
       const lineDx = endX - startX;
       const lineDy = endY - startY;
@@ -168,9 +177,8 @@ export class TrajectoryRenderer {
       const lineDist3D = Math.hypot(lineDx, lineDy, lineDz);
 
       if (lineDist3D > 0.3) {
-        const straightDotSpacing = base3DSpacing * 1.1;
+        const straightDotSpacing = base3DSpacing * 1.05;
         const totalStraightDots = Math.floor(lineDist3D / straightDotSpacing);
-        const straightRadius = Math.max(1.5, baseRadius * 0.65);
 
         for (let d = 1; d <= totalStraightDots; d++) {
           const frac = d / (totalStraightDots + 1);
@@ -181,8 +189,20 @@ export class TrajectoryRenderer {
           const ptScreenX = ptX * ppu;
           const ptScreenY = (ptY - ptZ * hoverScale) * ppu;
 
-          const isLayer2 = ptZ >= layer2Threshold;
+          // Sample corresponding arc flight altitude at this fraction
+          const flightT = frac * (traj.flightTime ?? 1.0);
+          const arcZ = traj.launchVel
+            ? Math.max(0, traj.launchPos.z + traj.launchVel.vz * flightT - 0.5 * arena.gravity * flightT * flightT)
+            : ptZ;
+
+          // Transparent where the arc is above Layer 1, opaque where within Layer 1
+          const isLayer2 = arcZ >= layer2Threshold;
           ctx.fillStyle = isLayer2 ? colorTransparent : colorOpaque;
+
+          // Same dot sizing equation as the arc dots
+          const altRatio = Math.max(0, arcZ) / Math.max(0.1, arena.wallHeight);
+          const straightRadius = useBigger ? (baseRadius * (1.0 + altRatio * 0.75)) : baseRadius;
+
           ctx.beginPath();
           ctx.arc(ptScreenX, ptScreenY, straightRadius, 0, Math.PI * 2);
           ctx.fill();

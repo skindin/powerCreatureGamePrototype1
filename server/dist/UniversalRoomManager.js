@@ -6409,15 +6409,23 @@ class ThrowModule {
     const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+    const tFlatClamped = Math.max(0.02, tFlat);
+    const tHighClamped = Math.max(tFlatClamped, tHigh);
+    const hasFlatterRange = tOpt - tFlatClamped > 0.02;
+    const hasSteeperRange = tHighClamped - tOpt > 0.02;
+    const minFactor = hasFlatterRange ? -1 : 0;
+    const maxFactor = hasSteeperRange ? 1 : 0;
     if (lockedTargetPos && aimLockDelta !== 0) {
       const deltaSteepness = -aimLockDelta / 300;
-      this.savedArcSteepness = Math.max(-1, Math.min(1, this.savedArcSteepness + deltaSteepness));
+      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness + deltaSteepness));
+    } else {
+      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness));
     }
     const factor = this.savedArcSteepness;
     if (factor < 0) {
-      totalTime = tOpt - (tOpt - tFlat) * -factor;
+      totalTime = tOpt - (tOpt - tFlatClamped) * -factor;
     } else {
-      totalTime = tOpt + (tHigh - tOpt) * factor;
+      totalTime = tOpt + (tHighClamped - tOpt) * factor;
     }
     totalTime = Math.max(0.02, totalTime);
     chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
@@ -6489,9 +6497,53 @@ class ThrowModule {
         break;
       }
     }
+    const simulateGhostArc = (simFlightTime) => {
+      const gTime = Math.max(0.02, simFlightTime);
+      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const gHSpd = dist / gTime;
+      const gVx = dirX * gHSpd;
+      const gVy = dirY * gHSpd;
+      const gSteps = 60;
+      const gDt = gTime / gSteps;
+      const gPts = [];
+      for (let s = 0; s <= gSteps; s++) {
+        const t = s * gDt;
+        const curX = s === gSteps ? finalTargetX : startX + gVx * t;
+        const curY = s === gSteps ? finalTargetY : startY + gVy * t;
+        const calcZ = canFlyVertically ? startZ + gVz * t - 0.5 * arena.gravity * t * t : startZ;
+        const curZ = canFlyVertically ? s === gSteps ? resolvedSurfaceHeight : s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ) : startZ;
+        let isOver = false;
+        let collides = false;
+        for (const wall of arena.walls) {
+          if (this.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
+            isOver = true;
+            if (curZ <= wall.wallHeight + 1e-3 && s > 1) {
+              collides = true;
+              break;
+            }
+          }
+        }
+        gPts.push({
+          x: curX,
+          y: curY,
+          z: curZ,
+          t,
+          couldClearWall: curZ > arena.wallHeight,
+          isOverWall: isOver,
+          collidesWall: collides
+        });
+        if (collides) break;
+      }
+      return gPts;
+    };
+    const hasArcRange = tHighClamped - tFlatClamped > 0.05 && (minFactor < 0 || maxFactor > 0);
+    const flattestPoints = hasArcRange ? simulateGhostArc(tFlatClamped) : void 0;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tHighClamped) : void 0;
     const lastPoint = points[points.length - 1];
     return {
       points,
+      flattestPoints,
+      steepestPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,

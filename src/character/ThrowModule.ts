@@ -14,6 +14,8 @@ export interface TrajectoryPoint {
 
 export interface TrajectoryCalculation {
   points: TrajectoryPoint[];
+  flattestPoints?: TrajectoryPoint[];
+  steepestPoints?: TrajectoryPoint[];
   landPoint: { x: number; y: number; z?: number };
   isBlockedByWall: boolean;
   blockedAtWallId?: string;
@@ -742,23 +744,35 @@ export class ThrowModule {
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : uOpt * 2.2;
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
 
+    const tFlatClamped = Math.max(0.02, tFlat);
+    const tHighClamped = Math.max(tFlatClamped, tHigh);
+
+    // Responsive clamping: only allow sliding if the current physical situation has room to alter the trajectory
+    const hasFlatterRange = (tOpt - tFlatClamped > 0.02);
+    const hasSteeperRange = (tHighClamped - tOpt > 0.02);
+    const minFactor = hasFlatterRange ? -1.0 : 0.0;
+    const maxFactor = hasSteeperRange ? 1.0 : 0.0;
+
     // If right-click locked, adjust savedArcSteepness using the raw mouse delta
-    // Positive delta (forward mouse) -> more negative factor (-1.0 = flatter)
-    // Negative delta (backward mouse) -> more positive factor (+1.0 = higher arc)
+    // Positive delta (forward mouse along aim vector) -> more negative factor (-1.0 = flatter)
+    // Negative delta (backward mouse along aim vector) -> more positive factor (+1.0 = higher arc)
     if (lockedTargetPos && aimLockDelta !== 0) {
       // 300px raw mouse movement sweeps full -1 to +1 range
       const deltaSteepness = -aimLockDelta / 300;
-      this.savedArcSteepness = Math.max(-1.0, Math.min(1.0, this.savedArcSteepness + deltaSteepness));
+      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness + deltaSteepness));
+    } else {
+      // Immediately clamp saved steepness so reversing mouse movement responds instantly without a dead-zone
+      this.savedArcSteepness = Math.max(minFactor, Math.min(maxFactor, this.savedArcSteepness));
     }
 
-    // Apply remembered steepness factor (-1.0 to +1.0)
+    // Apply remembered steepness factor within reachable bounds
     const factor = this.savedArcSteepness;
     if (factor < 0) {
-      // Flatter trajectory (interpolating from tOpt down to tFlat)
-      totalTime = tOpt - (tOpt - tFlat) * (-factor);
+      // Flatter trajectory (interpolating from tOpt down to tFlatClamped)
+      totalTime = tOpt - (tOpt - tFlatClamped) * (-factor);
     } else {
-      // Steeper high arc (interpolating from tOpt up to tHigh)
-      totalTime = tOpt + (tHigh - tOpt) * factor;
+      // Steeper high arc (interpolating from tOpt up to tHighClamped)
+      totalTime = tOpt + (tHighClamped - tOpt) * factor;
     }
 
     totalTime = Math.max(0.02, totalTime);
@@ -853,9 +867,65 @@ export class ThrowModule {
       }
     }
 
+    // Helper to simulate boundary arc points for ghost previews
+    const simulateGhostArc = (simFlightTime: number): TrajectoryPoint[] => {
+      const gTime = Math.max(0.02, simFlightTime);
+      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const gHSpd = dist / gTime;
+      const gVx = dirX * gHSpd;
+      const gVy = dirY * gHSpd;
+
+      const gSteps = 60;
+      const gDt = gTime / gSteps;
+      const gPts: TrajectoryPoint[] = [];
+
+      for (let s = 0; s <= gSteps; s++) {
+        const t = s * gDt;
+        const curX = s === gSteps ? finalTargetX : startX + gVx * t;
+        const curY = s === gSteps ? finalTargetY : startY + gVy * t;
+        const calcZ = canFlyVertically ? (startZ + gVz * t - 0.5 * arena.gravity * t * t) : startZ;
+        const curZ = canFlyVertically
+          ? (s === gSteps ? resolvedSurfaceHeight : (s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ)))
+          : startZ;
+
+        let isOver = false;
+        let collides = false;
+
+        for (const wall of arena.walls) {
+          if (this.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
+            isOver = true;
+            if (curZ <= wall.wallHeight + 0.001 && s > 1) {
+              collides = true;
+              break;
+            }
+          }
+        }
+
+        gPts.push({
+          x: curX,
+          y: curY,
+          z: curZ,
+          t,
+          couldClearWall: curZ > arena.wallHeight,
+          isOverWall: isOver,
+          collidesWall: collides,
+        });
+
+        if (collides) break;
+      }
+      return gPts;
+    };
+
+    // If there is a valid range of arcs to slide between, calculate flattest and steepest ghost trajectories
+    const hasArcRange = (tHighClamped - tFlatClamped > 0.05) && (minFactor < 0 || maxFactor > 0);
+    const flattestPoints = hasArcRange ? simulateGhostArc(tFlatClamped) : undefined;
+    const steepestPoints = hasArcRange ? simulateGhostArc(tHighClamped) : undefined;
+
     const lastPoint = points[points.length - 1];
     return {
       points,
+      flattestPoints,
+      steepestPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,

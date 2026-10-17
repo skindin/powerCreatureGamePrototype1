@@ -616,10 +616,22 @@ export class PlayerManager {
         isAiming: isMouseAiming,
         isLockHeld: input.isRightMouseDown,
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
-        aimLockDelta: input.aimLockRawDelta,
+        aimLockDelta: (() => {
+          if (input.lockedAimPos) {
+            const cdx = input.lockedAimPos.x - kChar.position.x;
+            const cdy = input.lockedAimPos.y - kChar.position.y;
+            const cdist = Math.hypot(cdx, cdy);
+            if (cdist > 0.05) {
+              return input.aimLockRawDx * (cdx / cdist) + input.aimLockRawDy * (cdy / cdist);
+            }
+          }
+          return input.aimLockRawDelta;
+        })(),
         facingAngle: kChar.facingAngle,
       } as any);
       input.aimLockRawDelta = 0; // Consume delta
+      input.aimLockRawDx = 0;
+      input.aimLockRawDy = 0;
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
     }

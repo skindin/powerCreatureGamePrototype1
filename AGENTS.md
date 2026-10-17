@@ -90,6 +90,11 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
 - **Multiplayer Replication**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
+- **Trajectory Modulation & Sightlines**:
+  - Pointer-lock unlock anti-flicker suppression swallowing post-unlock synthetic browser mouse events while pinning cursor coordinates.
+  - Responsive steepness clamping at physical trajectory bounds (`tFlat` / `tHigh`) eliminating accumulator dead zones so reversing mouse deltas responds instantly.
+  - Ghost preview arcs rendered at lower opacity for reachable flattest and steepest bounds when an arc range exists.
+  - Straight dotted sightline matching arc dot radius and arc altitude layer-transparency, cleanly truncated at the landing footprint.
 
 ---
 
