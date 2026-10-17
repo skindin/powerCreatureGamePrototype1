@@ -94,8 +94,13 @@ export class InputManager {
   }
 
   public requestPointerLock(): void {
-    // Disabled: Pointer Lock natively forces the OS cursor to the center of the element in browsers.
-    // Keeping this disabled prevents the browser from centering/sticking the mouse.
+    if (typeof document === "undefined" || !this.canvas) return;
+    try {
+      const p = (this.canvas as any).requestPointerLock?.();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {});
+      }
+    } catch {}
   }
 
   public exitPointerLock(): void {
@@ -103,12 +108,6 @@ export class InputManager {
       try {
         document.exitPointerLock();
       } catch {}
-    }
-    this.isPointerLocked = false;
-    this.unhideCursor();
-    if (typeof document !== "undefined") {
-      document.body.classList.remove("pointer-locked");
-      this.canvas?.classList.remove("pointer-locked");
     }
   }
 
@@ -125,6 +124,8 @@ export class InputManager {
   public gamepadAimPos: Vector2D = { x: 0, y: 0 };
   public gamepadAimOffset: Vector2D = { x: 0, y: 0 };
   public lockedAimPos: Vector2D | null = null;
+  public recordedMousePos: Vector2D | null = null;
+  public isAwaitingUnlock: boolean = false;
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
@@ -373,8 +374,7 @@ export class InputManager {
       this.lastMouseMoveTime = performance.now();
 
       if (this.isRightMouseDown && this.lockedAimPos) {
-        // While right-click locked, trajectory aim is fixed at lockedAimPos.
-        // Accumulate physical movement deltas for trajectory modulation:
+        // While locked, take raw mouse input to increase/decrease arc height
         const movementDy = (e.movementY !== undefined && e.movementY !== 0)
           ? e.movementY
           : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
@@ -387,10 +387,25 @@ export class InputManager {
         this.aimLockRawDx += movementDx;
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
-        this.mousePos.x = this.lockedAimPos.x;
-        this.mousePos.y = this.lockedAimPos.y;
-        this.actualMousePos.x = this.lockedAimPos.x;
-        this.actualMousePos.y = this.lockedAimPos.y;
+
+        // Keep game cursor snapped to recorded mouse pos
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
+        return;
+      }
+
+      // Do not move game cursor until AFTER unlocked!
+      if (this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
         return;
       }
 
@@ -402,12 +417,20 @@ export class InputManager {
 
     document.addEventListener("pointerlockchange", () => {
       this.isPointerLocked = (document.pointerLockElement === this.canvas);
-      if (!document.pointerLockElement) {
+      if (!this.isPointerLocked) {
+        this.isAwaitingUnlock = false;
+        this.unhideCursor();
         if (typeof document !== "undefined") {
           document.body.classList.remove("pointer-locked");
-          this.canvas.classList.remove("pointer-locked");
+          this.canvas?.classList.remove("pointer-locked");
         }
       }
+    });
+
+    document.addEventListener("pointerlockerror", () => {
+      this.isPointerLocked = false;
+      this.isAwaitingUnlock = false;
+      this.unhideCursor();
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
@@ -435,13 +458,23 @@ export class InputManager {
         this.isRightMouseDown = true;
         const canLock = this.canLockAim ? this.canLockAim() : false;
         if (canLock && !this.lockedAimPos) {
-          this.hideCursor();
+          // 1. Record where mouse was
+          this.recordedMousePos = { x: this.mousePos.x, y: this.mousePos.y };
           this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
           this.lastClientX = e.clientX;
           this.lastClientY = e.clientY;
+          // 2. Hide it
+          this.hideCursor();
+          // 3. Lock it
+          this.requestPointerLock();
+          // 4. Stop moving game cursor to mouse and keep it snapped to recorded mouse pos
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
         }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
@@ -462,7 +495,13 @@ export class InputManager {
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // Prevent browser context menu
-      if (this.isKeyboardSuspended) {
+      if (this.isKeyboardSuspended || this.lockedAimPos || this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
         return;
       }
       this.updateMousePos(e);
@@ -474,17 +513,30 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
-        this.unhideCursor();
-        this.lockedAimPos = null;
+        const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
         this.lastClientX = null;
         this.lastClientY = null;
-        this.exitPointerLock();
-        this.updateMousePos(e);
-        if (this.onMouseMove) {
-          this.onMouseMove(this.mousePos.x, this.mousePos.y);
+        this.lockedAimPos = null;
+
+        // Move game cursor to recorded position it was at when originally locked
+        if (this.recordedMousePos) {
+          this.mousePos.x = this.recordedMousePos.x;
+          this.mousePos.y = this.recordedMousePos.y;
+          this.actualMousePos.x = this.recordedMousePos.x;
+          this.actualMousePos.y = this.recordedMousePos.y;
+        }
+
+        // Unlock mouse: do NOT let game cursor follow mouse until AFTER unlocked!
+        if (wasLocked) {
+          this.isAwaitingUnlock = true;
+          this.exitPointerLock();
+          if (typeof document !== "undefined" && !document.pointerLockElement) {
+            this.isAwaitingUnlock = false;
+            this.unhideCursor();
+          }
         }
         return;
       }

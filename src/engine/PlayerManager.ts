@@ -148,7 +148,7 @@ export class PlayerManager {
       return false;
     }
     if (kChar.isPrimaryAbilityNonDirectional()) {
-      return Boolean(this.inputManager.isAltHeld || this.inputManager.isThrowingPress || this.inputManager.isRightMouseDown);
+      return Boolean(this.inputManager.isAltHeld || this.inputManager.isThrowingPress);
     }
     return true;
   }
@@ -622,7 +622,12 @@ export class PlayerManager {
       // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
       // unhide and clear the lock:
       if (input.lockedAimPos && !kChar.heldObject) {
-        input.unhideCursor();
+        if (input.recordedMousePos) {
+          input.mousePos.x = input.recordedMousePos.x;
+          input.mousePos.y = input.recordedMousePos.y;
+          input.actualMousePos.x = input.recordedMousePos.x;
+          input.actualMousePos.y = input.recordedMousePos.y;
+        }
         input.lockedAimPos = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
@@ -1274,8 +1279,17 @@ export class PlayerManager {
 
         // Keyboard cursor is always visible
         isCursorVisibleNow = true;
-        this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
-        this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+        if (this.inputManager.lockedAimPos || this.inputManager.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+          if (this.inputManager.recordedMousePos) {
+            this.inputManager.mousePos.x = this.inputManager.recordedMousePos.x;
+            this.inputManager.mousePos.y = this.inputManager.recordedMousePos.y;
+            this.inputManager.actualMousePos.x = this.inputManager.recordedMousePos.x;
+            this.inputManager.actualMousePos.y = this.inputManager.recordedMousePos.y;
+          }
+        } else {
+          this.inputManager.mousePos.x = this.inputManager.actualMousePos.x;
+          this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
+        }
 
         // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
         if (hasReachable) {
