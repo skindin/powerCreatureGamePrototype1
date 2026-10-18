@@ -89,8 +89,9 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 - **HUD & Status Displays**:
   - Dual-column status gauges: Left for Health & Modifiers (HP bar, damage aura/shocks, bio-regen), Right for Energy & Modifiers (Energy/Stamina bars, active power draws).
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
-- **Multiplayer Replication**:
+- **Multiplayer Replication & Ballistic Trajectory**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
+  - **Unified Ballistic Trajectory & Launch Telemetry**: `ThrowModule` uses a unified quadratic ballistics solver across preview (`calculateTrajectory`) and execution (`throwHeldObject` / `computeLaunchVelocity`), guaranteeing mathematical parity between client and server simulations. `PlayerManager` serializes explicit launch velocity (`launchVx`, `launchVy`, `launchVz`) and start position (`launchStartX`, `launchStartY`, `launchStartZ`) across keyboard/gamepad `PlayerInputPacket` and `ReliableActionCommand`, eliminating server fallback discrepancies and in-flight snapshot snapback.
 
 ---
 
