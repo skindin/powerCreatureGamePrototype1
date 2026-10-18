@@ -850,6 +850,15 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
+        if (entry && entry.slotIndex !== undefined) {
+          const slot = input.gamepadSlots.get(entry.slotIndex);
+          if (slot) {
+            slot.isLockHeld = false;
+            slot.lockedAimPos = null;
+            slot.arcModulationCursor = null;
+            slot.arcModulationDeltaY = 0;
+          }
+        }
         if (!isReplay) {
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {
@@ -899,12 +908,16 @@ export class PlayerManager {
         char.isUsingItem = false;
         char.eatRateWatts = 0;
 
-        // Once the throw completes and character is empty-handed, reset aim stick movement flags
+        // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
         if (entry && entry.slotIndex !== undefined) {
           const slot = input.gamepadSlots.get(entry.slotIndex);
           if (slot) {
             slot.hasMovedAimStick = false;
             slot.aimMovedWhileInRange = false;
+            slot.isLockHeld = false;
+            slot.lockedAimPos = null;
+            slot.arcModulationCursor = null;
+            slot.arcModulationDeltaY = 0;
           }
         }
 

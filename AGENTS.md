@@ -97,7 +97,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 - **Controller Ability Swap & Trajectory Scaling**:
   - Left Trigger (Button 6 / LT) acts as Alt: switches from non-directional consumable abilities (e.g. eating an apple) to explicit throwing mode (revealing reticle and trajectory).
   - Triggers are strictly isolated from jump paddles (axes 4/5 trigger detection removed).
-  - Right Joystick Click (Button 11 / R3) acts as Right Mouse Click: freezes game cursor at locked position and vertical deflection (`ry`) modulates trajectory arc height along the midpoint guide rail.
+  - Right Joystick Click (Button 11 / R3): Toggles trajectory scaling mode on/off (one click turns trajectory mode on, freezing cursor and routing vertical stick deflection to trajectory arc height; another click turns it off). Automatically clears on item throw, drop, or release.
 
 ---
 
