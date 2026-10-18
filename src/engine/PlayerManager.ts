@@ -860,9 +860,6 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
-        if (char.throwModule) {
-          char.throwModule.hasUserSetArcRatio = false;
-        }
         input.arcModulationCursor = null;
         input.arcModulationDeltaY = 0;
         if (entry && entry.slotIndex !== undefined) {
@@ -923,7 +920,6 @@ export class PlayerManager {
         );
         char.isUsingItem = false;
         char.eatRateWatts = 0;
-        char.throwModule.hasUserSetArcRatio = false;
         input.arcModulationCursor = null;
         input.arcModulationDeltaY = 0;
 
@@ -1572,6 +1568,11 @@ export class PlayerManager {
 
     const effRailHeight = Math.max(30, lineLen);
 
+    if (char.hasUserSetArcRatio && char.savedArcRatio !== undefined) {
+      char.throwModule.hasUserSetArcRatio = true;
+      char.throwModule.savedArcRatio = char.savedArcRatio;
+    }
+
     if (Math.abs(deltaY) > 0.001) {
       if (!char.throwModule.hasUserSetArcRatio) {
         char.throwModule.savedArcRatio = optRatio;
@@ -1581,6 +1582,8 @@ export class PlayerManager {
       const deltaRatio = -deltaY / effRailHeight;
       char.throwModule.savedArcRatio = Math.max(0.0, Math.min(1.0, char.throwModule.savedArcRatio + deltaRatio));
       char.throwModule.hasUserSetArcRatio = true;
+      char.savedArcRatio = char.throwModule.savedArcRatio;
+      char.hasUserSetArcRatio = true;
     } else {
       // When moving without modulating, if user hasn't customized arc yet, track optRatio live
       if (!char.throwModule.hasUserSetArcRatio) {
