@@ -6295,13 +6295,49 @@ class ThrowModule {
     const tFlat = uLow > 0 ? Math.sqrt(uLow) : actualDist / launchSpeed;
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-    const tMin = Math.max(0.02, tFlat);
+    const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
+    const clearance = 0.25;
+    const sampleRatios = [];
+    for (let s = 5e-3; s < 0.1; s += 5e-3) {
+      sampleRatios.push(s);
+    }
+    for (let i = 4; i <= 40; i++) {
+      sampleRatios.push(i / 40);
+    }
+    let minWallTime = tFlat;
+    for (const s of sampleRatios) {
+      const sampleX = startX + (finalTargetX - startX) * s;
+      const sampleY = startY + (finalTargetY - startY) * s;
+      for (const wall of arena.walls) {
+        if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
+          const isTargetOnThisWall = (targetSurfaceHeight > 0 || hoveredEntity && hoveredEntity.standingWall === wall) && finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 && finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
+          if (isTargetOnThisWall && s > 0.65) {
+            continue;
+          }
+          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const requiredHeight = wall.wallHeight + clearance;
+          const requiredDeltaZ = requiredHeight - baselineZ;
+          if (requiredDeltaZ > 0) {
+            const denom = arena.gravity * s * (1 - s);
+            if (denom > 1e-4) {
+              const reqTimeSq = 2 * requiredDeltaZ / denom;
+              if (reqTimeSq > 0) {
+                const reqTime = Math.sqrt(reqTimeSq);
+                if (reqTime > minWallTime) {
+                  minWallTime = reqTime;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    const tMin = Math.max(0.02, tFlat, minWallTime);
     const tMax = Math.max(tMin, tHigh);
     let chosenT = 0;
     if (!this.hasUserSetArcRatio) {
-      const optRatio = tMax - tMin > 1e-3 ? Math.max(0, Math.min(1, (tOpt - tMin) / (tMax - tMin))) : 0;
-      this.savedArcRatio = optRatio;
-      chosenT = Math.max(tMin, Math.min(tMax, tOpt));
+      this.savedArcRatio = 0;
+      chosenT = tMin;
     } else {
       chosenT = tMin + this.savedArcRatio * (tMax - tMin);
     }
@@ -8825,7 +8861,7 @@ class CollisionResolver {
     const dx = b.position.x - a.position.x;
     const dy = b.position.y - a.position.y;
     const distSq = dx * dx + dy * dy;
-    if (distSq >= minDist * minDist) {
+    if (distSq >= minDist * minDist || distSq <= 1e-8) {
       return false;
     }
     if (a.isImmovable && b.isImmovable) {
@@ -8833,16 +8869,8 @@ class CollisionResolver {
     }
     const dist = Math.sqrt(distSq);
     const overlap = minDist - dist;
-    let normX;
-    let normY;
-    if (dist > 1e-4) {
-      normX = dx / dist;
-      normY = dy / dist;
-    } else {
-      const randomAngle = Math.random() * Math.PI * 2;
-      normX = Math.cos(randomAngle);
-      normY = Math.sin(randomAngle);
-    }
+    const normX = dx / dist;
+    const normY = dy / dist;
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
     const velAlongNormal = relVx * normX + relVy * normY;
@@ -9215,19 +9243,11 @@ class CollisionResolver {
           const dy = b.position.y - a.position.y;
           const dist2DSq = dx * dx + dy * dy;
           const minDist = a.colliderRadius + b.colliderRadius;
-          if (dist2DSq < minDist * minDist) {
+          if (dist2DSq < minDist * minDist && dist2DSq > 1e-6) {
             const dist = Math.sqrt(dist2DSq);
             const overlap = minDist - dist;
-            let normX;
-            let normY;
-            if (dist > 1e-4) {
-              normX = dx / dist;
-              normY = dy / dist;
-            } else {
-              const randomAngle = Math.random() * Math.PI * 2;
-              normX = Math.cos(randomAngle);
-              normY = Math.sin(randomAngle);
-            }
+            const normX = dx / dist;
+            const normY = dy / dist;
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
             const velAlongNormal = relVx * normX + relVy * normY;
@@ -11461,27 +11481,6 @@ class ServerGameSimulation {
       sChar.position.x = clientChar.x;
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
-    }
-    for (const obj of this.objects) {
-      if (obj.isHeld) continue;
-      const minDistance = sChar.colliderRadius + obj.colliderRadius;
-      const ox = obj.position.x - sChar.position.x;
-      const oy = obj.position.y - sChar.position.y;
-      const oDist = Math.hypot(ox, oy);
-      if (oDist < minDistance) {
-        const charZ = sChar.position.z;
-        const objZ = obj.position.z;
-        if (Math.abs(charZ - objZ) < 0.8) {
-          const overlap = minDistance - oDist + 0.03;
-          const nx = oDist > 1e-3 ? ox / oDist : 1;
-          const ny = oDist > 1e-3 ? oy / oDist : 0;
-          sChar.position.x -= nx * (overlap * 0.5);
-          sChar.position.y -= ny * (overlap * 0.5);
-          obj.position.x += nx * (overlap * 0.5);
-          obj.position.y += ny * (overlap * 0.5);
-          obj.wakeUp();
-        }
-      }
     }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;

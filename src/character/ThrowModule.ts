@@ -567,14 +567,62 @@ export class ThrowModule {
     const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
     const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
 
-    const tMin = Math.max(0.02, tFlat);
+    // Scan dense samples along trajectory to ensure clearance over any intermediate walls.
+    // If the flat trajectory would collide with an intermediate wall, increase minWallTime to the minimum
+    // required to clear the wall top with a tight, minimal clearance arc (from commit 824d5a7).
+    const colliderRadiusCheck = colliderRadius > 0 ? colliderRadius : 0.35;
+    const clearance = 0.25;
+
+    const sampleRatios: number[] = [];
+    for (let s = 0.005; s < 0.1; s += 0.005) {
+      sampleRatios.push(s);
+    }
+    for (let i = 4; i <= 40; i++) {
+      sampleRatios.push(i / 40);
+    }
+
+    let minWallTime = tFlat;
+
+    for (const s of sampleRatios) {
+      const sampleX = startX + (finalTargetX - startX) * s;
+      const sampleY = startY + (finalTargetY - startY) * s;
+
+      for (const wall of arena.walls) {
+        if (this.testWallIntersection(sampleX, sampleY, colliderRadiusCheck, wall)) {
+          const isTargetOnThisWall = (targetSurfaceHeight > 0 || (hoveredEntity && hoveredEntity.standingWall === wall)) &&
+            finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
+            finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
+          if (isTargetOnThisWall && s > 0.65) {
+            continue;
+          }
+
+          const baselineZ = (1 - s) * startZ + s * targetSurfaceHeight;
+          const requiredHeight = wall.wallHeight + clearance;
+          const requiredDeltaZ = requiredHeight - baselineZ;
+          if (requiredDeltaZ > 0) {
+            const denom = arena.gravity * s * (1 - s);
+            if (denom > 0.0001) {
+              const reqTimeSq = (2 * requiredDeltaZ) / denom;
+              if (reqTimeSq > 0) {
+                const reqTime = Math.sqrt(reqTimeSq);
+                if (reqTime > minWallTime) {
+                  minWallTime = reqTime;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const tMin = Math.max(0.02, tFlat, minWallTime);
     const tMax = Math.max(tMin, tHigh);
 
     let chosenT = 0;
     if (!this.hasUserSetArcRatio) {
-      const optRatio = (tMax - tMin > 0.001) ? Math.max(0.0, Math.min(1.0, (tOpt - tMin) / (tMax - tMin))) : 0.0;
-      this.savedArcRatio = optRatio;
-      chosenT = Math.max(tMin, Math.min(tMax, tOpt));
+      // In commit 824d5a7, standard throws used the flat, fast trajectory (actualDist / maxForwardSpeed):
+      this.savedArcRatio = 0.0;
+      chosenT = tMin;
     } else {
       chosenT = tMin + this.savedArcRatio * (tMax - tMin);
     }
