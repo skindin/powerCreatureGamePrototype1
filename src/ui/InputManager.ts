@@ -1055,45 +1055,35 @@ export class InputManager {
       const isLtPressed = isButtonPressed(6, 0.2);
       slot.isAltHeld = isLtPressed;
 
-      // Button 11 (R3 / Right Joystick Click): Clicking toggles Trajectory Scaling Mode (one click ON, another click OFF)
-      const isR3Current = isButtonPressed(11);
-      const isR3JustPressed = isR3Current && !isPrevPressed(11);
+      // Button 5 (RB / R1): Holding enters Trajectory Scaler Mode
+      const isRbPressed = isButtonPressed(5);
       const canModulateTrajectory = isHolding && Boolean(char.throwModule && char.throwModule.enabled) &&
         (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld);
 
-      if (isR3JustPressed) {
+      if (isRbPressed && canModulateTrajectory) {
         if (!slot.isLockHeld) {
-          if (canModulateTrajectory) {
-            slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
-            slot.isLockHeld = true;
-            slot.arcModulationDeltaY = 0;
-          }
-        } else {
-          // Toggle off on subsequent click
-          slot.lockedAimPos = null;
-          slot.isLockHeld = false;
-          slot.arcModulationCursor = null;
+          slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
+          slot.isLockHeld = true;
           slot.arcModulationDeltaY = 0;
         }
-      }
 
-      // Auto-exit trajectory mode if no longer eligible (e.g. not holding an item, or dropped, or food without LT)
-      if (slot.isLockHeld && !canModulateTrajectory) {
-        slot.lockedAimPos = null;
-        slot.isLockHeld = false;
-        slot.arcModulationCursor = null;
-        slot.arcModulationDeltaY = 0;
-      }
-
-      if (slot.isLockHeld && slot.lockedAimPos) {
-        // Freeze cursor at lockedAimPos while trajectory scaling mode is active
-        slot.aimPos.x = slot.lockedAimPos.x;
-        slot.aimPos.y = slot.lockedAimPos.y;
+        // Freeze cursor at lockedAimPos while RB is held
+        if (slot.lockedAimPos) {
+          slot.aimPos.x = slot.lockedAimPos.x;
+          slot.aimPos.y = slot.lockedAimPos.y;
+        }
 
         // Directional input from right joystick does NOT move cursor, but vertical deflection scales trajectory height
         if (Math.abs(ry) > deadzone) {
           const modulationSpeed = 450.0; // pixels per second on the rail
           slot.arcModulationDeltaY = (slot.arcModulationDeltaY ?? 0) + ry * modulationSpeed * dt;
+        }
+      } else {
+        if (slot.isLockHeld) {
+          slot.lockedAimPos = null;
+          slot.isLockHeld = false;
+          slot.arcModulationCursor = null;
+          slot.arcModulationDeltaY = 0;
         }
       }
 
@@ -1241,9 +1231,7 @@ export class InputManager {
         }
       }
 
-      // Button 7 (RT / R2) & Button 5 (RB / R1): Grab & Throw
-      const rbCurrent = isButtonPressed(5);
-      const rbJustPressed = rbCurrent && !isPrevPressed(5);
+      // Button 7 (RT / R2): Grab & Throw
       const rtCurrent = isButtonPressed(7);
       const rtJustReleased = !rtCurrent && isPrevPressed(7);
 
@@ -1276,17 +1264,10 @@ export class InputManager {
         if (isHoldingFood && !slot.isAltHeld) {
           // Food primary action without LT: RT held down continuously eats
           slot.isUsingItem = rtCurrent;
-          // Dedicated throw: RB
-          if (rbJustPressed && char.throwModule) {
-            slot.isThrowRequested = true;
-          }
         } else {
           slot.isUsingItem = false;
           // When holding LT (Alt) or holding non-food: RT throws!
           if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-            slot.isThrowRequested = true;
-          }
-          if (rbJustPressed && char.throwModule) {
             slot.isThrowRequested = true;
           }
         }

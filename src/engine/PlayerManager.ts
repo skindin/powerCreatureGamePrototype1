@@ -879,7 +879,7 @@ export class PlayerManager {
         }
       }
 
-      // Dedicated Throw (RT / RB / Left Click)
+      // Dedicated Throw (RT / Left Click)
       if (pkt.isThrow && char.heldObject && char.throwModule) {
         const thrownObj = char.heldObject;
         const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 3);
