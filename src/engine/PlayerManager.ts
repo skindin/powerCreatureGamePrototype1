@@ -638,34 +638,6 @@ export class PlayerManager {
         input.exitPointerLock();
       }
 
-      const isKeyboardThrow = input.isKeyboardThrowRequested ?? false;
-      let keyboardLaunchVel = isKeyboardThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
-      let keyboardLaunchPos = isKeyboardThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
-
-      const keyboardAimX = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-        ? input.recordedMousePos.x
-        : input.actualMousePos.x;
-      const keyboardAimY = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-        ? input.recordedMousePos.y
-        : input.actualMousePos.y;
-
-      if (isKeyboardThrow && kChar.heldObject && kChar.throwModule && (!keyboardLaunchVel || !keyboardLaunchPos)) {
-        const traj = kChar.throwModule.calculateTrajectory(
-          kChar,
-          keyboardAimX,
-          keyboardAimY,
-          this.arena,
-          this.arena.entities,
-          this.arena.visualAltitudeScale,
-          false,
-          input.lockedAimPos
-        );
-        if (traj?.launchVel && traj?.launchPos) {
-          keyboardLaunchVel = traj.launchVel;
-          keyboardLaunchPos = traj.launchPos;
-        }
-      }
-
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
@@ -675,25 +647,19 @@ export class PlayerManager {
         isGrabHeld: isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab,
         grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
-        isThrow: isKeyboardThrow,
+        isThrow: input.isKeyboardThrowRequested ?? false,
         isUsingItem,
-        aimX: keyboardAimX,
-        aimY: keyboardAimY,
+        aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.x
+          : input.actualMousePos.x,
+        aimY: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.y
+          : input.actualMousePos.y,
         isAiming: isMouseAiming,
         isLockHeld: Boolean(input.isRightMouseDown && input.lockedAimPos),
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
         aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
-        ...(keyboardLaunchVel ? {
-          launchVx: keyboardLaunchVel.vx,
-          launchVy: keyboardLaunchVel.vy,
-          launchVz: keyboardLaunchVel.vz
-        } : {}),
-        ...(keyboardLaunchPos ? {
-          launchStartX: keyboardLaunchPos.x,
-          launchStartY: keyboardLaunchPos.y,
-          launchStartZ: keyboardLaunchPos.z
-        } : {})
       } as any);
       input.aimLockRawDelta = 0; // Consume delta
       input.aimLockRawDx = 0;
@@ -781,25 +747,8 @@ export class PlayerManager {
         }
       }
 
-      let activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
-      let activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
-
-      if (slot.isThrowRequested && cChar.heldObject && cChar.throwModule && (!activeLaunchVel || !activeLaunchPos)) {
-        const traj = cChar.throwModule.calculateTrajectory(
-          cChar,
-          aimX,
-          aimY,
-          this.arena,
-          this.arena.entities,
-          this.arena.visualAltitudeScale,
-          false,
-          slot.lockedAimPos
-        );
-        if (traj?.launchVel && traj?.launchPos) {
-          activeLaunchVel = traj.launchVel;
-          activeLaunchPos = traj.launchPos;
-        }
-      }
+      const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
+      const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
       if (!slot.rtHeld) {
@@ -904,30 +853,9 @@ export class PlayerManager {
           char.facingAngle = Math.atan2(aimDy, aimDx);
         }
 
-        // Use the exact pre-calculated launch velocity and start position from the packet or client trajectory preview if available
-        let clientLaunchVel = (pkt as any).launchVx !== undefined && (pkt as any).launchVy !== undefined && (pkt as any).launchVz !== undefined
-          ? { vx: (pkt as any).launchVx, vy: (pkt as any).launchVy, vz: (pkt as any).launchVz }
-          : char.activeTrajectory?.launchVel;
-        let clientLaunchPos = (pkt as any).launchStartX !== undefined && (pkt as any).launchStartY !== undefined && (pkt as any).launchStartZ !== undefined
-          ? { x: (pkt as any).launchStartX, y: (pkt as any).launchStartY, z: (pkt as any).launchStartZ }
-          : char.activeTrajectory?.launchPos;
-
-        if (!clientLaunchVel || !clientLaunchPos) {
-          const traj = char.throwModule.calculateTrajectory(
-            char,
-            throwAimX,
-            throwAimY,
-            this.arena,
-            this.arena.entities,
-            this.arena.visualAltitudeScale,
-            false,
-            (pkt as any).lockedAimPos ?? null
-          );
-          if (traj?.launchVel && traj?.launchPos) {
-            clientLaunchVel = traj.launchVel;
-            clientLaunchPos = traj.launchPos;
-          }
-        }
+        // Use the exact pre-calculated launch velocity and start position from the client's active trajectory preview if available
+        const clientLaunchVel = char.activeTrajectory?.launchVel;
+        const clientLaunchPos = char.activeTrajectory?.launchPos;
 
         char.throwModule.throwHeldObject(
           char,

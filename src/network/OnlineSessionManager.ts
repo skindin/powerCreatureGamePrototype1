@@ -755,19 +755,47 @@ export class OnlineSessionManager {
     for (const { char: localChar, serverId: localServerId } of allLocalChars) {
       const myServerState = ghostChars.find((gc) => gc.id === localServerId);
       if (myServerState) {
+        // Local character position is dictated authoritatively by local simulation.
+        // We do NOT pull or blend the local player's position toward the delayed server ghost,
+        // which completely eliminates position fighting and join oscillations.
+        // Only adopt extreme server teleports (> 8.0u) if needed.
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
+        if (dist > 8.0) {
+          localChar.position.x = myServerState.x;
+          localChar.position.y = myServerState.y;
+          localChar.velocity.x = myServerState.vx;
+          localChar.velocity.y = myServerState.vy;
+        }
 
-        // Synchronize external server pushes & impulses on the local character (from commit 824d5a7):
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+        // Gentle local overlap relaxation: if local character is overlapping an object,
+        // gently push them apart so local collision resolver and server sync don't fight
+        for (const obj of this.gameLoop.objects) {
+          if (obj.isHeld) continue;
+          const minDistance = localChar.colliderRadius + obj.colliderRadius;
+          const ox = obj.position.x - localChar.position.x;
+          const oy = obj.position.y - localChar.position.y;
+          const oDist = Math.hypot(ox, oy);
+          if (oDist < minDistance) {
+            if (Math.abs(localChar.position.z - obj.position.z) < 0.8) {
+              const overlap = minDistance - oDist + 0.03;
+              let nx: number;
+              let ny: number;
+              if (oDist > 0.001) {
+                nx = ox / oDist;
+                ny = oy / oDist;
+              } else {
+                const randomAngle = Math.random() * Math.PI * 2;
+                nx = Math.cos(randomAngle);
+                ny = Math.sin(randomAngle);
+              }
+              localChar.position.x -= nx * (overlap * 0.5);
+              localChar.position.y -= ny * (overlap * 0.5);
+              obj.position.x += nx * (overlap * 0.5);
+              obj.position.y += ny * (overlap * 0.5);
+              obj.wakeUp();
+            }
           }
         }
       }
