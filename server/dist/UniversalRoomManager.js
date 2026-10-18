@@ -8011,6 +8011,11 @@ class Character extends GameObject {
     // Angle in radians
     __publicField(this, "lastMovementInputAngle", 0);
     // Most recent movement input angle in radians
+    __publicField(this, "lastThrowAimAngle");
+    // Preserved direction angle from character to cursor when throw mode was active
+    __publicField(this, "savedArcRatio");
+    // Preserved trajectory ratio between min and max arcs (never reset per character)
+    __publicField(this, "hasUserSetArcRatio", false);
     __publicField(this, "heldObject");
     __publicField(this, "isCharacter", true);
     __publicField(this, "isActivelyWalking", false);
@@ -8449,6 +8454,13 @@ class Character extends GameObject {
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
     if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
+      if (this.hasUserSetArcRatio && this.savedArcRatio !== void 0) {
+        this.throwModule.hasUserSetArcRatio = true;
+        this.throwModule.savedArcRatio = this.savedArcRatio;
+      } else if (this.throwModule.hasUserSetArcRatio) {
+        this.hasUserSetArcRatio = true;
+        this.savedArcRatio = this.throwModule.savedArcRatio;
+      }
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

@@ -45,6 +45,9 @@ export class Character extends GameObject {
 
   public facingAngle: number; // Angle in radians
   public lastMovementInputAngle = 0; // Most recent movement input angle in radians
+  public lastThrowAimAngle?: number; // Preserved direction angle from character to cursor when throw mode was active
+  public savedArcRatio?: number; // Preserved trajectory ratio between min and max arcs (never reset per character)
+  public hasUserSetArcRatio: boolean = false;
   public heldObject: GameObject | null;
 
   public override isCharacter = true;
@@ -657,6 +660,13 @@ export class Character extends GameObject {
     this.aimTarget = isAimingInput ? aimTargetPos : null;
 
     if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
+      if (this.hasUserSetArcRatio && this.savedArcRatio !== undefined) {
+        this.throwModule.hasUserSetArcRatio = true;
+        this.throwModule.savedArcRatio = this.savedArcRatio;
+      } else if (this.throwModule.hasUserSetArcRatio) {
+        this.hasUserSetArcRatio = true;
+        this.savedArcRatio = this.throwModule.savedArcRatio;
+      }
       this.activeTrajectory = this.throwModule.calculateTrajectory(
         this,
         aimTargetPos.x,

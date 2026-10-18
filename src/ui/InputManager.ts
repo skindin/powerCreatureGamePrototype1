@@ -33,6 +33,11 @@ export interface GamepadSlotState {
   isDropRequested?: boolean;
   isJumpRequested?: boolean;
   isUsingItem?: boolean;
+  isAltHeld?: boolean;
+  wasAltHeld?: boolean;
+  lastThrowAimAngle?: number;
+  arcModulationCursor?: Vector2D | null;
+  arcModulationDeltaY?: number;
 }
 
 export interface CanvasViewport {
@@ -58,6 +63,7 @@ export class InputManager {
   public isQKeyDepressed = false;
   public isKeyboardSprintActive = false;
   public isAltHeld = false;
+  public lastKeyboardThrowAimAngle?: number;
 
   public isKeyPressed(code: string): boolean {
     return this.keysPressed.has(code);
@@ -136,6 +142,7 @@ export class InputManager {
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
+  public arcModulationDeltaY: number = 0; // Accumulated vertical mouse delta for trajectory modulation
   public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
   public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
   public lastClientX: number | null = null;
@@ -408,12 +415,7 @@ export class InputManager {
         this.aimLockRawDx += movementDx;
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
-
-        // Allow raw mouse input to move modulation game cursor in every direction without canvas clamping
-        if (this.arcModulationCursor) {
-          this.arcModulationCursor.x += movementDx;
-          this.arcModulationCursor.y += movementDy;
-        }
+        this.arcModulationDeltaY += movementDy;
 
         // Keep game cursor snapped to recorded mouse pos
         if (this.recordedMousePos) {
@@ -461,6 +463,7 @@ export class InputManager {
       this.isAwaitingUnlock = false;
       this.lockedAimPos = null;
       this.arcModulationCursor = null;
+      this.arcModulationDeltaY = 0;
       this.arcDetentSide = null;
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
@@ -514,6 +517,7 @@ export class InputManager {
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
+          this.arcModulationDeltaY = 0;
           this.arcModulationCursor = null;
           this.arcDetentSide = null;
           this.lastClientX = e.clientX;
@@ -569,6 +573,7 @@ export class InputManager {
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
+        this.arcModulationDeltaY = 0;
         this.arcModulationCursor = null;
         this.arcDetentSide = null;
         this.lastClientX = null;
@@ -900,29 +905,19 @@ export class InputManager {
         }
       }
 
-      // Check extra axes for paddles if available (e.g. axes[4], axes[6])
-      let axisLeftPaddle = false;
-      let axisRightPaddle = false;
-      if (gp.axes && gp.axes.length > 4) {
-        if (gp.axes.length > 5 && Math.abs(gp.axes[4]) > 0.5) {
-          if (gp.axes[4] < -0.5) axisLeftPaddle = true;
-          else if (gp.axes[4] > 0.5) axisRightPaddle = true;
-        }
-      }
-
       // Left Under-Paddle (M2) / Sprint buttons:
-      // LB (4), L3 (10), plus extended M2 back paddles & paddle axes
+      // LB (4), L3 (10), plus extended M2 back paddles (buttons 17+)
       const leftPaddleButtonIndices = [4, 10];
-      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
+      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
-      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles & paddle axes.
+      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles (buttons 16+).
       // NOTE: Burger / Menu / Start (Button 9) and D-pad Right (Button 15) are strictly excluded so they do NOT trigger jump!
       const rightPaddleButtonIndices = [0];
-      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
+      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
 
@@ -969,10 +964,12 @@ export class InputManager {
           slot.hasMovedAimStick = false;
         }
         slot.aimMovedWhileInRange = false;
+        slot.lastThrowAimAngle = undefined;
+        char.lastThrowAimAngle = undefined;
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+          : (char.facingAngle ?? 0);
         slot.lastMovementInputAngle = inputAngle;
         char.lastMovementInputAngle = inputAngle;
         char.facingAngle = inputAngle;
@@ -1017,27 +1014,34 @@ export class InputManager {
       );
 
       if (isHolding) {
-        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character in latest movement input direction
+        // If holding an object and player has NOT moved the right aim stick yet
         if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            char.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
+          const isThrowActive = !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+          if (isThrowActive) {
+            let dirX = 1;
+            let dirY = 0;
+            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+            if (moveMag > 0.05) {
+              dirX = slot.movementVector.x / moveMag;
+              dirY = slot.movementVector.y / moveMag;
+              const moveAngle = Math.atan2(dirY, dirX);
+              slot.lastMovementInputAngle = moveAngle;
+              char.lastMovementInputAngle = moveAngle;
+              char.facingAngle = moveAngle;
+              char.lastThrowAimAngle = moveAngle;
+              slot.lastThrowAimAngle = moveAngle;
+            } else {
+              const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+              dirX = Math.cos(facing);
+              dirY = Math.sin(facing);
+            }
+            const forwardDist = 3.0;
+            slot.aimPos.x = char.position.x + dirX * forwardDist;
+            slot.aimPos.y = char.position.y + dirY * forwardDist;
+            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+            slot.aimOffset.x = dirX * forwardDist;
+            slot.aimOffset.y = dirY * forwardDist;
           }
-          const forwardDist = 3.0;
-          slot.aimPos.x = char.position.x + dirX * forwardDist;
-          slot.aimPos.y = char.position.y + dirY * forwardDist;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = dirX * forwardDist;
-          slot.aimOffset.y = dirY * forwardDist;
         }
       } else {
         // Empty-handed:
@@ -1059,21 +1063,108 @@ export class InputManager {
         }
       }
 
-      if (rMag > deadzone) {
-        const cursorSpeed = 17.0;
-        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
-          // Starting to aim around grabbables: start directly at the character!
-          slot.aimPos.x = char.position.x;
-          slot.aimPos.y = char.position.y;
+      // Button 6 (LT / L2): Act like Alt (switches from dynamic primary ability e.g. eating to explicit throwing mode)
+      const isLtPressed = isButtonPressed(6, 0.2);
+      const isLtJustPressed = isLtPressed && !slot.wasAltHeld;
+      slot.wasAltHeld = isLtPressed;
+      slot.isAltHeld = isLtPressed;
+
+      if (isHolding && char.isPrimaryAbilityNonDirectional()) {
+        if (isLtJustPressed) {
+          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
+          // in the exact direction the cursor was relative to the character when exiting throwing mode!
+          slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
+
+          const aimAngle = char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? (char.facingAngle ?? 0);
+          const dirX = Math.cos(aimAngle);
+          const dirY = Math.sin(aimAngle);
+          const forwardDist = 3.0;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
+          char.facingAngle = aimAngle;
+          char.lastThrowAimAngle = aimAngle;
+          slot.lastThrowAimAngle = aimAngle;
+        } else if (!isLtPressed) {
+          slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
         }
-        slot.hasMovedAimStick = true;
-        slot.aimPos.x += rx * cursorSpeed * dt;
-        slot.aimPos.y += ry * cursorSpeed * dt;
-        slot.lastAimMoveTime = performance.now();
-        slot.aimMovedWhileInRange = true;
+      }
+
+      // Button 5 (RB / R1): Holding enters Trajectory Scaler Mode
+      const isRbPressed = isButtonPressed(5);
+      const canModulateTrajectory = isHolding && Boolean(char.throwModule && char.throwModule.enabled) &&
+        (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld);
+
+      if (isRbPressed && canModulateTrajectory) {
+        if (!slot.isLockHeld) {
+          slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
+          slot.isLockHeld = true;
+          slot.arcModulationDeltaY = 0;
+        }
+
+        // Freeze cursor at lockedAimPos while RB is held
+        if (slot.lockedAimPos) {
+          slot.aimPos.x = slot.lockedAimPos.x;
+          slot.aimPos.y = slot.lockedAimPos.y;
+        }
+
+        // Directional input from right joystick does NOT move cursor, but vertical deflection scales trajectory height
+        if (Math.abs(ry) > deadzone) {
+          const modulationSpeed = 450.0; // pixels per second on the rail
+          slot.arcModulationDeltaY = (slot.arcModulationDeltaY ?? 0) + ry * modulationSpeed * dt;
+        }
+      } else {
+        if (slot.isLockHeld) {
+          slot.lockedAimPos = null;
+          slot.isLockHeld = false;
+          slot.arcModulationCursor = null;
+          slot.arcModulationDeltaY = 0;
+        }
+      }
+
+      if (rMag > deadzone && !slot.isLockHeld) {
+        // Only move aim cursor if aiming is enabled: when holding non-directional food, only aim if in throw mode (LT held)
+        const canAim = !isHolding || !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+        if (canAim) {
+          const cursorSpeed = 17.0;
+          if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
+            // Starting to aim around grabbables: start directly at the character!
+            slot.aimPos.x = char.position.x;
+            slot.aimPos.y = char.position.y;
+            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+            slot.aimOffset.x = 0;
+            slot.aimOffset.y = 0;
+          }
+          slot.hasMovedAimStick = true;
+          slot.aimPos.x += rx * cursorSpeed * dt;
+          slot.aimPos.y += ry * cursorSpeed * dt;
+          slot.lastAimMoveTime = performance.now();
+          slot.aimMovedWhileInRange = true;
+
+          const aimDx = slot.aimPos.x - char.position.x;
+          const aimDy = slot.aimPos.y - char.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            const angle = Math.atan2(aimDy, aimDx);
+            slot.lastThrowAimAngle = angle;
+            char.lastThrowAimAngle = angle;
+          }
+        }
+      }
+
+      if (isHolding && (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld)) {
+        if (slot.hasMovedAimStick) {
+          const aimDx = slot.aimPos.x - char.position.x;
+          const aimDy = slot.aimPos.y - char.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            const angle = Math.atan2(aimDy, aimDx);
+            slot.lastThrowAimAngle = angle;
+            char.lastThrowAimAngle = angle;
+          }
+        }
       }
 
       const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
@@ -1083,16 +1174,6 @@ export class InputManager {
       slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
       slot.aimOffset.x = clampedX - char.position.x;
       slot.aimOffset.y = clampedY - char.position.y;
-
-      // Button 6 (LT / L2): Aim Lock & Drag
-      // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
-      const isLtPressed = isButtonPressed(6, 0.2);
-      if (isLtPressed && !slot.isLockHeld) {
-        slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
-      } else if (!isLtPressed) {
-        slot.lockedAimPos = null;
-      }
-      slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
       slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);
@@ -1149,10 +1230,12 @@ export class InputManager {
       const onGrabSuccess = () => {
         slot.hasMovedAimStick = false;
         slot.aimMovedWhileInRange = false;
+        slot.lastThrowAimAngle = undefined;
+        char.lastThrowAimAngle = undefined;
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+          : (char.facingAngle ?? 0);
         slot.lastMovementInputAngle = inputAngle;
         char.lastMovementInputAngle = inputAngle;
         char.facingAngle = inputAngle;
@@ -1213,9 +1296,7 @@ export class InputManager {
         }
       }
 
-      // Button 7 (RT / R2) & Button 5 (RB / R1): Grab & Throw
-      const rbCurrent = isButtonPressed(5);
-      const rbJustPressed = rbCurrent && !isPrevPressed(5);
+      // Button 7 (RT / R2): Grab & Throw
       const rtCurrent = isButtonPressed(7);
       const rtJustReleased = !rtCurrent && isPrevPressed(7);
 
@@ -1245,19 +1326,13 @@ export class InputManager {
         slot.rtHeld = false;
 
         const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
-        if (isHoldingFood) {
-          // Food primary action: RT held down continuously eats
+        if (isHoldingFood && !slot.isAltHeld) {
+          // Food primary action without LT: RT held down continuously eats
           slot.isUsingItem = rtCurrent;
-          // Dedicated throw: RB
-          if (rbJustPressed && char.throwModule) {
-            slot.isThrowRequested = true;
-          }
         } else {
           slot.isUsingItem = false;
+          // When holding LT (Alt) or holding non-food: RT throws!
           if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-            slot.isThrowRequested = true;
-          }
-          if (rbJustPressed && char.throwModule) {
             slot.isThrowRequested = true;
           }
         }

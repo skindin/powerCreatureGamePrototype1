@@ -1,7 +1,7 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
-import { InputManager } from "../ui/InputManager.js";
+import { InputManager, type GamepadSlotState } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
@@ -59,6 +59,7 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
+  private wasKeyboardThrowActive: boolean = false;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -523,6 +524,27 @@ export class PlayerManager {
       // Ability swap stays in effect until the swapped ability is released.
       const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
 
+      if (isHolding && isPrimaryNonDirectional) {
+        if (isThrowActive && !this.wasKeyboardThrowActive) {
+          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
+          // in the exact direction the cursor was relative to the character when exiting throwing mode!
+          const forwardDist = 3.0;
+          const aimAngle = kChar.lastThrowAimAngle !== undefined
+            ? kChar.lastThrowAimAngle
+            : (this.inputManager.lastKeyboardThrowAimAngle !== undefined
+              ? this.inputManager.lastKeyboardThrowAimAngle
+              : (kChar.facingAngle ?? 0));
+          input.actualMousePos.x = kChar.position.x + Math.cos(aimAngle) * forwardDist;
+          input.actualMousePos.y = kChar.position.y + Math.sin(aimAngle) * forwardDist;
+          input.mousePos.x = input.actualMousePos.x;
+          input.mousePos.y = input.actualMousePos.y;
+          kChar.facingAngle = aimAngle;
+          kChar.lastThrowAimAngle = aimAngle;
+          this.inputManager.lastKeyboardThrowAimAngle = aimAngle;
+        }
+      }
+      this.wasKeyboardThrowActive = isThrowActive;
+
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
       // 2. Mouse button is down, or
@@ -599,7 +621,10 @@ export class PlayerManager {
           const aimDx = input.actualMousePos.x - kChar.position.x;
           const aimDy = input.actualMousePos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
-            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+            const angle = Math.atan2(aimDy, aimDx);
+            kChar.facingAngle = angle;
+            kChar.lastThrowAimAngle = angle;
+            this.inputManager.lastKeyboardThrowAimAngle = angle;
           }
         } else {
           // Non-directional primary ability (e.g. food): face movement direction
@@ -637,6 +662,7 @@ export class PlayerManager {
         }
         input.lockedAimPos = null;
         input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
         input.arcDetentSide = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
@@ -698,22 +724,6 @@ export class PlayerManager {
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
-      if (!slot.hasMovedAimStick) {
-        let dirX = 1;
-        let dirY = 0;
-        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-        if (moveMag > 0.05) {
-          dirX = slot.movementVector.x / moveMag;
-          dirY = slot.movementVector.y / moveMag;
-        } else {
-          const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
-          dirX = Math.cos(inputAngle);
-          dirY = Math.sin(inputAngle);
-        }
-        aimX = cChar.position.x + dirX * 3.0;
-        aimY = cChar.position.y + dirY * 3.0;
-      }
-
       const isCharHolding = cChar.heldObject !== null;
       const gpGrabState = this.getGrabSuppressionState(cChar.id);
 
@@ -744,8 +754,11 @@ export class PlayerManager {
         }
       }
 
-      // Ensure facingAngle is explicit: face locked target object if locked, otherwise face aim when holding, movement direction when walking
-      if (cChar.heldObject) {
+      const hasPrimaryAbility = cChar.hasPrimaryItemAbility();
+      const isThrowActive = isCharHolding && (!hasPrimaryAbility || Boolean(slot.isAltHeld));
+
+      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode, movement direction when walking
+      if (isCharHolding && isThrowActive) {
         if (slot.lockedAimPos) {
           const aimDx = slot.lockedAimPos.x - cChar.position.x;
           const aimDy = slot.lockedAimPos.y - cChar.position.y;
@@ -773,8 +786,10 @@ export class PlayerManager {
       if (!slot.rtHeld) {
         gpGrabState.useItemSuppressed = false;
       }
-      const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed;
+      const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed && !slot.isAltHeld;
       const isUsingItem = isCharHoldingConsumable && canGamepadUseItem;
+
+      const isGamepadAiming = (isCharHolding && isThrowActive) || (!isCharHolding && Boolean(slot.aimMovedWhileInRange));
 
       map.set(entry.id, {
         playerId: entry.id,
@@ -790,7 +805,7 @@ export class PlayerManager {
         isUsingItem,
         aimX,
         aimY,
-        isAiming: true,
+        isAiming: isGamepadAiming,
         isLockHeld: slot.isLockHeld ?? false,
         lockedAimPos: slot.lockedAimPos ? { ...slot.lockedAimPos } : null,
         facingAngle: cChar.facingAngle,
@@ -845,6 +860,18 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
+        input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
+        if (entry && entry.slotIndex !== undefined) {
+          const slot = input.gamepadSlots.get(entry.slotIndex);
+          if (slot) {
+            slot.isLockHeld = false;
+            slot.lockedAimPos = null;
+            slot.arcModulationCursor = null;
+            slot.arcModulationDeltaY = 0;
+            slot.lastThrowAimAngle = undefined;
+          }
+        }
         if (!isReplay) {
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {
@@ -859,7 +886,7 @@ export class PlayerManager {
         }
       }
 
-      // Dedicated Throw (RT / RB / Left Click)
+      // Dedicated Throw (RT / Left Click)
       if (pkt.isThrow && char.heldObject && char.throwModule) {
         const thrownObj = char.heldObject;
         const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 3);
@@ -893,13 +920,20 @@ export class PlayerManager {
         );
         char.isUsingItem = false;
         char.eatRateWatts = 0;
+        input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
 
-        // Once the throw completes and character is empty-handed, reset aim stick movement flags
+        // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
         if (entry && entry.slotIndex !== undefined) {
           const slot = input.gamepadSlots.get(entry.slotIndex);
           if (slot) {
             slot.hasMovedAimStick = false;
             slot.aimMovedWhileInRange = false;
+            slot.isLockHeld = false;
+            slot.lockedAimPos = null;
+            slot.arcModulationCursor = null;
+            slot.arcModulationDeltaY = 0;
+            slot.lastThrowAimAngle = undefined;
           }
         }
 
@@ -932,6 +966,11 @@ export class PlayerManager {
 
       if (entry?.isKeyboard) {
         this.updateArcModulation(char);
+      } else if (entry?.slotIndex !== undefined) {
+        const slot = input.gamepadSlots.get(entry.slotIndex);
+        if (slot) {
+          this.updateArcModulation(char, slot);
+        }
       }
 
       char.updateCharacter(
@@ -1368,25 +1407,34 @@ export class PlayerManager {
         }
 
         if (isHolding) {
+          const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
+          const isThrowActive = !char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld);
+
           if (!slot.hasMovedAimStick) {
-            let dirX = 1;
-            let dirY = 0;
-            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-            if (moveMag > 0.05) {
-              dirX = slot.movementVector.x / moveMag;
-              dirY = slot.movementVector.y / moveMag;
-              slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-              char.lastMovementInputAngle = slot.lastMovementInputAngle;
-            } else {
-              const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-              dirX = Math.cos(inputAngle);
-              dirY = Math.sin(inputAngle);
+            if (isThrowActive) {
+              let dirX = 1;
+              let dirY = 0;
+              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+              if (moveMag > 0.05) {
+                dirX = slot.movementVector.x / moveMag;
+                dirY = slot.movementVector.y / moveMag;
+                const moveAngle = Math.atan2(dirY, dirX);
+                slot.lastMovementInputAngle = moveAngle;
+                char.lastMovementInputAngle = moveAngle;
+                char.facingAngle = moveAngle;
+                char.lastThrowAimAngle = moveAngle;
+                slot.lastThrowAimAngle = moveAngle;
+              } else {
+                const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+                dirX = Math.cos(facing);
+                dirY = Math.sin(facing);
+              }
+              const forwardDist = 3.0;
+              slot.aimPos.x = char.position.x + dirX * forwardDist;
+              slot.aimPos.y = char.position.y + dirY * forwardDist;
+              slot.aimOffset.x = dirX * forwardDist;
+              slot.aimOffset.y = dirY * forwardDist;
             }
-            const forwardDist = 3.0;
-            slot.aimPos.x = char.position.x + dirX * forwardDist;
-            slot.aimPos.y = char.position.y + dirY * forwardDist;
-            slot.aimOffset.x = dirX * forwardDist;
-            slot.aimOffset.y = dirY * forwardDist;
           } else {
             // Preserve world aimPos instead of dragging it with player movement
             if (slot.aimPos) {
@@ -1395,8 +1443,14 @@ export class PlayerManager {
             }
           }
 
-          // Holding an object: do not hide cursor at all!
-          isCursorVisibleNow = true;
+          // If holding an object whose primary ability is non-directional (like an apple / eating),
+          // ONLY show cursor if LT (Alt) is held!
+          if (isPrimaryNonDirectional && !isThrowActive) {
+            isCursorVisibleNow = false;
+            slot.hasMovedAimStick = false;
+          } else {
+            isCursorVisibleNow = true;
+          }
         } else {
           // Empty-handed: around something to grab or roaming
           if (!hasReachable) {
@@ -1474,9 +1528,13 @@ export class PlayerManager {
    * 2. Modulates savedArcRatio directly using vertical mouse movement along the rail.
    * 3. Clamps savedArcRatio strictly between 0.0 (lowest / flattest trajectory) and 1.0 (highest / steepest trajectory).
    */
-  public updateArcModulation(char: Character): void {
+  public updateArcModulation(char: Character, slot?: GamepadSlotState): void {
     const input = this.inputManager;
-    if (!input.isRightMouseDown || !input.lockedAimPos || !char.heldObject || !char.throwModule) {
+    const isLocked = slot
+      ? Boolean(slot.isLockHeld && slot.lockedAimPos)
+      : Boolean(input.isRightMouseDown && input.lockedAimPos);
+
+    if (!isLocked || !char.heldObject || !char.throwModule) {
       return;
     }
 
@@ -1489,36 +1547,68 @@ export class PlayerManager {
     const rail = TrajectoryRenderer.calculateMidpointRail(char, this.arena, traj, ppu, hoverScale);
     if (!rail) return;
 
-    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio } = rail;
+    const { midScreenX, lowScreenY, lineDy, lineLen, optRatio } = rail;
 
-    // Initialize cursor position on the vertical line if not yet initialized
-    if (!input.arcModulationCursor) {
-      if (!char.throwModule.hasUserSetArcRatio) {
-        char.throwModule.savedArcRatio = optRatio;
+    let deltaY = 0;
+    if (slot) {
+      if (slot.arcModulationDeltaY) {
+        deltaY = slot.arcModulationDeltaY;
+        slot.arcModulationDeltaY = 0;
       }
-      const curRatio = char.throwModule.savedArcRatio;
-      input.arcModulationCursor = {
-        x: midScreenX,
-        y: lowScreenY + curRatio * lineDy,
-      };
+    } else {
+      if (input.arcModulationDeltaY) {
+        deltaY = input.arcModulationDeltaY;
+        input.arcModulationDeltaY = 0;
+      }
     }
-
-    const cursor = input.arcModulationCursor;
-    cursor.x = midScreenX;
 
     if (lineLen <= 1) {
       return;
     }
 
-    // Clamp cursor vertically between highScreenY (top of rail, ratio 1.0) and lowScreenY (bottom of rail, ratio 0.0)
-    // with a slight 8px overshoot padding so reaching the exact ends (0.0 and 1.0) is effortless
-    const minY = Math.min(highScreenY, lowScreenY);
-    const maxY = Math.max(highScreenY, lowScreenY);
-    cursor.y = Math.max(minY - 8, Math.min(maxY + 8, cursor.y));
+    const effRailHeight = Math.max(30, lineLen);
 
-    // Map screen Y smoothly to arc ratio: lowScreenY = 0.0 (flattest), highScreenY = 1.0 (steepest)
-    const progress = Math.max(0.0, Math.min(1.0, (lowScreenY - cursor.y) / (lowScreenY - highScreenY)));
-    char.throwModule.savedArcRatio = progress;
-    char.throwModule.hasUserSetArcRatio = true;
+    if (char.hasUserSetArcRatio && char.savedArcRatio !== undefined) {
+      char.throwModule.hasUserSetArcRatio = true;
+      char.throwModule.savedArcRatio = char.savedArcRatio;
+    }
+
+    if (Math.abs(deltaY) > 0.001) {
+      if (!char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = optRatio;
+      }
+      // Moving up (negative deltaY) increases ratio towards 1.0 (steepest/highest)
+      // Moving down (positive deltaY) decreases ratio towards 0.0 (flattest/lowest)
+      const deltaRatio = -deltaY / effRailHeight;
+      char.throwModule.savedArcRatio = Math.max(0.0, Math.min(1.0, char.throwModule.savedArcRatio + deltaRatio));
+      char.throwModule.hasUserSetArcRatio = true;
+      char.savedArcRatio = char.throwModule.savedArcRatio;
+      char.hasUserSetArcRatio = true;
+    } else {
+      // When moving without modulating, if user hasn't customized arc yet, track optRatio live
+      if (!char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = optRatio;
+      }
+    }
+
+    // Keep cursor aligned with the current arc ratio on the live rail
+    const curRatio = char.throwModule.savedArcRatio;
+    const curCursorY = lowScreenY + curRatio * lineDy;
+
+    if (slot) {
+      if (!slot.arcModulationCursor) {
+        slot.arcModulationCursor = { x: midScreenX, y: curCursorY };
+      } else {
+        slot.arcModulationCursor.x = midScreenX;
+        slot.arcModulationCursor.y = curCursorY;
+      }
+    } else {
+      if (!input.arcModulationCursor) {
+        input.arcModulationCursor = { x: midScreenX, y: curCursorY };
+      } else {
+        input.arcModulationCursor.x = midScreenX;
+        input.arcModulationCursor.y = curCursorY;
+      }
+    }
   }
 }
