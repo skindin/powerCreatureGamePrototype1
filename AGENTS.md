@@ -94,6 +94,10 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - `PlayerManager` initializes with unassigned `baseCharacter` and `isKeyboardActive = false`.
   - The first active device (gamepad button or keydown/click/touch) cleanly claims `baseCharacter`.
   - Inactive keyboard placeholders are automatically replaced when a gamepad connects, eliminating ghost/duplicate character spawns on phones and controllers.
+- **Controller Ability Swap & Trajectory Scaling**:
+  - Left Trigger (Button 6 / LT) acts as Alt: switches from non-directional consumable abilities (e.g. eating an apple) to explicit throwing mode (revealing reticle and trajectory).
+  - Triggers are strictly isolated from jump paddles (axes 4/5 trigger detection removed).
+  - Right Joystick Click (Button 11 / R3) acts as Right Mouse Click: freezes game cursor at locked position and vertical deflection (`ry`) modulates trajectory arc height along the midpoint guide rail.
 
 ---
 

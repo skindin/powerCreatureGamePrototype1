@@ -33,6 +33,9 @@ export interface GamepadSlotState {
   isDropRequested?: boolean;
   isJumpRequested?: boolean;
   isUsingItem?: boolean;
+  isAltHeld?: boolean;
+  arcModulationCursor?: Vector2D | null;
+  arcModulationDeltaY?: number;
 }
 
 export interface CanvasViewport {
@@ -900,29 +903,19 @@ export class InputManager {
         }
       }
 
-      // Check extra axes for paddles if available (e.g. axes[4], axes[6])
-      let axisLeftPaddle = false;
-      let axisRightPaddle = false;
-      if (gp.axes && gp.axes.length > 4) {
-        if (gp.axes.length > 5 && Math.abs(gp.axes[4]) > 0.5) {
-          if (gp.axes[4] < -0.5) axisLeftPaddle = true;
-          else if (gp.axes[4] > 0.5) axisRightPaddle = true;
-        }
-      }
-
       // Left Under-Paddle (M2) / Sprint buttons:
-      // LB (4), L3 (10), plus extended M2 back paddles & paddle axes
+      // LB (4), L3 (10), plus extended M2 back paddles (buttons 17+)
       const leftPaddleButtonIndices = [4, 10];
-      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle || axisLeftPaddle;
+      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
       const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
-      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles & paddle axes.
+      // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles (buttons 16+).
       // NOTE: Burger / Menu / Start (Button 9) and D-pad Right (Button 15) are strictly excluded so they do NOT trigger jump!
       const rightPaddleButtonIndices = [0];
-      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle || axisRightPaddle;
+      const rightPaddleCurrent = isAnyButtonPressed(rightPaddleButtonIndices) || extendedRightPaddle;
       const rightPaddlePrev = isAnyButtonPrevPressed(rightPaddleButtonIndices) || extendedPrevRightPaddle;
       const rightPaddleJustPressed = rightPaddleCurrent && !rightPaddlePrev;
 
@@ -1059,7 +1052,42 @@ export class InputManager {
         }
       }
 
-      if (rMag > deadzone) {
+      // Button 6 (LT / L2): Act like Alt (switches from dynamic primary ability e.g. eating to explicit throwing mode)
+      const isLtPressed = isButtonPressed(6, 0.2);
+      slot.isAltHeld = isLtPressed;
+
+      // Button 11 (R3 / Right Joystick Click): Holding acts like holding Right Mouse Button (Trajectory Scaling Mode)
+      const isR3Pressed = isButtonPressed(11);
+      const canModulateTrajectory = isHolding && Boolean(char.throwModule && char.throwModule.enabled) &&
+        (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld);
+
+      if (isR3Pressed && canModulateTrajectory) {
+        if (!slot.isLockHeld) {
+          slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
+          slot.isLockHeld = true;
+          slot.arcModulationDeltaY = 0;
+        }
+        // Freeze cursor at lockedAimPos while R3 is held
+        if (slot.lockedAimPos) {
+          slot.aimPos.x = slot.lockedAimPos.x;
+          slot.aimPos.y = slot.lockedAimPos.y;
+        }
+
+        // Directional input from right joystick does NOT move cursor, but vertical deflection scales trajectory height
+        if (Math.abs(ry) > deadzone) {
+          const modulationSpeed = 450.0; // pixels per second on the rail
+          slot.arcModulationDeltaY = (slot.arcModulationDeltaY ?? 0) + ry * modulationSpeed * dt;
+        }
+      } else {
+        if (slot.isLockHeld) {
+          slot.lockedAimPos = null;
+          slot.isLockHeld = false;
+          slot.arcModulationCursor = null;
+          slot.arcModulationDeltaY = 0;
+        }
+      }
+
+      if (rMag > deadzone && !slot.isLockHeld) {
         const cursorSpeed = 17.0;
         if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
           // Starting to aim around grabbables: start directly at the character!
@@ -1083,16 +1111,6 @@ export class InputManager {
       slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
       slot.aimOffset.x = clampedX - char.position.x;
       slot.aimOffset.y = clampedY - char.position.y;
-
-      // Button 6 (LT / L2): Aim Lock & Drag
-      // Strictly check Button 6 (LT trigger). Never check raw axes which can rest non-zero on mobile/unmapped pads!
-      const isLtPressed = isButtonPressed(6, 0.2);
-      if (isLtPressed && !slot.isLockHeld) {
-        slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
-      } else if (!isLtPressed) {
-        slot.lockedAimPos = null;
-      }
-      slot.isLockHeld = isLtPressed;
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
       slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);
@@ -1245,8 +1263,8 @@ export class InputManager {
         slot.rtHeld = false;
 
         const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
-        if (isHoldingFood) {
-          // Food primary action: RT held down continuously eats
+        if (isHoldingFood && !slot.isAltHeld) {
+          // Food primary action without LT: RT held down continuously eats
           slot.isUsingItem = rtCurrent;
           // Dedicated throw: RB
           if (rbJustPressed && char.throwModule) {
@@ -1254,6 +1272,7 @@ export class InputManager {
           }
         } else {
           slot.isUsingItem = false;
+          // When holding LT (Alt) or holding non-food: RT throws!
           if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
             slot.isThrowRequested = true;
           }
