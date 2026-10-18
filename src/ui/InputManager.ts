@@ -965,7 +965,7 @@ export class InputManager {
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+          : (char.facingAngle ?? 0);
         slot.lastMovementInputAngle = inputAngle;
         char.lastMovementInputAngle = inputAngle;
         char.facingAngle = inputAngle;
@@ -1021,9 +1021,9 @@ export class InputManager {
             slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
             char.lastMovementInputAngle = slot.lastMovementInputAngle;
           } else {
-            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
+            const facing = char.facingAngle ?? 0;
+            dirX = Math.cos(facing);
+            dirY = Math.sin(facing);
           }
           const forwardDist = 3.0;
           slot.aimPos.x = char.position.x + dirX * forwardDist;
@@ -1061,23 +1061,13 @@ export class InputManager {
       if (isHolding && char.isPrimaryAbilityNonDirectional()) {
         if (isLtJustPressed) {
           // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
-          // matching the initial grab default position when aim stick hasn't been moved yet
+          // in the exact direction the character was actually facing when exiting or moving
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
 
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            char.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-            dirX = Math.cos(inputAngle);
-            dirY = Math.sin(inputAngle);
-          }
+          const facing = char.facingAngle ?? 0;
+          const dirX = Math.cos(facing);
+          const dirY = Math.sin(facing);
           const forwardDist = 3.0;
           slot.aimPos.x = char.position.x + dirX * forwardDist;
           slot.aimPos.y = char.position.y + dirY * forwardDist;
@@ -1209,7 +1199,7 @@ export class InputManager {
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0);
+          : (char.facingAngle ?? 0);
         slot.lastMovementInputAngle = inputAngle;
         char.lastMovementInputAngle = inputAngle;
         char.facingAngle = inputAngle;

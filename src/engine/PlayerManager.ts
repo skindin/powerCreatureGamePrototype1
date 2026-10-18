@@ -1423,9 +1423,9 @@ export class PlayerManager {
               slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
               char.lastMovementInputAngle = slot.lastMovementInputAngle;
             } else {
-              const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
-              dirX = Math.cos(inputAngle);
-              dirY = Math.sin(inputAngle);
+              const facing = char.facingAngle ?? 0;
+              dirX = Math.cos(facing);
+              dirY = Math.sin(facing);
             }
             const forwardDist = 3.0;
             slot.aimPos.x = char.position.x + dirX * forwardDist;
