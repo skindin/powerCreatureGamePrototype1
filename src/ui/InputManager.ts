@@ -35,6 +35,7 @@ export interface GamepadSlotState {
   isUsingItem?: boolean;
   isAltHeld?: boolean;
   wasAltHeld?: boolean;
+  lastThrowAimAngle?: number;
   arcModulationCursor?: Vector2D | null;
   arcModulationDeltaY?: number;
 }
@@ -62,6 +63,7 @@ export class InputManager {
   public isQKeyDepressed = false;
   public isKeyboardSprintActive = false;
   public isAltHeld = false;
+  public lastKeyboardThrowAimAngle?: number;
 
   public isKeyPressed(code: string): boolean {
     return this.keysPressed.has(code);
@@ -962,6 +964,8 @@ export class InputManager {
           slot.hasMovedAimStick = false;
         }
         slot.aimMovedWhileInRange = false;
+        slot.lastThrowAimAngle = undefined;
+        char.lastThrowAimAngle = undefined;
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
@@ -1010,27 +1014,34 @@ export class InputManager {
       );
 
       if (isHolding) {
-        // If holding an object and player has NOT moved the right aim stick yet, keep cursor sticking in front of the character in latest movement input direction
+        // If holding an object and player has NOT moved the right aim stick yet
         if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-            char.lastMovementInputAngle = slot.lastMovementInputAngle;
-          } else {
-            const facing = char.facingAngle ?? 0;
-            dirX = Math.cos(facing);
-            dirY = Math.sin(facing);
+          const isThrowActive = !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+          if (isThrowActive) {
+            let dirX = 1;
+            let dirY = 0;
+            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+            if (moveMag > 0.05) {
+              dirX = slot.movementVector.x / moveMag;
+              dirY = slot.movementVector.y / moveMag;
+              const moveAngle = Math.atan2(dirY, dirX);
+              slot.lastMovementInputAngle = moveAngle;
+              char.lastMovementInputAngle = moveAngle;
+              char.facingAngle = moveAngle;
+              char.lastThrowAimAngle = moveAngle;
+              slot.lastThrowAimAngle = moveAngle;
+            } else {
+              const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+              dirX = Math.cos(facing);
+              dirY = Math.sin(facing);
+            }
+            const forwardDist = 3.0;
+            slot.aimPos.x = char.position.x + dirX * forwardDist;
+            slot.aimPos.y = char.position.y + dirY * forwardDist;
+            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+            slot.aimOffset.x = dirX * forwardDist;
+            slot.aimOffset.y = dirY * forwardDist;
           }
-          const forwardDist = 3.0;
-          slot.aimPos.x = char.position.x + dirX * forwardDist;
-          slot.aimPos.y = char.position.y + dirY * forwardDist;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = dirX * forwardDist;
-          slot.aimOffset.y = dirY * forwardDist;
         }
       } else {
         // Empty-handed:
@@ -1061,19 +1072,22 @@ export class InputManager {
       if (isHolding && char.isPrimaryAbilityNonDirectional()) {
         if (isLtJustPressed) {
           // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
-          // in the exact direction the character was actually facing when exiting or moving
+          // in the exact direction the cursor was relative to the character when exiting throwing mode!
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
 
-          const facing = char.facingAngle ?? 0;
-          const dirX = Math.cos(facing);
-          const dirY = Math.sin(facing);
+          const aimAngle = char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? (char.facingAngle ?? 0);
+          const dirX = Math.cos(aimAngle);
+          const dirY = Math.sin(aimAngle);
           const forwardDist = 3.0;
           slot.aimPos.x = char.position.x + dirX * forwardDist;
           slot.aimPos.y = char.position.y + dirY * forwardDist;
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
           slot.aimOffset.x = dirX * forwardDist;
           slot.aimOffset.y = dirY * forwardDist;
+          char.facingAngle = aimAngle;
+          char.lastThrowAimAngle = aimAngle;
+          slot.lastThrowAimAngle = aimAngle;
         } else if (!isLtPressed) {
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
@@ -1130,6 +1144,26 @@ export class InputManager {
           slot.aimPos.y += ry * cursorSpeed * dt;
           slot.lastAimMoveTime = performance.now();
           slot.aimMovedWhileInRange = true;
+
+          const aimDx = slot.aimPos.x - char.position.x;
+          const aimDy = slot.aimPos.y - char.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            const angle = Math.atan2(aimDy, aimDx);
+            slot.lastThrowAimAngle = angle;
+            char.lastThrowAimAngle = angle;
+          }
+        }
+      }
+
+      if (isHolding && (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld)) {
+        if (slot.hasMovedAimStick) {
+          const aimDx = slot.aimPos.x - char.position.x;
+          const aimDy = slot.aimPos.y - char.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            const angle = Math.atan2(aimDy, aimDx);
+            slot.lastThrowAimAngle = angle;
+            char.lastThrowAimAngle = angle;
+          }
         }
       }
 
@@ -1196,6 +1230,8 @@ export class InputManager {
       const onGrabSuccess = () => {
         slot.hasMovedAimStick = false;
         slot.aimMovedWhileInRange = false;
+        slot.lastThrowAimAngle = undefined;
+        char.lastThrowAimAngle = undefined;
         const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
         const inputAngle = moveMag > 0.05
           ? Math.atan2(slot.movementVector.y, slot.movementVector.x)

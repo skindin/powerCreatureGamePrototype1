@@ -45,6 +45,7 @@ export class Character extends GameObject {
 
   public facingAngle: number; // Angle in radians
   public lastMovementInputAngle = 0; // Most recent movement input angle in radians
+  public lastThrowAimAngle?: number; // Preserved direction angle from character to cursor when throw mode was active
   public heldObject: GameObject | null;
 
   public override isCharacter = true;

@@ -8011,6 +8011,8 @@ class Character extends GameObject {
     // Angle in radians
     __publicField(this, "lastMovementInputAngle", 0);
     // Most recent movement input angle in radians
+    __publicField(this, "lastThrowAimAngle");
+    // Preserved direction angle from character to cursor when throw mode was active
     __publicField(this, "heldObject");
     __publicField(this, "isCharacter", true);
     __publicField(this, "isActivelyWalking", false);

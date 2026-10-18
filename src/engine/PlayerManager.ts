@@ -526,12 +526,21 @@ export class PlayerManager {
 
       if (isHolding && isPrimaryNonDirectional) {
         if (isThrowActive && !this.wasKeyboardThrowActive) {
-          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character
+          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
+          // in the exact direction the cursor was relative to the character when exiting throwing mode!
           const forwardDist = 3.0;
-          input.actualMousePos.x = kChar.position.x + Math.cos(kChar.facingAngle) * forwardDist;
-          input.actualMousePos.y = kChar.position.y + Math.sin(kChar.facingAngle) * forwardDist;
+          const aimAngle = kChar.lastThrowAimAngle !== undefined
+            ? kChar.lastThrowAimAngle
+            : (this.inputManager.lastKeyboardThrowAimAngle !== undefined
+              ? this.inputManager.lastKeyboardThrowAimAngle
+              : (kChar.facingAngle ?? 0));
+          input.actualMousePos.x = kChar.position.x + Math.cos(aimAngle) * forwardDist;
+          input.actualMousePos.y = kChar.position.y + Math.sin(aimAngle) * forwardDist;
           input.mousePos.x = input.actualMousePos.x;
           input.mousePos.y = input.actualMousePos.y;
+          kChar.facingAngle = aimAngle;
+          kChar.lastThrowAimAngle = aimAngle;
+          this.inputManager.lastKeyboardThrowAimAngle = aimAngle;
         }
       }
       this.wasKeyboardThrowActive = isThrowActive;
@@ -612,7 +621,10 @@ export class PlayerManager {
           const aimDx = input.actualMousePos.x - kChar.position.x;
           const aimDy = input.actualMousePos.y - kChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
-            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+            const angle = Math.atan2(aimDy, aimDx);
+            kChar.facingAngle = angle;
+            kChar.lastThrowAimAngle = angle;
+            this.inputManager.lastKeyboardThrowAimAngle = angle;
           }
         } else {
           // Non-directional primary ability (e.g. food): face movement direction
@@ -711,22 +723,6 @@ export class PlayerManager {
       const cChar = entry.character;
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
-
-      if (!slot.hasMovedAimStick) {
-        let dirX = 1;
-        let dirY = 0;
-        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-        if (moveMag > 0.05) {
-          dirX = slot.movementVector.x / moveMag;
-          dirY = slot.movementVector.y / moveMag;
-        } else {
-          const inputAngle = slot.lastMovementInputAngle ?? cChar.lastMovementInputAngle ?? cChar.facingAngle ?? 0;
-          dirX = Math.cos(inputAngle);
-          dirY = Math.sin(inputAngle);
-        }
-        aimX = cChar.position.x + dirX * 3.0;
-        aimY = cChar.position.y + dirY * 3.0;
-      }
 
       const isCharHolding = cChar.heldObject !== null;
       const gpGrabState = this.getGrabSuppressionState(cChar.id);
@@ -876,6 +872,7 @@ export class PlayerManager {
             slot.lockedAimPos = null;
             slot.arcModulationCursor = null;
             slot.arcModulationDeltaY = 0;
+            slot.lastThrowAimAngle = undefined;
           }
         }
         if (!isReplay) {
@@ -940,6 +937,7 @@ export class PlayerManager {
             slot.lockedAimPos = null;
             slot.arcModulationCursor = null;
             slot.arcModulationDeltaY = 0;
+            slot.lastThrowAimAngle = undefined;
           }
         }
 
@@ -1413,25 +1411,34 @@ export class PlayerManager {
         }
 
         if (isHolding) {
+          const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
+          const isThrowActive = !char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld);
+
           if (!slot.hasMovedAimStick) {
-            let dirX = 1;
-            let dirY = 0;
-            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-            if (moveMag > 0.05) {
-              dirX = slot.movementVector.x / moveMag;
-              dirY = slot.movementVector.y / moveMag;
-              slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
-              char.lastMovementInputAngle = slot.lastMovementInputAngle;
-            } else {
-              const facing = char.facingAngle ?? 0;
-              dirX = Math.cos(facing);
-              dirY = Math.sin(facing);
+            if (isThrowActive) {
+              let dirX = 1;
+              let dirY = 0;
+              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+              if (moveMag > 0.05) {
+                dirX = slot.movementVector.x / moveMag;
+                dirY = slot.movementVector.y / moveMag;
+                const moveAngle = Math.atan2(dirY, dirX);
+                slot.lastMovementInputAngle = moveAngle;
+                char.lastMovementInputAngle = moveAngle;
+                char.facingAngle = moveAngle;
+                char.lastThrowAimAngle = moveAngle;
+                slot.lastThrowAimAngle = moveAngle;
+              } else {
+                const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+                dirX = Math.cos(facing);
+                dirY = Math.sin(facing);
+              }
+              const forwardDist = 3.0;
+              slot.aimPos.x = char.position.x + dirX * forwardDist;
+              slot.aimPos.y = char.position.y + dirY * forwardDist;
+              slot.aimOffset.x = dirX * forwardDist;
+              slot.aimOffset.y = dirY * forwardDist;
             }
-            const forwardDist = 3.0;
-            slot.aimPos.x = char.position.x + dirX * forwardDist;
-            slot.aimPos.y = char.position.y + dirY * forwardDist;
-            slot.aimOffset.x = dirX * forwardDist;
-            slot.aimOffset.y = dirY * forwardDist;
           } else {
             // Preserve world aimPos instead of dragging it with player movement
             if (slot.aimPos) {
@@ -1439,9 +1446,6 @@ export class PlayerManager {
               slot.aimOffset.y = slot.aimPos.y - char.position.y;
             }
           }
-
-          const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
-          const isThrowActive = !char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld);
 
           // If holding an object whose primary ability is non-directional (like an apple / eating),
           // ONLY show cursor if LT (Alt) is held!
