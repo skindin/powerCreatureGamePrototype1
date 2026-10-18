@@ -637,6 +637,7 @@ export class PlayerManager {
         }
         input.lockedAimPos = null;
         input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
         input.arcDetentSide = null;
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
@@ -850,6 +851,11 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
+        if (char.throwModule) {
+          char.throwModule.hasUserSetArcRatio = false;
+        }
+        input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
         if (entry && entry.slotIndex !== undefined) {
           const slot = input.gamepadSlots.get(entry.slotIndex);
           if (slot) {
@@ -907,6 +913,9 @@ export class PlayerManager {
         );
         char.isUsingItem = false;
         char.eatRateWatts = 0;
+        char.throwModule.hasUserSetArcRatio = false;
+        input.arcModulationCursor = null;
+        input.arcModulationDeltaY = 0;
 
         // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
         if (entry && entry.slotIndex !== undefined) {
@@ -1524,67 +1533,61 @@ export class PlayerManager {
     const rail = TrajectoryRenderer.calculateMidpointRail(char, this.arena, traj, ppu, hoverScale);
     if (!rail) return;
 
-    const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, optRatio } = rail;
+    const { midScreenX, lowScreenY, lineDy, lineLen, optRatio } = rail;
 
+    let deltaY = 0;
     if (slot) {
-      // Gamepad slot modulation
-      if (!slot.arcModulationCursor) {
-        if (!char.throwModule.hasUserSetArcRatio) {
-          char.throwModule.savedArcRatio = optRatio;
-        }
-        const curRatio = char.throwModule.savedArcRatio;
-        slot.arcModulationCursor = {
-          x: midScreenX,
-          y: lowScreenY + curRatio * lineDy,
-        };
-      }
-
-      const cursor = slot.arcModulationCursor;
-      cursor.x = midScreenX;
-
       if (slot.arcModulationDeltaY) {
-        cursor.y += slot.arcModulationDeltaY;
+        deltaY = slot.arcModulationDeltaY;
         slot.arcModulationDeltaY = 0;
       }
-
-      if (lineLen <= 1) {
-        return;
+    } else {
+      if (input.arcModulationDeltaY) {
+        deltaY = input.arcModulationDeltaY;
+        input.arcModulationDeltaY = 0;
       }
+    }
 
-      const minY = Math.min(highScreenY, lowScreenY);
-      const maxY = Math.max(highScreenY, lowScreenY);
-      cursor.y = Math.max(minY - 8, Math.min(maxY + 8, cursor.y));
+    if (lineLen <= 1) {
+      return;
+    }
 
-      const progress = Math.max(0.0, Math.min(1.0, (lowScreenY - cursor.y) / (lowScreenY - highScreenY)));
-      char.throwModule.savedArcRatio = progress;
+    const effRailHeight = Math.max(30, lineLen);
+
+    if (Math.abs(deltaY) > 0.001) {
+      if (!char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = optRatio;
+      }
+      // Moving up (negative deltaY) increases ratio towards 1.0 (steepest/highest)
+      // Moving down (positive deltaY) decreases ratio towards 0.0 (flattest/lowest)
+      const deltaRatio = -deltaY / effRailHeight;
+      char.throwModule.savedArcRatio = Math.max(0.0, Math.min(1.0, char.throwModule.savedArcRatio + deltaRatio));
       char.throwModule.hasUserSetArcRatio = true;
     } else {
-      // Keyboard modulation
+      // When moving without modulating, if user hasn't customized arc yet, track optRatio live
+      if (!char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = optRatio;
+      }
+    }
+
+    // Keep cursor aligned with the current arc ratio on the live rail
+    const curRatio = char.throwModule.savedArcRatio;
+    const curCursorY = lowScreenY + curRatio * lineDy;
+
+    if (slot) {
+      if (!slot.arcModulationCursor) {
+        slot.arcModulationCursor = { x: midScreenX, y: curCursorY };
+      } else {
+        slot.arcModulationCursor.x = midScreenX;
+        slot.arcModulationCursor.y = curCursorY;
+      }
+    } else {
       if (!input.arcModulationCursor) {
-        if (!char.throwModule.hasUserSetArcRatio) {
-          char.throwModule.savedArcRatio = optRatio;
-        }
-        const curRatio = char.throwModule.savedArcRatio;
-        input.arcModulationCursor = {
-          x: midScreenX,
-          y: lowScreenY + curRatio * lineDy,
-        };
+        input.arcModulationCursor = { x: midScreenX, y: curCursorY };
+      } else {
+        input.arcModulationCursor.x = midScreenX;
+        input.arcModulationCursor.y = curCursorY;
       }
-
-      const cursor = input.arcModulationCursor;
-      cursor.x = midScreenX;
-
-      if (lineLen <= 1) {
-        return;
-      }
-
-      const minY = Math.min(highScreenY, lowScreenY);
-      const maxY = Math.max(highScreenY, lowScreenY);
-      cursor.y = Math.max(minY - 8, Math.min(maxY + 8, cursor.y));
-
-      const progress = Math.max(0.0, Math.min(1.0, (lowScreenY - cursor.y) / (lowScreenY - highScreenY)));
-      char.throwModule.savedArcRatio = progress;
-      char.throwModule.hasUserSetArcRatio = true;
     }
   }
 }

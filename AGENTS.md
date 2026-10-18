@@ -98,6 +98,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Left Trigger (Button 6 / LT) acts as Alt: switches from non-directional consumable abilities (e.g. eating an apple) to explicit throwing mode (revealing reticle and trajectory).
   - Triggers are strictly isolated from jump paddles (axes 4/5 trigger detection removed).
   - Right Joystick Click (Button 11 / R3): Toggles trajectory scaling mode on/off (one click turns trajectory mode on, freezing cursor and routing vertical stick deflection to trajectory arc height; another click turns it off). Automatically clears on item throw, drop, or release.
+  - Trajectory Slider Ratio Preservation: In both keyboard and controller modes, trajectory modulation scales `savedArcRatio` proportionally along the midpoint rail height. Moving the character while in trajectory mode preserves the exact ratio between min and max arcs live (the slider pip sticks to the live ratio on the rail rather than freezing at a fixed 2D screen coordinate).
 
 ---
 

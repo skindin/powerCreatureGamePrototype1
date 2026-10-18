@@ -139,6 +139,7 @@ export class InputManager {
   public aimLockRawDelta: number = 0; // Legacy sum
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
+  public arcModulationDeltaY: number = 0; // Accumulated vertical mouse delta for trajectory modulation
   public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
   public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
   public lastClientX: number | null = null;
@@ -411,12 +412,7 @@ export class InputManager {
         this.aimLockRawDx += movementDx;
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
-
-        // Allow raw mouse input to move modulation game cursor in every direction without canvas clamping
-        if (this.arcModulationCursor) {
-          this.arcModulationCursor.x += movementDx;
-          this.arcModulationCursor.y += movementDy;
-        }
+        this.arcModulationDeltaY += movementDy;
 
         // Keep game cursor snapped to recorded mouse pos
         if (this.recordedMousePos) {
@@ -464,6 +460,7 @@ export class InputManager {
       this.isAwaitingUnlock = false;
       this.lockedAimPos = null;
       this.arcModulationCursor = null;
+      this.arcModulationDeltaY = 0;
       this.arcDetentSide = null;
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
@@ -517,6 +514,7 @@ export class InputManager {
           this.aimLockRawDelta = 0;
           this.aimLockRawDx = 0;
           this.aimLockRawDy = 0;
+          this.arcModulationDeltaY = 0;
           this.arcModulationCursor = null;
           this.arcDetentSide = null;
           this.lastClientX = e.clientX;
@@ -572,6 +570,7 @@ export class InputManager {
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
+        this.arcModulationDeltaY = 0;
         this.arcModulationCursor = null;
         this.arcDetentSide = null;
         this.lastClientX = null;
