@@ -936,18 +936,12 @@ export class PlayerManager {
         this.arena,
         pkt.isJumpHeld,
         this.arena.entities,
-        pkt.isLockHeld,
+        false,
         (pkt as any).lockedAimPos ?? null,
         (pkt as any).aimLockDelta ?? 0
       );
 
-      if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
-        const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
-        const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
-        if (Math.hypot(dx, dy) > 0.05) {
-          char.facingAngle = Math.atan2(dy, dx);
-        }
-      } else if (pkt.facingAngle !== undefined) {
+      if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
       }
 

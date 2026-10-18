@@ -979,13 +979,7 @@ export class ServerGameSimulation {
             this.triggerObjectDeletion(heldObj.id);
           }
         }
-        if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
-          const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
-          const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
-          if (Math.hypot(dx, dy) > 0.05) {
-            char.facingAngle = Math.atan2(dy, dx);
-          }
-        } else if (catchupPkt.facingAngle !== undefined) {
+        if (catchupPkt.facingAngle !== undefined) {
           char.facingAngle = catchupPkt.facingAngle;
         }
         if (char.heldObject) {
@@ -1092,12 +1086,6 @@ export class ServerGameSimulation {
           const lPos = (pkt as any).lockedAimPos;
           const dx = lPos.x - char.position.x;
           const dy = lPos.y - char.position.y;
-          if (Math.hypot(dx, dy) > 0.05) {
-            char.facingAngle = Math.atan2(dy, dx);
-          }
-        } else if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
-          const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
-          const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
           if (Math.hypot(dx, dy) > 0.05) {
             char.facingAngle = Math.atan2(dy, dx);
           }
