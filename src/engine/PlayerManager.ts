@@ -110,7 +110,7 @@ export class PlayerManager {
     this.baseCharacter.playerColor = PLAYER_COLORS[0];
     this.baseCharacter.color = PLAYER_COLORS[0];
     this.baseCharacter.name = initialHandle;
-    this.spawnKeyboardPlayer();
+    this.inputManager.isKeyboardActive = false;
     this.arena.syncEntitiesWithWalls([this.baseCharacter]);
 
     // Hook input manager on-demand join & disconnect callbacks
@@ -386,6 +386,12 @@ export class PlayerManager {
     const cleanName = gamepadName
       ? (gamepadName.length > 28 ? gamepadName.slice(0, 28) + "…" : gamepadName)
       : `Controller #${slotIndex + 1}`;
+
+    // If keyboard was created or placeholder exists but keyboard is NOT active (no keyboard/mouse input was ever used)
+    // and keyboard is the only player holding baseCharacter, remove it so the controller claims baseCharacter!
+    if (this.players.has("keyboard") && !this.inputManager.isKeyboardActive && this.players.size === 1) {
+      this.removeKeyboardPlayer();
+    }
 
     const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
     let char: Character;

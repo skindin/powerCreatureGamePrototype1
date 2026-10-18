@@ -90,9 +90,10 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
 - **Multiplayer Replication**:
   - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
-  - **Surface Impact & Bouncing Synchronization**: In-flight prediction and `originalThrower` ownership are cleared immediately upon surface impact (`position.z <= surfaceHeight` in `MotionIntegrator.ts` and `sObj.isGrounded` in `GameLoop.ts`), enabling Smart Smooth Convergence (25-30% blend) to synchronize bouncing and rolling with the server without airborne prediction fighting.
-  - **Synchronized Ballistic Launch Telemetry**: `ThrowModule` uses a unified `computeLaunchVelocity` solver across preview and throw execution. Explicit launch vectors (`launchVx`, `launchVy`, `launchVz`) and departure origins (`launchStartX`, `launchStartY`, `launchStartZ`) are captured in `PlayerInputPacket` and `ReliableActionCommand`, guaranteeing that the authoritative server and replicating clients execute the exact launch parameters without divergence.
-  - **Deterministic Collision & Push Absorption**: `CollisionResolver` enforces deterministic normals for near-coincident contacts (no `Math.random()`), and `OnlineSessionManager` blends external server displacements (`dist > 0.06`), faithfully restoring smooth rock-hit and push reactions.
+- **On-Demand Device Assignment & Controller First-Claim**:
+  - `PlayerManager` initializes with unassigned `baseCharacter` and `isKeyboardActive = false`.
+  - The first active device (gamepad button or keydown/click/touch) cleanly claims `baseCharacter`.
+  - Inactive keyboard placeholders are automatically replaced when a gamepad connects, eliminating ghost/duplicate character spawns on phones and controllers.
 
 ---
 

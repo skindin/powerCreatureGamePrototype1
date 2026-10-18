@@ -143,24 +143,6 @@ export class OnlineSessionManager {
         const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
         this.client.sendPlayerInput(p.id, pkt, charToSend, objsToSend);
       }
-    } else {
-      const hero = this.gameLoop.primaryCharacter || this.defaultCharacter;
-      const kbPkt: PlayerInputPacket = {
-        playerId: "keyboard",
-        playerName: hero?.name || this.client.playerName,
-        tick: this.gameLoop.currentTick,
-        moveX: 0,
-        moveY: 0,
-        isSprinting: hero?.isSprinting ?? false,
-        isJumpHeld: false,
-        isGrabHeld: false,
-        isLockHeld: false,
-        isAiming: false,
-      };
-      const isSpawnAligned = this.spawnAlignedPlayerIds.has("keyboard");
-      const charToSend = isSpawnAligned ? hero : undefined;
-      const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
-      this.client.sendPlayerInput("keyboard", kbPkt, charToSend, objsToSend);
     }
   }
 
@@ -212,6 +194,20 @@ export class OnlineSessionManager {
 
     this.client.onPlayerRegistered = (info) => {
       this.handlePlayerRegistered(info);
+    };
+
+    this.client.onPlayerRemoved = (localPlayerId: string) => {
+      this.spawnAlignedPlayerIds.delete(localPlayerId);
+      if (this.gameLoop?.playerManager?.players.has(localPlayerId)) {
+        if (localPlayerId === "keyboard") {
+          this.gameLoop.playerManager.removeKeyboardPlayer();
+        } else if (localPlayerId.startsWith("gamepad-")) {
+          const slot = parseInt(localPlayerId.replace("gamepad-", ""), 10);
+          if (!isNaN(slot)) {
+            this.gameLoop.playerManager.removeGamepadPlayer(slot);
+          }
+        }
+      }
     };
 
     this.client.onPlayerLeft = (charId: string) => {
@@ -379,8 +375,11 @@ export class OnlineSessionManager {
       ? this.client.playerName.trim()
       : (localStorage.getItem("pcg_player_handle") || info.name);
 
+    const hasKeyboardPlayer = Boolean(this.gameLoop?.playerManager?.players.has("keyboard"));
     if (hero) {
-      hero.playerId = "keyboard";
+      if (hasKeyboardPlayer) {
+        hero.playerId = "keyboard";
+      }
       hero.playerNumber = info.playerNumber;
       hero.color = info.color;
       hero.playerColor = info.color;
@@ -388,7 +387,9 @@ export class OnlineSessionManager {
     }
     if (this.gameLoop?.playerManager?.baseCharacter) {
       const base = this.gameLoop.playerManager.baseCharacter;
-      base.playerId = "keyboard";
+      if (hasKeyboardPlayer) {
+        base.playerId = "keyboard";
+      }
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;
