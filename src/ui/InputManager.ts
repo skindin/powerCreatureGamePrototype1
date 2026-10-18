@@ -34,6 +34,7 @@ export interface GamepadSlotState {
   isJumpRequested?: boolean;
   isUsingItem?: boolean;
   isAltHeld?: boolean;
+  wasAltHeld?: boolean;
   arcModulationCursor?: Vector2D | null;
   arcModulationDeltaY?: number;
 }
@@ -1053,7 +1054,41 @@ export class InputManager {
 
       // Button 6 (LT / L2): Act like Alt (switches from dynamic primary ability e.g. eating to explicit throwing mode)
       const isLtPressed = isButtonPressed(6, 0.2);
+      const isLtJustPressed = isLtPressed && !slot.wasAltHeld;
+      slot.wasAltHeld = isLtPressed;
       slot.isAltHeld = isLtPressed;
+
+      if (isHolding && char.isPrimaryAbilityNonDirectional()) {
+        if (isLtJustPressed) {
+          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
+          // matching the initial grab default position when aim stick hasn't been moved yet
+          slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
+
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+            slot.lastMovementInputAngle = Math.atan2(dirY, dirX);
+            char.lastMovementInputAngle = slot.lastMovementInputAngle;
+          } else {
+            const inputAngle = slot.lastMovementInputAngle ?? char.lastMovementInputAngle ?? char.facingAngle ?? 0;
+            dirX = Math.cos(inputAngle);
+            dirY = Math.sin(inputAngle);
+          }
+          const forwardDist = 3.0;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
+        } else if (!isLtPressed) {
+          slot.hasMovedAimStick = false;
+          slot.aimMovedWhileInRange = false;
+        }
+      }
 
       // Button 5 (RB / R1): Holding enters Trajectory Scaler Mode
       const isRbPressed = isButtonPressed(5);
@@ -1088,20 +1123,24 @@ export class InputManager {
       }
 
       if (rMag > deadzone && !slot.isLockHeld) {
-        const cursorSpeed = 17.0;
-        if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
-          // Starting to aim around grabbables: start directly at the character!
-          slot.aimPos.x = char.position.x;
-          slot.aimPos.y = char.position.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
+        // Only move aim cursor if aiming is enabled: when holding non-directional food, only aim if in throw mode (LT held)
+        const canAim = !isHolding || !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+        if (canAim) {
+          const cursorSpeed = 17.0;
+          if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
+            // Starting to aim around grabbables: start directly at the character!
+            slot.aimPos.x = char.position.x;
+            slot.aimPos.y = char.position.y;
+            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+            slot.aimOffset.x = 0;
+            slot.aimOffset.y = 0;
+          }
+          slot.hasMovedAimStick = true;
+          slot.aimPos.x += rx * cursorSpeed * dt;
+          slot.aimPos.y += ry * cursorSpeed * dt;
+          slot.lastAimMoveTime = performance.now();
+          slot.aimMovedWhileInRange = true;
         }
-        slot.hasMovedAimStick = true;
-        slot.aimPos.x += rx * cursorSpeed * dt;
-        slot.aimPos.y += ry * cursorSpeed * dt;
-        slot.lastAimMoveTime = performance.now();
-        slot.aimMovedWhileInRange = true;
       }
 
       const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));

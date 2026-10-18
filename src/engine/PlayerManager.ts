@@ -59,6 +59,7 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
+  private wasKeyboardThrowActive: boolean = false;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -522,6 +523,18 @@ export class PlayerManager {
       // If object has no other ability, default ability is Throw.
       // Ability swap stays in effect until the swapped ability is released.
       const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
+
+      if (isHolding && isPrimaryNonDirectional) {
+        if (isThrowActive && !this.wasKeyboardThrowActive) {
+          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character
+          const forwardDist = 3.0;
+          input.actualMousePos.x = kChar.position.x + Math.cos(kChar.facingAngle) * forwardDist;
+          input.actualMousePos.y = kChar.position.y + Math.sin(kChar.facingAngle) * forwardDist;
+          input.mousePos.x = input.actualMousePos.x;
+          input.mousePos.y = input.actualMousePos.y;
+        }
+      }
+      this.wasKeyboardThrowActive = isThrowActive;
 
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
@@ -1434,6 +1447,7 @@ export class PlayerManager {
           // ONLY show cursor if LT (Alt) is held!
           if (isPrimaryNonDirectional && !isThrowActive) {
             isCursorVisibleNow = false;
+            slot.hasMovedAimStick = false;
           } else {
             isCursorVisibleNow = true;
           }
