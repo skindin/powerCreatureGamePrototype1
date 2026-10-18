@@ -132,9 +132,8 @@ export class CollisionResolver {
       normX = dx / dist;
       normY = dy / dist;
     } else {
-      const randomAngle = Math.random() * Math.PI * 2;
-      normX = Math.cos(randomAngle);
-      normY = Math.sin(randomAngle);
+      normX = 1;
+      normY = 0;
     }
 
     // Relative velocity (B relative to A)
@@ -641,9 +640,8 @@ export class CollisionResolver {
               normX = dx / dist;
               normY = dy / dist;
             } else {
-              const randomAngle = Math.random() * Math.PI * 2;
-              normX = Math.cos(randomAngle);
-              normY = Math.sin(randomAngle);
+              normX = 1;
+              normY = 0;
             }
 
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);

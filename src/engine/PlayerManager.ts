@@ -110,7 +110,7 @@ export class PlayerManager {
     this.baseCharacter.playerColor = PLAYER_COLORS[0];
     this.baseCharacter.color = PLAYER_COLORS[0];
     this.baseCharacter.name = initialHandle;
-    this.spawnKeyboardPlayer();
+    this.inputManager.isKeyboardActive = false;
     this.arena.syncEntitiesWithWalls([this.baseCharacter]);
 
     // Hook input manager on-demand join & disconnect callbacks
@@ -387,6 +387,12 @@ export class PlayerManager {
       ? (gamepadName.length > 28 ? gamepadName.slice(0, 28) + "…" : gamepadName)
       : `Controller #${slotIndex + 1}`;
 
+    // If keyboard was created or placeholder exists but keyboard is NOT active (no keyboard/mouse input was ever used)
+    // and keyboard is the only player holding baseCharacter, remove it so the controller claims baseCharacter!
+    if (this.players.has("keyboard") && !this.inputManager.isKeyboardActive && this.players.size === 1) {
+      this.removeKeyboardPlayer();
+    }
+
     const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
     let char: Character;
 
@@ -638,6 +644,9 @@ export class PlayerManager {
         input.exitPointerLock();
       }
 
+      const kLaunchVel = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
+      const kLaunchPos = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
+
       map.set("keyboard", {
         playerId: "keyboard",
         moveX: input.movementVector.x,
@@ -660,6 +669,16 @@ export class PlayerManager {
         lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
         aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
+        ...(kLaunchVel ? {
+          launchVx: kLaunchVel.vx,
+          launchVy: kLaunchVel.vy,
+          launchVz: kLaunchVel.vz,
+        } : {}),
+        ...(kLaunchPos ? {
+          launchStartX: kLaunchPos.x,
+          launchStartY: kLaunchPos.y,
+          launchStartZ: kLaunchPos.z,
+        } : {}),
       } as any);
       input.aimLockRawDelta = 0; // Consume delta
       input.aimLockRawDx = 0;
@@ -853,9 +872,13 @@ export class PlayerManager {
           char.facingAngle = Math.atan2(aimDy, aimDx);
         }
 
-        // Use the exact pre-calculated launch velocity and start position from the client's active trajectory preview if available
-        const clientLaunchVel = char.activeTrajectory?.launchVel;
-        const clientLaunchPos = char.activeTrajectory?.launchPos;
+        // Use the exact pre-calculated launch velocity and start position from the packet or client's active trajectory preview
+        const clientLaunchVel = (pkt as any).launchVx !== undefined
+          ? { vx: (pkt as any).launchVx, vy: (pkt as any).launchVy, vz: (pkt as any).launchVz }
+          : char.activeTrajectory?.launchVel;
+        const clientLaunchPos = (pkt as any).launchStartX !== undefined
+          ? { x: (pkt as any).launchStartX, y: (pkt as any).launchStartY, z: (pkt as any).launchStartZ }
+          : char.activeTrajectory?.launchPos;
 
         char.throwModule.throwHeldObject(
           char,
@@ -919,18 +942,12 @@ export class PlayerManager {
         this.arena,
         pkt.isJumpHeld,
         this.arena.entities,
-        pkt.isLockHeld,
+        false,
         (pkt as any).lockedAimPos ?? null,
         (pkt as any).aimLockDelta ?? 0
       );
 
-      if (char.activeTrajectory?.isAutoLocked && char.activeTrajectory.targetObject) {
-        const dx = char.activeTrajectory.targetObject.position.x - char.position.x;
-        const dy = char.activeTrajectory.targetObject.position.y - char.position.y;
-        if (Math.hypot(dx, dy) > 0.05) {
-          char.facingAngle = Math.atan2(dy, dx);
-        }
-      } else if (pkt.facingAngle !== undefined) {
+      if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
       }
 

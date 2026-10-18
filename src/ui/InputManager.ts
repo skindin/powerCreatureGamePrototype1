@@ -298,6 +298,11 @@ export class InputManager {
         e.preventDefault();
       }
 
+      // On-demand join if keyboard player is not yet active
+      if (!this.isKeyboardActive && e.code !== "Escape") {
+        this.onKeyboardJoin?.();
+      }
+
       this.activeInputDevice = "keyboard";
       this.keysPressed.add(e.code);
       this.updateMovementVector();
@@ -605,6 +610,9 @@ export class InputManager {
     // Touch support for mobile / touchscreens
     this.canvas.addEventListener("touchstart", (e) => {
       if (e.touches.length > 0) {
+        if (!this.isKeyboardActive) {
+          this.onKeyboardJoin?.();
+        }
         this.isMouseDown = true;
         this.lastMouseMoveTime = performance.now();
         this.updateTouchPos(e.touches[0]);

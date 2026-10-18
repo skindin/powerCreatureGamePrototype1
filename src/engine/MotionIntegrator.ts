@@ -23,6 +23,10 @@ export class MotionIntegrator {
         // Surface impact (hitting floor or top of wall from above)
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isInFlight) {
+            entity.isInFlight = false;
+            entity.originalThrower = null;
+          }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (
             !entity.isCharacter &&
@@ -79,6 +83,10 @@ export class MotionIntegrator {
         entity.position.z += entity.verticalVelocity * dt;
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isInFlight) {
+            entity.isInFlight = false;
+            entity.originalThrower = null;
+          }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (
             entity.hasVerticalBounce &&

@@ -143,24 +143,6 @@ export class OnlineSessionManager {
         const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
         this.client.sendPlayerInput(p.id, pkt, charToSend, objsToSend);
       }
-    } else {
-      const hero = this.gameLoop.primaryCharacter || this.defaultCharacter;
-      const kbPkt: PlayerInputPacket = {
-        playerId: "keyboard",
-        playerName: hero?.name || this.client.playerName,
-        tick: this.gameLoop.currentTick,
-        moveX: 0,
-        moveY: 0,
-        isSprinting: hero?.isSprinting ?? false,
-        isJumpHeld: false,
-        isGrabHeld: false,
-        isLockHeld: false,
-        isAiming: false,
-      };
-      const isSpawnAligned = this.spawnAlignedPlayerIds.has("keyboard");
-      const charToSend = isSpawnAligned ? hero : undefined;
-      const objsToSend = isSpawnAligned ? this.gameLoop.objects : undefined;
-      this.client.sendPlayerInput("keyboard", kbPkt, charToSend, objsToSend);
     }
   }
 
@@ -212,6 +194,20 @@ export class OnlineSessionManager {
 
     this.client.onPlayerRegistered = (info) => {
       this.handlePlayerRegistered(info);
+    };
+
+    this.client.onPlayerRemoved = (localPlayerId: string) => {
+      this.spawnAlignedPlayerIds.delete(localPlayerId);
+      if (this.gameLoop?.playerManager?.players.has(localPlayerId)) {
+        if (localPlayerId === "keyboard") {
+          this.gameLoop.playerManager.removeKeyboardPlayer();
+        } else if (localPlayerId.startsWith("gamepad-")) {
+          const slot = parseInt(localPlayerId.replace("gamepad-", ""), 10);
+          if (!isNaN(slot)) {
+            this.gameLoop.playerManager.removeGamepadPlayer(slot);
+          }
+        }
+      }
     };
 
     this.client.onPlayerLeft = (charId: string) => {
@@ -379,8 +375,11 @@ export class OnlineSessionManager {
       ? this.client.playerName.trim()
       : (localStorage.getItem("pcg_player_handle") || info.name);
 
+    const hasKeyboardPlayer = Boolean(this.gameLoop?.playerManager?.players.has("keyboard"));
     if (hero) {
-      hero.playerId = "keyboard";
+      if (hasKeyboardPlayer) {
+        hero.playerId = "keyboard";
+      }
       hero.playerNumber = info.playerNumber;
       hero.color = info.color;
       hero.playerColor = info.color;
@@ -388,7 +387,9 @@ export class OnlineSessionManager {
     }
     if (this.gameLoop?.playerManager?.baseCharacter) {
       const base = this.gameLoop.playerManager.baseCharacter;
-      base.playerId = "keyboard";
+      if (hasKeyboardPlayer) {
+        base.playerId = "keyboard";
+      }
       base.playerNumber = info.playerNumber;
       base.color = info.color;
       base.playerColor = info.color;
@@ -762,40 +763,15 @@ export class OnlineSessionManager {
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 8.0) {
-          localChar.position.x = myServerState.x;
-          localChar.position.y = myServerState.y;
-          localChar.velocity.x = myServerState.vx;
-          localChar.velocity.y = myServerState.vy;
-        }
 
-        // Gentle local overlap relaxation: if local character is overlapping an object,
-        // gently push them apart so local collision resolver and server sync don't fight
-        for (const obj of this.gameLoop.objects) {
-          if (obj.isHeld) continue;
-          const minDistance = localChar.colliderRadius + obj.colliderRadius;
-          const ox = obj.position.x - localChar.position.x;
-          const oy = obj.position.y - localChar.position.y;
-          const oDist = Math.hypot(ox, oy);
-          if (oDist < minDistance) {
-            if (Math.abs(localChar.position.z - obj.position.z) < 0.8) {
-              const overlap = minDistance - oDist + 0.03;
-              let nx: number;
-              let ny: number;
-              if (oDist > 0.001) {
-                nx = ox / oDist;
-                ny = oy / oDist;
-              } else {
-                const randomAngle = Math.random() * Math.PI * 2;
-                nx = Math.cos(randomAngle);
-                ny = Math.sin(randomAngle);
-              }
-              localChar.position.x -= nx * (overlap * 0.5);
-              localChar.position.y -= ny * (overlap * 0.5);
-              obj.position.x += nx * (overlap * 0.5);
-              obj.position.y += ny * (overlap * 0.5);
-              obj.wakeUp();
-            }
+        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
+        if (dist > 0.06) {
+          const blend = dist > 2.0 ? 1.0 : 0.35;
+          localChar.position.x += dx * blend;
+          localChar.position.y += dy * blend;
+          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
+            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
+            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
           }
         }
       }
