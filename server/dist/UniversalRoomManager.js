@@ -4458,6 +4458,10 @@ class MotionIntegrator {
         entity.position.z += entity.verticalVelocity * dt;
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isInFlight) {
+            entity.isInFlight = false;
+            entity.originalThrower = null;
+          }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (!entity.isCharacter && entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
             const impactVz = Math.abs(entity.verticalVelocity);
@@ -4498,6 +4502,10 @@ class MotionIntegrator {
         entity.position.z += entity.verticalVelocity * dt;
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isInFlight) {
+            entity.isInFlight = false;
+            entity.originalThrower = null;
+          }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
             entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
@@ -6163,7 +6171,7 @@ class ThrowModule {
    * whether on the ground, on top of an elevated wall, or on the layer of a targeted object.
    * If autoLock is true (e.g. holding right click), locks 2D coordinates to the overlapped object center.
    */
-  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, _charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false) {
+  computeLaunchVelocity(startX, startY, startZ, targetX, targetY, arena, throwPower, hasGravity = true, hasVerticalVelocity = true, colliderRadius = 0.35, _charVel, candidateEntities, hoverScale, thrower, heldObject, autoLock = false, lockedTargetPos, aimLockDelta = 0) {
     let hoveredEntity = null;
     let effectiveTargetX = targetX;
     let effectiveTargetY = targetY;
@@ -6278,11 +6286,22 @@ class ThrowModule {
     const cCoeff = D * D + deltaZ * deltaZ;
     const disc = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
     let chosenT = 0;
+    if (lockedTargetPos && aimLockDelta !== 0) {
+      const deltaRatio = -aimLockDelta / 300;
+      this.savedArcRatio = Math.max(0, Math.min(1, this.savedArcRatio + deltaRatio));
+      this.hasUserSetArcRatio = true;
+    }
+    let tMin = D / vMax;
+    let tMax = tMin;
+    const dist3D = Math.sqrt(D * D + deltaZ * deltaZ);
+    const tOpt = Math.sqrt(2 * dist3D / g);
     if (disc >= 0) {
       const uLow = (-bCoeff - Math.sqrt(disc)) / (2 * aCoeff);
       const uHigh = (-bCoeff + Math.sqrt(disc)) / (2 * aCoeff);
       const tLow = uLow > 0 ? Math.sqrt(uLow) : 0;
       const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : 0;
+      tMin = Math.max(0.02, tLow > 0 ? tLow : D / vMax, minTimeForWallClearance);
+      tMax = Math.max(tMin, tHigh > 0 ? tHigh : tMin);
       if (minTimeForWallClearance > 0) {
         if (tLow >= minTimeForWallClearance) {
           chosenT = tLow;
@@ -6292,11 +6311,7 @@ class ThrowModule {
           chosenT = tHigh;
         }
       } else {
-        const tMin = tLow > 0 ? tLow : D / vMax;
-        const tMax = tHigh > 0 ? tHigh : tMin;
         if (!this.hasUserSetArcRatio) {
-          const dist3D = Math.sqrt(D * D + deltaZ * deltaZ);
-          const tOpt = Math.sqrt(2 * dist3D / g);
           chosenT = Math.max(tMin, Math.min(tMax, tOpt));
         } else {
           chosenT = tMin + this.savedArcRatio * (tMax - tMin);
@@ -6306,6 +6321,8 @@ class ThrowModule {
       const uPeak = -bCoeff / (2 * aCoeff);
       const tPeak = uPeak > 0 ? Math.sqrt(uPeak) : Math.max(0.02, D / vMax);
       chosenT = tPeak;
+      tMin = chosenT;
+      tMax = chosenT;
     }
     if (chosenT <= 0) {
       chosenT = Math.max(0.02, D / vMax);
@@ -6318,7 +6335,20 @@ class ThrowModule {
     const horizontalSpeed = actualDist / totalTime;
     const vx = dirX * horizontalSpeed;
     const vy = dirY * horizontalSpeed;
-    return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject: hoveredEntity, isAutoLocked: isLocked };
+    return {
+      vx,
+      vy,
+      vz,
+      totalTime,
+      finalTargetX,
+      finalTargetY,
+      targetSurfaceHeight,
+      targetObject: hoveredEntity,
+      isAutoLocked: isLocked,
+      tMin,
+      tMax,
+      tOpt
+    };
   }
   /**
    * Pre-calculates trajectory points for real-time visualization overlay
@@ -6327,7 +6357,6 @@ class ThrowModule {
     if (!this.enabled || !character.heldObject) return null;
     const held = character.heldObject;
     const scale = hoverScale !== void 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
-    let targetSurfaceHeight = 0;
     const targetAimX = lockedTargetPos ? lockedTargetPos.x : aimTargetX;
     const targetAimY = lockedTargetPos ? lockedTargetPos.y : aimTargetY;
     const charAimDx = targetAimX - character.position.x;
@@ -6374,74 +6403,36 @@ class ThrowModule {
         maxSpeed = Math.min(maxSpeed, maxSpeedFromEnergy);
       }
     }
-    const g = arena.gravity;
-    let finalTargetX = targetAimX;
-    let finalTargetY = targetAimY;
-    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
-    if (wallUnderTarget) {
-      finalTargetX = wallUnderTarget.physX;
-      finalTargetY = wallUnderTarget.physY;
-      targetSurfaceHeight = wallUnderTarget.wall.wallHeight;
-    } else {
-      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
-    }
-    const maxThrowHeight = this.maxThrowHeightProp.get(character.properties);
-    const effectiveMaxHeight = maxThrowHeight * character.strength;
-    if (targetSurfaceHeight > startZ + effectiveMaxHeight) {
-      targetSurfaceHeight = startZ + effectiveMaxHeight;
-    }
-    let dx = finalTargetX - startX;
-    let dy = finalTargetY - startY;
-    let dist = Math.hypot(dx, dy);
-    if (dist < 0.1) return null;
-    const deltaZ = targetSurfaceHeight - startZ;
-    const maxReach = maxSpeed / g * Math.sqrt(Math.max(1e-3, maxSpeed * maxSpeed + 2 * g * Math.max(0, -deltaZ)));
-    if (dist > maxReach) {
-      dist = Math.max(0.1, maxReach);
-      finalTargetX = startX + dx / Math.hypot(dx, dy) * dist;
-      finalTargetY = startY + dy / Math.hypot(dx, dy) * dist;
-      dx = finalTargetX - startX;
-      dy = finalTargetY - startY;
-    }
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-    let chosenVx = 0;
-    let chosenVy = 0;
-    let chosenVz = 0;
-    let totalTime = 1;
-    const aCoeff = 0.25 * g * g;
-    const cCoeff = dist * dist + deltaZ * deltaZ;
-    const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
-    const tOpt = Math.sqrt(2 * dist3D / g);
-    const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
-    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
-    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * tOpt;
-    const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / maxSpeed;
-    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
-    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
-    const tMin = Math.max(0.02, tFlat);
-    const tMax = Math.max(tMin, tHigh);
-    if (lockedTargetPos && aimLockDelta !== 0) {
-      const deltaRatio = -aimLockDelta / 300;
-      this.savedArcRatio = Math.max(0, Math.min(1, this.savedArcRatio + deltaRatio));
-      this.hasUserSetArcRatio = true;
-    }
-    if (!this.hasUserSetArcRatio) {
-      const optRatio = tMax - tMin > 1e-3 ? Math.max(0, Math.min(1, (tOpt - tMin) / (tMax - tMin))) : 0;
-      this.savedArcRatio = optRatio;
-      totalTime = Math.max(tMin, Math.min(tMax, tOpt));
-    } else {
-      totalTime = tMin + this.savedArcRatio * (tMax - tMin);
-    }
-    totalTime = Math.max(0.02, totalTime);
-    chosenVz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
-    const hSpeed = dist / totalTime;
-    chosenVx = dirX * hSpeed;
-    chosenVy = dirY * hSpeed;
-    const vx = chosenVx;
-    const vy = chosenVy;
-    const vz = chosenVz;
+    const launch = this.computeLaunchVelocity(
+      startX,
+      startY,
+      startZ,
+      targetAimX,
+      targetAimY,
+      arena,
+      maxSpeed,
+      held.hasGravity,
+      held.hasVerticalVelocity,
+      held.colliderRadius,
+      void 0,
+      _entities,
+      scale,
+      character,
+      held,
+      _autoLock,
+      lockedTargetPos,
+      aimLockDelta
+    );
+    if (!launch) return null;
+    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, targetObject, isAutoLocked, tMin, tMax } = launch;
     const resolvedSurfaceHeight = targetSurfaceHeight;
+    const deltaZ = targetSurfaceHeight - startZ;
+    const g = arena.gravity;
+    const dx = finalTargetX - startX;
+    const dy = finalTargetY - startY;
+    const dist = Math.hypot(dx, dy);
+    const dirX = dist > 1e-4 ? dx / dist : 0;
+    const dirY = dist > 1e-4 ? dy / dist : 0;
     const steps = 90;
     const dtStep = totalTime / steps;
     const points = [];
@@ -6542,9 +6533,9 @@ class ThrowModule {
       }
       return gPts;
     };
-    const hasArcRange = tMax - tMin > 0.05;
-    const flattestPoints = hasArcRange ? simulateGhostArc(tMin) : void 0;
-    const steepestPoints = hasArcRange ? simulateGhostArc(tMax) : void 0;
+    const hasArcRange = tMax !== void 0 && tMin !== void 0 && tMax - tMin > 0.05;
+    const flattestPoints = hasArcRange && tMin !== void 0 ? simulateGhostArc(tMin) : void 0;
+    const steepestPoints = hasArcRange && tMax !== void 0 ? simulateGhostArc(tMax) : void 0;
     const lastPoint = points[points.length - 1];
     return {
       points,
@@ -6558,9 +6549,9 @@ class ThrowModule {
       isBlockedByWall: isBlocked,
       isLandingOnWallTop: isBlocked ? isLandingOnWallTop : targetSurfaceHeight > 0,
       blockedAtWallId: blockedWallId,
-      targetObject: null,
+      targetObject: targetObject ?? null,
       targetSurfaceHeight,
-      isAutoLocked: Boolean(lockedTargetPos),
+      isAutoLocked: isAutoLocked ?? Boolean(lockedTargetPos),
       peakHeight,
       flightTime: totalTime,
       colliderRadius: held.colliderRadius,
@@ -6663,7 +6654,13 @@ class ThrowModule {
         effectiveAimY = startY + aimDy / aimDist * clampedDist;
       }
     }
-    let launch = launchVel ? { vx: launchVel.vx, vy: launchVel.vy, vz: launchVel.vz } : this.computeLaunchVelocity(
+    let launch = launchVel ? {
+      vx: launchVel.vx,
+      vy: launchVel.vy,
+      vz: launchVel.vz,
+      targetObject: null,
+      isAutoLocked: false
+    } : this.computeLaunchVelocity(
       startX,
       startY,
       startZ,
@@ -6682,7 +6679,7 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
-    if (this.consumesEnergy) {
+    if (this.consumesEnergy && !launchVel) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
         if (bus.isExhausted) {
@@ -8918,9 +8915,8 @@ class CollisionResolver {
       normX = dx / dist;
       normY = dy / dist;
     } else {
-      const randomAngle = Math.random() * Math.PI * 2;
-      normX = Math.cos(randomAngle);
-      normY = Math.sin(randomAngle);
+      normX = 1;
+      normY = 0;
     }
     const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
     const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
@@ -9303,9 +9299,8 @@ class CollisionResolver {
               normX = dx / dist;
               normY = dy / dist;
             } else {
-              const randomAngle = Math.random() * Math.PI * 2;
-              normX = Math.cos(randomAngle);
-              normY = Math.sin(randomAngle);
+              normX = 1;
+              normY = 0;
             }
             const relVx = (b.isImmovable ? 0 : b.velocity.x) - (a.isImmovable ? 0 : a.velocity.x);
             const relVy = (b.isImmovable ? 0 : b.velocity.y) - (a.isImmovable ? 0 : a.velocity.y);
@@ -11540,27 +11535,6 @@ class ServerGameSimulation {
       sChar.position.x = clientChar.x;
       sChar.position.y = clientChar.y;
       sChar.position.z = clientChar.z;
-    }
-    for (const obj of this.objects) {
-      if (obj.isHeld) continue;
-      const minDistance = sChar.colliderRadius + obj.colliderRadius;
-      const ox = obj.position.x - sChar.position.x;
-      const oy = obj.position.y - sChar.position.y;
-      const oDist = Math.hypot(ox, oy);
-      if (oDist < minDistance) {
-        const charZ = sChar.position.z;
-        const objZ = obj.position.z;
-        if (Math.abs(charZ - objZ) < 0.8) {
-          const overlap = minDistance - oDist + 0.03;
-          const nx = oDist > 1e-3 ? ox / oDist : 1;
-          const ny = oDist > 1e-3 ? oy / oDist : 0;
-          sChar.position.x -= nx * (overlap * 0.5);
-          sChar.position.y -= ny * (overlap * 0.5);
-          obj.position.x += nx * (overlap * 0.5);
-          obj.position.y += ny * (overlap * 0.5);
-          obj.wakeUp();
-        }
-      }
     }
     if (clientChar.surfaceZ !== void 0) {
       sChar.supportingSurfaceHeight = clientChar.surfaceZ;

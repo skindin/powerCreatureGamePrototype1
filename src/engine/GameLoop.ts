@@ -862,7 +862,11 @@ export class GameLoop {
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping) {
+      if (sObj.isGrounded) {
+        localObj.isInFlight = false;
+        localObj.originalThrower = null;
+      }
+      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping && !sObj.isGrounded) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
         if (Math.hypot(flightDx, flightDy) < 0.6) {
