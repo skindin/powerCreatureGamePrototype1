@@ -60,7 +60,6 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
-  private wasKeyboardThrowActive: boolean = false;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -524,20 +523,6 @@ export class PlayerManager {
       // If object has no other ability, default ability is Throw.
       // Ability swap stays in effect until the swapped ability is released.
       const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
-
-      if (isHolding && isPrimaryNonDirectional) {
-        if (isThrowActive && !this.wasKeyboardThrowActive) {
-          // Entering throwing mode: place cursor directly in front of character (3.0 units) in current facing direction
-          const forwardDist = 3.0;
-          const facing = kChar.facingAngle ?? 0;
-          const clamped = calculateClampedForwardAimPos(kChar.position, Math.cos(facing), Math.sin(facing), forwardDist, this.arena.width, this.arena.height);
-          input.actualMousePos.x = clamped.x;
-          input.actualMousePos.y = clamped.y;
-          input.mousePos.x = clamped.x;
-          input.mousePos.y = clamped.y;
-        }
-      }
-      this.wasKeyboardThrowActive = isThrowActive;
 
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
