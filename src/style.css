@@ -1846,6 +1846,37 @@ input[type="color"] {
   padding-left: 2px;
 }
 
+.module-global-warning {
+  font-size: 0.70rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-left: 3px solid #f59e0b;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-top: 5px;
+  margin-bottom: 6px;
+  line-height: 1.35;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.badge-global-var {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 /* Dynamic Module Management & Add Behavior */
 .btn-remove-module {
   background: rgba(239, 68, 68, 0.12);

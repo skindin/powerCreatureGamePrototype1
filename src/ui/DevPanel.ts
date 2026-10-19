@@ -1028,6 +1028,8 @@ export class DevPanel {
     if (e.rollModule) {
       this.setSliderVal("slide-entity-roll-resist", "val-entity-roll-resist", e.rollModule.rollResistance, 2);
     }
+    this.setScrubberVal("scrub-container-mod-gravity", this.arena.gravity);
+    this.setScrubberVal("scrub-container-mod-collision-damage-scale", GameObject.globalWorldCollisionDamageScale);
 
     // Sync Collision Mode & CCD Threshold
     const selectEntityCollision = this.container.querySelector("#select-entity-collision-mode") as HTMLSelectElement | null;
@@ -1375,8 +1377,12 @@ export class DevPanel {
           <div id="collapse-body-mod-gravity" style="display: ${this.isSectionCollapsed('mod-gravity') ? 'none' : 'block'};">
           ${!gravEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Gravity behavior is disabled</div>` : ''}
           ${gravVertWarning}
-          <div class="module-detached-note" style="color: #94a3b8; font-style: normal;">
-            Subject to downward gravitational acceleration (${this.arena.gravity.toFixed(1)} u/s²)
+          <div style="margin-top: 6px;">
+            <div id="scrub-container-mod-gravity"></div>
+            <div class="module-global-warning">
+              <span>🌐</span>
+              <span><strong>Global Variable:</strong> Changing gravity modifies world gravitational acceleration across the entire arena and all entities.</span>
+            </div>
           </div>
           </div>
         </div>
@@ -1711,6 +1717,13 @@ export class DevPanel {
           </div>
           <div id="prop-socket-impact-susceptibility"></div>
           <div id="prop-socket-min-shock-thresh"></div>
+          <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
+            <div id="scrub-container-mod-collision-damage-scale"></div>
+            <div class="module-global-warning">
+              <span>🌐</span>
+              <span><strong>Global Variable:</strong> Changing collision damage scale alters HP shock damage for collisions across all entities in the arena.</span>
+            </div>
+          </div>
           </div>
         </div>
       `;
@@ -2624,6 +2637,24 @@ export class DevPanel {
       rollResistSocketEl.appendChild(rollCtrl.element);
     }
 
+    // Gravity Module (Global Arena Gravity Control)
+    if (e.gravityModule) {
+      this.setupScrubber("scrub-container-mod-gravity", {
+        label: "Gravity Force (Global)",
+        value: this.arena.gravity,
+        min: 1.0,
+        max: 100.0,
+        step: 0.5,
+        decimals: 1,
+        suffix: " u/s²",
+        onChange: (val) => {
+          this.arena.gravity = val;
+          this.setScrubberVal("scrub-container-gravity", val);
+          this.updateInspector();
+        },
+      });
+    }
+
     // Character Abilities
     if (isChar && char) {
       const checkWalkInAir = this.container.querySelector("#check-walk-in-air") as HTMLInputElement;
@@ -3074,6 +3105,24 @@ export class DevPanel {
         });
         threshSocketEl.appendChild(threshCtrl.element);
       }
+
+      this.setupScrubber("scrub-container-mod-collision-damage-scale", {
+        label: "Collision Damage Scale (Global)",
+        value: GameObject.globalWorldCollisionDamageScale,
+        min: 0.0,
+        max: 5.0,
+        step: 0.005,
+        decimals: 3,
+        suffix: " HP/Shock",
+        onChange: (val) => {
+          GameObject.globalWorldCollisionDamageScale = val;
+          const loop = this.getGameLoop ? this.getGameLoop() : null;
+          if (loop) {
+            loop.worldCollisionDamageScale = val;
+          }
+          this.setScrubberVal("scrub-container-collision-damage-scale", val);
+        },
+      });
     }
 
     // Consume Module controls (Character only)
@@ -3977,6 +4026,7 @@ export class DevPanel {
       suffix: " u/s²",
       onChange: (val) => {
         this.arena.gravity = val;
+        this.setScrubberVal("scrub-container-mod-gravity", val);
       },
     });
 
@@ -4085,6 +4135,7 @@ export class DevPanel {
         if (loop) {
           loop.worldCollisionDamageScale = val;
         }
+        this.setScrubberVal("scrub-container-mod-collision-damage-scale", val);
       },
     });
 
