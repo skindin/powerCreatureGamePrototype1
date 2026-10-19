@@ -33,6 +33,7 @@ export const ABILITY_METADATA: Record<string, { name: string; color: string }> =
   throw: { name: "Throw", color: "#f43f5e" },
   instant_burst: { name: "Burst", color: "#ec4899" },
   laser_blast: { name: "Laser", color: "#06b6d4" },
+  melee: { name: "Melee", color: "#f97316" },
 };
 
 /**
@@ -322,8 +323,10 @@ export class EnergyBus {
     const demandedJoules = options.joules ?? (options.watts ? options.watts * dt : 0);
     if (demandedJoules <= 0) return true;
 
-    // Stamina capacity check
-    const maxCapacity = options.watts ? maxPower * (curStamina / dt) * dt : curStamina * maxPower;
+    // Stamina capacity check: instant burst cannot exceed maxPower rating nor remaining stamina capacity
+    const maxCapacity = options.watts
+      ? maxPower * (curStamina / dt) * dt
+      : Math.min(maxPower, curStamina * maxPower);
     if (!options.allowPartialPower && demandedJoules > maxCapacity + 0.001) {
       return false;
     }
@@ -744,7 +747,9 @@ export class EnergyBus {
 
     const maxPower = Math.max(1, this.getMaxPower(registry));
     const curStamina = this.getCurrentStamina(registry);
-    const maxBurstCapacity = Math.max(0, curStamina * maxPower);
+    // An instant burst cannot exceed the value of the bus's max power rating,
+    // nor the remaining burst stamina capacity (curStamina * maxPower).
+    const maxBurstCapacity = Math.max(0, Math.min(maxPower, curStamina * maxPower));
     const poolEnergy = pool ? (pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry)) : Infinity;
     const availableJoules = Math.min(poolEnergy, maxBurstCapacity);
 
@@ -798,14 +803,14 @@ export class EnergyBus {
         name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
         color: "#ec4899",
       };
-      // Visual display in the power track is capped at maxPower (500 W)
-      const visualGrantedWatts = Math.min(maxPower, grantedJoules);
+      // Visual display and reported burst energy cost in the power track is capped at maxPower
+      const burstEnergyCost = Math.min(maxPower, grantedJoules);
       this._activeAllocations.set(options.abilityId, {
         id: options.abilityId,
         name: meta.name,
         color: meta.color,
-        demandedWatts: options.demandedJoules,
-        grantedWatts: visualGrantedWatts,
+        demandedWatts: burstEnergyCost,
+        grantedWatts: burstEnergyCost,
         fraction,
         allowPartialPower: options.allowPartialPower ?? false,
         order: this._nextOrderId,

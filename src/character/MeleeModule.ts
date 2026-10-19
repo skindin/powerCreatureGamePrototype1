@@ -26,8 +26,8 @@ export interface MeleeHitResult {
  * MeleeModule
  *
  * Implements a high-energy physics-based burst melee attack.
- * - Triggered via Ctrl + Right Click (Keyboard) or Click Right Stick / R3 (Gamepad).
- * - Creates an oriented rectangle of effect (reach x width) aligned from character to cursor/aim direction.
+ * - Triggered via X key (Keyboard) or X button (Gamepad) in character facing direction.
+ * - Creates an oriented rectangle of effect (reach x width) aligned along character's facing direction.
  * - Energy cost is calculated from the mechanical work needed to accelerate and deliver the attack force:
  *   Work = Force * reach / muscleEfficiency.
  * - Draws burst energy directly from the main energy bus (bus_main).

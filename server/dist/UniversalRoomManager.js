@@ -7460,7 +7460,8 @@ const ABILITY_METADATA = {
   pickup: { name: "Pickup", color: "#14b8a6" },
   throw: { name: "Throw", color: "#f43f5e" },
   instant_burst: { name: "Burst", color: "#ec4899" },
-  laser_blast: { name: "Laser", color: "#06b6d4" }
+  laser_blast: { name: "Laser", color: "#06b6d4" },
+  melee: { name: "Melee", color: "#f97316" }
 };
 class EnergyBus {
   constructor(options) {
@@ -7670,7 +7671,7 @@ class EnergyBus {
     const dt = options.dt ?? 0.05;
     const demandedJoules = options.joules ?? (options.watts ? options.watts * dt : 0);
     if (demandedJoules <= 0) return true;
-    const maxCapacity = options.watts ? maxPower * (curStamina / dt) * dt : curStamina * maxPower;
+    const maxCapacity = options.watts ? maxPower * (curStamina / dt) * dt : Math.min(maxPower, curStamina * maxPower);
     if (!options.allowPartialPower && demandedJoules > maxCapacity + 1e-3) {
       return false;
     }
@@ -7997,7 +7998,7 @@ class EnergyBus {
     }
     const maxPower = Math.max(1, this.getMaxPower(registry));
     const curStamina = this.getCurrentStamina(registry);
-    const maxBurstCapacity = Math.max(0, curStamina * maxPower);
+    const maxBurstCapacity = Math.max(0, Math.min(maxPower, curStamina * maxPower));
     const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry) : Infinity;
     const availableJoules = Math.min(poolEnergy, maxBurstCapacity);
     if (curStamina <= 1e-4) {
@@ -8039,13 +8040,13 @@ class EnergyBus {
         name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
         color: "#ec4899"
       };
-      const visualGrantedWatts = Math.min(maxPower, grantedJoules);
+      const burstEnergyCost = Math.min(maxPower, grantedJoules);
       this._activeAllocations.set(options.abilityId, {
         id: options.abilityId,
         name: meta.name,
         color: meta.color,
-        demandedWatts: options.demandedJoules,
-        grantedWatts: visualGrantedWatts,
+        demandedWatts: burstEnergyCost,
+        grantedWatts: burstEnergyCost,
         fraction,
         allowPartialPower: options.allowPartialPower ?? false,
         order: this._nextOrderId,
@@ -9245,8 +9246,8 @@ class Character extends GameObject {
     }
     if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
       const candidates = this.meleeCandidateEntities ?? arena.entities;
-      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
-      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      const dirX = Math.cos(this.facingAngle ?? 0);
+      const dirY = Math.sin(this.facingAngle ?? 0);
       this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
     }
     if (this.energyBusses.size > 0) {

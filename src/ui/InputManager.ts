@@ -398,6 +398,10 @@ export class InputManager {
 
         this.onKeyboardPickup?.();
       }
+
+      if (e.code === "KeyX") {
+        this.isKeyboardMeleeRequested = true;
+      }
     });
 
     window.addEventListener("keyup", (e) => {
@@ -421,6 +425,10 @@ export class InputManager {
 
       if (e.code === "KeyE") {
         this.isEKeyDepressed = false;
+      }
+
+      if (e.code === "KeyX") {
+        this.isKeyboardMeleeRequested = false;
       }
 
       if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
@@ -568,11 +576,6 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
-        const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
-        if (isCtrl) {
-          this.isKeyboardMeleeRequested = true;
-          return;
-        }
         const canLock = this.canLockAim ? this.canLockAim() : false;
         if (canLock && !this.lockedAimPos) {
           // 1. Record where mouse was
@@ -633,7 +636,6 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
-        this.isKeyboardMeleeRequested = false;
         const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
@@ -1453,28 +1455,15 @@ export class InputManager {
         }
       }
 
-      // Button 11 (Right Stick Click / R3): Melee Attack
-      const r3Current = isButtonPressed(11);
-      slot.isMeleeRequested = r3Current;
+      // Button 2 (X on Xbox / Square on PS) or Button 11 (R3): Melee Attack in facing direction
+      const xCurrent = isButtonPressed(2) || isButtonPressed(11);
+      slot.isMeleeRequested = xCurrent;
 
-      if (r3Current) {
-        // Attack points in direction of controller (right joystick if moved, or aimPos relative to character, or facing angle)
-        let mDirX = Math.cos(char.facingAngle ?? 0);
-        let mDirY = Math.sin(char.facingAngle ?? 0);
-        if (rMag > deadzone) {
-          mDirX = rx / rMag;
-          mDirY = ry / rMag;
-        } else if (slot.aimPos) {
-          const adx = slot.aimPos.x - char.position.x;
-          const ady = slot.aimPos.y - char.position.y;
-          const amag = Math.hypot(adx, ady);
-          if (amag > 0.05) {
-            mDirX = adx / amag;
-            mDirY = ady / amag;
-          }
-        }
+      if (xCurrent) {
+        // Attack points in character's facing direction
+        const mDirX = Math.cos(char.facingAngle ?? 0);
+        const mDirY = Math.sin(char.facingAngle ?? 0);
         slot.meleeAimDir = { x: mDirX, y: mDirY };
-        char.facingAngle = Math.atan2(mDirY, mDirX);
       } else {
         slot.meleeAimDir = null;
       }

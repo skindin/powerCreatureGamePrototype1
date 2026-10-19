@@ -675,9 +675,9 @@ export class PlayerManager {
         isLaserFiring: isCtrlDown && input.isMouseDown,
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
-        isMeleeRequested: (isCtrlDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested,
-        meleeAimX: input.actualMousePos.x,
-        meleeAimY: input.actualMousePos.y,
+        isMeleeRequested: input.isKeyPressed("KeyX") || input.isKeyboardMeleeRequested,
+        meleeAimX: kChar ? kChar.position.x + Math.cos(kChar.facingAngle ?? 0) : input.actualMousePos.x,
+        meleeAimY: kChar ? kChar.position.y + Math.sin(kChar.facingAngle ?? 0) : input.actualMousePos.y,
         aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
           ? input.recordedMousePos.x
           : input.actualMousePos.x,
@@ -812,8 +812,8 @@ export class PlayerManager {
         laserAimY: slot.aimPos.y,
         laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
         isMeleeRequested: Boolean(slot.isMeleeRequested),
-        meleeAimX: slot.meleeAimDir ? (cChar.position.x + slot.meleeAimDir.x) : slot.aimPos.x,
-        meleeAimY: slot.meleeAimDir ? (cChar.position.y + slot.meleeAimDir.y) : slot.aimPos.y,
+        meleeAimX: cChar.position.x + Math.cos(cChar.facingAngle ?? 0),
+        meleeAimY: cChar.position.y + Math.sin(cChar.facingAngle ?? 0),
         aimX,
         aimY,
         isAiming: isGamepadAiming || Boolean(slot.isLaserAiming),

@@ -750,11 +750,11 @@ export class Character extends GameObject {
       );
     }
 
-    // 2b3. Process Melee Attack ability
+    // 2b3. Process Melee Attack ability in character facing direction
     if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
       const candidates = this.meleeCandidateEntities ?? arena.entities;
-      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
-      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      const dirX = Math.cos(this.facingAngle ?? 0);
+      const dirY = Math.sin(this.facingAngle ?? 0);
       this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
     }
 

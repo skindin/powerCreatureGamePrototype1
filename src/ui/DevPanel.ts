@@ -1790,7 +1790,7 @@ export class DevPanel {
           <div id="collapse-body-mod-melee" style="display: ${this.isSectionCollapsed('mod-melee') ? 'none' : 'block'};">
           ${!meleeEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Melee attack is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Rapid burst melee punch with physical impact knockback, recoil momentum exchange, and force-based damage shock. Trigger: <b>Ctrl + Right Click</b> (Keyboard) or <b>R3</b> (Gamepad).
+            Rapid burst melee punch with physical impact knockback, recoil momentum exchange, and force-based damage shock. Trigger: <b>X</b> (Keyboard) or <b>X button</b> (Gamepad) in facing direction.
           </div>
 
           <div id="prop-socket-melee-max-force"></div>
