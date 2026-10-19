@@ -132,7 +132,7 @@ export class LaserRenderer {
         ctx.beginPath();
         for (let i = 0; i <= waveCount; i++) {
           const t = (i / Math.max(1, waveCount)) * beamLen;
-          const phase = (now * 0.02) + (i * 0.8);
+          const phase = (i * 0.8) - (now * 0.02);
           const waveOffset = Math.sin(phase) * (beamPx * 0.35);
           if (i === 0) ctx.moveTo(t, waveOffset);
           else ctx.lineTo(t, waveOffset);

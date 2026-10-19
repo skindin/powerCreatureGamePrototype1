@@ -5127,6 +5127,24 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 4px #ef4444;
 }
 
+/* Laser Exhaustion Recovery Notch on Row 2 (Clean Red Tick Mark on 4px Laser Row) */
+.hud-cap-laser-exhaustion {
+  position: absolute;
+  top: 7px;
+  height: 4px;
+  width: 1.5px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.hud-cap-laser-exhaustion-line {
+  width: 1.5px;
+  height: 100%;
+  background: #ef4444;
+  box-shadow: 0 0 4px #ef4444;
+}
+
 /* Anticipated Modifier Blocks & Tags (Ghostly, less opaque, dotted outline) */
 .hud-block-anticipated {
   opacity: 0.50 !important;

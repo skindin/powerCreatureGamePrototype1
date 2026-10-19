@@ -3277,8 +3277,8 @@ export class DevPanel {
             property: eb.staminaRegenRateProp,
             owner: char,
             label: "Stamina Regen Rate (s/s)",
-            step: 0.2,
-            min: 0.1,
+            step: 0.05,
+            min: 0.01,
             max: 10.0,
           });
           regenEl.appendChild(rCtrl.element);

@@ -48,6 +48,7 @@ export class EnergyHud {
   private laserStaminaFillEl: HTMLElement | null = null;
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
+  private laserExhaustionTickEl: HTMLElement | null = null;
   private energyBaselineLineEl: HTMLElement | null = null;
 
   public isCollapsed: boolean = false;
@@ -127,7 +128,12 @@ export class EnergyHud {
                 <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (10s)"></div>
 
                 <!-- Row 2: Laser Bus Stamina (Smaller row, Bright Cyan, 5s) -->
-                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina (5s)"></div>
+                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina"></div>
+
+                <!-- Laser Exhaustion Recovery Tick Mark (Red notch shown when laser bus is exhausted) -->
+                <div id="tick-hud-laser-exhaustion-recovery" class="hud-cap-tick hud-cap-laser-exhaustion" style="left: 20%; display: none;" title="Laser Exhaustion Recovery Threshold">
+                  <div class="hud-cap-line hud-cap-laser-exhaustion-line"></div>
+                </div>
 
                 <!-- Exhaustion Recovery Tick Mark (Red notch shown when exhausted) -->
                 <div id="tick-hud-exhaustion-recovery" class="hud-cap-tick hud-cap-exhaustion" style="left: 10%; display: none;" title="Exhaustion Recovery Threshold">
@@ -171,6 +177,7 @@ export class EnergyHud {
     this.laserStaminaFillEl = hudWrapper.querySelector("#bar-hud-laser-stamina");
     this.staminaCapTickEl = hudWrapper.querySelector("#tick-hud-max-stamina");
     this.exhaustionTickEl = hudWrapper.querySelector("#tick-hud-exhaustion-recovery");
+    this.laserExhaustionTickEl = hudWrapper.querySelector("#tick-hud-laser-exhaustion-recovery");
     this.energyBaselineLineEl = hudWrapper.querySelector("#line-hud-energy-baseline");
   }
 
@@ -780,6 +787,18 @@ export class EnergyHud {
         }
       } else {
         this.laserStaminaFillEl.style.display = "none";
+      }
+    }
+
+    // Laser Exhaustion Recovery Tick Notch (Red tick indicating when laser will stop being exhausted)
+    if (this.laserExhaustionTickEl) {
+      if (laserBus && laserBus.enabled && isLaserExhausted) {
+        const recoveryRatio = laserBus.recoveryThresholdRatio ?? 0.20;
+        const recoveryPct = recoveryRatio * 100;
+        this.laserExhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
+        this.laserExhaustionTickEl.style.display = "block";
+      } else {
+        this.laserExhaustionTickEl.style.display = "none";
       }
     }
   }

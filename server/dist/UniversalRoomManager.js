@@ -8632,7 +8632,9 @@ class Character extends GameObject {
         id: "bus_laser",
         name: "Laser Bus",
         maxStamina: 2,
-        maxPower: 2e3
+        maxPower: 2e3,
+        staminaRegenRate: 2 / 15
+        // Full capacity regenerates in 15 seconds (~0.133 s/s)
       });
       this.energyBusses.set(laserBus.id, laserBus);
       this.laserModule = new LaserModule({
@@ -8881,6 +8883,14 @@ class Character extends GameObject {
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
   updateFacingDirection(isAimingInput, aimTargetPos, movementInput) {
+    if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
+      const dx = this.laserAimTarget.x - this.position.x;
+      const dy = this.laserAimTarget.y - this.position.y;
+      if (Math.hypot(dx, dy) > 0.05) {
+        this.facingAngle = Math.atan2(dy, dx);
+        return;
+      }
+    }
     const shouldFaceCursor = this.heldObject && aimTargetPos && (!this.isPrimaryAbilityNonDirectional() || isAimingInput);
     if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;

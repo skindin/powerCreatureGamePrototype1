@@ -406,6 +406,7 @@ export class Character extends GameObject {
         name: "Laser Bus",
         maxStamina: 2.0,
         maxPower: 2000.0,
+        staminaRegenRate: 2.0 / 15.0, // Full capacity regenerates in 15 seconds (~0.133 s/s)
       });
       this.energyBusses.set(laserBus.id, laserBus);
 
@@ -520,6 +521,16 @@ export class Character extends GameObject {
     aimTargetPos: Vector2D | null,
     movementInput?: Vector2D
   ): void {
+    // While aiming or firing laser, keep character strictly facing the laser aim target
+    if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
+      const dx = this.laserAimTarget.x - this.position.x;
+      const dy = this.laserAimTarget.y - this.position.y;
+      if (Math.hypot(dx, dy) > 0.05) {
+        this.facingAngle = Math.atan2(dy, dx);
+        return;
+      }
+    }
+
     // When holding an object:
     // If the object's primary ability does not involve direction and we are not aiming throw (isAimingInput is false),
     // the character should NOT face the mouse cursor and should face movement direction instead!

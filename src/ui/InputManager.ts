@@ -1045,6 +1045,19 @@ export class InputManager {
         grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
       );
 
+      // Button 4 (LB / L1): Enter Laser Mode
+      const isLbPressed = isButtonPressed(4, 0.3);
+      const isLbJustPressed = isLbPressed && !isPrevPressed(4);
+      slot.isLaserAiming = isLbPressed;
+
+      if (isLbJustPressed) {
+        // Entering laser mode starts in forward-leading mode before right JS is touched
+        slot.hasMovedAimStick = false;
+        slot.aimMovedWhileInRange = true;
+      } else if (!isLbPressed) {
+        slot.hasMovedAimStick = false;
+      }
+
       if (slot.isLaserAiming) {
         if (!slot.hasMovedAimStick) {
           let dirX = 1;
@@ -1184,16 +1197,6 @@ export class InputManager {
         }
       }
 
-      // Button 4 (LB / L1): Enter Laser Mode
-      const isLbPressed = isButtonPressed(4, 0.3);
-      const isLbJustPressed = isLbPressed && !isPrevPressed(4);
-      slot.isLaserAiming = isLbPressed;
-
-      if (isLbJustPressed) {
-        // Entering laser mode starts in forward-leading mode before right JS is touched
-        slot.hasMovedAimStick = false;
-        slot.aimMovedWhileInRange = true;
-      }
 
       if (slot.isLaserAiming) {
         // Read analog trigger float values (0.0 to 1.0)
