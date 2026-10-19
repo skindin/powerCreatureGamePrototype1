@@ -1058,6 +1058,10 @@ export class InputManager {
         slot.aimOffset.x = clamped.x - char.position.x;
         slot.aimOffset.y = clamped.y - char.position.y;
       }
+      if (!isHolding && slot.wasHoldingObject) {
+        slot.hasMovedAimStick = false;
+        slot.aimMovedWhileInRange = false;
+      }
       slot.wasHoldingObject = isHolding;
 
       if (!slot.aimOffset) {
@@ -1094,13 +1098,14 @@ export class InputManager {
       // Button 4 (LB / L1): Enter Laser Mode
       const isLbPressed = isButtonPressed(4, 0.3);
       const isLbJustPressed = isLbPressed && !isPrevPressed(4);
+      const isLbJustReleased = !isLbPressed && isPrevPressed(4);
       slot.isLaserAiming = isLbPressed;
 
       if (isLbJustPressed) {
         // Entering laser mode starts in forward-leading mode before right JS is touched
         slot.hasMovedAimStick = false;
         slot.aimMovedWhileInRange = true;
-      } else if (!isLbPressed) {
+      } else if (isLbJustReleased) {
         slot.hasMovedAimStick = false;
       }
 
@@ -1185,6 +1190,7 @@ export class InputManager {
       // Button 6 (LT / L2): Act like Alt (switches from dynamic primary ability e.g. eating to explicit throwing mode)
       const isLtPressed = isButtonPressed(6, 0.2);
       const isLtJustPressed = isLtPressed && !slot.wasAltHeld;
+      const isLtJustReleased = !isLtPressed && Boolean(slot.wasAltHeld);
       slot.wasAltHeld = isLtPressed;
       slot.isAltHeld = isLtPressed;
 
@@ -1208,7 +1214,7 @@ export class InputManager {
           char.facingAngle = aimAngle;
           char.lastThrowAimAngle = aimAngle;
           slot.lastThrowAimAngle = aimAngle;
-        } else if (!isLtPressed) {
+        } else if (isLtJustReleased && !slot.isLaserAiming) {
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
         }

@@ -1513,7 +1513,6 @@ export class PlayerManager {
           // ONLY show cursor if LT (Alt) is held!
           if (isPrimaryNonDirectional && !isThrowActive) {
             isCursorVisibleNow = false;
-            slot.hasMovedAimStick = false;
           } else {
             isCursorVisibleNow = true;
           }
