@@ -400,7 +400,7 @@ export class Character extends GameObject {
       const laserBus = new EnergyBus({
         id: "bus_laser",
         name: "Laser Bus",
-        maxStamina: 5.0,
+        maxStamina: 2.0,
         maxPower: 2000.0,
       });
       this.energyBusses.set(laserBus.id, laserBus);

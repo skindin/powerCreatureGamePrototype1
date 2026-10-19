@@ -8329,24 +8329,27 @@ class LaserModule {
     const dy = targetY - startY;
     const dz = targetZ - startZ;
     const dist2D = Math.hypot(dx, dy);
-    if (dist2D < 0.05) {
-      return {
-        endpoint: { x: targetX, y: targetY, z: targetZ },
-        hitWall: null,
-        hitEntities: [],
-        isBlockedByWall: false
-      };
+    let dirX = 1;
+    let dirY = 0;
+    let slopeZ = 0;
+    if (dist2D >= 0.05) {
+      dirX = dx / dist2D;
+      dirY = dy / dist2D;
+      slopeZ = dz / dist2D;
+    } else {
+      const angle = character.facingAngle ?? 0;
+      dirX = Math.cos(angle);
+      dirY = Math.sin(angle);
+      slopeZ = 0;
     }
-    const dirX = dx / dist2D;
-    const dirY = dy / dist2D;
-    let closestWallDist = dist2D;
+    const maxLaserRange = 150;
+    let closestWallDist = maxLaserRange;
     let hitWall = null;
     let isBlocked = false;
     for (const wall of arena.walls) {
       const enterInfo = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
       if (enterInfo && enterInfo.enterDist > 0.05 && enterInfo.enterDist < closestWallDist) {
-        const tFrac = enterInfo.enterDist / dist2D;
-        const beamZ = startZ + dz * tFrac;
+        const beamZ = startZ + slopeZ * enterInfo.enterDist;
         if (beamZ <= wall.wallHeight + 0.01) {
           closestWallDist = enterInfo.enterDist;
           hitWall = wall;
@@ -8356,7 +8359,7 @@ class LaserModule {
     }
     const endX = startX + dirX * closestWallDist;
     const endY = startY + dirY * closestWallDist;
-    const endZ = startZ + dz * (closestWallDist / dist2D);
+    const endZ = Math.max(0, startZ + slopeZ * closestWallDist);
     return {
       endpoint: { x: endX, y: endY, z: endZ },
       hitWall,
@@ -8619,7 +8622,7 @@ class Character extends GameObject {
       const laserBus = new EnergyBus({
         id: "bus_laser",
         name: "Laser Bus",
-        maxStamina: 5,
+        maxStamina: 2,
         maxPower: 2e3
       });
       this.energyBusses.set(laserBus.id, laserBus);

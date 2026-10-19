@@ -173,20 +173,24 @@ export class LaserModule {
     const dz = targetZ - startZ;
     const dist2D = Math.hypot(dx, dy);
 
-    if (dist2D < 0.05) {
-      return {
-        endpoint: { x: targetX, y: targetY, z: targetZ },
-        hitWall: null,
-        hitEntities: [],
-        isBlockedByWall: false,
-      };
+    let dirX = 1;
+    let dirY = 0;
+    let slopeZ = 0;
+
+    if (dist2D >= 0.05) {
+      dirX = dx / dist2D;
+      dirY = dy / dist2D;
+      slopeZ = dz / dist2D;
+    } else {
+      const angle = character.facingAngle ?? 0;
+      dirX = Math.cos(angle);
+      dirY = Math.sin(angle);
+      slopeZ = 0;
     }
 
-    const dirX = dx / dist2D;
-    const dirY = dy / dist2D;
-
-    // Raycast against arena walls: find the earliest wall intersection along the ray path
-    let closestWallDist = dist2D;
+    // Raycast against arena walls: extend all the way off the screen (150 units) unless blocked by a physical wall
+    const maxLaserRange = 150.0;
+    let closestWallDist = maxLaserRange;
     let hitWall: Wall | null = null;
     let isBlocked = false;
 
@@ -194,8 +198,7 @@ export class LaserModule {
       const enterInfo = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
       if (enterInfo && enterInfo.enterDist > 0.05 && enterInfo.enterDist < closestWallDist) {
         // Check if beam height at this wall enter distance is blocked by wall height
-        const tFrac = enterInfo.enterDist / dist2D;
-        const beamZ = startZ + dz * tFrac;
+        const beamZ = startZ + slopeZ * enterInfo.enterDist;
         if (beamZ <= wall.wallHeight + 0.01) {
           closestWallDist = enterInfo.enterDist;
           hitWall = wall;
@@ -206,7 +209,7 @@ export class LaserModule {
 
     const endX = startX + dirX * closestWallDist;
     const endY = startY + dirY * closestWallDist;
-    const endZ = startZ + dz * (closestWallDist / dist2D);
+    const endZ = Math.max(0, startZ + slopeZ * closestWallDist);
 
     return {
       endpoint: { x: endX, y: endY, z: endZ },

@@ -341,7 +341,7 @@ export class EnergyHud {
       const units = vb.stableUnits;
 
       blocksHtml += `
-        <div class="hud-power-block hud-block-neg" style="left: ${leftPct.toFixed(2)}%; width: ${actualWidth.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-left: 2px solid rgba(255, 255, 255, 0.95); border-right: 1px solid rgba(0, 0, 0, 0.3);" title="${vb.name}: -${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
+        <div class="hud-power-block hud-block-neg" style="left: ${leftPct.toFixed(2)}%; width: ${actualWidth.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 1px solid rgba(0, 0, 0, 0.25);" title="${vb.name}: -${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
       `;
       rightAnchorHp = leftPct;
     }
@@ -354,7 +354,7 @@ export class EnergyHud {
       const units = vb.currentUnits;
       const widthPct = Math.max(0.4, (units / Math.max(1, maxHp)) * 100);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 2px solid rgba(255, 255, 255, 0.95);" title="${vb.name}: +${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-left: 1px solid rgba(0, 0, 0, 0.25);" title="${vb.name}: +${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
       `;
       posLeftPct += widthPct;
     }
@@ -589,8 +589,8 @@ export class EnergyHud {
 
       const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
       const borderStyle = vb.isAnticipated
-        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-left: 2px dotted rgba(255, 255, 255, 0.95);"
-        : "border-left: 2px solid rgba(255, 255, 255, 0.95); border-right: 1px solid rgba(0, 0, 0, 0.3);";
+        ? "border: 1.5px dotted rgba(255, 255, 255, 0.6);"
+        : "border-right: 1px solid rgba(0, 0, 0, 0.25);";
       const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
 
       blocksHtml += `
@@ -607,7 +607,7 @@ export class EnergyHud {
       const joules = vb.currentWatts;
       const widthPct = Math.max(0.4, (joules / energyCap) * 100);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 2px solid rgba(255, 255, 255, 0.95);" title="${vb.name}: +${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)} J / sec)"></div>
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-left: 1px solid rgba(0, 0, 0, 0.25);" title="${vb.name}: +${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)} J / sec)"></div>
       `;
       posLeftPct += widthPct;
     }
@@ -686,7 +686,6 @@ export class EnergyHud {
     const maxEnergy = pool ? pool.getMaxEnergy(props) : 10000;
     const infiniteEnergy = pool?.infiniteEnergy ?? false;
 
-    const maxPower = bus ? bus.getMaxPower(props) : 500;
     const curStamina = bus ? bus.getCurrentStamina(props) : 10;
     const maxStamina = bus ? bus.getMaxStamina(props) : 10;
     const isExhausted = bus?.isExhausted ?? false;
@@ -697,8 +696,8 @@ export class EnergyHud {
     const targetHpPct = maxHp > 0 ? Math.max(0, Math.min(100, (curHp / maxHp) * 100)) : 0;
     const targetEnergyPct = infiniteEnergy ? 100 : Math.max(0, Math.min(100, (curEnergy / energyCap) * 100));
 
-    const curStaminaEnergy = curStamina * maxPower;
-    const targetMainStaminaPct = energyCap > 0 ? Math.max(0, Math.min(100, (curStaminaEnergy / energyCap) * 100)) : 0;
+    // Main Stamina now takes up the whole width (100% of row represents maxStamina)
+    const targetMainStaminaPct = maxStamina > 0 ? Math.max(0, Math.min(100, (curStamina / maxStamina) * 100)) : 0;
 
     const laserBus = char.getEnergyBus("bus_laser");
     let targetLaserStaminaPct = 0;
@@ -734,7 +733,7 @@ export class EnergyHud {
     // =========================================================================
     this.renderPowerBlocks(char, maxEnergy, curEnergy, dt, infiniteEnergy, this.visualEnergyPct);
 
-    // Current Stamina Fill (Solid Emerald on Row 1) - tracks visualMainStaminaPct smoothly
+    // Current Stamina Fill (Solid Emerald on Row 1) - tracks visualMainStaminaPct smoothly across full row
     if (this.lowerStaminaFillEl) {
       this.lowerStaminaFillEl.style.width = `${this.visualMainStaminaPct.toFixed(2)}%`;
       if (isExhausted) {
@@ -748,20 +747,16 @@ export class EnergyHud {
       }
     }
 
-    // Stamina Cap Tick Notch (at (maxStamina * maxPower) / energyCap)
+    // Stamina Cap Tick Notch: hidden since main stamina now occupies the full row width
     if (this.staminaCapTickEl) {
-      const maxStaminaEnergy = maxStamina * maxPower;
-      const staminaCapPct = energyCap > 0 ? Math.max(0, Math.min(100, (maxStaminaEnergy / energyCap) * 100)) : 50;
-      this.staminaCapTickEl.style.left = `${staminaCapPct.toFixed(2)}%`;
+      this.staminaCapTickEl.style.display = "none";
     }
 
     // Exhaustion Recovery Tick Notch (Red tick indicating when player will not be exhausted anymore)
     if (this.exhaustionTickEl) {
       if (isExhausted) {
         const recoveryRatio = bus?.recoveryThresholdRatio ?? 0.20;
-        const recoveryStamina = maxStamina * recoveryRatio;
-        const recoveryStaminaEnergy = recoveryStamina * maxPower;
-        const recoveryPct = energyCap > 0 ? Math.max(0, Math.min(100, (recoveryStaminaEnergy / energyCap) * 100)) : 10;
+        const recoveryPct = recoveryRatio * 100;
         this.exhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
         this.exhaustionTickEl.style.display = "block";
       } else {
