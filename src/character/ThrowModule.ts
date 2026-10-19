@@ -334,6 +334,46 @@ export class ThrowModule {
   }
 
   /**
+   * Helper: calculates the distance along ray (startX, startY) + s * (dirX, dirY)
+   * where the ray enters and exits a wall's 2D bounding box.
+   */
+  public static getRayWallEnterDistance(
+    startX: number,
+    startY: number,
+    dirX: number,
+    dirY: number,
+    wall: Wall
+  ): { enterDist: number; exitDist: number } | null {
+    let tNear = -Infinity;
+    let tFar = Infinity;
+
+    if (Math.abs(dirX) > 1e-6) {
+      let t1 = (wall.x - startX) / dirX;
+      let t2 = (wall.x + wall.width - startX) / dirX;
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tNear = Math.max(tNear, t1);
+      tFar = Math.min(tFar, t2);
+    } else {
+      if (startX < wall.x || startX > wall.x + wall.width) return null;
+    }
+
+    if (Math.abs(dirY) > 1e-6) {
+      let t1 = (wall.y - startY) / dirY;
+      let t2 = (wall.y + wall.height - startY) / dirY;
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tNear = Math.max(tNear, t1);
+      tFar = Math.min(tFar, t2);
+    } else {
+      if (startY < wall.y || startY > wall.y + wall.height) return null;
+    }
+
+    if (tNear <= tFar && tFar >= 0) {
+      return { enterDist: Math.max(0, tNear), exitDist: tFar };
+    }
+    return null;
+  }
+
+  /**
    * Calculates the maximum launch speed for an object given:
    * 1. Character's maxThrowSpeed (governs light objects) scaled by character strength.
    * 2. Object mass and character energy bus power/energy limit (governs heavier objects).
@@ -468,39 +508,68 @@ export class ThrowModule {
       return { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: null, isAutoLocked: false };
     }
 
-    // Maximum theoretical vertical reach at launchSpeed: z_max = v^2 / (2 * g)
-    // If target height delta exceeds this apex, clamp target height so it remains reachable
-    const maxApexDeltaZ = Math.max(0, (launchSpeed * launchSpeed) / (2 * g) - 0.05);
-    let deltaZ = targetSurfaceHeight - startZ;
-    if (deltaZ > maxApexDeltaZ) {
-      deltaZ = maxApexDeltaZ;
-      targetSurfaceHeight = startZ + deltaZ;
-    }
+    const dirX = dist > 0.0001 ? dx / dist : 0;
+    const dirY = dist > 0.0001 ? dy / dist : 0;
 
-    // Ballistic reach limit at max launch speed:
-    // Physical reach envelope: D_max = (v / g) * sqrt(max(0, v^2 - 2 * g * deltaZ))
-    const reachRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
-    const maxReach = Math.max(0.1, (launchSpeed / g) * Math.sqrt(reachRadicand));
-    if (dist > maxReach) {
-      dist = maxReach;
-      finalTargetX = startX + (dx / Math.hypot(dx, dy)) * dist;
-      finalTargetY = startY + (dy / Math.hypot(dx, dy)) * dist;
-      dx = finalTargetX - startX;
-      dy = finalTargetY - startY;
+    let deltaZ = targetSurfaceHeight - startZ;
+    const apexMax = (launchSpeed * launchSpeed) / (2 * g) - 0.02;
+
+    if (wallUnderTarget && targetSurfaceHeight > startZ + 0.05) {
+      const wall = wallUnderTarget.wall;
+      const rayHit = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
+      const enterDist = rayHit ? rayHit.enterDist : Math.hypot(finalTargetX - startX, finalTargetY - startY);
+      const exitDist = rayHit ? rayHit.exitDist : dist;
+
+      const canReachHeight = deltaZ <= apexMax;
+      const reachRadicand = canReachHeight ? Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ) : 0;
+      const maxReachWall = canReachHeight ? (launchSpeed / g) * Math.sqrt(reachRadicand) : 0;
+
+      if (canReachHeight && maxReachWall >= enterDist) {
+        // Can reach onto the wall top
+        targetSurfaceHeight = wall.wallHeight;
+        if (dist > maxReachWall) {
+          dist = Math.min(Math.max(enterDist, exitDist - 0.05), maxReachWall);
+          finalTargetX = startX + dirX * dist;
+          finalTargetY = startY + dirY * dist;
+        }
+      } else {
+        // Cannot reach the elevated wall top with current launchSpeed:
+        // Land on the ground in front of the wall instead of floating in mid-air
+        targetSurfaceHeight = 0;
+        deltaZ = targetSurfaceHeight - startZ;
+        const groundRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
+        const maxReachGround = (launchSpeed / g) * Math.sqrt(groundRadicand);
+        dist = Math.min(maxReachGround, Math.max(0.2, enterDist - _colliderRadius));
+        finalTargetX = startX + dirX * dist;
+        finalTargetY = startY + dirY * dist;
+      }
+    } else {
+      // Aiming on open ground or existing supporting surface
+      if (deltaZ > apexMax) {
+        deltaZ = Math.max(-startZ, apexMax);
+        targetSurfaceHeight = startZ + deltaZ;
+      }
+      const reachRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
+      const maxReach = (launchSpeed / g) * Math.sqrt(reachRadicand);
+      if (dist > maxReach) {
+        dist = maxReach;
+        finalTargetX = startX + dirX * dist;
+        finalTargetY = startY + dirY * dist;
+      }
     }
 
     // Clamp aim distance to character reach if configured
     const maxThrowAimDistance = this.maxThrowAimDistanceProp.get(thrower?.properties);
     if (maxThrowAimDistance !== undefined && maxThrowAimDistance > 0 && dist > maxThrowAimDistance) {
       dist = maxThrowAimDistance;
-      finalTargetX = startX + (dx / Math.hypot(dx, dy)) * dist;
-      finalTargetY = startY + (dy / Math.hypot(dx, dy)) * dist;
-      dx = finalTargetX - startX;
-      dy = finalTargetY - startY;
+      finalTargetX = startX + dirX * dist;
+      finalTargetY = startY + dirY * dist;
     }
 
-    const dirX = dx / dist;
-    const dirY = dy / dist;
+    dx = finalTargetX - startX;
+    dy = finalTargetY - startY;
+    dist = Math.hypot(dx, dy);
+    deltaZ = targetSurfaceHeight - startZ;
 
     // 1. Compute baseline optimal (minimum energy) flight time T_opt:
     const dist3D = Math.sqrt(dist * dist + deltaZ * deltaZ);
@@ -516,12 +585,12 @@ export class ThrowModule {
     const bCoeffMax = -(launchSpeed * launchSpeed - g * deltaZ);
     const cCoeff = dist * dist + deltaZ * deltaZ;
 
-    const discMax = bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff;
-    const uLow = discMax >= 0 ? (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * tOpt;
+    const discMax = Math.max(0, bCoeffMax * bCoeffMax - 4 * aCoeff * cCoeff);
+    const uLow = (-bCoeffMax - Math.sqrt(discMax)) / (2 * aCoeff);
     const tFlat = uLow > 0 ? Math.sqrt(uLow) : dist / launchSpeed;
 
-    const uHigh = discMax >= 0 ? (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff) : tOpt * 2.2 * (tOpt * 2.2);
-    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tOpt * 2.2;
+    const uHigh = (-bCoeffMax + Math.sqrt(discMax)) / (2 * aCoeff);
+    const tHigh = uHigh > 0 ? Math.sqrt(uHigh) : tFlat;
 
     const tMin = Math.max(0.02, tFlat);
     const tMax = Math.max(tMin, tHigh);
