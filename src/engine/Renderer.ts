@@ -16,7 +16,6 @@ export type VerticalVisualMode = "bigger" | "hover" | "both";
 export interface ViewSettings {
   verticalVisuals: VerticalVisualMode;
   visualAltitudeScale: number;
-  modHistoryWindowSeconds?: number;
 }
 
 export interface ActiveAimCursor {
@@ -74,7 +73,6 @@ export class Renderer {
   public viewSettings: ViewSettings = {
     verticalVisuals: "hover",
     visualAltitudeScale: 0.5,
-    modHistoryWindowSeconds: 0.10,
   };
   public showCollisionDebug = false;
   public showGhostClones = true;
@@ -97,15 +95,6 @@ export class Renderer {
     this.ctx = ctx;
     this.trajectoryRenderer = new TrajectoryRenderer(ctx);
     this.laserRenderer = new LaserRenderer(ctx);
-  }
-
-  public get modHistoryWindowSeconds(): number {
-    return this.viewSettings.modHistoryWindowSeconds ?? 0.10;
-  }
-
-  public setModHistoryWindowSeconds(seconds: number): void {
-    const val = Math.max(0.01, Math.min(2.0, seconds));
-    this.viewSettings.modHistoryWindowSeconds = val;
   }
 
   public setVerticalVisualMode(mode: VerticalVisualMode): void {

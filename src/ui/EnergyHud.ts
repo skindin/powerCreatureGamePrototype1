@@ -202,7 +202,7 @@ export class EnergyHud {
 
   /**
    * Renders color-coded blocks for health modifiers directly embedded inside the Health bar.
-   * - Time-based modifiers occupy width proportional to windowed consumption (rate * windowSeconds).
+   * - Time-based modifiers occupy width proportional to 1.0-second footprint consumption.
    * - Negative modifiers (damage) sit at the leading edge of current health.
    * - Positive modifiers (healing) extend outward from current health.
    */
@@ -286,18 +286,16 @@ export class EnergyHud {
       return;
     }
 
-    const windowSeconds = this.gameLoop.renderer?.modHistoryWindowSeconds ?? 0.10;
-
     // Split into positive (healing) and negative (damage)
     const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
     const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
 
-    // Calculate windowed segment widths
+    // Calculate 1.0-second footprint segment widths (rate * 1.0s = units)
     let totalNegPct = 0;
     const negBlockWidths: { vb: VisualHealthBlock; widthPct: number }[] = [];
     for (const vb of negativeBlocks) {
       if (vb.currentUnits <= 0.01) continue;
-      const units = vb.isBurst ? vb.currentUnits : (vb.currentUnits * windowSeconds);
+      const units = vb.currentUnits;
       const widthPct = Math.max(0.4, (units / Math.max(1, maxHp)) * 100);
       negBlockWidths.push({ vb, widthPct });
       totalNegPct += widthPct;
@@ -311,24 +309,26 @@ export class EnergyHud {
 
     let blocksHtml = "";
 
-    // 1. Negative Modifiers (Damage) - placed right after base health fill up to curHpPct
-    let negLeftPct = baseFillPct;
+    // 1. Negative Modifiers (Damage) - anchored backwards from curHpPct
+    let rightAnchorHp = curHpPct;
     for (const { vb, widthPct } of negBlockWidths) {
-      const units = vb.isBurst ? vb.stableUnits : (vb.stableUnits * windowSeconds);
+      const leftPct = Math.max(0, rightAnchorHp - widthPct);
+      const actualWidth = rightAnchorHp - leftPct;
+      const units = vb.stableUnits;
       blocksHtml += `
-        <div class="hud-power-block hud-block-neg" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.85);" title="${vb.name}: -${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP in ${windowSeconds.toFixed(2)}s window)"></div>
+        <div class="hud-power-block hud-block-neg" style="left: ${leftPct.toFixed(2)}%; width: ${actualWidth.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.85);" title="${vb.name}: -${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
       `;
-      negLeftPct += widthPct;
+      rightAnchorHp = leftPct;
     }
 
     // 2. Positive Modifiers (Healing) - placed extending outward from curHpPct
     let posLeftPct = curHpPct;
     for (const vb of positiveBlocks) {
       if (vb.currentUnits <= 0.01) continue;
-      const units = vb.isBurst ? vb.currentUnits : (vb.currentUnits * windowSeconds);
+      const units = vb.currentUnits;
       const widthPct = Math.max(0.4, (units / Math.max(1, maxHp)) * 100);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP in ${windowSeconds.toFixed(2)}s window)"></div>
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP / sec)"></div>
       `;
       posLeftPct += widthPct;
     }
@@ -357,9 +357,10 @@ export class EnergyHud {
 
   /**
    * Renders color-coded blocks for energy modifiers directly embedded inside the Energy reservoir bar.
-   * - Time-based modifiers occupy width proportional to windowed consumption (Watts * windowSeconds).
+   * - Time-based modifiers occupy width proportional to 1.0-second footprint consumption (Watts * 1.0s = Joules).
    * - Considers allocations from all active busses (bus_main, bus_laser, etc.).
-   * - Negative modifiers (power draws) sit at the leading edge of current energy.
+   * - Unifies anticipated preview and active allocations by canonical ability ID to prevent double-counting.
+   * - Negative modifiers (power draws) sit at the leading edge of current energy, anchored backwards.
    * - Positive modifiers (nutrition) extend outward from current energy.
    */
   private renderPowerBlocks(
@@ -373,14 +374,44 @@ export class EnergyHud {
 
     // Collect allocations across ALL active busses on the character (Main Bus, Laser Bus, etc.)
     const allocations: any[] = [];
+    const activeAbilityKeys = new Set<string>();
+
     if (_char.energyBusses && _char.energyBusses.size > 0) {
       for (const b of _char.energyBusses.values()) {
         if (b && b.enabled) {
-          allocations.push(...b.getActiveAllocations(_char.properties));
+          for (const a of b.getActiveAllocations(_char.properties)) {
+            allocations.push({
+              key: a.id,
+              id: a.id,
+              name: a.name,
+              color: a.color,
+              grantedWatts: a.grantedWatts,
+              allowPartialPower: a.allowPartialPower,
+              isPositive: false,
+              isBurst: a.isBurst ?? false,
+              order: a.order,
+              isAnticipated: false,
+            });
+            activeAbilityKeys.add(a.id);
+          }
         }
       }
     } else if (_char.energyBus && _char.energyBus.enabled) {
-      allocations.push(..._char.energyBus.getActiveAllocations(_char.properties));
+      for (const a of _char.energyBus.getActiveAllocations(_char.properties)) {
+        allocations.push({
+          key: a.id,
+          id: a.id,
+          name: a.name,
+          color: a.color,
+          grantedWatts: a.grantedWatts,
+          allowPartialPower: a.allowPartialPower,
+          isPositive: false,
+          isBurst: a.isBurst ?? false,
+          order: a.order,
+          isAnticipated: false,
+        });
+        activeAbilityKeys.add(a.id);
+      }
     }
 
     // If character is actively consuming an item, register an incoming positive energy modifier (+Watts)
@@ -388,6 +419,7 @@ export class EnergyHud {
       const cMod = _char.heldObject.consumableModule;
       const consumeWatts = cMod.getConsumeRate(_char.heldObject.properties);
       allocations.push({
+        key: "consumable_nutrition",
         id: "consumable_nutrition",
         name: cMod.tag ? `Consumable (${cMod.tag})` : "Consumable",
         color: "#22c55e",
@@ -396,13 +428,20 @@ export class EnergyHud {
         isPositive: true,
         isBurst: false,
         order: 999,
-      } as any);
+        isAnticipated: false,
+      });
+      activeAbilityKeys.add("consumable_nutrition");
     }
 
     // Anticipated Modifiers: Preview energy costs for uncommitted actions (e.g. Throw trajectory preview, Laser aiming)
     const anticipatedMods = _char.getAnticipatedModifiers ? _char.getAnticipatedModifiers() : [];
     for (const ant of anticipatedMods) {
+      const canonicalKey = ant.abilityId || ant.id;
+      // If the ability is ALREADY actively drawing power, ignore anticipated preview to avoid duplication/spikes!
+      if (activeAbilityKeys.has(canonicalKey)) continue;
+
       allocations.push({
+        key: canonicalKey,
         id: ant.id,
         name: ant.name,
         color: ant.color,
@@ -412,51 +451,55 @@ export class EnergyHud {
         isBurst: ant.isBurst,
         order: ant.order ?? 950,
         isAnticipated: true,
-      } as any);
+      });
     }
 
-    // Track active allocations
-    const activeIds = new Set<string>();
+    // Track active allocations using canonical key
+    const activeKeys = new Set<string>();
     for (const alloc of allocations) {
       if (alloc.grantedWatts <= 0.001) continue;
-      activeIds.add(alloc.id);
+      activeKeys.add(alloc.key);
 
-      let vb = this.visualBlocks.get(alloc.id);
+      let vb = this.visualBlocks.get(alloc.key);
       if (!vb) {
         // Newly appeared: starts at 0 width and expands smoothly!
         vb = {
-          id: alloc.id,
+          id: alloc.key,
           name: alloc.name,
           color: alloc.color,
           isBurst: alloc.isBurst ?? false,
           allowPartialPower: alloc.allowPartialPower,
-          isPositive: (alloc as any).isPositive ?? false,
+          isPositive: alloc.isPositive ?? false,
           order: alloc.order,
           currentWatts: 0,
           targetWatts: alloc.grantedWatts,
           stableWatts: alloc.grantedWatts,
-          isAnticipated: (alloc as any).isAnticipated ?? false,
+          isAnticipated: alloc.isAnticipated ?? false,
         };
-        this.visualBlocks.set(alloc.id, vb);
+        this.visualBlocks.set(alloc.key, vb);
       } else {
+        vb.name = alloc.name;
+        vb.color = alloc.color;
         vb.targetWatts = alloc.grantedWatts;
         vb.stableWatts = alloc.grantedWatts;
         vb.isBurst = alloc.isBurst ?? false;
         vb.allowPartialPower = alloc.allowPartialPower;
-        vb.isPositive = (alloc as any).isPositive ?? false;
-        vb.isAnticipated = (alloc as any).isAnticipated ?? false;
+        vb.isPositive = alloc.isPositive ?? false;
+        vb.order = alloc.order;
+        // Seamlessly update anticipated status without resetting wattage or animation!
+        vb.isAnticipated = alloc.isAnticipated ?? false;
       }
     }
 
     // Deactivated blocks target 0 so they shrink smoothly back to 0
-    for (const [id, vb] of this.visualBlocks.entries()) {
-      if (!activeIds.has(id)) {
+    for (const [key, vb] of this.visualBlocks.entries()) {
+      if (!activeKeys.has(key)) {
         vb.targetWatts = 0;
       }
     }
 
     // Smoothly interpolate currentWatts towards targetWatts
-    for (const [id, vb] of this.visualBlocks.entries()) {
+    for (const [key, vb] of this.visualBlocks.entries()) {
       if (vb.currentWatts < vb.targetWatts) {
         const attackRate = 18.0;
         vb.currentWatts += (vb.targetWatts - vb.currentWatts) * (1 - Math.exp(-attackRate * dt));
@@ -472,7 +515,7 @@ export class EnergyHud {
       }
 
       if (vb.currentWatts <= 0.01 && vb.targetWatts <= 0.001) {
-        this.visualBlocks.delete(id);
+        this.visualBlocks.delete(key);
       }
     }
 
@@ -489,18 +532,16 @@ export class EnergyHud {
       return;
     }
 
-    const windowSeconds = this.gameLoop.renderer?.modHistoryWindowSeconds ?? 0.10;
-
     // Split into positive (energy gain) and negative (power consumption)
     const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
     const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
 
-    // Calculate windowed segment widths
+    // Calculate 1.0-second footprint segment widths (Watts * 1.0s = Joules)
     let totalNegPct = 0;
     const negBlockWidths: { vb: VisualPowerBlock; widthPct: number }[] = [];
     for (const vb of negativeBlocks) {
       if (vb.currentWatts <= 0.01) continue;
-      const joules = vb.isBurst ? vb.currentWatts : (vb.currentWatts * windowSeconds);
+      const joules = vb.currentWatts;
       const widthPct = Math.max(0.4, (joules / energyCap) * 100);
       negBlockWidths.push({ vb, widthPct });
       totalNegPct += widthPct;
@@ -514,10 +555,12 @@ export class EnergyHud {
 
     let blocksHtml = "";
 
-    // 1. Negative Modifiers (Power Draws) - placed right after base energy fill up to curEnergyPct
-    let negLeftPct = baseEnergyPct;
+    // 1. Negative Modifiers (Power Draws) - anchored backwards from curEnergyPct
+    let rightAnchorEnergy = curEnergyPct;
     for (const { vb, widthPct } of negBlockWidths) {
-      const joules = vb.isBurst ? vb.stableWatts : (vb.stableWatts * windowSeconds);
+      const leftPct = Math.max(0, rightAnchorEnergy - widthPct);
+      const actualWidth = rightAnchorEnergy - leftPct;
+      const joules = vb.stableWatts;
       const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
       const borderStyle = vb.isAnticipated
         ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
@@ -525,19 +568,19 @@ export class EnergyHud {
       const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
 
       blocksHtml += `
-        <div class="hud-power-block hud-block-neg ${anticipatedClass}" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: -${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)}J in ${windowSeconds.toFixed(2)}s window)"></div>
+        <div class="hud-power-block hud-block-neg ${anticipatedClass}" style="left: ${leftPct.toFixed(2)}%; width: ${actualWidth.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: -${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)} J / sec)"></div>
       `;
-      negLeftPct += widthPct;
+      rightAnchorEnergy = leftPct;
     }
 
     // 2. Positive Modifiers (Energy Generation, e.g. Eating food) - extending outward from curEnergyPct
     let posLeftPct = curEnergyPct;
     for (const vb of positiveBlocks) {
       if (vb.currentWatts <= 0.01) continue;
-      const joules = vb.isBurst ? vb.currentWatts : (vb.currentWatts * windowSeconds);
+      const joules = vb.currentWatts;
       const widthPct = Math.max(0.4, (joules / energyCap) * 100);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)}J in ${windowSeconds.toFixed(2)}s window)"></div>
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)} J / sec)"></div>
       `;
       posLeftPct += widthPct;
     }
