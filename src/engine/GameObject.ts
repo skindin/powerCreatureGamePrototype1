@@ -61,6 +61,27 @@ export class GameObject {
   public isImmovable: boolean = false;
   public serverCharId?: string;
 
+  /** Timestamp until which the entity is considered under involuntary knockback / flung momentum */
+  public knockbackUntilTime: number = 0;
+
+  /**
+   * Applies an involuntary knockback momentum window to this entity (in milliseconds).
+   * While under knockback, characters are eligible for high-impact wall-collision shock.
+   */
+  public applyKnockbackWindow(durationMs: number = 600): void {
+    const until = performance.now() + durationMs;
+    if (until > this.knockbackUntilTime) {
+      this.knockbackUntilTime = until;
+    }
+  }
+
+  /**
+   * Returns true if the entity is currently within an involuntary knockback momentum window.
+   */
+  public get isUnderKnockback(): boolean {
+    return performance.now() <= this.knockbackUntilTime;
+  }
+
   /** Global world scale for converting absorbed collision shock to raw HP damage */
   public static globalWorldCollisionDamageScale: number = 0.05;
 

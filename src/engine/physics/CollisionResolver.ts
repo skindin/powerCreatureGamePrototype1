@@ -405,13 +405,19 @@ export class CollisionResolver {
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution));
       const shock = impactSpeed * 60 * absFrac;
       if (shock > 0.01) {
-        entity.dispatchImpact({
-          absorbedShock: shock,
-          impactSpeed,
-          otherEntity: null,
-          normalX: normX,
-          normalY: normY,
-        });
+        // Ground Locomotion Wall Exemption:
+        // Characters under self-directed voluntary movement do not take wall collision damage.
+        // Wall collision damage only applies if the character was knocked back, flung, or thrown into the wall.
+        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
+        if (canTakeWallDamage) {
+          entity.dispatchImpact({
+            absorbedShock: shock,
+            impactSpeed,
+            otherEntity: null,
+            normalX: normX,
+            normalY: normY,
+          });
+        }
       }
     }
 
@@ -590,6 +596,10 @@ export class CollisionResolver {
         normalX: -normX,
         normalY: -normY,
       });
+      // If struck by an active projectile or substantial shock, set knockback window
+      if (b.isInFlight || shockA > 15) {
+        a.applyKnockbackWindow(600);
+      }
     }
 
     if (shockB > 0.01) {
@@ -600,6 +610,10 @@ export class CollisionResolver {
         normalX: normX,
         normalY: normY,
       });
+      // If struck by an active projectile or substantial shock, set knockback window
+      if (a.isInFlight || shockB > 15) {
+        b.applyKnockbackWindow(600);
+      }
     }
   }
 

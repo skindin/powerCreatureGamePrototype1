@@ -4646,6 +4646,8 @@ const _GameObject = class _GameObject {
     // preventing the local client from authoring its coordinates and eliminating 60Hz bounce-back tethering.
     __publicField(this, "isImmovable", false);
     __publicField(this, "serverCharId");
+    /** Timestamp until which the entity is considered under involuntary knockback / flung momentum */
+    __publicField(this, "knockbackUntilTime", 0);
     // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
     __publicField(this, "properties", new ObjectPropertiesRegistry());
     __publicField(this, "_staticVelocity", { x: 0, y: 0 });
@@ -4723,6 +4725,22 @@ const _GameObject = class _GameObject {
     if (this.consumableModule) {
       this.consumableModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
     }
+  }
+  /**
+   * Applies an involuntary knockback momentum window to this entity (in milliseconds).
+   * While under knockback, characters are eligible for high-impact wall-collision shock.
+   */
+  applyKnockbackWindow(durationMs = 600) {
+    const until = performance.now() + durationMs;
+    if (until > this.knockbackUntilTime) {
+      this.knockbackUntilTime = until;
+    }
+  }
+  /**
+   * Returns true if the entity is currently within an involuntary knockback momentum window.
+   */
+  get isUnderKnockback() {
+    return performance.now() <= this.knockbackUntilTime;
   }
   /**
    * Decays the visual smoothing offset smoothly toward zero (default: 0.70x / frame).
@@ -7253,7 +7271,7 @@ class DamageSolverModule {
     __publicField(this, "lastImpactTime", 0);
     __publicField(this, "impactCooldownMs", 60);
     this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
-    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 25;
+    const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 5;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
@@ -8673,6 +8691,7 @@ class MeleeModule {
           normalX: -uX,
           normalY: -uY
         });
+        target.applyKnockbackWindow(800);
         const recoilDv = impulsePerTarget / attackerMass;
         recoilVx -= uX * recoilDv;
         recoilVy -= uY * recoilDv;
@@ -9846,13 +9865,16 @@ class CollisionResolver {
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution));
       const shock = impactSpeed * 60 * absFrac;
       if (shock > 0.01) {
-        entity.dispatchImpact({
-          absorbedShock: shock,
-          impactSpeed,
-          otherEntity: null,
-          normalX: normX,
-          normalY: normY
-        });
+        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
+        if (canTakeWallDamage) {
+          entity.dispatchImpact({
+            absorbedShock: shock,
+            impactSpeed,
+            otherEntity: null,
+            normalX: normX,
+            normalY: normY
+          });
+        }
       }
     }
     return true;
@@ -9989,6 +10011,9 @@ class CollisionResolver {
         normalX: -normX,
         normalY: -normY
       });
+      if (b.isInFlight || shockA > 15) {
+        a.applyKnockbackWindow(600);
+      }
     }
     if (shockB > 0.01) {
       b.dispatchImpact({
@@ -9998,6 +10023,9 @@ class CollisionResolver {
         normalX: normX,
         normalY: normY
       });
+      if (a.isInFlight || shockB > 15) {
+        b.applyKnockbackWindow(600);
+      }
     }
   }
   /**

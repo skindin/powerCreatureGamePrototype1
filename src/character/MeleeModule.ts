@@ -274,6 +274,9 @@ export class MeleeModule {
           normalY: -uY,
         });
 
+        // Set knockback momentum window so subsequent wall impacts deal wall-splat collision damage
+        target.applyKnockbackWindow(800);
+
         // Accumulate recoil impulse on attacker
         const recoilDv = impulsePerTarget / attackerMass;
         recoilVx -= uX * recoilDv;
