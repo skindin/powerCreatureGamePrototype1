@@ -3,7 +3,7 @@
 > **Notice to All AI Agents**:  
 > You **MUST** read this document at the start of every session before doing research, planning, or editing code.  
 > **Anti-Loop Policy**: Execute directly on Step 1 or Step 2. Never get stuck in analysis loops (no multi-file reads, no redundant searches, no speculation).  
-> Before wrapping up your task or concluding your turn, update this file to reflect current milestone status.  
+> **No-Journal Policy**: Do NOT log task updates, bug fixes, or routine changelogs here. This file is strictly for architecture, rules, and protected file tiers. Keep edits minimal.  
 > **Git Rule**: You **MUST** push to origin (`git push origin <branch>`) every single time you commit. Never leave commits unpushed.  
 
 ---
@@ -82,27 +82,12 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - `EnergyBus`: Channels power to abilities (`WalkingModule`, `ClimbingModule`, `Character.jump`, `PickupModule`, `ThrowModule`, `HealthModule`). Default capacity $500\text{ W}$.
   - Burst Stamina: Exertion duration at max power (default 10.0s). Drains proportional to active wattage: $\text{drain} = \frac{P}{P_{\text{max}}} \cdot dt$. Recovers at rest (0W) by default at 1.0 s/s.
   - Energy Pool: 10,000 J default reservoir. Instant bursts (jump/throw) deduct mechanical work ($E / 0.25$ muscle efficiency).
-- **Consumable & Prefab Systems**:
-  - `ConsumableModule`: Held items provide energy/health transfer with cube-root volumetric shrinking.
-  - `PrefabManager` & `SceneSpawnerManager`: In-memory archetypes and background periodic ground item spawners.
-- **HUD & Status Displays**:
-  - Dual-column status gauges: Left for Health & Modifiers (HP bar, damage aura/shocks, bio-regen), Right for Energy & Modifiers (Energy/Stamina bars, active power draws).
-  - Clean ability tags with signed values and lowercase `/s` rates (e.g. `Sprint -152/s`, `Heal +10/s`).
-- **Multiplayer Replication**:
-  - Authoritative 60Hz server simulation (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client-side prediction, soft threshold reconciliation, and private energy telemetry.
-- **On-Demand Device Assignment & Controller First-Claim**:
-  - `PlayerManager` initializes with unassigned `baseCharacter` and `isKeyboardActive = false`.
-  - The first active device (gamepad button or keydown/click/touch) cleanly claims `baseCharacter`.
-  - Inactive keyboard placeholders are automatically replaced when a gamepad connects, eliminating ghost/duplicate character spawns on phones and controllers.
-- **Controller Ability Swap & Trajectory Scaling**:
-  - Left Trigger (Button 6 / LT) acts as Alt: switches from non-directional consumable abilities (e.g. eating an apple) to explicit throwing mode (revealing reticle and trajectory).
-  - Triggers are strictly isolated from jump paddles (axes 4/5 trigger detection removed).
-  - Right Bumper (Button 5 / RB): Holding enters Trajectory Scaler Mode (scales arc height via vertical stick deflection without throwing).
-  - Trajectory Slider Ratio Preservation: Moving the character while in trajectory mode preserves the exact ratio between min and max arcs live.
-  - Throw Mode Cursor Stick & Direction Tracking: When re-entering throw mode or picking up a throwing object, the cursor initially rests at the default forward distance in the last aimed direction; until the player moves the right stick to manually dictate aim, the cursor tracks with the character's movement direction in front of them as they change heading.
-  - Throw Energy & Stamina Consumption: Throw execution directly consumes instantaneous burst energy and stamina based on kinetic launch work ($0.5 \cdot m \cdot v^2 / \text{efficiency}$) on both client prediction and server simulation. Trajectory solving and anticipated modifiers strictly respect energy bus throughput limits ($\le P_{\text{max}} \cdot \text{strength}$), clamping ballistic reach on elevated targets and ensuring burst energy costs never exceed what the energy bus dictates.
-  - Two-Stage Wall/Ground Target Resolution & Ground Footprint Clearance: Trajectory calculation tests if the thrown object can physically fit on the ground at the cursor location without intersecting adjacent walls. If the object cannot fit on the ground (e.g. narrow corridor, wall cluster margin), the system assumes an elevated throw onto the adjacent wall ($Z = Z_{\text{wall}}$), aligning physical target coordinates with the visual altitude offset ($Y_{\text{phys}} = Y_{\text{screen}} + Z_{\text{wall}} \cdot \text{scale}$) so the object's sprite center at initial landing contacts the wall right at the mouse cursor. If the object fits cleanly on the ground, ground target resolution only stops short if an uncleared intermediate wall physically obstructs the trajectory path.
-  - Strict Energy Bus Exhaustion Enforcement & Jump Blocking: An exhausted energy bus strictly denies all power and burst draws (`requestInstantBurst`, `requestPower`, `canSatisfyFullEnergy`, `canSatisfyFullPower`, `canAfford`). Instant burst actions (jump/throw) cannot execute while the assigned energy bus is exhausted (`bus.isExhausted === true`), preventing depleted stamina states from being bypassed by jump spam. All energy consumers centralize through strict exhaustion and capacity gatekeeping on `EnergyBus`.
+  - Exhaustion Gatekeeping: Exhausted bus strictly denies all power/burst requests (`canAfford`, `requestInstantBurst`, `requestPower`).
+- **Consumable & Prefab Systems**: Held items transfer energy/health with cube-root volumetric shrinking; `PrefabManager` & `SceneSpawnerManager` manage archetypes and periodic world spawns.
+- **HUD & Status Displays**: Dual-column gauges (Health/Modifiers on left, Energy/Stamina on right) with lowercase `/s` rates and signed ability tags.
+- **Multiplayer Replication**: Authoritative 60Hz server world (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client prediction, soft reconciliation, and private energy telemetry.
+- **Input & Device Assignment**: First active device (gamepad or keyboard/touch) claims `baseCharacter`; hot-swappable controller detection.
+- **Throwing & Trajectory System**: Ballistic trajectory solver with visual altitude offset ($Y_{\text{phys}} = Y_{\text{screen}} + Z \cdot \text{scale}$), ground footprint clearance tests, and elevated wall landing resolution.
 
 ---
 
