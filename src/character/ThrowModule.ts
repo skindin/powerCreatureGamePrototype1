@@ -146,7 +146,7 @@ export class ThrowModule {
   /**
    * Helper: tests circle-AABB intersection with a wall tile (matching GameObject collision)
    */
-  private testWallIntersection(x: number, y: number, radius: number, wall: Wall): boolean {
+  public static testWallIntersection(x: number, y: number, radius: number, wall: Wall): boolean {
     const closestX = Math.max(wall.x, Math.min(x, wall.x + wall.width));
     const closestY = Math.max(wall.y, Math.min(y, wall.y + wall.height));
     const dx = x - closestX;
@@ -467,20 +467,33 @@ export class ThrowModule {
     const scale = hoverScale !== undefined ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
 
     // 1. Determine target coordinates:
+    // 1. First figure out if the object at the mouse position would be on a wall or on the ground:
     const effectiveTargetX = lockedTargetPos ? lockedTargetPos.x : targetX;
     const effectiveTargetY = lockedTargetPos ? lockedTargetPos.y : targetY;
+    const radius = _colliderRadius > 0 ? _colliderRadius : 0.35;
 
-    // Check if aiming at a wall top (including 2.5D visual roof and front face):
     let finalTargetX = effectiveTargetX;
     let finalTargetY = effectiveTargetY;
     let targetSurfaceHeight = 0;
+
+    // Check if aiming at a wall top (including 2.5D visual roof and front face):
     const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
+    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+
     if (wallUnderTarget) {
-      finalTargetX = wallUnderTarget.physX;
-      finalTargetY = wallUnderTarget.physY;
-      targetSurfaceHeight = wallUnderTarget.wall.wallHeight;
+      // Object would be ON A WALL:
+      const wall = wallUnderTarget.wall;
+      targetSurfaceHeight = wall.wallHeight;
+      // Clamp position on the wall top so the object rests cleanly on the wall:
+      finalTargetX = Math.max(wall.x + radius, Math.min(wall.x + wall.width - radius, wallUnderTarget.physX));
+      finalTargetY = Math.max(wall.y + radius, Math.min(wall.y + wall.height - radius, wallUnderTarget.physY));
+      if (wall.width < 2 * radius) finalTargetX = wall.x + wall.width * 0.5;
+      if (wall.height < 2 * radius) finalTargetY = wall.y + wall.height * 0.5;
+    } else if (supportingHeight > 0) {
+      targetSurfaceHeight = supportingHeight;
     } else {
-      targetSurfaceHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+      // Object would be ON THE GROUND:
+      targetSurfaceHeight = 0;
     }
 
     // Limit how high the player can throw objects (effective max vertical target height above release)
@@ -511,44 +524,70 @@ export class ThrowModule {
     const dirX = dist > 0.0001 ? dx / dist : 0;
     const dirY = dist > 0.0001 ? dy / dist : 0;
 
+    // 2. If on the ground, do not try to reach the exact cursor point if a wall would stop it:
+    if (targetSurfaceHeight === 0) {
+      let nearestBlockingWallDist = Infinity;
+      for (const wall of arena.walls) {
+        // Does the object at the cursor position overlap this wall on the ground?
+        const overlapsAtTarget = ThrowModule.testWallIntersection(finalTargetX, finalTargetY, radius + 0.04, wall);
+        const rayHit = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
+
+        if (overlapsAtTarget) {
+          const enter = rayHit ? rayHit.enterDist : Math.hypot(wall.x - startX, wall.y - startY);
+          if (enter < nearestBlockingWallDist) {
+            nearestBlockingWallDist = enter;
+          }
+        } else if (rayHit && rayHit.enterDist < dist && rayHit.enterDist > 0.1) {
+          // Wall is between start and ground target.
+          // Check if throw can clear the wall at maximum apex:
+          const maxApexHeight = (launchSpeed * launchSpeed) / (2 * g);
+          if (startZ + maxApexHeight < wall.wallHeight + 0.15) {
+            if (rayHit.enterDist < nearestBlockingWallDist) {
+              nearestBlockingWallDist = rayHit.enterDist;
+            }
+          }
+        }
+      }
+
+      if (nearestBlockingWallDist < Infinity) {
+        // A wall stops it: place target cleanly on the ground in front of the wall with safe clearance
+        const safeDist = Math.max(0.2, nearestBlockingWallDist - radius - 0.05);
+        if (dist > safeDist) {
+          dist = safeDist;
+          finalTargetX = startX + dirX * dist;
+          finalTargetY = startY + dirY * dist;
+        }
+      }
+    }
+
+    // 3. Ensure target is within reachable distance for the target surface height:
     let deltaZ = targetSurfaceHeight - startZ;
     const apexMax = (launchSpeed * launchSpeed) / (2 * g) - 0.02;
 
-    if (wallUnderTarget && targetSurfaceHeight > startZ + 0.05) {
-      const wall = wallUnderTarget.wall;
-      const rayHit = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
-      const enterDist = rayHit ? rayHit.enterDist : Math.hypot(finalTargetX - startX, finalTargetY - startY);
-      const exitDist = rayHit ? rayHit.exitDist : dist;
-
+    if (targetSurfaceHeight > 0) {
+      // Elevated surface (wall top)
       const canReachHeight = deltaZ <= apexMax;
       const reachRadicand = canReachHeight ? Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ) : 0;
       const maxReachWall = canReachHeight ? (launchSpeed / g) * Math.sqrt(reachRadicand) : 0;
 
-      if (canReachHeight && maxReachWall >= enterDist) {
-        // Can reach onto the wall top
-        targetSurfaceHeight = wall.wallHeight;
-        if (dist > maxReachWall) {
-          dist = Math.min(Math.max(enterDist, exitDist - 0.05), maxReachWall);
+      if (!canReachHeight || dist > maxReachWall) {
+        if (canReachHeight && maxReachWall > 0.2) {
+          dist = maxReachWall;
+          finalTargetX = startX + dirX * dist;
+          finalTargetY = startY + dirY * dist;
+        } else {
+          // Unreachable wall top: fall back to ground in front of wall
+          targetSurfaceHeight = 0;
+          deltaZ = targetSurfaceHeight - startZ;
+          const groundRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
+          const maxReachGround = (launchSpeed / g) * Math.sqrt(groundRadicand);
+          dist = Math.min(dist, maxReachGround);
           finalTargetX = startX + dirX * dist;
           finalTargetY = startY + dirY * dist;
         }
-      } else {
-        // Cannot reach the elevated wall top with current launchSpeed:
-        // Land on the ground in front of the wall instead of floating in mid-air
-        targetSurfaceHeight = 0;
-        deltaZ = targetSurfaceHeight - startZ;
-        const groundRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
-        const maxReachGround = (launchSpeed / g) * Math.sqrt(groundRadicand);
-        dist = Math.min(maxReachGround, Math.max(0.2, enterDist - _colliderRadius));
-        finalTargetX = startX + dirX * dist;
-        finalTargetY = startY + dirY * dist;
       }
     } else {
-      // Aiming on open ground or existing supporting surface
-      if (deltaZ > apexMax) {
-        deltaZ = Math.max(-startZ, apexMax);
-        targetSurfaceHeight = startZ + deltaZ;
-      }
+      // Ground surface reach
       const reachRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
       const maxReach = (launchSpeed / g) * Math.sqrt(reachRadicand);
       if (dist > maxReach) {
@@ -796,7 +835,7 @@ export class ThrowModule {
 
       // Check wall collisions along the path
       for (const wall of arena.walls) {
-        if (this.testWallIntersection(currentX, currentY, held.colliderRadius, wall)) {
+        if (ThrowModule.testWallIntersection(currentX, currentY, held.colliderRadius, wall)) {
           isOverWall = true;
           // Only check collision if height is at or below the wall and not yet at the intentional landing step
           if (currentZ <= wall.wallHeight + 0.001) {
@@ -820,8 +859,10 @@ export class ThrowModule {
                 break;
               }
             } else if (currentZ < wall.wallHeight - 0.05) {
-              // Side wall collision (ignore departure at step <= 1 if starting in contact)
-              if (step > 1) {
+              // Side wall collision (ignore departure at step <= 1 if starting in contact,
+              // and ignore touchdown at final steps if intentionally landing on ground)
+              const isGroundTouchdown = targetSurfaceHeight === 0 && step >= steps - 2 && currentZ <= 0.08;
+              if (step > 1 && !isGroundTouchdown) {
                 collidesWall = true;
                 isBlocked = true;
                 blockedWallId = wall.id;
@@ -872,7 +913,7 @@ export class ThrowModule {
         let collides = false;
 
         for (const wall of arena.walls) {
-          if (this.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
+          if (ThrowModule.testWallIntersection(curX, curY, held.colliderRadius, wall)) {
             isOver = true;
             if (curZ <= wall.wallHeight + 0.001 && s > 1) {
               collides = true;
