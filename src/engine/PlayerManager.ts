@@ -675,6 +675,9 @@ export class PlayerManager {
         isLaserFiring: isCtrlDown && input.isMouseDown,
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
+        isMeleeRequested: (isCtrlDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested,
+        meleeAimX: input.actualMousePos.x,
+        meleeAimY: input.actualMousePos.y,
         aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
           ? input.recordedMousePos.x
           : input.actualMousePos.x,
@@ -703,6 +706,7 @@ export class PlayerManager {
       input.isKeyboardDropRequested = false;
       input.isKeyboardThrowRequested = false;
       input.isKeyboardJumpRequested = false;
+      input.isKeyboardMeleeRequested = false;
     }
 
     // 2. Gamepads
@@ -807,6 +811,9 @@ export class PlayerManager {
         laserAimX: slot.aimPos.x,
         laserAimY: slot.aimPos.y,
         laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
+        isMeleeRequested: Boolean(slot.isMeleeRequested),
+        meleeAimX: slot.meleeAimDir ? (cChar.position.x + slot.meleeAimDir.x) : slot.aimPos.x,
+        meleeAimY: slot.meleeAimDir ? (cChar.position.y + slot.meleeAimDir.y) : slot.aimPos.y,
         aimX,
         aimY,
         isAiming: isGamepadAiming || Boolean(slot.isLaserAiming),
@@ -991,6 +998,15 @@ export class PlayerManager {
           ? (pkt as any).laserPowerFraction
           : 1.0;
         char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+      }
+
+      // Set Melee inputs on character before physical capability update
+      if (char.meleeModule) {
+        char.isMeleeRequested = Boolean((pkt as any).isMeleeRequested);
+        char.meleeAimDir = (pkt as any).meleeAimX !== undefined
+          ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
+          : null;
+        char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
       }
 
       char.updateCharacter(
@@ -1263,6 +1279,10 @@ export class PlayerManager {
           this.baseCharacter.isLaserFiring = false;
           this.baseCharacter.laserAimTarget = null;
           this.baseCharacter.laserCandidateEntities = [];
+        }
+        if (this.baseCharacter.meleeModule) {
+          this.baseCharacter.isMeleeRequested = false;
+          this.baseCharacter.meleeAimDir = null;
         }
         this.baseCharacter.updateCharacter(
           dt,

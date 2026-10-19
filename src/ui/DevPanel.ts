@@ -23,6 +23,7 @@ import { EnergyBus } from "../character/EnergyBus.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { ConsumeModule } from "../character/ConsumeModule.js";
 import { LaserModule } from "../character/LaserModule.js";
+import { MeleeModule } from "../character/MeleeModule.js";
 import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
@@ -1168,6 +1169,9 @@ export class DevPanel {
     const hasLaserModule = isChar && Boolean(char?.laserModule);
     const laserEnabled = isChar && Boolean(char?.laserModule?.enabled);
 
+    const hasMeleeModule = isChar && Boolean(char?.meleeModule);
+    const meleeEnabled = isChar && Boolean(char?.meleeModule?.enabled);
+
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
 
@@ -1776,6 +1780,40 @@ export class DevPanel {
       `;
     }
 
+    // Melee Module (Character only)
+    if (hasMeleeModule && char && char.meleeModule) {
+      attachedCount++;
+      const mm = char.meleeModule;
+      html += `
+        <div class="module-card ${!meleeEnabled ? 'module-disabled' : ''}" data-module-id="melee">
+          ${this.renderModuleHeader("melee", "🥊 Melee Attack", renderToggleBtn("melee", meleeEnabled))}
+          <div id="collapse-body-mod-melee" style="display: ${this.isSectionCollapsed('mod-melee') ? 'none' : 'block'};">
+          ${!meleeEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Melee attack is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Rapid burst melee punch with physical impact knockback, recoil momentum exchange, and force-based damage shock. Trigger: <b>Ctrl + Right Click</b> (Keyboard) or <b>R3</b> (Gamepad).
+          </div>
+
+          <div id="prop-socket-melee-max-force"></div>
+          <div id="prop-socket-melee-frequency"></div>
+          <div id="prop-socket-melee-reach"></div>
+          <div id="prop-socket-melee-width"></div>
+
+          <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Energy Bus:</label>
+            <select id="select-melee-energy-bus" class="dev-select" style="max-width: 170px; font-size: 0.75rem;">
+              ${renderEnergyBusOptions(mm.energyBusId)}
+            </select>
+          </div>
+
+          <div class="toggle-row" style="margin-top: 6px;">
+            <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
+            <input type="checkbox" id="check-melee-partial-power" ${mm.allowPartialPower ? 'checked' : ''}>
+          </div>
+          </div>
+        </div>
+      `;
+    }
+
     // Consumable Module (Items/Freebodies)
     if (hasConsumableModule && e.consumableModule) {
       attachedCount++;
@@ -2011,6 +2049,7 @@ export class DevPanel {
         { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule },
         { id: "consume", name: "Consume Ability", icon: "🍴", description: "Consumes physical items matching accepted tags", isAttached: hasConsumeModule },
         { id: "laser", name: "Laser Blast", icon: "🔫", description: "Continuous straight-line laser blast ability consuming energy", isAttached: hasLaserModule },
+        { id: "melee", name: "Melee Attack", icon: "🥊", description: "Physical punch with knockback, recoil, and force-based shock damage", isAttached: hasMeleeModule },
         { id: "energyPool", name: "Energy Pool", icon: "⚡", description: "Finite biochemical energy reservoir (Joules) with debug auto-refill", isAttached: hasEnergyPool },
         { id: "energyBus", name: "Energy Bus (Main)", icon: "🚌", description: "Muscle output power throughput (Watts) and burst stamina", isAttached: hasEnergyBus }
       );
@@ -2149,6 +2188,9 @@ export class DevPanel {
       case "laser":
         if (char?.laserModule) char.laserModule.enabled = !char.laserModule.enabled;
         break;
+      case "melee":
+        if (char?.meleeModule) char.meleeModule.enabled = !char.meleeModule.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -2259,6 +2301,11 @@ export class DevPanel {
       case "laser":
         if (e instanceof Character) {
           (e as Character).laserModule = null;
+        }
+        break;
+      case "melee":
+        if (e instanceof Character) {
+          (e as Character).meleeModule = null;
         }
         break;
     }
@@ -2410,6 +2457,11 @@ export class DevPanel {
       case "laser":
         if (e instanceof Character) {
           (e as Character).laserModule = new LaserModule();
+        }
+        break;
+      case "melee":
+        if (e instanceof Character) {
+          (e as Character).meleeModule = new MeleeModule();
         }
         break;
     }
@@ -3177,6 +3229,67 @@ export class DevPanel {
       const checkPartial = this.container.querySelector("#check-laser-partial-power") as HTMLInputElement | null;
       checkPartial?.addEventListener("change", () => {
         lm.allowPartialPower = checkPartial.checked;
+        this.updateInspector();
+      });
+    }
+
+    // Melee Module controls (Character only)
+    if (char && char.meleeModule) {
+      const mm = char.meleeModule;
+
+      const forceEl = this.container.querySelector("#prop-socket-melee-max-force");
+      if (forceEl) {
+        const ctrl = new PropertyControl({
+          property: mm.maxForceProp,
+          owner: char,
+          label: "Max Punch Force (Newtons)",
+          step: 25.0,
+        });
+        forceEl.appendChild(ctrl.element);
+      }
+
+      const freqEl = this.container.querySelector("#prop-socket-melee-frequency");
+      if (freqEl) {
+        const ctrl = new PropertyControl({
+          property: mm.punchFrequencyProp,
+          owner: char,
+          label: "Punch Frequency (Hz)",
+          step: 0.5,
+        });
+        freqEl.appendChild(ctrl.element);
+      }
+
+      const reachEl = this.container.querySelector("#prop-socket-melee-reach");
+      if (reachEl) {
+        const ctrl = new PropertyControl({
+          property: mm.reachProp,
+          owner: char,
+          label: "Attack Reach (Meters)",
+          step: 0.1,
+        });
+        reachEl.appendChild(ctrl.element);
+      }
+
+      const widthEl = this.container.querySelector("#prop-socket-melee-width");
+      if (widthEl) {
+        const ctrl = new PropertyControl({
+          property: mm.widthProp,
+          owner: char,
+          label: "Attack Width (Meters)",
+          step: 0.1,
+        });
+        widthEl.appendChild(ctrl.element);
+      }
+
+      const selectBus = this.container.querySelector("#select-melee-energy-bus") as HTMLSelectElement | null;
+      selectBus?.addEventListener("change", () => {
+        mm.energyBusId = selectBus.value;
+        this.updateInspector();
+      });
+
+      const checkPartial = this.container.querySelector("#check-melee-partial-power") as HTMLInputElement | null;
+      checkPartial?.addEventListener("change", () => {
+        mm.allowPartialPower = checkPartial.checked;
         this.updateInspector();
       });
     }

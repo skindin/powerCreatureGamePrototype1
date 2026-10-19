@@ -14,6 +14,7 @@ import { EnergyPool } from "./EnergyPool.js";
 import { EnergyBus } from "./EnergyBus.js";
 import { ConsumeModule } from "./ConsumeModule.js";
 import { LaserModule } from "./LaserModule.js";
+import { MeleeModule, type MeleeHitResult } from "./MeleeModule.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
@@ -165,6 +166,12 @@ export class Character extends GameObject {
   public laserAimTarget: { x: number; y: number } | null = null;
   public laserCandidateEntities?: GameObject[];
   public laserPowerFraction: number = 1.0;
+
+  // Melee attack inputs processed per tick
+  public meleeModule: MeleeModule | null = null;
+  public isMeleeRequested: boolean = false;
+  public meleeAimDir: { x: number; y: number } | null = null;
+  public meleeCandidateEntities?: GameObject[];
 
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
@@ -400,6 +407,18 @@ export class Character extends GameObject {
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
+    this.meleeModule = new MeleeModule({
+      energyBusId: "bus_main",
+      maxForce: 350.0,
+      punchFrequency: 4.0,
+      reach: 1.2,
+      width: 0.8,
+    });
+    this.properties.add("meleeMaxForce", this.meleeModule.maxForce);
+    this.properties.add("meleeFrequency", this.meleeModule.punchFrequency);
+    this.properties.add("meleeReach", this.meleeModule.reach);
+    this.properties.add("meleeWidth", this.meleeModule.width);
+
     if (determinedRole !== "dummy") {
       const laserBus = new EnergyBus({
         id: "bus_laser",
@@ -487,6 +506,21 @@ export class Character extends GameObject {
       this.verticalVelocity = achievableSpeed;
     }
     return jumped;
+  }
+
+  /**
+   * Attempts to execute a burst melee punch attack in the specified or current facing direction.
+   */
+  public melee(
+    arena: Arena,
+    potentialTargets: GameObject[],
+    dirX?: number,
+    dirY?: number
+  ): MeleeHitResult | null {
+    if (!this.meleeModule || !this.meleeModule.enabled) return null;
+    const dx = dirX !== undefined ? dirX : Math.cos(this.facingAngle ?? 0);
+    const dy = dirY !== undefined ? dirY : Math.sin(this.facingAngle ?? 0);
+    return this.meleeModule.executePunch(this, dx, dy, potentialTargets, arena);
   }
 
   /**
@@ -714,6 +748,14 @@ export class Character extends GameObject {
         0,
         this.laserPowerFraction
       );
+    }
+
+    // 2b3. Process Melee Attack ability
+    if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
+      const candidates = this.meleeCandidateEntities ?? arena.entities;
+      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
+      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
     }
 
     // 2c. Update energy bus stamina recovery (runs after all physical abilities and buffers in the tick)

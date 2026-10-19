@@ -8498,6 +8498,201 @@ class LaserModule {
     }
   }
 }
+class MeleeModule {
+  constructor(options) {
+    __publicField(this, "id", "melee_attack");
+    __publicField(this, "name", "Melee Attack");
+    __publicField(this, "enabled", true);
+    /** Maximum peak force (Newtons) delivered by a full punch */
+    __publicField(this, "maxForceProp");
+    /** Punches per second (Hz) */
+    __publicField(this, "punchFrequencyProp");
+    /** Forward length of the rectangular attack zone (world units / meters) */
+    __publicField(this, "reachProp");
+    /** Perpendicular width of the rectangular attack zone (world units / meters) */
+    __publicField(this, "widthProp");
+    /** Energy Bus to draw burst energy from */
+    __publicField(this, "energyBusId", "bus_main");
+    /** Whether to allow punches at partial force when the bus cannot grant 100% burst energy */
+    __publicField(this, "allowPartialPower", true);
+    /** Time of last punch execution (performance.now ms) */
+    __publicField(this, "lastPunchTime", 0);
+    /** Visual indicator state: timestamp of recent punch for rendering strike effect */
+    __publicField(this, "lastVisualPunchTime", 0);
+    __publicField(this, "lastVisualPunchDir", { x: 1, y: 0 });
+    __publicField(this, "lastVisualPunchReach", 1.2);
+    __publicField(this, "lastVisualPunchWidth", 0.8);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
+    if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
+    this.maxForceProp = new DynamicProperty((options == null ? void 0 : options.maxForce) ?? 350);
+    this.punchFrequencyProp = new DynamicProperty((options == null ? void 0 : options.punchFrequency) ?? 4);
+    this.reachProp = new DynamicProperty((options == null ? void 0 : options.reach) ?? 1.2);
+    this.widthProp = new DynamicProperty((options == null ? void 0 : options.width) ?? 0.8);
+  }
+  get maxForce() {
+    return this.maxForceProp.literalValue;
+  }
+  set maxForce(val) {
+    this.maxForceProp.literalValue = val;
+  }
+  get punchFrequency() {
+    return this.punchFrequencyProp.literalValue;
+  }
+  set punchFrequency(val) {
+    this.punchFrequencyProp.literalValue = val;
+  }
+  get reach() {
+    return this.reachProp.literalValue;
+  }
+  set reach(val) {
+    this.reachProp.literalValue = val;
+  }
+  get width() {
+    return this.widthProp.literalValue;
+  }
+  set width(val) {
+    this.widthProp.literalValue = val;
+  }
+  getMaxForce(registry) {
+    return Math.max(1, this.maxForceProp.get(registry));
+  }
+  getPunchFrequency(registry) {
+    return Math.max(0.1, this.punchFrequencyProp.get(registry));
+  }
+  getReach(registry) {
+    return Math.max(0.1, this.reachProp.get(registry));
+  }
+  getWidth(registry) {
+    return Math.max(0.1, this.widthProp.get(registry));
+  }
+  /**
+   * Checks whether the cooldown interval between punches has elapsed.
+   */
+  canPunchNow(now, registry) {
+    const freq = this.getPunchFrequency(registry);
+    const cooldownMs = 1 / freq * 1e3;
+    return now - this.lastPunchTime >= cooldownMs;
+  }
+  /**
+   * Executes a melee strike from the attacker along the given normalized direction vector.
+   */
+  executePunch(attacker, dirX, dirY, potentialTargets, _arena, now = performance.now()) {
+    if (!this.enabled) return null;
+    if (!this.canPunchNow(now, attacker.properties)) return null;
+    const registry = attacker.properties;
+    const maxForce = this.getMaxForce(registry);
+    const reach = this.getReach(registry);
+    const width = this.getWidth(registry);
+    const dirMag = Math.hypot(dirX, dirY);
+    let uX = 1;
+    let uY = 0;
+    if (dirMag > 1e-3) {
+      uX = dirX / dirMag;
+      uY = dirY / dirMag;
+    } else {
+      const facing = attacker.facingAngle ?? 0;
+      uX = Math.cos(facing);
+      uY = Math.sin(facing);
+    }
+    const muscleEff = (registry == null ? void 0 : registry.get("muscleEfficiency")) ?? 0.25;
+    const mechanicalWorkJoules = maxForce * reach;
+    const demandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
+    const bus = attacker.energyBusses.get(this.energyBusId) || attacker.energyBus;
+    let actualForce = maxForce;
+    let energySpent = 0;
+    if (bus) {
+      if (bus.isExhausted) {
+        return null;
+      }
+      const burstRes = bus.requestInstantBurst({
+        abilityId: "melee",
+        demandedJoules,
+        allowPartialPower: this.allowPartialPower,
+        pool: attacker.energyPool,
+        registry
+      });
+      if (!burstRes.granted || burstRes.fraction <= 1e-3) {
+        return null;
+      }
+      actualForce = maxForce * burstRes.fraction;
+      energySpent = burstRes.grantedJoules;
+    }
+    this.lastPunchTime = now;
+    this.lastVisualPunchTime = now;
+    this.lastVisualPunchDir = { x: uX, y: uY };
+    this.lastVisualPunchReach = reach;
+    this.lastVisualPunchWidth = width;
+    const perpX = -uY;
+    const perpY = uX;
+    const startX = attacker.position.x;
+    const startY = attacker.position.y;
+    const halfWidth = width * 0.5;
+    const hitTargets = [];
+    for (const obj of potentialTargets) {
+      if (obj === attacker) continue;
+      if (obj.isDead) continue;
+      if (attacker.heldObject === obj) continue;
+      const objRadius = obj.colliderRadius > 0 ? obj.colliderRadius : 0.3;
+      const dx = obj.position.x - startX;
+      const dy = obj.position.y - startY;
+      const forwardProj = dx * uX + dy * uY;
+      const lateralProj = dx * perpX + dy * perpY;
+      if (forwardProj >= -objRadius * 0.5 && forwardProj <= reach + objRadius && Math.abs(lateralProj) <= halfWidth + objRadius) {
+        const attackerZ = attacker.position.z;
+        const targetZ = obj.position.z;
+        const targetHeight = obj.height ?? obj.colliderRadius * 2;
+        if (targetZ + targetHeight >= attackerZ - 0.2 && targetZ <= attackerZ + 1.5) {
+          hitTargets.push(obj);
+        }
+      }
+    }
+    const contactDt = 0.05;
+    const totalImpulse = actualForce * contactDt;
+    let recoilVx = 0;
+    let recoilVy = 0;
+    if (hitTargets.length > 0) {
+      const impulsePerTarget = totalImpulse / hitTargets.length;
+      const attackerMass = Math.max(0.2, attacker.mass);
+      for (const target of hitTargets) {
+        const targetMass = Math.max(0.2, target.mass);
+        const targetDv = impulsePerTarget / targetMass;
+        if (target.rigidbodyModule && target.rigidbodyModule.enabled) {
+          target.velocity.x += uX * targetDv;
+          target.velocity.y += uY * targetDv;
+        } else {
+          target.velocity.x = (target.velocity.x ?? 0) + uX * targetDv;
+          target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
+        }
+        const shockDeceleration = actualForce / targetMass;
+        target.dispatchImpact({
+          absorbedShock: shockDeceleration,
+          impactSpeed: targetDv,
+          otherEntity: attacker,
+          normalX: -uX,
+          normalY: -uY
+        });
+        const recoilDv = impulsePerTarget / attackerMass;
+        recoilVx -= uX * recoilDv;
+        recoilVy -= uY * recoilDv;
+      }
+      if (attacker.rigidbodyModule && attacker.rigidbodyModule.enabled) {
+        attacker.velocity.x += recoilVx;
+        attacker.velocity.y += recoilVy;
+      } else {
+        attacker.velocity.x += recoilVx;
+        attacker.velocity.y += recoilVy;
+      }
+    }
+    return {
+      hitTargets,
+      actualForce,
+      energySpentJoules: energySpent,
+      recoilVx,
+      recoilVy
+    };
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     var _a;
@@ -8575,6 +8770,11 @@ class Character extends GameObject {
     __publicField(this, "laserAimTarget", null);
     __publicField(this, "laserCandidateEntities");
     __publicField(this, "laserPowerFraction", 1);
+    // Melee attack inputs processed per tick
+    __publicField(this, "meleeModule", null);
+    __publicField(this, "isMeleeRequested", false);
+    __publicField(this, "meleeAimDir", null);
+    __publicField(this, "meleeCandidateEntities");
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -8627,6 +8827,17 @@ class Character extends GameObject {
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
+    this.meleeModule = new MeleeModule({
+      energyBusId: "bus_main",
+      maxForce: 350,
+      punchFrequency: 4,
+      reach: 1.2,
+      width: 0.8
+    });
+    this.properties.add("meleeMaxForce", this.meleeModule.maxForce);
+    this.properties.add("meleeFrequency", this.meleeModule.punchFrequency);
+    this.properties.add("meleeReach", this.meleeModule.reach);
+    this.properties.add("meleeWidth", this.meleeModule.width);
     if (determinedRole !== "dummy") {
       const laserBus = new EnergyBus({
         id: "bus_laser",
@@ -8857,6 +9068,15 @@ class Character extends GameObject {
     return jumped;
   }
   /**
+   * Attempts to execute a burst melee punch attack in the specified or current facing direction.
+   */
+  melee(arena, potentialTargets, dirX, dirY) {
+    if (!this.meleeModule || !this.meleeModule.enabled) return null;
+    const dx = dirX !== void 0 ? dirX : Math.cos(this.facingAngle ?? 0);
+    const dy = dirY !== void 0 ? dirY : Math.sin(this.facingAngle ?? 0);
+    return this.meleeModule.executePunch(this, dx, dy, potentialTargets, arena);
+  }
+  /**
    * Safely releases any held objects, clears references, and dismounts
    * when this character is removed from the arena.
    */
@@ -9022,6 +9242,12 @@ class Character extends GameObject {
         0,
         this.laserPowerFraction
       );
+    }
+    if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
+      const candidates = this.meleeCandidateEntities ?? arena.entities;
+      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
+      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
     }
     if (this.energyBusses.size > 0) {
       for (const bus of this.energyBusses.values()) {

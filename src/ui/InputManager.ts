@@ -42,6 +42,8 @@ export interface GamepadSlotState {
   isLaserFiring?: boolean;
   laserTriggerValue?: number;
   wasLaserAiming?: boolean;
+  isMeleeRequested?: boolean;
+  meleeAimDir?: Vector2D | null;
 }
 
 export interface CanvasViewport {
@@ -196,6 +198,7 @@ export class InputManager {
   public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
   public lastClientX: number | null = null;
   public lastClientY: number | null = null;
+  public isKeyboardMeleeRequested: boolean = false;
 
   public get isGrabHeld(): boolean {
     return (
@@ -565,6 +568,11 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
+        const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
+        if (isCtrl) {
+          this.isKeyboardMeleeRequested = true;
+          return;
+        }
         const canLock = this.canLockAim ? this.canLockAim() : false;
         if (canLock && !this.lockedAimPos) {
           // 1. Record where mouse was
@@ -625,6 +633,7 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
+        this.isKeyboardMeleeRequested = false;
         const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
@@ -1442,6 +1451,32 @@ export class InputManager {
             }
           }
         }
+      }
+
+      // Button 11 (Right Stick Click / R3): Melee Attack
+      const r3Current = isButtonPressed(11);
+      slot.isMeleeRequested = r3Current;
+
+      if (r3Current) {
+        // Attack points in direction of controller (right joystick if moved, or aimPos relative to character, or facing angle)
+        let mDirX = Math.cos(char.facingAngle ?? 0);
+        let mDirY = Math.sin(char.facingAngle ?? 0);
+        if (rMag > deadzone) {
+          mDirX = rx / rMag;
+          mDirY = ry / rMag;
+        } else if (slot.aimPos) {
+          const adx = slot.aimPos.x - char.position.x;
+          const ady = slot.aimPos.y - char.position.y;
+          const amag = Math.hypot(adx, ady);
+          if (amag > 0.05) {
+            mDirX = adx / amag;
+            mDirY = ady / amag;
+          }
+        }
+        slot.meleeAimDir = { x: mDirX, y: mDirY };
+        char.facingAngle = Math.atan2(mDirY, mDirX);
+      } else {
+        slot.meleeAimDir = null;
       }
 
       // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item

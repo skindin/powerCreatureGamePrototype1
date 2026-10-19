@@ -573,6 +573,13 @@ export class Renderer {
         }
       }
 
+      // 9b. Melee Punch Strike Effects
+      for (const char of characters) {
+        if (char.meleeModule) {
+          this.drawMeleeEffect(char, ppu, arena);
+        }
+      }
+
       // 10. Trajectory Lines and Aim Cursors
       // First: render active trajectories for any character holding an object
       for (const char of characters) {
@@ -1559,5 +1566,55 @@ export class Renderer {
    */
   public drawAimReticle(screenX: number, screenY: number, color = "#ffffff", isLocked = false): void {
     this.trajectoryRenderer.drawAimReticle(screenX, screenY, color, isLocked);
+  }
+
+  /**
+   * Renders the dynamic directional shockwave rectangle and impact crescent of an active melee attack.
+   */
+  public drawMeleeEffect(char: Character, ppu: number, arena: Arena, now = performance.now()): void {
+    if (!char.meleeModule) return;
+    const elapsed = now - char.meleeModule.lastVisualPunchTime;
+    if (elapsed > 140) return; // Flash effect for 140ms
+
+    const progress = elapsed / 140; // 0 to 1
+    const alpha = (1 - progress) * 0.8;
+
+    const reach = char.meleeModule.lastVisualPunchReach;
+    const width = char.meleeModule.lastVisualPunchWidth;
+    const dir = char.meleeModule.lastVisualPunchDir;
+
+    // Visual altitude projection
+    const originX = char.position.x * ppu;
+    const originY = (char.position.y - char.position.z * (arena.visualAltitudeScale ?? 0.5)) * ppu;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(originX, originY);
+    ctx.rotate(Math.atan2(dir.y, dir.x));
+
+    const reachPx = reach * ppu * (0.7 + 0.3 * progress);
+    const halfWidthPx = (width * 0.5) * ppu;
+
+    // Subtle shock fill
+    ctx.fillStyle = char.playerColor || "#ef4444";
+    ctx.globalAlpha = alpha * 0.22;
+    ctx.beginPath();
+    ctx.roundRect(0, -halfWidthPx, reachPx, width * ppu, [4, 10, 10, 4]);
+    ctx.fill();
+
+    // Outlined punch box
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.strokeStyle = char.playerColor || "#ffffff";
+    ctx.lineWidth = Math.max(1, 2.5 * (1 - progress * 0.5));
+    ctx.beginPath();
+    ctx.roundRect(0, -halfWidthPx, reachPx, width * ppu, [4, 10, 10, 4]);
+    ctx.stroke();
+
+    // Impact blast crescent at the punch tip
+    ctx.beginPath();
+    ctx.arc(reachPx, 0, halfWidthPx * (0.8 + 0.3 * progress), -Math.PI * 0.45, Math.PI * 0.45);
+    ctx.stroke();
+
+    ctx.restore();
   }
 }
