@@ -6139,6 +6139,55 @@ class ThrowModule {
     return null;
   }
   /**
+   * Helper: tests if a collider of given radius centered at screen aim point (aimX, aimY)
+   * overlaps a wall in ANY way:
+   * 1. Physical 2D ground footprint: circle(aimX, aimY, radius) overlaps wall.
+   * 2. Physical wall-top footprint: circle(aimX, aimY + wall.wallHeight * scale, radius) overlaps wall.
+   * 3. Screen visual AABB intersection: circle(aimX, aimY, radius) overlaps wall's visual bounds.
+   * If it overlaps a wall AT ALL, returns the wall and the physical target coordinates
+   * accounting for visual altitude scale so the sprite center lands right at (aimX, aimY).
+   */
+  static findWallOverlappingCollider(aimX, aimY, radius, arena, hoverScale = 0) {
+    const scale = hoverScale > 0 ? hoverScale : 0;
+    let bestWall = null;
+    let bestDist = Infinity;
+    let bestPhysX = aimX;
+    let bestPhysY = aimY;
+    for (const wall of arena.walls) {
+      const wallH = wall.wallHeight;
+      const roofTopY = wall.y - wallH * scale;
+      const baseBottomY = wall.y + wall.height;
+      const groundOverlap = ThrowModule.testWallIntersection(aimX, aimY, radius, wall);
+      const testPhysY = aimY + wallH * scale;
+      const wallTopOverlap = ThrowModule.testWallIntersection(aimX, testPhysY, radius, wall);
+      const closestScreenX = Math.max(wall.x, Math.min(wall.x + wall.width, aimX));
+      const closestScreenY = Math.max(roofTopY, Math.min(baseBottomY, aimY));
+      const sDx = aimX - closestScreenX;
+      const sDy = aimY - closestScreenY;
+      const screenOverlap = sDx * sDx + sDy * sDy <= radius * radius;
+      if (groundOverlap || wallTopOverlap || screenOverlap) {
+        const midX = wall.x + wall.width * 0.5;
+        const midY = wall.y + wall.height * 0.5;
+        const d = Math.hypot(midX - aimX, midY - testPhysY);
+        if (d < bestDist) {
+          bestDist = d;
+          bestWall = wall;
+          bestPhysX = aimX;
+          bestPhysY = testPhysY;
+        }
+      }
+    }
+    if (bestWall) {
+      return {
+        wall: bestWall,
+        targetSurfaceHeight: bestWall.wallHeight,
+        physX: bestPhysX,
+        physY: bestPhysY
+      };
+    }
+    return null;
+  }
+  /**
    * Helper: calculates the distance along ray (startX, startY) + s * (dirX, dirY)
    * where the ray enters and exits a wall's 2D bounding box.
    */
@@ -6224,57 +6273,34 @@ class ThrowModule {
     let finalTargetX = effectiveTargetX;
     let finalTargetY = effectiveTargetY;
     let targetSurfaceHeight = 0;
-    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
-    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY, 0);
-    if (wallUnderTarget) {
-      const wall = wallUnderTarget.wall;
-      targetSurfaceHeight = wall.wallHeight;
-      const desiredPhysX = wallUnderTarget.physX;
-      const desiredPhysY = wallUnderTarget.physY;
+    const wallOverlapping = ThrowModule.findWallOverlappingCollider(effectiveTargetX, effectiveTargetY, radius, arena, scale);
+    if (wallOverlapping) {
+      targetSurfaceHeight = wallOverlapping.targetSurfaceHeight;
+      const desiredPhysX = wallOverlapping.physX;
+      const desiredPhysY = wallOverlapping.physY;
+      const wall = wallOverlapping.wall;
       const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || wall;
       if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
         finalTargetX = desiredPhysX;
         finalTargetY = desiredPhysY;
       } else {
-        finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
-        finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
-      }
-    } else if (supportingHeight > 0) {
-      targetSurfaceHeight = supportingHeight;
-      const desiredPhysY = finalTargetY + targetSurfaceHeight * scale;
-      const supWall = arena.getSupportingWall(finalTargetX, desiredPhysY, radius);
-      if (supWall) {
-        finalTargetY = desiredPhysY;
-      }
-    } else {
-      let blockingWall = null;
-      let closestWallDist = Infinity;
-      for (const wall of arena.walls) {
-        if (ThrowModule.testWallIntersection(effectiveTargetX, effectiveTargetY, radius + 0.04, wall)) {
-          const wallMidX = wall.x + wall.width * 0.5;
-          const wallMidY = wall.y + wall.height * 0.5;
-          const d = Math.hypot(wallMidX - effectiveTargetX, wallMidY - effectiveTargetY);
-          if (d < closestWallDist) {
-            closestWallDist = d;
-            blockingWall = wall;
-          }
-        }
-      }
-      if (blockingWall) {
-        targetSurfaceHeight = blockingWall.wallHeight;
-        const desiredPhysX = effectiveTargetX;
-        const desiredPhysY = effectiveTargetY + targetSurfaceHeight * scale;
-        const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || blockingWall;
-        if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+        const closestX = Math.max(supWall.x, Math.min(supWall.x + supWall.width, desiredPhysX));
+        const closestY = Math.max(supWall.y, Math.min(supWall.y + supWall.height, desiredPhysY));
+        const dx2 = desiredPhysX - closestX;
+        const dy2 = desiredPhysY - closestY;
+        const d = Math.hypot(dx2, dy2);
+        if (d > 1e-4) {
+          finalTargetX = closestX + dx2 / d * (radius - 0.02);
+          finalTargetY = closestY + dy2 / d * (radius - 0.02);
+        } else {
           finalTargetX = desiredPhysX;
           finalTargetY = desiredPhysY;
-        } else {
-          finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
-          finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
         }
-      } else {
-        targetSurfaceHeight = 0;
       }
+    } else {
+      targetSurfaceHeight = 0;
+      finalTargetX = effectiveTargetX;
+      finalTargetY = effectiveTargetY;
     }
     const maxThrowHeight = this.maxThrowHeightProp.get(thrower == null ? void 0 : thrower.properties);
     const effectiveMaxHeight = maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
@@ -6535,7 +6561,7 @@ class ThrowModule {
           if (currentZ <= wall.wallHeight + 1e-3) {
             const wasAbove = points.length > 0 && points[points.length - 1].z >= wall.wallHeight - 0.05;
             if (wasAbove && currentVz <= 0) {
-              const isTargetedWall = targetSurfaceHeight > 0 && finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 && finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
+              const isTargetedWall = targetSurfaceHeight > 0 && ThrowModule.testWallIntersection(finalTargetX, finalTargetY, held.colliderRadius + 0.05, wall);
               if (isTargetedWall || targetSurfaceHeight > 0 && step >= steps - 3) {
                 isLandingOnWallTop = true;
                 break;

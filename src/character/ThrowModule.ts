@@ -334,6 +334,72 @@ export class ThrowModule {
   }
 
   /**
+   * Helper: tests if a collider of given radius centered at screen aim point (aimX, aimY)
+   * overlaps a wall in ANY way:
+   * 1. Physical 2D ground footprint: circle(aimX, aimY, radius) overlaps wall.
+   * 2. Physical wall-top footprint: circle(aimX, aimY + wall.wallHeight * scale, radius) overlaps wall.
+   * 3. Screen visual AABB intersection: circle(aimX, aimY, radius) overlaps wall's visual bounds.
+   * If it overlaps a wall AT ALL, returns the wall and the physical target coordinates
+   * accounting for visual altitude scale so the sprite center lands right at (aimX, aimY).
+   */
+  public static findWallOverlappingCollider(
+    aimX: number,
+    aimY: number,
+    radius: number,
+    arena: Arena,
+    hoverScale = 0
+  ): { wall: Wall; targetSurfaceHeight: number; physX: number; physY: number } | null {
+    const scale = hoverScale > 0 ? hoverScale : 0;
+    let bestWall: Wall | null = null;
+    let bestDist = Infinity;
+    let bestPhysX = aimX;
+    let bestPhysY = aimY;
+
+    for (const wall of arena.walls) {
+      const wallH = wall.wallHeight;
+      const roofTopY = wall.y - wallH * scale;
+      const baseBottomY = wall.y + wall.height;
+
+      // 1. Ground footprint overlap:
+      const groundOverlap = ThrowModule.testWallIntersection(aimX, aimY, radius, wall);
+
+      // 2. Wall-top physical overlap (with altitude offset):
+      const testPhysY = aimY + wallH * scale;
+      const wallTopOverlap = ThrowModule.testWallIntersection(aimX, testPhysY, radius, wall);
+
+      // 3. Screen visual AABB intersection:
+      const closestScreenX = Math.max(wall.x, Math.min(wall.x + wall.width, aimX));
+      const closestScreenY = Math.max(roofTopY, Math.min(baseBottomY, aimY));
+      const sDx = aimX - closestScreenX;
+      const sDy = aimY - closestScreenY;
+      const screenOverlap = (sDx * sDx + sDy * sDy) <= (radius * radius);
+
+      if (groundOverlap || wallTopOverlap || screenOverlap) {
+        const midX = wall.x + wall.width * 0.5;
+        const midY = wall.y + wall.height * 0.5;
+        const d = Math.hypot(midX - aimX, midY - testPhysY);
+        if (d < bestDist) {
+          bestDist = d;
+          bestWall = wall;
+          bestPhysX = aimX;
+          bestPhysY = testPhysY;
+        }
+      }
+    }
+
+    if (bestWall) {
+      return {
+        wall: bestWall,
+        targetSurfaceHeight: bestWall.wallHeight,
+        physX: bestPhysX,
+        physY: bestPhysY,
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Helper: calculates the distance along ray (startX, startY) + s * (dirX, dirY)
    * where the ray enters and exits a wall's 2D bounding box.
    */
@@ -476,71 +542,40 @@ export class ThrowModule {
     let finalTargetY = effectiveTargetY;
     let targetSurfaceHeight = 0;
 
-    // Check if aiming directly at a wall top (including 2.5D visual roof and front face):
-    const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
-    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY, 0);
+    // 1. First figure out if the object at the mouse position would be on a wall or on the ground:
+    // If the collider overlaps a wall AT ALL (ground, wall-top, or visual screen footprint),
+    // assume the player wants to land on the wall:
+    const wallOverlapping = ThrowModule.findWallOverlappingCollider(effectiveTargetX, effectiveTargetY, radius, arena, scale);
 
-    if (wallUnderTarget) {
-      // Object aimed directly at wall visual roof/face:
-      const wall = wallUnderTarget.wall;
-      targetSurfaceHeight = wall.wallHeight;
-      const desiredPhysX = wallUnderTarget.physX;
-      const desiredPhysY = wallUnderTarget.physY;
+    if (wallOverlapping) {
+      targetSurfaceHeight = wallOverlapping.targetSurfaceHeight;
+      const desiredPhysX = wallOverlapping.physX;
+      const desiredPhysY = wallOverlapping.physY;
+      const wall = wallOverlapping.wall;
+
       const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || wall;
       if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
         finalTargetX = desiredPhysX;
         finalTargetY = desiredPhysY;
       } else {
-        finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
-        finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
-      }
-    } else if (supportingHeight > 0) {
-      targetSurfaceHeight = supportingHeight;
-      const desiredPhysY = finalTargetY + targetSurfaceHeight * scale;
-      const supWall = arena.getSupportingWall(finalTargetX, desiredPhysY, radius);
-      if (supWall) {
-        finalTargetY = desiredPhysY;
-      }
-    } else {
-      // Cursor point is over the ground.
-      // Check if the whole object can fit at the mouse position on the ground without colliding with / overlapping any walls:
-      let blockingWall: Wall | null = null;
-      let closestWallDist = Infinity;
-
-      for (const wall of arena.walls) {
-        if (ThrowModule.testWallIntersection(effectiveTargetX, effectiveTargetY, radius + 0.04, wall)) {
-          const wallMidX = wall.x + wall.width * 0.5;
-          const wallMidY = wall.y + wall.height * 0.5;
-          const d = Math.hypot(wallMidX - effectiveTargetX, wallMidY - effectiveTargetY);
-          if (d < closestWallDist) {
-            closestWallDist = d;
-            blockingWall = wall;
-          }
-        }
-      }
-
-      if (blockingWall) {
-        // The object CANNOT fit on the ground at the mouse position!
-        // Assume player is trying to throw it ON TOP OF THE WALL.
-        targetSurfaceHeight = blockingWall.wallHeight;
-
-        // Account for altitude sprite offset so sprite center first collision lands right at mouse position:
-        // screenY = physY - targetSurfaceHeight * scale => physY = screenY + targetSurfaceHeight * scale
-        const desiredPhysX = effectiveTargetX;
-        const desiredPhysY = effectiveTargetY + targetSurfaceHeight * scale;
-
-        const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || blockingWall;
-        if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+        const closestX = Math.max(supWall.x, Math.min(supWall.x + supWall.width, desiredPhysX));
+        const closestY = Math.max(supWall.y, Math.min(supWall.y + supWall.height, desiredPhysY));
+        const dx = desiredPhysX - closestX;
+        const dy = desiredPhysY - closestY;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.0001) {
+          finalTargetX = closestX + (dx / d) * (radius - 0.02);
+          finalTargetY = closestY + (dy / d) * (radius - 0.02);
+        } else {
           finalTargetX = desiredPhysX;
           finalTargetY = desiredPhysY;
-        } else {
-          finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
-          finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
         }
-      } else {
-        // Object fits cleanly on the ground:
-        targetSurfaceHeight = 0;
       }
+    } else {
+      // Object fits cleanly on open ground:
+      targetSurfaceHeight = 0;
+      finalTargetX = effectiveTargetX;
+      finalTargetY = effectiveTargetY;
     }
 
     // Limit how high the player can throw objects (effective max vertical target height above release)
@@ -882,8 +917,7 @@ export class ThrowModule {
             if (wasAbove && currentVz <= 0) {
               // Descending onto top of wall
               const isTargetedWall = targetSurfaceHeight > 0 &&
-                finalTargetX >= wall.x - 0.2 && finalTargetX <= wall.x + wall.width + 0.2 &&
-                finalTargetY >= wall.y - 0.2 && finalTargetY <= wall.y + wall.height + 0.2;
+                ThrowModule.testWallIntersection(finalTargetX, finalTargetY, held.colliderRadius + 0.05, wall);
 
               if (isTargetedWall || (targetSurfaceHeight > 0 && step >= steps - 3)) {
                 // This is the intended landing on top of the targeted wall!
