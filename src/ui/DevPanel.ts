@@ -2640,7 +2640,8 @@ export class DevPanel {
     // Gravity Module (Global Arena Gravity Control)
     if (e.gravityModule) {
       this.setupScrubber("scrub-container-mod-gravity", {
-        label: "Gravity Force (Global)",
+        label: "Gravity Force",
+        isGlobal: true,
         value: this.arena.gravity,
         min: 1.0,
         max: 100.0,
@@ -3107,7 +3108,8 @@ export class DevPanel {
       }
 
       this.setupScrubber("scrub-container-mod-collision-damage-scale", {
-        label: "Collision Damage Scale (Global)",
+        label: "Collision Damage Scale",
+        isGlobal: true,
         value: GameObject.globalWorldCollisionDamageScale,
         min: 0.0,
         max: 5.0,
@@ -4418,6 +4420,7 @@ export class DevPanel {
     options: {
       label: string;
       value: number;
+      isGlobal?: boolean;
       min?: number;
       max?: number;
       step?: number;

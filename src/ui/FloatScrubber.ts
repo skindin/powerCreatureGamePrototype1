@@ -6,6 +6,7 @@
 export interface FloatScrubberOptions {
   value: number;
   label?: string;
+  isGlobal?: boolean;
   min?: number;
   max?: number;
   step?: number;
@@ -16,6 +17,7 @@ export interface FloatScrubberOptions {
 
 export class FloatScrubber {
   private _element: HTMLElement;
+  private _field: HTMLElement;
   private _input: HTMLInputElement;
   private _value: number;
   private _min: number | undefined;
@@ -33,14 +35,29 @@ export class FloatScrubber {
     this._onChange = options.onChange;
 
     this._element = document.createElement("div");
-    this._element.className = "float-scrubber-field";
+    this._element.className = "float-scrubber-container";
 
     if (options.label) {
+      const labelRow = document.createElement("div");
+      labelRow.className = "float-scrubber-label-row";
+
       const labelSpan = document.createElement("span");
       labelSpan.className = "float-scrubber-label";
       labelSpan.textContent = options.label;
-      this._element.appendChild(labelSpan);
+      labelRow.appendChild(labelSpan);
+
+      if (options.isGlobal) {
+        const globalBadge = document.createElement("span");
+        globalBadge.className = "badge-global-var";
+        globalBadge.textContent = "GLOBAL";
+        labelRow.appendChild(globalBadge);
+      }
+
+      this._element.appendChild(labelRow);
     }
+
+    this._field = document.createElement("div");
+    this._field.className = "float-scrubber-field";
 
     this._input = document.createElement("input");
     this._input.type = "number";
@@ -63,12 +80,12 @@ export class FloatScrubber {
       }
     });
 
-    // Horizontal click & drag scrubber
+    // Horizontal click & drag scrubber on the field box
     let isDragging = false;
     let startX = 0;
     let startVal = 0;
 
-    this._element.addEventListener("mousedown", (e) => {
+    this._field.addEventListener("mousedown", (e) => {
       // If clicking directly into the input to type, don't hijack unless dragging
       if (e.target === this._input && document.activeElement === this._input) return;
 
@@ -95,14 +112,16 @@ export class FloatScrubber {
       window.addEventListener("mouseup", onMouseUp);
     });
 
-    this._element.appendChild(this._input);
+    this._field.appendChild(this._input);
 
     if (options.suffix) {
       const suffixSpan = document.createElement("span");
       suffixSpan.className = "float-scrubber-suffix";
       suffixSpan.textContent = options.suffix;
-      this._element.appendChild(suffixSpan);
+      this._field.appendChild(suffixSpan);
     }
+
+    this._element.appendChild(this._field);
   }
 
   public get element(): HTMLElement {
