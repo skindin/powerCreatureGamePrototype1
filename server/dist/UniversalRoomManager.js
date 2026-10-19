@@ -6225,18 +6225,56 @@ class ThrowModule {
     let finalTargetY = effectiveTargetY;
     let targetSurfaceHeight = 0;
     const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
-    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY, 0);
     if (wallUnderTarget) {
       const wall = wallUnderTarget.wall;
       targetSurfaceHeight = wall.wallHeight;
-      finalTargetX = Math.max(wall.x + radius, Math.min(wall.x + wall.width - radius, wallUnderTarget.physX));
-      finalTargetY = Math.max(wall.y + radius, Math.min(wall.y + wall.height - radius, wallUnderTarget.physY));
-      if (wall.width < 2 * radius) finalTargetX = wall.x + wall.width * 0.5;
-      if (wall.height < 2 * radius) finalTargetY = wall.y + wall.height * 0.5;
+      const desiredPhysX = wallUnderTarget.physX;
+      const desiredPhysY = wallUnderTarget.physY;
+      const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || wall;
+      if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+        finalTargetX = desiredPhysX;
+        finalTargetY = desiredPhysY;
+      } else {
+        finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
+        finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
+      }
     } else if (supportingHeight > 0) {
       targetSurfaceHeight = supportingHeight;
+      const desiredPhysY = finalTargetY + targetSurfaceHeight * scale;
+      const supWall = arena.getSupportingWall(finalTargetX, desiredPhysY, radius);
+      if (supWall) {
+        finalTargetY = desiredPhysY;
+      }
     } else {
-      targetSurfaceHeight = 0;
+      let blockingWall = null;
+      let closestWallDist = Infinity;
+      for (const wall of arena.walls) {
+        if (ThrowModule.testWallIntersection(effectiveTargetX, effectiveTargetY, radius + 0.04, wall)) {
+          const wallMidX = wall.x + wall.width * 0.5;
+          const wallMidY = wall.y + wall.height * 0.5;
+          const d = Math.hypot(wallMidX - effectiveTargetX, wallMidY - effectiveTargetY);
+          if (d < closestWallDist) {
+            closestWallDist = d;
+            blockingWall = wall;
+          }
+        }
+      }
+      if (blockingWall) {
+        targetSurfaceHeight = blockingWall.wallHeight;
+        const desiredPhysX = effectiveTargetX;
+        const desiredPhysY = effectiveTargetY + targetSurfaceHeight * scale;
+        const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || blockingWall;
+        if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+          finalTargetX = desiredPhysX;
+          finalTargetY = desiredPhysY;
+        } else {
+          finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
+          finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
+        }
+      } else {
+        targetSurfaceHeight = 0;
+      }
     }
     const maxThrowHeight = this.maxThrowHeightProp.get(thrower == null ? void 0 : thrower.properties);
     const effectiveMaxHeight = maxThrowHeight * ((thrower == null ? void 0 : thrower.strength) ?? 1);
@@ -6262,14 +6300,8 @@ class ThrowModule {
     if (targetSurfaceHeight === 0) {
       let nearestBlockingWallDist = Infinity;
       for (const wall of arena.walls) {
-        const overlapsAtTarget = ThrowModule.testWallIntersection(finalTargetX, finalTargetY, radius + 0.04, wall);
         const rayHit = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
-        if (overlapsAtTarget) {
-          const enter = rayHit ? rayHit.enterDist : Math.hypot(wall.x - startX, wall.y - startY);
-          if (enter < nearestBlockingWallDist) {
-            nearestBlockingWallDist = enter;
-          }
-        } else if (rayHit && rayHit.enterDist < dist && rayHit.enterDist > 0.1) {
+        if (rayHit && rayHit.enterDist < dist && rayHit.enterDist > 0.1) {
           const maxApexHeight = launchSpeed * launchSpeed / (2 * g);
           if (startZ + maxApexHeight < wall.wallHeight + 0.15) {
             if (rayHit.enterDist < nearestBlockingWallDist) {

@@ -476,24 +476,71 @@ export class ThrowModule {
     let finalTargetY = effectiveTargetY;
     let targetSurfaceHeight = 0;
 
-    // Check if aiming at a wall top (including 2.5D visual roof and front face):
+    // Check if aiming directly at a wall top (including 2.5D visual roof and front face):
     const wallUnderTarget = ThrowModule.getWallUnderCursor(finalTargetX, finalTargetY, arena, scale);
-    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY);
+    const supportingHeight = arena.getSupportingSurfaceHeight(finalTargetX, finalTargetY, 0);
 
     if (wallUnderTarget) {
-      // Object would be ON A WALL:
+      // Object aimed directly at wall visual roof/face:
       const wall = wallUnderTarget.wall;
       targetSurfaceHeight = wall.wallHeight;
-      // Clamp position on the wall top so the object rests cleanly on the wall:
-      finalTargetX = Math.max(wall.x + radius, Math.min(wall.x + wall.width - radius, wallUnderTarget.physX));
-      finalTargetY = Math.max(wall.y + radius, Math.min(wall.y + wall.height - radius, wallUnderTarget.physY));
-      if (wall.width < 2 * radius) finalTargetX = wall.x + wall.width * 0.5;
-      if (wall.height < 2 * radius) finalTargetY = wall.y + wall.height * 0.5;
+      const desiredPhysX = wallUnderTarget.physX;
+      const desiredPhysY = wallUnderTarget.physY;
+      const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || wall;
+      if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+        finalTargetX = desiredPhysX;
+        finalTargetY = desiredPhysY;
+      } else {
+        finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
+        finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
+      }
     } else if (supportingHeight > 0) {
       targetSurfaceHeight = supportingHeight;
+      const desiredPhysY = finalTargetY + targetSurfaceHeight * scale;
+      const supWall = arena.getSupportingWall(finalTargetX, desiredPhysY, radius);
+      if (supWall) {
+        finalTargetY = desiredPhysY;
+      }
     } else {
-      // Object would be ON THE GROUND:
-      targetSurfaceHeight = 0;
+      // Cursor point is over the ground.
+      // Check if the whole object can fit at the mouse position on the ground without colliding with / overlapping any walls:
+      let blockingWall: Wall | null = null;
+      let closestWallDist = Infinity;
+
+      for (const wall of arena.walls) {
+        if (ThrowModule.testWallIntersection(effectiveTargetX, effectiveTargetY, radius + 0.04, wall)) {
+          const wallMidX = wall.x + wall.width * 0.5;
+          const wallMidY = wall.y + wall.height * 0.5;
+          const d = Math.hypot(wallMidX - effectiveTargetX, wallMidY - effectiveTargetY);
+          if (d < closestWallDist) {
+            closestWallDist = d;
+            blockingWall = wall;
+          }
+        }
+      }
+
+      if (blockingWall) {
+        // The object CANNOT fit on the ground at the mouse position!
+        // Assume player is trying to throw it ON TOP OF THE WALL.
+        targetSurfaceHeight = blockingWall.wallHeight;
+
+        // Account for altitude sprite offset so sprite center first collision lands right at mouse position:
+        // screenY = physY - targetSurfaceHeight * scale => physY = screenY + targetSurfaceHeight * scale
+        const desiredPhysX = effectiveTargetX;
+        const desiredPhysY = effectiveTargetY + targetSurfaceHeight * scale;
+
+        const supWall = arena.getSupportingWall(desiredPhysX, desiredPhysY, radius) || blockingWall;
+        if (ThrowModule.testWallIntersection(desiredPhysX, desiredPhysY, radius, supWall)) {
+          finalTargetX = desiredPhysX;
+          finalTargetY = desiredPhysY;
+        } else {
+          finalTargetX = Math.max(supWall.x + 0.05, Math.min(supWall.x + supWall.width - 0.05, desiredPhysX));
+          finalTargetY = Math.max(supWall.y + 0.05, Math.min(supWall.y + supWall.height - 0.05, desiredPhysY));
+        }
+      } else {
+        // Object fits cleanly on the ground:
+        targetSurfaceHeight = 0;
+      }
     }
 
     // Limit how high the player can throw objects (effective max vertical target height above release)
@@ -524,20 +571,12 @@ export class ThrowModule {
     const dirX = dist > 0.0001 ? dx / dist : 0;
     const dirY = dist > 0.0001 ? dy / dist : 0;
 
-    // 2. If on the ground, do not try to reach the exact cursor point if a wall would stop it:
+    // 2. If on the ground, check if an intermediate wall between thrower and target stops the throw:
     if (targetSurfaceHeight === 0) {
       let nearestBlockingWallDist = Infinity;
       for (const wall of arena.walls) {
-        // Does the object at the cursor position overlap this wall on the ground?
-        const overlapsAtTarget = ThrowModule.testWallIntersection(finalTargetX, finalTargetY, radius + 0.04, wall);
         const rayHit = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
-
-        if (overlapsAtTarget) {
-          const enter = rayHit ? rayHit.enterDist : Math.hypot(wall.x - startX, wall.y - startY);
-          if (enter < nearestBlockingWallDist) {
-            nearestBlockingWallDist = enter;
-          }
-        } else if (rayHit && rayHit.enterDist < dist && rayHit.enterDist > 0.1) {
+        if (rayHit && rayHit.enterDist < dist && rayHit.enterDist > 0.1) {
           // Wall is between start and ground target.
           // Check if throw can clear the wall at maximum apex:
           const maxApexHeight = (launchSpeed * launchSpeed) / (2 * g);
@@ -550,7 +589,7 @@ export class ThrowModule {
       }
 
       if (nearestBlockingWallDist < Infinity) {
-        // A wall stops it: place target cleanly on the ground in front of the wall with safe clearance
+        // Intermediate wall stops it: place target cleanly on the ground in front of the wall with safe clearance
         const safeDist = Math.max(0.2, nearestBlockingWallDist - radius - 0.05);
         if (dist > safeDist) {
           dist = safeDist;
