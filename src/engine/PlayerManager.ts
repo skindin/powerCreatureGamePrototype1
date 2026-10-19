@@ -59,7 +59,6 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
-  private wasKeyboardThrowActive: boolean = false;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -523,27 +522,6 @@ export class PlayerManager {
       // If object has no other ability, default ability is Throw.
       // Ability swap stays in effect until the swapped ability is released.
       const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
-
-      if (isHolding && isPrimaryNonDirectional) {
-        if (isThrowActive && !this.wasKeyboardThrowActive) {
-          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
-          // in the exact direction the cursor was relative to the character when exiting throwing mode!
-          const forwardDist = 3.0;
-          const aimAngle = kChar.lastThrowAimAngle !== undefined
-            ? kChar.lastThrowAimAngle
-            : (this.inputManager.lastKeyboardThrowAimAngle !== undefined
-              ? this.inputManager.lastKeyboardThrowAimAngle
-              : (kChar.facingAngle ?? 0));
-          input.actualMousePos.x = kChar.position.x + Math.cos(aimAngle) * forwardDist;
-          input.actualMousePos.y = kChar.position.y + Math.sin(aimAngle) * forwardDist;
-          input.mousePos.x = input.actualMousePos.x;
-          input.mousePos.y = input.actualMousePos.y;
-          kChar.facingAngle = aimAngle;
-          kChar.lastThrowAimAngle = aimAngle;
-          this.inputManager.lastKeyboardThrowAimAngle = aimAngle;
-        }
-      }
-      this.wasKeyboardThrowActive = isThrowActive;
 
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
