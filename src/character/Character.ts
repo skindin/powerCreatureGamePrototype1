@@ -410,6 +410,9 @@ export class Character extends GameObject {
     let energyFraction = 1.0;
     if (this.jumpConsumesEnergy) {
       if (bus) {
+        if (bus.isExhausted) {
+          return false;
+        }
         if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
           return false;
         }
@@ -420,7 +423,7 @@ export class Character extends GameObject {
           pool: this.energyPool,
           registry: this.properties
         });
-        if (!burstRes.granted || (!this.jumpAllowPartialPower && burstRes.fraction < 1.0)) {
+        if (!burstRes.granted || burstRes.grantedJoules <= 0.001 || (!this.jumpAllowPartialPower && burstRes.fraction < 1.0)) {
           return false;
         }
         energyFraction = burstRes.fraction;

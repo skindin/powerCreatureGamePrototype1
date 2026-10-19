@@ -297,6 +297,48 @@ export class EnergyBus {
   }
 
   /**
+   * Unified gatekeeper checking whether the bus and pool can satisfy an energy or power demand.
+   * Centralizes all validation: enabled state, exhaustion, stamina reserves, and energy pool limits.
+   */
+  public canAfford(options: {
+    joules?: number;
+    watts?: number;
+    dt?: number;
+    allowPartialPower?: boolean;
+    allowWhenExhausted?: boolean;
+    pool?: EnergyPool | null;
+    registry?: ObjectPropertiesRegistry;
+    abilityId?: string;
+  }): boolean {
+    if (!this.enabled) return false;
+    if (this.isExhausted && !options.allowWhenExhausted) return false;
+
+    const curStamina = this.getCurrentStamina(options.registry);
+    if (curStamina <= 0.0001) return false;
+
+    const maxPower = Math.max(1, this.getMaxPower(options.registry));
+    const dt = options.dt ?? 0.05;
+    const demandedJoules = options.joules ?? (options.watts ? options.watts * dt : 0);
+    if (demandedJoules <= 0) return true;
+
+    // Stamina capacity check
+    const maxCapacity = options.watts ? maxPower * (curStamina / dt) * dt : curStamina * maxPower;
+    if (!options.allowPartialPower && demandedJoules > maxCapacity + 0.001) {
+      return false;
+    }
+
+    // Pool energy check
+    if (options.pool && !options.pool.infiniteEnergy) {
+      const poolEnergy = options.pool.getCurrentEnergy(options.registry);
+      if (!options.allowPartialPower && poolEnergy < demandedJoules - 0.001) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Checks if the bus can satisfy 100% full power for the requested watts and dt
    * taking into account priority allocation, stamina, and energy pool.
    */
@@ -695,7 +737,7 @@ export class EnergyBus {
     if (demandedJoules <= 0) {
       return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
     }
-    if (!this.enabled) {
+    if (!this.enabled || this.isExhausted) {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
 

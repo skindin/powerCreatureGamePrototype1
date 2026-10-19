@@ -7599,6 +7599,31 @@ class EnergyBus {
     return this.staminaRegenRateProp.get(registry);
   }
   /**
+   * Unified gatekeeper checking whether the bus and pool can satisfy an energy or power demand.
+   * Centralizes all validation: enabled state, exhaustion, stamina reserves, and energy pool limits.
+   */
+  canAfford(options) {
+    if (!this.enabled) return false;
+    if (this.isExhausted && !options.allowWhenExhausted) return false;
+    const curStamina = this.getCurrentStamina(options.registry);
+    if (curStamina <= 1e-4) return false;
+    const maxPower = Math.max(1, this.getMaxPower(options.registry));
+    const dt = options.dt ?? 0.05;
+    const demandedJoules = options.joules ?? (options.watts ? options.watts * dt : 0);
+    if (demandedJoules <= 0) return true;
+    const maxCapacity = options.watts ? maxPower * (curStamina / dt) * dt : curStamina * maxPower;
+    if (!options.allowPartialPower && demandedJoules > maxCapacity + 1e-3) {
+      return false;
+    }
+    if (options.pool && !options.pool.infiniteEnergy) {
+      const poolEnergy = options.pool.getCurrentEnergy(options.registry);
+      if (!options.allowPartialPower && poolEnergy < demandedJoules - 1e-3) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /**
    * Checks if the bus can satisfy 100% full power for the requested watts and dt
    * taking into account priority allocation, stamina, and energy pool.
    */
@@ -7908,7 +7933,7 @@ class EnergyBus {
     if (demandedJoules <= 0) {
       return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
     }
-    if (!this.enabled) {
+    if (!this.enabled || this.isExhausted) {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     const maxPower = Math.max(1, this.getMaxPower(registry));
@@ -8426,6 +8451,9 @@ class Character extends GameObject {
     let energyFraction = 1;
     if (this.jumpConsumesEnergy) {
       if (bus) {
+        if (bus.isExhausted) {
+          return false;
+        }
         if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
           return false;
         }
@@ -8436,7 +8464,7 @@ class Character extends GameObject {
           pool: this.energyPool,
           registry: this.properties
         });
-        if (!burstRes.granted || !this.jumpAllowPartialPower && burstRes.fraction < 1) {
+        if (!burstRes.granted || burstRes.grantedJoules <= 1e-3 || !this.jumpAllowPartialPower && burstRes.fraction < 1) {
           return false;
         }
         energyFraction = burstRes.fraction;
