@@ -8303,13 +8303,13 @@ class LaserModule {
   }
   /**
    * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = ((damageRate / maxDamageRate) * maxPower) * 16
+   * Power = (damageRate / maxDamageRate) * maxPower
    */
   calculateDemandedPower(registry) {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return curDamage / maxDamage * maxPower * 16;
+    return curDamage / maxDamage * maxPower;
   }
   /**
    * Computes the 3D laser ray from the character to the aim target, testing for wall obstructions.

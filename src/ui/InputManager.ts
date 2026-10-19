@@ -621,7 +621,9 @@ export class InputManager {
       const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
       if (isCtrl) {
         e.preventDefault();
-        const step = e.deltaY < 0 ? 10.0 : -10.0;
+        const isShift = e.shiftKey || this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
+        const dir = e.deltaY < 0 ? 1 : -1;
+        const step = isShift ? dir * 10.0 : dir * 2.0;
         this.onLaserWheelAdjust?.(step);
       }
     }, { passive: false });
