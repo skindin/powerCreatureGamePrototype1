@@ -26,9 +26,9 @@ export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliat
 export class GameLoop {
   public arena: Arena;
   public objects: GameObject[];
-  private renderer: Renderer;
-  private inputManager: InputManager;
-  private devPanel: DevPanel;
+  public renderer: Renderer;
+  public inputManager: InputManager;
+  public devPanel: DevPanel;
 
   // Dedicated player session manager
   public playerManager: PlayerManager;

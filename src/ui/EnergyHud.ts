@@ -1,7 +1,6 @@
 import type { Character } from "../character/Character.js";
 import type { GameLoop } from "../engine/GameLoop.js";
 import type { DevPanel } from "./DevPanel.js";
-import type { EnergyBus } from "../character/EnergyBus.js";
 import type { HealthModule } from "../character/HealthModule.js";
 
 interface VisualPowerBlock {
@@ -45,6 +44,7 @@ export class EnergyHud {
   private powerBlocksContainerEl: HTMLElement | null = null;
   private energyFillEl: HTMLElement | null = null;
   private lowerStaminaFillEl: HTMLElement | null = null;
+  private laserStaminaFillEl: HTMLElement | null = null;
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
 
@@ -85,10 +85,10 @@ export class EnergyHud {
         <div class="hud-columns-container">
           <!-- LEFT COLUMN: HEALTH SYSTEM -->
           <div class="hud-column hud-column-health" title="Health & Modifiers">
-            <!-- Preserved Mod List: Active Health Modifier Tags Row (Shows HP/s for continuous, HP for instant) -->
+            <!-- Active Health Modifier Tags Row (Shows HP/s for continuous, HP for instant) -->
             <div id="health-hud-mod-tags" class="hud-power-tags-layer hud-health-tags-layer"></div>
 
-            <!-- Upper Track: Health Bar Fill vs Max HP with Heart Symbol -->
+            <!-- Unified Track: Health Bar Fill with Heart Symbol & Embedded Modifiers -->
             <div class="energy-hud-track-wrapper hud-track-row" title="Health (HP)">
               <div class="hud-bar-icon-wrap" title="Health">
                 <span class="hud-bar-icon hud-icon-health">❤</span>
@@ -96,15 +96,7 @@ export class EnergyHud {
               <div class="energy-hud-track energy-hud-track-main energy-hud-track-health" id="health-hud-track-bar">
                 <!-- Current Health Fill (Ruby / Crimson Gradient) -->
                 <div id="bar-hud-health-fill" class="hud-bar-layer hud-bar-health" title="Health"></div>
-              </div>
-            </div>
-
-            <!-- Lower Track: Health Modifiers Bar with Heart Modifier Symbol -->
-            <div class="energy-hud-track-wrapper hud-track-row" title="Health Modifiers (Damage & Healing Rates)">
-              <div class="hud-bar-icon-wrap" title="Health Modifiers">
-                <span class="hud-bar-icon hud-icon-health-mod">❤<small class="hud-sub-plus">±</small></span>
-              </div>
-              <div class="energy-hud-track energy-hud-track-mods energy-hud-track-health-mods" id="health-hud-track-mods">
+                <!-- Embedded Active Health Modifiers Container -->
                 <div id="hud-health-mods-container" class="hud-power-blocks-container"></div>
               </div>
             </div>
@@ -112,20 +104,20 @@ export class EnergyHud {
 
           <!-- RIGHT COLUMN: ENERGY & POWER SYSTEM -->
           <div class="hud-column hud-column-energy" title="Energy & Power">
-            <!-- Preserved Mod List: Active Ability Tags Row (Shows energy amount with /s for time-based abilities) -->
+            <!-- Active Ability Tags Row (Shows energy amount with /s for time-based abilities) -->
             <div id="energy-hud-power-tags" class="hud-power-tags-layer"></div>
 
-            <!-- Upper Track: Energy & Stamina Scale with Lightning Symbol -->
+            <!-- Unified Track: Energy, Multi-Bus Stamina, and Embedded Modifiers -->
             <div class="energy-hud-track-wrapper hud-track-row" title="Energy & Stamina">
               <div class="hud-bar-icon-wrap" title="Energy">
                 <span class="hud-bar-icon hud-icon-energy">⚡</span>
               </div>
               <div class="energy-hud-track energy-hud-track-main energy-hud-track-reservoir" id="energy-hud-track-reservoir">
-                <!-- Current Energy Fill (Amber/Gold) -->
-                <div id="bar-hud-energy-fill" class="hud-bar-layer hud-bar-energy" title="Energy"></div>
+                <!-- Row 1: Main Bus Stamina (Emerald, 10s) -->
+                <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (10s)"></div>
 
-                <!-- Current Stamina Fill (Emerald) -->
-                <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Stamina"></div>
+                <!-- Row 2: Laser Bus Stamina (Smaller row, Bright Cyan, 5s) -->
+                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina (5s)"></div>
 
                 <!-- Exhaustion Recovery Tick Mark (Red notch shown when exhausted) -->
                 <div id="tick-hud-exhaustion-recovery" class="hud-cap-tick hud-cap-exhaustion" style="left: 10%; display: none;" title="Exhaustion Recovery Threshold">
@@ -136,15 +128,11 @@ export class EnergyHud {
                 <div id="tick-hud-max-stamina" class="hud-cap-tick hud-cap-stamina" style="left: 50%;">
                   <div class="hud-cap-line hud-cap-stamina-line"></div>
                 </div>
-              </div>
-            </div>
 
-            <!-- Lower Track: Power Bar (Energy Modifiers) with Lightning Modifier Symbol -->
-            <div class="energy-hud-track-wrapper hud-track-row" title="Power & Energy Consumption Rates">
-              <div class="hud-bar-icon-wrap" title="Energy Modifiers (Power)">
-                <span class="hud-bar-icon hud-icon-energy-mod">⚡<small class="hud-sub-plus">±</small></span>
-              </div>
-              <div class="energy-hud-track energy-hud-track-mods energy-hud-track-power" id="energy-hud-track-power">
+                <!-- Row 3: Energy Reservoir Fill (Amber) -->
+                <div id="bar-hud-energy-fill" class="hud-bar-layer hud-bar-energy" title="Energy Reservoir"></div>
+
+                <!-- Row 3 Overlay: Active Energy Modifiers Container (Embedded color-coded segments) -->
                 <div id="hud-power-blocks-container" class="hud-power-blocks-container"></div>
               </div>
             </div>
@@ -166,6 +154,7 @@ export class EnergyHud {
     this.powerBlocksContainerEl = hudWrapper.querySelector("#hud-power-blocks-container");
     this.energyFillEl = hudWrapper.querySelector("#bar-hud-energy-fill");
     this.lowerStaminaFillEl = hudWrapper.querySelector("#bar-hud-lower-stamina");
+    this.laserStaminaFillEl = hudWrapper.querySelector("#bar-hud-laser-stamina");
     this.staminaCapTickEl = hudWrapper.querySelector("#tick-hud-max-stamina");
     this.exhaustionTickEl = hudWrapper.querySelector("#tick-hud-exhaustion-recovery");
   }
@@ -212,14 +201,18 @@ export class EnergyHud {
   }
 
   /**
-   * Renders color-coded blocks in the upper Health Modifiers bar and matching tags above the bar.
-   * - Shows continuous damage over time (damage aura: e.g. 'Aura 20/s')
-   * - Shows instant damage bursts (impact/collision: e.g. 'Impact 15')
-   * - Shows healing over time (passive regen: e.g. 'Heal 10/s')
-   * - Shows instant healing (e.g. 'Heal 10')
-   * - Smoothly interpolates from 0 when appearing and back to 0 when disappearing.
+   * Renders color-coded blocks for health modifiers directly embedded inside the Health bar.
+   * - Time-based modifiers occupy width proportional to windowed consumption (rate * windowSeconds).
+   * - Negative modifiers (damage) sit at the leading edge of current health.
+   * - Positive modifiers (healing) extend outward from current health.
    */
-  private renderHealthModBlocks(_char: Character, healthMod: HealthModule | null, maxHp: number, dt: number): void {
+  private renderHealthModBlocks(
+    _char: Character,
+    healthMod: HealthModule | null,
+    maxHp: number,
+    curHp: number,
+    dt: number
+  ): void {
     if (!this.healthBlocksContainerEl || !this.healthModTagsEl) return;
 
     const modifiers = healthMod ? healthMod.getActiveModifiers(_char.properties) : [];
@@ -281,56 +274,63 @@ export class EnergyHud {
       }
     }
 
+    const curHpPct = maxHp > 0 ? Math.max(0, Math.min(100, (curHp / maxHp) * 100)) : 0;
     const sortedBlocks = Array.from(this.visualHealthBlocks.values()).sort((a, b) => a.order - b.order);
 
     if (sortedBlocks.length === 0) {
       this.healthBlocksContainerEl.innerHTML = "";
       this.healthModTagsEl.innerHTML = "";
+      if (this.healthFillEl) {
+        this.healthFillEl.style.width = `${curHpPct.toFixed(2)}%`;
+      }
       return;
     }
 
-    // Split into positive (healing, top half) and negative (damage, bottom half)
+    const windowSeconds = this.gameLoop.renderer?.modHistoryWindowSeconds ?? 0.10;
+
+    // Split into positive (healing) and negative (damage)
     const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
     const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
 
-    // Capacity scale for modifiers: half of max HP or at least 40 HP
-    const baseModCap = Math.max(40, maxHp * 0.5);
-    let totalPosUnits = 0;
-    for (const vb of positiveBlocks) {
-      if (vb.currentUnits > 0.01) totalPosUnits += vb.currentUnits;
-    }
-    let totalNegUnits = 0;
+    // Calculate windowed segment widths
+    let totalNegPct = 0;
+    const negBlockWidths: { vb: VisualHealthBlock; widthPct: number }[] = [];
     for (const vb of negativeBlocks) {
-      if (vb.currentUnits > 0.01) totalNegUnits += vb.currentUnits;
+      if (vb.currentUnits <= 0.01) continue;
+      const units = vb.isBurst ? vb.currentUnits : (vb.currentUnits * windowSeconds);
+      const widthPct = Math.max(0.4, (units / Math.max(1, maxHp)) * 100);
+      negBlockWidths.push({ vb, widthPct });
+      totalNegPct += widthPct;
     }
-    const effectiveCap = Math.max(baseModCap, totalPosUnits, totalNegUnits);
+
+    // Base health fill is pulled back by active damage segments embedded at its leading edge
+    const baseFillPct = Math.max(0, curHpPct - totalNegPct);
+    if (this.healthFillEl) {
+      this.healthFillEl.style.width = `${baseFillPct.toFixed(2)}%`;
+    }
 
     let blocksHtml = "";
 
-    // 1. Top Lane: Positive Modifiers (Healing)
-    let posLeftPct = 0;
-    for (const vb of positiveBlocks) {
-      if (vb.currentUnits <= 0.01) continue;
-      const widthPct = Math.min(100 - posLeftPct, (vb.currentUnits / effectiveCap) * 100);
-      if (widthPct <= 0.001) continue;
-
+    // 1. Negative Modifiers (Damage) - placed right after base health fill up to curHpPct
+    let negLeftPct = baseFillPct;
+    for (const { vb, widthPct } of negBlockWidths) {
+      const units = vb.isBurst ? vb.stableUnits : (vb.stableUnits * windowSeconds);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 50%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.7);" title="${vb.name}"></div>
-      `;
-      posLeftPct += widthPct;
-    }
-
-    // 2. Bottom Lane: Negative Modifiers (Damage)
-    let negLeftPct = 0;
-    for (const vb of negativeBlocks) {
-      if (vb.currentUnits <= 0.01) continue;
-      const widthPct = Math.min(100 - negLeftPct, (vb.currentUnits / effectiveCap) * 100);
-      if (widthPct <= 0.001) continue;
-
-      blocksHtml += `
-        <div class="hud-power-block hud-block-neg" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 50%; height: 50%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.7);" title="${vb.name}"></div>
+        <div class="hud-power-block hud-block-neg" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; border-right: 1.5px solid rgba(255, 255, 255, 0.85);" title="${vb.name}: -${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP in ${windowSeconds.toFixed(2)}s window)"></div>
       `;
       negLeftPct += widthPct;
+    }
+
+    // 2. Positive Modifiers (Healing) - placed extending outward from curHpPct
+    let posLeftPct = curHpPct;
+    for (const vb of positiveBlocks) {
+      if (vb.currentUnits <= 0.01) continue;
+      const units = vb.isBurst ? vb.currentUnits : (vb.currentUnits * windowSeconds);
+      const widthPct = Math.max(0.4, (units / Math.max(1, maxHp)) * 100);
+      blocksHtml += `
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableUnits)}${vb.isBurst ? "" : "/s"} (${units.toFixed(1)} HP in ${windowSeconds.toFixed(2)}s window)"></div>
+      `;
+      posLeftPct += widthPct;
     }
 
     // Mod tags with + and - signs
@@ -356,16 +356,32 @@ export class EnergyHud {
   }
 
   /**
-   * Renders color-coded blocks in the Power bar and matching color-coded tags above the bar.
-   * - Split vertically without dividing line: positive energy generation on top, negative power draws on bottom.
-   * - Abilities stack chronologically from left to right in activation order.
-   * - Blocks smoothly interpolate from 0 as they appear and back to 0 as they disappear.
-   * - Tags display '+' or '-' before the value.
+   * Renders color-coded blocks for energy modifiers directly embedded inside the Energy reservoir bar.
+   * - Time-based modifiers occupy width proportional to windowed consumption (Watts * windowSeconds).
+   * - Considers allocations from all active busses (bus_main, bus_laser, etc.).
+   * - Negative modifiers (power draws) sit at the leading edge of current energy.
+   * - Positive modifiers (nutrition) extend outward from current energy.
    */
-  private renderPowerBlocks(_char: Character, bus: EnergyBus | null, maxPower: number, dt: number): void {
+  private renderPowerBlocks(
+    _char: Character,
+    maxEnergy: number,
+    curEnergy: number,
+    dt: number,
+    infiniteEnergy: boolean
+  ): void {
     if (!this.powerBlocksContainerEl || !this.powerTagsEl) return;
-    const powerCap = Math.max(50, maxPower);
-    const allocations = bus ? bus.getActiveAllocations(_char.properties) : [];
+
+    // Collect allocations across ALL active busses on the character (Main Bus, Laser Bus, etc.)
+    const allocations: any[] = [];
+    if (_char.energyBusses && _char.energyBusses.size > 0) {
+      for (const b of _char.energyBusses.values()) {
+        if (b && b.enabled) {
+          allocations.push(...b.getActiveAllocations(_char.properties));
+        }
+      }
+    } else if (_char.energyBus && _char.energyBus.enabled) {
+      allocations.push(..._char.energyBus.getActiveAllocations(_char.properties));
+    }
 
     // If character is actively consuming an item, register an incoming positive energy modifier (+Watts)
     if (_char.isUsingItem && _char.canConsumeHeldObject() && _char.heldObject?.consumableModule) {
@@ -383,7 +399,7 @@ export class EnergyHud {
       } as any);
     }
 
-    // Anticipated Modifiers: Preview energy costs for uncommitted actions (e.g. Throw trajectory preview)
+    // Anticipated Modifiers: Preview energy costs for uncommitted actions (e.g. Throw trajectory preview, Laser aiming)
     const anticipatedMods = _char.getAnticipatedModifiers ? _char.getAnticipatedModifiers() : [];
     for (const ant of anticipatedMods) {
       allocations.push({
@@ -436,21 +452,18 @@ export class EnergyHud {
     for (const [id, vb] of this.visualBlocks.entries()) {
       if (!activeIds.has(id)) {
         vb.targetWatts = 0;
-        // vb.stableWatts remains intact, preserving the ability's energy amount
       }
     }
 
     // Smoothly interpolate currentWatts towards targetWatts
     for (const [id, vb] of this.visualBlocks.entries()) {
       if (vb.currentWatts < vb.targetWatts) {
-        // Fast, smooth expansion from 0
         const attackRate = 18.0;
         vb.currentWatts += (vb.targetWatts - vb.currentWatts) * (1 - Math.exp(-attackRate * dt));
         if (Math.abs(vb.targetWatts - vb.currentWatts) < 0.5) {
           vb.currentWatts = vb.targetWatts;
         }
       } else if (vb.currentWatts > vb.targetWatts) {
-        // Fast, smooth contraction back to 0
         const decayRate = 14.0;
         vb.currentWatts += (vb.targetWatts - vb.currentWatts) * (1 - Math.exp(-decayRate * dt));
         if (vb.currentWatts < 0.5) {
@@ -458,95 +471,75 @@ export class EnergyHud {
         }
       }
 
-      // Once fully decayed back to 0 and inactive, prune
       if (vb.currentWatts <= 0.01 && vb.targetWatts <= 0.001) {
         this.visualBlocks.delete(id);
       }
     }
 
-    // Strictly sort by activation order (stacking left to right)
+    const energyCap = Math.max(100, maxEnergy);
+    const curEnergyPct = infiniteEnergy ? 100 : Math.max(0, Math.min(100, (curEnergy / energyCap) * 100));
     const sortedBlocks = Array.from(this.visualBlocks.values()).sort((a, b) => a.order - b.order);
 
     if (sortedBlocks.length === 0) {
       this.powerBlocksContainerEl.innerHTML = "";
       this.powerTagsEl.innerHTML = "";
+      if (this.energyFillEl) {
+        this.energyFillEl.style.width = `${curEnergyPct.toFixed(2)}%`;
+      }
       return;
     }
 
-    // Split into positive (energy gain / generation, top half) and negative (power consumption, bottom half)
+    const windowSeconds = this.gameLoop.renderer?.modHistoryWindowSeconds ?? 0.10;
+
+    // Split into positive (energy gain) and negative (power consumption)
     const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
     const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
 
+    // Calculate windowed segment widths
+    let totalNegPct = 0;
+    const negBlockWidths: { vb: VisualPowerBlock; widthPct: number }[] = [];
+    for (const vb of negativeBlocks) {
+      if (vb.currentWatts <= 0.01) continue;
+      const joules = vb.isBurst ? vb.currentWatts : (vb.currentWatts * windowSeconds);
+      const widthPct = Math.max(0.4, (joules / energyCap) * 100);
+      negBlockWidths.push({ vb, widthPct });
+      totalNegPct += widthPct;
+    }
+
+    // Base energy fill is pulled back by active power draining segments embedded at its leading edge
+    const baseEnergyPct = infiniteEnergy ? 100 : Math.max(0, curEnergyPct - totalNegPct);
+    if (this.energyFillEl) {
+      this.energyFillEl.style.width = `${baseEnergyPct.toFixed(2)}%`;
+    }
+
     let blocksHtml = "";
 
-    // 1. Top Lane: Positive Modifiers (Energy Generation / Charging)
-    let posLeftPct = 0;
+    // 1. Negative Modifiers (Power Draws) - placed right after base energy fill up to curEnergyPct
+    let negLeftPct = baseEnergyPct;
+    for (const { vb, widthPct } of negBlockWidths) {
+      const joules = vb.isBurst ? vb.stableWatts : (vb.stableWatts * windowSeconds);
+      const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
+      const borderStyle = vb.isAnticipated
+        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
+        : "border-right: 1.5px solid rgba(255, 255, 255, 0.85);";
+      const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
+
+      blocksHtml += `
+        <div class="hud-power-block hud-block-neg ${anticipatedClass}" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: -${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)}J in ${windowSeconds.toFixed(2)}s window)"></div>
+      `;
+      negLeftPct += widthPct;
+    }
+
+    // 2. Positive Modifiers (Energy Generation, e.g. Eating food) - extending outward from curEnergyPct
+    let posLeftPct = curEnergyPct;
     for (const vb of positiveBlocks) {
       if (vb.currentWatts <= 0.01) continue;
-      const widthPct = Math.min(100 - posLeftPct, (vb.currentWatts / powerCap) * 100);
-      if (widthPct <= 0.001) continue;
-
-      const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
-      const borderStyle = vb.isAnticipated
-        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
-        : "border-right: 1.5px solid rgba(255, 255, 255, 0.7);";
-      const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
-
+      const joules = vb.isBurst ? vb.currentWatts : (vb.currentWatts * windowSeconds);
+      const widthPct = Math.max(0.4, (joules / energyCap) * 100);
       blocksHtml += `
-        <div class="hud-power-block hud-block-pos ${anticipatedClass}" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 50%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}"></div>
+        <div class="hud-power-block hud-block-pos" style="left: ${posLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 0; height: 100%; background: ${vb.color};" title="${vb.name}: +${Math.round(vb.stableWatts)}${vb.isBurst ? "" : "/s"} (${Math.round(joules)}J in ${windowSeconds.toFixed(2)}s window)"></div>
       `;
       posLeftPct += widthPct;
-    }
-
-    // 2. Bottom Lane: Negative Modifiers (Power Consumption: Sprint, Jump, Heal, Climb, Walk, and Anticipated Costs)
-    let fullPowerWatts = 0;
-    for (const vb of negativeBlocks) {
-      if (!vb.allowPartialPower && vb.currentWatts > 0.01) {
-        fullPowerWatts += vb.currentWatts;
-      }
-    }
-    const fullPowerWidthPct = Math.min(100, (fullPowerWatts / powerCap) * 100);
-    const remainingPartialWidthPct = Math.max(0, 100 - fullPowerWidthPct);
-
-    let partialPowerWatts = 0;
-    for (const vb of negativeBlocks) {
-      if (vb.allowPartialPower && vb.currentWatts > 0.01) {
-        partialPowerWatts += vb.currentWatts;
-      }
-    }
-
-    let negLeftPct = 0;
-    for (const vb of negativeBlocks) {
-      if (vb.currentWatts <= 0.01) continue;
-
-      let widthPct = 0;
-      if (!vb.allowPartialPower) {
-        // Full power block gets its demanded share directly
-        widthPct = Math.min(100 - negLeftPct, (vb.currentWatts / powerCap) * 100);
-      } else {
-        // Partial power block shares remaining headroom proportionally
-        const partialIdealWidth = (vb.currentWatts / powerCap) * 100;
-        if (partialPowerWatts <= (powerCap - fullPowerWatts) + 0.01) {
-          widthPct = Math.min(100 - negLeftPct, partialIdealWidth);
-        } else if (partialPowerWatts > 0.01) {
-          widthPct = Math.min(100 - negLeftPct, (vb.currentWatts / partialPowerWatts) * remainingPartialWidthPct);
-        }
-      }
-
-      if (widthPct <= 0.001) continue;
-
-      // Color-coded block in the lower lane (bottom half)
-      const anticipatedClass = vb.isAnticipated ? "hud-block-anticipated" : "";
-      const borderStyle = vb.isAnticipated
-        ? "border: 1.5px dotted rgba(255, 255, 255, 0.95); border-right: 1.5px dotted rgba(255, 255, 255, 0.95);"
-        : "border-right: 1.5px solid rgba(255, 255, 255, 0.7);";
-      const opacityStyle = vb.isAnticipated ? "opacity: 0.52;" : "";
-
-      blocksHtml += `
-        <div class="hud-power-block hud-block-neg ${anticipatedClass}" style="left: ${negLeftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%; top: 50%; height: 50%; background: ${vb.color}; ${borderStyle} ${opacityStyle}" title="${vb.name}${vb.isAnticipated ? " (Anticipated)" : ""}: -${Math.round(vb.stableWatts)}"></div>
-      `;
-
-      negLeftPct += widthPct;
     }
 
     // Mod tags with + and - signs
@@ -629,39 +622,16 @@ export class EnergyHud {
     // =========================================================================
     // 1. LEFT COLUMN: HEALTH SYSTEM
     // =========================================================================
-    // Upper Track: Current modifiers to health (Aura DOT, Impact shock, Passive heal)
-    this.renderHealthModBlocks(char, healthMod, maxHp, dt);
-
-    // Lower Track: Current Health Fill vs Max HP
-    if (this.healthFillEl) {
-      const hpRatio = maxHp > 0 ? Math.max(0, Math.min(1, curHp / maxHp)) : 0;
-      this.healthFillEl.style.width = `${(hpRatio * 100).toFixed(2)}%`;
-    }
+    this.renderHealthModBlocks(char, healthMod, maxHp, curHp, dt);
 
     // =========================================================================
-    // 2. RIGHT COLUMN: ENERGY & POWER SYSTEM (Squished into right side)
+    // 2. RIGHT COLUMN: ENERGY & POWER SYSTEM
     // =========================================================================
-    // Upper Track: Color-coded active blocks stacking left-to-right & interpolating
-    this.renderPowerBlocks(char, bus, maxPower, dt);
+    this.renderPowerBlocks(char, maxEnergy, curEnergy, dt, infiniteEnergy);
 
-    // Lower Track: Energy & Stamina on same bar
     const energyCap = Math.max(100, maxEnergy);
 
-    // Current Energy Fill (Amber/Gold or Cyan in Godmode, Bottom Lane)
-    if (this.energyFillEl) {
-      if (infiniteEnergy) {
-        this.energyFillEl.style.width = "100%";
-        this.energyFillEl.style.background = "linear-gradient(90deg, #0284c7, #38bdf8, #818cf8)";
-        this.energyFillEl.style.borderRight = "1.5px solid #bae6fd";
-      } else {
-        const energyRatio = energyCap > 0 ? Math.max(0, Math.min(1, curEnergy / energyCap)) : 0;
-        this.energyFillEl.style.width = `${(energyRatio * 100).toFixed(2)}%`;
-        this.energyFillEl.style.background = "linear-gradient(90deg, #b45309, #d97706, #fbbf24)";
-        this.energyFillEl.style.borderRight = "1.5px solid #fde68a";
-      }
-    }
-
-    // Current Stamina Fill (Solid Emerald on Top Lane, Non-Overlapping)
+    // Current Stamina Fill (Solid Emerald on Row 1)
     if (this.lowerStaminaFillEl) {
       const curStaminaEnergy = curStamina * maxPower;
       const lowerStaminaRatio = energyCap > 0 ? Math.max(0, Math.min(1, curStaminaEnergy / energyCap)) : 0;
@@ -695,6 +665,32 @@ export class EnergyHud {
         this.exhaustionTickEl.style.display = "block";
       } else {
         this.exhaustionTickEl.style.display = "none";
+      }
+    }
+
+    // Laser Bus Stamina Fill (Bright Cyan on Row 2, 5s capacity)
+    const laserBus = char.getEnergyBus("bus_laser");
+    if (this.laserStaminaFillEl) {
+      if (laserBus && laserBus.enabled) {
+        this.laserStaminaFillEl.style.display = "block";
+        const curLaserStamina = laserBus.getCurrentStamina(props);
+        const maxLaserStamina = laserBus.getMaxStamina(props);
+        const isLaserExhausted = laserBus.isExhausted;
+        const laserStaminaRatio = maxLaserStamina > 0
+          ? Math.max(0, Math.min(1, curLaserStamina / maxLaserStamina))
+          : 0;
+        this.laserStaminaFillEl.style.width = `${(laserStaminaRatio * 100).toFixed(2)}%`;
+        if (isLaserExhausted) {
+          this.laserStaminaFillEl.style.borderRight = "1.5px solid #fca5a5";
+          this.laserStaminaFillEl.style.background = "linear-gradient(90deg, #991b1b, #dc2626, #ef4444)";
+          this.laserStaminaFillEl.style.boxShadow = "0 0 6px rgba(239, 68, 68, 0.6)";
+        } else {
+          this.laserStaminaFillEl.style.borderRight = "1.5px solid #67e8f9";
+          this.laserStaminaFillEl.style.background = "linear-gradient(90deg, #0284c7, #06b6d4, #22d3ee)";
+          this.laserStaminaFillEl.style.boxShadow = "0 0 6px rgba(6, 182, 212, 0.4)";
+        }
+      } else {
+        this.laserStaminaFillEl.style.display = "none";
       }
     }
   }

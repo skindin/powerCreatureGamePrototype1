@@ -1283,6 +1283,44 @@ function bootstrap(): void {
     }
   });
 
+  // Modifier Bar History Window Slider (Default 0.10s)
+  const slideModWindow = document.getElementById("slide-mod-window") as HTMLInputElement | null;
+  const valModWindow = document.getElementById("val-mod-window");
+
+  const applyModWindow = (seconds: number) => {
+    const clamped = Math.max(0.01, Math.min(2.0, seconds));
+    renderer.setModHistoryWindowSeconds(clamped);
+    if (slideModWindow) slideModWindow.value = clamped.toFixed(2);
+    if (valModWindow) valModWindow.textContent = `${clamped.toFixed(2)}s`;
+    try {
+      localStorage.setItem("pcg_mod_window_seconds", clamped.toString());
+    } catch {
+      // Ignore localStorage error
+    }
+  };
+
+  let savedModWindow = 0.10;
+  try {
+    const storedW = localStorage.getItem("pcg_mod_window_seconds");
+    if (storedW !== null) {
+      const parsedW = parseFloat(storedW);
+      if (!isNaN(parsedW) && parsedW >= 0.01 && parsedW <= 2.0) {
+        savedModWindow = parsedW;
+      }
+    }
+  } catch {
+    // Ignore localStorage error
+  }
+
+  applyModWindow(savedModWindow);
+
+  slideModWindow?.addEventListener("input", () => {
+    const val = parseFloat(slideModWindow.value);
+    if (!isNaN(val)) {
+      applyModWindow(val);
+    }
+  });
+
   // View Settings remains open while testing gameplay modes; close via '✕', 'V', 'Esc', or toggle button
 
   // Phone Connect Modal Logic

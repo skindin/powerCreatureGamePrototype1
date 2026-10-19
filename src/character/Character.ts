@@ -391,7 +391,18 @@ export class Character extends GameObject {
       this.damageSolverModule = new DamageSolverModule();
     }
     if (determinedRole !== "dummy") {
-      this.laserModule = new LaserModule();
+      const laserBus = new EnergyBus({
+        id: "bus_laser",
+        name: "Laser Bus",
+        maxStamina: 5.0,
+        maxPower: 2000.0,
+      });
+      this.energyBusses.set(laserBus.id, laserBus);
+
+      this.laserModule = new LaserModule({
+        energyBusId: "bus_laser",
+        maxPower: 2000.0,
+      });
       this.properties.add("laserDamageRate", this.laserModule.damageRate);
       this.properties.add("laserMaxDamageRate", this.laserModule.maxDamageRate);
       this.properties.add("laserThickness", this.laserModule.thickness);

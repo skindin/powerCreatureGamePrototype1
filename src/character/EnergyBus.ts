@@ -32,6 +32,7 @@ export const ABILITY_METADATA: Record<string, { name: string; color: string }> =
   pickup: { name: "Pickup", color: "#eab308" },
   throw: { name: "Throw", color: "#f43f5e" },
   instant_burst: { name: "Burst", color: "#ec4899" },
+  laser_blast: { name: "Laser", color: "#06b6d4" },
 };
 
 /**

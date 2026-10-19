@@ -47,7 +47,7 @@ export class LaserModule {
   public maxPowerProp: DynamicProperty;
 
   /** Energy Bus to draw continuous power from */
-  public energyBusId: string = "bus_main";
+  public energyBusId: string = "bus_laser";
   /** Whether to allow partial power firing when bus cannot satisfy 100% wattage */
   public allowPartialPower: boolean = true;
 
@@ -69,7 +69,7 @@ export class LaserModule {
     const baseDamage = options?.damageRate ?? 10.0;
     const baseMaxDamage = options?.maxDamageRate ?? 50.0;
     const baseThickness = options?.thickness ?? 0.35;
-    const baseMaxPower = options?.maxPower ?? 500.0;
+    const baseMaxPower = options?.maxPower ?? 2000.0;
 
     this.damageRateProp = new DynamicProperty(baseDamage);
     this.maxDamageRateProp = new DynamicProperty(baseMaxDamage);

@@ -68,7 +68,7 @@ export class InputManager {
   public isKeyPressed(code: string): boolean {
     return this.keysPressed.has(code);
   }
-  
+
   // Keyboard player active state (true when keyboard & mouse character is in arena)
   public isKeyboardActive = true;
   public isKeyboardThrowRequested = false;
@@ -110,16 +110,16 @@ export class InputManager {
     try {
       const p = (this.canvas as any).requestPointerLock?.();
       if (p && typeof p.catch === "function") {
-        p.catch(() => {});
+        p.catch(() => { });
       }
-    } catch {}
+    } catch { }
   }
 
   public exitPointerLock(): void {
     if (typeof document !== "undefined" && document.pointerLockElement) {
       try {
         document.exitPointerLock();
-      } catch {}
+      } catch { }
     }
   }
 
@@ -230,7 +230,7 @@ export class InputManager {
   public canLockAim?: () => boolean;
   public onLaserWheelAdjust?: (delta: number) => void;
   /** Scrolling sensitivity for laser power adjustment (higher = faster rate changes) */
-  public laserScrollSensitivity: number = 200.0;
+  public laserScrollSensitivity: number = 10.0;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -1532,7 +1532,7 @@ export class InputManager {
           const r = this.draggedEntity.hasCollider ? this.draggedEntity.colliderRadius : (this.draggedEntity.colliderModule?.radius ?? 0.32);
           this.draggedEntity.position.x = Math.max(r, Math.min(arena.width - r, targetX));
           this.draggedEntity.position.y = Math.max(r, Math.min(arena.height - r, targetY));
-          
+
           // Zero out velocities so object stays put where dragged
           this.draggedEntity.velocity.x = 0;
           this.draggedEntity.velocity.y = 0;

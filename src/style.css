@@ -4954,47 +4954,58 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6), inset 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
-/* Primary/Main Upper Bars: HP Bar & Energy Reservoir (1.5x thickness: 16px -> 24px) */
+/* Primary/Main Bars: HP Bar & Energy Reservoir (Unified 28px height) */
 .energy-hud-track-main,
 .energy-hud-track-health,
 .energy-hud-track-reservoir {
-  height: 24px;
-}
-
-/* Secondary/Modifier Lower Bars: Health Modifiers & Power Bars (2/3 thickness: 18px) */
-.energy-hud-track-mods,
-.energy-hud-track-health-mods,
-.energy-hud-track-power {
-  height: 18px;
+  height: 28px;
 }
 
 .hud-power-blocks-container {
   position: absolute;
-  top: 0;
+  top: 12px;
   left: 0;
   width: 100%;
-  height: 100%;
+  height: 16px;
   pointer-events: none;
-  border-radius: 2px;
+  border-radius: 0 0 2px 2px;
   overflow: hidden;
+  z-index: 3;
+}
+
+.energy-hud-track-health .hud-power-blocks-container {
+  top: 0;
+  height: 100%;
+  border-radius: 2px;
 }
 
 .hud-power-block {
   position: absolute;
+  top: 0;
+  height: 100%;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
   transition: left 0.08s linear, width 0.08s linear;
+  border-radius: 1px;
 }
 
-/* Upper lane: Positive modifiers (+) */
+/* Embedded segment styles */
 .hud-block-pos {
-  top: 0;
-  height: 50%;
+  box-shadow: inset 0 0 6px rgba(74, 222, 128, 0.6), 0 0 4px rgba(34, 197, 94, 0.5);
+  border: 1px solid rgba(134, 239, 172, 0.85);
 }
 
-/* Lower lane: Negative modifiers (-) */
 .hud-block-neg {
-  top: 50%;
-  height: 50%;
+  border-right: 1.5px solid rgba(255, 255, 255, 0.8);
+}
+
+.hud-block-anticipated {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.15),
+    rgba(255, 255, 255, 0.15) 3px,
+    transparent 3px,
+    transparent 6px
+  ) !important;
 }
 
 /* Layered Fills */
@@ -5005,7 +5016,7 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   transition: width 0.08s linear;
 }
 
-/* Left Upper Track - Current Health Fill (Ruby / Crimson Gradient across full 24px height) */
+/* Left Track - Current Health Fill (Ruby / Crimson Gradient across full 28px height) */
 .hud-bar-health {
   top: 0;
   height: 100%;
@@ -5016,10 +5027,10 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   border-radius: 2px;
 }
 
-/* Right Upper Track - Top Lane: Current Stamina Fill (1/3 thickness: 33.333%, Solid Emerald) */
+/* Right Track - Row 1: Main Bus Stamina (Top row: 6px height, Solid Emerald) */
 .hud-bar-lower-stamina {
   top: 0;
-  height: 33.333%;
+  height: 6px;
   z-index: 2;
   background: linear-gradient(90deg, #15803d, #16a34a, #22c55e);
   border-right: 1.5px solid #86efac;
@@ -5027,10 +5038,21 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 }
 
-/* Right Upper Track - Bottom Lane: Current Energy Fill (2/3 thickness: 66.667%, Solid Amber) */
+/* Right Track - Row 2: Laser Bus Stamina (Smaller row: 4px height, Bright Cyan) */
+.hud-bar-laser-stamina {
+  top: 7px;
+  height: 4px;
+  z-index: 2;
+  background: linear-gradient(90deg, #0284c7, #06b6d4, #22d3ee);
+  border-right: 1.5px solid #67e8f9;
+  border-radius: 1px;
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
+}
+
+/* Right Track - Row 3: Energy Reservoir Fill (Bottom lane: 16px height, Amber) */
 .hud-bar-energy {
-  top: 33.333%;
-  height: 66.667%;
+  top: 12px;
+  height: 16px;
   z-index: 1;
   background: linear-gradient(90deg, #b45309, #d97706, #fbbf24);
   border-right: 1.5px solid #fde68a;
@@ -5038,11 +5060,11 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
 }
 
-/* Stamina Lane Cap Markers (Top 1/3 of Energy Track, 33.333% height) */
+/* Main Stamina Lane Cap Markers (Top 6px of Energy Track) */
 .hud-cap-tick {
   position: absolute;
   top: 0;
-  height: 33.333%;
+  height: 6px;
   width: 2px;
   transform: translateX(-50%);
   pointer-events: none;
@@ -5054,17 +5076,17 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   height: 100%;
 }
 
-/* Stamina Cap on Top 1/3 of Track (Emerald Green Notch) */
+/* Stamina Cap on Top Row (Emerald Green Notch) */
 .hud-cap-stamina-line {
   background: #4ade80;
   box-shadow: 0 0 6px #22c55e;
 }
 
-/* Exhaustion Recovery Notch on Top 1/3 of Track (Clean Red Tick Mark, Contained Inside Stamina Lane) */
+/* Exhaustion Recovery Notch on Top Row (Clean Red Tick Mark) */
 .hud-cap-exhaustion {
   position: absolute;
   top: 0;
-  height: 33.333%;
+  height: 6px;
   width: 1.5px;
   transform: translateX(-50%);
   pointer-events: none;

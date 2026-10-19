@@ -7459,7 +7459,8 @@ const ABILITY_METADATA = {
   health_regen: { name: "Heal", color: "#22c55e" },
   pickup: { name: "Pickup", color: "#eab308" },
   throw: { name: "Throw", color: "#f43f5e" },
-  instant_burst: { name: "Burst", color: "#ec4899" }
+  instant_burst: { name: "Burst", color: "#ec4899" },
+  laser_blast: { name: "Laser", color: "#06b6d4" }
 };
 class EnergyBus {
   constructor(options) {
@@ -8235,7 +8236,7 @@ class LaserModule {
     /** Maximum power rating (Watts) demanded when operating at max damage rate */
     __publicField(this, "maxPowerProp");
     /** Energy Bus to draw continuous power from */
-    __publicField(this, "energyBusId", "bus_main");
+    __publicField(this, "energyBusId", "bus_laser");
     /** Whether to allow partial power firing when bus cannot satisfy 100% wattage */
     __publicField(this, "allowPartialPower", true);
     /** Live state */
@@ -8253,7 +8254,7 @@ class LaserModule {
     const baseDamage = (options == null ? void 0 : options.damageRate) ?? 10;
     const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 50;
     const baseThickness = (options == null ? void 0 : options.thickness) ?? 0.35;
-    const baseMaxPower = (options == null ? void 0 : options.maxPower) ?? 500;
+    const baseMaxPower = (options == null ? void 0 : options.maxPower) ?? 2e3;
     this.damageRateProp = new DynamicProperty(baseDamage);
     this.maxDamageRateProp = new DynamicProperty(baseMaxDamage);
     this.thicknessProp = new DynamicProperty(baseThickness);
@@ -8610,7 +8611,17 @@ class Character extends GameObject {
       this.damageSolverModule = new DamageSolverModule();
     }
     if (determinedRole !== "dummy") {
-      this.laserModule = new LaserModule();
+      const laserBus = new EnergyBus({
+        id: "bus_laser",
+        name: "Laser Bus",
+        maxStamina: 5,
+        maxPower: 2e3
+      });
+      this.energyBusses.set(laserBus.id, laserBus);
+      this.laserModule = new LaserModule({
+        energyBusId: "bus_laser",
+        maxPower: 2e3
+      });
       this.properties.add("laserDamageRate", this.laserModule.damageRate);
       this.properties.add("laserMaxDamageRate", this.laserModule.maxDamageRate);
       this.properties.add("laserThickness", this.laserModule.thickness);
