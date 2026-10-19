@@ -5345,13 +5345,16 @@ const _GameObject = class _GameObject {
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod));
     const shockDeceleration = impactSpeed * 60 * absorbedFraction;
     if (shockDeceleration > 0.01) {
-      this.dispatchImpact({
-        absorbedShock: shockDeceleration,
-        impactSpeed,
-        otherEntity: null,
-        normalX,
-        normalY
-      });
+      const canTakeWallDamage = !this.isCharacter || this.isUnderKnockback || this.isInFlight;
+      if (canTakeWallDamage) {
+        this.dispatchImpact({
+          absorbedShock: shockDeceleration,
+          impactSpeed,
+          otherEntity: null,
+          normalX,
+          normalY
+        });
+      }
     }
     if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
       const roll = this.rollModule;

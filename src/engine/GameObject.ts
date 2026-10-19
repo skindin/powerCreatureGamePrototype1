@@ -1027,13 +1027,19 @@ export class GameObject {
     const shockDeceleration = impactSpeed * 60 * absorbedFraction;
 
     if (shockDeceleration > 0.01) {
-      this.dispatchImpact({
-        absorbedShock: shockDeceleration,
-        impactSpeed,
-        otherEntity: null,
-        normalX,
-        normalY,
-      });
+      // Ground Locomotion Wall Exemption:
+      // Characters under self-directed voluntary movement do not take wall collision damage.
+      // Wall collision damage only applies if the character was knocked back, flung, or thrown into the wall.
+      const canTakeWallDamage = !this.isCharacter || this.isUnderKnockback || this.isInFlight;
+      if (canTakeWallDamage) {
+        this.dispatchImpact({
+          absorbedShock: shockDeceleration,
+          impactSpeed,
+          otherEntity: null,
+          normalX,
+          normalY,
+        });
+      }
     }
 
     // Tangential friction and 3D angular velocity coupling on wall
