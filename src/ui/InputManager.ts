@@ -200,6 +200,10 @@ export class InputManager {
     return this.isKeyboardJumpHeld || this.isGamepadClimbHeld;
   }
 
+  public get isCtrlHeld(): boolean {
+    return this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
+  }
+
   // Selection & dragging state
   public hoverEntity: GameObject | null = null;
   public selectedCanvasEntity: GameObject | null = null;
@@ -224,6 +228,7 @@ export class InputManager {
   public onGamepadJoin?: (slotIndex: number) => void;
   public onGamepadDisconnected?: (slotIndex: number) => void;
   public canLockAim?: () => boolean;
+  public onLaserWheelAdjust?: (delta: number) => void;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -611,6 +616,15 @@ export class InputManager {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
       }
     });
+
+    window.addEventListener("wheel", (e) => {
+      const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
+      if (isCtrl) {
+        e.preventDefault();
+        const step = e.deltaY < 0 ? 5.0 : -5.0;
+        this.onLaserWheelAdjust?.(step);
+      }
+    }, { passive: false });
 
     // Touch support for mobile / touchscreens
     this.canvas.addEventListener("touchstart", (e) => {
@@ -1567,16 +1581,28 @@ export class InputManager {
       return character;
     };
 
+    this.onLaserWheelAdjust = (delta: number) => {
+      const activeChar = getActiveKeyboardChar();
+      if (activeChar && activeChar.laserModule) {
+        activeChar.laserModule.adjustDamageRate(delta, activeChar.properties);
+      }
+    };
+
     this.handleClick = (clickX: number, clickY: number, e?: MouseEvent) => {
-      // Ctrl + Left Click selects entity in the Inspector (Dev Panel) in both Play and Edit modes
-      if (e?.ctrlKey || this.isKeyPressed("ControlLeft") || this.isKeyPressed("ControlRight")) {
-        if (devPanel) {
+      const isCtrl = e?.ctrlKey || this.isKeyPressed("ControlLeft") || this.isKeyPressed("ControlRight");
+      if (devPanel?.isEditMode) {
+        if (isCtrl) {
           const found = findEntityAt(clickX, clickY, 0.4);
           if (found) {
             this.selectedCanvasEntity = found;
             devPanel.setSelectedEntity(found);
           }
         }
+        return;
+      }
+
+      // In Play Mode, holding Control is for Laser Blast (firing/aiming) - do NOT select entity, grab, or throw!
+      if (isCtrl) {
         return;
       }
 

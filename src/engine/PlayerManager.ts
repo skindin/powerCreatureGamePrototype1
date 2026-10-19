@@ -618,6 +618,15 @@ export class PlayerManager {
         }
       }
 
+      const isCtrlDown = !isEditMode && (input.isKeyPressed("ControlLeft") || input.isKeyPressed("ControlRight") || input.isCtrlHeld);
+      if (isCtrlDown) {
+        const aimDx = input.actualMousePos.x - kChar.position.x;
+        const aimDy = input.actualMousePos.y - kChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      }
+
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
       if (!input.isMouseDown) {
         grabState.useItemSuppressed = false;
@@ -657,11 +666,15 @@ export class PlayerManager {
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab,
-        grabTargetObjectId,
+        isGrabHeld: isCtrlDown ? false : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
+        grabTargetObjectId: isCtrlDown ? null : grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
-        isThrow: input.isKeyboardThrowRequested ?? false,
-        isUsingItem,
+        isThrow: isCtrlDown ? false : (input.isKeyboardThrowRequested ?? false),
+        isUsingItem: isCtrlDown ? false : isUsingItem,
+        isLaserAiming: isCtrlDown,
+        isLaserFiring: isCtrlDown && input.isMouseDown,
+        laserAimX: input.actualMousePos.x,
+        laserAimY: input.actualMousePos.y,
         aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
           ? input.recordedMousePos.x
           : input.actualMousePos.x,
@@ -971,6 +984,17 @@ export class PlayerManager {
         char.facingAngle = pkt.facingAngle;
       }
 
+      // Update LaserModule (Aiming / Firing / Energy Consumption / Damage Application)
+      if (char.laserModule) {
+        const isLaserAiming = Boolean((pkt as any).isLaserAiming);
+        const isLaserFiring = Boolean((pkt as any).isLaserFiring);
+        const laserAimTarget = (pkt as any).laserAimX !== undefined
+          ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
+          : null;
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+        char.laserModule.update(dt, char, this.arena, laserAimTarget, isLaserAiming, isLaserFiring, candidateEntities);
+      }
+
       // Detect newly acquired or released held object to reliably dispatch action
       const currentHeldId = char.heldObject ? char.heldObject.id : null;
       const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
@@ -1228,6 +1252,9 @@ export class PlayerManager {
           false,
           this.arena.entities
         );
+        if (this.baseCharacter.laserModule) {
+          this.baseCharacter.laserModule.update(dt, this.baseCharacter, this.arena, null, false, false, []);
+        }
       }
     }
 

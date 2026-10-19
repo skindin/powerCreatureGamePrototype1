@@ -3,6 +3,7 @@ import { GameObject, Vector2D } from "./GameObject.js";
 import { Character } from "../character/Character.js";
 import { GhostSnapshot } from "../network/RelayClient.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
+import { LaserRenderer } from "./rendering/LaserRenderer.js";
 import { ShadowPass } from "./rendering/ShadowPass.js";
 import { WallRoofPass } from "./rendering/WallRoofPass.js";
 import { EntityPass } from "./rendering/EntityPass.js";
@@ -67,6 +68,7 @@ export interface LiveBufferTrailData {
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private trajectoryRenderer: TrajectoryRenderer;
+  private laserRenderer: LaserRenderer;
 
   public viewSettings: ViewSettings = {
     verticalVisuals: "hover",
@@ -92,6 +94,7 @@ export class Renderer {
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.trajectoryRenderer = new TrajectoryRenderer(ctx);
+    this.laserRenderer = new LaserRenderer(ctx);
   }
 
   public setVerticalVisualMode(mode: VerticalVisualMode): void {
@@ -561,6 +564,14 @@ export class Renderer {
             : null;
           const cursorTarget = cursor ? { x: cursor.x, y: cursor.y } : null;
           this.trajectoryRenderer.drawTrajectory(char.activeTrajectory, ppu, arena, this.viewSettings, cursorTarget, char);
+        }
+      }
+
+      // Laser Blast (Instant targeting guide line & active energy blast beam)
+      for (const char of characters) {
+        if (isRemoteForThisView(char)) continue;
+        if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
+          this.laserRenderer.drawLaser(char, ppu, arena, this.viewSettings);
         }
       }
 

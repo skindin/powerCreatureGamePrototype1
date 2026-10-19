@@ -8221,6 +8221,271 @@ class ConsumeModule {
     this.acceptedTags = this.acceptedTags.filter((t) => t.trim().toLowerCase() !== clean);
   }
 }
+class LaserModule {
+  constructor(options) {
+    __publicField(this, "id", "laser_blast");
+    __publicField(this, "name", "Laser Blast");
+    __publicField(this, "enabled", true);
+    /** Current active damage rate (HP / second). Persists when laser turns off! */
+    __publicField(this, "damageRateProp");
+    /** Maximum damage rate (HP / second) */
+    __publicField(this, "maxDamageRateProp");
+    /** Width/thickness of the laser beam in world units (dev tool property, effects hit detection) */
+    __publicField(this, "thicknessProp");
+    /** Maximum power rating (Watts) demanded when operating at max damage rate */
+    __publicField(this, "maxPowerProp");
+    /** Energy Bus to draw continuous power from */
+    __publicField(this, "energyBusId", "bus_main");
+    /** Whether to allow partial power firing when bus cannot satisfy 100% wattage */
+    __publicField(this, "allowPartialPower", true);
+    /** Live state */
+    __publicField(this, "isAiming", false);
+    __publicField(this, "isFiring", false);
+    __publicField(this, "actualPowerWatts", 0);
+    __publicField(this, "actualDamageRate", 0);
+    __publicField(this, "currentEndpoint", null);
+    __publicField(this, "startPoint", null);
+    __publicField(this, "hitWall", null);
+    __publicField(this, "hitEntities", []);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
+    if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
+    const baseDamage = (options == null ? void 0 : options.damageRate) ?? 50;
+    const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 200;
+    const baseThickness = (options == null ? void 0 : options.thickness) ?? 0.35;
+    const baseMaxPower = (options == null ? void 0 : options.maxPower) ?? 500;
+    this.damageRateProp = new DynamicProperty(baseDamage);
+    this.maxDamageRateProp = new DynamicProperty(baseMaxDamage);
+    this.thicknessProp = new DynamicProperty(baseThickness);
+    this.maxPowerProp = new DynamicProperty(baseMaxPower);
+  }
+  get damageRate() {
+    return this.damageRateProp.literalValue;
+  }
+  get maxDamageRate() {
+    return this.maxDamageRateProp.literalValue;
+  }
+  get thickness() {
+    return this.thicknessProp.literalValue;
+  }
+  get maxPower() {
+    return this.maxPowerProp.literalValue;
+  }
+  getDamageRate(registry) {
+    return this.damageRateProp.get(registry);
+  }
+  setDamageRate(val, registry) {
+    const max = this.getMaxDamageRate(registry);
+    const clamped = Math.max(0, Math.min(max, val));
+    this.damageRateProp.set(clamped, registry);
+  }
+  adjustDamageRate(delta, registry) {
+    const cur = this.getDamageRate(registry);
+    this.setDamageRate(cur + delta, registry);
+  }
+  getMaxDamageRate(registry) {
+    return this.maxDamageRateProp.get(registry);
+  }
+  setMaxDamageRate(val, registry) {
+    this.maxDamageRateProp.set(Math.max(1, val), registry);
+  }
+  getThickness(registry) {
+    return this.thicknessProp.get(registry);
+  }
+  setThickness(val, registry) {
+    this.thicknessProp.set(Math.max(0.05, Math.min(3, val)), registry);
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
+  }
+  setMaxPower(val, registry) {
+    this.maxPowerProp.set(Math.max(1, val), registry);
+  }
+  /**
+   * Calculates the demanded power in Watts based on current damage rate and max power property:
+   * Power = (damageRate / maxDamageRate) * maxPower
+   */
+  calculateDemandedPower(registry) {
+    const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
+    const curDamage = Math.max(0, this.getDamageRate(registry));
+    const maxPower = Math.max(0, this.getMaxPower(registry));
+    return curDamage / maxDamage * maxPower;
+  }
+  /**
+   * Computes the 3D laser ray from the character to the aim target, testing for wall obstructions.
+   */
+  calculateLaserRay(character, targetScreenX, targetScreenY, arena, hoverScale = 0) {
+    const startZ = character.position.z + 0.35;
+    const startX = character.position.x;
+    const startY = character.position.y;
+    const scale = hoverScale > 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
+    const wallOver = ThrowModule.findWallOverlappingCollider(targetScreenX, targetScreenY, 0.2, arena, scale);
+    const targetSurfaceHeight = wallOver ? wallOver.targetSurfaceHeight : arena.getSupportingSurfaceHeight(targetScreenX, targetScreenY, 0);
+    const targetX = targetScreenX;
+    const targetY = targetScreenY;
+    const targetZ = targetSurfaceHeight;
+    const dx = targetX - startX;
+    const dy = targetY - startY;
+    const dz = targetZ - startZ;
+    const dist2D = Math.hypot(dx, dy);
+    if (dist2D < 0.05) {
+      return {
+        endpoint: { x: targetX, y: targetY, z: targetZ },
+        hitWall: null,
+        hitEntities: [],
+        isBlockedByWall: false
+      };
+    }
+    const dirX = dx / dist2D;
+    const dirY = dy / dist2D;
+    let closestWallDist = dist2D;
+    let hitWall = null;
+    let isBlocked = false;
+    for (const wall of arena.walls) {
+      const enterInfo = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
+      if (enterInfo && enterInfo.enterDist > 0.05 && enterInfo.enterDist < closestWallDist) {
+        const tFrac = enterInfo.enterDist / dist2D;
+        const beamZ = startZ + dz * tFrac;
+        if (beamZ <= wall.wallHeight + 0.01) {
+          closestWallDist = enterInfo.enterDist;
+          hitWall = wall;
+          isBlocked = true;
+        }
+      }
+    }
+    const endX = startX + dirX * closestWallDist;
+    const endY = startY + dirY * closestWallDist;
+    const endZ = startZ + dz * (closestWallDist / dist2D);
+    return {
+      endpoint: { x: endX, y: endY, z: endZ },
+      hitWall,
+      hitEntities: [],
+      isBlockedByWall: isBlocked
+    };
+  }
+  /**
+   * Finds all entities intersecting the 3D laser capsule segment.
+   */
+  findIntersectingEntities(start, end, thickness, candidates, exclude) {
+    var _a;
+    const hits = [];
+    const segDx = end.x - start.x;
+    const segDy = end.y - start.y;
+    const segDz = end.z - start.z;
+    const segLenSq = segDx * segDx + segDy * segDy + segDz * segDz;
+    if (segLenSq < 1e-4) return hits;
+    for (const ent of candidates) {
+      if (ent === exclude || ent.isHeld) continue;
+      const entRadius = ent.hasCollider ? ent.colliderRadius : ((_a = ent.colliderModule) == null ? void 0 : _a.radius) ?? 0.35;
+      const hitRadius = entRadius + thickness * 0.5;
+      const pDx = ent.position.x - start.x;
+      const pDy = ent.position.y - start.y;
+      const pDz = (ent.position.z ?? 0) - start.z;
+      const t = Math.max(0, Math.min(1, (pDx * segDx + pDy * segDy + pDz * segDz) / segLenSq));
+      const projX = start.x + segDx * t;
+      const projY = start.y + segDy * t;
+      const projZ = start.z + segDz * t;
+      const distSq = (ent.position.x - projX) ** 2 + (ent.position.y - projY) ** 2 + ((ent.position.z ?? 0) - projZ) ** 2;
+      if (distSq <= hitRadius * hitRadius) {
+        hits.push(ent);
+      }
+    }
+    return hits;
+  }
+  /**
+   * Per-frame update for LaserModule.
+   */
+  update(dt, character, arena, targetPos, isAimingInput, isFiringInput, candidateEntities, hoverScale = 0) {
+    if (!this.enabled || dt <= 0) {
+      this.isAiming = false;
+      this.isFiring = false;
+      this.actualPowerWatts = 0;
+      this.actualDamageRate = 0;
+      this.currentEndpoint = null;
+      this.startPoint = null;
+      this.hitWall = null;
+      this.hitEntities = [];
+      return;
+    }
+    const targetScreenX = targetPos ? targetPos.x : character.position.x + Math.cos(character.facingAngle) * 5;
+    const targetScreenY = targetPos ? targetPos.y : character.position.y + Math.sin(character.facingAngle) * 5;
+    this.isAiming = isAimingInput;
+    this.isFiring = isAimingInput && isFiringInput;
+    if (!this.isAiming && !this.isFiring) {
+      this.actualPowerWatts = 0;
+      this.actualDamageRate = 0;
+      this.currentEndpoint = null;
+      this.startPoint = null;
+      this.hitWall = null;
+      this.hitEntities = [];
+      return;
+    }
+    const aimDx = targetScreenX - character.position.x;
+    const aimDy = targetScreenY - character.position.y;
+    if (Math.hypot(aimDx, aimDy) > 0.05) {
+      character.facingAngle = Math.atan2(aimDy, aimDx);
+    }
+    const rayResult = this.calculateLaserRay(character, targetScreenX, targetScreenY, arena, hoverScale);
+    this.currentEndpoint = rayResult.endpoint;
+    this.startPoint = {
+      x: character.position.x,
+      y: character.position.y,
+      z: character.position.z + 0.35
+    };
+    this.hitWall = rayResult.hitWall;
+    const registry = character.properties;
+    const thickness = this.getThickness(registry);
+    if (this.isFiring) {
+      const demandedWatts = this.calculateDemandedPower(registry);
+      let grantedWatts = 0;
+      if (demandedWatts > 0) {
+        const bus = character.getEnergyBus(this.energyBusId);
+        if (bus && bus.enabled && !bus.isExhausted) {
+          grantedWatts = bus.requestPower(
+            demandedWatts,
+            dt,
+            character.energyPool,
+            registry,
+            false,
+            "laser_blast",
+            this.allowPartialPower
+          );
+        }
+      }
+      this.actualPowerWatts = grantedWatts;
+      if (demandedWatts > 0 && grantedWatts <= 1e-3) {
+        this.actualDamageRate = 0;
+        this.isFiring = false;
+        this.hitEntities = [];
+        return;
+      }
+      const powerRatio = demandedWatts > 0 ? Math.min(1, grantedWatts / demandedWatts) : 1;
+      const effectiveDamageRate = this.getDamageRate(registry) * powerRatio;
+      this.actualDamageRate = effectiveDamageRate;
+      const list = candidateEntities ?? arena.entities ?? [];
+      this.hitEntities = this.findIntersectingEntities(this.startPoint, this.currentEndpoint, thickness, list, character);
+      const damageTick = effectiveDamageRate * dt;
+      for (const ent of this.hitEntities) {
+        if (ent.isCharacter) {
+          const targetChar = ent;
+          if (targetChar.healthModule && targetChar.healthModule.enabled) {
+            targetChar.healthModule.takeDamage(damageTick, targetChar.properties, {
+              id: "laser_blast",
+              name: "Laser Blast",
+              type: "continuous",
+              rate: effectiveDamageRate,
+              color: "#06b6d4"
+            });
+          }
+        }
+      }
+    } else {
+      this.actualPowerWatts = 0;
+      this.actualDamageRate = 0;
+      this.hitEntities = [];
+    }
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     var _a;
@@ -8273,6 +8538,7 @@ class Character extends GameObject {
     __publicField(this, "climbingModule");
     __publicField(this, "healthModule");
     __publicField(this, "consumeModule", new ConsumeModule());
+    __publicField(this, "laserModule", null);
     __publicField(this, "energyPool");
     __publicField(this, "energyBus");
     __publicField(this, "energyBusses", /* @__PURE__ */ new Map());
@@ -8342,6 +8608,13 @@ class Character extends GameObject {
     this.properties.add("muscleEfficiency", this.energyBus.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
+    }
+    if (determinedRole !== "dummy") {
+      this.laserModule = new LaserModule();
+      this.properties.add("laserDamageRate", this.laserModule.damageRate);
+      this.properties.add("laserMaxDamageRate", this.laserModule.maxDamageRate);
+      this.properties.add("laserThickness", this.laserModule.thickness);
+      this.properties.add("laserMaxPower", this.laserModule.maxPower);
     }
   }
   get hasStrength() {
@@ -8442,6 +8715,21 @@ class Character extends GameObject {
           isBurst: true,
           isPositive: false,
           order: 950
+        });
+      }
+    }
+    if (this.laserModule && this.laserModule.enabled && this.laserModule.isAiming && !this.laserModule.isFiring) {
+      const demandedPower = this.laserModule.calculateDemandedPower(this.properties);
+      if (demandedPower > 0) {
+        list.push({
+          id: "anticipated_laser",
+          abilityId: "laser_blast",
+          name: "Laser",
+          color: "#06b6d4",
+          amount: Math.round(demandedPower),
+          isBurst: false,
+          isPositive: false,
+          order: 940
         });
       }
     }

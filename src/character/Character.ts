@@ -13,6 +13,7 @@ import { CharacterModule, type CharacterRole } from "./CharacterModule.js";
 import { EnergyPool } from "./EnergyPool.js";
 import { EnergyBus } from "./EnergyBus.js";
 import { ConsumeModule } from "./ConsumeModule.js";
+import { LaserModule } from "./LaserModule.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
@@ -109,6 +110,7 @@ export class Character extends GameObject {
   public climbingModule: ClimbingModule | null;
   public healthModule: HealthModule | null;
   public consumeModule: ConsumeModule | null = new ConsumeModule();
+  public laserModule: LaserModule | null = null;
   public energyPool: EnergyPool | null;
   public energyBus: EnergyBus | null;
   public energyBusses: Map<string, EnergyBus> = new Map();
@@ -204,6 +206,23 @@ export class Character extends GameObject {
           isBurst: true,
           isPositive: false,
           order: 950,
+        });
+      }
+    }
+
+    // Laser Blast Anticipated Modifier
+    if (this.laserModule && this.laserModule.enabled && this.laserModule.isAiming && !this.laserModule.isFiring) {
+      const demandedPower = this.laserModule.calculateDemandedPower(this.properties);
+      if (demandedPower > 0) {
+        list.push({
+          id: "anticipated_laser",
+          abilityId: "laser_blast",
+          name: "Laser",
+          color: "#06b6d4",
+          amount: Math.round(demandedPower),
+          isBurst: false,
+          isPositive: false,
+          order: 940,
         });
       }
     }
@@ -370,6 +389,13 @@ export class Character extends GameObject {
     this.properties.add("muscleEfficiency", this.energyBus.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
+    }
+    if (determinedRole !== "dummy") {
+      this.laserModule = new LaserModule();
+      this.properties.add("laserDamageRate", this.laserModule.damageRate);
+      this.properties.add("laserMaxDamageRate", this.laserModule.maxDamageRate);
+      this.properties.add("laserThickness", this.laserModule.thickness);
+      this.properties.add("laserMaxPower", this.laserModule.maxPower);
     }
   }
 

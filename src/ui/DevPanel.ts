@@ -22,6 +22,7 @@ import { EnergyPool } from "../character/EnergyPool.js";
 import { EnergyBus } from "../character/EnergyBus.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { ConsumeModule } from "../character/ConsumeModule.js";
+import { LaserModule } from "../character/LaserModule.js";
 import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
@@ -1151,6 +1152,9 @@ export class DevPanel {
     const hasConsumeModule = isChar && Boolean(char?.consumeModule);
     const consumeEnabled = isChar && Boolean(char?.consumeModule?.enabled);
 
+    const hasLaserModule = isChar && Boolean(char?.laserModule);
+    const laserEnabled = isChar && Boolean(char?.laserModule?.enabled);
+
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
 
@@ -1714,6 +1718,51 @@ export class DevPanel {
       `;
     }
 
+    // Laser Blast Module (Character only)
+    if (hasLaserModule && char && char.laserModule) {
+      attachedCount++;
+      const lm = char.laserModule;
+      const curPower = lm.actualPowerWatts;
+      const isFiring = lm.isFiring;
+      const isAiming = lm.isAiming;
+      const stateStr = isFiring ? "🔥 FIRING" : (isAiming ? "🎯 AIMING" : "💤 IDLE");
+      const stateColor = isFiring ? "#f43f5e" : (isAiming ? "#06b6d4" : "#94a3b8");
+
+      html += `
+        <div class="module-card ${!laserEnabled ? 'module-disabled' : ''}" data-module-id="laser">
+          ${this.renderModuleHeader("laser", "🔫 Laser Blast", renderToggleBtn("laser", laserEnabled))}
+          <div id="collapse-body-mod-laser" style="display: ${this.isSectionCollapsed('mod-laser') ? 'none' : 'block'};">
+          ${!laserEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Laser ability is disabled</div>` : ''}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Continuous straight-line laser blast. Hold <strong>Left Ctrl</strong> to aim (instant elevation-adapting line); press <strong>Left Click</strong> while holding Ctrl to fire. Scroll wheel tunes damage rate.
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 4px; margin-bottom: 6px; border: 1px solid rgba(6, 182, 212, 0.2);">
+            <span style="font-size: 0.76rem; font-weight: 600; color: #e2e8f0;">State: <span id="label-laser-state" style="color: ${stateColor}; font-weight: 700;">${stateStr}</span></span>
+            <span style="font-size: 0.76rem; font-weight: 600; color: #06b6d4;">Power: <span id="label-laser-power">${curPower.toFixed(0)} W</span></span>
+          </div>
+
+          <div id="prop-socket-laser-damage-rate"></div>
+          <div id="prop-socket-laser-max-damage-rate"></div>
+          <div id="prop-socket-laser-thickness"></div>
+          <div id="prop-socket-laser-max-power"></div>
+
+          <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Energy Bus:</label>
+            <select id="select-laser-energy-bus" class="dev-select" style="max-width: 170px; font-size: 0.75rem;">
+              ${renderEnergyBusOptions(lm.energyBusId)}
+            </select>
+          </div>
+
+          <div class="toggle-row" style="margin-top: 6px;">
+            <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
+            <input type="checkbox" id="check-laser-partial-power" ${lm.allowPartialPower ? 'checked' : ''}>
+          </div>
+          </div>
+        </div>
+      `;
+    }
+
     // Consumable Module (Items/Freebodies)
     if (hasConsumableModule && e.consumableModule) {
       attachedCount++;
@@ -1916,6 +1965,7 @@ export class DevPanel {
         { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssistModule },
         { id: "climbing", name: "Climbing Ability", icon: "🧗", description: "Wall mounting, adhesive grip, and vertical climb traversal", isAttached: hasClimbingModule },
         { id: "consume", name: "Consume Ability", icon: "🍴", description: "Consumes physical items matching accepted tags", isAttached: hasConsumeModule },
+        { id: "laser", name: "Laser Blast", icon: "🔫", description: "Continuous straight-line laser blast ability consuming energy", isAttached: hasLaserModule },
         { id: "energyPool", name: "Energy Pool", icon: "⚡", description: "Finite biochemical energy reservoir (Joules) with debug auto-refill", isAttached: hasEnergyPool },
         { id: "energyBus", name: "Energy Bus (Main)", icon: "🚌", description: "Muscle output power throughput (Watts) and burst stamina", isAttached: hasEnergyBus }
       );
@@ -2051,6 +2101,9 @@ export class DevPanel {
       case "energyBus":
         if (char?.energyBus) char.energyBus.enabled = !char.energyBus.enabled;
         break;
+      case "laser":
+        if (char?.laserModule) char.laserModule.enabled = !char.laserModule.enabled;
+        break;
     }
 
     this.renderEntityModules();
@@ -2156,6 +2209,11 @@ export class DevPanel {
       case "energyBus":
         if (e instanceof Character) {
           (e as Character).energyBus = null;
+        }
+        break;
+      case "laser":
+        if (e instanceof Character) {
+          (e as Character).laserModule = null;
         }
         break;
     }
@@ -2302,6 +2360,11 @@ export class DevPanel {
       case "energyBus":
         if (e instanceof Character) {
           (e as Character).energyBus = new EnergyBus();
+        }
+        break;
+      case "laser":
+        if (e instanceof Character) {
+          (e as Character).laserModule = new LaserModule();
         }
         break;
     }
@@ -3014,6 +3077,63 @@ export class DevPanel {
         });
         healRateSocketEl.appendChild(healCtrl.element);
       }
+    }
+
+    // Laser Blast controls (Character only)
+    if (char && char.laserModule) {
+      const lm = char.laserModule;
+      const dmgRateEl = this.container.querySelector("#prop-socket-laser-damage-rate");
+      if (dmgRateEl) {
+        const ctrl = new PropertyControl({
+          property: lm.damageRateProp,
+          owner: char,
+          label: "Active Damage Rate (HP/s)",
+          step: 5.0,
+        });
+        dmgRateEl.appendChild(ctrl.element);
+      }
+      const maxDmgEl = this.container.querySelector("#prop-socket-laser-max-damage-rate");
+      if (maxDmgEl) {
+        const ctrl = new PropertyControl({
+          property: lm.maxDamageRateProp,
+          owner: char,
+          label: "Max Damage Rate (HP/s)",
+          step: 10.0,
+        });
+        maxDmgEl.appendChild(ctrl.element);
+      }
+      const thickEl = this.container.querySelector("#prop-socket-laser-thickness");
+      if (thickEl) {
+        const ctrl = new PropertyControl({
+          property: lm.thicknessProp,
+          owner: char,
+          label: "Beam Thickness (World Units)",
+          step: 0.05,
+        });
+        thickEl.appendChild(ctrl.element);
+      }
+      const pwrEl = this.container.querySelector("#prop-socket-laser-max-power");
+      if (pwrEl) {
+        const ctrl = new PropertyControl({
+          property: lm.maxPowerProp,
+          owner: char,
+          label: "Max Power Rating (Watts)",
+          step: 25.0,
+        });
+        pwrEl.appendChild(ctrl.element);
+      }
+
+      const selectBus = this.container.querySelector("#select-laser-energy-bus") as HTMLSelectElement | null;
+      selectBus?.addEventListener("change", () => {
+        lm.energyBusId = selectBus.value;
+        this.updateInspector();
+      });
+
+      const checkPartial = this.container.querySelector("#check-laser-partial-power") as HTMLInputElement | null;
+      checkPartial?.addEventListener("change", () => {
+        lm.allowPartialPower = checkPartial.checked;
+        this.updateInspector();
+      });
     }
 
     // Energy Pool controls (Character only)
@@ -4266,6 +4386,21 @@ export class DevPanel {
         const curStaminaInput = this.container.querySelector("#prop-socket-bus-curstamina .prop-number-input") as HTMLInputElement | null;
         if (curStaminaInput && document.activeElement !== curStaminaInput) {
           curStaminaInput.value = curS.toFixed(2);
+        }
+      }
+
+      if (char.laserModule) {
+        const lm = char.laserModule;
+        const labelState = this.container.querySelector("#label-laser-state") as HTMLElement | null;
+        if (labelState) {
+          const isFiring = lm.isFiring;
+          const isAiming = lm.isAiming;
+          labelState.textContent = isFiring ? "🔥 FIRING" : (isAiming ? "🎯 AIMING" : "💤 IDLE");
+          labelState.style.color = isFiring ? "#f43f5e" : (isAiming ? "#06b6d4" : "#94a3b8");
+        }
+        const labelPower = this.container.querySelector("#label-laser-power") as HTMLElement | null;
+        if (labelPower) {
+          labelPower.textContent = `${lm.actualPowerWatts.toFixed(0)} W`;
         }
       }
     }
