@@ -6156,9 +6156,16 @@ class ThrowModule {
       if (bus && bus.enabled) {
         const maxPower = bus.getMaxPower(thrower.properties);
         const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
-        const maxBurstMetabolicJoules = maxPower * strength;
-        const availableMechJoules = maxBurstMetabolicJoules * efficiency;
-        const massLimitedSpeed2 = Math.sqrt(2 * Math.max(1, availableMechJoules) / mass);
+        const currentStamina = bus.currentStaminaProp.get(thrower.properties);
+        const pool = thrower.energyPool;
+        const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(thrower.properties) : Infinity;
+        const maxDeliverableMetabolicJoules = Math.min(
+          maxPower * strength,
+          currentStamina * maxPower,
+          poolEnergy
+        );
+        const availableMechJoules = Math.max(0, maxDeliverableMetabolicJoules) * efficiency;
+        const massLimitedSpeed2 = Math.sqrt(2 * Math.max(0.1, availableMechJoules) / mass);
         return Math.min(speedCap, massLimitedSpeed2);
       }
     }
@@ -6205,10 +6212,16 @@ class ThrowModule {
       const vz2 = 0;
       return { vx: vx2, vy: vy2, vz: vz2, totalTime: totalTime2, finalTargetX, finalTargetY, targetSurfaceHeight: startZ, targetObject: null, isAutoLocked: false };
     }
-    const deltaZ = targetSurfaceHeight - startZ;
-    const maxReach = launchSpeed / g * Math.sqrt(Math.max(1e-3, launchSpeed * launchSpeed + 2 * g * Math.max(0, -deltaZ)));
+    const maxApexDeltaZ = Math.max(0, launchSpeed * launchSpeed / (2 * g) - 0.05);
+    let deltaZ = targetSurfaceHeight - startZ;
+    if (deltaZ > maxApexDeltaZ) {
+      deltaZ = maxApexDeltaZ;
+      targetSurfaceHeight = startZ + deltaZ;
+    }
+    const reachRadicand = Math.max(0, launchSpeed * launchSpeed - 2 * g * deltaZ);
+    const maxReach = Math.max(0.1, launchSpeed / g * Math.sqrt(reachRadicand));
     if (dist > maxReach) {
-      dist = Math.max(0.1, maxReach);
+      dist = maxReach;
       finalTargetX = startX + dx / Math.hypot(dx, dy) * dist;
       finalTargetY = startY + dy / Math.hypot(dx, dy) * dist;
       dx = finalTargetX - startX;
@@ -6251,10 +6264,17 @@ class ThrowModule {
       totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / g));
     }
     totalTime = Math.max(0.02, totalTime);
-    const vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    let vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
     const horizontalSpeed = dist / totalTime;
-    const vx = dirX * horizontalSpeed;
-    const vy = dirY * horizontalSpeed;
+    let vx = dirX * horizontalSpeed;
+    let vy = dirY * horizontalSpeed;
+    const computedSpeed = Math.hypot(vx, vy, vz);
+    if (computedSpeed > launchSpeed && computedSpeed > 1e-3) {
+      const scale2 = launchSpeed / computedSpeed;
+      vx *= scale2;
+      vy *= scale2;
+      vz *= scale2;
+    }
     return {
       vx,
       vy,
@@ -6314,9 +6334,14 @@ class ThrowModule {
         const currentStamina = bus.currentStaminaProp.get(character.properties);
         const maxPower = bus.maxPowerProp.get(character.properties);
         if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
-        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const strength = character.strength ?? 1;
+        const maxDeliverableMetabolicJoules = Math.min(
+          maxPower * strength,
+          currentStamina * maxPower,
+          poolJoules
+        );
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
-        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const maxAffordableMechWork = maxDeliverableMetabolicJoules * busEfficiency;
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
         if (maxSpeedFromEnergy < 0.5) return null;
@@ -6344,6 +6369,15 @@ class ThrowModule {
       aimLockDelta
     );
     if (!launch) return null;
+    if (this.consumesEnergy) {
+      const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+      if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 1e-3) {
+        const scale2 = maxSpeed / actualLaunchSpeed;
+        launch.vx *= scale2;
+        launch.vy *= scale2;
+        launch.vz *= scale2;
+      }
+    }
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
     const resolvedSurfaceHeight = targetSurfaceHeight;
     const deltaZ = targetSurfaceHeight - startZ;
@@ -6533,9 +6567,14 @@ class ThrowModule {
         const currentStamina = bus.currentStaminaProp.get(character.properties);
         const maxPower = bus.maxPowerProp.get(character.properties);
         if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
-        const maxAffordableMetabolicJoules = Math.min(poolJoules, currentStamina * maxPower);
+        const strength = character.strength ?? 1;
+        const maxDeliverableMetabolicJoules = Math.min(
+          maxPower * strength,
+          currentStamina * maxPower,
+          poolJoules
+        );
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
-        const maxAffordableMechWork = maxAffordableMetabolicJoules * busEfficiency;
+        const maxAffordableMechWork = maxDeliverableMetabolicJoules * busEfficiency;
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
         if (maxSpeedFromEnergy < 0.5) return null;
@@ -6585,11 +6624,35 @@ class ThrowModule {
         if (bus.isExhausted) {
           return null;
         }
+        const maxPower = bus.getMaxPower(character.properties);
+        const currentStamina = bus.currentStaminaProp.get(character.properties);
+        const poolEnergy = character.energyPool ? character.energyPool.infiniteEnergy ? Infinity : character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const maxDeliverableMetabolicJoules = Math.min(
+          maxPower * (character.strength ?? 1),
+          currentStamina * maxPower,
+          poolEnergy
+        );
+        if (maxDeliverableMetabolicJoules <= 1e-3) {
+          return null;
+        }
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
-        const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
-        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        let actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+        let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (metabolicJoules > maxDeliverableMetabolicJoules) {
+          const maxMechWork = maxDeliverableMetabolicJoules * busEfficiency;
+          const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
+          if (actualLaunchSpeed > 1e-3) {
+            const scale2 = maxSpeed2 / actualLaunchSpeed;
+            launch.vx *= scale2;
+            launch.vy *= scale2;
+            launch.vz *= scale2;
+          }
+          actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+          mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+          metabolicJoules = Math.min(maxDeliverableMetabolicJoules, Math.max(5, mechWorkJoules / busEfficiency));
+        }
         if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
           return null;
         }
@@ -8184,13 +8247,24 @@ class Character extends GameObject {
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         const bus = this.getEnergyBus(this.throwModule.energyBusId);
         const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
-        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        if (bus && bus.enabled) {
+          const maxPower = bus.getMaxPower(this.properties);
+          const currentStamina = bus.currentStaminaProp.get(this.properties);
+          const poolEnergy = this.energyPool ? this.energyPool.infiniteEnergy ? Infinity : this.energyPool.getCurrentEnergy(this.properties) : Infinity;
+          const maxDeliverable = Math.min(
+            maxPower * this.strength,
+            currentStamina * maxPower,
+            poolEnergy
+          );
+          metabolicJoules = Math.min(metabolicJoules, maxDeliverable);
+        }
         list.push({
           id: "anticipated_throw",
           abilityId: "throw",
           name: "Throw",
           color: "#f43f5e",
-          amount: metabolicJoules,
+          amount: Math.round(metabolicJoules),
           isBurst: true,
           isPositive: false,
           order: 950

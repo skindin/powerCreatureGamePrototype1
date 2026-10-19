@@ -179,14 +179,28 @@ export class Character extends GameObject {
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         const bus = this.getEnergyBus(this.throwModule.energyBusId);
         const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
-        const metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+
+        // A single burst action cannot exceed the bus's maxPower rate (maxPower * strength),
+        // available burst stamina, or pool reserves:
+        if (bus && bus.enabled) {
+          const maxPower = bus.getMaxPower(this.properties);
+          const currentStamina = bus.currentStaminaProp.get(this.properties);
+          const poolEnergy = this.energyPool ? (this.energyPool.infiniteEnergy ? Infinity : this.energyPool.getCurrentEnergy(this.properties)) : Infinity;
+          const maxDeliverable = Math.min(
+            maxPower * this.strength,
+            currentStamina * maxPower,
+            poolEnergy
+          );
+          metabolicJoules = Math.min(metabolicJoules, maxDeliverable);
+        }
 
         list.push({
           id: "anticipated_throw",
           abilityId: "throw",
           name: "Throw",
           color: "#f43f5e",
-          amount: metabolicJoules,
+          amount: Math.round(metabolicJoules),
           isBurst: true,
           isPositive: false,
           order: 950,

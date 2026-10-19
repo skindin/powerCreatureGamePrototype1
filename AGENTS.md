@@ -100,7 +100,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - Right Bumper (Button 5 / RB): Holding enters Trajectory Scaler Mode (scales arc height via vertical stick deflection without throwing).
   - Trajectory Slider Ratio Preservation: Moving the character while in trajectory mode preserves the exact ratio between min and max arcs live.
   - Throw Mode Cursor Stick & Direction Tracking: When re-entering throw mode or picking up a throwing object, the cursor initially rests at the default forward distance in the last aimed direction; until the player moves the right stick to manually dictate aim, the cursor tracks with the character's movement direction in front of them as they change heading.
-  - Throw Energy & Stamina Consumption: Throw execution directly consumes instantaneous burst energy and stamina based on kinetic launch work ($0.5 \cdot m \cdot v^2 / \text{efficiency}$) on both client prediction and server simulation, matching the anticipated HUD modifier.
+  - Throw Energy & Stamina Consumption: Throw execution directly consumes instantaneous burst energy and stamina based on kinetic launch work ($0.5 \cdot m \cdot v^2 / \text{efficiency}$) on both client prediction and server simulation. Trajectory solving and anticipated modifiers strictly respect energy bus throughput limits ($\le P_{\text{max}} \cdot \text{strength}$), clamping ballistic reach on elevated targets and ensuring burst energy costs never exceed what the energy bus dictates.
 
 ---
 
