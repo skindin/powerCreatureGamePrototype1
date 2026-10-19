@@ -54,6 +54,7 @@ export class LaserModule {
   /** Live state */
   public isAiming: boolean = false;
   public isFiring: boolean = false;
+  public throttle: number = 1.0;
   public actualPowerWatts: number = 0;
   public actualDamageRate: number = 0;
   public currentEndpoint: { x: number; y: number; z: number } | null = null;
@@ -66,7 +67,7 @@ export class LaserModule {
     if (options?.energyBusId) this.energyBusId = options.energyBusId;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
 
-    const baseDamage = options?.damageRate ?? 10.0;
+    const baseDamage = options?.damageRate ?? 50.0;
     const baseMaxDamage = options?.maxDamageRate ?? 50.0;
     const baseThickness = options?.thickness ?? 0.35;
     const baseMaxPower = options?.maxPower ?? 2000.0;
@@ -133,14 +134,15 @@ export class LaserModule {
   }
 
   /**
-   * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = (damageRate / maxDamageRate) * maxPower
+   * Calculates the demanded power in Watts based on current damage rate, max power property, and analog throttle:
+   * Power = (damageRate / maxDamageRate) * maxPower * throttle
    */
-  public calculateDemandedPower(registry?: ObjectPropertiesRegistry): number {
+  public calculateDemandedPower(registry?: ObjectPropertiesRegistry, throttle = 1.0): number {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return (curDamage / maxDamage) * maxPower;
+    const clampedThrottle = Math.max(0, Math.min(1.0, throttle));
+    return (curDamage / maxDamage) * maxPower * clampedThrottle;
   }
 
   /**
@@ -268,6 +270,7 @@ export class LaserModule {
 
   /**
    * Per-frame update for LaserModule.
+   * @param powerFraction Degree of trigger pull (0.0 to 1.0) scaling laser wattage and damage rate
    */
   public update(
     dt: number,
@@ -277,11 +280,13 @@ export class LaserModule {
     isAimingInput: boolean,
     isFiringInput: boolean,
     candidateEntities?: GameObject[],
-    hoverScale = 0
+    hoverScale = 0,
+    powerFraction = 1.0
   ): void {
     if (!this.enabled || dt <= 0) {
       this.isAiming = false;
       this.isFiring = false;
+      this.throttle = 1.0;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.currentEndpoint = null;
@@ -298,6 +303,7 @@ export class LaserModule {
     this.isFiring = isAimingInput && isFiringInput;
 
     if (!this.isAiming && !this.isFiring) {
+      this.throttle = 1.0;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.currentEndpoint = null;
@@ -328,8 +334,11 @@ export class LaserModule {
     const thickness = this.getThickness(registry);
 
     if (this.isFiring) {
-      // 1. Demand power from Energy Bus
-      const demandedWatts = this.calculateDemandedPower(registry);
+      const throttle = Math.max(0.01, Math.min(1.0, powerFraction));
+      this.throttle = throttle;
+
+      // 1. Demand power from Energy Bus scaled by analog trigger throttle
+      const demandedWatts = this.calculateDemandedPower(registry, throttle);
       let grantedWatts = 0;
 
       if (demandedWatts > 0) {
@@ -358,7 +367,7 @@ export class LaserModule {
       }
 
       const powerRatio = demandedWatts > 0 ? Math.min(1.0, grantedWatts / demandedWatts) : 1.0;
-      const effectiveDamageRate = this.getDamageRate(registry) * powerRatio;
+      const effectiveDamageRate = this.getDamageRate(registry) * throttle * powerRatio;
       this.actualDamageRate = effectiveDamageRate;
 
       // 2. Query intersecting entities along the beam up to the endpoint
@@ -383,6 +392,7 @@ export class LaserModule {
       }
     } else {
       // Aiming only: previewing line, not firing
+      this.throttle = 1.0;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.hitEntities = [];

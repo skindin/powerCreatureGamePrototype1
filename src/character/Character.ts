@@ -164,6 +164,7 @@ export class Character extends GameObject {
   public isLaserFiring: boolean = false;
   public laserAimTarget: { x: number; y: number } | null = null;
   public laserCandidateEntities?: GameObject[];
+  public laserPowerFraction: number = 1.0;
 
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
@@ -218,7 +219,10 @@ export class Character extends GameObject {
 
     // Laser Blast Anticipated Modifier
     if (this.laserModule && this.laserModule.enabled && this.laserModule.isAiming && !this.laserModule.isFiring) {
-      const demandedPower = this.laserModule.calculateDemandedPower(this.properties);
+      const demandedPower = this.laserModule.calculateDemandedPower(
+        this.properties,
+        this.laserPowerFraction > 0 ? this.laserPowerFraction : 1.0
+      );
       if (demandedPower > 0) {
         list.push({
           id: "anticipated_laser",
@@ -695,7 +699,9 @@ export class Character extends GameObject {
         this.laserAimTarget,
         this.isLaserAiming,
         this.isLaserFiring,
-        this.laserCandidateEntities
+        this.laserCandidateEntities,
+        0,
+        this.laserPowerFraction
       );
     }
 

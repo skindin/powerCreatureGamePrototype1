@@ -38,6 +38,9 @@ export interface GamepadSlotState {
   lastThrowAimAngle?: number;
   arcModulationCursor?: Vector2D | null;
   arcModulationDeltaY?: number;
+  isLaserAiming?: boolean;
+  isLaserFiring?: boolean;
+  laserTriggerValue?: number;
 }
 
 export interface CanvasViewport {
@@ -861,6 +864,15 @@ export class InputManager {
         return typeof b === "object" ? b.pressed || b.value > threshold : (b as unknown as number) > threshold;
       };
 
+      const getButtonValue = (btnIndex: number): number => {
+        const b = gp.buttons[btnIndex];
+        if (!b) return 0;
+        if (typeof b === "object") {
+          return typeof b.value === "number" ? b.value : (b.pressed ? 1.0 : 0.0);
+        }
+        return typeof b === "number" ? b : 0;
+      };
+
       const isPrevPressed = (btnIndex: number): boolean => slot.prevButtons[btnIndex] === true;
 
       // Check if this controller currently has an active character in arena
@@ -924,8 +936,9 @@ export class InputManager {
       }
 
       // Left Under-Paddle (M2) / Sprint buttons:
-      // LB (4), L3 (10), plus extended M2 back paddles (buttons 17+)
-      const leftPaddleButtonIndices = [4, 10];
+      // Left Joystick Click (L3 / Button 10), plus extended M2 back paddles (buttons 17+)
+      // NOTE: Button 4 (Left Bumper / LB) is no longer sprint; LB is exclusively Laser Mode!
+      const leftPaddleButtonIndices = [10];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
       const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
       const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
@@ -1063,7 +1076,7 @@ export class InputManager {
         }
       } else {
         // Empty-handed:
-        if (!hasReachable) {
+        if (!hasReachable && !slot.isLaserAiming) {
           // Out of range: reset aimMovedWhileInRange and keep cursor at character
           slot.aimMovedWhileInRange = false;
           slot.aimPos.x = char.position.x;
@@ -1071,7 +1084,7 @@ export class InputManager {
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
           slot.aimOffset.x = 0;
           slot.aimOffset.y = 0;
-        } else if (!slot.aimMovedWhileInRange) {
+        } else if (!slot.aimMovedWhileInRange && !slot.isLaserAiming) {
           // Around something to grab: start cursor AT character instead of latest offset!
           slot.aimPos.x = char.position.x;
           slot.aimPos.y = char.position.y;
@@ -1144,9 +1157,56 @@ export class InputManager {
         }
       }
 
+      // Button 4 (LB / L1): Enter Laser Mode
+      const isLbPressed = isButtonPressed(4, 0.3);
+      const isLbJustPressed = isLbPressed && !isPrevPressed(4);
+      slot.isLaserAiming = isLbPressed;
+
+      if (isLbJustPressed) {
+        // When entering laser mode, if aim cursor was at character or uninitialized, push it forward in facing direction
+        const cursorDistFromChar = Math.hypot(slot.aimPos.x - char.position.x, slot.aimPos.y - char.position.y);
+        if (cursorDistFromChar < 0.3) {
+          const forwardDist = 5.0;
+          const facing = char.facingAngle ?? 0;
+          slot.aimPos.x = char.position.x + Math.cos(facing) * forwardDist;
+          slot.aimPos.y = char.position.y + Math.sin(facing) * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = Math.cos(facing) * forwardDist;
+          slot.aimOffset.y = Math.sin(facing) * forwardDist;
+          slot.aimMovedWhileInRange = true;
+          slot.hasMovedAimStick = true;
+        }
+      }
+
+      if (slot.isLaserAiming) {
+        // Read analog trigger float values (0.0 to 1.0)
+        // Primary trigger is Right Trigger (RT, Button 7); also check Left Trigger (LT, Button 6)
+        const rtFloat = getButtonValue(7);
+        const ltFloat = getButtonValue(6);
+        const triggerDepth = Math.max(rtFloat, ltFloat);
+
+        if (triggerDepth > 0.03) {
+          slot.isLaserFiring = true;
+          slot.laserTriggerValue = triggerDepth;
+        } else {
+          slot.isLaserFiring = false;
+          slot.laserTriggerValue = 0;
+        }
+
+        // Orient character towards laser aim target while in laser mode
+        const aimDx = slot.aimPos.x - char.position.x;
+        const aimDy = slot.aimPos.y - char.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          char.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else {
+        slot.isLaserFiring = false;
+        slot.laserTriggerValue = 0;
+      }
+
       if (rMag > deadzone && !slot.isLockHeld) {
-        // Only move aim cursor if aiming is enabled: when holding non-directional food, only aim if in throw mode (LT held)
-        const canAim = !isHolding || !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+        // Move aim cursor if aiming is enabled: throwing mode (LT held), or laser mode (LB held)
+        const canAim = !isHolding || !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld || slot.isLaserAiming;
         if (canAim) {
           const cursorSpeed = 17.0;
           if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
@@ -1314,46 +1374,52 @@ export class InputManager {
         }
       }
 
-      // Button 7 (RT / R2): Grab & Throw
-      const rtCurrent = isButtonPressed(7);
-      const rtJustReleased = !rtCurrent && isPrevPressed(7);
+      // Button 7 (RT / R2): Grab & Throw (suppressed in Laser Mode, where pulling RT fires the laser with analog power)
+      if (!slot.isLaserAiming) {
+        const rtCurrent = isButtonPressed(7);
+        const rtJustReleased = !rtCurrent && isPrevPressed(7);
 
-      if (rtJustReleased) {
-        slot.rtGrabbed = false;
-        slot.rtHeld = false;
-      }
+        if (rtJustReleased) {
+          slot.rtGrabbed = false;
+          slot.rtHeld = false;
+        }
 
-      if (!char.heldObject) {
-        if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
-          char.pickupModule.pickupAndSwap(
-            char,
-            grabbableTargets,
-            arena.wallHeight,
-            aimX,
-            aimY
-          );
-          if (char.heldObject) {
-            slot.rtGrabbed = true;
-            slot.rtHeld = false;
-            onGrabSuccess();
+        if (!char.heldObject) {
+          if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
+            char.pickupModule.pickupAndSwap(
+              char,
+              grabbableTargets,
+              arena.wallHeight,
+              aimX,
+              aimY
+            );
+            if (char.heldObject) {
+              slot.rtGrabbed = true;
+              slot.rtHeld = false;
+              onGrabSuccess();
+            } else {
+              slot.rtHeld = true;
+            }
+          }
+        } else {
+          slot.rtHeld = false;
+
+          const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
+          if (isHoldingFood && !slot.isAltHeld) {
+            // Food primary action without LT: RT held down continuously eats
+            slot.isUsingItem = rtCurrent;
           } else {
-            slot.rtHeld = true;
+            slot.isUsingItem = false;
+            // When holding LT (Alt) or holding non-food: RT throws!
+            if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
+              slot.isThrowRequested = true;
+            }
           }
         }
       } else {
+        slot.rtGrabbed = false;
         slot.rtHeld = false;
-
-        const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
-        if (isHoldingFood && !slot.isAltHeld) {
-          // Food primary action without LT: RT held down continuously eats
-          slot.isUsingItem = rtCurrent;
-        } else {
-          slot.isUsingItem = false;
-          // When holding LT (Alt) or holding non-food: RT throws!
-          if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-            slot.isThrowRequested = true;
-          }
-        }
+        slot.isUsingItem = false;
       }
 
       // Record buttons for edge detection

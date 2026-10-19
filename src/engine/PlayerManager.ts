@@ -794,9 +794,14 @@ export class PlayerManager {
         isDrop: slot.isDropRequested ?? false,
         isThrow: slot.isThrowRequested ?? false,
         isUsingItem,
+        isLaserAiming: Boolean(slot.isLaserAiming),
+        isLaserFiring: Boolean(slot.isLaserFiring),
+        laserAimX: slot.aimPos.x,
+        laserAimY: slot.aimPos.y,
+        laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
         aimX,
         aimY,
-        isAiming: isGamepadAiming,
+        isAiming: isGamepadAiming || Boolean(slot.isLaserAiming),
         isLockHeld: slot.isLockHeld ?? false,
         lockedAimPos: slot.lockedAimPos ? { ...slot.lockedAimPos } : null,
         facingAngle: cChar.facingAngle,
@@ -974,6 +979,9 @@ export class PlayerManager {
         char.laserAimTarget = (pkt as any).laserAimX !== undefined
           ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
           : null;
+        char.laserPowerFraction = typeof (pkt as any).laserPowerFraction === "number"
+          ? (pkt as any).laserPowerFraction
+          : 1.0;
         char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
       }
 

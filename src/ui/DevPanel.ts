@@ -1747,7 +1747,7 @@ export class DevPanel {
           <div id="collapse-body-mod-laser" style="display: ${this.isSectionCollapsed('mod-laser') ? 'none' : 'block'};">
           ${!laserEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Laser ability is disabled</div>` : ''}
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Continuous straight-line laser blast. Hold <strong>Left Ctrl</strong> to aim (instant elevation-adapting line); press <strong>Left Click</strong> while holding Ctrl to fire. Scroll wheel tunes damage rate.
+            Continuous straight-line laser blast. Hold <strong>Left Ctrl</strong> (or Gamepad <strong>LB</strong>) to aim; hold <strong>Left Click</strong> (or pull Gamepad <strong>Right Trigger</strong>) to fire. Trigger pull depth scales power continuously (0&ndash;100%). Scroll wheel tunes damage rate on keyboard.
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 4px; margin-bottom: 6px; border: 1px solid rgba(6, 182, 212, 0.2);">

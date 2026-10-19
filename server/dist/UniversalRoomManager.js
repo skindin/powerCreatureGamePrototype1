@@ -8242,6 +8242,7 @@ class LaserModule {
     /** Live state */
     __publicField(this, "isAiming", false);
     __publicField(this, "isFiring", false);
+    __publicField(this, "throttle", 1);
     __publicField(this, "actualPowerWatts", 0);
     __publicField(this, "actualDamageRate", 0);
     __publicField(this, "currentEndpoint", null);
@@ -8251,7 +8252,7 @@ class LaserModule {
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
     if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
-    const baseDamage = (options == null ? void 0 : options.damageRate) ?? 10;
+    const baseDamage = (options == null ? void 0 : options.damageRate) ?? 50;
     const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 50;
     const baseThickness = (options == null ? void 0 : options.thickness) ?? 0.35;
     const baseMaxPower = (options == null ? void 0 : options.maxPower) ?? 2e3;
@@ -8303,14 +8304,15 @@ class LaserModule {
     this.maxPowerProp.set(Math.max(1, val), registry);
   }
   /**
-   * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = (damageRate / maxDamageRate) * maxPower
+   * Calculates the demanded power in Watts based on current damage rate, max power property, and analog throttle:
+   * Power = (damageRate / maxDamageRate) * maxPower * throttle
    */
-  calculateDemandedPower(registry) {
+  calculateDemandedPower(registry, throttle = 1) {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return curDamage / maxDamage * maxPower;
+    const clampedThrottle = Math.max(0, Math.min(1, throttle));
+    return curDamage / maxDamage * maxPower * clampedThrottle;
   }
   /**
    * Computes the 3D laser ray from the character to the aim target, testing for wall obstructions.
@@ -8398,11 +8400,13 @@ class LaserModule {
   }
   /**
    * Per-frame update for LaserModule.
+   * @param powerFraction Degree of trigger pull (0.0 to 1.0) scaling laser wattage and damage rate
    */
-  update(dt, character, arena, targetPos, isAimingInput, isFiringInput, candidateEntities, hoverScale = 0) {
+  update(dt, character, arena, targetPos, isAimingInput, isFiringInput, candidateEntities, hoverScale = 0, powerFraction = 1) {
     if (!this.enabled || dt <= 0) {
       this.isAiming = false;
       this.isFiring = false;
+      this.throttle = 1;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.currentEndpoint = null;
@@ -8416,6 +8420,7 @@ class LaserModule {
     this.isAiming = isAimingInput;
     this.isFiring = isAimingInput && isFiringInput;
     if (!this.isAiming && !this.isFiring) {
+      this.throttle = 1;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.currentEndpoint = null;
@@ -8440,7 +8445,9 @@ class LaserModule {
     const registry = character.properties;
     const thickness = this.getThickness(registry);
     if (this.isFiring) {
-      const demandedWatts = this.calculateDemandedPower(registry);
+      const throttle = Math.max(0.01, Math.min(1, powerFraction));
+      this.throttle = throttle;
+      const demandedWatts = this.calculateDemandedPower(registry, throttle);
       let grantedWatts = 0;
       if (demandedWatts > 0) {
         const bus = character.getEnergyBus(this.energyBusId);
@@ -8464,7 +8471,7 @@ class LaserModule {
         return;
       }
       const powerRatio = demandedWatts > 0 ? Math.min(1, grantedWatts / demandedWatts) : 1;
-      const effectiveDamageRate = this.getDamageRate(registry) * powerRatio;
+      const effectiveDamageRate = this.getDamageRate(registry) * throttle * powerRatio;
       this.actualDamageRate = effectiveDamageRate;
       const list = candidateEntities ?? arena.entities ?? [];
       this.hitEntities = this.findIntersectingEntities(this.startPoint, this.currentEndpoint, thickness, list, character);
@@ -8484,6 +8491,7 @@ class LaserModule {
         }
       }
     } else {
+      this.throttle = 1;
       this.actualPowerWatts = 0;
       this.actualDamageRate = 0;
       this.hitEntities = [];
@@ -8566,6 +8574,7 @@ class Character extends GameObject {
     __publicField(this, "isLaserFiring", false);
     __publicField(this, "laserAimTarget", null);
     __publicField(this, "laserCandidateEntities");
+    __publicField(this, "laserPowerFraction", 1);
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -8738,7 +8747,10 @@ class Character extends GameObject {
       }
     }
     if (this.laserModule && this.laserModule.enabled && this.laserModule.isAiming && !this.laserModule.isFiring) {
-      const demandedPower = this.laserModule.calculateDemandedPower(this.properties);
+      const demandedPower = this.laserModule.calculateDemandedPower(
+        this.properties,
+        this.laserPowerFraction > 0 ? this.laserPowerFraction : 1
+      );
       if (demandedPower > 0) {
         list.push({
           id: "anticipated_laser",
@@ -8996,7 +9008,9 @@ class Character extends GameObject {
         this.laserAimTarget,
         this.isLaserAiming,
         this.isLaserFiring,
-        this.laserCandidateEntities
+        this.laserCandidateEntities,
+        0,
+        this.laserPowerFraction
       );
     }
     if (this.energyBusses.size > 0) {
