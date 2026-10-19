@@ -5,9 +5,10 @@ import type { ViewSettings } from "../Renderer.js";
 /**
  * LaserRenderer
  * 
- * High-performance, rich visual renderer for the LaserBlastModule:
- * - Crisp instant targeting guide line with elevation-adapted endpoint and vertical altitude drop.
- * - Multi-layer animated energy blast beam with bloom, high-energy sheath, white-hot core, and wall impact sparks.
+ * High-performance visual renderer for the LaserBlastModule:
+ * - Crisp targeting guide line adapting to ground/wall elevation with transparency scaled by power.
+ * - Multi-layer animated energy blast beam with dynamic transparency tied directly to current power.
+ * - Clean beam termination without distracting endpoint/muzzle orbs.
  */
 export class LaserRenderer {
   private ctx: CanvasRenderingContext2D;
@@ -47,6 +48,8 @@ export class LaserRenderer {
     const groundEndY = laser.currentEndpoint.y * ppu;
     const isElevated = laser.currentEndpoint.z > 0.08;
 
+    const maxDamage = Math.max(1, laser.getMaxDamageRate(character.properties));
+
     ctx.save();
 
     if (laser.isFiring) {
@@ -55,13 +58,16 @@ export class LaserRenderer {
       // ==========================================
       const thickness = Math.max(0.08, laser.getThickness(character.properties));
       const beamPx = Math.max(3, thickness * ppu);
-      const intensity = Math.min(1.0, Math.max(0.3, laser.actualDamageRate / Math.max(1, laser.getMaxDamageRate(character.properties))));
+
+      // Power transparency ratio: scales alpha directly from faint (low power) to solid/vibrant (max power)
+      const currentDmg = laser.actualDamageRate > 0 ? laser.actualDamageRate : laser.getDamageRate(character.properties);
+      const powerAlpha = Math.max(0.06, Math.min(1.0, currentDmg / maxDamage));
 
       // 1. Vertical footprint connector if endpoint is elevated on a wall
       if (isElevated && useHover) {
         ctx.save();
         ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
+        ctx.strokeStyle = `rgba(6, 182, 212, ${0.45 * powerAlpha})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(endX, groundEndY);
@@ -71,17 +77,17 @@ export class LaserRenderer {
         // Ground contact ring
         ctx.beginPath();
         ctx.ellipse(endX, groundEndY, 5, 2.5, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
+        ctx.strokeStyle = `rgba(6, 182, 212, ${0.55 * powerAlpha})`;
         ctx.stroke();
         ctx.restore();
       }
 
-      // 2. Wide Outer Bloom
+      // 2. Wide Outer Bloom (Scales with powerAlpha)
       ctx.save();
       ctx.shadowColor = "#06b6d4";
-      ctx.shadowBlur = 16 * intensity;
-      ctx.strokeStyle = `rgba(6, 182, 212, ${0.4 * intensity})`;
-      ctx.lineWidth = beamPx * 1.9;
+      ctx.shadowBlur = 18 * powerAlpha;
+      ctx.strokeStyle = `rgba(6, 182, 212, ${0.45 * powerAlpha})`;
+      ctx.lineWidth = beamPx * 1.85;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -89,12 +95,12 @@ export class LaserRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // 3. Mid Sheath (Vibrant Cyan)
+      // 3. Mid Sheath (Vibrant Cyan, scales with powerAlpha)
       ctx.save();
       ctx.shadowColor = "#22d3ee";
-      ctx.shadowBlur = 8 * intensity;
-      ctx.strokeStyle = `rgba(34, 211, 238, ${0.85 * intensity})`;
-      ctx.lineWidth = beamPx * 1.1;
+      ctx.shadowBlur = 10 * powerAlpha;
+      ctx.strokeStyle = `rgba(34, 211, 238, ${0.9 * powerAlpha})`;
+      ctx.lineWidth = beamPx * 1.05;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -102,10 +108,10 @@ export class LaserRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // 4. White-Hot Energy Core
+      // 4. White-Hot Energy Core (Scales with powerAlpha)
       ctx.save();
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = Math.max(1.5, beamPx * 0.38);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.98 * powerAlpha})`;
+      ctx.lineWidth = Math.max(1.5, beamPx * 0.36);
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -113,7 +119,7 @@ export class LaserRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // 5. Animated Plasma Waves / Particles
+      // 5. Animated Plasma Waves along the beam
       const beamLen = Math.hypot(endX - startX, endY - startY);
       const angle = Math.atan2(endY - startY, endX - startX);
       if (beamLen > 10) {
@@ -121,7 +127,7 @@ export class LaserRenderer {
         ctx.translate(startX, startY);
         ctx.rotate(angle);
         const waveCount = Math.floor(beamLen / 25);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.75 * powerAlpha})`;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         for (let i = 0; i <= waveCount; i++) {
@@ -135,45 +141,31 @@ export class LaserRenderer {
         ctx.restore();
       }
 
-      // 6. Muzzle Origin Flare
-      const muzzleRadius = Math.max(6, beamPx * 1.4);
-      const muzzleGrad = ctx.createRadialGradient(startX, startY, 0, startX, startY, muzzleRadius);
-      muzzleGrad.addColorStop(0, "#ffffff");
-      muzzleGrad.addColorStop(0.4, "#22d3ee");
-      muzzleGrad.addColorStop(1, "rgba(6, 182, 212, 0)");
-      ctx.fillStyle = muzzleGrad;
-      ctx.beginPath();
-      ctx.arc(startX, startY, muzzleRadius, 0, Math.PI * 2);
-      ctx.fill();
+      // 6. Wall Impact Line (Clean perpendicular spark line if stopped by wall, no circular orb)
+      if (laser.hitWall) {
+        ctx.save();
+        const wallAngle = Math.atan2(endY - startY, endX - startX) + Math.PI / 2;
+        const splashLen = Math.max(6, beamPx * 1.2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * powerAlpha})`;
+        ctx.lineWidth = Math.max(2, beamPx * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(endX - Math.cos(wallAngle) * splashLen, endY - Math.sin(wallAngle) * splashLen);
+        ctx.lineTo(endX + Math.cos(wallAngle) * splashLen, endY + Math.sin(wallAngle) * splashLen);
+        ctx.stroke();
 
-      // 7. Impact Effect at Endpoint
-      const impactRadius = Math.max(8, beamPx * 1.6);
-      const impactGrad = ctx.createRadialGradient(endX, endY, 0, endX, endY, impactRadius);
-      impactGrad.addColorStop(0, "#ffffff");
-      impactGrad.addColorStop(0.3, "#06b6d4");
-      impactGrad.addColorStop(0.7, "#3b82f6");
-      impactGrad.addColorStop(1, "rgba(59, 130, 246, 0)");
-      ctx.fillStyle = impactGrad;
-      ctx.beginPath();
-      ctx.arc(endX, endY, impactRadius, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.strokeStyle = `rgba(34, 211, 238, ${0.7 * powerAlpha})`;
+        ctx.lineWidth = Math.max(3, beamPx * 0.7);
+        ctx.stroke();
+        ctx.restore();
+      }
 
-      // Expanding energy pulse ring at endpoint
-      const pulsePhase = (now % 400) / 400;
-      const pulseR = impactRadius * (0.8 + pulsePhase * 1.2);
-      ctx.strokeStyle = `rgba(34, 211, 238, ${Math.max(0, 1 - pulsePhase)})`;
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(endX, endY, pulseR, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // 8. Hit Indicators on Pierced Entities
+      // 7. Hit Indicators on Pierced Entities (Clean rings without orbs)
       if (laser.hitEntities && laser.hitEntities.length > 0) {
         for (const ent of laser.hitEntities) {
           const entScreenX = ent.position.x * ppu;
           const entScreenY = (ent.position.y - ent.position.z * scale) * ppu;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-          ctx.lineWidth = 2.0;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${0.85 * powerAlpha})`;
+          ctx.lineWidth = 1.8;
           ctx.beginPath();
           ctx.arc(entScreenX, entScreenY, 6 + Math.sin(now * 0.03) * 2, 0, Math.PI * 2);
           ctx.stroke();
@@ -184,11 +176,14 @@ export class LaserRenderer {
       // ==========================================
       // INSTANT TARGETING GUIDE LINE (AIMING MODE)
       // ==========================================
+      // Transparency scales dynamically with current tuned damage rate
+      const aimAlpha = Math.max(0.12, Math.min(1.0, laser.getDamageRate(character.properties) / maxDamage));
+
       // 1. Vertical connector line for elevated endpoint
       if (isElevated && useHover) {
         ctx.save();
         ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = "rgba(6, 182, 212, 0.55)";
+        ctx.strokeStyle = `rgba(6, 182, 212, ${0.55 * aimAlpha})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(endX, groundEndY);
@@ -198,16 +193,16 @@ export class LaserRenderer {
         // Ground footprint ring
         ctx.beginPath();
         ctx.ellipse(endX, groundEndY, 6, 3, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(6, 182, 212, 0.7)";
+        ctx.strokeStyle = `rgba(6, 182, 212, ${0.7 * aimAlpha})`;
         ctx.stroke();
         ctx.restore();
       }
 
-      // 2. Soft Outer Aim Glow
+      // 2. Soft Outer Aim Glow (Scales with aimAlpha)
       ctx.save();
       ctx.shadowColor = "#06b6d4";
-      ctx.shadowBlur = 6;
-      ctx.strokeStyle = "rgba(6, 182, 212, 0.4)";
+      ctx.shadowBlur = 6 * aimAlpha;
+      ctx.strokeStyle = `rgba(6, 182, 212, ${0.45 * aimAlpha})`;
       ctx.lineWidth = 3.0;
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -215,9 +210,9 @@ export class LaserRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // 3. Sharp Crisp Aim Guide Line
+      // 3. Sharp Crisp Aim Guide Line (Scales with aimAlpha)
       ctx.save();
-      ctx.strokeStyle = "rgba(165, 243, 252, 0.85)";
+      ctx.strokeStyle = `rgba(165, 243, 252, ${0.9 * aimAlpha})`;
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -225,16 +220,10 @@ export class LaserRenderer {
       ctx.stroke();
       ctx.restore();
 
-      // 4. Muzzle Dot
-      ctx.beginPath();
-      ctx.arc(startX, startY, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = "#06b6d4";
-      ctx.fill();
-
-      // 5. Endpoint Aim Reticle
+      // 4. Endpoint Aim Reticle (Scales with aimAlpha, no muzzle dot)
       ctx.save();
       // Outer reticle ring
-      ctx.strokeStyle = "#06b6d4";
+      ctx.strokeStyle = `rgba(6, 182, 212, ${0.85 * aimAlpha})`;
       ctx.lineWidth = 1.6;
       ctx.beginPath();
       ctx.arc(endX, endY, 6.5, 0, Math.PI * 2);
@@ -243,14 +232,14 @@ export class LaserRenderer {
       // Center pinpoint
       ctx.beginPath();
       ctx.arc(endX, endY, 2.0, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * aimAlpha})`;
       ctx.fill();
 
       // If blocked by wall: draw small cross-bar stop marker
       if (laser.hitWall) {
         const wallAngle = Math.atan2(endY - startY, endX - startX) + Math.PI / 2;
         const barLen = 7;
-        ctx.strokeStyle = "#f43f5e";
+        ctx.strokeStyle = `rgba(244, 63, 94, ${0.9 * aimAlpha})`;
         ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.moveTo(endX - Math.cos(wallAngle) * barLen, endY - Math.sin(wallAngle) * barLen);

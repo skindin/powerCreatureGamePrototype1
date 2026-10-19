@@ -134,13 +134,13 @@ export class LaserModule {
 
   /**
    * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = (damageRate / maxDamageRate) * maxPower
+   * Power = ((damageRate / maxDamageRate) * maxPower) * 4
    */
   public calculateDemandedPower(registry?: ObjectPropertiesRegistry): number {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return (curDamage / maxDamage) * maxPower;
+    return (curDamage / maxDamage) * maxPower * 4;
   }
 
   /**
