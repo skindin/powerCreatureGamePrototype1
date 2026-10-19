@@ -5076,6 +5076,28 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   z-index: 10;
 }
 
+/* Clear White Current Resource Baseline Divider (Threshold between adding and subtracting) */
+.hud-baseline-line {
+  position: absolute;
+  width: 2px;
+  background: #ffffff;
+  box-shadow: 0 0 5px #ffffff, 0 0 10px rgba(255, 255, 255, 0.9);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 25;
+  border-radius: 1px;
+}
+
+.energy-hud-track-health .hud-baseline-line {
+  top: 0;
+  height: 100%;
+}
+
+.energy-hud-track-reservoir .hud-baseline-line {
+  top: 12px;
+  height: 16px;
+}
+
 .hud-cap-line {
   width: 2px;
   height: 100%;

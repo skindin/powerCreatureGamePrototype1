@@ -38,6 +38,7 @@ export class EnergyHud {
   private healthModTagsEl: HTMLElement | null = null;
   private healthBlocksContainerEl: HTMLElement | null = null;
   private healthFillEl: HTMLElement | null = null;
+  private healthBaselineLineEl: HTMLElement | null = null;
 
   // DOM Elements - Right Column: Energy & Power System
   private powerTagsEl: HTMLElement | null = null;
@@ -47,6 +48,7 @@ export class EnergyHud {
   private laserStaminaFillEl: HTMLElement | null = null;
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
+  private energyBaselineLineEl: HTMLElement | null = null;
 
   public isCollapsed: boolean = false;
   private lastUpdateTime: number = 0;
@@ -98,6 +100,8 @@ export class EnergyHud {
                 <div id="bar-hud-health-fill" class="hud-bar-layer hud-bar-health" title="Health"></div>
                 <!-- Embedded Active Health Modifiers Container -->
                 <div id="hud-health-mods-container" class="hud-power-blocks-container"></div>
+                <!-- Clear White Line for Current Health Threshold -->
+                <div id="line-hud-health-baseline" class="hud-baseline-line" style="left: 100%;" title="Current Health Threshold"></div>
               </div>
             </div>
           </div>
@@ -134,6 +138,9 @@ export class EnergyHud {
 
                 <!-- Row 3 Overlay: Active Energy Modifiers Container (Embedded color-coded segments) -->
                 <div id="hud-power-blocks-container" class="hud-power-blocks-container"></div>
+
+                <!-- Clear White Line for Current Energy Threshold -->
+                <div id="line-hud-energy-baseline" class="hud-baseline-line" style="left: 100%;" title="Current Energy Threshold"></div>
               </div>
             </div>
           </div>
@@ -148,6 +155,7 @@ export class EnergyHud {
     this.healthModTagsEl = hudWrapper.querySelector("#health-hud-mod-tags");
     this.healthBlocksContainerEl = hudWrapper.querySelector("#hud-health-mods-container");
     this.healthFillEl = hudWrapper.querySelector("#bar-hud-health-fill");
+    this.healthBaselineLineEl = hudWrapper.querySelector("#line-hud-health-baseline");
 
     // Grab element handles - Energy & Power System
     this.powerTagsEl = hudWrapper.querySelector("#energy-hud-power-tags");
@@ -157,6 +165,7 @@ export class EnergyHud {
     this.laserStaminaFillEl = hudWrapper.querySelector("#bar-hud-laser-stamina");
     this.staminaCapTickEl = hudWrapper.querySelector("#tick-hud-max-stamina");
     this.exhaustionTickEl = hudWrapper.querySelector("#tick-hud-exhaustion-recovery");
+    this.energyBaselineLineEl = hudWrapper.querySelector("#line-hud-energy-baseline");
   }
 
   private setupListeners(): void {
@@ -275,6 +284,14 @@ export class EnergyHud {
     }
 
     const curHpPct = maxHp > 0 ? Math.max(0, Math.min(100, (curHp / maxHp) * 100)) : 0;
+    if (this.healthBaselineLineEl) {
+      if (curHpPct <= 0.001) {
+        this.healthBaselineLineEl.style.display = "none";
+      } else {
+        this.healthBaselineLineEl.style.display = "block";
+        this.healthBaselineLineEl.style.left = `${curHpPct.toFixed(2)}%`;
+      }
+    }
     const sortedBlocks = Array.from(this.visualHealthBlocks.values()).sort((a, b) => a.order - b.order);
 
     if (sortedBlocks.length === 0) {
@@ -541,6 +558,14 @@ export class EnergyHud {
 
     const energyCap = Math.max(100, maxEnergy);
     const curEnergyPct = infiniteEnergy ? 100 : Math.max(0, Math.min(100, (curEnergy / energyCap) * 100));
+    if (this.energyBaselineLineEl) {
+      if (curEnergyPct <= 0.001) {
+        this.energyBaselineLineEl.style.display = "none";
+      } else {
+        this.energyBaselineLineEl.style.display = "block";
+        this.energyBaselineLineEl.style.left = `${curEnergyPct.toFixed(2)}%`;
+      }
+    }
     const sortedBlocks = Array.from(this.visualBlocks.values()).sort((a, b) => a.order - b.order);
 
     if (sortedBlocks.length === 0) {
