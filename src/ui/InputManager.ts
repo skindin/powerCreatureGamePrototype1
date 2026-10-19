@@ -229,6 +229,8 @@ export class InputManager {
   public onGamepadDisconnected?: (slotIndex: number) => void;
   public canLockAim?: () => boolean;
   public onLaserWheelAdjust?: (delta: number) => void;
+  /** Scrolling sensitivity for laser power adjustment (higher = faster rate changes) */
+  public laserScrollSensitivity: number = 200.0;
 
   constructor(canvas: HTMLCanvasElement, arena: Arena) {
     this.canvas = canvas;
@@ -623,7 +625,7 @@ export class InputManager {
         e.preventDefault();
         const isShift = e.shiftKey || this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
         const dir = e.deltaY < 0 ? 1 : -1;
-        const step = isShift ? dir * 10.0 : dir * 2.0;
+        const step = isShift ? dir * (this.laserScrollSensitivity * 3.0) : dir * this.laserScrollSensitivity;
         this.onLaserWheelAdjust?.(step);
       }
     }, { passive: false });

@@ -8250,8 +8250,8 @@ class LaserModule {
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
     if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
-    const baseDamage = (options == null ? void 0 : options.damageRate) ?? 50;
-    const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 200;
+    const baseDamage = (options == null ? void 0 : options.damageRate) ?? 10;
+    const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 50;
     const baseThickness = (options == null ? void 0 : options.thickness) ?? 0.35;
     const baseMaxPower = (options == null ? void 0 : options.maxPower) ?? 500;
     this.damageRateProp = new DynamicProperty(baseDamage);

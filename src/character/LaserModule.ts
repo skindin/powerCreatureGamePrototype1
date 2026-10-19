@@ -66,8 +66,8 @@ export class LaserModule {
     if (options?.energyBusId) this.energyBusId = options.energyBusId;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
 
-    const baseDamage = options?.damageRate ?? 50.0;
-    const baseMaxDamage = options?.maxDamageRate ?? 200.0;
+    const baseDamage = options?.damageRate ?? 10.0;
+    const baseMaxDamage = options?.maxDamageRate ?? 50.0;
     const baseThickness = options?.thickness ?? 0.35;
     const baseMaxPower = options?.maxPower ?? 500.0;
 
@@ -252,8 +252,8 @@ export class LaserModule {
       const projZ = start.z + segDz * t;
 
       const distSq = (ent.position.x - projX) ** 2 +
-                     (ent.position.y - projY) ** 2 +
-                     ((ent.position.z ?? 0) - projZ) ** 2;
+        (ent.position.y - projY) ** 2 +
+        ((ent.position.z ?? 0) - projZ) ** 2;
 
       if (distSq <= hitRadius * hitRadius) {
         hits.push(ent);
