@@ -193,7 +193,7 @@ export class HealthModule {
       this.registerContinuousModifier({
         id: source.id,
         name: source.name,
-        color: source.color ?? "#ef4444",
+        color: source.color ?? "#a855f7",
         type: "continuous",
         isHeal: false,
         rate: source.rate ?? amount * 60,
@@ -202,7 +202,7 @@ export class HealthModule {
       this.registerInstantModifier({
         id: source?.id ?? "damage",
         name: source?.name ?? "Damage",
-        color: source?.color ?? "#ef4444",
+        color: source?.color ?? "#f97316",
         type: "instant",
         isHeal: false,
       }, source?.amount ?? amount);

@@ -220,6 +220,7 @@ export class DevPanel {
   private modeEditBtn!: HTMLButtonElement;
   private scrubbers: Map<string, FloatScrubber> = new Map();
   private expandedSections: Set<string> = new Set();
+  private collapsedBusSubSections: Set<string> = new Set();
 
   public isSectionCollapsed(id: string): boolean {
     return !this.expandedSections.has(id);
@@ -230,6 +231,18 @@ export class DevPanel {
       this.expandedSections.delete(id);
     } else {
       this.expandedSections.add(id);
+    }
+  }
+
+  public isBusSubCollapsed(busId: string): boolean {
+    return this.collapsedBusSubSections.has(busId);
+  }
+
+  public toggleBusSubCollapse(busId: string): void {
+    if (this.collapsedBusSubSections.has(busId)) {
+      this.collapsedBusSubSections.delete(busId);
+    } else {
+      this.collapsedBusSubSections.add(busId);
     }
   }
 
@@ -1875,46 +1888,78 @@ export class DevPanel {
       `;
     }
 
-    // Energy Bus Module (Character only)
-    if (hasEnergyBus && char?.energyBus) {
+    // Energy Bus Module (Character only - renders all energy busses as collapsible sub-sections inside one module)
+    if (hasEnergyBus && char) {
       attachedCount++;
-      const eb = char.energyBus;
-      const curStamina = eb.getCurrentStamina(char.properties);
-      const maxStamina = eb.getMaxStamina(char.properties);
-      const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
-      const curWatts = eb.getCurrentWattage(char.properties);
+      const busses = char.energyBusses && char.energyBusses.size > 0
+        ? Array.from(char.energyBusses.values())
+        : (char.energyBus ? [char.energyBus] : []);
+
+      let busSectionsHtml = "";
+      for (const b of busses) {
+        const curStamina = b.getCurrentStamina(char.properties);
+        const maxStamina = b.getMaxStamina(char.properties);
+        const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
+        const curWatts = b.getCurrentWattage(char.properties);
+        const isSubCollapsed = this.isBusSubCollapsed(b.id);
+
+        busSectionsHtml += `
+          <div class="bus-sub-section" data-bus-id="${b.id}" style="border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px; margin-bottom: 8px; background: rgba(15, 23, 42, 0.45);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button class="btn-collapse-bus-sub" data-bus-id="${b.id}" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 0.8rem; padding: 0 4px;" title="Toggle collapse">
+                  ${isSubCollapsed ? '▶' : '▼'}
+                </button>
+                <input type="text" class="input-bus-name dev-input" data-bus-id="${b.id}" value="${b.name}" title="Custom Bus Name" style="width: 140px; font-weight: 700; color: #38bdf8; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 0.78rem;">
+                <span style="font-size: 0.7rem; color: #64748b;">(${b.id})</span>
+              </div>
+              ${b.id !== 'bus_main' ? `
+                <button class="btn-delete-bus" data-bus-id="${b.id}" title="Delete this Energy Bus" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">✕ Delete</button>
+              ` : ''}
+            </div>
+
+            <div id="collapse-body-bus-sub-${b.id}" style="display: ${isSubCollapsed ? 'none' : 'block'};">
+              <div id="warn-bus-exhausted-${b.id}" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${b.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below safety threshold</div>
+
+              <div style="margin: 6px 0;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+                  <span>Burst Stamina (Max Power Duration)</span>
+                  <span id="label-energy-bus-stamina-status-${b.id}">${curStamina.toFixed(1)}s / ${maxStamina.toFixed(1)}s (${staminaPct.toFixed(0)}%)</span>
+                </div>
+                <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+                  <div id="bar-energy-bus-stamina-fill-${b.id}" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
+                </div>
+              </div>
+
+              <div style="margin: 6px 0; padding: 4px 8px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.75rem; color: #94a3b8;">Current Power Draw:</span>
+                <span id="label-energy-bus-wattage-${b.id}" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
+              </div>
+
+              <div id="prop-socket-bus-maxpower-${b.id}"></div>
+              <div id="prop-socket-bus-maxstamina-${b.id}"></div>
+              <div id="prop-socket-bus-curstamina-${b.id}"></div>
+              <div id="prop-socket-bus-regen-${b.id}"></div>
+              <div id="prop-socket-bus-efficiency-${b.id}"></div>
+            </div>
+          </div>
+        `;
+      }
 
       html += `
         <div class="module-card ${!energyBusEnabled ? 'module-disabled' : ''}" data-module-id="energyBus">
-          ${this.renderModuleHeader("energyBus", "🚌 Energy Bus (Main)", renderToggleBtn("energyBus", energyBusEnabled))}
+          ${this.renderModuleHeader("energyBus", "🚌 Energy Busses", renderToggleBtn("energyBus", energyBusEnabled))}
           <div id="collapse-body-mod-energyBus" style="display: ${this.isSectionCollapsed('mod-energyBus') ? 'none' : 'block'};">
           ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
-          <div id="warn-bus-exhausted" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${eb.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below safety threshold</div>
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Muscle output throughput (Watts) and burst stamina (duration at max power).
+            Independent energy busses channel muscle power throughput (Watts) and burst stamina (duration at max power) to specific abilities.
           </div>
 
-          <div style="margin: 6px 0;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-              <span>Burst Stamina (Max Power Duration)</span>
-              <span id="label-energy-bus-stamina-status">${curStamina.toFixed(1)}s / ${maxStamina.toFixed(1)}s (${staminaPct.toFixed(0)}%)</span>
-            </div>
-            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
-              <div id="bar-energy-bus-stamina-fill" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
-            </div>
-          </div>
+          ${busSectionsHtml}
 
-          <div style="margin: 6px 0; padding: 4px 8px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; color: #94a3b8;">Current Power Draw:</span>
-            <span id="label-energy-bus-wattage" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
-          </div>
-
-          <div id="prop-socket-bus-curwattage"></div>
-          <div id="prop-socket-bus-maxpower"></div>
-          <div id="prop-socket-bus-maxstamina"></div>
-          <div id="prop-socket-bus-curstamina"></div>
-          <div id="prop-socket-bus-regen"></div>
-          <div id="prop-socket-bus-efficiency"></div>
+          <button id="btn-add-energy-bus" style="width: 100%; padding: 6px; margin-top: 4px; background: rgba(56, 189, 248, 0.15); border: 1px dashed rgba(56, 189, 248, 0.4); border-radius: 4px; color: #38bdf8; font-weight: 600; font-size: 0.78rem; cursor: pointer; transition: all 0.15s ease;">
+            + Add Energy Bus
+          </button>
           </div>
         </div>
       `;
@@ -3183,81 +3228,134 @@ export class DevPanel {
       });
     }
 
-    // Energy Bus controls (Character only)
-    if (char && char.energyBus) {
-      const eb = char.energyBus;
+    // Energy Bus controls (Character only - iterates over each bus sub-section)
+    if (char) {
+      const busses = char.energyBusses && char.energyBusses.size > 0
+        ? Array.from(char.energyBusses.values())
+        : (char.energyBus ? [char.energyBus] : []);
 
-      const curWattEl = this.container.querySelector("#prop-socket-bus-curwattage");
-      if (curWattEl) {
-        const wCtrl = new PropertyControl({
-          property: eb.currentWattageProp,
-          owner: char,
-          label: "Current Wattage Used (W)",
-          step: 10.0,
-        });
-        curWattEl.appendChild(wCtrl.element);
+      for (const eb of busses) {
+        const maxPowerEl = this.container.querySelector(`#prop-socket-bus-maxpower-${eb.id}`);
+        if (maxPowerEl) {
+          const pCtrl = new PropertyControl({
+            property: eb.maxPowerProp,
+            owner: char,
+            label: "Max Power Output (Watts)",
+            step: 25.0,
+          });
+          maxPowerEl.appendChild(pCtrl.element);
+        }
+
+        const maxStaminaEl = this.container.querySelector(`#prop-socket-bus-maxstamina-${eb.id}`);
+        if (maxStaminaEl) {
+          const sCtrl = new PropertyControl({
+            property: eb.maxStaminaProp,
+            owner: char,
+            label: "Burst Stamina Capacity (Seconds)",
+            step: 1.0,
+            min: 0.5,
+            max: 120.0,
+          });
+          maxStaminaEl.appendChild(sCtrl.element);
+        }
+
+        const curStaminaEl = this.container.querySelector(`#prop-socket-bus-curstamina-${eb.id}`);
+        if (curStaminaEl) {
+          const csCtrl = new PropertyControl({
+            property: eb.currentStaminaProp,
+            owner: char,
+            label: "Current Stamina Left (Seconds)",
+            step: 0.5,
+            min: 0.0,
+          });
+          curStaminaEl.appendChild(csCtrl.element);
+        }
+
+        const regenEl = this.container.querySelector(`#prop-socket-bus-regen-${eb.id}`);
+        if (regenEl) {
+          const rCtrl = new PropertyControl({
+            property: eb.staminaRegenRateProp,
+            owner: char,
+            label: "Stamina Regen Rate (s/s)",
+            step: 0.2,
+            min: 0.1,
+            max: 10.0,
+          });
+          regenEl.appendChild(rCtrl.element);
+        }
+
+        const effEl = this.container.querySelector(`#prop-socket-bus-efficiency-${eb.id}`);
+        if (effEl) {
+          const eCtrl = new PropertyControl({
+            property: eb.muscleEfficiencyProp,
+            owner: char,
+            label: "Muscle Metabolic Efficiency (Ratio)",
+            step: 0.05,
+            min: 0.01,
+            max: 1.0,
+          });
+          effEl.appendChild(eCtrl.element);
+        }
       }
 
-      const maxPowerEl = this.container.querySelector("#prop-socket-bus-maxpower");
-      if (maxPowerEl) {
-        const pCtrl = new PropertyControl({
-          property: eb.maxPowerProp,
-          owner: char,
-          label: "Max Power Output (Watts)",
-          step: 25.0,
+      // Wire up sub-section collapse toggles
+      this.container.querySelectorAll(".btn-collapse-bus-sub").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const busId = btn.getAttribute("data-bus-id");
+          if (!busId) return;
+          this.toggleBusSubCollapse(busId);
+          const isCollapsed = this.isBusSubCollapsed(busId);
+          const bodyEl = this.container.querySelector(`#collapse-body-bus-sub-${busId}`) as HTMLElement;
+          if (bodyEl) bodyEl.style.display = isCollapsed ? "none" : "block";
+          btn.textContent = isCollapsed ? "▶" : "▼";
         });
-        maxPowerEl.appendChild(pCtrl.element);
-      }
+      });
 
-      const maxStaminaEl = this.container.querySelector("#prop-socket-bus-maxstamina");
-      if (maxStaminaEl) {
-        const sCtrl = new PropertyControl({
-          property: eb.maxStaminaProp,
-          owner: char,
-          label: "Burst Stamina Capacity (Seconds)",
-          step: 1.0,
-          min: 0.5,
-          max: 120.0,
+      // Wire up custom bus name inputs
+      this.container.querySelectorAll(".input-bus-name").forEach((input) => {
+        input.addEventListener("input", (e) => {
+          const busId = (input as HTMLElement).getAttribute("data-bus-id");
+          if (!busId) return;
+          const bus = char.getEnergyBus(busId);
+          if (bus) {
+            bus.name = (e.target as HTMLInputElement).value;
+          }
         });
-        maxStaminaEl.appendChild(sCtrl.element);
-      }
+      });
 
-      const curStaminaEl = this.container.querySelector("#prop-socket-bus-curstamina");
-      if (curStaminaEl) {
-        const csCtrl = new PropertyControl({
-          property: eb.currentStaminaProp,
-          owner: char,
-          label: "Current Stamina Left (Seconds)",
-          step: 0.5,
-          min: 0.0,
+      // Wire up bus deletion (for secondary busses)
+      this.container.querySelectorAll(".btn-delete-bus").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const busId = btn.getAttribute("data-bus-id");
+          if (!busId || busId === "bus_main") return;
+          char.energyBusses.delete(busId);
+          if (char.walkingModule?.walkEnergyBusId === busId) char.walkingModule.walkEnergyBusId = "bus_main";
+          if (char.walkingModule?.sprintEnergyBusId === busId) char.walkingModule.sprintEnergyBusId = "bus_main";
+          if (char.pickupModule?.energyBusId === busId) char.pickupModule.energyBusId = "bus_main";
+          if (char.throwModule?.energyBusId === busId) char.throwModule.energyBusId = "bus_main";
+          if (char.jumpEnergyBusId === busId) char.jumpEnergyBusId = "bus_main";
+          if (char.climbingModule?.energyBusId === busId) char.climbingModule.energyBusId = "bus_main";
+          if (char.healthModule?.energyBusId === busId) char.healthModule.energyBusId = "bus_main";
+          if (char.laserModule?.energyBusId === busId) char.laserModule.energyBusId = "bus_main";
+          this.renderEntityModules();
+          this.updateInspector();
         });
-        curStaminaEl.appendChild(csCtrl.element);
-      }
+      });
 
-      const regenEl = this.container.querySelector("#prop-socket-bus-regen");
-      if (regenEl) {
-        const rCtrl = new PropertyControl({
-          property: eb.staminaRegenRateProp,
-          owner: char,
-          label: "Stamina Regen Rate (s/s)",
-          step: 0.2,
-          min: 0.1,
-          max: 10.0,
+      // Wire up Add Energy Bus button
+      this.container.querySelector("#btn-add-energy-bus")?.addEventListener("click", () => {
+        const busNum = char.energyBusses.size + 1;
+        const newBusId = `bus_aux_${Date.now().toString(36)}`;
+        const newBus = new EnergyBus({
+          id: newBusId,
+          name: `Aux Bus ${busNum}`,
+          maxPower: 500.0,
+          maxStamina: 10.0,
         });
-        regenEl.appendChild(rCtrl.element);
-      }
-      const effEl = this.container.querySelector("#prop-socket-bus-efficiency");
-      if (effEl) {
-        const eCtrl = new PropertyControl({
-          property: eb.muscleEfficiencyProp,
-          owner: char,
-          label: "Muscle Metabolic Efficiency (Ratio)",
-          step: 0.05,
-          min: 0.01,
-          max: 1.0,
-        });
-        effEl.appendChild(eCtrl.element);
-      }
+        char.energyBusses.set(newBusId, newBus);
+        this.renderEntityModules();
+        this.updateInspector();
+      });
     }
   }
 

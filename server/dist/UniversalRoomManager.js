@@ -7086,7 +7086,7 @@ class HealthModule {
       this.registerContinuousModifier({
         id: source.id,
         name: source.name,
-        color: source.color ?? "#ef4444",
+        color: source.color ?? "#a855f7",
         type: "continuous",
         isHeal: false,
         rate: source.rate ?? amount * 60
@@ -7095,7 +7095,7 @@ class HealthModule {
       this.registerInstantModifier({
         id: (source == null ? void 0 : source.id) ?? "damage",
         name: (source == null ? void 0 : source.name) ?? "Damage",
-        color: (source == null ? void 0 : source.color) ?? "#ef4444",
+        color: (source == null ? void 0 : source.color) ?? "#f97316",
         type: "instant",
         isHeal: false
       }, (source == null ? void 0 : source.amount) ?? amount);
@@ -8558,6 +8558,11 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
+    // Laser aiming/firing inputs processed per tick
+    __publicField(this, "isLaserAiming", false);
+    __publicField(this, "isLaserFiring", false);
+    __publicField(this, "laserAimTarget", null);
+    __publicField(this, "laserCandidateEntities");
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -8979,6 +8984,17 @@ class Character extends GameObject {
     }
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
+    }
+    if (this.laserModule && this.laserModule.enabled) {
+      this.laserModule.update(
+        dt,
+        this,
+        arena,
+        this.laserAimTarget,
+        this.isLaserAiming,
+        this.isLaserFiring,
+        this.laserCandidateEntities
+      );
     }
     if (this.energyBusses.size > 0) {
       for (const bus of this.energyBusses.values()) {

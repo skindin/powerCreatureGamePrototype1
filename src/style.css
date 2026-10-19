@@ -5166,5 +5166,19 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   }
 }
 
+/* Clear white baseline divider line at the boundary of health and energy */
+.hud-baseline-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2.5px;
+  background: #ffffff;
+  z-index: 30;
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.95), 0 0 2px #ffffff;
+  transform: translateX(-50%);
+  border-radius: 1px;
+}
+
 
 

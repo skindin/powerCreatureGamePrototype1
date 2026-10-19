@@ -967,6 +967,16 @@ export class PlayerManager {
         }
       }
 
+      // Set Laser inputs on character before physical capability update so laser demand is registered before bus.update
+      if (char.laserModule) {
+        char.isLaserAiming = Boolean((pkt as any).isLaserAiming);
+        char.isLaserFiring = Boolean((pkt as any).isLaserFiring);
+        char.laserAimTarget = (pkt as any).laserAimX !== undefined
+          ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
+          : null;
+        char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+      }
+
       char.updateCharacter(
         dt,
         { x: pkt.moveX, y: pkt.moveY },
@@ -982,17 +992,6 @@ export class PlayerManager {
 
       if (pkt.facingAngle !== undefined) {
         char.facingAngle = pkt.facingAngle;
-      }
-
-      // Update LaserModule (Aiming / Firing / Energy Consumption / Damage Application)
-      if (char.laserModule) {
-        const isLaserAiming = Boolean((pkt as any).isLaserAiming);
-        const isLaserFiring = Boolean((pkt as any).isLaserFiring);
-        const laserAimTarget = (pkt as any).laserAimX !== undefined
-          ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
-          : null;
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
-        char.laserModule.update(dt, char, this.arena, laserAimTarget, isLaserAiming, isLaserFiring, candidateEntities);
       }
 
       // Detect newly acquired or released held object to reliably dispatch action
@@ -1243,6 +1242,12 @@ export class PlayerManager {
     // When no player device is connected and no keyboard packet was processed, settle baseCharacter naturally
     if (this.players.size === 0 && !inputs.has("keyboard")) {
       if (input.draggedEntity !== this.baseCharacter) {
+        if (this.baseCharacter.laserModule) {
+          this.baseCharacter.isLaserAiming = false;
+          this.baseCharacter.isLaserFiring = false;
+          this.baseCharacter.laserAimTarget = null;
+          this.baseCharacter.laserCandidateEntities = [];
+        }
         this.baseCharacter.updateCharacter(
           dt,
           { x: 0, y: 0 },
@@ -1252,9 +1257,6 @@ export class PlayerManager {
           false,
           this.arena.entities
         );
-        if (this.baseCharacter.laserModule) {
-          this.baseCharacter.laserModule.update(dt, this.baseCharacter, this.arena, null, false, false, []);
-        }
       }
     }
 

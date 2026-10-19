@@ -159,6 +159,12 @@ export class Character extends GameObject {
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
 
+  // Laser aiming/firing inputs processed per tick
+  public isLaserAiming: boolean = false;
+  public isLaserFiring: boolean = false;
+  public laserAimTarget: { x: number; y: number } | null = null;
+  public laserCandidateEntities?: GameObject[];
+
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
    * These provide a ghostly preview of the energy cost before committing to the action.
@@ -678,6 +684,19 @@ export class Character extends GameObject {
     // Hold-to-jump buffer: If holding jump input and character touched down / landed this tick, jump immediately!
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
+    }
+
+    // 2b2. Update Laser Blast ability (runs BEFORE bus.update so laser power demand drains stamina)
+    if (this.laserModule && this.laserModule.enabled) {
+      this.laserModule.update(
+        dt,
+        this,
+        arena,
+        this.laserAimTarget,
+        this.isLaserAiming,
+        this.isLaserFiring,
+        this.laserCandidateEntities
+      );
     }
 
     // 2c. Update energy bus stamina recovery (runs after all physical abilities and buffers in the tick)
