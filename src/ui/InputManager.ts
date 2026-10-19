@@ -41,6 +41,7 @@ export interface GamepadSlotState {
   isLaserAiming?: boolean;
   isLaserFiring?: boolean;
   laserTriggerValue?: number;
+  wasLaserAiming?: boolean;
 }
 
 export interface CanvasViewport {
@@ -1044,7 +1045,33 @@ export class InputManager {
         grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
       );
 
-      if (isHolding) {
+      if (slot.isLaserAiming) {
+        if (!slot.hasMovedAimStick) {
+          let dirX = 1;
+          let dirY = 0;
+          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+          if (moveMag > 0.05) {
+            dirX = slot.movementVector.x / moveMag;
+            dirY = slot.movementVector.y / moveMag;
+            const moveAngle = Math.atan2(dirY, dirX);
+            slot.lastMovementInputAngle = moveAngle;
+            char.lastMovementInputAngle = moveAngle;
+            char.facingAngle = moveAngle;
+            char.lastThrowAimAngle = moveAngle;
+            slot.lastThrowAimAngle = moveAngle;
+          } else {
+            const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+            dirX = Math.cos(facing);
+            dirY = Math.sin(facing);
+          }
+          const forwardDist = 5.0;
+          slot.aimPos.x = char.position.x + dirX * forwardDist;
+          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = dirX * forwardDist;
+          slot.aimOffset.y = dirY * forwardDist;
+        }
+      } else if (isHolding) {
         // If holding an object and player has NOT moved the right aim stick yet
         if (!slot.hasMovedAimStick) {
           const isThrowActive = !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
@@ -1163,19 +1190,9 @@ export class InputManager {
       slot.isLaserAiming = isLbPressed;
 
       if (isLbJustPressed) {
-        // When entering laser mode, if aim cursor was at character or uninitialized, push it forward in facing direction
-        const cursorDistFromChar = Math.hypot(slot.aimPos.x - char.position.x, slot.aimPos.y - char.position.y);
-        if (cursorDistFromChar < 0.3) {
-          const forwardDist = 5.0;
-          const facing = char.facingAngle ?? 0;
-          slot.aimPos.x = char.position.x + Math.cos(facing) * forwardDist;
-          slot.aimPos.y = char.position.y + Math.sin(facing) * forwardDist;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = Math.cos(facing) * forwardDist;
-          slot.aimOffset.y = Math.sin(facing) * forwardDist;
-          slot.aimMovedWhileInRange = true;
-          slot.hasMovedAimStick = true;
-        }
+        // Entering laser mode starts in forward-leading mode before right JS is touched
+        slot.hasMovedAimStick = false;
+        slot.aimMovedWhileInRange = true;
       }
 
       if (slot.isLaserAiming) {
@@ -1301,7 +1318,7 @@ export class InputManager {
       }
       slot.wasMoving = isStickMoving;
 
-      const isCursorVis = slot.isCursorVisible ?? false;
+      const isCursorVis = (slot.isCursorVisible ?? false) || Boolean(slot.isLaserAiming);
       const aimX = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.x : undefined;
       const aimY = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.y : undefined;
 

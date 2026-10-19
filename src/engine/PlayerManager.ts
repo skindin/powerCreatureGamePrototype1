@@ -748,8 +748,14 @@ export class PlayerManager {
       const hasPrimaryAbility = cChar.hasPrimaryItemAbility();
       const isThrowActive = isCharHolding && (!hasPrimaryAbility || Boolean(slot.isAltHeld));
 
-      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode, movement direction when walking
-      if (isCharHolding && isThrowActive) {
+      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode, movement direction when walking
+      if (slot.isLaserAiming) {
+        const aimDx = aimX - cChar.position.x;
+        const aimDy = aimY - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else if (isCharHolding && isThrowActive) {
         if (slot.lockedAimPos) {
           const aimDx = slot.lockedAimPos.x - cChar.position.x;
           const aimDy = slot.lockedAimPos.y - cChar.position.y;
@@ -1414,6 +1420,12 @@ export class PlayerManager {
         const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
         if (!slot || !slot.connected) continue;
 
+        const isLaserActive = Boolean(slot.isLaserAiming);
+        if (isLaserActive && !slot.wasLaserAiming) {
+          slot.hasMovedAimStick = false;
+        }
+        slot.wasLaserAiming = isLaserActive;
+
         if (isHolding && !entry.wasHoldingObject) {
           slot.hasMovedAimStick = false;
         }
@@ -1424,7 +1436,39 @@ export class PlayerManager {
           slot.aimOffset = { x: 0, y: 0 };
         }
 
-        if (isHolding) {
+        if (isLaserActive) {
+          if (!slot.hasMovedAimStick) {
+            let dirX = 1;
+            let dirY = 0;
+            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+            if (moveMag > 0.05) {
+              dirX = slot.movementVector.x / moveMag;
+              dirY = slot.movementVector.y / moveMag;
+              const moveAngle = Math.atan2(dirY, dirX);
+              slot.lastMovementInputAngle = moveAngle;
+              char.lastMovementInputAngle = moveAngle;
+              char.facingAngle = moveAngle;
+              char.lastThrowAimAngle = moveAngle;
+              slot.lastThrowAimAngle = moveAngle;
+            } else {
+              const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+              dirX = Math.cos(facing);
+              dirY = Math.sin(facing);
+            }
+            const forwardDist = 5.0;
+            slot.aimPos.x = char.position.x + dirX * forwardDist;
+            slot.aimPos.y = char.position.y + dirY * forwardDist;
+            slot.aimOffset.x = dirX * forwardDist;
+            slot.aimOffset.y = dirY * forwardDist;
+          } else {
+            // Preserve world aimPos instead of dragging it with player movement
+            if (slot.aimPos) {
+              slot.aimOffset.x = slot.aimPos.x - char.position.x;
+              slot.aimOffset.y = slot.aimPos.y - char.position.y;
+            }
+          }
+          isCursorVisibleNow = true;
+        } else if (isHolding) {
           const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
           const isThrowActive = !char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld);
 
