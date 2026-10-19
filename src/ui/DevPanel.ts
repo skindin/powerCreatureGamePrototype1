@@ -3101,7 +3101,7 @@ export class DevPanel {
         const threshCtrl = new PropertyControl({
           property: ds.damageThresholdHpProp,
           owner: e,
-          label: "Damage Threshold (HP)",
+          label: "Collision Damage Threshold (HP)",
           step: 1.0,
         });
         threshSocketEl.appendChild(threshCtrl.element);
