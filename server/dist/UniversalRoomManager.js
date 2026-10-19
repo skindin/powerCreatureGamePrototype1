@@ -9103,7 +9103,8 @@ class Character extends GameObject {
    * Faces in the direction the player is aiming. If not aiming (or no aim function),
    * faces in the direction the player INTENDS to move (movement input), not post-collision velocity.
    */
-  updateFacingDirection(isAimingInput, aimTargetPos, movementInput) {
+  updateFacingDirection(isAimingInput, aimTargetPos, movementInput, hasAuthoredFacingAngle = false) {
+    if (hasAuthoredFacingAngle) return;
     if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
       const dx = this.laserAimTarget.x - this.position.x;
       const dy = this.laserAimTarget.y - this.position.y;
@@ -9132,7 +9133,7 @@ class Character extends GameObject {
   /**
    * Main character update tick
    */
-  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
+  updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena, isClimbInput = false, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0, hasAuthoredFacingAngle = false) {
     var _a, _b, _c, _d, _e;
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -9261,7 +9262,7 @@ class Character extends GameObject {
     }
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     const targetFacePos = canAimThrow && lockedAimPos ? lockedAimPos : aimTargetPos;
-    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
+    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput, hasAuthoredFacingAngle);
     if (this.heldObject) {
       const heldPos = this.calculateHeldObjectPosition(arena);
       this.heldObject.position.x = heldPos.x;

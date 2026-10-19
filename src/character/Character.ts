@@ -553,8 +553,10 @@ export class Character extends GameObject {
   public updateFacingDirection(
     isAimingInput: boolean,
     aimTargetPos: Vector2D | null,
-    movementInput?: Vector2D
+    movementInput?: Vector2D,
+    hasAuthoredFacingAngle = false
   ): void {
+    if (hasAuthoredFacingAngle) return;
     // While aiming or firing laser, keep character strictly facing the laser aim target
     if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
       const dx = this.laserAimTarget.x - this.position.x;
@@ -602,7 +604,8 @@ export class Character extends GameObject {
     entities?: GameObject[],
     autoLock = false,
     lockedAimPos: Vector2D | null = null,
-    aimLockDelta = 0
+    aimLockDelta = 0,
+    hasAuthoredFacingAngle = false
   ): void {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
@@ -774,7 +777,7 @@ export class Character extends GameObject {
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     const targetFacePos = (canAimThrow && lockedAimPos) ? lockedAimPos : aimTargetPos;
 
-    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput);
+    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput, hasAuthoredFacingAngle);
 
     // 4. Update held object position if carrying one
     if (this.heldObject) {

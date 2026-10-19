@@ -18,6 +18,7 @@ export interface PlayerEntry {
   aimMovedWhileInRange?: boolean;
   lastCheckedMouseMoveTime?: number;
   wasHoldingObject?: boolean;
+  wasThrowActive?: boolean;
 }
 
 export interface GrabSuppressionState {
@@ -59,6 +60,7 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
+  private wasKeyboardThrowActive: boolean = false;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -523,6 +525,20 @@ export class PlayerManager {
       // Ability swap stays in effect until the swapped ability is released.
       const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
 
+      if (isHolding && isPrimaryNonDirectional) {
+        if (isThrowActive && !this.wasKeyboardThrowActive) {
+          // Entering throwing mode: place cursor directly in front of character (3.0 units) in current facing direction
+          const forwardDist = 3.0;
+          const facing = kChar.facingAngle ?? 0;
+          const clamped = calculateClampedForwardAimPos(kChar.position, Math.cos(facing), Math.sin(facing), forwardDist, this.arena.width, this.arena.height);
+          input.actualMousePos.x = clamped.x;
+          input.actualMousePos.y = clamped.y;
+          input.mousePos.x = clamped.x;
+          input.mousePos.y = clamped.y;
+        }
+      }
+      this.wasKeyboardThrowActive = isThrowActive;
+
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
       // 2. Mouse button is down, or
@@ -753,34 +769,23 @@ export class PlayerManager {
       const isThrowActive = isCharHolding && (!hasPrimaryAbility || Boolean(slot.isAltHeld));
 
       // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode (only if aim stick moved), movement direction when walking
-      if (slot.isLaserAiming) {
-        if (slot.hasMovedAimStick) {
-          const aimDx = aimX - cChar.position.x;
-          const aimDy = aimY - cChar.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            cChar.facingAngle = Math.atan2(aimDy, aimDx);
-          }
+      const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+      if (slot.lockedAimPos) {
+        const aimDx = slot.lockedAimPos.x - cChar.position.x;
+        const aimDy = slot.lockedAimPos.y - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
         }
-      } else if (isCharHolding && isThrowActive) {
-        if (slot.lockedAimPos) {
-          const aimDx = slot.lockedAimPos.x - cChar.position.x;
-          const aimDy = slot.lockedAimPos.y - cChar.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            cChar.facingAngle = Math.atan2(aimDy, aimDx);
-          }
-        } else if (slot.hasMovedAimStick) {
-          const aimDx = aimX - cChar.position.x;
-          const aimDy = aimY - cChar.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            cChar.facingAngle = Math.atan2(aimDy, aimDx);
-          }
+      } else if (slot.hasMovedAimStick) {
+        const aimDx = aimX - cChar.position.x;
+        const aimDy = aimY - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
         }
-      } else {
-        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-        if (moveMag > 0.05) {
-          cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
-        }
+      } else if (moveMag > 0.05) {
+        cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
       }
+      // If none of the above: DO NOT CHANGE cChar.facingAngle!
 
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
@@ -1009,6 +1014,10 @@ export class PlayerManager {
         char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
       }
 
+      if (pkt.facingAngle !== undefined) {
+        char.facingAngle = pkt.facingAngle;
+      }
+
       char.updateCharacter(
         dt,
         { x: pkt.moveX, y: pkt.moveY },
@@ -1019,12 +1028,9 @@ export class PlayerManager {
         this.arena.entities,
         false,
         (pkt as any).lockedAimPos ?? null,
-        (pkt as any).aimLockDelta ?? 0
+        (pkt as any).aimLockDelta ?? 0,
+        pkt.facingAngle !== undefined
       );
-
-      if (pkt.facingAngle !== undefined) {
-        char.facingAngle = pkt.facingAngle;
-      }
 
       // Detect newly acquired or released held object to reliably dispatch action
       const currentHeldId = char.heldObject ? char.heldObject.id : null;
@@ -1454,6 +1460,21 @@ export class PlayerManager {
         entry.wasHoldingObject = isHolding;
         slot.wasHoldingObject = isHolding;
 
+        const isThrowActive = isHolding && (!char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld));
+        if (isHolding && isThrowActive && !entry.wasThrowActive) {
+          slot.hasMovedAimStick = false;
+          const facing = char.facingAngle ?? 0;
+          const dirX = Math.cos(facing);
+          const dirY = Math.sin(facing);
+          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, 3.0, this.arena.width, this.arena.height);
+          slot.aimPos.x = clamped.x;
+          slot.aimPos.y = clamped.y;
+          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+          slot.aimOffset.x = clamped.x - char.position.x;
+          slot.aimOffset.y = clamped.y - char.position.y;
+        }
+        entry.wasThrowActive = isThrowActive;
+
         if (!slot.aimOffset) {
           slot.aimOffset = { x: 0, y: 0 };
         }
@@ -1510,7 +1531,7 @@ export class PlayerManager {
                 char.lastThrowAimAngle = moveAngle;
                 slot.lastThrowAimAngle = moveAngle;
               } else {
-                const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+                const facing = char.facingAngle ?? 0;
                 dirX = Math.cos(facing);
                 dirY = Math.sin(facing);
               }

@@ -1165,7 +1165,7 @@ export class InputManager {
               char.lastThrowAimAngle = moveAngle;
               slot.lastThrowAimAngle = moveAngle;
             } else {
-              const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
+              const facing = char.facingAngle ?? 0;
               dirX = Math.cos(facing);
               dirY = Math.sin(facing);
             }
@@ -1207,14 +1207,13 @@ export class InputManager {
 
       if (isHolding && char.isPrimaryAbilityNonDirectional()) {
         if (isLtJustPressed) {
-          // Re-enabling throwing mode: reset cursor to default forward distance (3.0 units) in front of character,
-          // in the exact direction the cursor was relative to the character when exiting throwing mode!
+          // Entering throwing mode: reset cursor to default forward distance (3.0 units) directly in front of character
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
 
-          const aimAngle = char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? (char.facingAngle ?? 0);
-          const dirX = Math.cos(aimAngle);
-          const dirY = Math.sin(aimAngle);
+          const facing = char.facingAngle ?? 0;
+          const dirX = Math.cos(facing);
+          const dirY = Math.sin(facing);
           const forwardDist = 3.0;
           const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
           slot.aimPos.x = clamped.x;
@@ -1222,9 +1221,8 @@ export class InputManager {
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
           slot.aimOffset.x = clamped.x - char.position.x;
           slot.aimOffset.y = clamped.y - char.position.y;
-          char.facingAngle = aimAngle;
-          char.lastThrowAimAngle = aimAngle;
-          slot.lastThrowAimAngle = aimAngle;
+          char.lastThrowAimAngle = facing;
+          slot.lastThrowAimAngle = facing;
         } else if (isLtJustReleased && !slot.isLaserAiming) {
           slot.hasMovedAimStick = false;
           slot.aimMovedWhileInRange = false;
