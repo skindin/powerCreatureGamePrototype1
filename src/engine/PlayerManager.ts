@@ -676,7 +676,7 @@ export class PlayerManager {
         isLaserFiring: isCtrlDown && input.isMouseDown,
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
-        isMeleeRequested: input.isKeyPressed("KeyX") || input.isKeyboardMeleeRequested,
+        isMeleeRequested: (isCtrlDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested,
         meleeAimX: kChar ? kChar.position.x + Math.cos(kChar.facingAngle ?? 0) : input.actualMousePos.x,
         meleeAimY: kChar ? kChar.position.y + Math.sin(kChar.facingAngle ?? 0) : input.actualMousePos.y,
         aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos

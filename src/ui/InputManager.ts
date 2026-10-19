@@ -398,10 +398,6 @@ export class InputManager {
 
         this.onKeyboardPickup?.();
       }
-
-      if (e.code === "KeyX") {
-        this.isKeyboardMeleeRequested = true;
-      }
     });
 
     window.addEventListener("keyup", (e) => {
@@ -425,10 +421,6 @@ export class InputManager {
 
       if (e.code === "KeyE") {
         this.isEKeyDepressed = false;
-      }
-
-      if (e.code === "KeyX") {
-        this.isKeyboardMeleeRequested = false;
       }
 
       if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
@@ -576,6 +568,11 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
+        const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight") || this.isCtrlHeld;
+        if (isCtrl) {
+          this.isKeyboardMeleeRequested = true;
+          return;
+        }
         const canLock = this.canLockAim ? this.canLockAim() : false;
         if (canLock && !this.lockedAimPos) {
           // 1. Record where mouse was
@@ -636,6 +633,7 @@ export class InputManager {
     window.addEventListener("mouseup", (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = false;
+        this.isKeyboardMeleeRequested = false;
         const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
