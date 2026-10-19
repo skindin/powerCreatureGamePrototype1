@@ -486,6 +486,17 @@ export class Renderer {
         return eff.z >= arena.wallHeight - 0.05;
       });
 
+      // 3c. Ground-Level Laser Blasts (Rendered BEFORE ground entities so objects at the same position render above the laser!)
+      for (const char of characters) {
+        if (isRemoteForThisView(char)) continue;
+        if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
+          const isElevated = char.position.z >= arena.wallHeight - 0.05;
+          if (!isElevated) {
+            this.laserRenderer.drawLaser(char, ppu, arena, this.viewSettings);
+          }
+        }
+      }
+
       // 4. Ground Entities (z < wallHeight)
       // Rendered before wall tops so top of wall renders OVER ground objects!
       for (const entity of groundRenderables) {
@@ -514,6 +525,17 @@ export class Renderer {
       for (const entity of allRenderables) {
         const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
         ShadowPass.drawObjectWallTopShadowFill(ctx, entity, arena, ppu, effPos, this.viewSettings);
+      }
+
+      // 6b. Elevated Laser Blasts (Rendered AFTER wall tops, but BEFORE elevated entities so elevated objects render above the laser!)
+      for (const char of characters) {
+        if (isRemoteForThisView(char)) continue;
+        if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
+          const isElevated = char.position.z >= arena.wallHeight - 0.05;
+          if (isElevated) {
+            this.laserRenderer.drawLaser(char, ppu, arena, this.viewSettings);
+          }
+        }
       }
 
       // 7. Elevated Entities (z >= wallHeight)
@@ -564,14 +586,6 @@ export class Renderer {
             : null;
           const cursorTarget = cursor ? { x: cursor.x, y: cursor.y } : null;
           this.trajectoryRenderer.drawTrajectory(char.activeTrajectory, ppu, arena, this.viewSettings, cursorTarget, char);
-        }
-      }
-
-      // Laser Blast (Instant targeting guide line & active energy blast beam)
-      for (const char of characters) {
-        if (isRemoteForThisView(char)) continue;
-        if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
-          this.laserRenderer.drawLaser(char, ppu, arena, this.viewSettings);
         }
       }
 

@@ -141,25 +141,7 @@ export class LaserRenderer {
         ctx.restore();
       }
 
-      // 6. Wall Impact Line (Clean perpendicular spark line if stopped by wall, no circular orb)
-      if (laser.hitWall) {
-        ctx.save();
-        const wallAngle = Math.atan2(endY - startY, endX - startX) + Math.PI / 2;
-        const splashLen = Math.max(6, beamPx * 1.2);
-        ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * powerAlpha})`;
-        ctx.lineWidth = Math.max(2, beamPx * 0.4);
-        ctx.beginPath();
-        ctx.moveTo(endX - Math.cos(wallAngle) * splashLen, endY - Math.sin(wallAngle) * splashLen);
-        ctx.lineTo(endX + Math.cos(wallAngle) * splashLen, endY + Math.sin(wallAngle) * splashLen);
-        ctx.stroke();
-
-        ctx.strokeStyle = `rgba(34, 211, 238, ${0.7 * powerAlpha})`;
-        ctx.lineWidth = Math.max(3, beamPx * 0.7);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // 7. Hit Indicators on Pierced Entities (Clean rings without orbs)
+      // 6. Hit Indicators on Pierced Entities (Clean rings without orbs)
       if (laser.hitEntities && laser.hitEntities.length > 0) {
         for (const ent of laser.hitEntities) {
           const entScreenX = ent.position.x * ppu;
@@ -235,17 +217,6 @@ export class LaserRenderer {
       ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * aimAlpha})`;
       ctx.fill();
 
-      // If blocked by wall: draw small cross-bar stop marker
-      if (laser.hitWall) {
-        const wallAngle = Math.atan2(endY - startY, endX - startX) + Math.PI / 2;
-        const barLen = 7;
-        ctx.strokeStyle = `rgba(244, 63, 94, ${0.9 * aimAlpha})`;
-        ctx.lineWidth = 2.4;
-        ctx.beginPath();
-        ctx.moveTo(endX - Math.cos(wallAngle) * barLen, endY - Math.sin(wallAngle) * barLen);
-        ctx.lineTo(endX + Math.cos(wallAngle) * barLen, endY + Math.sin(wallAngle) * barLen);
-        ctx.stroke();
-      }
       ctx.restore();
     }
 

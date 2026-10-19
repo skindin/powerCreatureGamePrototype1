@@ -134,13 +134,13 @@ export class LaserModule {
 
   /**
    * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = ((damageRate / maxDamageRate) * maxPower) * 4
+   * Power = ((damageRate / maxDamageRate) * maxPower) * 16
    */
   public calculateDemandedPower(registry?: ObjectPropertiesRegistry): number {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return (curDamage / maxDamage) * maxPower * 4;
+    return (curDamage / maxDamage) * maxPower * 16;
   }
 
   /**
@@ -153,7 +153,7 @@ export class LaserModule {
     arena: Arena,
     hoverScale = 0
   ): LaserHitResult {
-    const startZ = character.position.z + 0.35;
+    const startZ = character.position.z;
     const startX = character.position.x;
     const startY = character.position.y;
 
@@ -317,7 +317,7 @@ export class LaserModule {
     this.startPoint = {
       x: character.position.x,
       y: character.position.y,
-      z: character.position.z + 0.35,
+      z: character.position.z,
     };
     this.hitWall = rayResult.hitWall;
 

@@ -8303,19 +8303,19 @@ class LaserModule {
   }
   /**
    * Calculates the demanded power in Watts based on current damage rate and max power property:
-   * Power = ((damageRate / maxDamageRate) * maxPower) * 4
+   * Power = ((damageRate / maxDamageRate) * maxPower) * 16
    */
   calculateDemandedPower(registry) {
     const maxDamage = Math.max(1, this.getMaxDamageRate(registry));
     const curDamage = Math.max(0, this.getDamageRate(registry));
     const maxPower = Math.max(0, this.getMaxPower(registry));
-    return curDamage / maxDamage * maxPower * 4;
+    return curDamage / maxDamage * maxPower * 16;
   }
   /**
    * Computes the 3D laser ray from the character to the aim target, testing for wall obstructions.
    */
   calculateLaserRay(character, targetScreenX, targetScreenY, arena, hoverScale = 0) {
-    const startZ = character.position.z + 0.35;
+    const startZ = character.position.z;
     const startX = character.position.x;
     const startY = character.position.y;
     const scale = hoverScale > 0 ? hoverScale : arena.visualAltitudeScale ?? 0.5;
@@ -8430,7 +8430,7 @@ class LaserModule {
     this.startPoint = {
       x: character.position.x,
       y: character.position.y,
-      z: character.position.z + 0.35
+      z: character.position.z
     };
     this.hitWall = rayResult.hitWall;
     const registry = character.properties;
