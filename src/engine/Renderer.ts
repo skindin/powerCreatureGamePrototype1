@@ -579,7 +579,12 @@ export class Renderer {
         // Do NOT show throw trajectory and destination marker to a remote client / other screen
         if (isRemoteForThisView(char)) continue;
 
-        if (char.activeTrajectory) {
+        const isLaserMode = Boolean(
+          char.isLaserAiming ||
+          char.isLaserFiring ||
+          (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring))
+        );
+        if (char.activeTrajectory && !isLaserMode) {
           // Is this character's cursor currently unhidden and visible?
           const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
             ? activeAimCursorsOrIsGamepad.find((c) => c.character === char)
@@ -608,7 +613,12 @@ export class Renderer {
         const isUsingGamepad = activeAimCursorsOrIsGamepad;
         if (character && !isRemoteForThisView(character)) {
           const activeAimCursor = character.aimTarget || (isUsingGamepad ? legacyGamepadAimPos : null);
-          if (character.activeTrajectory) {
+          const isCharLaserMode = Boolean(
+            character.isLaserAiming ||
+            character.isLaserFiring ||
+            (character.laserModule && (character.laserModule.isAiming || character.laserModule.isFiring))
+          );
+          if (character.activeTrajectory && !isCharLaserMode) {
             this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
           } else if (isUsingGamepad && activeAimCursor) {
             this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);

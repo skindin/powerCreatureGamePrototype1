@@ -54,6 +54,51 @@ export interface CanvasViewport {
   offsetY: number;
 }
 
+/**
+ * Linearly clamps an aim position along a forward ray (origin + dir * forwardDist)
+ * to the boundary of the scene/game view (arena bounds).
+ * Instead of component-wise clamping which distorts angles, this performs linear ray clipping
+ * against the bounding box, preserving the exact forward angle and preventing cursor/character drift.
+ */
+export function calculateClampedForwardAimPos(
+  charPos: { x: number; y: number },
+  dirX: number,
+  dirY: number,
+  forwardDist: number,
+  arenaWidth: number,
+  arenaHeight: number,
+  margin = 0.15
+): { x: number; y: number; dist: number } {
+  const minX = margin;
+  const maxX = Math.max(minX, arenaWidth - margin);
+  const minY = margin;
+  const maxY = Math.max(minY, arenaHeight - margin);
+
+  const charX = Math.max(minX, Math.min(maxX, charPos.x));
+  const charY = Math.max(minY, Math.min(maxY, charPos.y));
+
+  let maxAllowedDist = forwardDist;
+
+  if (dirX > 0.0001) {
+    maxAllowedDist = Math.min(maxAllowedDist, (maxX - charX) / dirX);
+  } else if (dirX < -0.0001) {
+    maxAllowedDist = Math.min(maxAllowedDist, (minX - charX) / dirX);
+  }
+
+  if (dirY > 0.0001) {
+    maxAllowedDist = Math.min(maxAllowedDist, (maxY - charY) / dirY);
+  } else if (dirY < -0.0001) {
+    maxAllowedDist = Math.min(maxAllowedDist, (minY - charY) / dirY);
+  }
+
+  const finalDist = Math.max(0, maxAllowedDist);
+  return {
+    x: charX + dirX * finalDist,
+    y: charY + dirY * finalDist,
+    dist: finalDist,
+  };
+}
+
 export class InputManager {
   public canvas: HTMLCanvasElement;
   private arena: Arena;
@@ -1006,11 +1051,12 @@ export class InputManager {
         char.lastMovementInputAngle = inputAngle;
         char.facingAngle = inputAngle;
         const forwardDist = 3.0;
-        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
-        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
+        const clamped = calculateClampedForwardAimPos(char.position, Math.cos(inputAngle), Math.sin(inputAngle), forwardDist, arena.width, arena.height);
+        slot.aimPos.x = clamped.x;
+        slot.aimPos.y = clamped.y;
         slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
-        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
+        slot.aimOffset.x = clamped.x - char.position.x;
+        slot.aimOffset.y = clamped.y - char.position.y;
       }
       slot.wasHoldingObject = isHolding;
 
@@ -1078,11 +1124,12 @@ export class InputManager {
             dirY = Math.sin(facing);
           }
           const forwardDist = 5.0;
-          slot.aimPos.x = char.position.x + dirX * forwardDist;
-          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
+          slot.aimPos.x = clamped.x;
+          slot.aimPos.y = clamped.y;
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = dirX * forwardDist;
-          slot.aimOffset.y = dirY * forwardDist;
+          slot.aimOffset.x = clamped.x - char.position.x;
+          slot.aimOffset.y = clamped.y - char.position.y;
         }
       } else if (isHolding) {
         // If holding an object and player has NOT moved the right aim stick yet
@@ -1107,11 +1154,12 @@ export class InputManager {
               dirY = Math.sin(facing);
             }
             const forwardDist = 3.0;
-            slot.aimPos.x = char.position.x + dirX * forwardDist;
-            slot.aimPos.y = char.position.y + dirY * forwardDist;
+            const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
+            slot.aimPos.x = clamped.x;
+            slot.aimPos.y = clamped.y;
             slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-            slot.aimOffset.x = dirX * forwardDist;
-            slot.aimOffset.y = dirY * forwardDist;
+            slot.aimOffset.x = clamped.x - char.position.x;
+            slot.aimOffset.y = clamped.y - char.position.y;
           }
         }
       } else {
@@ -1151,11 +1199,12 @@ export class InputManager {
           const dirX = Math.cos(aimAngle);
           const dirY = Math.sin(aimAngle);
           const forwardDist = 3.0;
-          slot.aimPos.x = char.position.x + dirX * forwardDist;
-          slot.aimPos.y = char.position.y + dirY * forwardDist;
+          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
+          slot.aimPos.x = clamped.x;
+          slot.aimPos.y = clamped.y;
           slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = dirX * forwardDist;
-          slot.aimOffset.y = dirY * forwardDist;
+          slot.aimOffset.x = clamped.x - char.position.x;
+          slot.aimOffset.y = clamped.y - char.position.y;
           char.facingAngle = aimAngle;
           char.lastThrowAimAngle = aimAngle;
           slot.lastThrowAimAngle = aimAngle;
@@ -1213,11 +1262,13 @@ export class InputManager {
           slot.laserTriggerValue = 0;
         }
 
-        // Orient character towards laser aim target while in laser mode
-        const aimDx = slot.aimPos.x - char.position.x;
-        const aimDy = slot.aimPos.y - char.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          char.facingAngle = Math.atan2(aimDy, aimDx);
+        // Orient character towards laser aim target while in laser mode (only if aim stick manually moved)
+        if (slot.hasMovedAimStick) {
+          const aimDx = slot.aimPos.x - char.position.x;
+          const aimDy = slot.aimPos.y - char.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            char.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else {
         slot.isLaserFiring = false;
@@ -1265,13 +1316,15 @@ export class InputManager {
         }
       }
 
-      const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
-      const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
-      slot.aimPos.x = clampedX;
-      slot.aimPos.y = clampedY;
-      slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-      slot.aimOffset.x = clampedX - char.position.x;
-      slot.aimOffset.y = clampedY - char.position.y;
+      if (slot.hasMovedAimStick) {
+        const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
+        const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
+        slot.aimPos.x = clampedX;
+        slot.aimPos.y = clampedY;
+        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+        slot.aimOffset.x = clampedX - char.position.x;
+        slot.aimOffset.y = clampedY - char.position.y;
+      }
 
       // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
       slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);

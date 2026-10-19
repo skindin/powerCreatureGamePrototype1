@@ -1,7 +1,7 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
-import { InputManager, type GamepadSlotState } from "../ui/InputManager.js";
+import { InputManager, calculateClampedForwardAimPos, type GamepadSlotState } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
@@ -748,12 +748,14 @@ export class PlayerManager {
       const hasPrimaryAbility = cChar.hasPrimaryItemAbility();
       const isThrowActive = isCharHolding && (!hasPrimaryAbility || Boolean(slot.isAltHeld));
 
-      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode, movement direction when walking
+      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode (only if aim stick moved), movement direction when walking
       if (slot.isLaserAiming) {
-        const aimDx = aimX - cChar.position.x;
-        const aimDy = aimY - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        if (slot.hasMovedAimStick) {
+          const aimDx = aimX - cChar.position.x;
+          const aimDy = aimY - cChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            cChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
         }
       } else if (isCharHolding && isThrowActive) {
         if (slot.lockedAimPos) {
@@ -762,7 +764,7 @@ export class PlayerManager {
           if (Math.hypot(aimDx, aimDy) > 0.05) {
             cChar.facingAngle = Math.atan2(aimDy, aimDx);
           }
-        } else {
+        } else if (slot.hasMovedAimStick) {
           const aimDx = aimX - cChar.position.x;
           const aimDy = aimY - cChar.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -1456,10 +1458,11 @@ export class PlayerManager {
               dirY = Math.sin(facing);
             }
             const forwardDist = 5.0;
-            slot.aimPos.x = char.position.x + dirX * forwardDist;
-            slot.aimPos.y = char.position.y + dirY * forwardDist;
-            slot.aimOffset.x = dirX * forwardDist;
-            slot.aimOffset.y = dirY * forwardDist;
+            const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, this.arena.width, this.arena.height);
+            slot.aimPos.x = clamped.x;
+            slot.aimPos.y = clamped.y;
+            slot.aimOffset.x = clamped.x - char.position.x;
+            slot.aimOffset.y = clamped.y - char.position.y;
           } else {
             // Preserve world aimPos instead of dragging it with player movement
             if (slot.aimPos) {
@@ -1492,10 +1495,11 @@ export class PlayerManager {
                 dirY = Math.sin(facing);
               }
               const forwardDist = 3.0;
-              slot.aimPos.x = char.position.x + dirX * forwardDist;
-              slot.aimPos.y = char.position.y + dirY * forwardDist;
-              slot.aimOffset.x = dirX * forwardDist;
-              slot.aimOffset.y = dirY * forwardDist;
+              const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, this.arena.width, this.arena.height);
+              slot.aimPos.x = clamped.x;
+              slot.aimPos.y = clamped.y;
+              slot.aimOffset.x = clamped.x - char.position.x;
+              slot.aimOffset.y = clamped.y - char.position.y;
             }
           } else {
             // Preserve world aimPos instead of dragging it with player movement

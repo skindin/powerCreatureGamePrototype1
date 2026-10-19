@@ -749,7 +749,13 @@ export class Character extends GameObject {
     this.isAiming = isAimingInput;
     this.aimTarget = isAimingInput ? aimTargetPos : null;
 
-    if (this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
+    const isLaserModeActive = Boolean(
+      this.isLaserAiming ||
+      this.isLaserFiring ||
+      (this.laserModule && (this.laserModule.isAiming || this.laserModule.isFiring))
+    );
+
+    if (!isLaserModeActive && this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
       if (this.hasUserSetArcRatio && this.savedArcRatio !== undefined) {
         this.throwModule.hasUserSetArcRatio = true;
         this.throwModule.savedArcRatio = this.savedArcRatio;
