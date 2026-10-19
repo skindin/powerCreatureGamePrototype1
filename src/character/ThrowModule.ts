@@ -951,8 +951,7 @@ export class ThrowModule {
     if (!launch) return null;
 
     // Energy consumption check based on actual kinetic work of the launch:
-    // Only deduct when launchVel is not provided (authoritative local launch executor):
-    if (this.consumesEnergy && !launchVel) {
+    if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
         if (bus.isExhausted) {

@@ -6579,7 +6579,7 @@ class ThrowModule {
       autoLock
     );
     if (!launch) return null;
-    if (this.consumesEnergy && !launchVel) {
+    if (this.consumesEnergy) {
       const bus = character.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
         if (bus.isExhausted) {

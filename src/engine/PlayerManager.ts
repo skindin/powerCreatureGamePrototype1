@@ -907,7 +907,7 @@ export class PlayerManager {
           ? { x: (pkt as any).launchStartX, y: (pkt as any).launchStartY, z: (pkt as any).launchStartZ }
           : char.activeTrajectory?.launchPos;
 
-        char.throwModule.throwHeldObject(
+        const thrown = char.throwModule.throwHeldObject(
           char,
           throwAimX,
           throwAimY,
@@ -918,49 +918,52 @@ export class PlayerManager {
           clientLaunchVel,
           clientLaunchPos
         );
-        char.isUsingItem = false;
-        char.eatRateWatts = 0;
-        input.arcModulationCursor = null;
-        input.arcModulationDeltaY = 0;
 
-        // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
-        if (entry && entry.slotIndex !== undefined) {
-          const slot = input.gamepadSlots.get(entry.slotIndex);
-          if (slot) {
-            slot.hasMovedAimStick = false;
-            slot.aimMovedWhileInRange = false;
-            slot.isLockHeld = false;
-            slot.lockedAimPos = null;
-            slot.arcModulationCursor = null;
-            slot.arcModulationDeltaY = 0;
-            slot.lastThrowAimAngle = undefined;
+        if (thrown) {
+          char.isUsingItem = false;
+          char.eatRateWatts = 0;
+          input.arcModulationCursor = null;
+          input.arcModulationDeltaY = 0;
+
+          // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
+          if (entry && entry.slotIndex !== undefined) {
+            const slot = input.gamepadSlots.get(entry.slotIndex);
+            if (slot) {
+              slot.hasMovedAimStick = false;
+              slot.aimMovedWhileInRange = false;
+              slot.isLockHeld = false;
+              slot.lockedAimPos = null;
+              slot.arcModulationCursor = null;
+              slot.arcModulationDeltaY = 0;
+              slot.lastThrowAimAngle = undefined;
+            }
           }
-        }
 
-        const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-        const action: ReliableActionCommand = {
-          actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
-          type: "throw",
-          tick: pkt.tick ?? 0,
-          timestamp: performance.now(),
-          playerId: actPlayerId,
-          targetObjectId: thrownObj.id,
-          aimX: throwAimX,
-          aimY: throwAimY,
-          isLockHeld: pkt.isLockHeld,
-          ...(clientLaunchVel ? {
-            launchVx: clientLaunchVel.vx,
-            launchVy: clientLaunchVel.vy,
-            launchVz: clientLaunchVel.vz,
-          } : {}),
-          ...(clientLaunchPos ? {
-            launchStartX: clientLaunchPos.x,
-            launchStartY: clientLaunchPos.y,
-            launchStartZ: clientLaunchPos.z,
-          } : {})
-        } as any;
-        if (!isReplay) {
-          this.onReliableActionDispatched?.(action);
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          const action: ReliableActionCommand = {
+            actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
+            type: "throw",
+            tick: pkt.tick ?? 0,
+            timestamp: performance.now(),
+            playerId: actPlayerId,
+            targetObjectId: thrownObj.id,
+            aimX: throwAimX,
+            aimY: throwAimY,
+            isLockHeld: pkt.isLockHeld,
+            ...(clientLaunchVel ? {
+              launchVx: clientLaunchVel.vx,
+              launchVy: clientLaunchVel.vy,
+              launchVz: clientLaunchVel.vz,
+            } : {}),
+            ...(clientLaunchPos ? {
+              launchStartX: clientLaunchPos.x,
+              launchStartY: clientLaunchPos.y,
+              launchStartZ: clientLaunchPos.z,
+            } : {})
+          } as any;
+          if (!isReplay) {
+            this.onReliableActionDispatched?.(action);
+          }
         }
       }
 
