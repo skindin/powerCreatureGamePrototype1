@@ -179,9 +179,9 @@ export class HudOverlayPass {
     ctx.save();
     // Translucent soft hazard zone on ground
     const gradient = ctx.createRadialGradient(px, py, rPixels * 0.2, px, py, rPixels);
-    gradient.addColorStop(0, "rgba(239, 68, 68, 0.18)");
-    gradient.addColorStop(0.7, "rgba(239, 68, 68, 0.10)");
-    gradient.addColorStop(1, "rgba(239, 68, 68, 0.0)");
+    gradient.addColorStop(0, "rgba(168, 85, 247, 0.20)");
+    gradient.addColorStop(0.7, "rgba(168, 85, 247, 0.10)");
+    gradient.addColorStop(1, "rgba(168, 85, 247, 0.0)");
 
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -189,7 +189,7 @@ export class HudOverlayPass {
     ctx.fill();
 
     // Dashed outer boundary ring
-    ctx.strokeStyle = "rgba(239, 68, 68, 0.55)";
+    ctx.strokeStyle = "rgba(168, 85, 247, 0.65)";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 6]);
     ctx.beginPath();

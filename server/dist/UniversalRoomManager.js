@@ -10234,7 +10234,7 @@ class DamageAuraModule {
           name: "Aura",
           type: "continuous",
           rate,
-          color: "#ef4444",
+          color: "#a855f7",
           isHeal: false
         });
       }

@@ -94,7 +94,7 @@ export class DamageAuraModule {
           name: "Aura",
           type: "continuous",
           rate: rate,
-          color: "#ef4444",
+          color: "#a855f7",
           isHeal: false,
         });
       }
