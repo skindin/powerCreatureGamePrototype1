@@ -1631,31 +1631,25 @@ export class Renderer {
     const reachPx = reach * ppu * (0.7 + 0.3 * progress);
     const halfWidthPx = (width * 0.5) * ppu;
 
-    const startX = Math.max(0, 0.25 * ppu);
-    const cornerR = Math.min(halfWidthPx, (reachPx - startX) * 0.5);
+    const startX = Math.max(0, 0.15 * ppu);
+    const radiusX = Math.max(1, reachPx - startX);
+    const radiusY = halfWidthPx;
 
-    // Subtle forward shock glow fill
+    // Subtle forward organic glow fill
     ctx.fillStyle = char.playerColor || "#ef4444";
-    ctx.globalAlpha = alpha * 0.20;
+    ctx.globalAlpha = alpha * 0.18;
     ctx.beginPath();
-    ctx.moveTo(startX, -halfWidthPx);
-    ctx.lineTo(reachPx - cornerR, -halfWidthPx);
-    ctx.arc(reachPx - cornerR, 0, cornerR, -Math.PI * 0.5, Math.PI * 0.5, false);
-    ctx.lineTo(startX, halfWidthPx);
+    ctx.ellipse(startX, 0, radiusX, radiusY, 0, -Math.PI * 0.5, Math.PI * 0.5, false);
     ctx.closePath();
     ctx.fill();
 
-    // Crisp forward-facing U-shaped strike wave (open at the character body)
+    // Crisp, perfectly smooth organic U-shaped strike wave
     ctx.globalAlpha = alpha * 0.90;
     ctx.strokeStyle = char.playerColor || "#ffffff";
     ctx.lineWidth = Math.max(1.5, 3.0 * (1 - progress * 0.5));
     ctx.lineCap = "round";
-    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(startX, -halfWidthPx);
-    ctx.lineTo(reachPx - cornerR, -halfWidthPx);
-    ctx.arc(reachPx - cornerR, 0, cornerR, -Math.PI * 0.5, Math.PI * 0.5, false);
-    ctx.lineTo(startX, halfWidthPx);
+    ctx.ellipse(startX, 0, radiusX, radiusY, 0, -Math.PI * 0.5, Math.PI * 0.5, false);
     ctx.stroke();
 
     ctx.restore();
