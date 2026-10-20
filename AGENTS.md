@@ -4,6 +4,7 @@
 > You **MUST** read this document at the start of every session before doing research, planning, or editing code.  
 > **Anti-Loop Policy**: Execute directly on Step 1 or Step 2. Never get stuck in analysis loops (no multi-file reads, no redundant searches, no speculation).  
 > **No-Journal Policy**: Do NOT log task updates, bug fixes, or routine changelogs here. This file is strictly for architecture, rules, and protected file tiers. Keep edits minimal.  
+> **No-LaTeX Policy**: Antigravity does **NOT** parse LaTeX math syntax (`$...$` or `$$...$$`). Never use LaTeX math blocks or dollar-sign equations in responses or docs. Use clean code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode symbols (`ω`, `θ`, `Δ`, `²`, `×`, `√`).  
 > **Git Rule**: You **MUST** push to origin (`git push origin <branch>`) every single time you commit. Never leave commits unpushed.  
 
 ---
@@ -28,8 +29,8 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 > 1. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
 > 2. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
 > 3. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
-> 4. `src/engine/GravityModule.ts` — Vertical gravity acceleration ($g$) and airborne physics.
-> 5. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate ($z$), velocity ($v_z$), and flight height.
+> 4. `src/engine/GravityModule.ts` — Vertical gravity acceleration (`g`) and airborne physics.
+> 5. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate (`z`), velocity (`v_z`), and flight height.
 > 6. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
 > 7. `src/engine/ColliderModule.ts` — Physical collider radius, CCD sweep eligibility (`canSweep`), and dynamic threshold.
 > 8. `src/engine/RigidbodyModule.ts` — Kinematic 2D linear velocity, mass property (`massProp`), vertical velocity, and collision policy (`discrete`/`continuous`/`dynamic`).
@@ -81,14 +82,14 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 - **Energy & Stamina Model**:
   - `Behavior-Driven Power`: Abilities directly dictate their own maximum power capacity via dedicated `DynamicProperty` sockets (`sprintPowerCapacityProp`, `walkPowerCapacityProp`, `climbPowerCapacityProp`, `maxPowerProp` for laser, `throwPowerCapacityProp`, `jumpPowerCapacityProp`).
   - `EnergyBus`: Exists strictly for stamina limits and exhaustion state; does NOT dictate max power capacity.
-  - `Stamina Reservoir`: Energy reservoir measured in Joules (default 5,000 J). Drains directly by $\Delta \text{Stamina} = P \cdot dt\text{ J}$. Recovers when resting (0W physical exertion) at $\text{staminaRegenRate}$ (default 500 W = 500 J/s).
-  - `Energy Pool`: 10,000 J default food calorie reservoir (does not passively regenerate). Instant bursts (jump/throw) deduct mechanical work ($E / 0.25$ muscle efficiency) directly in Joules from both stamina and the pool.
+  - `Stamina Reservoir`: Energy reservoir measured in Joules (default 5,000 J). Drains directly by `ΔStamina = P × dt J`. Recovers when resting (0W physical exertion) at `staminaRegenRate` (default 500 W = 500 J/s).
+  - `Energy Pool`: 10,000 J default food calorie reservoir (does not passively regenerate). Instant bursts (jump/throw) deduct mechanical work (`E / 0.25` muscle efficiency) directly in Joules from both stamina and the pool.
   - `Exhaustion Gatekeeping`: Exhausted bus strictly denies all power/burst requests (`canAfford`, `requestInstantBurst`, `requestPower`) until stamina recovers past 20% threshold.
 - **Consumable & Prefab Systems**: Held items transfer energy/health with cube-root volumetric shrinking; `PrefabManager` & `SceneSpawnerManager` manage archetypes and periodic world spawns.
 - **HUD & Status Displays**: Dual-column gauges (Health/Modifiers on left, Energy/Stamina on right) with lowercase `/s` rates and signed ability tags.
 - **Multiplayer Replication**: Authoritative 60Hz server world (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client prediction, soft reconciliation, and private energy telemetry.
 - **Input & Device Assignment**: First active device (gamepad or keyboard/touch) claims `baseCharacter`; hot-swappable controller detection.
-- **Throwing & Trajectory System**: Ballistic trajectory solver with visual altitude offset ($Y_{\text{phys}} = Y_{\text{screen}} + Z \cdot \text{scale}$), ground footprint clearance tests, and elevated wall landing resolution.
+- **Throwing & Trajectory System**: Ballistic trajectory solver with visual altitude offset (`Y_phys = Y_screen + Z × scale`), ground footprint clearance tests, and elevated wall landing resolution.
 
 ---
 
@@ -113,4 +114,5 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 3. **Push on Commit**: Push to origin (`git push origin <branch>`) every single time you commit.
 4. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously.
 5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
+6. **No-LaTeX Policy**: Antigravity UI does NOT parse LaTeX math formatting (`$...$` or `$$...$$`). Always use code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode characters (`ω`, `θ`, `Δ`, `×`, `²`, `√`).
 
