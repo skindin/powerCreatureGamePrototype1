@@ -57,6 +57,9 @@ export class Prefab {
       cloneRoll = new RollModule({
         enabled: this.archetype.rollModule.enabled,
         rollResistance: this.archetype.rollModule.rollResistance,
+        bumpyRollEnabled: this.archetype.rollModule.bumpyRollEnabled,
+        bumpiness: this.archetype.rollModule.bumpiness,
+        seed: this.archetype.rollModule.seed,
       });
     }
 

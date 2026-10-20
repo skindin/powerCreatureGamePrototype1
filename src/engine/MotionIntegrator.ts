@@ -23,6 +23,9 @@ export class MotionIntegrator {
         // Surface impact (hitting floor or top of wall from above)
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.rollModule) {
+            entity.rollModule.lastContactRadius = 0;
+          }
           if (entity.isInFlight) {
             entity.isInFlight = false;
             entity.originalThrower = null;
@@ -192,6 +195,39 @@ export class MotionIntegrator {
               const signZ = Math.sign(roll.angularVelocity.z);
               const magZ = Math.abs(roll.angularVelocity.z);
               roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
+            }
+          }
+
+          // Bumpy Roll Feature: irregular surface facets kick upward into mini airborne hops
+          if (roll.bumpyRollEnabled && dt > 0) {
+            const currentR = roll.getContactRadius(R, entity.properties);
+            if (roll.lastContactRadius <= 0) {
+              roll.lastContactRadius = currentR;
+            }
+            const deltaR = currentR - roll.lastContactRadius;
+            roll.lastContactRadius = currentR;
+
+            const vzBump = deltaR / dt;
+            const currentSpeed = Math.hypot(entity.velocity.x, entity.velocity.y);
+
+            // Natural kinematic liftoff when upward facet slope kicks center of mass
+            if (vzBump > 0.08 && currentSpeed > 0.1) {
+              const mass = entity.mass > 0 ? entity.mass : 1.0;
+              const curKinetic = 0.5 * mass * (currentSpeed * currentSpeed);
+              // Max upward kinetic energy is bounded by total horizontal kinetic energy
+              const vzLift = Math.min(vzBump, currentSpeed);
+              const liftEnergy = 0.5 * mass * (vzLift * vzLift);
+
+              entity.verticalVelocity = Math.max(entity.verticalVelocity, vzLift);
+
+              // Natural rolling resistance from collision impact: kinetic energy conversion
+              const newKinetic = Math.max(0, curKinetic - liftEnergy);
+              const speedRatio = curKinetic > 0.0001 ? Math.sqrt(newKinetic / curKinetic) : 0;
+
+              entity.velocity.x *= speedRatio;
+              entity.velocity.y *= speedRatio;
+              roll.angularVelocity.x *= speedRatio;
+              roll.angularVelocity.y *= speedRatio;
             }
           }
 

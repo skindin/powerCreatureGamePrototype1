@@ -57,7 +57,11 @@ export class PrefabManager {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.45 }),
+      rollModule: new RollModule({
+        rollResistance: 0.45,
+        bumpyRollEnabled: true,
+        bumpiness: 0.28,
+      }),
     });
 
     const stonePrefab = new Prefab({
@@ -109,6 +113,9 @@ export class PrefabManager {
       cloneRoll = new RollModule({
         enabled: entity.rollModule.enabled,
         rollResistance: entity.rollModule.rollResistance,
+        bumpyRollEnabled: entity.rollModule.bumpyRollEnabled,
+        bumpiness: entity.rollModule.bumpiness,
+        seed: entity.rollModule.seed,
       });
     }
 

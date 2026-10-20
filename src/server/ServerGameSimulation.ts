@@ -162,6 +162,9 @@ export class ServerGameSimulation {
           ? new RollModule({
               rollResistance: o.rollModule.rollResistance,
               angularVelocity: { ...o.rollModule.angularVelocity },
+              bumpyRollEnabled: o.rollModule.bumpyRollEnabled,
+              bumpiness: o.rollModule.bumpiness,
+              seed: o.rollModule.seed,
             })
           : undefined,
         consumableModule: o.consumableModule

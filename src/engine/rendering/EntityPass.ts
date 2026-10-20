@@ -164,14 +164,38 @@ export class EntityPass {
       ctx.stroke();
     } else {
       ctx.beginPath();
-      ctx.arc(x, y, renderRadius, 0, Math.PI * 2);
+      const roll = obj.rollModule;
+      if (roll && roll.enabled && roll.bumpyRollEnabled && roll.getBumpiness(obj.properties) > 0.01) {
+        const steps = 24;
+        for (let i = 0; i <= steps; i++) {
+          const angle = (i / steps) * Math.PI * 2;
+          const cosA = Math.cos(angle);
+          const sinA = Math.sin(angle);
+          const r = roll.getRadiusAtWorldDirection({ x: cosA, y: sinA, z: 0 }, renderRadius, obj.properties);
+          const vx = x + cosA * r;
+          const vy = y + sinA * r;
+          if (i === 0) ctx.moveTo(vx, vy);
+          else ctx.lineTo(vx, vy);
+        }
+        ctx.closePath();
+      } else {
+        ctx.arc(x, y, renderRadius, 0, Math.PI * 2);
+      }
       ctx.fillStyle = obj.color;
       ctx.fill();
-      const primaryTargetChar = targetingChars[0];
-      const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
-      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
-      ctx.stroke();
+      const isBumpy = !!(roll && roll.enabled && roll.bumpyRollEnabled && roll.getBumpiness(obj.properties) > 0.01);
+      if (isBumpy) {
+        // Bumpy objects keep a subtle neutral outline so selection highlights only the plain circle
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.28)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      } else {
+        const primaryTargetChar = targetingChars[0];
+        const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
+        ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+        ctx.stroke();
+      }
 
       // Food Stem & Leaf details
       if (obj.foodModule) {
@@ -206,7 +230,7 @@ export class EntityPass {
     EntityPass.drawConsumableEatingRing(ctx, obj, allCharacters, x, y, renderRadius);
 
     if (isWithinPickupRange) {
-      const grabRadius = realRadius + 2;
+      const grabRadius = renderRadius + 2;
       ctx.save();
       ctx.beginPath();
       if (obj.visualShape === "box") {

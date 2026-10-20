@@ -4458,6 +4458,9 @@ class MotionIntegrator {
         entity.position.z += entity.verticalVelocity * dt;
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.rollModule) {
+            entity.rollModule.lastContactRadius = 0;
+          }
           if (entity.isInFlight) {
             entity.isInFlight = false;
             entity.originalThrower = null;
@@ -4589,6 +4592,29 @@ class MotionIntegrator {
               const signZ = Math.sign(roll.angularVelocity.z);
               const magZ = Math.abs(roll.angularVelocity.z);
               roll.angularVelocity.z = magZ <= zDecel ? 0 : signZ * (magZ - zDecel);
+            }
+          }
+          if (roll.bumpyRollEnabled && dt > 0) {
+            const currentR = roll.getContactRadius(R, entity.properties);
+            if (roll.lastContactRadius <= 0) {
+              roll.lastContactRadius = currentR;
+            }
+            const deltaR = currentR - roll.lastContactRadius;
+            roll.lastContactRadius = currentR;
+            const vzBump = deltaR / dt;
+            const currentSpeed = Math.hypot(entity.velocity.x, entity.velocity.y);
+            if (vzBump > 0.08 && currentSpeed > 0.1) {
+              const mass = entity.mass > 0 ? entity.mass : 1;
+              const curKinetic = 0.5 * mass * (currentSpeed * currentSpeed);
+              const vzLift = Math.min(vzBump, currentSpeed);
+              const liftEnergy = 0.5 * mass * (vzLift * vzLift);
+              entity.verticalVelocity = Math.max(entity.verticalVelocity, vzLift);
+              const newKinetic = Math.max(0, curKinetic - liftEnergy);
+              const speedRatio = curKinetic > 1e-4 ? Math.sqrt(newKinetic / curKinetic) : 0;
+              entity.velocity.x *= speedRatio;
+              entity.velocity.y *= speedRatio;
+              roll.angularVelocity.x *= speedRatio;
+              roll.angularVelocity.y *= speedRatio;
             }
           }
           roll.updateVisualPhase(dt);
@@ -10373,18 +10399,42 @@ class SnapshotManager {
     };
   }
 }
+function lcgRandom(seed) {
+  let s = seed >>> 0 || 12345;
+  return () => {
+    s = Math.imul(1664525, s) + 1013904223 >>> 0;
+    return s / 4294967296;
+  };
+}
 class RollModule {
   constructor(options = {}) {
     __publicField(this, "enabled", true);
     /** Dynamic angular velocity in 3 dimensions (rad/s around X, Y, Z axes) */
     __publicField(this, "angularVelocity", { x: 0, y: 0, z: 0 });
+    /** 3D rotation quaternion tracking orientation in world space */
+    __publicField(this, "orientation", { x: 0, y: 0, z: 0, w: 1 });
     /**
      * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
      * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
      */
     __publicField(this, "rollResistanceProp");
+    /**
+     * Toggleable bumpy rolling feature: simulates irregular rock roughness and airborne hops.
+     * Independent from baseline roll resistance.
+     */
+    __publicField(this, "bumpyRollEnabled", true);
+    /**
+     * Bumpiness magnitude property (0.0 = perfectly smooth circle, 0.3 = natural rock, 1.0 = heavy rugged stone).
+     * Dictates how deeply flatter facets are carved inward below the collider envelope.
+     */
+    __publicField(this, "bumpinessProp");
+    /** Seed used to deterministically generate this object's static 3D surface roughness */
+    __publicField(this, "seed");
+    /** Last measured ground contact radius (used to calculate vertical rate of change dr/dt) */
+    __publicField(this, "lastContactRadius", 0);
     /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
     __publicField(this, "visualPhase", 0);
+    __publicField(this, "_coeff");
     var _a, _b, _c;
     this.enabled = options.enabled ?? true;
     this.angularVelocity = {
@@ -10393,6 +10443,21 @@ class RollModule {
       z: ((_c = options.angularVelocity) == null ? void 0 : _c.z) ?? 0
     };
     this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
+    this.bumpyRollEnabled = options.bumpyRollEnabled ?? true;
+    this.bumpinessProp = new DynamicProperty(options.bumpiness ?? 0.22);
+    this.seed = options.seed ?? Math.floor(Math.random() * 1e5);
+    const rng = lcgRandom(this.seed);
+    this._coeff = {
+      a1: rng() * 2 - 1,
+      a2: rng() * 2 - 1,
+      a3: rng() * 2 - 1,
+      b1: rng() * 2 - 1,
+      b2: rng() * 2 - 1,
+      b3: rng() * 2 - 1,
+      c1: rng() * 2 - 1,
+      c2: rng() * 2 - 1,
+      c3: rng() * 2 - 1
+    };
   }
   get rollResistance() {
     return this.rollResistanceProp.literalValue;
@@ -10403,11 +10468,104 @@ class RollModule {
   getRollResistance(registry) {
     return this.rollResistanceProp.get(registry);
   }
+  get bumpiness() {
+    return this.bumpinessProp.literalValue;
+  }
+  set bumpiness(val) {
+    this.bumpinessProp.literalValue = Math.max(0, Math.min(1, val));
+  }
+  getBumpiness(registry) {
+    return Math.max(0, Math.min(1, this.bumpinessProp.get(registry)));
+  }
   /**
    * Total magnitude of 3D angular velocity (|ω| in rad/s)
    */
   get angularSpeed() {
     return Math.hypot(this.angularVelocity.x, this.angularVelocity.y, this.angularVelocity.z);
+  }
+  /**
+   * Evaluates the 3D spherical harmonic roughness in local body space.
+   * Returns a normalized value in [0, 1] where 1.0 = peak bump (nominal radius), 0.0 = deepest flat.
+   */
+  getRoughnessOffset(x, y, z) {
+    const c = this._coeff;
+    const h1 = c.a1 * x * x + c.a2 * y * y + c.a3 * z * z;
+    const h2 = c.b1 * x * y + c.b2 * y * z + c.b3 * z * x;
+    const h3 = c.c1 * (x * x * x - 3 * x * y * y) + c.c2 * (y * y * y - 3 * y * z * z) + c.c3 * (z * z * z - 3 * z * x * x);
+    const raw = 0.5 + 0.25 * h1 + 0.15 * h2 + 0.1 * h3;
+    return Math.max(0, Math.min(1, raw));
+  }
+  /**
+   * Calculates the ground contact radius at the bottom touchpoint.
+   * Guarantees the radius is ALWAYS <= nominalRadius so the rock never extends above/beyond
+   * the circular collider and never visually floats above the floor.
+   */
+  getContactRadius(nominalRadius, registry) {
+    if (!this.bumpyRollEnabled) return nominalRadius;
+    const bumpiness = this.getBumpiness(registry);
+    if (bumpiness <= 1e-3) return nominalRadius;
+    const q = this.orientation;
+    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
+    const vx = 0, vy = 0, vz = -1;
+    const ix = qw * vx + qy * vz - qz * vy;
+    const iy = qw * vy + qz * vx - qx * vz;
+    const iz = qw * vz + qx * vy - qy * vx;
+    const iw = -qx * vx - qy * vy - qz * vz;
+    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+    const rough = this.getRoughnessOffset(ux, uy, uz);
+    return nominalRadius * (1 - bumpiness * (1 - rough));
+  }
+  /**
+   * Evaluates the radius at an arbitrary direction in world space, rotated by current orientation.
+   * Useful for visual rendering passes.
+   */
+  getRadiusAtWorldDirection(worldDir, nominalRadius, registry) {
+    if (!this.bumpyRollEnabled) return nominalRadius;
+    const bumpiness = this.getBumpiness(registry);
+    if (bumpiness <= 1e-3) return nominalRadius;
+    const q = this.orientation;
+    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
+    const vx = worldDir.x, vy = worldDir.y, vz = worldDir.z;
+    const ix = qw * vx + qy * vz - qz * vy;
+    const iy = qw * vy + qz * vx - qx * vz;
+    const iz = qw * vz + qx * vy - qy * vx;
+    const iw = -qx * vx - qy * vy - qz * vz;
+    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+    const rough = this.getRoughnessOffset(ux, uy, uz);
+    return nominalRadius * (1 - bumpiness * (1 - rough));
+  }
+  /**
+   * Advance 3D orientation quaternion based on angular velocity.
+   */
+  updateOrientation(dt) {
+    const wx = this.angularVelocity.x;
+    const wy = this.angularVelocity.y;
+    const wz = this.angularVelocity.z;
+    const speed = Math.hypot(wx, wy, wz);
+    if (speed > 1e-4 && dt > 0) {
+      const halfAngle = speed * dt * 0.5;
+      const sinHalf = Math.sin(halfAngle);
+      const dqx = wx / speed * sinHalf;
+      const dqy = wy / speed * sinHalf;
+      const dqz = wz / speed * sinHalf;
+      const dqw = Math.cos(halfAngle);
+      const q = this.orientation;
+      const nx = dqw * q.x + dqx * q.w + dqy * q.z - dqz * q.y;
+      const ny = dqw * q.y - dqx * q.z + dqy * q.w + dqz * q.x;
+      const nz = dqw * q.z + dqx * q.y - dqy * q.x + dqz * q.w;
+      const nw = dqw * q.w - dqx * q.x - dqy * q.y - dqz * q.z;
+      const mag = Math.hypot(nx, ny, nz, nw);
+      if (mag > 1e-5) {
+        this.orientation.x = nx / mag;
+        this.orientation.y = ny / mag;
+        this.orientation.z = nz / mag;
+        this.orientation.w = nw / mag;
+      }
+    }
   }
   /**
    * Advance the visual rotation phase based on current angular velocity
@@ -10417,6 +10575,7 @@ class RollModule {
     if (speed > 1e-3) {
       this.visualPhase = (this.visualPhase + speed * dt) % (Math.PI * 2);
     }
+    this.updateOrientation(dt);
   }
 }
 class ConsumableModule {
@@ -10742,7 +10901,10 @@ class Prefab {
     if (this.archetype.rollModule) {
       cloneRoll = new RollModule({
         enabled: this.archetype.rollModule.enabled,
-        rollResistance: this.archetype.rollModule.rollResistance
+        rollResistance: this.archetype.rollModule.rollResistance,
+        bumpyRollEnabled: this.archetype.rollModule.bumpyRollEnabled,
+        bumpiness: this.archetype.rollModule.bumpiness,
+        seed: this.archetype.rollModule.seed
       });
     }
     const spawnPos = {
@@ -10876,7 +11038,11 @@ class PrefabManager {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.45 })
+      rollModule: new RollModule({
+        rollResistance: 0.45,
+        bumpyRollEnabled: true,
+        bumpiness: 0.28
+      })
     });
     const stonePrefab = new Prefab({
       id: "prefab_stone",
@@ -10919,7 +11085,10 @@ class PrefabManager {
     if (entity.rollModule) {
       cloneRoll = new RollModule({
         enabled: entity.rollModule.enabled,
-        rollResistance: entity.rollModule.rollResistance
+        rollResistance: entity.rollModule.rollResistance,
+        bumpyRollEnabled: entity.rollModule.bumpyRollEnabled,
+        bumpiness: entity.rollModule.bumpiness,
+        seed: entity.rollModule.seed
       });
     }
     const archetype = new GameObjectClass({
@@ -12008,7 +12177,10 @@ class ServerGameSimulation {
         visualShape: o.visualShape,
         rollModule: o.rollModule ? new RollModule({
           rollResistance: o.rollModule.rollResistance,
-          angularVelocity: { ...o.rollModule.angularVelocity }
+          angularVelocity: { ...o.rollModule.angularVelocity },
+          bumpyRollEnabled: o.rollModule.bumpyRollEnabled,
+          bumpiness: o.rollModule.bumpiness,
+          seed: o.rollModule.seed
         }) : void 0,
         consumableModule: o.consumableModule ? new ConsumableModule({
           tag: o.consumableModule.tag,

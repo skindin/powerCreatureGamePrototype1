@@ -1389,6 +1389,11 @@ export class DevPanel {
           ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
           ${rollFricWarning}
           <div id="prop-socket-roll-resist"></div>
+          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
+            <span style="font-size: 0.8rem; color: #cbd5e1;">Bumpy Roll (Hop on Bumps)</span>
+            <input type="checkbox" id="check-roll-bumpy-enabled" ${e.rollModule?.bumpyRollEnabled ? 'checked' : ''}>
+          </div>
+          <div id="prop-socket-roll-bumpiness" style="display: ${e.rollModule?.bumpyRollEnabled ? 'block' : 'none'};"></div>
           </div>
         </div>
       `;
@@ -2512,6 +2517,33 @@ export class DevPanel {
         step: 0.05,
       });
       rollResistSocketEl.appendChild(rollCtrl.element);
+    }
+
+    // Bumpy Roll Feature (Toggle & Property Sockets)
+    const checkBumpyRoll = this.container.querySelector("#check-roll-bumpy-enabled") as HTMLInputElement | null;
+    if (checkBumpyRoll && e.rollModule) {
+      checkBumpyRoll.addEventListener("change", () => {
+        if (e.rollModule) {
+          e.rollModule.bumpyRollEnabled = checkBumpyRoll.checked;
+          const bumpinessEl = this.container.querySelector("#prop-socket-roll-bumpiness") as HTMLElement | null;
+          const hopEffEl = this.container.querySelector("#prop-socket-roll-hop-efficiency") as HTMLElement | null;
+          if (bumpinessEl) bumpinessEl.style.display = checkBumpyRoll.checked ? "block" : "none";
+          if (hopEffEl) hopEffEl.style.display = checkBumpyRoll.checked ? "block" : "none";
+        }
+      });
+    }
+
+    const rollBumpSocketEl = this.container.querySelector("#prop-socket-roll-bumpiness");
+    if (rollBumpSocketEl && e.rollModule) {
+      const bumpCtrl = new PropertyControl({
+        property: e.rollModule.bumpinessProp,
+        owner: e,
+        label: "Bumpiness (0=Smooth, 1=Rocky)",
+        step: 0.01,
+        min: 0.0,
+        max: 1.0,
+      });
+      rollBumpSocketEl.appendChild(bumpCtrl.element);
     }
 
     // Gravity Module (Global Arena Gravity Control)
@@ -4214,7 +4246,7 @@ export class DevPanel {
         enabled: orig.verticalPositionModule.enabled,
       }) : null,
       gravityModule: orig.gravityModule ? new GravityModule({ enabled: orig.gravityModule.enabled }) : null,
-      rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance, enabled: orig.rollModule.enabled }) : null,
+      rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance, enabled: orig.rollModule.enabled, bumpyRollEnabled: orig.rollModule.bumpyRollEnabled, bumpiness: orig.rollModule.bumpiness, seed: orig.rollModule.seed }) : null,
     });
 
     this.onSpawnObject(clone);

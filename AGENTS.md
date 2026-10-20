@@ -28,7 +28,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 >
 > 1. `src/engine/FrictionModule.ts` — Ground friction & surface deceleration.
 > 2. `src/engine/BounceModule.ts` — Restitution & velocity damping on collision bounces.
-> 3. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, and roll angle orientation.
+> 3. `src/engine/RollModule.ts` — 3D angular velocity, roll resistance, orientation quaternion, and toggleable bumpy-roll surface roughness (seeded, carved inward from the collider).
 > 4. `src/engine/GravityModule.ts` — Vertical gravity acceleration (`g`) and airborne physics.
 > 5. `src/engine/VerticalPositionModule.ts` — Pseudo-3D altitude coordinate (`z`), velocity (`v_z`), and flight height.
 > 6. `src/engine/Arena.ts` — Grid-based arena tile mapping, physical wall heights, and tile queries.
