@@ -1632,24 +1632,31 @@ export class Renderer {
     const halfWidthPx = (width * 0.5) * ppu;
 
     const startX = Math.max(0, 0.15 * ppu);
-    const radiusX = Math.max(1, reachPx - startX);
-    const radiusY = halfWidthPx;
+    // Semicircle center is located so that its outer tip reaches reachPx
+    const arcCenterX = Math.max(startX, reachPx - halfWidthPx);
 
-    // Subtle forward organic glow fill
+    // Subtle forward glow fill
     ctx.fillStyle = char.playerColor || "#ef4444";
     ctx.globalAlpha = alpha * 0.18;
     ctx.beginPath();
-    ctx.ellipse(startX, 0, radiusX, radiusY, 0, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.moveTo(startX, -halfWidthPx);
+    ctx.lineTo(arcCenterX, -halfWidthPx);
+    ctx.arc(arcCenterX, 0, halfWidthPx, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.lineTo(startX, halfWidthPx);
     ctx.closePath();
     ctx.fill();
 
-    // Crisp, perfectly smooth organic U-shaped strike wave
+    // Crisp forward-facing half-pill outline (parallel edges smoothly connecting with a semicircle)
     ctx.globalAlpha = alpha * 0.90;
     ctx.strokeStyle = char.playerColor || "#ffffff";
     ctx.lineWidth = Math.max(1.5, 3.0 * (1 - progress * 0.5));
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.ellipse(startX, 0, radiusX, radiusY, 0, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.moveTo(startX, -halfWidthPx);
+    ctx.lineTo(arcCenterX, -halfWidthPx);
+    ctx.arc(arcCenterX, 0, halfWidthPx, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.lineTo(startX, halfWidthPx);
     ctx.stroke();
 
     ctx.restore();
