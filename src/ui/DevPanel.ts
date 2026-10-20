@@ -2294,8 +2294,8 @@ export class DevPanel {
           baseMaxHp: 100,
           maxHp: 100,
           currentHp: 100,
-          baseMaxHealRate: 10,
-          maxHealRate: 10,
+          baseMaxHealRate: 5,
+          maxHealRate: 5,
           consumesEnergy: true,
           allowPartialPower: true,
         });

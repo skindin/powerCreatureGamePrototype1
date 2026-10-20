@@ -78,10 +78,10 @@ export class HealthModule {
     this.maxHpProp = new DynamicProperty(initialMaxHp);
     this.currentHpProp = new DynamicProperty(options?.currentHp ?? initialMaxHp);
 
-    this.baseMaxHealRate = options?.baseMaxHealRate ?? 10.0;
+    this.baseMaxHealRate = options?.baseMaxHealRate ?? 5.0;
     this.maxHealRateProp = new DynamicProperty(options?.maxHealRate ?? this.baseMaxHealRate);
 
-    // Default 0.04 HP/Joule (equals 25 Joules per 1 HP, 250W at 10 HP/s)
+    // Default 0.04 HP/Joule (equals 25 Joules per 1 HP, 125W at 5 HP/s)
     this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.04);
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 300.0);
 

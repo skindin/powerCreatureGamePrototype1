@@ -7127,7 +7127,7 @@ class HealthModule {
     const initialMaxHp = (options == null ? void 0 : options.maxHp) ?? this.baseMaxHp;
     this.maxHpProp = new DynamicProperty(initialMaxHp);
     this.currentHpProp = new DynamicProperty((options == null ? void 0 : options.currentHp) ?? initialMaxHp);
-    this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 10;
+    this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 5;
     this.maxHealRateProp = new DynamicProperty((options == null ? void 0 : options.maxHealRate) ?? this.baseMaxHealRate);
     this.hpPerJouleProp = new DynamicProperty((options == null ? void 0 : options.hpPerJoule) ?? 0.04);
     this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 300);
