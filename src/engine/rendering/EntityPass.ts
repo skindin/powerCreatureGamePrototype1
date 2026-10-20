@@ -185,9 +185,9 @@ export class EntityPass {
       ctx.fill();
       const isBumpy = !!(roll && roll.enabled && roll.bumpyRollEnabled && roll.getBumpiness(obj.properties) > 0.01);
       if (isBumpy) {
-        // Bumpy objects keep a subtle neutral outline so selection highlights only the plain circle
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.28)";
-        ctx.lineWidth = 1.4;
+        // Bumpy objects keep their steady whitish outline so only the plain outer circle highlights on grab selection
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = 2;
         ctx.stroke();
       } else {
         const primaryTargetChar = targetingChars[0];
