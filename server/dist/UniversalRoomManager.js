@@ -10801,6 +10801,13 @@ class Prefab {
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
+    let cloneRoll = null;
+    if (this.archetype.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: this.archetype.rollModule.enabled,
+        rollResistance: this.archetype.rollModule.rollResistance
+      });
+    }
     const spawnPos = {
       x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
       y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
@@ -10816,7 +10823,8 @@ class Prefab {
       bounceMod: this.archetype.bounceMod,
       hasGravity: this.archetype.hasGravity,
       hasVerticalPosition: this.archetype.hasVerticalPosition,
-      consumableModule: cloneConsumable
+      consumableModule: cloneConsumable,
+      rollModule: cloneRoll
     });
     instance.prefabId = this.id;
     instance.overriddenProperties = /* @__PURE__ */ new Set();
@@ -10930,7 +10938,8 @@ class PrefabManager {
       colliderRadius: 0.22,
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     });
     const stonePrefab = new Prefab({
       id: "prefab_stone",
@@ -10969,6 +10978,13 @@ class PrefabManager {
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
+    let cloneRoll = null;
+    if (entity.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: entity.rollModule.enabled,
+        rollResistance: entity.rollModule.rollResistance
+      });
+    }
     const archetype = new GameObjectClass({
       name: prefabName,
       position: { x: 0, y: 0, z: 0 },
@@ -10979,7 +10995,8 @@ class PrefabManager {
       bounceMod: entity.bounceMod,
       hasGravity: entity.hasGravity,
       hasVerticalPosition: entity.hasVerticalPosition,
-      consumableModule: cloneConsumable
+      consumableModule: cloneConsumable,
+      rollModule: cloneRoll
     });
     const prefab = new Prefab({
       id,
@@ -11096,7 +11113,8 @@ function createQuarryStones() {
       color: "#a8a29e",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
       id: "stone-ground-2",
@@ -11108,7 +11126,8 @@ function createQuarryStones() {
       color: "#78716c",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
       id: "stone-ground-3",
@@ -11120,7 +11139,8 @@ function createQuarryStones() {
       color: "#57534e",
       bounceMod: 0.1,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.5 })
     }),
     new GameObject({
       id: "stone-ground-4",
@@ -11132,7 +11152,8 @@ function createQuarryStones() {
       color: "#78716c",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
       id: "stone-ground-5",
@@ -11144,7 +11165,8 @@ function createQuarryStones() {
       color: "#a8a29e",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
       id: "stone-ground-6",
@@ -11156,7 +11178,8 @@ function createQuarryStones() {
       color: "#57534e",
       bounceMod: 0.1,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.5 })
     }),
     // --- Elevated Stones on Rock Ramparts (Climb to access high-ground ammunition!) ---
     new GameObject({
@@ -11169,7 +11192,8 @@ function createQuarryStones() {
       color: "#78716c",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
       id: "stone-elevated-2",
@@ -11181,7 +11205,8 @@ function createQuarryStones() {
       color: "#78716c",
       bounceMod: 0.15,
       hasGravity: true,
-      hasVerticalPosition: true
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     })
   ];
 }

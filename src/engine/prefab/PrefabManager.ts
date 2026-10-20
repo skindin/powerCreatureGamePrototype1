@@ -1,5 +1,6 @@
 import { GameObject } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
+import { RollModule } from "../RollModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 
@@ -56,6 +57,7 @@ export class PrefabManager {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     });
 
     const stonePrefab = new Prefab({
@@ -102,6 +104,14 @@ export class PrefabManager {
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
 
+    let cloneRoll: RollModule | null = null;
+    if (entity.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: entity.rollModule.enabled,
+        rollResistance: entity.rollModule.rollResistance,
+      });
+    }
+
     const archetype = new GameObjectClass({
       name: prefabName,
       position: { x: 0, y: 0, z: 0 },
@@ -115,6 +125,7 @@ export class PrefabManager {
       hasGravity: entity.hasGravity,
       hasVerticalPosition: entity.hasVerticalPosition,
       consumableModule: cloneConsumable,
+      rollModule: cloneRoll,
     });
 
     const prefab = new Prefab({

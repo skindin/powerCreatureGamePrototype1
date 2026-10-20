@@ -1,5 +1,6 @@
 import { GameObject, Vector3D } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
+import { RollModule } from "../RollModule.js";
 import { Arena } from "../Arena.js";
 
 export interface PrefabOptions {
@@ -51,6 +52,14 @@ export class Prefab {
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
 
+    let cloneRoll: RollModule | null = null;
+    if (this.archetype.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: this.archetype.rollModule.enabled,
+        rollResistance: this.archetype.rollModule.rollResistance,
+      });
+    }
+
     const spawnPos: Vector3D = {
       x: pos?.x ?? this.archetype.position.x,
       y: pos?.y ?? this.archetype.position.y,
@@ -70,6 +79,7 @@ export class Prefab {
       hasGravity: this.archetype.hasGravity,
       hasVerticalPosition: this.archetype.hasVerticalPosition,
       consumableModule: cloneConsumable,
+      rollModule: cloneRoll,
     });
 
     instance.prefabId = this.id;

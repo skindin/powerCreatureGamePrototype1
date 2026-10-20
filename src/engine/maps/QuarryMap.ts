@@ -1,5 +1,6 @@
 import { Arena, WallMapPreset } from "../Arena.js";
 import { GameObject } from "../GameObject.js";
+import { RollModule } from "../RollModule.js";
 
 /**
  * 🪨 The Stone Quarry Map Preset
@@ -84,6 +85,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
       id: "stone-ground-2",
@@ -96,6 +98,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
       id: "stone-ground-3",
@@ -108,6 +111,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.10,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.50 }),
     }),
     new GameObject({
       id: "stone-ground-4",
@@ -120,6 +124,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
       id: "stone-ground-5",
@@ -132,6 +137,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
       id: "stone-ground-6",
@@ -144,6 +150,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.10,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.50 }),
     }),
 
     // --- Elevated Stones on Rock Ramparts (Climb to access high-ground ammunition!) ---
@@ -158,6 +165,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
       id: "stone-elevated-2",
@@ -170,6 +178,7 @@ export function createQuarryStones(): GameObject[] {
       bounceMod: 0.15,
       hasGravity: true,
       hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
   ];
 }
