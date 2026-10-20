@@ -43,6 +43,29 @@ export class PrefabManager {
     });
 
     this.prefabs.set(applePrefab.id, applePrefab);
+
+    // 🪨 Default "Stone" prefab: dense, rigid rock with low bounce that inflicts high impact damage when thrown
+    const stoneArchetype = new GameObject({
+      id: "archetype_stone",
+      name: "Stone",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#78716c",
+      visualShape: "circle",
+      mass: 0.85,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+    });
+
+    const stonePrefab = new Prefab({
+      id: "prefab_stone",
+      name: "Stone",
+      icon: "🪨",
+      archetype: stoneArchetype,
+    });
+
+    this.prefabs.set(stonePrefab.id, stonePrefab);
   }
 
   public getAll(): Prefab[] {

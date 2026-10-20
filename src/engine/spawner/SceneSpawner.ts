@@ -9,6 +9,7 @@ export interface SceneSpawnerOptions {
   prefabId: string;
   intervalMinutes?: number;
   maxCount?: number;
+  designatedSpawnPoints?: { x: number; y: number; z?: number }[];
 }
 
 /**
@@ -32,6 +33,9 @@ export class SceneSpawner {
   /** Elapsed time in seconds towards next spawn */
   public timerSeconds: number = 0;
 
+  /** Optional explicit candidate spawn locations distributed throughout the map */
+  public designatedSpawnPoints: { x: number; y: number; z?: number }[] = [];
+
   constructor(options: SceneSpawnerOptions) {
     this.id = options.id;
     this.name = options.name || "Scene Spawner";
@@ -39,6 +43,7 @@ export class SceneSpawner {
     this.prefabId = options.prefabId;
     if (options.intervalMinutes !== undefined) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
     if (options.maxCount !== undefined) this.maxCount = Math.max(1, options.maxCount);
+    if (options.designatedSpawnPoints) this.designatedSpawnPoints = [...options.designatedSpawnPoints];
   }
 
   /**
@@ -82,7 +87,27 @@ export class SceneSpawner {
       return null;
     }
 
-    const pos = this.findRandomGroundPosition(arena);
+    let pos: { x: number; y: number; z: number };
+    if (this.designatedSpawnPoints.length > 0) {
+      // Find candidate designated points that are not obstructed by walls or occupied by another object
+      const openPoints = this.designatedSpawnPoints.filter((pt) => {
+        const isWall = arena.hasWall(Math.floor(pt.x), Math.floor(pt.y));
+        if (isWall) return false;
+        const occupied = objects.some((o) => Math.hypot(o.position.x - pt.x, o.position.y - pt.y) < 0.8);
+        return !occupied;
+      });
+
+      if (openPoints.length > 0) {
+        const choice = openPoints[Math.floor(Math.random() * openPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      } else {
+        const choice = this.designatedSpawnPoints[Math.floor(Math.random() * this.designatedSpawnPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      }
+    } else {
+      pos = this.findRandomGroundPosition(arena);
+    }
+
     const instance = prefabManager.spawn(this.prefabId, pos, arena, objects);
     return instance;
   }

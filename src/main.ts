@@ -2,9 +2,6 @@ import "./style.css";
 import { Arena } from "./engine/Arena.js";
 import { Character } from "./character/Character.js";
 import { GameObject } from "./engine/GameObject.js";
-import { RollModule } from "./engine/RollModule.js";
-import { DamageAuraModule } from "./engine/DamageAuraModule.js";
-import { ConsumableModule } from "./engine/ConsumableModule.js";
 import { Renderer, VerticalVisualMode } from "./engine/Renderer.js";
 import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
@@ -17,6 +14,7 @@ import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
+import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
 
 function bootstrap(): void {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -35,6 +33,7 @@ function bootstrap(): void {
 
   // 1. Initialize Arena (20 units wide x 14 units tall, 1 wall = 1 unit)
   const arena = new Arena(20, 14, 1.0);
+  arena.loadWallPreset(quarryPreset.id);
   canvas.width = 1000;
   canvas.height = 700;
 
@@ -214,8 +213,8 @@ function bootstrap(): void {
 
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
-    x: 4.8,
-    y: 7.0,
+    x: QUARRY_PLAYER_SPAWN.x,
+    y: QUARRY_PLAYER_SPAWN.y,
     color: "#f59e0b", // Amber body
     colliderRadius: 0.44,
     mass: 1.2,
@@ -226,8 +225,8 @@ function bootstrap(): void {
   // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)
   const dummyCharacter = new Character({
     id: "dummy-1",
-    x: 6.8,
-    y: 7.0,
+    x: QUARRY_DUMMY_SPAWN.x,
+    y: QUARRY_DUMMY_SPAWN.y,
     color: "#64748b", // Neutral slate gray
     colliderRadius: 0.44,
     mass: 1.5,
@@ -237,88 +236,8 @@ function bootstrap(): void {
     role: "dummy",
   });
 
-  // 3. Initialize Initial Freebody Objects in unit coordinates
-  const objects: GameObject[] = [
-    new GameObject({
-      id: "stone-1",
-      name: "Light Blue Box",
-      position: { x: 6.8, y: 4.4, z: 0 },
-      mass: 0.7,
-      colliderRadius: 0.26,
-      color: "#38bdf8",
-      bounceMod: 0.25,
-      visualShape: "box",
-    }),
-    new GameObject({
-      id: "boulder-1",
-      name: "Heavy Red Box",
-      position: { x: 7.0, y: 9.2, z: 0 },
-      mass: 2.6,
-      colliderRadius: 0.40,
-      color: "#f87171",
-      bounceMod: 0.05,
-      visualShape: "box",
-    }),
-    new GameObject({
-      id: "bouncy-1",
-      name: "Super Bouncy Ball",
-      position: { x: 5.2, y: 3.0, z: 0.6 },
-      mass: 0.5,
-      colliderRadius: 0.24,
-      color: "#4ade80",
-      bounceMod: 0.85,
-      verticalVelocity: 1.0,
-    }),
-    new GameObject({
-      id: "rolling-1",
-      name: "Rolling Ball",
-      position: { x: 13.6, y: 7.0, z: 0 },
-      velocity: { x: 4.5, y: 1.5 },
-      mass: 0.6,
-      colliderRadius: 0.28,
-      color: "#a855f7",
-      bounceMod: 0.95,
-      rollModule: new RollModule({
-        rollResistance: 0.0,
-        angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
-      }),
-    }),
-    new GameObject({
-      id: "hazard-orb-1",
-      name: "Hazard Orb (Damage Aura)",
-      position: { x: 10.0, y: 7.0, z: 0 },
-      mass: 5.0,
-      colliderRadius: 0.35,
-      color: "#ef4444",
-      bounceMod: 0.1,
-      damageAuraModule: new DamageAuraModule({
-        damageRadius: 2.2,
-        damageRate: 25.0,
-      }),
-    }),
-    new GameObject({
-      id: "apple-default-1",
-      name: "Apple",
-      prefabId: "prefab_apple",
-      position: { x: 5.5, y: 7.0, z: 0 },
-      color: "#22c55e",
-      visualShape: "circle",
-      mass: 0.35,
-      colliderRadius: 0.25,
-      bounceMod: 0.2,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      consumableModule: new ConsumableModule({
-        tag: "food",
-        totalEnergyJoules: 2000,
-        remainingEnergyJoules: 2000,
-        consumeRateWatts: 400,
-        healRate: 0,
-        minScaleFloor: 0.35,
-        minRadiusFloor: 0.12,
-      }),
-    }),
-  ];
+  // 3. Initialize Initial Freebody Objects in unit coordinates (Nothing but stones placed at first!)
+  const objects: GameObject[] = createQuarryStones();
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
   arena.syncEntitiesWithWalls([character, dummyCharacter, ...objects]);

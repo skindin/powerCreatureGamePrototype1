@@ -5341,8 +5341,8 @@ const _GameObject = class _GameObject {
       this.velocity.x -= normalVel * normalX;
       this.velocity.y -= normalVel * normalY;
     }
-    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
-    const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod));
+    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
+    const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
     const shockDeceleration = impactSpeed * 60 * absorbedFraction;
     if (shockDeceleration > 0.01) {
       const canTakeWallDamage = !this.isCharacter || this.isUnderKnockback || this.isInFlight;
@@ -9836,7 +9836,7 @@ class CollisionResolver {
       return false;
     }
     const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
-    const bRestitution = entity.isCharacter ? 0 : entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0;
+    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : entity.isCharacter ? 0.2 : 0;
     if (mode === "naive") {
       entity.position.x = cx + normX * r;
       entity.position.y = cy + normY * r;
@@ -9865,7 +9865,7 @@ class CollisionResolver {
     entity.lastCollisionTime = nowWall;
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
-      const absFrac = Math.max(0, 1 - Math.min(1, bRestitution));
+      const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
       const shock = impactSpeed * 60 * absFrac;
       if (shock > 0.01) {
         const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
@@ -9886,6 +9886,7 @@ class CollisionResolver {
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
   static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType, customImpactSpeed, _normZ = 0) {
+    var _a, _b;
     const isClosingIn2D = velAlongNormal < 0;
     const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
     if (!isClosingIn2D && impactSpeed <= 0.05) return;
@@ -9982,10 +9983,10 @@ class CollisionResolver {
       }
     }
     const relSpeed = impactSpeed;
-    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
-    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const absFracA = Math.max(0, 1 - Math.min(1, bModA));
-    const absFracB = Math.max(0, 1 - Math.min(1, bModB));
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : a.isCharacter ? 0.2 : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : b.isCharacter ? 0.2 : 0;
+    const absFracA = Math.max(0, 1 - Math.min(1, bModA * bModA));
+    const absFracB = Math.max(0, 1 - Math.min(1, bModB * bModB));
     let deltaVa = relSpeed * 0.5;
     let deltaVb = relSpeed * 0.5;
     if (a.isImmovable && !b.isImmovable) {
@@ -10004,8 +10005,14 @@ class CollisionResolver {
       deltaVa = 0;
       deltaVb = relSpeed;
     }
-    const shockA = Math.abs(deltaVa) * 60 * absFracA;
-    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+    const hardnessA = ((_a = a.consumableModule) == null ? void 0 : _a.tag) === "food" ? 0.2 : 1;
+    const hardnessB = ((_b = b.consumableModule) == null ? void 0 : _b.tag) === "food" ? 0.2 : 1;
+    const massA = Math.max(0.1, a.mass);
+    const massB = Math.max(0.1, b.mass);
+    const massRatioA = massB / (massA + massB);
+    const massRatioB = massA / (massA + massB);
+    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
@@ -10014,7 +10021,7 @@ class CollisionResolver {
         normalX: -normX,
         normalY: -normY
       });
-      if (b.isInFlight || shockA > 15) {
+      if (b.isInFlight || shockA > 100) {
         a.applyKnockbackWindow(600);
       }
     }
@@ -10026,7 +10033,7 @@ class CollisionResolver {
         normalX: normX,
         normalY: normY
       });
-      if (a.isInFlight || shockB > 15) {
+      if (a.isInFlight || shockB > 100) {
         b.applyKnockbackWindow(600);
       }
     }
@@ -10475,77 +10482,6 @@ class RollModule {
     }
   }
 }
-class DamageAuraModule {
-  constructor(options) {
-    __publicField(this, "id", "damageAura");
-    __publicField(this, "name", "Damage Aura");
-    __publicField(this, "enabled", true);
-    /** Radius in world units within which objects take damage */
-    __publicField(this, "damageRadiusProp");
-    /** Health points drained per second (HP / s) */
-    __publicField(this, "damageRateProp");
-    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
-    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
-    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
-  }
-  get damageRadius() {
-    return this.damageRadiusProp.literalValue;
-  }
-  set damageRadius(val) {
-    this.damageRadiusProp.literalValue = Math.max(0.1, val);
-  }
-  get damageRate() {
-    return this.damageRateProp.literalValue;
-  }
-  set damageRate(val) {
-    this.damageRateProp.literalValue = Math.max(0, val);
-  }
-  getDamageRadius(registry) {
-    return this.damageRadiusProp.get(registry);
-  }
-  getDamageRate(registry) {
-    return this.damageRateProp.get(registry);
-  }
-  /**
-   * Continuous update tick:
-   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
-   */
-  update(dt, sourceEntity, arenaOrTargets) {
-    if (!this.enabled || dt <= 0) return;
-    const registry = sourceEntity.properties;
-    const radius = this.getDamageRadius(registry);
-    const rate = this.getDamageRate(registry);
-    if (radius <= 0.01 || rate <= 0) return;
-    const damageThisFrame = rate * dt;
-    const srcX = sourceEntity.position.x;
-    const srcY = sourceEntity.position.y;
-    const srcZ = sourceEntity.position.z ?? 0;
-    const radiusSq = radius * radius;
-    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
-    for (const target of entities) {
-      if (target === sourceEntity) continue;
-      const healthMod = target.healthModule;
-      if (!healthMod || !healthMod.enabled) continue;
-      const targetX = target.position.x;
-      const targetY = target.position.y;
-      const targetZ = target.position.z ?? 0;
-      const dx = targetX - srcX;
-      const dy = targetY - srcY;
-      const dz = targetZ - srcZ;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq <= radiusSq) {
-        healthMod.takeDamage(damageThisFrame, target.properties, {
-          id: "damage_aura",
-          name: "Aura",
-          type: "continuous",
-          rate,
-          color: "#a855f7",
-          isHeal: false
-        });
-      }
-    }
-  }
-}
 class ConsumableModule {
   constructor(options) {
     __publicField(this, "id", "consumable");
@@ -10751,12 +10687,15 @@ class SceneSpawner {
     __publicField(this, "maxCount", 5);
     /** Elapsed time in seconds towards next spawn */
     __publicField(this, "timerSeconds", 0);
+    /** Optional explicit candidate spawn locations distributed throughout the map */
+    __publicField(this, "designatedSpawnPoints", []);
     this.id = options.id;
     this.name = options.name || "Scene Spawner";
     if (options.enabled !== void 0) this.enabled = options.enabled;
     this.prefabId = options.prefabId;
     if (options.intervalMinutes !== void 0) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
     if (options.maxCount !== void 0) this.maxCount = Math.max(1, options.maxCount);
+    if (options.designatedSpawnPoints) this.designatedSpawnPoints = [...options.designatedSpawnPoints];
   }
   /**
    * Returns current count of active live instances of this prefab in the scene.
@@ -10790,7 +10729,24 @@ class SceneSpawner {
     if (activeCount >= this.maxCount) {
       return null;
     }
-    const pos = this.findRandomGroundPosition(arena);
+    let pos;
+    if (this.designatedSpawnPoints.length > 0) {
+      const openPoints = this.designatedSpawnPoints.filter((pt) => {
+        const isWall = arena.hasWall(Math.floor(pt.x), Math.floor(pt.y));
+        if (isWall) return false;
+        const occupied = objects.some((o) => Math.hypot(o.position.x - pt.x, o.position.y - pt.y) < 0.8);
+        return !occupied;
+      });
+      if (openPoints.length > 0) {
+        const choice = openPoints[Math.floor(Math.random() * openPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      } else {
+        const choice = this.designatedSpawnPoints[Math.floor(Math.random() * this.designatedSpawnPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      }
+    } else {
+      pos = this.findRandomGroundPosition(arena);
+    }
     const instance = prefabManager2.spawn(this.prefabId, pos, arena, objects);
     return instance;
   }
@@ -10964,6 +10920,25 @@ class PrefabManager {
       archetype: appleArchetype
     });
     this.prefabs.set(applePrefab.id, applePrefab);
+    const stoneArchetype = new GameObject({
+      id: "archetype_stone",
+      name: "Stone",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#78716c",
+      visualShape: "circle",
+      mass: 0.85,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    });
+    const stonePrefab = new Prefab({
+      id: "prefab_stone",
+      name: "Stone",
+      icon: "🪨",
+      archetype: stoneArchetype
+    });
+    this.prefabs.set(stonePrefab.id, stonePrefab);
   }
   getAll() {
     return Array.from(this.prefabs.values());
@@ -11059,6 +11034,157 @@ class PrefabManager {
   }
 }
 const prefabManager = new PrefabManager();
+const quarryPreset = {
+  id: "quarry",
+  name: "🪨 The Stone Quarry",
+  badge: "Tactical Boulders",
+  description: "Natural quarry ridges and elevated rock ramparts ideal for stone throwing, vertical climbs, and physical cover.",
+  generate: (cols, rows) => {
+    const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+    for (let c = 4; c <= 7; c++) grid[2][c] = 1;
+    for (let c = 5; c <= 8; c++) grid[3][c] = 1;
+    for (let c = 12; c <= 15; c++) grid[2][c] = 1;
+    for (let c = 12; c <= 15; c++) grid[11][c] = 1;
+    for (let c = 11; c <= 14; c++) grid[10][c] = 1;
+    for (let c = 4; c <= 7; c++) grid[11][c] = 1;
+    grid[5][9] = 1;
+    grid[5][10] = 1;
+    grid[6][9] = 1;
+    grid[6][10] = 1;
+    grid[8][9] = 1;
+    grid[8][10] = 1;
+    grid[9][9] = 1;
+    grid[9][10] = 1;
+    grid[5][2] = 1;
+    grid[6][2] = 1;
+    grid[7][2] = 1;
+    grid[8][2] = 1;
+    grid[5][17] = 1;
+    grid[6][17] = 1;
+    grid[7][17] = 1;
+    grid[8][17] = 1;
+    return grid;
+  }
+};
+if (!Arena.WALL_PRESETS.some((p) => p.id === quarryPreset.id)) {
+  Arena.WALL_PRESETS.unshift(quarryPreset);
+}
+const QUARRY_APPLE_SPAWN_POINTS = [
+  { x: 10, y: 2.2, z: 0 },
+  // North clearing
+  { x: 10, y: 11.8, z: 0 },
+  // South clearing
+  { x: 3.5, y: 7, z: 0 },
+  // West clearing
+  { x: 16.5, y: 7, z: 0 },
+  // East clearing
+  { x: 10, y: 7, z: 0 }
+  // Center gateway
+];
+const QUARRY_PLAYER_SPAWN = { x: 5.5, y: 7 };
+const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
+function createQuarryStones() {
+  return [
+    // --- Ground Level Throwing Stones ---
+    new GameObject({
+      id: "stone-ground-1",
+      name: "Small Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 4.2, y: 5.8, z: 0 },
+      mass: 0.65,
+      colliderRadius: 0.18,
+      color: "#a8a29e",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-ground-2",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 4.8, y: 8.5, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-ground-3",
+      name: "Heavy Stone",
+      prefabId: "prefab_stone",
+      position: { x: 8.2, y: 4.5, z: 0 },
+      mass: 1.25,
+      colliderRadius: 0.28,
+      color: "#57534e",
+      bounceMod: 0.1,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-ground-4",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 11.8, y: 9.5, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-ground-5",
+      name: "Small Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 15.2, y: 5.8, z: 0 },
+      mass: 0.65,
+      colliderRadius: 0.18,
+      color: "#a8a29e",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-ground-6",
+      name: "Heavy Stone",
+      prefabId: "prefab_stone",
+      position: { x: 15.8, y: 8.5, z: 0 },
+      mass: 1.25,
+      colliderRadius: 0.28,
+      color: "#57534e",
+      bounceMod: 0.1,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    // --- Elevated Stones on Rock Ramparts (Climb to access high-ground ammunition!) ---
+    new GameObject({
+      id: "stone-elevated-1",
+      name: "Rampart Stone",
+      prefabId: "prefab_stone",
+      position: { x: 6.5, y: 2.5, z: 1 },
+      mass: 0.9,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    }),
+    new GameObject({
+      id: "stone-elevated-2",
+      name: "Rampart Stone",
+      prefabId: "prefab_stone",
+      position: { x: 13.5, y: 11.5, z: 1 },
+      mass: 0.9,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true
+    })
+  ];
+}
 class SceneSpawnerManager {
   constructor(pm = prefabManager) {
     __publicField(this, "spawners", /* @__PURE__ */ new Map());
@@ -11070,13 +11196,14 @@ class SceneSpawnerManager {
   initDefaultSpawners() {
     const appleSpawner = new SceneSpawner({
       id: "spawner_apple_default",
-      name: "Random Apple Spawner",
+      name: "Apple Spawner",
       enabled: true,
       prefabId: "prefab_apple",
       intervalMinutes: 0.25,
       // every 15 seconds
-      maxCount: 5
+      maxCount: 5,
       // up to 5 apples in scene at once
+      designatedSpawnPoints: QUARRY_APPLE_SPAWN_POINTS
     });
     this.spawners.set(appleSpawner.id, appleSpawner);
   }
@@ -11953,10 +12080,10 @@ class ServerGameSimulation {
    * Initializes default standard arena and freebodies if starting standalone without client.
    */
   initializeDefaultScenario() {
-    this.arena.loadWallPreset("standard");
+    this.arena.loadWallPreset(quarryPreset.id);
     const player1 = new Character({
-      x: 4.8,
-      y: 7,
+      x: QUARRY_PLAYER_SPAWN.x,
+      y: QUARRY_PLAYER_SPAWN.y,
       color: "#f59e0b",
       colliderRadius: 0.44,
       mass: 1.2,
@@ -11968,8 +12095,8 @@ class ServerGameSimulation {
     this.characters.set(player1.playerId, player1);
     const dummy = new Character({
       id: "dummy-1",
-      x: 6.8,
-      y: 7,
+      x: QUARRY_DUMMY_SPAWN.x,
+      y: QUARRY_DUMMY_SPAWN.y,
       color: "#64748b",
       colliderRadius: 0.44,
       mass: 1.5,
@@ -11979,87 +12106,7 @@ class ServerGameSimulation {
       role: "dummy"
     });
     this.characters.set(dummy.id, dummy);
-    this.objects = [
-      new GameObject({
-        id: "stone-1",
-        name: "Light Blue Box",
-        position: { x: 6.8, y: 4.4, z: 0 },
-        mass: 0.7,
-        colliderRadius: 0.26,
-        color: "#38bdf8",
-        bounceMod: 0.25,
-        visualShape: "box"
-      }),
-      new GameObject({
-        id: "boulder-1",
-        name: "Heavy Red Box",
-        position: { x: 7, y: 9.2, z: 0 },
-        mass: 2.6,
-        colliderRadius: 0.4,
-        color: "#f87171",
-        bounceMod: 0.05,
-        visualShape: "box"
-      }),
-      new GameObject({
-        id: "bouncy-1",
-        name: "Super Bouncy Ball",
-        position: { x: 5.2, y: 3, z: 0.6 },
-        mass: 0.5,
-        colliderRadius: 0.24,
-        color: "#4ade80",
-        bounceMod: 0.85,
-        verticalVelocity: 1
-      }),
-      new GameObject({
-        id: "rolling-1",
-        name: "Rolling Ball",
-        position: { x: 13.6, y: 7, z: 0 },
-        velocity: { x: 4.5, y: 1.5 },
-        mass: 0.6,
-        colliderRadius: 0.28,
-        color: "#a855f7",
-        bounceMod: 0.95,
-        rollModule: new RollModule({
-          rollResistance: 0,
-          angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 }
-        })
-      }),
-      new GameObject({
-        id: "hazard-orb-1",
-        name: "Hazard Orb (Damage Aura)",
-        position: { x: 10, y: 7, z: 0 },
-        mass: 5,
-        colliderRadius: 0.35,
-        color: "#ef4444",
-        bounceMod: 0.1,
-        damageAuraModule: new DamageAuraModule({
-          damageRadius: 2.2,
-          damageRate: 25
-        })
-      }),
-      new GameObject({
-        id: "apple-default-1",
-        name: "Apple",
-        prefabId: "prefab_apple",
-        position: { x: 5.5, y: 7, z: 0 },
-        color: "#22c55e",
-        visualShape: "circle",
-        mass: 0.35,
-        colliderRadius: 0.25,
-        bounceMod: 0.2,
-        hasGravity: true,
-        hasVerticalPosition: true,
-        consumableModule: new ConsumableModule({
-          tag: "food",
-          totalEnergyJoules: 2e3,
-          remainingEnergyJoules: 2e3,
-          consumeRateWatts: 400,
-          healRate: 0,
-          minScaleFloor: 0.35,
-          minRadiusFloor: 0.12
-        })
-      })
-    ];
+    this.objects = createQuarryStones();
     this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
     this.jitterBuffer.clear();
   }

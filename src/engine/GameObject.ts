@@ -1022,8 +1022,8 @@ export class GameObject {
     // Physical Impact Damage Calculation:
     // Deceleration shock = deltaV / dt (normalized to 1 frame @ 60Hz: impactSpeed * 60).
     // Cushioning from bounciness (elasticity): absorbed shock is reduced by (1 - bounce).
-    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0;
-    const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod));
+    const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : (this.isCharacter ? 0.2 : 0);
+    const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
     const shockDeceleration = impactSpeed * 60 * absorbedFraction;
 
     if (shockDeceleration > 0.01) {

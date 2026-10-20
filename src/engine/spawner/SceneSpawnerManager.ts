@@ -3,6 +3,8 @@ import { Arena } from "../Arena.js";
 import { SceneSpawner, SceneSpawnerOptions } from "./SceneSpawner.js";
 import { prefabManager, PrefabManager } from "../prefab/PrefabManager.js";
 
+import { QUARRY_APPLE_SPAWN_POINTS } from "../maps/QuarryMap.js";
+
 export class SceneSpawnerManager {
   private spawners: Map<string, SceneSpawner> = new Map();
   private onSpawnersChangedCallbacks: Set<() => void> = new Set();
@@ -14,14 +16,15 @@ export class SceneSpawnerManager {
   }
 
   private initDefaultSpawners(): void {
-    // Default Apple Spawner: spawns apples randomly throughout the arena
+    // Default Apple Spawner: spawns apples at designated clearings throughout the arena
     const appleSpawner = new SceneSpawner({
       id: "spawner_apple_default",
-      name: "Random Apple Spawner",
+      name: "Apple Spawner",
       enabled: true,
       prefabId: "prefab_apple",
       intervalMinutes: 0.25, // every 15 seconds
       maxCount: 5,           // up to 5 apples in scene at once
+      designatedSpawnPoints: QUARRY_APPLE_SPAWN_POINTS,
     });
 
     this.spawners.set(appleSpawner.id, appleSpawner);

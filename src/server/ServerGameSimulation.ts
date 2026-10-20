@@ -7,7 +7,6 @@ import { SnapshotManager, WorldSnapshot } from "../engine/physics/Snapshot.js";
 import { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { GhostSnapshot, GhostEntityState, DeathRespawnEvent, ObjectDeletionEvent } from "../network/RelayClient.js";
 import { RollModule } from "../engine/RollModule.js";
-import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { SceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
 import { PrefabManager } from "../engine/prefab/PrefabManager.js";
@@ -18,6 +17,7 @@ import {
 } from "./AuthoritativeSnapshotManager.js";
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
 import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
+import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
 
 export type { ContestedGrabResult, DeathRespawnEvent };
 
@@ -202,13 +202,13 @@ export class ServerGameSimulation {
    * Initializes default standard arena and freebodies if starting standalone without client.
    */
   public initializeDefaultScenario(): void {
-    // Generate Standard preset walls
-    this.arena.loadWallPreset("standard");
+    // Generate Quarry preset walls
+    this.arena.loadWallPreset(quarryPreset.id);
 
     // Spawn player 1
     const player1 = new Character({
-      x: 4.8,
-      y: 7.0,
+      x: QUARRY_PLAYER_SPAWN.x,
+      y: QUARRY_PLAYER_SPAWN.y,
       color: "#f59e0b",
       colliderRadius: 0.44,
       mass: 1.2,
@@ -222,8 +222,8 @@ export class ServerGameSimulation {
     // Spawn authoritative Sparring Dummy (inert character with controllerType "none")
     const dummy = new Character({
       id: "dummy-1",
-      x: 6.8,
-      y: 7.0,
+      x: QUARRY_DUMMY_SPAWN.x,
+      y: QUARRY_DUMMY_SPAWN.y,
       color: "#64748b",
       colliderRadius: 0.44,
       mass: 1.5,
@@ -234,88 +234,8 @@ export class ServerGameSimulation {
     });
     this.characters.set(dummy.id, dummy);
 
-    // Spawn default freebody test objects
-    this.objects = [
-      new GameObject({
-        id: "stone-1",
-        name: "Light Blue Box",
-        position: { x: 6.8, y: 4.4, z: 0 },
-        mass: 0.7,
-        colliderRadius: 0.26,
-        color: "#38bdf8",
-        bounceMod: 0.25,
-        visualShape: "box",
-      }),
-      new GameObject({
-        id: "boulder-1",
-        name: "Heavy Red Box",
-        position: { x: 7.0, y: 9.2, z: 0 },
-        mass: 2.6,
-        colliderRadius: 0.40,
-        color: "#f87171",
-        bounceMod: 0.05,
-        visualShape: "box",
-      }),
-      new GameObject({
-        id: "bouncy-1",
-        name: "Super Bouncy Ball",
-        position: { x: 5.2, y: 3.0, z: 0.6 },
-        mass: 0.5,
-        colliderRadius: 0.24,
-        color: "#4ade80",
-        bounceMod: 0.85,
-        verticalVelocity: 1.0,
-      }),
-      new GameObject({
-        id: "rolling-1",
-        name: "Rolling Ball",
-        position: { x: 13.6, y: 7.0, z: 0 },
-        velocity: { x: 4.5, y: 1.5 },
-        mass: 0.6,
-        colliderRadius: 0.28,
-        color: "#a855f7",
-        bounceMod: 0.95,
-        rollModule: new RollModule({
-          rollResistance: 0.0,
-          angularVelocity: { x: -1.5 / 0.28, y: 4.5 / 0.28, z: 0 },
-        }),
-      }),
-      new GameObject({
-        id: "hazard-orb-1",
-        name: "Hazard Orb (Damage Aura)",
-        position: { x: 10.0, y: 7.0, z: 0 },
-        mass: 5.0,
-        colliderRadius: 0.35,
-        color: "#ef4444",
-        bounceMod: 0.1,
-        damageAuraModule: new DamageAuraModule({
-          damageRadius: 2.2,
-          damageRate: 25.0,
-        }),
-      }),
-      new GameObject({
-        id: "apple-default-1",
-        name: "Apple",
-        prefabId: "prefab_apple",
-        position: { x: 5.5, y: 7.0, z: 0 },
-        color: "#22c55e",
-        visualShape: "circle",
-        mass: 0.35,
-        colliderRadius: 0.25,
-        bounceMod: 0.2,
-        hasGravity: true,
-        hasVerticalPosition: true,
-        consumableModule: new ConsumableModule({
-          tag: "food",
-          totalEnergyJoules: 2000,
-          remainingEnergyJoules: 2000,
-          consumeRateWatts: 400,
-          healRate: 0,
-          minScaleFloor: 0.35,
-          minRadiusFloor: 0.12,
-        }),
-      }),
-    ];
+    // Spawn default freebody test stones
+    this.objects = createQuarryStones();
 
     this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
     this.jitterBuffer.clear();

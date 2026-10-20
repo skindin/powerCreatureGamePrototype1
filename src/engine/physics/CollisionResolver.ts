@@ -364,7 +364,7 @@ export class CollisionResolver {
     }
 
     const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
-    const bRestitution = entity.isCharacter ? 0 : (entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0);
+    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : (entity.isCharacter ? 0.2 : 0);
 
     if (mode === "naive") {
       // Legacy push-out
@@ -402,7 +402,8 @@ export class CollisionResolver {
 
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
-      const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution));
+      // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
+      const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
       const shock = impactSpeed * 60 * absFrac;
       if (shock > 0.01) {
         // Ground Locomotion Wall Exemption:
@@ -557,13 +558,14 @@ export class CollisionResolver {
     // Physical Impact Shock Calculation:
     // Change in velocity along normal for each body:
     // deltaVa = effectiveImpactSpeed * invMassA / invMassSum
-    // Deceleration shock = deltaV / dt (scaled to 1 frame @ 60Hz: deltaV * 60)
-    // Elastic cushioning: absorbedFraction = (1 - bounceMod)
+    // Deceleration shock based on Plastic Energy Dissipation:
+    // Injury is caused by plasticity (permanent deformation / tissue trauma), whereas bounce implies elasticity.
+    // The bouncier an entity is (higher restitution e), the less plastic damage it sustains: absFrac = (1 - e^2).
     const relSpeed = impactSpeed;
-    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
-    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
-    const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA));
-    const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB));
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : (a.isCharacter ? 0.2 : 0);
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : (b.isCharacter ? 0.2 : 0);
+    const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA * bModA));
+    const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB * bModB));
 
     // Compute effective deltaV for A and B based on 3D relative speed and mass ratios
     let deltaVa = relSpeed * 0.5;
@@ -585,8 +587,19 @@ export class CollisionResolver {
       deltaVb = relSpeed;
     }
 
-    const shockA = Math.abs(deltaVa) * 60 * absFracA;
-    const shockB = Math.abs(deltaVb) * 60 * absFracB;
+    // Material Hardness & Cushioning:
+    // Soft food/consumables (e.g. apples) deform mushily and do not deliver blunt fracture trauma like stones/rocks.
+    const hardnessA = a.consumableModule?.tag === "food" ? 0.20 : 1.0;
+    const hardnessB = b.consumableModule?.tag === "food" ? 0.20 : 1.0;
+
+    // Reduced mass coupling factor: lighter items (e.g. an apple) deliver significantly less kinetic energy into heavier targets
+    const massA = Math.max(0.1, a.mass);
+    const massB = Math.max(0.1, b.mass);
+    const massRatioA = massB / (massA + massB);
+    const massRatioB = massA / (massA + massB);
+
+    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
 
     if (shockA > 0.01) {
       a.dispatchImpact({
@@ -596,8 +609,8 @@ export class CollisionResolver {
         normalX: -normX,
         normalY: -normY,
       });
-      // If struck by an active projectile or substantial shock, set knockback window
-      if (b.isInFlight || shockA > 15) {
+      // Knockback window is only applied for true high-impact events or active projectiles, never incidental nudges
+      if (b.isInFlight || shockA > 100) {
         a.applyKnockbackWindow(600);
       }
     }
@@ -610,8 +623,8 @@ export class CollisionResolver {
         normalX: normX,
         normalY: normY,
       });
-      // If struck by an active projectile or substantial shock, set knockback window
-      if (a.isInFlight || shockB > 15) {
+      // Knockback window is only applied for true high-impact events or active projectiles, never incidental nudges
+      if (a.isInFlight || shockB > 100) {
         b.applyKnockbackWindow(600);
       }
     }
