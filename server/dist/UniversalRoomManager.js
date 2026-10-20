@@ -6303,14 +6303,14 @@ class ThrowModule {
     if (this.consumesEnergy && thrower) {
       const bus = thrower.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
-        const maxPower = bus.getMaxPower(thrower.properties);
+        const throwCap = this.throwPowerCapacityProp.get(thrower.properties);
         const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
         const currentStamina = bus.currentStaminaProp.get(thrower.properties);
         const pool = thrower.energyPool;
         const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(thrower.properties) : Infinity;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * strength,
-          currentStamina * maxPower,
+          throwCap * strength,
+          currentStamina,
           poolEnergy
         );
         const availableMechJoules = Math.max(0, maxDeliverableMetabolicJoules) * efficiency;
@@ -6542,12 +6542,12 @@ class ThrowModule {
         if (bus.isExhausted) return null;
         const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
         const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const maxPower = bus.maxPowerProp.get(character.properties);
+        const throwCap = this.throwPowerCapacityProp.get(character.properties);
         if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
         const strength = character.strength ?? 1;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * strength,
-          currentStamina * maxPower,
+          throwCap * strength,
+          currentStamina,
           poolJoules
         );
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
@@ -6835,12 +6835,12 @@ class ThrowModule {
         if (bus.isExhausted) {
           return null;
         }
-        const maxPower = bus.getMaxPower(character.properties);
+        const throwCap = this.throwPowerCapacityProp.get(character.properties);
         const currentStamina = bus.currentStaminaProp.get(character.properties);
         const poolEnergy = character.energyPool ? character.energyPool.infiniteEnergy ? Infinity : character.energyPool.getCurrentEnergy(character.properties) : Infinity;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * (character.strength ?? 1),
-          currentStamina * maxPower,
+          throwCap * (character.strength ?? 1),
+          currentStamina,
           poolEnergy
         );
         if (maxDeliverableMetabolicJoules <= 1e-3) {
@@ -7533,8 +7533,6 @@ class EnergyBus {
     // Dynamically tracks whether continuous locomotion is currently sprinting or walking
     __publicField(this, "activeLocomotionId", "sprint");
     // Sockets for live dynamic bus properties
-    __publicField(this, "baseMaxPowerProp");
-    __publicField(this, "maxPowerProp");
     __publicField(this, "baseMaxStaminaProp");
     __publicField(this, "maxStaminaProp");
     __publicField(this, "currentStaminaProp");
@@ -7563,14 +7561,10 @@ class EnergyBus {
     __publicField(this, "recentPeakHoldTimer", 0);
     this.id = (options == null ? void 0 : options.id) ?? "bus_main";
     this.name = (options == null ? void 0 : options.name) ?? "Main";
-    const basePower = (options == null ? void 0 : options.baseMaxPower) ?? 500;
-    const maxPower = (options == null ? void 0 : options.maxPower) ?? basePower;
     const rawStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 5e3;
     const baseStamina = rawStamina <= 60 ? rawStamina * 500 : rawStamina;
     const maxStamina = (options == null ? void 0 : options.maxStamina) ? options.maxStamina <= 60 ? options.maxStamina * 500 : options.maxStamina : baseStamina;
     const curStamina = (options == null ? void 0 : options.currentStamina) !== void 0 ? options.currentStamina <= 60 ? options.currentStamina * 500 : options.currentStamina : maxStamina;
-    this.baseMaxPowerProp = new DynamicProperty(basePower);
-    this.maxPowerProp = new DynamicProperty(maxPower);
     this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
     this.maxStaminaProp = new DynamicProperty(maxStamina);
     this.currentStaminaProp = new DynamicProperty(curStamina);
@@ -7583,52 +7577,9 @@ class EnergyBus {
   }
   /**
    * Returns active power allocations sorted chronologically by activation order (stacking left to right).
-   * Automatically readjusts prior partial-power allocations when full-power abilities (continuous or burst)
-   * consume bus headroom, ensuring full-power abilities get their exact demanded bar share without being clipped.
    */
-  getActiveAllocations(registry) {
-    const list = Array.from(this._activeAllocations.values());
-    if (list.length === 0) return [];
-    const maxP = Math.max(1, this.getMaxPower(registry));
-    const fullAllocs = [];
-    const partialAllocs = [];
-    for (const alloc of list) {
-      if (!alloc.allowPartialPower) {
-        fullAllocs.push(alloc);
-      } else {
-        partialAllocs.push(alloc);
-      }
-    }
-    fullAllocs.sort((a, b) => a.order - b.order);
-    let allocatedFullWatts = 0;
-    for (const alloc of fullAllocs) {
-      if (allocatedFullWatts + alloc.demandedWatts <= maxP + 1e-4) {
-        alloc.grantedWatts = alloc.demandedWatts;
-        alloc.fraction = 1;
-        allocatedFullWatts += alloc.demandedWatts;
-      } else {
-        alloc.grantedWatts = 0;
-        alloc.fraction = 0;
-      }
-    }
-    const remainingHeadroom = Math.max(0, maxP - allocatedFullWatts);
-    let totalPartialDemanded = 0;
-    for (const alloc of partialAllocs) {
-      totalPartialDemanded += alloc.demandedWatts;
-    }
-    for (const alloc of partialAllocs) {
-      if (totalPartialDemanded <= remainingHeadroom + 1e-4) {
-        alloc.grantedWatts = alloc.demandedWatts;
-        alloc.fraction = 1;
-      } else if (totalPartialDemanded > 1e-4) {
-        alloc.grantedWatts = alloc.demandedWatts / totalPartialDemanded * remainingHeadroom;
-        alloc.fraction = alloc.grantedWatts / alloc.demandedWatts;
-      } else {
-        alloc.grantedWatts = 0;
-        alloc.fraction = 0;
-      }
-    }
-    return list.sort((a, b) => a.order - b.order);
+  getActiveAllocations(_registry) {
+    return Array.from(this._activeAllocations.values()).sort((a, b) => a.order - b.order);
   }
   /**
    * Resets active demands and live power draw at the start of a tick.
@@ -7689,9 +7640,6 @@ class EnergyBus {
   getCurrentWattage(registry) {
     const val = this.currentWattageProp.get(registry);
     return Math.max(val, this.recentPeakWattage);
-  }
-  getMaxPower(registry) {
-    return this.maxPowerProp.get(registry);
   }
   getMaxStamina(registry) {
     return this.maxStaminaProp.get(registry);
@@ -8781,10 +8729,10 @@ class Character extends GameObject {
       const laserBus = new EnergyBus({
         id: "bus_laser",
         name: "Laser Bus",
-        maxStamina: 2,
-        maxPower: 2e3,
-        staminaRegenRate: 2 / 15
-        // Full capacity regenerates in 15 seconds (~0.133 s/s)
+        maxStamina: 4e3,
+        // 4,000 Joules
+        staminaRegenRate: 4e3 / 15
+        // Full capacity regenerates in 15 seconds (~266.7 W)
       });
       this.energyBusses.set(laserBus.id, laserBus);
       this.laserModule = new LaserModule({
@@ -8876,12 +8824,12 @@ class Character extends GameObject {
         const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
         let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
         if (bus && bus.enabled) {
-          const maxPower = bus.getMaxPower(this.properties);
+          const throwCap = this.throwModule.throwPowerCapacityProp.get(this.properties);
           const currentStamina = bus.currentStaminaProp.get(this.properties);
           const poolEnergy = this.energyPool ? this.energyPool.infiniteEnergy ? Infinity : this.energyPool.getCurrentEnergy(this.properties) : Infinity;
           const maxDeliverable = Math.min(
-            maxPower * this.strength,
-            currentStamina * maxPower,
+            throwCap * this.strength,
+            currentStamina,
             poolEnergy
           );
           metabolicJoules = Math.min(metabolicJoules, maxDeliverable);

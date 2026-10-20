@@ -484,17 +484,16 @@ export class ThrowModule {
     if (this.consumesEnergy && thrower) {
       const bus = thrower.getEnergyBus(this.energyBusId);
       if (bus && bus.enabled) {
-        const maxPower = bus.getMaxPower(thrower.properties);
+        const throwCap = this.throwPowerCapacityProp.get(thrower.properties);
         const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
         const currentStamina = bus.currentStaminaProp.get(thrower.properties);
         const pool = thrower.energyPool;
         const poolEnergy = pool ? (pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(thrower.properties)) : Infinity;
-        // The maximum metabolic energy the bus can deliver in an instantaneous throw burst:
-        // Capped by maxPower * strength (the bus's maximum power throughput rate),
-        // available burst stamina (curStamina * maxPower), and reservoir pool energy:
+        // The maximum metabolic energy deliverable in an instantaneous throw burst:
+        // Capped by throw power rating * strength, available stamina Joules, and reservoir pool energy:
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * strength,
-          currentStamina * maxPower,
+          throwCap * strength,
+          currentStamina,
           poolEnergy
         );
         const availableMechJoules = Math.max(0, maxDeliverableMetabolicJoules) * efficiency;
@@ -835,13 +834,13 @@ export class ThrowModule {
 
         const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
         const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const maxPower = bus.maxPowerProp.get(character.properties);
+        const throwCap = this.throwPowerCapacityProp.get(character.properties);
         if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
 
         const strength = character.strength ?? 1.0;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * strength,
-          currentStamina * maxPower,
+          throwCap * strength,
+          currentStamina,
           poolJoules
         );
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
@@ -1205,12 +1204,12 @@ export class ThrowModule {
         if (bus.isExhausted) {
           return null;
         }
-        const maxPower = bus.getMaxPower(character.properties);
+        const throwCap = this.throwPowerCapacityProp.get(character.properties);
         const currentStamina = bus.currentStaminaProp.get(character.properties);
         const poolEnergy = character.energyPool ? (character.energyPool.infiniteEnergy ? Infinity : character.energyPool.getCurrentEnergy(character.properties)) : Infinity;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * (character.strength ?? 1.0),
-          currentStamina * maxPower,
+          throwCap * (character.strength ?? 1.0),
+          currentStamina,
           poolEnergy
         );
 

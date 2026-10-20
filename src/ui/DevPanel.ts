@@ -1992,7 +1992,6 @@ export class DevPanel {
                 <span id="label-energy-bus-wattage-${b.id}" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
               </div>
 
-              <div id="prop-socket-bus-maxpower-${b.id}"></div>
               <div id="prop-socket-bus-maxstamina-${b.id}"></div>
               <div id="prop-socket-bus-curstamina-${b.id}"></div>
               <div id="prop-socket-bus-regen-${b.id}"></div>
@@ -3454,17 +3453,6 @@ export class DevPanel {
         : (char.energyBus ? [char.energyBus] : []);
 
       for (const eb of busses) {
-        const maxPowerEl = this.container.querySelector(`#prop-socket-bus-maxpower-${eb.id}`);
-        if (maxPowerEl) {
-          const pCtrl = new PropertyControl({
-            property: eb.maxPowerProp,
-            owner: char,
-            label: "Max Power Output (Watts)",
-            step: 25.0,
-          });
-          maxPowerEl.appendChild(pCtrl.element);
-        }
-
         const maxStaminaEl = this.container.querySelector(`#prop-socket-bus-maxstamina-${eb.id}`);
         if (maxStaminaEl) {
           const sCtrl = new PropertyControl({
@@ -3568,8 +3556,7 @@ export class DevPanel {
         const newBus = new EnergyBus({
           id: newBusId,
           name: `Aux Bus ${busNum}`,
-          maxPower: 500.0,
-          maxStamina: 10.0,
+          maxStamina: 5000.0,
         });
         char.energyBusses.set(newBusId, newBus);
         this.renderEntityModules();

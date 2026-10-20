@@ -199,15 +199,15 @@ export class Character extends GameObject {
         const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
         let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
 
-        // A single burst action cannot exceed the bus's maxPower rate (maxPower * strength),
-        // available burst stamina, or pool reserves:
+        // A single burst action cannot exceed the throw ability's power rating * strength,
+        // available stamina Joules, or pool reserves:
         if (bus && bus.enabled) {
-          const maxPower = bus.getMaxPower(this.properties);
+          const throwCap = this.throwModule.throwPowerCapacityProp.get(this.properties);
           const currentStamina = bus.currentStaminaProp.get(this.properties);
           const poolEnergy = this.energyPool ? (this.energyPool.infiniteEnergy ? Infinity : this.energyPool.getCurrentEnergy(this.properties)) : Infinity;
           const maxDeliverable = Math.min(
-            maxPower * this.strength,
-            currentStamina * maxPower,
+            throwCap * this.strength,
+            currentStamina,
             poolEnergy
           );
           metabolicJoules = Math.min(metabolicJoules, maxDeliverable);
@@ -426,9 +426,8 @@ export class Character extends GameObject {
       const laserBus = new EnergyBus({
         id: "bus_laser",
         name: "Laser Bus",
-        maxStamina: 2.0,
-        maxPower: 2000.0,
-        staminaRegenRate: 2.0 / 15.0, // Full capacity regenerates in 15 seconds (~0.133 s/s)
+        maxStamina: 4000.0, // 4,000 Joules
+        staminaRegenRate: 4000.0 / 15.0, // Full capacity regenerates in 15 seconds (~266.7 W)
       });
       this.energyBusses.set(laserBus.id, laserBus);
 

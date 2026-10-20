@@ -79,10 +79,11 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 
 - **Dynamic Property Sockets**: Sockets support literal numbers or named object-scoped reference strings (`DynamicProperty`).
 - **Energy & Stamina Model**:
-  - `EnergyBus`: Channels power to abilities (`WalkingModule`, `ClimbingModule`, `Character.jump`, `PickupModule`, `ThrowModule`, `HealthModule`). Default capacity $500\text{ W}$.
-  - Burst Stamina: Exertion duration at max power (default 10.0s). Drains proportional to active wattage: $\text{drain} = \frac{P}{P_{\text{max}}} \cdot dt$. Recovers at rest (0W) by default at 1.0 s/s.
-  - Energy Pool: 10,000 J default reservoir. Instant bursts (jump/throw) deduct mechanical work ($E / 0.25$ muscle efficiency).
-  - Exhaustion Gatekeeping: Exhausted bus strictly denies all power/burst requests (`canAfford`, `requestInstantBurst`, `requestPower`).
+  - `Behavior-Driven Power`: Abilities directly dictate their own maximum power capacity via dedicated `DynamicProperty` sockets (`sprintPowerCapacityProp`, `walkPowerCapacityProp`, `climbPowerCapacityProp`, `maxPowerProp` for laser, `throwPowerCapacityProp`, `jumpPowerCapacityProp`).
+  - `EnergyBus`: Exists strictly for stamina limits and exhaustion state; does NOT dictate max power capacity.
+  - `Stamina Reservoir`: Energy reservoir measured in Joules (default 5,000 J). Drains directly by $\Delta \text{Stamina} = P \cdot dt\text{ J}$. Recovers when resting (0W physical exertion) at $\text{staminaRegenRate}$ (default 500 W = 500 J/s).
+  - `Energy Pool`: 10,000 J default food calorie reservoir (does not passively regenerate). Instant bursts (jump/throw) deduct mechanical work ($E / 0.25$ muscle efficiency) directly in Joules from both stamina and the pool.
+  - `Exhaustion Gatekeeping`: Exhausted bus strictly denies all power/burst requests (`canAfford`, `requestInstantBurst`, `requestPower`) until stamina recovers past 20% threshold.
 - **Consumable & Prefab Systems**: Held items transfer energy/health with cube-root volumetric shrinking; `PrefabManager` & `SceneSpawnerManager` manage archetypes and periodic world spawns.
 - **HUD & Status Displays**: Dual-column gauges (Health/Modifiers on left, Energy/Stamina on right) with lowercase `/s` rates and signed ability tags.
 - **Multiplayer Replication**: Authoritative 60Hz server world (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client prediction, soft reconciliation, and private energy telemetry.

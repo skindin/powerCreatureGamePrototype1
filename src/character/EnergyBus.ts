@@ -54,9 +54,6 @@ export class EnergyBus {
   public activeLocomotionId: string = "sprint";
 
   // Sockets for live dynamic bus properties
-  public baseMaxPowerProp: DynamicProperty;
-  public maxPowerProp: DynamicProperty;
-
   public baseMaxStaminaProp: DynamicProperty;
   public maxStaminaProp: DynamicProperty;
   public currentStaminaProp: DynamicProperty;
@@ -93,61 +90,9 @@ export class EnergyBus {
 
   /**
    * Returns active power allocations sorted chronologically by activation order (stacking left to right).
-   * Automatically readjusts prior partial-power allocations when full-power abilities (continuous or burst)
-   * consume bus headroom, ensuring full-power abilities get their exact demanded bar share without being clipped.
    */
-  public getActiveAllocations(registry?: ObjectPropertiesRegistry): ActivePowerAllocation[] {
-    const list = Array.from(this._activeAllocations.values());
-    if (list.length === 0) return [];
-
-    const maxP = Math.max(1, this.getMaxPower(registry));
-
-    // Separate into full-power and partial-power demands
-    const fullAllocs: ActivePowerAllocation[] = [];
-    const partialAllocs: ActivePowerAllocation[] = [];
-
-    for (const alloc of list) {
-      if (!alloc.allowPartialPower) {
-        fullAllocs.push(alloc);
-      } else {
-        partialAllocs.push(alloc);
-      }
-    }
-
-    fullAllocs.sort((a, b) => a.order - b.order);
-
-    let allocatedFullWatts = 0;
-    for (const alloc of fullAllocs) {
-      if (allocatedFullWatts + alloc.demandedWatts <= maxP + 0.0001) {
-        alloc.grantedWatts = alloc.demandedWatts;
-        alloc.fraction = 1.0;
-        allocatedFullWatts += alloc.demandedWatts;
-      } else {
-        alloc.grantedWatts = 0;
-        alloc.fraction = 0;
-      }
-    }
-
-    const remainingHeadroom = Math.max(0, maxP - allocatedFullWatts);
-    let totalPartialDemanded = 0;
-    for (const alloc of partialAllocs) {
-      totalPartialDemanded += alloc.demandedWatts;
-    }
-
-    for (const alloc of partialAllocs) {
-      if (totalPartialDemanded <= remainingHeadroom + 0.0001) {
-        alloc.grantedWatts = alloc.demandedWatts;
-        alloc.fraction = 1.0;
-      } else if (totalPartialDemanded > 0.0001) {
-        alloc.grantedWatts = (alloc.demandedWatts / totalPartialDemanded) * remainingHeadroom;
-        alloc.fraction = alloc.grantedWatts / alloc.demandedWatts;
-      } else {
-        alloc.grantedWatts = 0;
-        alloc.fraction = 0;
-      }
-    }
-
-    return list.sort((a, b) => a.order - b.order);
+  public getActiveAllocations(_registry?: ObjectPropertiesRegistry): ActivePowerAllocation[] {
+    return Array.from(this._activeAllocations.values()).sort((a, b) => a.order - b.order);
   }
 
   /**
@@ -208,8 +153,6 @@ export class EnergyBus {
   constructor(options?: {
     id?: string;
     name?: string;
-    baseMaxPower?: number;
-    maxPower?: number;
     baseMaxStamina?: number;
     maxStamina?: number;
     currentStamina?: number;
@@ -220,17 +163,11 @@ export class EnergyBus {
     this.id = options?.id ?? "bus_main";
     this.name = options?.name ?? "Main";
 
-    const basePower = options?.baseMaxPower ?? 500.0;
-    const maxPower = options?.maxPower ?? basePower;
-
     // Stamina capacity in Joules (defaults to 5000 J, auto-converting legacy seconds if < 100)
     const rawStamina = options?.baseMaxStamina ?? 5000.0;
     const baseStamina = rawStamina <= 60 ? rawStamina * 500.0 : rawStamina;
     const maxStamina = options?.maxStamina ? (options.maxStamina <= 60 ? options.maxStamina * 500.0 : options.maxStamina) : baseStamina;
     const curStamina = options?.currentStamina !== undefined ? (options.currentStamina <= 60 ? options.currentStamina * 500.0 : options.currentStamina) : maxStamina;
-
-    this.baseMaxPowerProp = new DynamicProperty(basePower);
-    this.maxPowerProp = new DynamicProperty(maxPower);
 
     this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
     this.maxStaminaProp = new DynamicProperty(maxStamina);
@@ -261,10 +198,6 @@ export class EnergyBus {
   public getCurrentWattage(registry?: ObjectPropertiesRegistry): number {
     const val = this.currentWattageProp.get(registry);
     return Math.max(val, this.recentPeakWattage);
-  }
-
-  public getMaxPower(registry?: ObjectPropertiesRegistry): number {
-    return this.maxPowerProp.get(registry);
   }
 
   public getMaxStamina(registry?: ObjectPropertiesRegistry): number {
