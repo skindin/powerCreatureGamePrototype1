@@ -83,7 +83,7 @@ export class GameObject {
   }
 
   /** Global world scale for converting absorbed collision shock to raw HP damage */
-  public static globalWorldCollisionDamageScale: number = 0.05;
+  public static globalWorldCollisionDamageScale: number = 0.1;
 
   // Phase 11: Dynamic Properties Registry (Blender Socket Architecture)
   public properties: ObjectPropertiesRegistry = new ObjectPropertiesRegistry();

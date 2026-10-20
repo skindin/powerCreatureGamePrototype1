@@ -671,8 +671,8 @@ export class GameLoop {
             consumableModule: sObj.consumableTag
               ? new ConsumableModule({
                   tag: sObj.consumableTag,
-                  totalEnergyJoules: sObj.totalEnergyJoules ?? 2000,
-                  remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 2000,
+                  totalEnergyJoules: sObj.totalEnergyJoules ?? 4000,
+                  remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 4000,
                 })
               : undefined,
             damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)

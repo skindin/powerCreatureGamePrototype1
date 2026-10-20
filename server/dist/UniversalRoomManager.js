@@ -5434,7 +5434,7 @@ const _GameObject = class _GameObject {
   }
 };
 /** Global world scale for converting absorbed collision shock to raw HP damage */
-__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.05);
+__publicField(_GameObject, "globalWorldCollisionDamageScale", 0.1);
 let GameObject = _GameObject;
 class WalkingModule {
   constructor(options) {
@@ -10459,10 +10459,10 @@ class ConsumableModule {
     /** Flag indicating whether the item has been completely consumed */
     __publicField(this, "isConsumed", false);
     this.tag = ((options == null ? void 0 : options.tag) ?? "food").trim().toLowerCase() || "food";
-    const total = (options == null ? void 0 : options.totalEnergyJoules) ?? 2e3;
+    const total = (options == null ? void 0 : options.totalEnergyJoules) ?? 4e3;
     this.totalEnergyJoulesProp = new DynamicProperty(total);
     this.remainingEnergyJoulesProp = new DynamicProperty((options == null ? void 0 : options.remainingEnergyJoules) ?? total);
-    this.consumeRateWattsProp = new DynamicProperty((options == null ? void 0 : options.consumeRateWatts) ?? (options == null ? void 0 : options.eatRateWatts) ?? 400);
+    this.consumeRateWattsProp = new DynamicProperty((options == null ? void 0 : options.consumeRateWatts) ?? (options == null ? void 0 : options.eatRateWatts) ?? 800);
     this.healRateProp = new DynamicProperty((options == null ? void 0 : options.healRate) ?? 0);
     if ((options == null ? void 0 : options.minScaleFloor) !== void 0) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);
     if ((options == null ? void 0 : options.minRadiusFloor) !== void 0) this.minRadiusFloor = Math.max(0.08, options.minRadiusFloor);
@@ -10866,9 +10866,9 @@ class PrefabManager {
       hasVerticalPosition: true,
       consumableModule: new ConsumableModule({
         tag: "food",
-        totalEnergyJoules: 2e3,
-        remainingEnergyJoules: 2e3,
-        consumeRateWatts: 400,
+        totalEnergyJoules: 4e3,
+        remainingEnergyJoules: 4e3,
+        consumeRateWatts: 800,
         healRate: 0,
         minScaleFloor: 0.35,
         minRadiusFloor: 0.12
@@ -12189,8 +12189,8 @@ class ServerGameSimulation {
             visualShape: cObj.shape || "circle",
             consumableModule: cObj.consumableTag ? new ConsumableModule({
               tag: cObj.consumableTag,
-              totalEnergyJoules: cObj.totalEnergyJoules ?? 2e3,
-              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2e3
+              totalEnergyJoules: cObj.totalEnergyJoules ?? 4e3,
+              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 4e3
             }) : void 0
           });
         }

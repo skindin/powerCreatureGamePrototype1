@@ -352,8 +352,8 @@ export class ServerGameSimulation {
             consumableModule: cObj.consumableTag
               ? new ConsumableModule({
                   tag: cObj.consumableTag,
-                  totalEnergyJoules: cObj.totalEnergyJoules ?? 2000,
-                  remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 2000,
+                  totalEnergyJoules: cObj.totalEnergyJoules ?? 4000,
+                  remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 4000,
                 })
               : undefined,
           });

@@ -27,9 +27,9 @@ export class PrefabManager {
       hasVerticalPosition: true,
       consumableModule: new ConsumableModule({
         tag: "food",
-        totalEnergyJoules: 2000,
-        remainingEnergyJoules: 2000,
-        consumeRateWatts: 400,
+        totalEnergyJoules: 4000,
+        remainingEnergyJoules: 4000,
+        consumeRateWatts: 800,
         healRate: 0,
         minScaleFloor: 0.35,
         minRadiusFloor: 0.12,

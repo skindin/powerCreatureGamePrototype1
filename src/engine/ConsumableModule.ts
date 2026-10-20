@@ -57,10 +57,10 @@ export class ConsumableModule {
 
   constructor(options?: ConsumableModuleOptions) {
     this.tag = (options?.tag ?? "food").trim().toLowerCase() || "food";
-    const total = options?.totalEnergyJoules ?? 2000.0;
+    const total = options?.totalEnergyJoules ?? 4000.0;
     this.totalEnergyJoulesProp = new DynamicProperty(total);
     this.remainingEnergyJoulesProp = new DynamicProperty(options?.remainingEnergyJoules ?? total);
-    this.consumeRateWattsProp = new DynamicProperty(options?.consumeRateWatts ?? options?.eatRateWatts ?? 400.0);
+    this.consumeRateWattsProp = new DynamicProperty(options?.consumeRateWatts ?? options?.eatRateWatts ?? 800.0);
     this.healRateProp = new DynamicProperty(options?.healRate ?? 0.0);
 
     if (options?.minScaleFloor !== undefined) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);

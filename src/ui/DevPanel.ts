@@ -2323,8 +2323,8 @@ export class DevPanel {
       case "food":
         e.consumableModule = new ConsumableModule({
           tag: "food",
-          totalEnergyJoules: 2000,
-          consumeRateWatts: 400,
+          totalEnergyJoules: 4000,
+          consumeRateWatts: 800,
         });
         e.consumableModule.initialColliderRadius = e.colliderRadius;
         break;
