@@ -126,28 +126,20 @@ export class EnergyHud {
                 <!-- Row 1: Main Bus Stamina (Emerald, Joules) -->
                 <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (J)"></div>
 
-                <!-- Row 2: Laser Bus Stamina (Smaller row, Bright Cyan, Joules) -->
-                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina (J)"></div>
-
-                <!-- Laser Exhaustion Recovery Tick Mark (Red notch shown when laser bus is exhausted) -->
-                <div id="tick-hud-laser-exhaustion-recovery" class="hud-cap-tick hud-cap-laser-exhaustion" style="left: 20%; display: none;" title="Laser Exhaustion Recovery Threshold">
-                  <div class="hud-cap-line hud-cap-laser-exhaustion-line"></div>
-                </div>
-
                 <!-- Exhaustion Recovery Tick Mark (Red notch shown when exhausted) -->
                 <div id="tick-hud-exhaustion-recovery" class="hud-cap-tick hud-cap-exhaustion" style="left: 10%; display: none;" title="Exhaustion Recovery Threshold">
                   <div class="hud-cap-line hud-cap-exhaustion-line"></div>
                 </div>
 
                 <!-- Stamina Cap Tick Notch (Green) -->
-                <div id="tick-hud-max-stamina" class="hud-cap-tick hud-cap-stamina" style="left: 50%;">
+                <div id="tick-hud-max-stamina" class="hud-cap-tick hud-cap-stamina" style="left: 50%; display: none;">
                   <div class="hud-cap-line hud-cap-stamina-line"></div>
                 </div>
 
-                <!-- Row 3: Energy Reservoir Fill (Amber) -->
+                <!-- Row 2: Energy Reservoir Fill (Amber - expanded into space left behind by laser stamina) -->
                 <div id="bar-hud-energy-fill" class="hud-bar-layer hud-bar-energy" title="Energy Reservoir"></div>
 
-                <!-- Row 3 Overlay: Active Energy Modifiers Container (Embedded color-coded segments) -->
+                <!-- Row 2 Overlay: Active Energy Modifiers Container (Embedded color-coded segments) -->
                 <div id="hud-power-blocks-container" class="hud-power-blocks-container"></div>
 
                 <!-- Clear White Line for Current Energy Threshold -->

@@ -5006,10 +5006,10 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
 
 .hud-power-blocks-container {
   position: absolute;
-  top: 12px;
+  top: 7px;
   left: 0;
   width: 100%;
-  height: 16px;
+  height: 21px;
   pointer-events: none;
   border-radius: 0 0 2px 2px;
   overflow: hidden;
@@ -5086,21 +5086,15 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 }
 
-/* Right Track - Row 2: Laser Bus Stamina (Smaller row: 4px height, Bright Cyan) */
+/* Right Track - Row 2: Laser Bus Stamina (Obsolete - hidden) */
 .hud-bar-laser-stamina {
-  top: 7px;
-  height: 4px;
-  z-index: 2;
-  background: linear-gradient(90deg, #0284c7, #06b6d4, #22d3ee);
-  border-right: 1.5px solid #67e8f9;
-  border-radius: 1px;
-  box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
+  display: none;
 }
 
-/* Right Track - Row 3: Energy Reservoir Fill (Bottom lane: 16px height, Amber) */
+/* Right Track - Row 2: Energy Reservoir Fill (Expanded lane: 21px height, Amber - takes up former laser space) */
 .hud-bar-energy {
-  top: 12px;
-  height: 16px;
+  top: 7px;
+  height: 21px;
   z-index: 1;
   background: linear-gradient(90deg, #b45309, #d97706, #fbbf24);
   border-right: 1.5px solid #fde68a;
@@ -5137,8 +5131,8 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
 }
 
 .energy-hud-track-reservoir .hud-baseline-line {
-  top: 12px;
-  height: 16px;
+  top: 7px;
+  height: 21px;
 }
 
 .hud-cap-line {
@@ -5170,22 +5164,9 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   box-shadow: 0 0 4px #ef4444;
 }
 
-/* Laser Exhaustion Recovery Notch on Row 2 (Clean Red Tick Mark on 4px Laser Row) */
+/* Laser Exhaustion Recovery Notch on Row 2 (Obsolete - hidden) */
 .hud-cap-laser-exhaustion {
-  position: absolute;
-  top: 7px;
-  height: 4px;
-  width: 1.5px;
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 20;
-}
-
-.hud-cap-laser-exhaustion-line {
-  width: 1.5px;
-  height: 100%;
-  background: #ef4444;
-  box-shadow: 0 0 4px #ef4444;
+  display: none;
 }
 
 /* Anticipated Modifier Blocks & Tags (Ghostly, less opaque, dotted outline) */
