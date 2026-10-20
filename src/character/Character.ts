@@ -409,7 +409,7 @@ export class Character extends GameObject {
       punchFrequency: 4.0,
       reach: 1.2,
       width: 0.8,
-      maxPower: 600.0,
+      maxPower: 2000.0,
     });
     this.properties.add("meleeMaxForce", this.meleeModule.maxForce);
     this.properties.add("meleeFrequency", this.meleeModule.punchFrequency);

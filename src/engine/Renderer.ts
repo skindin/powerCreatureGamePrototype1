@@ -1631,24 +1631,31 @@ export class Renderer {
     const reachPx = reach * ppu * (0.7 + 0.3 * progress);
     const halfWidthPx = (width * 0.5) * ppu;
 
-    // Subtle shock fill
+    const startX = Math.max(0, 0.25 * ppu);
+    const cornerR = Math.min(halfWidthPx, (reachPx - startX) * 0.5);
+
+    // Subtle forward shock glow fill
     ctx.fillStyle = char.playerColor || "#ef4444";
-    ctx.globalAlpha = alpha * 0.22;
+    ctx.globalAlpha = alpha * 0.20;
     ctx.beginPath();
-    ctx.roundRect(0, -halfWidthPx, reachPx, width * ppu, [4, 10, 10, 4]);
+    ctx.moveTo(startX, -halfWidthPx);
+    ctx.lineTo(reachPx - cornerR, -halfWidthPx);
+    ctx.arc(reachPx - cornerR, 0, cornerR, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.lineTo(startX, halfWidthPx);
+    ctx.closePath();
     ctx.fill();
 
-    // Outlined punch box
-    ctx.globalAlpha = alpha * 0.85;
+    // Crisp forward-facing U-shaped strike wave (open at the character body)
+    ctx.globalAlpha = alpha * 0.90;
     ctx.strokeStyle = char.playerColor || "#ffffff";
-    ctx.lineWidth = Math.max(1, 2.5 * (1 - progress * 0.5));
+    ctx.lineWidth = Math.max(1.5, 3.0 * (1 - progress * 0.5));
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.roundRect(0, -halfWidthPx, reachPx, width * ppu, [4, 10, 10, 4]);
-    ctx.stroke();
-
-    // Impact blast crescent at the punch tip
-    ctx.beginPath();
-    ctx.arc(reachPx, 0, halfWidthPx * (0.8 + 0.3 * progress), -Math.PI * 0.45, Math.PI * 0.45);
+    ctx.moveTo(startX, -halfWidthPx);
+    ctx.lineTo(reachPx - cornerR, -halfWidthPx);
+    ctx.arc(reachPx - cornerR, 0, cornerR, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.lineTo(startX, halfWidthPx);
     ctx.stroke();
 
     ctx.restore();

@@ -8463,7 +8463,7 @@ class MeleeModule {
     this.punchFrequencyProp = new DynamicProperty((options == null ? void 0 : options.punchFrequency) ?? 4);
     this.reachProp = new DynamicProperty((options == null ? void 0 : options.reach) ?? 1.2);
     this.widthProp = new DynamicProperty((options == null ? void 0 : options.width) ?? 0.8);
-    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 600);
+    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 2e3);
   }
   get maxPower() {
     return this.maxPowerProp.literalValue;
@@ -8615,9 +8615,11 @@ class MeleeModule {
           target.velocity.x = (target.velocity.x ?? 0) + uX * targetDv;
           target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
         }
-        const shockDeceleration = actualForce / targetMass;
+        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : target.isCharacter ? 0.2 : 0;
+        const absFrac = Math.max(0.1, 1 - Math.min(1, targetBounce * targetBounce));
+        const shock = targetDv * 60 * absFrac;
         target.dispatchImpact({
-          absorbedShock: shockDeceleration,
+          absorbedShock: shock,
           impactSpeed: targetDv,
           otherEntity: attacker,
           normalX: -uX,
@@ -8775,7 +8777,7 @@ class Character extends GameObject {
       punchFrequency: 4,
       reach: 1.2,
       width: 0.8,
-      maxPower: 600
+      maxPower: 2e3
     });
     this.properties.add("meleeMaxForce", this.meleeModule.maxForce);
     this.properties.add("meleeFrequency", this.meleeModule.punchFrequency);

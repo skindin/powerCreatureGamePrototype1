@@ -72,7 +72,7 @@ export class MeleeModule {
     this.punchFrequencyProp = new DynamicProperty(options?.punchFrequency ?? 4.0);
     this.reachProp = new DynamicProperty(options?.reach ?? 1.2);
     this.widthProp = new DynamicProperty(options?.width ?? 0.8);
-    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 600.0);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 2000.0);
   }
 
   public get maxPower(): number {
@@ -282,10 +282,13 @@ export class MeleeModule {
           target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
         }
 
-        // Apply HP damage via target's DamageSolverModule (factors in impactSusceptibility and damageThresholdHp)
-        const shockDeceleration = actualForce / targetMass;
+        // Apply HP damage via target's DamageSolverModule (consistent with 60Hz collision shock)
+        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : (target.isCharacter ? 0.2 : 0);
+        const absFrac = Math.max(0.1, 1.0 - Math.min(1.0, targetBounce * targetBounce));
+        const shock = targetDv * 60 * absFrac;
+
         target.dispatchImpact({
-          absorbedShock: shockDeceleration,
+          absorbedShock: shock,
           impactSpeed: targetDv,
           otherEntity: attacker,
           normalX: -uX,
