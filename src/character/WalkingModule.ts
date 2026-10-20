@@ -9,6 +9,8 @@ export interface WalkingModuleOptions {
   maxWalkSpeed?: number;
   canSprint?: boolean;
   maxSprintSpeed?: number;
+  sprintPowerCapacity?: number;
+  walkPowerCapacity?: number;
   sprintConsumesEnergy?: boolean;
   sprintAllowPartialPower?: boolean;
   walkConsumesEnergy?: boolean;
@@ -36,6 +38,10 @@ export class WalkingModule {
 
   // Explicit maximum speed cap when sprinting (u/s)
   public maxSprintSpeedProp: DynamicProperty;
+
+  // Behavior-driven maximum power capacities (Watts)
+  public sprintPowerCapacityProp: DynamicProperty;
+  public walkPowerCapacityProp: DynamicProperty;
 
   // Energy consumption toggles
   public sprintConsumesEnergy: boolean = false;
@@ -73,6 +79,8 @@ export class WalkingModule {
     this.maxWalkSpeedProp = new DynamicProperty(options?.maxWalkSpeed ?? 5.2);
     if (options?.canSprint !== undefined) this.canSprint = options.canSprint;
     this.maxSprintSpeedProp = new DynamicProperty(options?.maxSprintSpeed ?? 8.06);
+    this.sprintPowerCapacityProp = new DynamicProperty(options?.sprintPowerCapacity ?? 500.0);
+    this.walkPowerCapacityProp = new DynamicProperty(options?.walkPowerCapacity ?? 300.0);
     if (options?.sprintConsumesEnergy !== undefined) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
     if ((options as any)?.sprintAllowPartialPower !== undefined) this.sprintAllowPartialPower = (options as any).sprintAllowPartialPower;
     if (options?.walkConsumesEnergy !== undefined) this.walkConsumesEnergy = options.walkConsumesEnergy;
@@ -110,6 +118,30 @@ export class WalkingModule {
 
   public getMaxSprintSpeed(registry?: ObjectPropertiesRegistry): number {
     return this.maxSprintSpeedProp.get(registry);
+  }
+
+  public get sprintPowerCapacity(): number {
+    return this.sprintPowerCapacityProp.literalValue;
+  }
+
+  public set sprintPowerCapacity(val: number) {
+    this.sprintPowerCapacityProp.literalValue = val;
+  }
+
+  public getSprintPowerCapacity(registry?: ObjectPropertiesRegistry): number {
+    return this.sprintPowerCapacityProp.get(registry);
+  }
+
+  public get walkPowerCapacity(): number {
+    return this.walkPowerCapacityProp.literalValue;
+  }
+
+  public set walkPowerCapacity(val: number) {
+    this.walkPowerCapacityProp.literalValue = val;
+  }
+
+  public getWalkPowerCapacity(registry?: ObjectPropertiesRegistry): number {
+    return this.walkPowerCapacityProp.get(registry);
   }
 
   public get airFriction(): number {
@@ -219,7 +251,9 @@ export class WalkingModule {
         if (bus) {
           const CrSprint = 0.40;
           const resForceSprint = totalMass * g * CrSprint;
-          const requestedWatts = (resForceSprint * sprintTargetSpeed) / 0.25;
+          const rawSprintWatts = (resForceSprint * sprintTargetSpeed) / 0.25;
+          const sprintCap = this.sprintPowerCapacityProp.get(character.properties);
+          const requestedWatts = Math.min(sprintCap, rawSprintWatts);
           // Minimum power required in sprint gait to achieve base walk speed:
           const baseSpeedWatts = (resForceSprint * baseWalkTargetSpeed) / 0.25;
           const minSprintWatts = this.sprintAllowPartialPower ? (baseSpeedWatts + 0.001) : (requestedWatts - 0.001);
@@ -258,7 +292,9 @@ export class WalkingModule {
                 if (walkBus) {
                   const CrWalk = 0.28;
                   const resForceWalk = totalMass * g * CrWalk;
-                  const walkRequested = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+                  const rawWalkWatts = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+                  const walkCap = this.walkPowerCapacityProp.get(character.properties);
+                  const walkRequested = Math.min(walkCap, rawWalkWatts);
                   const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
                   const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
                   if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
@@ -297,7 +333,9 @@ export class WalkingModule {
         if (bus) {
           const Cr = 0.28;
           const resForce = totalMass * g * Cr;
-          const requestedWatts = (resForce * baseWalkTargetSpeed) / 0.25;
+          const rawWatts = (resForce * baseWalkTargetSpeed) / 0.25;
+          const walkCap = this.walkPowerCapacityProp.get(character.properties);
+          const requestedWatts = Math.min(walkCap, rawWatts);
           const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
           const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
           if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {

@@ -124,11 +124,11 @@ export class EnergyHud {
                 <span class="hud-bar-icon hud-icon-energy">⚡</span>
               </div>
               <div class="energy-hud-track energy-hud-track-main energy-hud-track-reservoir" id="energy-hud-track-reservoir">
-                <!-- Row 1: Main Bus Stamina (Emerald, 10s) -->
-                <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (10s)"></div>
+                <!-- Row 1: Main Bus Stamina (Emerald, Joules) -->
+                <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (J)"></div>
 
-                <!-- Row 2: Laser Bus Stamina (Smaller row, Bright Cyan, 5s) -->
-                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina"></div>
+                <!-- Row 2: Laser Bus Stamina (Smaller row, Bright Cyan, Joules) -->
+                <div id="bar-hud-laser-stamina" class="hud-bar-layer hud-bar-laser-stamina" title="Laser Stamina (J)"></div>
 
                 <!-- Laser Exhaustion Recovery Tick Mark (Red notch shown when laser bus is exhausted) -->
                 <div id="tick-hud-laser-exhaustion-recovery" class="hud-cap-tick hud-cap-laser-exhaustion" style="left: 20%; display: none;" title="Laser Exhaustion Recovery Threshold">

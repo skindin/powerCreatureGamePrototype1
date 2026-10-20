@@ -46,9 +46,13 @@ export class ClimbingModule {
   public allowPartialPower: boolean = false;
   public energyBusId: string = "bus_main";
 
+  // Behavior-driven maximum climbing power capacity (Watts)
+  public climbPowerCapacityProp: DynamicProperty;
+
   constructor(options?: {
     maxAdhesion?: number;
     maxClimbSpeed?: number;
+    climbPowerCapacity?: number;
     horizontalClimb?: boolean;
     consumesEnergy?: boolean;
     allowPartialPower?: boolean;
@@ -56,6 +60,7 @@ export class ClimbingModule {
   }) {
     this.maxAdhesionProp = new DynamicProperty(options?.maxAdhesion ?? 105.0);
     this.maxClimbSpeedProp = new DynamicProperty(options?.maxClimbSpeed ?? 3.0);
+    this.climbPowerCapacityProp = new DynamicProperty(options?.climbPowerCapacity ?? 400.0);
     if (options?.horizontalClimb !== undefined) this.horizontalClimb = options.horizontalClimb;
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
@@ -76,6 +81,18 @@ export class ClimbingModule {
 
   public set maxClimbSpeed(val: number) {
     this.maxClimbSpeedProp.literalValue = val;
+  }
+
+  public get climbPowerCapacity(): number {
+    return this.climbPowerCapacityProp.literalValue;
+  }
+
+  public set climbPowerCapacity(val: number) {
+    this.climbPowerCapacityProp.literalValue = val;
+  }
+
+  public getClimbPowerCapacity(registry?: ObjectPropertiesRegistry): number {
+    return this.climbPowerCapacityProp.get(registry);
   }
 
   public getMaxAdhesion(registry?: ObjectPropertiesRegistry): number {
@@ -222,7 +239,9 @@ export class ClimbingModule {
           const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
           const maxAscentSpeed = this.maxClimbSpeedProp.get(character.properties);
           const ascentWatts = isClimbHeld ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
-          const powerReq = isometricHoldingWatts + ascentWatts;
+          const rawPowerReq = isometricHoldingWatts + ascentWatts;
+          const climbCap = this.climbPowerCapacityProp.get(character.properties);
+          const powerReq = Math.min(climbCap, rawPowerReq);
 
           const granted = bus.requestPower(powerReq, dt, character.energyPool, character.properties, false, "climbing", this.allowPartialPower);
           if (granted <= 0 || bus.isExhausted || (!this.allowPartialPower && granted < powerReq - 0.001)) {

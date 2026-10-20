@@ -45,6 +45,9 @@ export class ThrowModule {
   public maxThrowAimDistanceProp: DynamicProperty;
   public maxThrowHeightProp: DynamicProperty;
 
+  // Behavior-driven maximum throw power capacity (Watts)
+  public throwPowerCapacityProp: DynamicProperty;
+
   /**
    * Alias for backward compatibility with baseThrowForceProp.
    */
@@ -82,6 +85,7 @@ export class ThrowModule {
     baseThrowForce?: number;
     maxThrowAimDistance?: number;
     maxThrowHeight?: number;
+    throwPowerCapacity?: number;
     consumesEnergy?: boolean;
     energyBusId?: string;
     enabled?: boolean;
@@ -90,9 +94,22 @@ export class ThrowModule {
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty(options?.maxThrowAimDistance ?? 13.0);
     this.maxThrowHeightProp = new DynamicProperty(options?.maxThrowHeight ?? 5.0);
+    this.throwPowerCapacityProp = new DynamicProperty(options?.throwPowerCapacity ?? 1000.0);
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.energyBusId !== undefined) this.energyBusId = options.energyBusId;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get throwPowerCapacity(): number {
+    return this.throwPowerCapacityProp.literalValue;
+  }
+
+  public set throwPowerCapacity(val: number) {
+    this.throwPowerCapacityProp.literalValue = val;
+  }
+
+  public getThrowPowerCapacity(registry?: ObjectPropertiesRegistry): number {
+    return this.throwPowerCapacityProp.get(registry);
   }
 
   public get maxThrowSpeed(): number {
@@ -1110,13 +1127,13 @@ export class ThrowModule {
 
         const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
         const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const maxPower = bus.maxPowerProp.get(character.properties);
+        const throwCap = this.throwPowerCapacityProp.get(character.properties);
         if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
 
         const strength = character.strength ?? 1.0;
         const maxDeliverableMetabolicJoules = Math.min(
-          maxPower * strength,
-          currentStamina * maxPower,
+          throwCap * strength,
+          currentStamina,
           poolJoules
         );
         const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));

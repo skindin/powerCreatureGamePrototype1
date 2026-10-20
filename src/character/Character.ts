@@ -4,6 +4,7 @@ import { PickupModule } from "./PickupModule.js";
 import { ThrowModule, TrajectoryCalculation } from "./ThrowModule.js";
 import { ClimbingModule } from "./ClimbingModule.js";
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 import { JumpModule } from "./JumpModule.js";
 import { WallEdgeAssistModule } from "./WallEdgeAssistModule.js";
 import { HealthModule } from "./HealthModule.js";
@@ -131,6 +132,7 @@ export class Character extends GameObject {
   /** Whether jumping is allowed to run at partial impulse when bus power cannot provide 100% */
   public jumpAllowPartialPower: boolean = false;
   public jumpEnergyBusId: string = "bus_main";
+  public jumpPowerCapacityProp: DynamicProperty;
 
   // Player identity & multiplayer slot
   public controllerType: CharacterControllerType = "local";
@@ -396,6 +398,7 @@ export class Character extends GameObject {
 
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
     }
+    this.jumpPowerCapacityProp = new DynamicProperty(1200.0);
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
     this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
     this.healthModule.energyBusId = "bus_main";
@@ -440,6 +443,16 @@ export class Character extends GameObject {
     }
   }
 
+  public get jumpPowerCapacity(): number {
+    return this.jumpPowerCapacityProp.literalValue;
+  }
+  public set jumpPowerCapacity(val: number) {
+    this.jumpPowerCapacityProp.literalValue = val;
+  }
+  public getJumpPowerCapacity(registry?: ObjectPropertiesRegistry): number {
+    return this.jumpPowerCapacityProp.get(registry);
+  }
+
   /**
    * Attempts to jump using the attached JumpModule.
    */
@@ -472,7 +485,9 @@ export class Character extends GameObject {
     const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
     const bus = this.getEnergyBus(this.jumpEnergyBusId);
     const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
-    const metabolicJoules = Math.max(15, mechanicalJoules / efficiency);
+    const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
+    const jumpCap = this.jumpPowerCapacityProp ? this.jumpPowerCapacityProp.get(this.properties) : 1200;
+    const metabolicJoules = Math.min(jumpCap, rawMetabolicJoules);
 
     let energyFraction = 1.0;
     if (this.jumpConsumesEnergy) {
@@ -695,7 +710,9 @@ export class Character extends GameObject {
       const isometricHoldingWatts = (totalMass * g * 0.35) / 0.25;
       const maxAscentSpeed = this.climbingModule.maxClimbSpeedProp.get(this.properties);
       const ascentWatts = isClimbInput ? (totalMass * g * maxAscentSpeed) / 0.25 : 0;
-      const climbWatts = isometricHoldingWatts + ascentWatts;
+      const rawClimbWatts = isometricHoldingWatts + ascentWatts;
+      const climbCap = this.climbingModule.climbPowerCapacityProp.get(this.properties);
+      const climbWatts = Math.min(climbCap, rawClimbWatts);
       const bus = this.getEnergyBus(this.climbingModule.energyBusId);
       if (bus) {
         bus.registerDemand("climbing", climbWatts);

@@ -1437,7 +1437,9 @@ export class DevPanel {
             </div>
             <div id="prop-socket-walk-force"></div>
             <div id="prop-socket-walk-speed"></div>
+            <div id="prop-socket-walk-power-cap"></div>
             <div id="prop-socket-sprint-speed"></div>
+            <div id="prop-socket-sprint-power-cap"></div>
             <div id="prop-socket-air-fric"></div>
             <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
               <div id="prop-socket-strength"></div>
@@ -1516,6 +1518,7 @@ export class DevPanel {
             ${throwStrWarning}
             <div id="prop-socket-throw-force"></div>
             <div id="prop-socket-throw-max-height"></div>
+            <div id="prop-socket-throw-power-cap"></div>
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
@@ -1545,6 +1548,7 @@ export class DevPanel {
             ${jumpVertWarning}
             <div id="prop-socket-jump-strength"></div>
             <div id="prop-socket-jump-max-speed"></div>
+            <div id="prop-socket-jump-power-cap"></div>
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
@@ -1608,6 +1612,7 @@ export class DevPanel {
             </div>
             <div id="prop-socket-climb-adhesion"></div>
             <div id="prop-socket-climb-speed"></div>
+            <div id="prop-socket-climb-power-cap"></div>
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
@@ -1974,8 +1979,8 @@ export class DevPanel {
 
               <div style="margin: 6px 0;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-                  <span>Burst Stamina (Max Power Duration)</span>
-                  <span id="label-energy-bus-stamina-status-${b.id}">${curStamina.toFixed(1)}s / ${maxStamina.toFixed(1)}s (${staminaPct.toFixed(0)}%)</span>
+                  <span>Stamina Reservoir</span>
+                  <span id="label-energy-bus-stamina-status-${b.id}">${curStamina.toFixed(0)} J / ${maxStamina.toFixed(0)} J (${staminaPct.toFixed(0)}%)</span>
                 </div>
                 <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
                   <div id="bar-energy-bus-stamina-fill-${b.id}" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
@@ -2693,6 +2698,16 @@ export class DevPanel {
         });
         walkSpeedSocketEl.appendChild(wsCtrl.element);
       }
+      const walkPowerCapSocketEl = this.container.querySelector("#prop-socket-walk-power-cap");
+      if (walkPowerCapSocketEl && char.walkingModule) {
+        const wpCtrl = new PropertyControl({
+          property: char.walkingModule.walkPowerCapacityProp,
+          owner: char,
+          label: "Walk Power Rating (Watts)",
+          step: 25.0,
+        });
+        walkPowerCapSocketEl.appendChild(wpCtrl.element);
+      }
       const sprintSpeedSocketEl = this.container.querySelector("#prop-socket-sprint-speed");
       if (sprintSpeedSocketEl && char.walkingModule) {
         const ssCtrl = new PropertyControl({
@@ -2702,6 +2717,16 @@ export class DevPanel {
           step: 0.2,
         });
         sprintSpeedSocketEl.appendChild(ssCtrl.element);
+      }
+      const sprintPowerCapSocketEl = this.container.querySelector("#prop-socket-sprint-power-cap");
+      if (sprintPowerCapSocketEl && char.walkingModule) {
+        const spCtrl = new PropertyControl({
+          property: char.walkingModule.sprintPowerCapacityProp,
+          owner: char,
+          label: "Sprint Power Rating (Watts)",
+          step: 25.0,
+        });
+        sprintPowerCapSocketEl.appendChild(spCtrl.element);
       }
       const airFricSocketEl = this.container.querySelector("#prop-socket-air-fric");
       if (airFricSocketEl && char.walkingModule) {
@@ -2828,6 +2853,16 @@ export class DevPanel {
         });
         throwHeightSocketEl.appendChild(thCtrl.element);
       }
+      const throwPowerCapSocketEl = this.container.querySelector("#prop-socket-throw-power-cap");
+      if (throwPowerCapSocketEl && char.throwModule) {
+        const tpCtrl = new PropertyControl({
+          property: char.throwModule.throwPowerCapacityProp,
+          owner: char,
+          label: "Throw Power Capacity (Watts)",
+          step: 50.0,
+        });
+        throwPowerCapSocketEl.appendChild(tpCtrl.element);
+      }
       const checkThrowEnergy = this.container.querySelector("#check-throw-energy") as HTMLInputElement;
       const fieldThrowBus = this.container.querySelector("#field-throw-energy-bus") as HTMLElement;
       checkThrowEnergy?.addEventListener("change", () => {
@@ -2863,6 +2898,16 @@ export class DevPanel {
           step: 0.1,
         });
         jumpSpeedSocketEl.appendChild(jspCtrl.element);
+      }
+      const jumpPowerCapSocketEl = this.container.querySelector("#prop-socket-jump-power-cap");
+      if (jumpPowerCapSocketEl && char.jumpPowerCapacityProp) {
+        const jpCtrl = new PropertyControl({
+          property: char.jumpPowerCapacityProp,
+          owner: char,
+          label: "Jump Power Capacity (Watts)",
+          step: 50.0,
+        });
+        jumpPowerCapSocketEl.appendChild(jpCtrl.element);
       }
       const checkJumpEnergy = this.container.querySelector("#check-jump-energy") as HTMLInputElement;
       const fieldJumpPartialPower = this.container.querySelector("#field-jump-partial-power") as HTMLElement;
@@ -2929,6 +2974,16 @@ export class DevPanel {
           step: 0.1,
         });
         climbSpeedSocketEl.appendChild(csCtrl.element);
+      }
+      const climbPowerCapSocketEl = this.container.querySelector("#prop-socket-climb-power-cap");
+      if (climbPowerCapSocketEl && char.climbingModule) {
+        const cpCtrl = new PropertyControl({
+          property: char.climbingModule.climbPowerCapacityProp,
+          owner: char,
+          label: "Climb Power Capacity (Watts)",
+          step: 25.0,
+        });
+        climbPowerCapSocketEl.appendChild(cpCtrl.element);
       }
       const checkClimbEnergy = this.container.querySelector("#check-climb-energy") as HTMLInputElement;
       const fieldClimbPartialPower = this.container.querySelector("#field-climb-partial-power") as HTMLElement;
@@ -3415,10 +3470,10 @@ export class DevPanel {
           const sCtrl = new PropertyControl({
             property: eb.maxStaminaProp,
             owner: char,
-            label: "Burst Stamina Capacity (Seconds)",
-            step: 1.0,
-            min: 0.5,
-            max: 120.0,
+            label: "Stamina Reservoir Capacity (Joules)",
+            step: 100.0,
+            min: 50.0,
+            max: 50000.0,
           });
           maxStaminaEl.appendChild(sCtrl.element);
         }
@@ -3428,8 +3483,8 @@ export class DevPanel {
           const csCtrl = new PropertyControl({
             property: eb.currentStaminaProp,
             owner: char,
-            label: "Current Stamina Left (Seconds)",
-            step: 0.5,
+            label: "Current Stamina (Joules)",
+            step: 50.0,
             min: 0.0,
           });
           curStaminaEl.appendChild(csCtrl.element);
@@ -3440,10 +3495,10 @@ export class DevPanel {
           const rCtrl = new PropertyControl({
             property: eb.staminaRegenRateProp,
             owner: char,
-            label: "Stamina Regen Rate (s/s)",
-            step: 0.05,
-            min: 0.01,
-            max: 10.0,
+            label: "Stamina Regen Rate (Watts = J/s)",
+            step: 25.0,
+            min: 0.0,
+            max: 5000.0,
           });
           regenEl.appendChild(rCtrl.element);
         }
@@ -4621,7 +4676,34 @@ export class DevPanel {
         }
       }
 
-      if (char.energyBus) {
+      if (char.energyBusses && char.energyBusses.size > 0) {
+        for (const [busId, eb] of char.energyBusses.entries()) {
+          const curS = eb.getCurrentStamina(char.properties);
+          const maxS = eb.getMaxStamina(char.properties);
+          const pctS = maxS > 0 ? Math.min(100, Math.max(0, (curS / maxS) * 100)) : 0;
+          const curWatts = eb.getCurrentWattage(char.properties);
+
+          const labelStamina = this.container.querySelector(`#label-energy-bus-stamina-status-${busId}`);
+          if (labelStamina) {
+            labelStamina.textContent = `${curS.toFixed(0)} J / ${maxS.toFixed(0)} J (${pctS.toFixed(0)}%)`;
+          }
+          const barStamina = this.container.querySelector(`#bar-energy-bus-stamina-fill-${busId}`) as HTMLElement | null;
+          if (barStamina) {
+            barStamina.style.width = `${pctS}%`;
+          }
+
+          const labelWattage = this.container.querySelector(`#label-energy-bus-wattage-${busId}`) as HTMLElement | null;
+          if (labelWattage) {
+            labelWattage.textContent = `${curWatts.toFixed(0)} Watts`;
+            labelWattage.style.color = curWatts > 0 ? "#38bdf8" : "#64748b";
+          }
+
+          const warnExhausted = this.container.querySelector(`#warn-bus-exhausted-${busId}`) as HTMLElement | null;
+          if (warnExhausted) {
+            warnExhausted.style.display = eb.isExhausted ? "block" : "none";
+          }
+        }
+      } else if (char.energyBus) {
         const eb = char.energyBus;
         const curS = eb.getCurrentStamina(char.properties);
         const maxS = eb.getMaxStamina(char.properties);
@@ -4630,7 +4712,7 @@ export class DevPanel {
 
         const labelStamina = this.container.querySelector("#label-energy-bus-stamina-status");
         if (labelStamina) {
-          labelStamina.textContent = `${curS.toFixed(1)}s / ${maxS.toFixed(1)}s (${pctS.toFixed(0)}%)`;
+          labelStamina.textContent = `${curS.toFixed(0)} J / ${maxS.toFixed(0)} J (${pctS.toFixed(0)}%)`;
         }
         const barStamina = this.container.querySelector("#bar-energy-bus-stamina-fill") as HTMLElement | null;
         if (barStamina) {
