@@ -59,7 +59,6 @@ export class EnergyHud {
   private visualHpPct: number = -1;
   private visualEnergyPct: number = -1;
   private visualMainStaminaPct: number = -1;
-  private visualLaserStaminaPct: number = -1;
 
   // Smooth interpolation tracking: blocks smoothly grow from 0 and shrink back to 0
   private visualBlocks: Map<string, VisualPowerBlock> = new Map();
@@ -411,30 +410,9 @@ export class EnergyHud {
     const allocations: any[] = [];
     const activeAbilityKeys = new Set<string>();
 
-    if (_char.energyBusses && _char.energyBusses.size > 0) {
-      for (const b of _char.energyBusses.values()) {
-        if (b && b.enabled) {
-          for (const a of b.getActiveAllocations(_char.properties)) {
-            // For instant bursts, use demandedJoules/demandedWatts so full reservoir cost is visualized
-            const watts = a.isBurst ? (a.demandedWatts || a.grantedWatts) : a.grantedWatts;
-            allocations.push({
-              key: a.id,
-              id: a.id,
-              name: a.name,
-              color: a.color,
-              grantedWatts: watts,
-              allowPartialPower: a.allowPartialPower,
-              isPositive: false,
-              isBurst: a.isBurst ?? false,
-              order: a.order,
-              isAnticipated: false,
-            });
-            activeAbilityKeys.add(a.id);
-          }
-        }
-      }
-    } else if (_char.energyBus && _char.energyBus.enabled) {
-      for (const a of _char.energyBus.getActiveAllocations(_char.properties)) {
+    if (_char.energyPool && _char.energyPool.enabled) {
+      for (const a of _char.energyPool.getActiveAllocations(_char.properties)) {
+        // For instant bursts, use demandedJoules/demandedWatts so full reservoir cost is visualized
         const watts = a.isBurst ? (a.demandedWatts || a.grantedWatts) : a.grantedWatts;
         allocations.push({
           key: a.id,
@@ -678,12 +656,10 @@ export class EnergyHud {
       this.visualHpPct = -1;
       this.visualEnergyPct = -1;
       this.visualMainStaminaPct = -1;
-      this.visualLaserStaminaPct = -1;
     }
 
     const props = char.properties;
     const pool = char.energyPool;
-    const bus = char.getEnergyBus("bus_main");
     const healthMod = char.healthModule;
 
     const curHp = healthMod ? healthMod.getCurrentHp(props) : 100;
@@ -693,9 +669,9 @@ export class EnergyHud {
     const maxEnergy = pool ? pool.getMaxEnergy(props) : 10000;
     const infiniteEnergy = pool?.infiniteEnergy ?? false;
 
-    const curStamina = bus ? bus.getCurrentStamina(props) : 10;
-    const maxStamina = bus ? bus.getMaxStamina(props) : 10;
-    const isExhausted = bus?.isExhausted ?? false;
+    const curStamina = pool ? pool.getCurrentStamina(props) : 5000;
+    const maxStamina = pool ? pool.getMaxStamina(props) : 5000;
+    const isExhausted = pool?.isExhausted ?? false;
 
     const energyCap = Math.max(100, maxEnergy);
 
@@ -706,27 +682,15 @@ export class EnergyHud {
     // Main Stamina now takes up the whole width (100% of row represents maxStamina)
     const targetMainStaminaPct = maxStamina > 0 ? Math.max(0, Math.min(100, (curStamina / maxStamina) * 100)) : 0;
 
-    const laserBus = char.getEnergyBus("bus_laser");
-    let targetLaserStaminaPct = 0;
-    let isLaserExhausted = false;
-    if (laserBus && laserBus.enabled) {
-      const curLaserStamina = laserBus.getCurrentStamina(props);
-      const maxLaserStamina = laserBus.getMaxStamina(props);
-      isLaserExhausted = laserBus.isExhausted;
-      targetLaserStaminaPct = maxLaserStamina > 0 ? Math.max(0, Math.min(100, (curLaserStamina / maxLaserStamina) * 100)) : 0;
-    }
-
     // Initialize visual percentages on first load so there is no initial false lerp
     if (this.visualHpPct < 0) this.visualHpPct = targetHpPct;
     if (this.visualEnergyPct < 0) this.visualEnergyPct = targetEnergyPct;
     if (this.visualMainStaminaPct < 0) this.visualMainStaminaPct = targetMainStaminaPct;
-    if (this.visualLaserStaminaPct < 0) this.visualLaserStaminaPct = targetLaserStaminaPct;
 
     // Smooth status bar decays over a couple frames (rate ~12.0 = ~8-14 frames smooth decay)
     this.visualHpPct = this.smoothPct(this.visualHpPct, targetHpPct, 12.0, dt);
     this.visualEnergyPct = this.smoothPct(this.visualEnergyPct, targetEnergyPct, 12.0, dt);
     this.visualMainStaminaPct = this.smoothPct(this.visualMainStaminaPct, targetMainStaminaPct, 14.0, dt);
-    this.visualLaserStaminaPct = this.smoothPct(this.visualLaserStaminaPct, targetLaserStaminaPct, 14.0, dt);
 
     if (this.isCollapsed) return;
 
@@ -762,7 +726,7 @@ export class EnergyHud {
     // Exhaustion Recovery Tick Notch (Red tick indicating when player will not be exhausted anymore)
     if (this.exhaustionTickEl) {
       if (isExhausted) {
-        const recoveryRatio = bus?.recoveryThresholdRatio ?? 0.20;
+        const recoveryRatio = pool?.recoveryThresholdRatio ?? 0.20;
         const recoveryPct = recoveryRatio * 100;
         this.exhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
         this.exhaustionTickEl.style.display = "block";
@@ -771,35 +735,11 @@ export class EnergyHud {
       }
     }
 
-    // Laser Bus Stamina Fill (Bright Cyan on Row 2, 5s capacity) - tracks visualLaserStaminaPct smoothly
     if (this.laserStaminaFillEl) {
-      if (laserBus && laserBus.enabled) {
-        this.laserStaminaFillEl.style.display = "block";
-        this.laserStaminaFillEl.style.width = `${this.visualLaserStaminaPct.toFixed(2)}%`;
-        if (isLaserExhausted) {
-          this.laserStaminaFillEl.style.borderRight = "1.5px solid #fca5a5";
-          this.laserStaminaFillEl.style.background = "linear-gradient(90deg, #991b1b, #dc2626, #ef4444)";
-          this.laserStaminaFillEl.style.boxShadow = "0 0 6px rgba(239, 68, 68, 0.6)";
-        } else {
-          this.laserStaminaFillEl.style.borderRight = "1.5px solid #67e8f9";
-          this.laserStaminaFillEl.style.background = "linear-gradient(90deg, #0284c7, #06b6d4, #22d3ee)";
-          this.laserStaminaFillEl.style.boxShadow = "0 0 6px rgba(6, 182, 212, 0.4)";
-        }
-      } else {
-        this.laserStaminaFillEl.style.display = "none";
-      }
+      this.laserStaminaFillEl.style.display = "none";
     }
-
-    // Laser Exhaustion Recovery Tick Notch (Red tick indicating when laser will stop being exhausted)
     if (this.laserExhaustionTickEl) {
-      if (laserBus && laserBus.enabled && isLaserExhausted) {
-        const recoveryRatio = laserBus.recoveryThresholdRatio ?? 0.20;
-        const recoveryPct = recoveryRatio * 100;
-        this.laserExhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
-        this.laserExhaustionTickEl.style.display = "block";
-      } else {
-        this.laserExhaustionTickEl.style.display = "none";
-      }
+      this.laserExhaustionTickEl.style.display = "none";
     }
   }
 }

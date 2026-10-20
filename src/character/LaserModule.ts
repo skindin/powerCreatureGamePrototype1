@@ -46,9 +46,7 @@ export class LaserModule {
   /** Maximum power rating (Watts) demanded when operating at max damage rate */
   public maxPowerProp: DynamicProperty;
 
-  /** Energy Bus to draw continuous power from */
-  public energyBusId: string = "bus_laser";
-  /** Whether to allow partial power firing when bus cannot satisfy 100% wattage */
+  /** Whether to allow partial power firing when pool cannot satisfy 100% wattage */
   public allowPartialPower: boolean = true;
 
   /** Live state */
@@ -64,7 +62,6 @@ export class LaserModule {
 
   constructor(options?: LaserModuleOptions) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
-    if (options?.energyBusId) this.energyBusId = options.energyBusId;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
 
     const baseDamage = options?.damageRate ?? 50.0;
@@ -342,12 +339,11 @@ export class LaserModule {
       let grantedWatts = 0;
 
       if (demandedWatts > 0) {
-        const bus = character.getEnergyBus(this.energyBusId);
-        if (bus && bus.enabled && !bus.isExhausted) {
-          grantedWatts = bus.requestPower(
+        const pool = character.energyPool;
+        if (pool && pool.enabled && !pool.isExhausted) {
+          grantedWatts = pool.requestPower(
             demandedWatts,
             dt,
-            character.energyPool,
             registry,
             false,
             "laser_blast",
@@ -358,7 +354,7 @@ export class LaserModule {
 
       this.actualPowerWatts = grantedWatts;
 
-      // If no power granted (or bus exhausted), laser cuts off and deals 0 damage
+      // If no power granted (or pool exhausted), laser cuts off and deals 0 damage
       if (demandedWatts > 0 && grantedWatts <= 0.001) {
         this.actualDamageRate = 0;
         this.isFiring = false;

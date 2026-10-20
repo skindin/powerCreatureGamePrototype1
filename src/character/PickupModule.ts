@@ -11,18 +11,33 @@ export class PickupModule {
   public crossLayerReachRatio = 1.0; // Deprecated: single 3D pickup range now governs reach across all layers
 
   /**
-   * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+   * Whether picking up objects consumes energy from EnergyPool.
    */
   public consumesEnergy: boolean = false;
   /** Whether picking up is allowed when power cannot provide 100% full lift */
   public allowPartialPower: boolean = false;
-  public energyBusId: string = "bus_main";
 
-  constructor(options?: { pickupReach?: number; consumesEnergy?: boolean; allowPartialPower?: boolean; enabled?: boolean }) {
+  // Behavior-driven maximum pickup power capacity (Watts)
+  public maxPowerProp: DynamicProperty;
+
+  constructor(options?: { pickupReach?: number; maxPower?: number; consumesEnergy?: boolean; allowPartialPower?: boolean; enabled?: boolean }) {
     this.pickupReachProp = new DynamicProperty(options?.pickupReach ?? 1.3);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 250.0);
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get maxPower(): number {
+    return this.maxPowerProp.literalValue;
+  }
+
+  public set maxPower(val: number) {
+    this.maxPowerProp.literalValue = val;
+  }
+
+  public getMaxPower(registry?: ObjectPropertiesRegistry): number {
+    return this.maxPowerProp.get(registry);
   }
 
   public get pickupReach(): number {
@@ -116,12 +131,20 @@ export class PickupModule {
     // W_mech = m * g * h, metabolic cost = W_mech / 0.25 (muscle efficiency).
     // Cost is charged for the intended lift regardless of whether the object is heavy/resisted.
     if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus) {
+      const pool = character.energyPool;
+      if (pool) {
         const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
         const liftHeight = 0.45;
-        const metabolicJoules = Math.max(5, (targetMass * 9.81 * liftHeight) / 0.25);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties, this.allowPartialPower);
+        const rawMetabolicJoules = Math.max(5, (targetMass * 9.81 * liftHeight) / 0.25);
+        const maxPower = this.maxPowerProp.get(character.properties);
+        let metabolicJoules = rawMetabolicJoules;
+        if (metabolicJoules > maxPower) {
+          if (!this.allowPartialPower) {
+            return false;
+          }
+          metabolicJoules = maxPower;
+        }
+        const fraction = pool.requestEnergy(metabolicJoules, 0.15, character.properties, this.allowPartialPower, "pickup");
         if (fraction <= 0 || (!this.allowPartialPower && fraction < 1.0)) {
           // Not enough energy to complete the lift
           return false;

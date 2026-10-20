@@ -61,17 +61,18 @@ export class HealthModule {
   /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
   public hpPerJouleProp: DynamicProperty;
 
-  /** Toggle indicating whether healing draws energy from an Energy Bus */
+  /** Toggle indicating whether healing draws energy from EnergyPool */
   public consumesEnergy: boolean = false;
-  /** Whether healing is allowed to run when bus power cannot provide 100% full wattage */
+  /** Whether healing is allowed to run when pool power cannot provide 100% full wattage */
   public allowPartialPower: boolean = true;
-  /** ID of the Energy Bus to draw power from */
-  public energyBusId: string = "bus_main";
+
+  // Behavior-driven maximum healing power capacity (Watts)
+  public maxPowerProp: DynamicProperty;
 
   /** Optional callback invoked when entity dies and respawns */
   public onDeathRespawn?: (entity: Character, respawnPos: { x: number; y: number; z: number }) => void;
 
-  constructor(options?: HealthModuleOptions & { allowPartialPower?: boolean }) {
+  constructor(options?: HealthModuleOptions & { maxPower?: number; allowPartialPower?: boolean }) {
     this.baseMaxHp = options?.baseMaxHp ?? 100.0;
     const initialMaxHp = options?.maxHp ?? this.baseMaxHp;
     this.maxHpProp = new DynamicProperty(initialMaxHp);
@@ -82,10 +83,23 @@ export class HealthModule {
 
     // Default 0.04 HP/Joule (equals 25 Joules per 1 HP, 250W at 10 HP/s)
     this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.04);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 300.0);
 
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+  }
+
+  public get maxPower(): number {
+    return this.maxPowerProp.literalValue;
+  }
+
+  public set maxPower(val: number) {
+    this.maxPowerProp.literalValue = val;
+  }
+
+  public getMaxPower(registry?: ObjectPropertiesRegistry): number {
+    return this.maxPowerProp.get(registry);
   }
 
   public get maxHp(): number {
@@ -265,16 +279,28 @@ export class HealthModule {
       if (healRate > 0) {
         let effectiveHealRate = healRate;
         if (this.consumesEnergy) {
-          const bus = character.getEnergyBus(this.energyBusId);
-          if (bus) {
+          const pool = character.energyPool;
+          if (pool) {
             // Bio-regeneration power: Power = healRate / (HP/Joule)
             const hpPerJoule = this.getHpPerJoule(registry);
-            const powerWatts = healRate / Math.max(0.0001, hpPerJoule);
-            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen", this.allowPartialPower);
-            if (granted <= 0) {
-              effectiveHealRate = 0;
-            } else {
-              effectiveHealRate = healRate * Math.min(1.0, granted / powerWatts);
+            const rawPowerWatts = healRate / Math.max(0.0001, hpPerJoule);
+            const maxPower = this.maxPowerProp.get(registry);
+            let powerWatts = rawPowerWatts;
+            if (powerWatts > maxPower) {
+              if (!this.allowPartialPower) {
+                effectiveHealRate = 0;
+                powerWatts = 0;
+              } else {
+                powerWatts = maxPower;
+              }
+            }
+            if (powerWatts > 0) {
+              const granted = pool.requestPower(powerWatts, dt, registry, false, "health_regen", this.allowPartialPower);
+              if (granted <= 0) {
+                effectiveHealRate = 0;
+              } else {
+                effectiveHealRate = healRate * Math.min(1.0, granted / rawPowerWatts);
+              }
             }
           }
         }

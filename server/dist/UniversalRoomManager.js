@@ -5450,17 +5450,18 @@ class WalkingModule {
     // Explicit maximum speed cap when sprinting (u/s)
     __publicField(this, "maxSprintSpeedProp");
     // Behavior-driven maximum power capacities (Watts)
-    __publicField(this, "sprintPowerCapacityProp");
-    __publicField(this, "walkPowerCapacityProp");
+    __publicField(this, "maxSprintPowerProp");
+    __publicField(this, "maxWalkPowerProp");
+    // Legacy bus identifiers for backwards compatibility
+    __publicField(this, "sprintEnergyBusId", "bus_main");
+    __publicField(this, "walkEnergyBusId", "bus_main");
     // Energy consumption toggles
     __publicField(this, "sprintConsumesEnergy", false);
     /** Whether sprinting is allowed to run at partial power between walk speed and sprint speed */
     __publicField(this, "sprintAllowPartialPower", true);
-    __publicField(this, "sprintEnergyBusId", "bus_main");
     __publicField(this, "walkConsumesEnergy", false);
     /** Whether walking is allowed to run at reduced speed/force when power cannot provide 100% */
     __publicField(this, "walkAllowPartialPower", false);
-    __publicField(this, "walkEnergyBusId", "bus_main");
     __publicField(this, "consumesEnergy", false);
     // Drag damping factor for backwards compatibility / reference
     __publicField(this, "dragDamping", 8.01);
@@ -5482,8 +5483,8 @@ class WalkingModule {
     this.maxWalkSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxWalkSpeed) ?? 5.2);
     if ((options == null ? void 0 : options.canSprint) !== void 0) this.canSprint = options.canSprint;
     this.maxSprintSpeedProp = new DynamicProperty((options == null ? void 0 : options.maxSprintSpeed) ?? 8.06);
-    this.sprintPowerCapacityProp = new DynamicProperty((options == null ? void 0 : options.sprintPowerCapacity) ?? 500);
-    this.walkPowerCapacityProp = new DynamicProperty((options == null ? void 0 : options.walkPowerCapacity) ?? 300);
+    this.maxSprintPowerProp = new DynamicProperty((options == null ? void 0 : options.sprintPowerCapacity) ?? (options == null ? void 0 : options.maxSprintPower) ?? 500);
+    this.maxWalkPowerProp = new DynamicProperty((options == null ? void 0 : options.walkPowerCapacity) ?? (options == null ? void 0 : options.maxWalkPower) ?? 300);
     if ((options == null ? void 0 : options.sprintConsumesEnergy) !== void 0) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
     if ((options == null ? void 0 : options.sprintAllowPartialPower) !== void 0) this.sprintAllowPartialPower = options.sprintAllowPartialPower;
     if ((options == null ? void 0 : options.walkConsumesEnergy) !== void 0) this.walkConsumesEnergy = options.walkConsumesEnergy;
@@ -5493,6 +5494,19 @@ class WalkingModule {
     if ((options == null ? void 0 : options.walkInAir) !== void 0) this.walkInAir = options.walkInAir;
     this.airFrictionProp = new DynamicProperty((options == null ? void 0 : options.airFriction) ?? 1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  // Aliases for backwards compatibility
+  get sprintPowerCapacityProp() {
+    return this.maxSprintPowerProp;
+  }
+  set sprintPowerCapacityProp(prop) {
+    this.maxSprintPowerProp = prop;
+  }
+  get walkPowerCapacityProp() {
+    return this.maxWalkPowerProp;
+  }
+  set walkPowerCapacityProp(prop) {
+    this.maxWalkPowerProp = prop;
   }
   get maxWalkForce() {
     return this.maxWalkForceProp.literalValue;
@@ -5515,23 +5529,41 @@ class WalkingModule {
   getMaxSprintSpeed(registry) {
     return this.maxSprintSpeedProp.get(registry);
   }
+  get maxSprintPower() {
+    return this.maxSprintPowerProp.literalValue;
+  }
+  set maxSprintPower(val) {
+    this.maxSprintPowerProp.literalValue = val;
+  }
+  getMaxSprintPower(registry) {
+    return this.maxSprintPowerProp.get(registry);
+  }
   get sprintPowerCapacity() {
-    return this.sprintPowerCapacityProp.literalValue;
+    return this.maxSprintPowerProp.literalValue;
   }
   set sprintPowerCapacity(val) {
-    this.sprintPowerCapacityProp.literalValue = val;
+    this.maxSprintPowerProp.literalValue = val;
   }
   getSprintPowerCapacity(registry) {
-    return this.sprintPowerCapacityProp.get(registry);
+    return this.maxSprintPowerProp.get(registry);
+  }
+  get maxWalkPower() {
+    return this.maxWalkPowerProp.literalValue;
+  }
+  set maxWalkPower(val) {
+    this.maxWalkPowerProp.literalValue = val;
+  }
+  getMaxWalkPower(registry) {
+    return this.maxWalkPowerProp.get(registry);
   }
   get walkPowerCapacity() {
-    return this.walkPowerCapacityProp.literalValue;
+    return this.maxWalkPowerProp.literalValue;
   }
   set walkPowerCapacity(val) {
-    this.walkPowerCapacityProp.literalValue = val;
+    this.maxWalkPowerProp.literalValue = val;
   }
   getWalkPowerCapacity(registry) {
-    return this.walkPowerCapacityProp.get(registry);
+    return this.maxWalkPowerProp.get(registry);
   }
   get airFriction() {
     return this.airFrictionProp.literalValue;
@@ -5590,8 +5622,8 @@ class WalkingModule {
     const isActivelySprinting = this.canSprint && character.isSprinting;
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && this.sprintConsumesEnergy) {
-      const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
-      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(character.properties) <= 1e-4)) {
+      const ep = character.energyPool;
+      if (ep && (ep.isExhausted || ep.getCurrentStamina(character.properties) <= 1e-4)) {
         sprintingNow = false;
         character.setSprinting(false);
       }
@@ -5606,20 +5638,26 @@ class WalkingModule {
     const g = 9.81;
     if (isMoving) {
       if (sprintingNow && this.sprintConsumesEnergy) {
-        const bus = character.getEnergyBus(this.sprintEnergyBusId);
-        if (bus) {
+        const pool = character.energyPool;
+        if (pool) {
           const CrSprint = 0.4;
           const resForceSprint = totalMass * g * CrSprint;
           const rawSprintWatts = resForceSprint * sprintTargetSpeed / 0.25;
-          const sprintCap = this.sprintPowerCapacityProp.get(character.properties);
-          const requestedWatts = Math.min(sprintCap, rawSprintWatts);
+          const sprintCap = this.maxSprintPowerProp.get(character.properties);
+          let requestedWatts = rawSprintWatts;
+          if (requestedWatts > sprintCap) {
+            if (!this.sprintAllowPartialPower) {
+              requestedWatts = 0;
+            } else {
+              requestedWatts = sprintCap;
+            }
+          }
           const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
           const minSprintWatts = this.sprintAllowPartialPower ? baseSpeedWatts + 1e-3 : requestedWatts - 1e-3;
-          const canSprintEitherWay = bus.canSupportPowerInIsolation(
+          const canSprintEitherWay = requestedWatts > 0 && pool.canSupportPowerInIsolation(
             requestedWatts,
             minSprintWatts,
             dt,
-            character.energyPool,
             character.properties
           );
           if (!canSprintEitherWay) {
@@ -5627,36 +5665,36 @@ class WalkingModule {
             sprintingNow = false;
             effectiveWalkForce = maxWalkForce;
             effectiveTargetSpeed = maxWalkSpeed;
-            bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+            pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
           } else {
-            const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+            const peekedWatts = pool.peekPower(requestedWatts, dt, character.properties, false, this.sprintAllowPartialPower, "locomotion");
             if (peekedWatts < minSprintWatts) {
               sprintingNow = false;
               effectiveWalkForce = maxWalkForce;
               effectiveTargetSpeed = maxWalkSpeed;
-              bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+              pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
               if (this.walkConsumesEnergy) {
-                const walkBus = character.getEnergyBus(this.walkEnergyBusId);
-                if (walkBus) {
-                  const CrWalk = 0.28;
-                  const resForceWalk = totalMass * g * CrWalk;
-                  const rawWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
-                  const walkCap = this.walkPowerCapacityProp.get(character.properties);
-                  const walkRequested = Math.min(walkCap, rawWalkWatts);
-                  const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
-                  const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
-                  if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
-                    effectiveWalkForce = 0;
-                    effectiveTargetSpeed = 0;
-                    character.isActivelyWalking = false;
-                  } else {
-                    effectiveWalkForce *= fraction;
-                    effectiveTargetSpeed *= fraction;
-                  }
+                const CrWalk = 0.28;
+                const resForceWalk = totalMass * g * CrWalk;
+                const rawWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
+                const walkCap = this.maxWalkPowerProp.get(character.properties);
+                let walkRequested = rawWalkWatts;
+                if (walkRequested > walkCap) {
+                  walkRequested = this.walkAllowPartialPower ? walkCap : 0;
+                }
+                const walkGranted = pool.requestPower(walkRequested, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 0;
+                if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+                  effectiveWalkForce = 0;
+                  effectiveTargetSpeed = 0;
+                  character.isActivelyWalking = false;
+                } else {
+                  effectiveWalkForce *= fraction;
+                  effectiveTargetSpeed *= fraction;
                 }
               }
             } else {
-              const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.sprintAllowPartialPower);
+              const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.sprintAllowPartialPower);
               if (grantedWatts < minSprintWatts) {
                 sprintingNow = false;
                 effectiveWalkForce = maxWalkForce;
@@ -5671,15 +5709,18 @@ class WalkingModule {
           }
         }
       } else if (!sprintingNow && this.walkConsumesEnergy) {
-        const bus = character.getEnergyBus(this.walkEnergyBusId);
-        if (bus) {
+        const pool = character.energyPool;
+        if (pool) {
           const Cr = 0.28;
           const resForce = totalMass * g * Cr;
           const rawWatts = resForce * baseWalkTargetSpeed / 0.25;
-          const walkCap = this.walkPowerCapacityProp.get(character.properties);
-          const requestedWatts = Math.min(walkCap, rawWatts);
-          const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
-          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+          const walkCap = this.maxWalkPowerProp.get(character.properties);
+          let requestedWatts = rawWatts;
+          if (requestedWatts > walkCap) {
+            requestedWatts = this.walkAllowPartialPower ? walkCap : 0;
+          }
+          const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 0;
           if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
             effectiveWalkForce = 0;
             effectiveTargetSpeed = 0;
@@ -5780,16 +5821,27 @@ class PickupModule {
     __publicField(this, "crossLayerReachRatio", 1);
     // Deprecated: single 3D pickup range now governs reach across all layers
     /**
-     * Whether picking up objects consumes energy from an Energy Bus (placeholder toggle).
+     * Whether picking up objects consumes energy from EnergyPool.
      */
     __publicField(this, "consumesEnergy", false);
     /** Whether picking up is allowed when power cannot provide 100% full lift */
     __publicField(this, "allowPartialPower", false);
-    __publicField(this, "energyBusId", "bus_main");
+    // Behavior-driven maximum pickup power capacity (Watts)
+    __publicField(this, "maxPowerProp");
     this.pickupReachProp = new DynamicProperty((options == null ? void 0 : options.pickupReach) ?? 1.3);
+    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 250);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxPower() {
+    return this.maxPowerProp.literalValue;
+  }
+  set maxPower(val) {
+    this.maxPowerProp.literalValue = val;
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
   }
   get pickupReach() {
     return this.pickupReachProp.literalValue;
@@ -5850,12 +5902,20 @@ class PickupModule {
     if (!this.enabled) return false;
     if (character.heldObject) return false;
     if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus) {
+      const pool = character.energyPool;
+      if (pool) {
         const targetMass = target.hasMass ? Math.max(0.2, target.mass) : 0.5;
         const liftHeight = 0.45;
-        const metabolicJoules = Math.max(5, targetMass * 9.81 * liftHeight / 0.25);
-        const fraction = bus.requestEnergy(metabolicJoules, 0.15, character.energyPool, character.properties, this.allowPartialPower);
+        const rawMetabolicJoules = Math.max(5, targetMass * 9.81 * liftHeight / 0.25);
+        const maxPower = this.maxPowerProp.get(character.properties);
+        let metabolicJoules = rawMetabolicJoules;
+        if (metabolicJoules > maxPower) {
+          if (!this.allowPartialPower) {
+            return false;
+          }
+          metabolicJoules = maxPower;
+        }
+        const fraction = pool.requestEnergy(metabolicJoules, 0.15, character.properties, this.allowPartialPower, "pickup");
         if (fraction <= 0 || !this.allowPartialPower && fraction < 1) {
           return false;
         }
@@ -5977,11 +6037,12 @@ class ThrowModule {
     __publicField(this, "maxThrowAimDistanceProp");
     __publicField(this, "maxThrowHeightProp");
     // Behavior-driven maximum throw power capacity (Watts)
-    __publicField(this, "throwPowerCapacityProp");
+    __publicField(this, "maxPowerProp");
     /**
-     * Whether throwing consumes energy from an Energy Bus.
+     * Whether throwing consumes energy from EnergyPool.
      */
     __publicField(this, "consumesEnergy", true);
+    // Legacy bus identifier for backwards compatibility
     __publicField(this, "energyBusId", "bus_main");
     /**
      * Remembered arc ratio: 0.0 (shortest / flattest possible arc) to 1.0 (tallest / steepest possible arc).
@@ -5994,10 +6055,16 @@ class ThrowModule {
     this.maxThrowSpeedProp = new DynamicProperty(initialSpeed);
     this.maxThrowAimDistanceProp = new DynamicProperty((options == null ? void 0 : options.maxThrowAimDistance) ?? 13);
     this.maxThrowHeightProp = new DynamicProperty((options == null ? void 0 : options.maxThrowHeight) ?? 5);
-    this.throwPowerCapacityProp = new DynamicProperty((options == null ? void 0 : options.throwPowerCapacity) ?? 1e3);
+    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? (options == null ? void 0 : options.throwPowerCapacity) ?? 1e3);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
-    if ((options == null ? void 0 : options.energyBusId) !== void 0) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  // Backwards-compatible aliases
+  get throwPowerCapacityProp() {
+    return this.maxPowerProp;
+  }
+  set throwPowerCapacityProp(prop) {
+    this.maxPowerProp = prop;
   }
   /**
    * Alias for backward compatibility with baseThrowForceProp.
@@ -6015,14 +6082,23 @@ class ThrowModule {
     this.savedArcRatio = Math.max(0, Math.min(1, (val + 1) / 2));
     this.hasUserSetArcRatio = true;
   }
+  get maxPower() {
+    return this.maxPowerProp.literalValue;
+  }
+  set maxPower(val) {
+    this.maxPowerProp.literalValue = val;
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
+  }
   get throwPowerCapacity() {
-    return this.throwPowerCapacityProp.literalValue;
+    return this.maxPowerProp.literalValue;
   }
   set throwPowerCapacity(val) {
-    this.throwPowerCapacityProp.literalValue = val;
+    this.maxPowerProp.literalValue = val;
   }
   getThrowPowerCapacity(registry) {
-    return this.throwPowerCapacityProp.get(registry);
+    return this.maxPowerProp.get(registry);
   }
   get maxThrowSpeed() {
     return this.maxThrowSpeedProp.literalValue;
@@ -6301,13 +6377,12 @@ class ThrowModule {
     }
     const mass = Math.max(0.05, heldObject.mass);
     if (this.consumesEnergy && thrower) {
-      const bus = thrower.getEnergyBus(this.energyBusId);
-      if (bus && bus.enabled) {
-        const throwCap = this.throwPowerCapacityProp.get(thrower.properties);
-        const efficiency = Math.max(0.01, bus.getMuscleEfficiency(thrower.properties));
-        const currentStamina = bus.currentStaminaProp.get(thrower.properties);
-        const pool = thrower.energyPool;
-        const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(thrower.properties) : Infinity;
+      const ep = thrower.energyPool;
+      if (ep && ep.enabled) {
+        const throwCap = this.maxPowerProp.get(thrower.properties);
+        const efficiency = Math.max(0.01, ep.getMuscleEfficiency(thrower.properties));
+        const currentStamina = ep.currentStaminaProp.get(thrower.properties);
+        const poolEnergy = ep.infiniteEnergy ? Infinity : ep.getCurrentEnergy(thrower.properties);
         const maxDeliverableMetabolicJoules = Math.min(
           throwCap * strength,
           currentStamina,
@@ -6537,12 +6612,12 @@ class ThrowModule {
     let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
     if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus && bus.enabled) {
-        if (bus.isExhausted) return null;
-        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
-        const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const throwCap = this.throwPowerCapacityProp.get(character.properties);
+      const ep = character.energyPool;
+      if (ep && ep.enabled) {
+        if (ep.isExhausted) return null;
+        const poolJoules = ep.infiniteEnergy ? Infinity : ep.getCurrentEnergy(character.properties);
+        const currentStamina = ep.currentStaminaProp.get(character.properties);
+        const throwCap = this.maxPowerProp.get(character.properties);
         if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
         const strength = character.strength ?? 1;
         const maxDeliverableMetabolicJoules = Math.min(
@@ -6550,7 +6625,7 @@ class ThrowModule {
           currentStamina,
           poolJoules
         );
-        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const busEfficiency = Math.max(0.01, ep.getMuscleEfficiency(character.properties));
         const maxAffordableMechWork = maxDeliverableMetabolicJoules * busEfficiency;
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
@@ -6771,12 +6846,12 @@ class ThrowModule {
     let maxSpeed = this.calculateMaxLaunchSpeed(character, held);
     const canFlyVertically = held.hasGravity && held.hasVerticalVelocity;
     if (this.consumesEnergy && !launchVel) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus && bus.enabled) {
-        if (bus.isExhausted) return null;
-        const poolJoules = character.energyPool ? character.energyPool.getCurrentEnergy(character.properties) : Infinity;
-        const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const throwCap = this.throwPowerCapacityProp.get(character.properties);
+      const pool = character.energyPool;
+      if (pool && pool.enabled) {
+        if (pool.isExhausted) return null;
+        const poolJoules = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(character.properties);
+        const currentStamina = pool.getCurrentStamina(character.properties);
+        const throwCap = this.maxPowerProp.get(character.properties);
         if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
         const strength = character.strength ?? 1;
         const maxDeliverableMetabolicJoules = Math.min(
@@ -6784,8 +6859,8 @@ class ThrowModule {
           currentStamina,
           poolJoules
         );
-        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
-        const maxAffordableMechWork = maxDeliverableMetabolicJoules * busEfficiency;
+        const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(character.properties));
+        const maxAffordableMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const maxSpeedFromEnergy = Math.sqrt(2 * maxAffordableMechWork / heldMass);
         if (maxSpeedFromEnergy < 0.5) return null;
@@ -6830,14 +6905,14 @@ class ThrowModule {
     );
     if (!launch) return null;
     if (this.consumesEnergy) {
-      const bus = character.getEnergyBus(this.energyBusId);
-      if (bus && bus.enabled) {
-        if (bus.isExhausted) {
+      const pool = character.energyPool;
+      if (pool && pool.enabled) {
+        if (pool.isExhausted) {
           return null;
         }
-        const throwCap = this.throwPowerCapacityProp.get(character.properties);
-        const currentStamina = bus.currentStaminaProp.get(character.properties);
-        const poolEnergy = character.energyPool ? character.energyPool.infiniteEnergy ? Infinity : character.energyPool.getCurrentEnergy(character.properties) : Infinity;
+        const throwCap = this.maxPowerProp.get(character.properties);
+        const currentStamina = pool.getCurrentStamina(character.properties);
+        const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(character.properties);
         const maxDeliverableMetabolicJoules = Math.min(
           throwCap * (character.strength ?? 1),
           currentStamina,
@@ -6847,12 +6922,12 @@ class ThrowModule {
           return null;
         }
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
-        const busEfficiency = Math.max(0.01, bus.getMuscleEfficiency(character.properties));
+        const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(character.properties));
         let actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-        let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
+        let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
         if (metabolicJoules > maxDeliverableMetabolicJoules) {
-          const maxMechWork = maxDeliverableMetabolicJoules * busEfficiency;
+          const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
           if (actualLaunchSpeed > 1e-3) {
             const scale2 = maxSpeed2 / actualLaunchSpeed;
@@ -6862,16 +6937,15 @@ class ThrowModule {
           }
           actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
           mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-          metabolicJoules = Math.min(maxDeliverableMetabolicJoules, Math.max(5, mechWorkJoules / busEfficiency));
+          metabolicJoules = Math.min(maxDeliverableMetabolicJoules, Math.max(5, mechWorkJoules / poolEfficiency));
         }
-        if (!bus.canSatisfyFullEnergy(metabolicJoules, 0.08, character.energyPool, character.properties)) {
+        if (!pool.canSatisfyFullEnergy(metabolicJoules, 0.08, character.properties)) {
           return null;
         }
-        const burstRes = bus.requestInstantBurst({
+        const burstRes = pool.requestInstantBurst({
           abilityId: "throw",
           demandedJoules: metabolicJoules,
           allowPartialPower: false,
-          pool: character.energyPool,
           registry: character.properties
         });
         if (!burstRes.granted || burstRes.fraction < 1) {
@@ -7041,12 +7115,12 @@ class HealthModule {
     __publicField(this, "maxHealRateProp");
     /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
     __publicField(this, "hpPerJouleProp");
-    /** Toggle indicating whether healing draws energy from an Energy Bus */
+    /** Toggle indicating whether healing draws energy from EnergyPool */
     __publicField(this, "consumesEnergy", false);
-    /** Whether healing is allowed to run when bus power cannot provide 100% full wattage */
+    /** Whether healing is allowed to run when pool power cannot provide 100% full wattage */
     __publicField(this, "allowPartialPower", true);
-    /** ID of the Energy Bus to draw power from */
-    __publicField(this, "energyBusId", "bus_main");
+    // Behavior-driven maximum healing power capacity (Watts)
+    __publicField(this, "maxPowerProp");
     /** Optional callback invoked when entity dies and respawns */
     __publicField(this, "onDeathRespawn");
     this.baseMaxHp = (options == null ? void 0 : options.baseMaxHp) ?? 100;
@@ -7056,9 +7130,19 @@ class HealthModule {
     this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 10;
     this.maxHealRateProp = new DynamicProperty((options == null ? void 0 : options.maxHealRate) ?? this.baseMaxHealRate);
     this.hpPerJouleProp = new DynamicProperty((options == null ? void 0 : options.hpPerJoule) ?? 0.04);
+    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 300);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get maxPower() {
+    return this.maxPowerProp.literalValue;
+  }
+  set maxPower(val) {
+    this.maxPowerProp.literalValue = val;
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
   }
   get maxHp() {
     return this.maxHpProp.literalValue;
@@ -7212,15 +7296,27 @@ class HealthModule {
       if (healRate > 0) {
         let effectiveHealRate = healRate;
         if (this.consumesEnergy) {
-          const bus = character.getEnergyBus(this.energyBusId);
-          if (bus) {
+          const pool = character.energyPool;
+          if (pool) {
             const hpPerJoule = this.getHpPerJoule(registry);
-            const powerWatts = healRate / Math.max(1e-4, hpPerJoule);
-            const granted = bus.requestPower(powerWatts, dt, character.energyPool, registry, false, "health_regen", this.allowPartialPower);
-            if (granted <= 0) {
-              effectiveHealRate = 0;
-            } else {
-              effectiveHealRate = healRate * Math.min(1, granted / powerWatts);
+            const rawPowerWatts = healRate / Math.max(1e-4, hpPerJoule);
+            const maxPower = this.maxPowerProp.get(registry);
+            let powerWatts = rawPowerWatts;
+            if (powerWatts > maxPower) {
+              if (!this.allowPartialPower) {
+                effectiveHealRate = 0;
+                powerWatts = 0;
+              } else {
+                powerWatts = maxPower;
+              }
+            }
+            if (powerWatts > 0) {
+              const granted = pool.requestPower(powerWatts, dt, registry, false, "health_regen", this.allowPartialPower);
+              if (granted <= 0) {
+                effectiveHealRate = 0;
+              } else {
+                effectiveHealRate = healRate * Math.min(1, granted / rawPowerWatts);
+              }
             }
           }
         }
@@ -7405,32 +7501,91 @@ class CharacterModule {
     return this.role === "remote_player" || this.role === "remote_ai";
   }
 }
+const ABILITY_METADATA = {
+  sprint: { name: "Sprint", color: "#6366f1" },
+  walk: { name: "Walk", color: "#38bdf8" },
+  jump: { name: "Jump", color: "#ec4899" },
+  climb: { name: "Climb", color: "#a855f7" },
+  health_regen: { name: "Heal", color: "#22c55e" },
+  pickup: { name: "Pickup", color: "#14b8a6" },
+  throw: { name: "Throw", color: "#f43f5e" },
+  instant_burst: { name: "Burst", color: "#ec4899" },
+  laser_blast: { name: "Laser", color: "#06b6d4" },
+  melee: { name: "Melee", color: "#f97316" }
+};
 class EnergyPool {
   constructor(options) {
     __publicField(this, "id", "energy_pool");
     __publicField(this, "name", "Energy Pool");
     __publicField(this, "enabled", true);
+    // --- Food / Caloric Energy Sockets (Joules) ---
     __publicField(this, "baseMaxEnergyProp");
     __publicField(this, "maxEnergyProp");
     __publicField(this, "currentEnergyProp");
+    // --- Stamina Sockets (Joules) ---
+    __publicField(this, "baseMaxStaminaProp");
+    __publicField(this, "maxStaminaProp");
+    __publicField(this, "currentStaminaProp");
+    // --- Stamina Recovery Rate (Watts = Joules / sec) ---
+    __publicField(this, "staminaRegenRateProp");
     /**
-     * When enabled, energy consumption is bypassed (godmode / testing).
+     * Exhaustion threshold ratio: how much of maxStamina must be recovered
+     * after hitting 0 before the creature can use energy again (default 0.20 = 20%).
+     */
+    __publicField(this, "recoveryThresholdRatio", 0.2);
+    __publicField(this, "isExhausted", false);
+    // Muscle mechanical-to-metabolic efficiency ratio (default 0.25 = 25% efficiency)
+    __publicField(this, "muscleEfficiencyProp");
+    // Live power telemetry
+    __publicField(this, "livePowerDraw", 0);
+    __publicField(this, "currentWattageProp");
+    __publicField(this, "hadPhysicalExertion", false);
+    // Retains peak power spike between render frames to prevent multi-tick fixed timesteps from dropping spikes
+    __publicField(this, "recentPeakWattage", 0);
+    __publicField(this, "recentPeakHoldTimer", 0);
+    // Dynamically tracks whether continuous locomotion is currently sprinting or walking
+    __publicField(this, "activeLocomotionId", "sprint");
+    /**
+     * When enabled, energy & stamina consumption is bypassed (godmode / testing).
      */
     __publicField(this, "infiniteEnergy", false);
     /**
      * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
      */
     __publicField(this, "debugAutoRefillOnEmpty", false);
-    const base = (options == null ? void 0 : options.baseMaxEnergy) ?? 1e4;
-    const max = (options == null ? void 0 : options.maxEnergy) ?? base;
-    const cur = (options == null ? void 0 : options.currentEnergy) ?? max;
-    this.baseMaxEnergyProp = new DynamicProperty(base);
-    this.maxEnergyProp = new DynamicProperty(max);
-    this.currentEnergyProp = new DynamicProperty(cur);
+    // Registered ability power demands
+    __publicField(this, "_demands", /* @__PURE__ */ new Map());
+    __publicField(this, "_totalDemand", 0);
+    __publicField(this, "_currentTick", 0);
+    __publicField(this, "_nextOrderId", 0);
+    // Active color-coded power allocations for visualization and telemetry
+    __publicField(this, "_activeAllocations", /* @__PURE__ */ new Map());
+    const baseEnergy = (options == null ? void 0 : options.baseMaxEnergy) ?? 1e4;
+    const maxEnergy = (options == null ? void 0 : options.maxEnergy) ?? baseEnergy;
+    const curEnergy = (options == null ? void 0 : options.currentEnergy) ?? maxEnergy;
+    this.baseMaxEnergyProp = new DynamicProperty(baseEnergy);
+    this.maxEnergyProp = new DynamicProperty(maxEnergy);
+    this.currentEnergyProp = new DynamicProperty(curEnergy);
+    const rawStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 5e3;
+    const baseStamina = rawStamina <= 60 ? rawStamina * 500 : rawStamina;
+    const maxStamina = (options == null ? void 0 : options.maxStamina) ? options.maxStamina <= 60 ? options.maxStamina * 500 : options.maxStamina : baseStamina;
+    const curStamina = (options == null ? void 0 : options.currentStamina) !== void 0 ? options.currentStamina <= 60 ? options.currentStamina * 500 : options.currentStamina : maxStamina;
+    this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
+    this.maxStaminaProp = new DynamicProperty(maxStamina);
+    this.currentStaminaProp = new DynamicProperty(curStamina);
+    const rawRegen = (options == null ? void 0 : options.staminaRegenRate) ?? 500;
+    const regenWatts = rawRegen <= 10 ? rawRegen * 500 : rawRegen;
+    this.staminaRegenRateProp = new DynamicProperty(regenWatts);
+    if ((options == null ? void 0 : options.recoveryThresholdRatio) !== void 0) {
+      this.recoveryThresholdRatio = options.recoveryThresholdRatio;
+    }
+    this.muscleEfficiencyProp = new DynamicProperty((options == null ? void 0 : options.muscleEfficiency) ?? 0.25);
+    this.currentWattageProp = new DynamicProperty(0);
     if ((options == null ? void 0 : options.infiniteEnergy) !== void 0) this.infiniteEnergy = options.infiniteEnergy;
     if ((options == null ? void 0 : options.debugAutoRefillOnEmpty) !== void 0) this.debugAutoRefillOnEmpty = options.debugAutoRefillOnEmpty;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
+  // --- Caloric Energy Getters & Setters ---
   getBaseMaxEnergy(registry) {
     return this.baseMaxEnergyProp.get(registry);
   }
@@ -7445,152 +7600,56 @@ class EnergyPool {
     const clamped = Math.max(0, Math.min(max, val));
     this.currentEnergyProp.set(clamped, registry);
   }
-  /**
-   * Attempts to consume energy from the pool.
-   * Returns true if enough energy was available (or if infiniteEnergy is enabled).
-   */
-  consume(amount, registry) {
-    if (!this.enabled || amount <= 0) return true;
-    if (this.infiniteEnergy) return true;
-    const cur = this.getCurrentEnergy(registry);
-    if (cur >= amount) {
-      const next = cur - amount;
-      this.currentEnergyProp.set(next, registry);
-      if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
-        this.refill(registry);
-      }
-      return true;
+  // --- Stamina Getters & Setters ---
+  getBaseMaxStamina(registry) {
+    return this.baseMaxStaminaProp.get(registry);
+  }
+  getMaxStamina(registry) {
+    return this.maxStaminaProp.get(registry);
+  }
+  get currentStamina() {
+    return this.currentStaminaProp.literalValue;
+  }
+  set currentStamina(val) {
+    this.currentStaminaProp.literalValue = Math.max(0, val);
+  }
+  getCurrentStamina(registry) {
+    return this.currentStaminaProp.get(registry);
+  }
+  setCurrentStamina(val, registry) {
+    const max = this.getMaxStamina(registry);
+    const clamped = Math.max(0, Math.min(max, val));
+    this.currentStaminaProp.set(clamped, registry);
+    if (clamped <= 1e-4) {
+      this.isExhausted = true;
+    } else if (this.isExhausted && clamped >= max * this.recoveryThresholdRatio) {
+      this.isExhausted = false;
     }
-    this.currentEnergyProp.set(0, registry);
-    if (this.debugAutoRefillOnEmpty) {
-      this.refill(registry);
-    }
-    return false;
   }
-  /**
-   * Consumes up to `amount` Joules from the pool.
-   * Returns the actual Joules granted (which may be between 0 and amount).
-   */
-  consumePartial(amount, registry) {
-    if (!this.enabled || amount <= 0) return 0;
-    if (this.infiniteEnergy) return amount;
-    const cur = this.getCurrentEnergy(registry);
-    if (cur <= 1e-4) {
-      this.currentEnergyProp.set(0, registry);
-      if (this.debugAutoRefillOnEmpty) {
-        this.refill(registry);
-      }
-      return 0;
-    }
-    const granted = Math.min(cur, amount);
-    const next = cur - granted;
-    this.currentEnergyProp.set(next, registry);
-    if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
-      this.refill(registry);
-    }
-    return granted;
+  getStaminaRegenRate(registry) {
+    return this.staminaRegenRateProp.get(registry);
   }
-  /**
-   * Adds energy to the pool (e.g. from eating food or healing items).
-   */
-  addEnergy(amount, registry) {
-    if (!this.enabled || amount <= 0) return;
-    const cur = this.getCurrentEnergy(registry);
-    const max = this.getMaxEnergy(registry);
-    this.currentEnergyProp.set(Math.min(max, cur + amount), registry);
+  get muscleEfficiency() {
+    return this.muscleEfficiencyProp.literalValue;
   }
-  /**
-   * Refills current energy back to 100% capacity.
-   */
-  refill(registry) {
-    const max = this.getMaxEnergy(registry);
-    this.currentEnergyProp.set(max, registry);
+  set muscleEfficiency(val) {
+    this.muscleEfficiencyProp.literalValue = Math.max(0.01, Math.min(1, val));
   }
-  /**
-   * Resets energy pool to full capacity.
-   */
-  reset(registry) {
-    this.refill(registry);
+  getMuscleEfficiency(registry) {
+    return Math.max(0.01, Math.min(1, this.muscleEfficiencyProp.get(registry)));
   }
-}
-const ABILITY_METADATA = {
-  sprint: { name: "Sprint", color: "#6366f1" },
-  walk: { name: "Walk", color: "#38bdf8" },
-  jump: { name: "Jump", color: "#ec4899" },
-  climb: { name: "Climb", color: "#a855f7" },
-  health_regen: { name: "Heal", color: "#22c55e" },
-  pickup: { name: "Pickup", color: "#14b8a6" },
-  throw: { name: "Throw", color: "#f43f5e" },
-  instant_burst: { name: "Burst", color: "#ec4899" },
-  laser_blast: { name: "Laser", color: "#06b6d4" },
-  melee: { name: "Melee", color: "#f97316" }
-};
-class EnergyBus {
-  constructor(options) {
-    __publicField(this, "id");
-    __publicField(this, "name");
-    __publicField(this, "enabled", true);
-    // Dynamically tracks whether continuous locomotion is currently sprinting or walking
-    __publicField(this, "activeLocomotionId", "sprint");
-    // Sockets for live dynamic bus properties
-    __publicField(this, "baseMaxStaminaProp");
-    __publicField(this, "maxStaminaProp");
-    __publicField(this, "currentStaminaProp");
-    __publicField(this, "staminaRegenRateProp");
-    /**
-     * Exhaustion threshold: when stamina hits 0, bus becomes exhausted.
-     * Remains exhausted until stamina recovers back to recoveryThresholdRatio (default 20%).
-     */
-    __publicField(this, "isExhausted", false);
-    __publicField(this, "recoveryThresholdRatio", 0.2);
-    // Muscle mechanical-to-metabolic efficiency ratio (default 0.25 = 25% efficiency)
-    __publicField(this, "muscleEfficiencyProp");
-    // Live telemetry for DevPanel & ability inspection
-    __publicField(this, "livePowerDraw", 0);
-    __publicField(this, "currentWattageProp");
-    __publicField(this, "hadPhysicalExertion", false);
-    // Registered ability power demands
-    __publicField(this, "_demands", /* @__PURE__ */ new Map());
-    __publicField(this, "_totalDemand", 0);
-    __publicField(this, "_currentTick", 0);
-    __publicField(this, "_nextOrderId", 0);
-    // Active color-coded power allocations for visualization and telemetry
-    __publicField(this, "_activeAllocations", /* @__PURE__ */ new Map());
-    // Retains peak power spike between render frames to prevent multi-tick fixed timesteps from dropping spikes
-    __publicField(this, "recentPeakWattage", 0);
-    __publicField(this, "recentPeakHoldTimer", 0);
-    this.id = (options == null ? void 0 : options.id) ?? "bus_main";
-    this.name = (options == null ? void 0 : options.name) ?? "Main";
-    const rawStamina = (options == null ? void 0 : options.baseMaxStamina) ?? 5e3;
-    const baseStamina = rawStamina <= 60 ? rawStamina * 500 : rawStamina;
-    const maxStamina = (options == null ? void 0 : options.maxStamina) ? options.maxStamina <= 60 ? options.maxStamina * 500 : options.maxStamina : baseStamina;
-    const curStamina = (options == null ? void 0 : options.currentStamina) !== void 0 ? options.currentStamina <= 60 ? options.currentStamina * 500 : options.currentStamina : maxStamina;
-    this.baseMaxStaminaProp = new DynamicProperty(baseStamina);
-    this.maxStaminaProp = new DynamicProperty(maxStamina);
-    this.currentStaminaProp = new DynamicProperty(curStamina);
-    const rawRegen = (options == null ? void 0 : options.staminaRegenRate) ?? 500;
-    const regenWatts = rawRegen <= 10 ? rawRegen * 500 : rawRegen;
-    this.staminaRegenRateProp = new DynamicProperty(regenWatts);
-    this.muscleEfficiencyProp = new DynamicProperty((options == null ? void 0 : options.muscleEfficiency) ?? 0.25);
-    this.currentWattageProp = new DynamicProperty(0);
-    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  getCurrentWattage(registry) {
+    const val = this.currentWattageProp.get(registry);
+    return Math.max(val, this.recentPeakWattage);
   }
-  /**
-   * Returns active power allocations sorted chronologically by activation order (stacking left to right).
-   */
+  // --- Demand and Allocation Telemetry ---
   getActiveAllocations(_registry) {
     return Array.from(this._activeAllocations.values()).sort((a, b) => a.order - b.order);
   }
-  /**
-   * Resets active demands and live power draw at the start of a tick.
-   */
   beginTick() {
     this.livePowerDraw = 0;
     this.hadPhysicalExertion = false;
   }
-  /**
-   * Registers or updates an ability's power demand.
-   */
   registerDemand(abilityId, demandedWatts, allowPartialPower = true) {
     const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
     if (demandedWatts > 1e-3) {
@@ -7628,127 +7687,72 @@ class EnergyBus {
     this._demands.clear();
     this._totalDemand = 0;
   }
-  get muscleEfficiency() {
-    return this.muscleEfficiencyProp.literalValue;
-  }
-  set muscleEfficiency(val) {
-    this.muscleEfficiencyProp.literalValue = Math.max(0.01, Math.min(1, val));
-  }
-  getMuscleEfficiency(registry) {
-    return Math.max(0.01, Math.min(1, this.muscleEfficiencyProp.get(registry)));
-  }
-  getCurrentWattage(registry) {
-    const val = this.currentWattageProp.get(registry);
-    return Math.max(val, this.recentPeakWattage);
-  }
-  getMaxStamina(registry) {
-    return this.maxStaminaProp.get(registry);
-  }
-  get currentStamina() {
-    return this.currentStaminaProp.literalValue;
-  }
-  set currentStamina(val) {
-    this.currentStaminaProp.literalValue = Math.max(0, val);
-  }
-  getCurrentStamina(registry) {
-    return this.currentStaminaProp.get(registry);
-  }
+  // --- Affordability Gatekeeping ---
   /**
-   * Resets energy bus to full stamina capacity, clears exhaustion, active allocations, and demands.
-   */
-  reset(registry) {
-    const maxS = this.getMaxStamina(registry);
-    this.currentStaminaProp.set(maxS, registry);
-    this.isExhausted = false;
-    this.livePowerDraw = 0;
-    this.currentWattageProp.set(0, registry);
-    this.recentPeakWattage = 0;
-    this.recentPeakHoldTimer = 0;
-    this.hadPhysicalExertion = false;
-    this.clearDemands();
-    this._activeAllocations.clear();
-  }
-  getStaminaRegenRate(registry) {
-    return this.staminaRegenRateProp.get(registry);
-  }
-  /**
-   * Unified gatekeeper checking whether the bus and pool can satisfy an energy or power demand.
+   * Unified gatekeeper checking whether stamina and energy pool can satisfy an energy or power demand.
    * Centralizes all validation: enabled state, exhaustion, stamina reserves, and energy pool limits.
    */
   canAfford(options) {
     if (!this.enabled) return false;
     if (this.isExhausted && !options.allowWhenExhausted) return false;
     const curStamina = this.getCurrentStamina(options.registry);
-    if (curStamina <= 1e-4) return false;
+    if (curStamina <= 1e-4 && !this.infiniteEnergy) return false;
     const dt = options.dt ?? 0.05;
     const demandedJoules = options.joules ?? (options.watts ? options.watts * dt : 0);
     if (demandedJoules <= 0) return true;
-    if (!options.allowPartialPower && demandedJoules > curStamina + 1e-3) {
-      return false;
-    }
-    if (options.pool && !options.pool.infiniteEnergy) {
-      const poolEnergy = options.pool.getCurrentEnergy(options.registry);
+    if (!this.infiniteEnergy) {
+      if (!options.allowPartialPower && demandedJoules > curStamina + 1e-3) {
+        return false;
+      }
+      const poolEnergy = this.getCurrentEnergy(options.registry);
       if (!options.allowPartialPower && poolEnergy < demandedJoules - 1e-3) {
         return false;
       }
     }
     return true;
   }
-  /**
-   * Checks if the bus can satisfy 100% full power for the requested watts and dt
-   * taking into account priority allocation, stamina, and energy pool.
-   */
-  canSatisfyFullPower(demandedWatts, dt, pool, registry, _abilityId) {
+  canSatisfyFullPower(demandedWatts, dt, registry, _abilityId) {
     if (!this.enabled || dt <= 0 || demandedWatts <= 0) return false;
+    if (this.infiniteEnergy) return true;
     const curS = this.getCurrentStamina(registry);
     if (this.isExhausted || curS <= 1e-4) return false;
     const demandedJoules = demandedWatts * dt;
     if (curS < demandedJoules - 1e-3) return false;
-    if (pool && !pool.infiniteEnergy) {
-      const curPoolE = pool.getCurrentEnergy(registry);
-      if (curPoolE < demandedJoules - 1e-3) return false;
-    }
+    const curPoolE = this.getCurrentEnergy(registry);
+    if (curPoolE < demandedJoules - 1e-3) return false;
     return true;
   }
-  /**
-   * Checks if the bus can satisfy 100% full energy for an instantaneous impulse action.
-   */
-  canSatisfyFullEnergy(joules, _minDt, pool, registry) {
+  canSatisfyFullEnergy(joules, _minDt, registry) {
     if (joules <= 0) return true;
-    if (!this.enabled || this.isExhausted) return false;
+    if (!this.enabled) return false;
+    if (this.infiniteEnergy) return true;
+    if (this.isExhausted) return false;
     const curStamina = this.getCurrentStamina(registry);
     if (joules > curStamina) return false;
-    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) < joules) return false;
+    if (this.getCurrentEnergy(registry) < joules) return false;
     return true;
   }
-  /**
-   * Evaluates whether the bus has sufficient burst stamina, energy pool reserves,
-   * and power rating to support the requested power in isolation (assuming zero
-   * other abilities are drawing power).
-   * Used to distinguish between true exhaustion (which untoggles abilities like sprint)
-   * versus temporary contention starvation from competing abilities.
-   */
-  canSupportPowerInIsolation(_demandedWatts, minWattsThreshold, dt, pool, registry) {
+  canSupportPowerInIsolation(_demandedWatts, minWattsThreshold, dt, registry) {
     if (!this.enabled || dt <= 0) return false;
+    if (this.infiniteEnergy) return true;
     if (this.isExhausted) return false;
     const curStamina = this.getCurrentStamina(registry);
     if (curStamina <= 1e-3) return false;
     const maxWattsFromStamina = curStamina / dt;
     if (maxWattsFromStamina < minWattsThreshold - 1e-3) return false;
-    if (pool && !pool.infiniteEnergy) {
-      const curEnergy = pool.getCurrentEnergy(registry);
-      if (curEnergy < minWattsThreshold * dt - 1e-3) return false;
-    }
+    const curEnergy = this.getCurrentEnergy(registry);
+    if (curEnergy < minWattsThreshold * dt - 1e-3) return false;
     return true;
   }
+  // --- Power Consumption APIs ---
   /**
    * Peeks how much power (in Watts) would be granted without consuming pool energy or draining stamina.
-   * Under behavior-driven power, the bus checks available stamina rate (curStamina / dt) and pool energy.
    */
-  peekPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false, allowPartialPower = true, _abilityId) {
+  peekPower(requestedPowerWatts, dt, registry, allowWhenExhausted = false, allowPartialPower = true, _abilityId) {
     if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
       return 0;
     }
+    if (this.infiniteEnergy) return requestedPowerWatts;
     const curS = this.getCurrentStamina(registry);
     if (this.isExhausted && !allowWhenExhausted || curS <= 1e-4) {
       return 0;
@@ -7760,30 +7764,32 @@ class EnergyBus {
       targetWatts = maxWattsFromStamina;
     }
     if (targetWatts <= 1e-4) return 0;
-    if (pool) {
-      if (pool.infiniteEnergy) return targetWatts;
-      const curPoolE = pool.getCurrentEnergy(registry);
-      if (curPoolE <= 1e-4) return 0;
-      const energyNeededJoules = targetWatts * dt;
-      if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) return 0;
-      const grantedJoules = Math.min(curPoolE, energyNeededJoules);
-      return grantedJoules / dt;
-    }
-    return targetWatts;
+    const curPoolE = this.getCurrentEnergy(registry);
+    if (curPoolE <= 1e-4) return 0;
+    const energyNeededJoules = targetWatts * dt;
+    if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) return 0;
+    const grantedJoules = Math.min(curPoolE, energyNeededJoules);
+    return grantedJoules / dt;
   }
   /**
-   * Requests power draw (in Watts) over dt seconds.
-   * Behaviors dictate their own power capacity. The bus limits power strictly by:
-   * 1. Available stamina in Joules (curStamina / dt Watts rate)
-   * 2. Available pool calories in Joules
-   * 3. Exhaustion state
+   * Requests continuous power draw (in Watts) over dt seconds.
+   * Drains both stamina and caloric energy pool simultaneously by (grantedWatts * dt) Joules.
    */
-  requestPower(requestedPowerWatts, dt, pool, registry, allowWhenExhausted = false, abilityId, allowPartialPower = true) {
+  requestPower(requestedPowerWatts, dt, registry, allowWhenExhausted = false, abilityId, allowPartialPower = true) {
     var _a;
     if (!this.enabled || dt <= 0 || requestedPowerWatts <= 0) {
       return 0;
     }
     const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
+    if (this.infiniteEnergy) {
+      if (effectiveAbilityId) {
+        this.registerDemand(effectiveAbilityId, requestedPowerWatts, allowPartialPower);
+      }
+      this.livePowerDraw += requestedPowerWatts;
+      this.recentPeakWattage = Math.max(this.recentPeakWattage, this.livePowerDraw);
+      this.currentWattageProp.set(this.livePowerDraw, registry);
+      return requestedPowerWatts;
+    }
     const curS = this.getCurrentStamina(registry);
     if (this.isExhausted && !allowWhenExhausted || curS <= 1e-4) {
       return 0;
@@ -7806,23 +7812,18 @@ class EnergyBus {
       if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
       return 0;
     }
-    let grantedWatts = targetWatts;
     const energyNeededJoules = targetWatts * dt;
-    if (pool) {
-      if (!pool.infiniteEnergy) {
-        const curPoolE = pool.getCurrentEnergy(registry);
-        if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) {
-          if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
-          return 0;
-        }
-      }
-      const grantedJoules = pool.consumePartial(energyNeededJoules, registry);
-      if (grantedJoules <= 1e-4) {
-        if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
-        return 0;
-      }
-      grantedWatts = grantedJoules / dt;
+    const curPoolE = this.getCurrentEnergy(registry);
+    if (!allowPartialPower && curPoolE < energyNeededJoules - 1e-3) {
+      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      return 0;
     }
+    const grantedJoules = this.consumePartial(energyNeededJoules, registry);
+    if (grantedJoules <= 1e-4) {
+      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      return 0;
+    }
+    const grantedWatts = grantedJoules / dt;
     if (!allowPartialPower && grantedWatts < requestedPowerWatts - 1e-3) {
       if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
       return 0;
@@ -7865,26 +7866,33 @@ class EnergyBus {
   }
   /**
    * Dedicated API for instantaneous work actions (jump, throw, pickup).
-   * Deduces Joules directly from both currentStamina and EnergyPool.
+   * Deducts Joules directly from both currentStamina and caloric energy.
    * Emits a visual equivalent power surge so the power bar peaks at:
    *   current continuous power + burst power consumption.
    */
   requestInstantBurst(options) {
     const {
-      abilityId: _abilityId,
+      abilityId,
       demandedJoules,
       allowPartialPower = false,
-      pool,
       registry
     } = options;
     if (demandedJoules <= 0) {
       return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
     }
-    if (!this.enabled || this.isExhausted) {
+    if (!this.enabled || this.isExhausted && !this.infiniteEnergy) {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
+    if (this.infiniteEnergy) {
+      const continuousBaseline2 = this.livePowerDraw;
+      const burstWatts2 = demandedJoules;
+      const peakWatts2 = continuousBaseline2 + burstWatts2;
+      this.recentPeakWattage = Math.max(this.recentPeakWattage, peakWatts2);
+      this.recentPeakHoldTimer = 0.08;
+      return { granted: true, grantedJoules: demandedJoules, fraction: 1, peakWatts: peakWatts2 };
+    }
     const curStamina = this.getCurrentStamina(registry);
-    const poolEnergy = pool ? pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(registry) : Infinity;
+    const poolEnergy = this.getCurrentEnergy(registry);
     const availableJoules = Math.min(poolEnergy, curStamina);
     if (curStamina <= 1e-4) {
       this.isExhausted = true;
@@ -7904,9 +7912,7 @@ class EnergyBus {
     } else {
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
-    if (pool && !pool.infiniteEnergy) {
-      pool.consumePartial(grantedJoules, registry);
-    }
+    this.consumePartial(grantedJoules, registry);
     const nextStamina = Math.max(0, curStamina - grantedJoules);
     this.currentStaminaProp.set(nextStamina, registry);
     if (nextStamina <= 1e-4) {
@@ -7920,18 +7926,18 @@ class EnergyBus {
     this.recentPeakHoldTimer = 0.08;
     if (grantedJoules > 1e-3) {
       this._nextOrderId++;
-      const meta = ABILITY_METADATA[options.abilityId] || {
-        name: options.abilityId ? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1) : "Burst",
+      const meta = ABILITY_METADATA[abilityId] || {
+        name: abilityId ? abilityId.charAt(0).toUpperCase() + abilityId.slice(1) : "Burst",
         color: "#ec4899"
       };
-      this._activeAllocations.set(options.abilityId, {
-        id: options.abilityId,
+      this._activeAllocations.set(abilityId, {
+        id: abilityId,
         name: meta.name,
         color: meta.color,
         demandedWatts: grantedJoules,
         grantedWatts: grantedJoules,
         fraction,
-        allowPartialPower: options.allowPartialPower ?? false,
+        allowPartialPower,
         order: this._nextOrderId,
         isBurst: true,
         burstTimer: 0.55,
@@ -7949,22 +7955,89 @@ class EnergyBus {
    * Charges a discrete burst of metabolic energy (Joules) for an instantaneous action.
    * Delegates to requestInstantBurst so burst limits and visual peaks are unified.
    */
-  requestEnergy(joules, minDt, pool, registry, allowPartialPower = true, abilityId = "instant_burst") {
+  requestEnergy(joules, minDt, registry, allowPartialPower = true, abilityId = "instant_burst") {
     const inferredId = abilityId !== "instant_burst" ? abilityId : Math.abs(minDt - 0.15) < 0.01 ? "pickup" : Math.abs(minDt - 0.08) < 0.01 ? "throw" : "instant_burst";
     const res = this.requestInstantBurst({
       abilityId: inferredId,
       demandedJoules: joules,
       allowPartialPower,
-      pool,
       registry
     });
     return res.fraction;
   }
-  /**
-   * Advances passive stamina regeneration only when the bus is resting (0 power drawn).
-   * Also cleans up demands and active allocations that were not requested in the tick.
-   */
-  update(dt, _pool, registry) {
+  // --- Caloric Energy Direct Operations ---
+  consume(amount, registry) {
+    if (!this.enabled || amount <= 0) return true;
+    if (this.infiniteEnergy) return true;
+    const cur = this.getCurrentEnergy(registry);
+    if (cur >= amount) {
+      const next = cur - amount;
+      this.currentEnergyProp.set(next, registry);
+      if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return true;
+    }
+    this.currentEnergyProp.set(0, registry);
+    if (this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return false;
+  }
+  consumePartial(amount, registry) {
+    if (!this.enabled || amount <= 0) return 0;
+    if (this.infiniteEnergy) return amount;
+    const cur = this.getCurrentEnergy(registry);
+    if (cur <= 1e-4) {
+      this.currentEnergyProp.set(0, registry);
+      if (this.debugAutoRefillOnEmpty) {
+        this.refill(registry);
+      }
+      return 0;
+    }
+    const granted = Math.min(cur, amount);
+    const next = cur - granted;
+    this.currentEnergyProp.set(next, registry);
+    if (next <= 1e-4 && this.debugAutoRefillOnEmpty) {
+      this.refill(registry);
+    }
+    return granted;
+  }
+  addEnergy(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentEnergy(registry);
+    const max = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(Math.min(max, cur + amount), registry);
+  }
+  addStamina(amount, registry) {
+    if (!this.enabled || amount <= 0) return;
+    const cur = this.getCurrentStamina(registry);
+    const max = this.getMaxStamina(registry);
+    const next = Math.min(max, cur + amount);
+    this.currentStaminaProp.set(next, registry);
+    if (this.isExhausted && next >= max * this.recoveryThresholdRatio) {
+      this.isExhausted = false;
+    }
+  }
+  refill(registry) {
+    const maxE = this.getMaxEnergy(registry);
+    this.currentEnergyProp.set(maxE, registry);
+    const maxS = this.getMaxStamina(registry);
+    this.currentStaminaProp.set(maxS, registry);
+    this.isExhausted = false;
+  }
+  reset(registry) {
+    this.refill(registry);
+    this.livePowerDraw = 0;
+    this.currentWattageProp.set(0, registry);
+    this.recentPeakWattage = 0;
+    this.recentPeakHoldTimer = 0;
+    this.hadPhysicalExertion = false;
+    this.clearDemands();
+    this._activeAllocations.clear();
+  }
+  // --- Per-Tick Update ---
+  update(dt, registry) {
     if (!this.enabled || dt <= 0) return;
     this._currentTick++;
     for (const [id, rec] of this._demands.entries()) {
@@ -8119,9 +8192,7 @@ class LaserModule {
     __publicField(this, "thicknessProp");
     /** Maximum power rating (Watts) demanded when operating at max damage rate */
     __publicField(this, "maxPowerProp");
-    /** Energy Bus to draw continuous power from */
-    __publicField(this, "energyBusId", "bus_laser");
-    /** Whether to allow partial power firing when bus cannot satisfy 100% wattage */
+    /** Whether to allow partial power firing when pool cannot satisfy 100% wattage */
     __publicField(this, "allowPartialPower", true);
     /** Live state */
     __publicField(this, "isAiming", false);
@@ -8134,7 +8205,6 @@ class LaserModule {
     __publicField(this, "hitWall", null);
     __publicField(this, "hitEntities", []);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
-    if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     const baseDamage = (options == null ? void 0 : options.damageRate) ?? 50;
     const baseMaxDamage = (options == null ? void 0 : options.maxDamageRate) ?? 50;
@@ -8334,12 +8404,11 @@ class LaserModule {
       const demandedWatts = this.calculateDemandedPower(registry, throttle);
       let grantedWatts = 0;
       if (demandedWatts > 0) {
-        const bus = character.getEnergyBus(this.energyBusId);
-        if (bus && bus.enabled && !bus.isExhausted) {
-          grantedWatts = bus.requestPower(
+        const pool = character.energyPool;
+        if (pool && pool.enabled && !pool.isExhausted) {
+          grantedWatts = pool.requestPower(
             demandedWatts,
             dt,
-            character.energyPool,
             registry,
             false,
             "laser_blast",
@@ -8395,9 +8464,9 @@ class MeleeModule {
     __publicField(this, "reachProp");
     /** Perpendicular width of the rectangular attack zone (world units / meters) */
     __publicField(this, "widthProp");
-    /** Energy Bus to draw burst energy from */
-    __publicField(this, "energyBusId", "bus_main");
-    /** Whether to allow punches at partial force when the bus cannot grant 100% burst energy */
+    // Behavior-driven maximum melee power capacity (Watts)
+    __publicField(this, "maxPowerProp");
+    /** Whether to allow punches at partial force when pool cannot grant 100% burst energy */
     __publicField(this, "allowPartialPower", true);
     /** Time of last punch execution (performance.now ms) */
     __publicField(this, "lastPunchTime", 0);
@@ -8407,12 +8476,21 @@ class MeleeModule {
     __publicField(this, "lastVisualPunchReach", 1.2);
     __publicField(this, "lastVisualPunchWidth", 0.8);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
-    if (options == null ? void 0 : options.energyBusId) this.energyBusId = options.energyBusId;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     this.maxForceProp = new DynamicProperty((options == null ? void 0 : options.maxForce) ?? 350);
     this.punchFrequencyProp = new DynamicProperty((options == null ? void 0 : options.punchFrequency) ?? 4);
     this.reachProp = new DynamicProperty((options == null ? void 0 : options.reach) ?? 1.2);
     this.widthProp = new DynamicProperty((options == null ? void 0 : options.width) ?? 0.8);
+    this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 600);
+  }
+  get maxPower() {
+    return this.maxPowerProp.literalValue;
+  }
+  set maxPower(val) {
+    this.maxPowerProp.literalValue = val;
+  }
+  getMaxPower(registry) {
+    return this.maxPowerProp.get(registry);
   }
   get maxForce() {
     return this.maxForceProp.literalValue;
@@ -8481,25 +8559,32 @@ class MeleeModule {
     }
     const muscleEff = (registry == null ? void 0 : registry.get("muscleEfficiency")) ?? 0.25;
     const mechanicalWorkJoules = maxForce * reach;
-    const demandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
-    const bus = attacker.energyBusses.get(this.energyBusId) || attacker.energyBus;
-    let actualForce = maxForce;
-    let energySpent = 0;
-    if (bus) {
-      if (bus.isExhausted) {
+    const rawDemandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
+    const maxPower = this.maxPowerProp.get(registry);
+    let demandedJoules = rawDemandedJoules;
+    if (demandedJoules > maxPower) {
+      if (!this.allowPartialPower) {
         return null;
       }
-      const burstRes = bus.requestInstantBurst({
+      demandedJoules = maxPower;
+    }
+    const pool = attacker.energyPool;
+    let actualForce = maxForce;
+    let energySpent = 0;
+    if (pool) {
+      if (pool.isExhausted) {
+        return null;
+      }
+      const burstRes = pool.requestInstantBurst({
         abilityId: "melee",
         demandedJoules,
         allowPartialPower: this.allowPartialPower,
-        pool: attacker.energyPool,
         registry
       });
       if (!burstRes.granted || burstRes.fraction <= 1e-3) {
         return null;
       }
-      actualForce = maxForce * burstRes.fraction;
+      actualForce = maxForce * burstRes.fraction * (demandedJoules / rawDemandedJoules);
       energySpent = burstRes.grantedJoules;
     }
     this.lastPunchTime = now;
@@ -8632,14 +8717,11 @@ class Character extends GameObject {
     __publicField(this, "consumeModule", new ConsumeModule());
     __publicField(this, "laserModule", null);
     __publicField(this, "energyPool");
-    __publicField(this, "energyBus");
-    __publicField(this, "energyBusses", /* @__PURE__ */ new Map());
-    /** Toggle indicating if jumping consumes energy from an Energy Bus */
+    /** Toggle indicating if jumping consumes energy from EnergyPool */
     __publicField(this, "jumpConsumesEnergy", true);
-    /** Whether jumping is allowed to run at partial impulse when bus power cannot provide 100% */
+    /** Whether jumping is allowed to run at partial impulse when pool power cannot provide 100% */
     __publicField(this, "jumpAllowPartialPower", false);
-    __publicField(this, "jumpEnergyBusId", "bus_main");
-    __publicField(this, "jumpPowerCapacityProp");
+    __publicField(this, "jumpMaxPowerProp");
     // Player identity & multiplayer slot
     __publicField(this, "controllerType", "local");
     __publicField(this, "playerId", "keyboard");
@@ -8690,53 +8772,36 @@ class Character extends GameObject {
         sprintConsumesEnergy: true,
         sprintAllowPartialPower: true
       });
-      this.walkingModule.walkEnergyBusId = "bus_main";
-      this.walkingModule.sprintEnergyBusId = "bus_main";
       this.pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
-      this.pickupModule.energyBusId = "bus_main";
       this.throwModule = new ThrowModule({ consumesEnergy: true });
-      this.throwModule.energyBusId = "bus_main";
       this.jumpModule = new JumpModule();
       this.jumpConsumesEnergy = true;
       this.jumpAllowPartialPower = true;
-      this.jumpEnergyBusId = "bus_main";
       this.wallEdgeAssistModule = new WallEdgeAssistModule();
     }
-    this.jumpPowerCapacityProp = new DynamicProperty(1200);
+    this.jumpMaxPowerProp = new DynamicProperty(1200);
     this.climbingModule = null;
     this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
-    this.healthModule.energyBusId = "bus_main";
     this.energyPool = new EnergyPool();
-    this.energyBus = new EnergyBus();
-    this.energyBusses.set(this.energyBus.id, this.energyBus);
     this.properties.add("hpPerJoule", this.healthModule.hpPerJoule);
-    this.properties.add("muscleEfficiency", this.energyBus.muscleEfficiency);
+    this.properties.add("muscleEfficiency", this.energyPool.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
     this.meleeModule = new MeleeModule({
-      energyBusId: "bus_main",
       maxForce: 350,
       punchFrequency: 4,
       reach: 1.2,
-      width: 0.8
+      width: 0.8,
+      maxPower: 600
     });
     this.properties.add("meleeMaxForce", this.meleeModule.maxForce);
     this.properties.add("meleeFrequency", this.meleeModule.punchFrequency);
     this.properties.add("meleeReach", this.meleeModule.reach);
     this.properties.add("meleeWidth", this.meleeModule.width);
+    this.properties.add("meleeMaxPower", this.meleeModule.maxPower);
     if (determinedRole !== "dummy") {
-      const laserBus = new EnergyBus({
-        id: "bus_laser",
-        name: "Laser Bus",
-        maxStamina: 4e3,
-        // 4,000 Joules
-        staminaRegenRate: 4e3 / 15
-        // Full capacity regenerates in 15 seconds (~266.7 W)
-      });
-      this.energyBusses.set(laserBus.id, laserBus);
       this.laserModule = new LaserModule({
-        energyBusId: "bus_laser",
         maxPower: 2e3
       });
       this.properties.add("laserDamageRate", this.laserModule.damageRate);
@@ -8786,14 +8851,24 @@ class Character extends GameObject {
       this.wallEdgeAssistModule.hangDistanceProp.set(Math.max(0, val), this.properties);
     }
   }
-  /**
-   * Retrieves an EnergyBus by ID, falling back to the default energyBus if matching or requested
-   */
-  getEnergyBus(busId) {
-    if (!busId || busId === "default" || busId === "bus_main") {
-      return this.energyBus;
-    }
-    return this.energyBusses.get(busId) || this.energyBus;
+  /** Backwards compatibility getter for energy bus references */
+  get energyBus() {
+    return this.energyPool;
+  }
+  get energyBusses() {
+    const map = /* @__PURE__ */ new Map();
+    if (this.energyPool) map.set(this.energyPool.id, this.energyPool);
+    return map;
+  }
+  getEnergyBus(_busId) {
+    return this.energyPool;
+  }
+  // Backwards-compatible aliases
+  get jumpPowerCapacityProp() {
+    return this.jumpMaxPowerProp;
+  }
+  set jumpPowerCapacityProp(prop) {
+    this.jumpMaxPowerProp = prop;
   }
   get role() {
     return this.characterModule ? this.characterModule.role : "local_player";
@@ -8820,13 +8895,13 @@ class Character extends GameObject {
         const heldMass = this.heldObject.hasMass ? Math.max(0.1, this.heldObject.mass) : 1;
         const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-        const bus = this.getEnergyBus(this.throwModule.energyBusId);
-        const busEfficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
-        let metabolicJoules = Math.max(5, mechWorkJoules / busEfficiency);
-        if (bus && bus.enabled) {
-          const throwCap = this.throwModule.throwPowerCapacityProp.get(this.properties);
-          const currentStamina = bus.currentStaminaProp.get(this.properties);
-          const poolEnergy = this.energyPool ? this.energyPool.infiniteEnergy ? Infinity : this.energyPool.getCurrentEnergy(this.properties) : Infinity;
+        const pool = this.energyPool;
+        const poolEfficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
+        let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+        if (pool && pool.enabled) {
+          const throwCap = this.throwModule.maxPowerProp.get(this.properties);
+          const currentStamina = pool.currentStaminaProp.get(this.properties);
+          const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
           const maxDeliverable = Math.min(
             throwCap * this.strength,
             currentStamina,
@@ -8903,14 +8978,23 @@ class Character extends GameObject {
     obj.heldBy = null;
     return obj;
   }
+  get jumpMaxPower() {
+    return this.jumpMaxPowerProp.literalValue;
+  }
+  set jumpMaxPower(val) {
+    this.jumpMaxPowerProp.literalValue = val;
+  }
+  getJumpMaxPower(registry) {
+    return this.jumpMaxPowerProp.get(registry);
+  }
   get jumpPowerCapacity() {
-    return this.jumpPowerCapacityProp.literalValue;
+    return this.jumpMaxPowerProp.literalValue;
   }
   set jumpPowerCapacity(val) {
-    this.jumpPowerCapacityProp.literalValue = val;
+    this.jumpMaxPowerProp.literalValue = val;
   }
   getJumpPowerCapacity(registry) {
-    return this.jumpPowerCapacityProp.get(registry);
+    return this.jumpMaxPowerProp.get(registry);
   }
   /**
    * Attempts to jump using the attached JumpModule.
@@ -8931,31 +9015,36 @@ class Character extends GameObject {
     const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
     if (targetTakeoffSpeed <= 0.01) return false;
     const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
-    const bus = this.getEnergyBus(this.jumpEnergyBusId);
-    const efficiency = Math.max(0.01, bus ? bus.getMuscleEfficiency(this.properties) : 0.25);
+    const pool = this.energyPool;
+    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
     const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
-    const jumpCap = this.jumpPowerCapacityProp ? this.jumpPowerCapacityProp.get(this.properties) : 1200;
-    const metabolicJoules = Math.min(jumpCap, rawMetabolicJoules);
+    const jumpCap = this.jumpMaxPowerProp ? this.jumpMaxPowerProp.get(this.properties) : 1200;
+    let metabolicJoules = rawMetabolicJoules;
+    if (metabolicJoules > jumpCap) {
+      if (!this.jumpAllowPartialPower) {
+        return false;
+      }
+      metabolicJoules = jumpCap;
+    }
     let energyFraction = 1;
     if (this.jumpConsumesEnergy) {
-      if (bus) {
-        if (bus.isExhausted) {
+      if (pool) {
+        if (pool.isExhausted) {
           return false;
         }
-        if (!this.jumpAllowPartialPower && !bus.canSatisfyFullEnergy(metabolicJoules, 0.05, this.energyPool, this.properties)) {
+        if (!this.jumpAllowPartialPower && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, this.properties)) {
           return false;
         }
-        const burstRes = bus.requestInstantBurst({
+        const burstRes = pool.requestInstantBurst({
           abilityId: "jump",
           demandedJoules: metabolicJoules,
           allowPartialPower: this.jumpAllowPartialPower,
-          pool: this.energyPool,
           registry: this.properties
         });
         if (!burstRes.granted || burstRes.grantedJoules <= 1e-3 || !this.jumpAllowPartialPower && burstRes.fraction < 1) {
           return false;
         }
-        energyFraction = burstRes.fraction;
+        energyFraction = burstRes.fraction * (metabolicJoules / rawMetabolicJoules);
       }
     }
     const jumped = this.jumpModule.jump(this, arena, movementInput);
@@ -9035,12 +9124,8 @@ class Character extends GameObject {
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
-    if (this.energyBusses.size > 0) {
-      for (const bus of this.energyBusses.values()) {
-        if (bus && bus.enabled) bus.beginTick();
-      }
-    } else if (this.energyBus && this.energyBus.enabled) {
-      this.energyBus.beginTick();
+    if (this.energyPool && this.energyPool.enabled) {
+      this.energyPool.beginTick();
     }
     const canWalk = Boolean(
       this.walkingModule && this.walkingModule.enabled && (this.isRestingOnSurface ? this.hasFriction : this.walkingModule.walkInAir)
@@ -9050,14 +9135,13 @@ class Character extends GameObject {
     const isActivelySprinting = Boolean(((_a = this.walkingModule) == null ? void 0 : _a.canSprint) && this.isSprinting);
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && ((_b = this.walkingModule) == null ? void 0 : _b.sprintConsumesEnergy)) {
-      const sprintBus = this.getEnergyBus(this.walkingModule.sprintEnergyBusId);
-      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(this.properties) <= 1e-4)) {
+      if (this.energyPool && (this.energyPool.isExhausted || this.energyPool.getCurrentStamina(this.properties) <= 1e-4)) {
         sprintingNow = false;
         this.setSprinting(false);
       }
     }
     const locomotionConsumesEnergy = sprintingNow ? (_c = this.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = this.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
-    if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule) {
+    if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule && this.energyPool) {
       const carriedMass = this.carriedMass;
       const loadFactor = carriedMass / (Math.max(0.1, this.strength) * 8);
       const targetSpeed = sprintingNow ? this.walkingModule.maxSprintSpeedProp.get(this.properties) : this.walkingModule.maxWalkSpeedProp.get(this.properties);
@@ -9066,49 +9150,50 @@ class Character extends GameObject {
       const Cr = sprintingNow ? 0.4 : 0.28;
       const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1;
       const resForce = totalMass * g * Cr;
-      const locomotionWatts = resForce * v / 0.25;
-      const bus = this.getEnergyBus(sprintingNow ? this.walkingModule.sprintEnergyBusId : this.walkingModule.walkEnergyBusId);
-      if (bus) {
-        const locomotionId = sprintingNow ? "sprint" : "walk";
-        bus.activeLocomotionId = locomotionId;
-        bus.registerDemand(
-          locomotionId,
-          locomotionWatts,
-          sprintingNow ? this.walkingModule.sprintAllowPartialPower : this.walkingModule.walkAllowPartialPower
-        );
+      const rawLocomotionWatts = resForce * v / 0.25;
+      const cap = sprintingNow ? this.walkingModule.maxSprintPowerProp.get(this.properties) : this.walkingModule.maxWalkPowerProp.get(this.properties);
+      const allowPartial = sprintingNow ? this.walkingModule.sprintAllowPartialPower : this.walkingModule.walkAllowPartialPower;
+      let locomotionWatts = rawLocomotionWatts;
+      if (locomotionWatts > cap) {
+        locomotionWatts = allowPartial ? cap : 0;
       }
+      const locomotionId = sprintingNow ? "sprint" : "walk";
+      this.energyPool.activeLocomotionId = locomotionId;
+      this.energyPool.registerDemand(locomotionId, locomotionWatts, allowPartial);
     }
-    if (this.healthModule && this.healthModule.enabled && this.healthModule.consumesEnergy) {
+    if (this.healthModule && this.healthModule.enabled && this.healthModule.consumesEnergy && this.energyPool) {
       const curHp = this.healthModule.getCurrentHp(this.properties);
       const maxHp = this.healthModule.getMaxHp(this.properties);
       if (curHp > 0 && curHp < maxHp - 1e-3) {
         const healRate = this.healthModule.getMaxHealRate(this.properties);
         if (healRate > 0) {
           const hpPerJoule = this.healthModule.getHpPerJoule(this.properties);
-          const healthWatts = healRate / Math.max(1e-4, hpPerJoule);
-          const bus = this.getEnergyBus(this.healthModule.energyBusId);
-          if (bus) {
-            bus.registerDemand("health_regen", healthWatts);
+          const rawHealthWatts = healRate / Math.max(1e-4, hpPerJoule);
+          const maxPower = this.healthModule.maxPowerProp.get(this.properties);
+          let healthWatts = rawHealthWatts;
+          if (healthWatts > maxPower) {
+            healthWatts = this.healthModule.allowPartialPower ? maxPower : 0;
           }
+          this.energyPool.registerDemand("health_regen", healthWatts, this.healthModule.allowPartialPower);
         }
       }
     }
     const canClimb = Boolean(
       this.climbingModule && this.climbingModule.enabled && this.hasVerticalPosition && this.hasStrength
     );
-    if (canClimb && this.isClimbing && ((_e = this.climbingModule) == null ? void 0 : _e.consumesEnergy)) {
+    if (canClimb && this.isClimbing && ((_e = this.climbingModule) == null ? void 0 : _e.consumesEnergy) && this.energyPool) {
       const totalMass = this.mass;
       const g = arena.gravity || 9.81;
       const isometricHoldingWatts = totalMass * g * 0.35 / 0.25;
       const maxAscentSpeed = this.climbingModule.maxClimbSpeedProp.get(this.properties);
       const ascentWatts = isClimbInput ? totalMass * g * maxAscentSpeed / 0.25 : 0;
       const rawClimbWatts = isometricHoldingWatts + ascentWatts;
-      const climbCap = this.climbingModule.climbPowerCapacityProp.get(this.properties);
-      const climbWatts = Math.min(climbCap, rawClimbWatts);
-      const bus = this.getEnergyBus(this.climbingModule.energyBusId);
-      if (bus) {
-        bus.registerDemand("climbing", climbWatts);
+      const climbCap = this.climbingModule.maxPowerProp.get(this.properties);
+      let climbWatts = rawClimbWatts;
+      if (climbWatts > climbCap) {
+        climbWatts = this.climbingModule.allowPartialPower ? climbCap : 0;
       }
+      this.energyPool.registerDemand("climb", climbWatts, this.climbingModule.allowPartialPower);
     }
     if (canClimb) {
       this.climbingModule.update(this, movementInput, isClimbInput, dt, arena);
@@ -9150,14 +9235,8 @@ class Character extends GameObject {
       const dirY = Math.sin(this.facingAngle ?? 0);
       this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
     }
-    if (this.energyBusses.size > 0) {
-      for (const bus of this.energyBusses.values()) {
-        if (bus && bus.enabled) {
-          bus.update(dt, this.energyPool, this.properties);
-        }
-      }
-    } else if (this.energyBus && this.energyBus.enabled) {
-      this.energyBus.update(dt, this.energyPool, this.properties);
+    if (this.energyPool && this.energyPool.enabled) {
+      this.energyPool.update(dt, this.properties);
     }
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     const targetFacePos = canAimThrow && lockedAimPos ? lockedAimPos : aimTargetPos;
@@ -9336,9 +9415,6 @@ class Character extends GameObject {
     }
     if (this.energyPool) {
       this.energyPool.reset(this.properties);
-    }
-    for (const bus of this.energyBusses.values()) {
-      bus.reset(this.properties);
     }
     const origStrength = this.properties.get("strength");
     if (origStrength !== void 0) {

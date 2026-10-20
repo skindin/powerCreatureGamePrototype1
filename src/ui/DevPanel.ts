@@ -19,7 +19,6 @@ import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { CharacterModule, type CharacterRole } from "../character/CharacterModule.js";
 import { EnergyPool } from "../character/EnergyPool.js";
-import { EnergyBus } from "../character/EnergyBus.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { ConsumeModule } from "../character/ConsumeModule.js";
 import { LaserModule } from "../character/LaserModule.js";
@@ -1159,9 +1158,6 @@ export class DevPanel {
     const hasEnergyPool = isChar && Boolean(char?.energyPool);
     const energyPoolEnabled = isChar && Boolean(char?.energyPool?.enabled);
 
-    const hasEnergyBus = isChar && Boolean(char?.energyBus);
-    const energyBusEnabled = isChar && Boolean(char?.energyBus?.enabled);
-
     const hasConsumableModule = Boolean(e.consumableModule);
     const consumableEnabled = Boolean(e.consumableModule?.enabled);
 
@@ -1179,16 +1175,6 @@ export class DevPanel {
 
     let html = "";
     let attachedCount = 0;
-
-    // Helper to generate toggle button HTML
-    const renderEnergyBusOptions = (selectedBusId: string = "bus_main") => {
-      if (!char || !char.energyBusses || char.energyBusses.size === 0) {
-        return `<option value="bus_main" ${selectedBusId === "bus_main" ? "selected" : ""}>Main Bus (bus_main)</option>`;
-      }
-      return Array.from(char.energyBusses.values()).map(b => 
-        `<option value="${b.id}" ${b.id === selectedBusId ? "selected" : ""}>${b.name} (${b.id})</option>`
-      ).join("");
-    };
 
     const renderToggleBtn = (modId: string, isEnabled: boolean) => `
       <div style="display: flex; align-items: center; gap: 6px;">
@@ -1452,12 +1438,6 @@ export class DevPanel {
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-walk-partial-power" ${char.walkingModule?.walkAllowPartialPower ? 'checked' : ''}>
             </div>
-            <div id="field-walk-energy-bus" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Walk Energy Bus</label>
-              <select id="select-walk-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.walkingModule?.walkEnergyBusId)}
-              </select>
-            </div>
             <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
               <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
@@ -1465,12 +1445,6 @@ export class DevPanel {
             <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-sprint-partial-power" ${char.walkingModule?.sprintAllowPartialPower ? 'checked' : ''}>
-            </div>
-            <div id="field-sprint-energy-bus" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Sprint Energy Bus</label>
-              <select id="select-sprint-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.walkingModule?.sprintEnergyBusId)}
-              </select>
             </div>
             </div>
           </div>
@@ -1485,6 +1459,7 @@ export class DevPanel {
             <div id="collapse-body-mod-pickup" style="display: ${this.isSectionCollapsed('mod-pickup') ? 'none' : 'block'};">
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div id="prop-socket-pickup-reach"></div>
+            <div id="prop-socket-pickup-power-cap"></div>
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
@@ -1492,12 +1467,6 @@ export class DevPanel {
             <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-pickup-partial-power" ${char.pickupModule?.allowPartialPower ? 'checked' : ''}>
-            </div>
-            <div id="field-pickup-energy-bus" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
-              <select id="select-pickup-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.pickupModule?.energyBusId)}
-              </select>
             </div>
             </div>
           </div>
@@ -1522,12 +1491,6 @@ export class DevPanel {
             <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
               <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
               <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
-            <div id="field-throw-energy-bus" style="display: ${char.throwModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
-              <select id="select-throw-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.throwModule?.energyBusId)}
-              </select>
             </div>
             </div>
           </div>
@@ -1556,12 +1519,6 @@ export class DevPanel {
             <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-jump-partial-power" ${char.jumpAllowPartialPower ? 'checked' : ''}>
-            </div>
-            <div id="field-jump-energy-bus" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
-              <select id="select-jump-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.jumpEnergyBusId)}
-              </select>
             </div>
             </div>
           </div>
@@ -1621,12 +1578,6 @@ export class DevPanel {
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-climb-partial-power" ${char.climbingModule?.allowPartialPower ? 'checked' : ''}>
             </div>
-            <div id="field-climb-energy-bus" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
-              <select id="select-climb-energy-bus" class="dev-select" style="width: 100%;">
-                ${renderEnergyBusOptions(char.climbingModule?.energyBusId)}
-              </select>
-            </div>
             </div>
           </div>
         `;
@@ -1653,6 +1604,7 @@ export class DevPanel {
           <div id="prop-socket-health-max"></div>
           <div id="prop-socket-health-healrate"></div>
           <div id="prop-socket-health-hpperjoule"></div>
+          <div id="prop-socket-health-power-cap"></div>
 
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
             <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
@@ -1661,12 +1613,6 @@ export class DevPanel {
           <div id="field-health-partial-power" style="display: ${hm.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
             <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
             <input type="checkbox" id="check-health-partial-power" ${hm.allowPartialPower ? 'checked' : ''}>
-          </div>
-          <div id="field-health-energy-bus" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; margin-top: 4px; margin-bottom: 6px;">
-            <label style="font-size: 0.72rem; color: #94a3b8; display: block; margin-bottom: 2px;">Energy Bus</label>
-            <select id="select-health-energy-bus" class="dev-select" style="width: 100%;">
-              ${renderEnergyBusOptions(hm.energyBusId)}
-            </select>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px;">
             <button id="btn-health-sub10" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">
@@ -1782,12 +1728,7 @@ export class DevPanel {
           <div id="prop-socket-laser-thickness"></div>
           <div id="prop-socket-laser-max-power"></div>
 
-          <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Energy Bus:</label>
-            <select id="select-laser-energy-bus" class="dev-select" style="max-width: 170px; font-size: 0.75rem;">
-              ${renderEnergyBusOptions(lm.energyBusId)}
-            </select>
-          </div>
+
 
           <div class="toggle-row" style="margin-top: 6px;">
             <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
@@ -1815,13 +1756,7 @@ export class DevPanel {
           <div id="prop-socket-melee-frequency"></div>
           <div id="prop-socket-melee-reach"></div>
           <div id="prop-socket-melee-width"></div>
-
-          <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Energy Bus:</label>
-            <select id="select-melee-energy-bus" class="dev-select" style="max-width: 170px; font-size: 0.75rem;">
-              ${renderEnergyBusOptions(mm.energyBusId)}
-            </select>
-          </div>
+          <div id="prop-socket-melee-max-power"></div>
 
           <div class="toggle-row" style="margin-top: 6px;">
             <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
@@ -1892,26 +1827,32 @@ export class DevPanel {
       `;
     }
 
-    // Energy Pool Module (Character only)
+    // Energy Pool Module (Character only - consolidated Energy & Stamina)
     if (hasEnergyPool && char?.energyPool) {
       attachedCount++;
       const ep = char.energyPool;
       const curEnergy = ep.getCurrentEnergy(char.properties);
       const maxEnergy = ep.getMaxEnergy(char.properties);
       const energyPct = maxEnergy > 0 ? Math.min(100, Math.max(0, (curEnergy / maxEnergy) * 100)) : 0;
+      const curStamina = ep.getCurrentStamina(char.properties);
+      const maxStamina = ep.getMaxStamina(char.properties);
+      const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
+      const curWatts = ep.getCurrentWattage(char.properties);
 
       html += `
         <div class="module-card ${!energyPoolEnabled ? 'module-disabled' : ''}" data-module-id="energyPool">
-          ${this.renderModuleHeader("energyPool", "⚡ Energy Pool", renderToggleBtn("energyPool", energyPoolEnabled))}
+          ${this.renderModuleHeader("energyPool", "⚡ Energy Pool & Stamina", renderToggleBtn("energyPool", energyPoolEnabled))}
           <div id="collapse-body-mod-energyPool" style="display: ${this.isSectionCollapsed('mod-energyPool') ? 'none' : 'block'};">
           ${!energyPoolEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Pool is disabled</div>` : ''}
+          <div id="warn-energy-exhausted" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${ep.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below recovery threshold (${(ep.recoveryThresholdRatio * 100).toFixed(0)}%)</div>
           <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Finite biochemical energy store (in Joules). Depleted by physical work; refueled by eating food.
+            Consolidated biochemical energy store (Joules) and burst stamina. Food calories do not regenerate; burst stamina replenishes when resting.
           </div>
 
+          <!-- Caloric Energy Bar -->
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-              <span>Energy Reservoir</span>
+              <span>Caloric Energy Reservoir</span>
               <span id="label-energy-pool-status">${curEnergy.toFixed(0)} / ${maxEnergy.toFixed(0)} J (${energyPct.toFixed(0)}%)</span>
             </div>
             <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
@@ -1919,8 +1860,37 @@ export class DevPanel {
             </div>
           </div>
 
+          <!-- Stamina Bar -->
+          <div style="margin: 6px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+              <span>Stamina Reservoir</span>
+              <span id="label-energy-stamina-status">${curStamina.toFixed(0)} / ${maxStamina.toFixed(0)} J (${staminaPct.toFixed(0)}%)</span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+              <div id="bar-energy-stamina-fill" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Live Power Draw -->
+          <div style="margin: 6px 0; padding: 4px 8px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; color: #94a3b8;">Current Power Draw:</span>
+            <span id="label-energy-wattage" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
+          </div>
+
           <div id="prop-socket-energy-cur"></div>
           <div id="prop-socket-energy-max"></div>
+          <div id="prop-socket-energy-stamina-cur"></div>
+          <div id="prop-socket-energy-stamina-max"></div>
+          <div id="prop-socket-energy-stamina-regen"></div>
+          <div id="prop-socket-energy-efficiency"></div>
+
+          <div style="margin-top: 6px; padding: 4px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #cbd5e1; margin-bottom: 4px;">
+              <span>Exhaustion Recovery Threshold</span>
+              <span id="label-energy-recovery-thresh" style="font-family: monospace; font-weight: 600; color: #38bdf8;">${(ep.recoveryThresholdRatio * 100).toFixed(0)}%</span>
+            </div>
+            <input type="range" id="slider-energy-recovery-thresh" min="0.05" max="0.80" step="0.05" value="${ep.recoveryThresholdRatio}" style="width: 100%;">
+          </div>
 
           <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
             <span style="font-size: 0.8rem; color: #cbd5e1;">Infinite Energy (Godmode)</span>
@@ -1939,82 +1909,6 @@ export class DevPanel {
               ⚡ Refill (100%)
             </button>
           </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // Energy Bus Module (Character only - renders all energy busses as collapsible sub-sections inside one module)
-    if (hasEnergyBus && char) {
-      attachedCount++;
-      const busses = char.energyBusses && char.energyBusses.size > 0
-        ? Array.from(char.energyBusses.values())
-        : (char.energyBus ? [char.energyBus] : []);
-
-      let busSectionsHtml = "";
-      for (const b of busses) {
-        const curStamina = b.getCurrentStamina(char.properties);
-        const maxStamina = b.getMaxStamina(char.properties);
-        const staminaPct = maxStamina > 0 ? Math.min(100, Math.max(0, (curStamina / maxStamina) * 100)) : 0;
-        const curWatts = b.getCurrentWattage(char.properties);
-        const isSubCollapsed = this.isBusSubCollapsed(b.id);
-
-        busSectionsHtml += `
-          <div class="bus-sub-section" data-bus-id="${b.id}" style="border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px; margin-bottom: 8px; background: rgba(15, 23, 42, 0.45);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <button class="btn-collapse-bus-sub" data-bus-id="${b.id}" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 0.8rem; padding: 0 4px;" title="Toggle collapse">
-                  ${isSubCollapsed ? '▶' : '▼'}
-                </button>
-                <input type="text" class="input-bus-name dev-input" data-bus-id="${b.id}" value="${b.name}" title="Custom Bus Name" style="width: 140px; font-weight: 700; color: #38bdf8; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 0.78rem;">
-                <span style="font-size: 0.7rem; color: #64748b;">(${b.id})</span>
-              </div>
-              ${b.id !== 'bus_main' ? `
-                <button class="btn-delete-bus" data-bus-id="${b.id}" title="Delete this Energy Bus" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">✕ Delete</button>
-              ` : ''}
-            </div>
-
-            <div id="collapse-body-bus-sub-${b.id}" style="display: ${isSubCollapsed ? 'none' : 'block'};">
-              <div id="warn-bus-exhausted-${b.id}" class="module-dep-warning" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); display: ${b.isExhausted ? 'block' : 'none'};">⚠️ Exhausted! Stamina depleted below safety threshold</div>
-
-              <div style="margin: 6px 0;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
-                  <span>Stamina Reservoir</span>
-                  <span id="label-energy-bus-stamina-status-${b.id}">${curStamina.toFixed(0)} J / ${maxStamina.toFixed(0)} J (${staminaPct.toFixed(0)}%)</span>
-                </div>
-                <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
-                  <div id="bar-energy-bus-stamina-fill-${b.id}" style="background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; width: ${staminaPct}%; transition: width 0.1s ease;"></div>
-                </div>
-              </div>
-
-              <div style="margin: 6px 0; padding: 4px 8px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.75rem; color: #94a3b8;">Current Power Draw:</span>
-                <span id="label-energy-bus-wattage-${b.id}" style="font-size: 0.82rem; font-weight: 700; color: ${curWatts > 0 ? '#38bdf8' : '#64748b'};">${curWatts.toFixed(0)} Watts</span>
-              </div>
-
-              <div id="prop-socket-bus-maxstamina-${b.id}"></div>
-              <div id="prop-socket-bus-curstamina-${b.id}"></div>
-              <div id="prop-socket-bus-regen-${b.id}"></div>
-              <div id="prop-socket-bus-efficiency-${b.id}"></div>
-            </div>
-          </div>
-        `;
-      }
-
-      html += `
-        <div class="module-card ${!energyBusEnabled ? 'module-disabled' : ''}" data-module-id="energyBus">
-          ${this.renderModuleHeader("energyBus", "🚌 Energy Busses", renderToggleBtn("energyBus", energyBusEnabled))}
-          <div id="collapse-body-mod-energyBus" style="display: ${this.isSectionCollapsed('mod-energyBus') ? 'none' : 'block'};">
-          ${!energyBusEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Energy Bus is disabled</div>` : ''}
-          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
-            Independent energy busses channel muscle power throughput (Watts) and burst stamina (duration at max power) to specific abilities.
-          </div>
-
-          ${busSectionsHtml}
-
-          <button id="btn-add-energy-bus" style="width: 100%; padding: 6px; margin-top: 4px; background: rgba(56, 189, 248, 0.15); border: 1px dashed rgba(56, 189, 248, 0.4); border-radius: 4px; color: #38bdf8; font-weight: 600; font-size: 0.78rem; cursor: pointer; transition: all 0.15s ease;">
-            + Add Energy Bus
-          </button>
           </div>
         </div>
       `;
@@ -2067,8 +1961,7 @@ export class DevPanel {
         { id: "consume", name: "Consume Ability", icon: "🍴", description: "Consumes physical items matching accepted tags", isAttached: hasConsumeModule },
         { id: "laser", name: "Laser Blast", icon: "🔫", description: "Continuous straight-line laser blast ability consuming energy", isAttached: hasLaserModule },
         { id: "melee", name: "Melee Attack", icon: "🥊", description: "Physical punch with knockback, recoil, and force-based shock damage", isAttached: hasMeleeModule },
-        { id: "energyPool", name: "Energy Pool", icon: "⚡", description: "Finite biochemical energy reservoir (Joules) with debug auto-refill", isAttached: hasEnergyPool },
-        { id: "energyBus", name: "Energy Bus (Main)", icon: "🚌", description: "Muscle output power throughput (Watts) and burst stamina", isAttached: hasEnergyBus }
+        { id: "energyPool", name: "Energy Pool & Stamina", icon: "⚡", description: "Consolidated biochemical energy reservoir (Joules) and burst stamina", isAttached: hasEnergyPool }
       );
     }
 
@@ -2199,9 +2092,6 @@ export class DevPanel {
       case "energyPool":
         if (char?.energyPool) char.energyPool.enabled = !char.energyPool.enabled;
         break;
-      case "energyBus":
-        if (char?.energyBus) char.energyBus.enabled = !char.energyBus.enabled;
-        break;
       case "laser":
         if (char?.laserModule) char.laserModule.enabled = !char.laserModule.enabled;
         break;
@@ -2310,11 +2200,6 @@ export class DevPanel {
           (e as Character).energyPool = null;
         }
         break;
-      case "energyBus":
-        if (e instanceof Character) {
-          (e as Character).energyBus = null;
-        }
-        break;
       case "laser":
         if (e instanceof Character) {
           (e as Character).laserModule = null;
@@ -2375,20 +2260,16 @@ export class DevPanel {
             sprintConsumesEnergy: true,
             sprintAllowPartialPower: true,
           });
-          (e as Character).walkingModule!.walkEnergyBusId = "bus_main";
-          (e as Character).walkingModule!.sprintEnergyBusId = "bus_main";
         }
         break;
       case "pickup":
         if (e instanceof Character) {
           (e as Character).pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
-          (e as Character).pickupModule!.energyBusId = "bus_main";
         }
         break;
       case "throw":
         if (e instanceof Character) {
           (e as Character).throwModule = new ThrowModule({ consumesEnergy: true });
-          (e as Character).throwModule!.energyBusId = "bus_main";
         }
         break;
       case "jump":
@@ -2396,7 +2277,6 @@ export class DevPanel {
           (e as Character).jumpModule = new JumpModule();
           (e as Character).jumpConsumesEnergy = true;
           (e as Character).jumpAllowPartialPower = false;
-          (e as Character).jumpEnergyBusId = "bus_main";
         }
         break;
       case "wallEdgeAssist":
@@ -2407,7 +2287,6 @@ export class DevPanel {
       case "climbing":
         if (e instanceof Character) {
           (e as Character).climbingModule = new ClimbingModule({ consumesEnergy: true, allowPartialPower: false });
-          (e as Character).climbingModule!.energyBusId = "bus_main";
         }
         break;
       case "health":
@@ -2420,7 +2299,6 @@ export class DevPanel {
           consumesEnergy: true,
           allowPartialPower: true,
         });
-        e.healthModule.energyBusId = "bus_main";
         break;
       case "damageAura":
         e.damageAuraModule = new DamageAuraModule({
@@ -2464,11 +2342,6 @@ export class DevPanel {
       case "energyPool":
         if (e instanceof Character) {
           (e as Character).energyPool = new EnergyPool();
-        }
-        break;
-      case "energyBus":
-        if (e instanceof Character) {
-          (e as Character).energyBus = new EnergyBus();
         }
         break;
       case "laser":
@@ -2700,9 +2573,9 @@ export class DevPanel {
       const walkPowerCapSocketEl = this.container.querySelector("#prop-socket-walk-power-cap");
       if (walkPowerCapSocketEl && char.walkingModule) {
         const wpCtrl = new PropertyControl({
-          property: char.walkingModule.walkPowerCapacityProp,
+          property: char.walkingModule.maxWalkPowerProp,
           owner: char,
-          label: "Walk Power Rating (Watts)",
+          label: "Max Walk Power (Watts)",
           step: 25.0,
         });
         walkPowerCapSocketEl.appendChild(wpCtrl.element);
@@ -2720,9 +2593,9 @@ export class DevPanel {
       const sprintPowerCapSocketEl = this.container.querySelector("#prop-socket-sprint-power-cap");
       if (sprintPowerCapSocketEl && char.walkingModule) {
         const spCtrl = new PropertyControl({
-          property: char.walkingModule.sprintPowerCapacityProp,
+          property: char.walkingModule.maxSprintPowerProp,
           owner: char,
-          label: "Sprint Power Rating (Watts)",
+          label: "Max Sprint Power (Watts)",
           step: 25.0,
         });
         sprintPowerCapSocketEl.appendChild(spCtrl.element);
@@ -2738,16 +2611,14 @@ export class DevPanel {
         airFricSocketEl.appendChild(afCtrl.element);
       }
 
-      // Energy consumption checkboxes & bus selectors
+      // Energy consumption checkboxes
       const checkWalkEnergy = this.container.querySelector("#check-walk-energy") as HTMLInputElement;
       const fieldWalkPartialPower = this.container.querySelector("#field-walk-partial-power") as HTMLElement;
       const checkWalkPartialPower = this.container.querySelector("#check-walk-partial-power") as HTMLInputElement;
-      const fieldWalkBus = this.container.querySelector("#field-walk-energy-bus") as HTMLElement;
       checkWalkEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.walkConsumesEnergy = checkWalkEnergy.checked;
           if (fieldWalkPartialPower) fieldWalkPartialPower.style.display = checkWalkEnergy.checked ? "flex" : "none";
-          if (fieldWalkBus) fieldWalkBus.style.display = checkWalkEnergy.checked ? "block" : "none";
         }
       });
       checkWalkPartialPower?.addEventListener("change", () => {
@@ -2755,33 +2626,19 @@ export class DevPanel {
           char.walkingModule.walkAllowPartialPower = checkWalkPartialPower.checked;
         }
       });
-      const selectWalkBus = this.container.querySelector("#select-walk-energy-bus") as HTMLSelectElement;
-      selectWalkBus?.addEventListener("change", () => {
-        if (char.walkingModule) {
-          char.walkingModule.walkEnergyBusId = selectWalkBus.value;
-        }
-      });
 
       const checkSprintEnergy = this.container.querySelector("#check-sprint-energy") as HTMLInputElement;
       const fieldSprintPartialPower = this.container.querySelector("#field-sprint-partial-power") as HTMLElement;
       const checkSprintPartialPower = this.container.querySelector("#check-sprint-partial-power") as HTMLInputElement;
-      const fieldSprintBus = this.container.querySelector("#field-sprint-energy-bus") as HTMLElement;
       checkSprintEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
           if (fieldSprintPartialPower) fieldSprintPartialPower.style.display = checkSprintEnergy.checked ? "flex" : "none";
-          if (fieldSprintBus) fieldSprintBus.style.display = checkSprintEnergy.checked ? "block" : "none";
         }
       });
       checkSprintPartialPower?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.sprintAllowPartialPower = checkSprintPartialPower.checked;
-        }
-      });
-      const selectSprintBus = this.container.querySelector("#select-sprint-energy-bus") as HTMLSelectElement;
-      selectSprintBus?.addEventListener("change", () => {
-        if (char.walkingModule) {
-          char.walkingModule.sprintEnergyBusId = selectSprintBus.value;
         }
       });
 
@@ -2797,7 +2654,7 @@ export class DevPanel {
         strSocketEl.appendChild(strCtrl.element);
       }
 
-      // Pickup socket
+      // Pickup sockets
       const pickupReachSocketEl = this.container.querySelector("#prop-socket-pickup-reach");
       if (pickupReachSocketEl && char.pickupModule) {
         const prCtrl = new PropertyControl({
@@ -2808,26 +2665,28 @@ export class DevPanel {
         });
         pickupReachSocketEl.appendChild(prCtrl.element);
       }
+      const pickupPowerCapSocketEl = this.container.querySelector("#prop-socket-pickup-power-cap");
+      if (pickupPowerCapSocketEl && char.pickupModule) {
+        const ppCtrl = new PropertyControl({
+          property: char.pickupModule.maxPowerProp,
+          owner: char,
+          label: "Max Pickup Power (Watts)",
+          step: 25.0,
+        });
+        pickupPowerCapSocketEl.appendChild(ppCtrl.element);
+      }
       const checkPickupEnergy = this.container.querySelector("#check-pickup-energy") as HTMLInputElement;
       const fieldPickupPartialPower = this.container.querySelector("#field-pickup-partial-power") as HTMLElement;
       const checkPickupPartialPower = this.container.querySelector("#check-pickup-partial-power") as HTMLInputElement;
-      const fieldPickupBus = this.container.querySelector("#field-pickup-energy-bus") as HTMLElement;
       checkPickupEnergy?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
           if (fieldPickupPartialPower) fieldPickupPartialPower.style.display = checkPickupEnergy.checked ? "flex" : "none";
-          if (fieldPickupBus) fieldPickupBus.style.display = checkPickupEnergy.checked ? "block" : "none";
         }
       });
       checkPickupPartialPower?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.allowPartialPower = checkPickupPartialPower.checked;
-        }
-      });
-      const selectPickupBus = this.container.querySelector("#select-pickup-energy-bus") as HTMLSelectElement;
-      selectPickupBus?.addEventListener("change", () => {
-        if (char.pickupModule) {
-          char.pickupModule.energyBusId = selectPickupBus.value;
         }
       });
 
@@ -2855,25 +2714,17 @@ export class DevPanel {
       const throwPowerCapSocketEl = this.container.querySelector("#prop-socket-throw-power-cap");
       if (throwPowerCapSocketEl && char.throwModule) {
         const tpCtrl = new PropertyControl({
-          property: char.throwModule.throwPowerCapacityProp,
+          property: char.throwModule.maxPowerProp,
           owner: char,
-          label: "Throw Power Capacity (Watts)",
+          label: "Max Throw Power (Watts)",
           step: 50.0,
         });
         throwPowerCapSocketEl.appendChild(tpCtrl.element);
       }
       const checkThrowEnergy = this.container.querySelector("#check-throw-energy") as HTMLInputElement;
-      const fieldThrowBus = this.container.querySelector("#field-throw-energy-bus") as HTMLElement;
       checkThrowEnergy?.addEventListener("change", () => {
         if (char.throwModule) {
           char.throwModule.consumesEnergy = checkThrowEnergy.checked;
-          if (fieldThrowBus) fieldThrowBus.style.display = checkThrowEnergy.checked ? "block" : "none";
-        }
-      });
-      const selectThrowBus = this.container.querySelector("#select-throw-energy-bus") as HTMLSelectElement;
-      selectThrowBus?.addEventListener("change", () => {
-        if (char.throwModule) {
-          char.throwModule.energyBusId = selectThrowBus.value;
         }
       });
 
@@ -2899,11 +2750,11 @@ export class DevPanel {
         jumpSpeedSocketEl.appendChild(jspCtrl.element);
       }
       const jumpPowerCapSocketEl = this.container.querySelector("#prop-socket-jump-power-cap");
-      if (jumpPowerCapSocketEl && char.jumpPowerCapacityProp) {
+      if (jumpPowerCapSocketEl && char.jumpMaxPowerProp) {
         const jpCtrl = new PropertyControl({
-          property: char.jumpPowerCapacityProp,
+          property: char.jumpMaxPowerProp,
           owner: char,
-          label: "Jump Power Capacity (Watts)",
+          label: "Max Jump Power (Watts)",
           step: 50.0,
         });
         jumpPowerCapSocketEl.appendChild(jpCtrl.element);
@@ -2911,18 +2762,12 @@ export class DevPanel {
       const checkJumpEnergy = this.container.querySelector("#check-jump-energy") as HTMLInputElement;
       const fieldJumpPartialPower = this.container.querySelector("#field-jump-partial-power") as HTMLElement;
       const checkJumpPartialPower = this.container.querySelector("#check-jump-partial-power") as HTMLInputElement;
-      const fieldJumpBus = this.container.querySelector("#field-jump-energy-bus") as HTMLElement;
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
         if (fieldJumpPartialPower) fieldJumpPartialPower.style.display = checkJumpEnergy.checked ? "flex" : "none";
-        if (fieldJumpBus) fieldJumpBus.style.display = checkJumpEnergy.checked ? "block" : "none";
       });
       checkJumpPartialPower?.addEventListener("change", () => {
         char.jumpAllowPartialPower = checkJumpPartialPower.checked;
-      });
-      const selectJumpBus = this.container.querySelector("#select-jump-energy-bus") as HTMLSelectElement;
-      selectJumpBus?.addEventListener("change", () => {
-        char.jumpEnergyBusId = selectJumpBus.value;
       });
 
       // Wall Edge Assist
@@ -2977,9 +2822,9 @@ export class DevPanel {
       const climbPowerCapSocketEl = this.container.querySelector("#prop-socket-climb-power-cap");
       if (climbPowerCapSocketEl && char.climbingModule) {
         const cpCtrl = new PropertyControl({
-          property: char.climbingModule.climbPowerCapacityProp,
+          property: char.climbingModule.maxPowerProp,
           owner: char,
-          label: "Climb Power Capacity (Watts)",
+          label: "Max Climb Power (Watts)",
           step: 25.0,
         });
         climbPowerCapSocketEl.appendChild(cpCtrl.element);
@@ -2987,23 +2832,15 @@ export class DevPanel {
       const checkClimbEnergy = this.container.querySelector("#check-climb-energy") as HTMLInputElement;
       const fieldClimbPartialPower = this.container.querySelector("#field-climb-partial-power") as HTMLElement;
       const checkClimbPartialPower = this.container.querySelector("#check-climb-partial-power") as HTMLInputElement;
-      const fieldClimbBus = this.container.querySelector("#field-climb-energy-bus") as HTMLElement;
       checkClimbEnergy?.addEventListener("change", () => {
         if (char.climbingModule) {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
           if (fieldClimbPartialPower) fieldClimbPartialPower.style.display = checkClimbEnergy.checked ? "flex" : "none";
-          if (fieldClimbBus) fieldClimbBus.style.display = checkClimbEnergy.checked ? "block" : "none";
         }
       });
       checkClimbPartialPower?.addEventListener("change", () => {
         if (char.climbingModule) {
           char.climbingModule.allowPartialPower = checkClimbPartialPower.checked;
-        }
-      });
-      const selectClimbBus = this.container.querySelector("#select-climb-energy-bus") as HTMLSelectElement;
-      selectClimbBus?.addEventListener("change", () => {
-        if (char.climbingModule) {
-          char.climbingModule.energyBusId = selectClimbBus.value;
         }
       });
     }
@@ -3055,21 +2892,26 @@ export class DevPanel {
         });
         hpPerJouleSocketEl.appendChild(jCtrl.element);
       }
+      const hpPowerCapSocketEl = this.container.querySelector("#prop-socket-health-power-cap");
+      if (hpPowerCapSocketEl) {
+        const pCtrl = new PropertyControl({
+          property: hm.maxPowerProp,
+          owner: e,
+          label: "Max Healing Power (Watts)",
+          step: 25.0,
+        });
+        hpPowerCapSocketEl.appendChild(pCtrl.element);
+      }
+
       const checkHealthEnergy = this.container.querySelector("#check-health-energy") as HTMLInputElement;
       const fieldHealthPartialPower = this.container.querySelector("#field-health-partial-power") as HTMLElement;
       const checkHealthPartialPower = this.container.querySelector("#check-health-partial-power") as HTMLInputElement;
-      const fieldHealthBus = this.container.querySelector("#field-health-energy-bus") as HTMLElement;
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
         if (fieldHealthPartialPower) fieldHealthPartialPower.style.display = checkHealthEnergy.checked ? "flex" : "none";
-        if (fieldHealthBus) fieldHealthBus.style.display = checkHealthEnergy.checked ? "block" : "none";
       });
       checkHealthPartialPower?.addEventListener("change", () => {
         hm.allowPartialPower = checkHealthPartialPower.checked;
-      });
-      const selectHealthBus = this.container.querySelector("#select-health-energy-bus") as HTMLSelectElement;
-      selectHealthBus?.addEventListener("change", () => {
-        hm.energyBusId = selectHealthBus.value;
       });
 
       // Quick test buttons
@@ -3325,12 +3167,6 @@ export class DevPanel {
         pwrEl.appendChild(ctrl.element);
       }
 
-      const selectBus = this.container.querySelector("#select-laser-energy-bus") as HTMLSelectElement | null;
-      selectBus?.addEventListener("change", () => {
-        lm.energyBusId = selectBus.value;
-        this.updateInspector();
-      });
-
       const checkPartial = this.container.querySelector("#check-laser-partial-power") as HTMLInputElement | null;
       checkPartial?.addEventListener("change", () => {
         lm.allowPartialPower = checkPartial.checked;
@@ -3386,11 +3222,16 @@ export class DevPanel {
         widthEl.appendChild(ctrl.element);
       }
 
-      const selectBus = this.container.querySelector("#select-melee-energy-bus") as HTMLSelectElement | null;
-      selectBus?.addEventListener("change", () => {
-        mm.energyBusId = selectBus.value;
-        this.updateInspector();
-      });
+      const meleePowerCapEl = this.container.querySelector("#prop-socket-melee-max-power");
+      if (meleePowerCapEl) {
+        const mpCtrl = new PropertyControl({
+          property: mm.maxPowerProp,
+          owner: char,
+          label: "Max Attack Power (Watts)",
+          step: 25.0,
+        });
+        meleePowerCapEl.appendChild(mpCtrl.element);
+      }
 
       const checkPartial = this.container.querySelector("#check-melee-partial-power") as HTMLInputElement | null;
       checkPartial?.addEventListener("change", () => {
@@ -3399,7 +3240,7 @@ export class DevPanel {
       });
     }
 
-    // Energy Pool controls (Character only)
+    // Energy Pool controls (Character only - consolidated Energy & Stamina)
     if (char && char.energyPool) {
       const ep = char.energyPool;
 
@@ -3425,6 +3266,67 @@ export class DevPanel {
         maxEnergyEl.appendChild(maxCtrl.element);
       }
 
+      const curStaminaEl = this.container.querySelector("#prop-socket-energy-stamina-cur");
+      if (curStaminaEl) {
+        const csCtrl = new PropertyControl({
+          property: ep.currentStaminaProp,
+          owner: char,
+          label: "Current Stamina (Joules)",
+          step: 50.0,
+          min: 0.0,
+        });
+        curStaminaEl.appendChild(csCtrl.element);
+      }
+
+      const maxStaminaEl = this.container.querySelector("#prop-socket-energy-stamina-max");
+      if (maxStaminaEl) {
+        const msCtrl = new PropertyControl({
+          property: ep.maxStaminaProp,
+          owner: char,
+          label: "Stamina Reservoir Capacity (Joules)",
+          step: 100.0,
+          min: 50.0,
+          max: 50000.0,
+        });
+        maxStaminaEl.appendChild(msCtrl.element);
+      }
+
+      const regenEl = this.container.querySelector("#prop-socket-energy-stamina-regen");
+      if (regenEl) {
+        const rCtrl = new PropertyControl({
+          property: ep.staminaRegenRateProp,
+          owner: char,
+          label: "Stamina Regen Rate (Watts = J/s)",
+          step: 25.0,
+          min: 0.0,
+          max: 5000.0,
+        });
+        regenEl.appendChild(rCtrl.element);
+      }
+
+      const effEl = this.container.querySelector("#prop-socket-energy-efficiency");
+      if (effEl) {
+        const eCtrl = new PropertyControl({
+          property: ep.muscleEfficiencyProp,
+          owner: char,
+          label: "Muscle Metabolic Efficiency (Ratio)",
+          step: 0.05,
+          min: 0.01,
+          max: 1.0,
+        });
+        effEl.appendChild(eCtrl.element);
+      }
+
+      const sliderRecoveryThresh = this.container.querySelector("#slider-energy-recovery-thresh") as HTMLInputElement | null;
+      const labelRecoveryThresh = this.container.querySelector("#label-energy-recovery-thresh") as HTMLElement | null;
+      sliderRecoveryThresh?.addEventListener("input", (ev) => {
+        const val = parseFloat((ev.target as HTMLInputElement).value);
+        ep.recoveryThresholdRatio = val;
+        if (labelRecoveryThresh) {
+          labelRecoveryThresh.textContent = `${(val * 100).toFixed(0)}%`;
+        }
+      });
+
       const checkInfinite = this.container.querySelector("#check-energy-infinite") as HTMLInputElement;
       checkInfinite?.addEventListener("change", () => {
         ep.infiniteEnergy = checkInfinite.checked;
@@ -3442,124 +3344,6 @@ export class DevPanel {
 
       this.container.querySelector("#btn-energy-refill")?.addEventListener("click", () => {
         ep.refill(char.properties);
-        this.updateInspector();
-      });
-    }
-
-    // Energy Bus controls (Character only - iterates over each bus sub-section)
-    if (char) {
-      const busses = char.energyBusses && char.energyBusses.size > 0
-        ? Array.from(char.energyBusses.values())
-        : (char.energyBus ? [char.energyBus] : []);
-
-      for (const eb of busses) {
-        const maxStaminaEl = this.container.querySelector(`#prop-socket-bus-maxstamina-${eb.id}`);
-        if (maxStaminaEl) {
-          const sCtrl = new PropertyControl({
-            property: eb.maxStaminaProp,
-            owner: char,
-            label: "Stamina Reservoir Capacity (Joules)",
-            step: 100.0,
-            min: 50.0,
-            max: 50000.0,
-          });
-          maxStaminaEl.appendChild(sCtrl.element);
-        }
-
-        const curStaminaEl = this.container.querySelector(`#prop-socket-bus-curstamina-${eb.id}`);
-        if (curStaminaEl) {
-          const csCtrl = new PropertyControl({
-            property: eb.currentStaminaProp,
-            owner: char,
-            label: "Current Stamina (Joules)",
-            step: 50.0,
-            min: 0.0,
-          });
-          curStaminaEl.appendChild(csCtrl.element);
-        }
-
-        const regenEl = this.container.querySelector(`#prop-socket-bus-regen-${eb.id}`);
-        if (regenEl) {
-          const rCtrl = new PropertyControl({
-            property: eb.staminaRegenRateProp,
-            owner: char,
-            label: "Stamina Regen Rate (Watts = J/s)",
-            step: 25.0,
-            min: 0.0,
-            max: 5000.0,
-          });
-          regenEl.appendChild(rCtrl.element);
-        }
-
-        const effEl = this.container.querySelector(`#prop-socket-bus-efficiency-${eb.id}`);
-        if (effEl) {
-          const eCtrl = new PropertyControl({
-            property: eb.muscleEfficiencyProp,
-            owner: char,
-            label: "Muscle Metabolic Efficiency (Ratio)",
-            step: 0.05,
-            min: 0.01,
-            max: 1.0,
-          });
-          effEl.appendChild(eCtrl.element);
-        }
-      }
-
-      // Wire up sub-section collapse toggles
-      this.container.querySelectorAll(".btn-collapse-bus-sub").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const busId = btn.getAttribute("data-bus-id");
-          if (!busId) return;
-          this.toggleBusSubCollapse(busId);
-          const isCollapsed = this.isBusSubCollapsed(busId);
-          const bodyEl = this.container.querySelector(`#collapse-body-bus-sub-${busId}`) as HTMLElement;
-          if (bodyEl) bodyEl.style.display = isCollapsed ? "none" : "block";
-          btn.textContent = isCollapsed ? "▶" : "▼";
-        });
-      });
-
-      // Wire up custom bus name inputs
-      this.container.querySelectorAll(".input-bus-name").forEach((input) => {
-        input.addEventListener("input", (e) => {
-          const busId = (input as HTMLElement).getAttribute("data-bus-id");
-          if (!busId) return;
-          const bus = char.getEnergyBus(busId);
-          if (bus) {
-            bus.name = (e.target as HTMLInputElement).value;
-          }
-        });
-      });
-
-      // Wire up bus deletion (for secondary busses)
-      this.container.querySelectorAll(".btn-delete-bus").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const busId = btn.getAttribute("data-bus-id");
-          if (!busId || busId === "bus_main") return;
-          char.energyBusses.delete(busId);
-          if (char.walkingModule?.walkEnergyBusId === busId) char.walkingModule.walkEnergyBusId = "bus_main";
-          if (char.walkingModule?.sprintEnergyBusId === busId) char.walkingModule.sprintEnergyBusId = "bus_main";
-          if (char.pickupModule?.energyBusId === busId) char.pickupModule.energyBusId = "bus_main";
-          if (char.throwModule?.energyBusId === busId) char.throwModule.energyBusId = "bus_main";
-          if (char.jumpEnergyBusId === busId) char.jumpEnergyBusId = "bus_main";
-          if (char.climbingModule?.energyBusId === busId) char.climbingModule.energyBusId = "bus_main";
-          if (char.healthModule?.energyBusId === busId) char.healthModule.energyBusId = "bus_main";
-          if (char.laserModule?.energyBusId === busId) char.laserModule.energyBusId = "bus_main";
-          this.renderEntityModules();
-          this.updateInspector();
-        });
-      });
-
-      // Wire up Add Energy Bus button
-      this.container.querySelector("#btn-add-energy-bus")?.addEventListener("click", () => {
-        const busNum = char.energyBusses.size + 1;
-        const newBusId = `bus_aux_${Date.now().toString(36)}`;
-        const newBus = new EnergyBus({
-          id: newBusId,
-          name: `Aux Bus ${busNum}`,
-          maxStamina: 5000.0,
-        });
-        char.energyBusses.set(newBusId, newBus);
-        this.renderEntityModules();
         this.updateInspector();
       });
     }
@@ -4645,7 +4429,7 @@ export class DevPanel {
       ` : ''}
     `;
 
-    // Real-time update of live Energy Pool & Energy Bus status bars
+    // Real-time update of live Energy Pool & Stamina status bars
     if (isChar && char) {
       if (char.energyPool) {
         const ep = char.energyPool;
@@ -4661,63 +4445,33 @@ export class DevPanel {
         if (barPool) {
           barPool.style.width = `${pctE}%`;
         }
-      }
 
-      if (char.energyBusses && char.energyBusses.size > 0) {
-        for (const [busId, eb] of char.energyBusses.entries()) {
-          const curS = eb.getCurrentStamina(char.properties);
-          const maxS = eb.getMaxStamina(char.properties);
-          const pctS = maxS > 0 ? Math.min(100, Math.max(0, (curS / maxS) * 100)) : 0;
-          const curWatts = eb.getCurrentWattage(char.properties);
-
-          const labelStamina = this.container.querySelector(`#label-energy-bus-stamina-status-${busId}`);
-          if (labelStamina) {
-            labelStamina.textContent = `${curS.toFixed(0)} J / ${maxS.toFixed(0)} J (${pctS.toFixed(0)}%)`;
-          }
-          const barStamina = this.container.querySelector(`#bar-energy-bus-stamina-fill-${busId}`) as HTMLElement | null;
-          if (barStamina) {
-            barStamina.style.width = `${pctS}%`;
-          }
-
-          const labelWattage = this.container.querySelector(`#label-energy-bus-wattage-${busId}`) as HTMLElement | null;
-          if (labelWattage) {
-            labelWattage.textContent = `${curWatts.toFixed(0)} Watts`;
-            labelWattage.style.color = curWatts > 0 ? "#38bdf8" : "#64748b";
-          }
-
-          const warnExhausted = this.container.querySelector(`#warn-bus-exhausted-${busId}`) as HTMLElement | null;
-          if (warnExhausted) {
-            warnExhausted.style.display = eb.isExhausted ? "block" : "none";
-          }
-        }
-      } else if (char.energyBus) {
-        const eb = char.energyBus;
-        const curS = eb.getCurrentStamina(char.properties);
-        const maxS = eb.getMaxStamina(char.properties);
+        const curS = ep.getCurrentStamina(char.properties);
+        const maxS = ep.getMaxStamina(char.properties);
         const pctS = maxS > 0 ? Math.min(100, Math.max(0, (curS / maxS) * 100)) : 0;
-        const curWatts = eb.getCurrentWattage(char.properties);
+        const curWatts = ep.getCurrentWattage(char.properties);
 
-        const labelStamina = this.container.querySelector("#label-energy-bus-stamina-status");
+        const labelStamina = this.container.querySelector("#label-energy-stamina-status");
         if (labelStamina) {
           labelStamina.textContent = `${curS.toFixed(0)} J / ${maxS.toFixed(0)} J (${pctS.toFixed(0)}%)`;
         }
-        const barStamina = this.container.querySelector("#bar-energy-bus-stamina-fill") as HTMLElement | null;
+        const barStamina = this.container.querySelector("#bar-energy-stamina-fill") as HTMLElement | null;
         if (barStamina) {
           barStamina.style.width = `${pctS}%`;
         }
 
-        const labelWattage = this.container.querySelector("#label-energy-bus-wattage") as HTMLElement | null;
+        const labelWattage = this.container.querySelector("#label-energy-wattage") as HTMLElement | null;
         if (labelWattage) {
           labelWattage.textContent = `${curWatts.toFixed(0)} Watts`;
           labelWattage.style.color = curWatts > 0 ? "#38bdf8" : "#64748b";
         }
 
-        const warnExhausted = this.container.querySelector("#warn-bus-exhausted") as HTMLElement | null;
+        const warnExhausted = this.container.querySelector("#warn-energy-exhausted") as HTMLElement | null;
         if (warnExhausted) {
-          warnExhausted.style.display = eb.isExhausted ? "block" : "none";
+          warnExhausted.style.display = ep.isExhausted ? "block" : "none";
         }
 
-        const curStaminaInput = this.container.querySelector("#prop-socket-bus-curstamina .prop-number-input") as HTMLInputElement | null;
+        const curStaminaInput = this.container.querySelector("#prop-socket-energy-stamina-cur .prop-number-input") as HTMLInputElement | null;
         if (curStaminaInput && document.activeElement !== curStaminaInput) {
           curStaminaInput.value = curS.toFixed(2);
         }

@@ -50,9 +50,10 @@ export class MeleeModule {
   /** Perpendicular width of the rectangular attack zone (world units / meters) */
   public widthProp: DynamicProperty;
 
-  /** Energy Bus to draw burst energy from */
-  public energyBusId: string = "bus_main";
-  /** Whether to allow punches at partial force when the bus cannot grant 100% burst energy */
+  // Behavior-driven maximum melee power capacity (Watts)
+  public maxPowerProp: DynamicProperty;
+
+  /** Whether to allow punches at partial force when pool cannot grant 100% burst energy */
   public allowPartialPower: boolean = true;
 
   /** Time of last punch execution (performance.now ms) */
@@ -63,15 +64,25 @@ export class MeleeModule {
   public lastVisualPunchReach: number = 1.2;
   public lastVisualPunchWidth: number = 0.8;
 
-  constructor(options?: MeleeModuleOptions) {
+  constructor(options?: MeleeModuleOptions & { maxPower?: number }) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
-    if (options?.energyBusId) this.energyBusId = options.energyBusId;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
 
     this.maxForceProp = new DynamicProperty(options?.maxForce ?? 350.0);
     this.punchFrequencyProp = new DynamicProperty(options?.punchFrequency ?? 4.0);
     this.reachProp = new DynamicProperty(options?.reach ?? 1.2);
     this.widthProp = new DynamicProperty(options?.width ?? 0.8);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 600.0);
+  }
+
+  public get maxPower(): number {
+    return this.maxPowerProp.literalValue;
+  }
+  public set maxPower(val: number) {
+    this.maxPowerProp.literalValue = val;
+  }
+  public getMaxPower(registry?: ObjectPropertiesRegistry): number {
+    return this.maxPowerProp.get(registry);
   }
 
   public get maxForce(): number {
@@ -163,29 +174,36 @@ export class MeleeModule {
     // Work = Force * distance. With biological muscle efficiency (0.25 default), demandedJoules = W / efficiency.
     const muscleEff = registry?.get("muscleEfficiency") ?? 0.25;
     const mechanicalWorkJoules = maxForce * reach;
-    const demandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
+    const rawDemandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
+    const maxPower = this.maxPowerProp.get(registry);
+    let demandedJoules = rawDemandedJoules;
+    if (demandedJoules > maxPower) {
+      if (!this.allowPartialPower) {
+        return null;
+      }
+      demandedJoules = maxPower;
+    }
 
-    const bus = attacker.energyBusses.get(this.energyBusId) || attacker.energyBus;
+    const pool = attacker.energyPool;
     let actualForce = maxForce;
     let energySpent = 0;
 
-    if (bus) {
-      if (bus.isExhausted) {
+    if (pool) {
+      if (pool.isExhausted) {
         return null; // Denied when exhausted
       }
 
-      const burstRes = bus.requestInstantBurst({
+      const burstRes = pool.requestInstantBurst({
         abilityId: "melee",
         demandedJoules,
         allowPartialPower: this.allowPartialPower,
-        pool: attacker.energyPool,
         registry,
       });
 
       if (!burstRes.granted || burstRes.fraction <= 0.001) {
         return null;
       }
-      actualForce = maxForce * burstRes.fraction;
+      actualForce = maxForce * burstRes.fraction * (demandedJoules / rawDemandedJoules);
       energySpent = burstRes.grantedJoules;
     }
 

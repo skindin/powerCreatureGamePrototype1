@@ -40,18 +40,26 @@ export class WalkingModule {
   public maxSprintSpeedProp: DynamicProperty;
 
   // Behavior-driven maximum power capacities (Watts)
-  public sprintPowerCapacityProp: DynamicProperty;
-  public walkPowerCapacityProp: DynamicProperty;
+  public maxSprintPowerProp!: DynamicProperty;
+  public maxWalkPowerProp!: DynamicProperty;
+
+  // Aliases for backwards compatibility
+  public get sprintPowerCapacityProp(): DynamicProperty { return this.maxSprintPowerProp; }
+  public set sprintPowerCapacityProp(prop: DynamicProperty) { this.maxSprintPowerProp = prop; }
+  public get walkPowerCapacityProp(): DynamicProperty { return this.maxWalkPowerProp; }
+  public set walkPowerCapacityProp(prop: DynamicProperty) { this.maxWalkPowerProp = prop; }
+
+  // Legacy bus identifiers for backwards compatibility
+  public sprintEnergyBusId: string = "bus_main";
+  public walkEnergyBusId: string = "bus_main";
 
   // Energy consumption toggles
   public sprintConsumesEnergy: boolean = false;
   /** Whether sprinting is allowed to run at partial power between walk speed and sprint speed */
   public sprintAllowPartialPower: boolean = true;
-  public sprintEnergyBusId: string = "bus_main";
   public walkConsumesEnergy: boolean = false;
   /** Whether walking is allowed to run at reduced speed/force when power cannot provide 100% */
   public walkAllowPartialPower: boolean = false;
-  public walkEnergyBusId: string = "bus_main";
   public consumesEnergy: boolean = false;
 
   // Drag damping factor for backwards compatibility / reference
@@ -79,8 +87,8 @@ export class WalkingModule {
     this.maxWalkSpeedProp = new DynamicProperty(options?.maxWalkSpeed ?? 5.2);
     if (options?.canSprint !== undefined) this.canSprint = options.canSprint;
     this.maxSprintSpeedProp = new DynamicProperty(options?.maxSprintSpeed ?? 8.06);
-    this.sprintPowerCapacityProp = new DynamicProperty(options?.sprintPowerCapacity ?? 500.0);
-    this.walkPowerCapacityProp = new DynamicProperty(options?.walkPowerCapacity ?? 300.0);
+    this.maxSprintPowerProp = new DynamicProperty(options?.sprintPowerCapacity ?? (options as any)?.maxSprintPower ?? 500.0);
+    this.maxWalkPowerProp = new DynamicProperty(options?.walkPowerCapacity ?? (options as any)?.maxWalkPower ?? 300.0);
     if (options?.sprintConsumesEnergy !== undefined) this.sprintConsumesEnergy = options.sprintConsumesEnergy;
     if ((options as any)?.sprintAllowPartialPower !== undefined) this.sprintAllowPartialPower = (options as any).sprintAllowPartialPower;
     if (options?.walkConsumesEnergy !== undefined) this.walkConsumesEnergy = options.walkConsumesEnergy;
@@ -120,28 +128,52 @@ export class WalkingModule {
     return this.maxSprintSpeedProp.get(registry);
   }
 
+  public get maxSprintPower(): number {
+    return this.maxSprintPowerProp.literalValue;
+  }
+
+  public set maxSprintPower(val: number) {
+    this.maxSprintPowerProp.literalValue = val;
+  }
+
+  public getMaxSprintPower(registry?: ObjectPropertiesRegistry): number {
+    return this.maxSprintPowerProp.get(registry);
+  }
+
   public get sprintPowerCapacity(): number {
-    return this.sprintPowerCapacityProp.literalValue;
+    return this.maxSprintPowerProp.literalValue;
   }
 
   public set sprintPowerCapacity(val: number) {
-    this.sprintPowerCapacityProp.literalValue = val;
+    this.maxSprintPowerProp.literalValue = val;
   }
 
   public getSprintPowerCapacity(registry?: ObjectPropertiesRegistry): number {
-    return this.sprintPowerCapacityProp.get(registry);
+    return this.maxSprintPowerProp.get(registry);
+  }
+
+  public get maxWalkPower(): number {
+    return this.maxWalkPowerProp.literalValue;
+  }
+
+  public set maxWalkPower(val: number) {
+    this.maxWalkPowerProp.literalValue = val;
+  }
+
+  public getMaxWalkPower(registry?: ObjectPropertiesRegistry): number {
+    return this.maxWalkPowerProp.get(registry);
   }
 
   public get walkPowerCapacity(): number {
-    return this.walkPowerCapacityProp.literalValue;
+    return this.maxWalkPowerProp.literalValue;
   }
 
   public set walkPowerCapacity(val: number) {
-    this.walkPowerCapacityProp.literalValue = val;
+    this.maxWalkPowerProp.literalValue = val;
   }
 
   public getWalkPowerCapacity(registry?: ObjectPropertiesRegistry): number {
-    return this.walkPowerCapacityProp.get(registry);
+    return this.maxWalkPowerProp.get(registry);
   }
 
   public get airFriction(): number {
@@ -219,11 +251,11 @@ export class WalkingModule {
     const loadFactor = carriedMass / (Math.max(0.1, character.strength) * 8.0);
     const isActivelySprinting = this.canSprint && character.isSprinting;
 
-    // Sprint falls back to a walk while the sprint bus is exhausted or has zero stamina
+    // Sprint falls back to a walk while energyPool is exhausted or has zero stamina
     let sprintingNow = isActivelySprinting;
     if (sprintingNow && this.sprintConsumesEnergy) {
-      const sprintBus = character.getEnergyBus(this.sprintEnergyBusId);
-      if (sprintBus && (sprintBus.isExhausted || sprintBus.getCurrentStamina(character.properties) <= 0.0001)) {
+      const ep = character.energyPool;
+      if (ep && (ep.isExhausted || ep.getCurrentStamina(character.properties) <= 0.0001)) {
         sprintingNow = false;
         character.setSprinting(false);
       }
@@ -247,72 +279,75 @@ export class WalkingModule {
     // Cr is the gait resistance coefficient: Cr ~ 0.40 for sprinting, Cr ~ 0.28 for walking.
     if (isMoving) {
       if (sprintingNow && this.sprintConsumesEnergy) {
-        const bus = character.getEnergyBus(this.sprintEnergyBusId);
-        if (bus) {
+        const pool = character.energyPool;
+        if (pool) {
           const CrSprint = 0.40;
           const resForceSprint = totalMass * g * CrSprint;
           const rawSprintWatts = (resForceSprint * sprintTargetSpeed) / 0.25;
-          const sprintCap = this.sprintPowerCapacityProp.get(character.properties);
-          const requestedWatts = Math.min(sprintCap, rawSprintWatts);
+          const sprintCap = this.maxSprintPowerProp.get(character.properties);
+          let requestedWatts = rawSprintWatts;
+          if (requestedWatts > sprintCap) {
+            if (!this.sprintAllowPartialPower) {
+              requestedWatts = 0;
+            } else {
+              requestedWatts = sprintCap;
+            }
+          }
           // Minimum power required in sprint gait to achieve base walk speed:
           const baseSpeedWatts = (resForceSprint * baseWalkTargetSpeed) / 0.25;
           const minSprintWatts = this.sprintAllowPartialPower ? (baseSpeedWatts + 0.001) : (requestedWatts - 0.001);
 
-          // Check if the bus can support sprinting in isolation ("either way" check):
-          const canSprintEitherWay = bus.canSupportPowerInIsolation(
+          // Check if pool can support sprinting in isolation:
+          const canSprintEitherWay = requestedWatts > 0 && pool.canSupportPowerInIsolation(
             requestedWatts,
             minSprintWatts,
             dt,
-            character.energyPool,
             character.properties
           );
 
           if (!canSprintEitherWay) {
-            // True exhaustion: even in isolation with zero competing abilities, sprint cannot run.
+            // True exhaustion or exceeding capacity: step down to walk
             character.setSprinting(false);
             sprintingNow = false;
             effectiveWalkForce = maxWalkForce;
             effectiveTargetSpeed = maxWalkSpeed;
-            bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+            pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
           } else {
-            // Bus has stamina and energy reserves "either way". Check available power considering competing abilities:
-            const peekedWatts = bus.peekPower(requestedWatts, dt, character.energyPool, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+            const peekedWatts = pool.peekPower(requestedWatts, dt, character.properties, false, this.sprintAllowPartialPower, "locomotion");
 
             if (peekedWatts < minSprintWatts) {
-              // Contention starvation: competing abilities (or jump takeoff impulse) are consuming capacity.
-              // Do NOT untoggle sprint! Keep sprint toggled in background, but step down to base walk for this frame.
+              // Contention starvation: competing abilities are consuming capacity.
+              // Step down to base walk for this frame
               sprintingNow = false;
               effectiveWalkForce = maxWalkForce;
               effectiveTargetSpeed = maxWalkSpeed;
-              bus.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+              pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
 
               // If walking also consumes energy, request walking power instead
               if (this.walkConsumesEnergy) {
-                const walkBus = character.getEnergyBus(this.walkEnergyBusId);
-                if (walkBus) {
-                  const CrWalk = 0.28;
-                  const resForceWalk = totalMass * g * CrWalk;
-                  const rawWalkWatts = (resForceWalk * baseWalkTargetSpeed) / 0.25;
-                  const walkCap = this.walkPowerCapacityProp.get(character.properties);
-                  const walkRequested = Math.min(walkCap, rawWalkWatts);
-                  const walkGranted = walkBus.requestPower(walkRequested, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
-                  const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 1;
-                  if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
-                    effectiveWalkForce = 0;
-                    effectiveTargetSpeed = 0;
-                    character.isActivelyWalking = false;
-                  } else {
-                    effectiveWalkForce *= fraction;
-                    effectiveTargetSpeed *= fraction;
-                  }
+                const CrWalk = 0.28;
+                const resForceWalk = totalMass * g * CrWalk;
+                const rawWalkWatts = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+                const walkCap = this.maxWalkPowerProp.get(character.properties);
+                let walkRequested = rawWalkWatts;
+                if (walkRequested > walkCap) {
+                  walkRequested = this.walkAllowPartialPower ? walkCap : 0;
+                }
+                const walkGranted = pool.requestPower(walkRequested, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 0;
+                if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
+                  effectiveWalkForce = 0;
+                  effectiveTargetSpeed = 0;
+                  character.isActivelyWalking = false;
+                } else {
+                  effectiveWalkForce *= fraction;
+                  effectiveTargetSpeed *= fraction;
                 }
               }
             } else {
-              // Bus can grant sprint power (partial or full above base speed)! Request sprint power:
-              const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.sprintAllowPartialPower);
+              // Pool can grant sprint power! Request sprint power:
+              const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.sprintAllowPartialPower);
               if (grantedWatts < minSprintWatts) {
-                // If granted power dropped below threshold due to competing demand:
-                // Step down to base walk, but DO NOT untoggle sprint!
                 sprintingNow = false;
                 effectiveWalkForce = maxWalkForce;
                 effectiveTargetSpeed = maxWalkSpeed;
@@ -329,15 +364,18 @@ export class WalkingModule {
           }
         }
       } else if (!sprintingNow && this.walkConsumesEnergy) {
-        const bus = character.getEnergyBus(this.walkEnergyBusId);
-        if (bus) {
+        const pool = character.energyPool;
+        if (pool) {
           const Cr = 0.28;
           const resForce = totalMass * g * Cr;
           const rawWatts = (resForce * baseWalkTargetSpeed) / 0.25;
-          const walkCap = this.walkPowerCapacityProp.get(character.properties);
-          const requestedWatts = Math.min(walkCap, rawWatts);
-          const grantedWatts = bus.requestPower(requestedWatts, dt, character.energyPool, character.properties, false, "locomotion", this.walkAllowPartialPower);
-          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 1;
+          const walkCap = this.maxWalkPowerProp.get(character.properties);
+          let requestedWatts = rawWatts;
+          if (requestedWatts > walkCap) {
+            requestedWatts = this.walkAllowPartialPower ? walkCap : 0;
+          }
+          const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 0;
           if (fraction <= 0 || (!this.walkAllowPartialPower && fraction < 1.0)) {
             effectiveWalkForce = 0;
             effectiveTargetSpeed = 0;
