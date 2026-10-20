@@ -6277,41 +6277,23 @@ class ThrowModule {
     return null;
   }
   /**
-   * Helper: tests if a collider of given radius centered at screen aim point (aimX, aimY)
-   * overlaps a wall in ANY way:
-   * 1. Physical 2D ground footprint: circle(aimX, aimY, radius) overlaps wall.
-   * 2. Physical wall-top footprint: circle(aimX, aimY + wall.wallHeight * scale, radius) overlaps wall.
-   * 3. Screen visual AABB intersection: circle(aimX, aimY, radius) overlaps wall's visual bounds.
-   * If it overlaps a wall AT ALL, returns the wall and the physical target coordinates
-   * accounting for visual altitude scale so the sprite center lands right at (aimX, aimY).
+   * Helper: tests if an aim point (aimX, aimY) is directly over a wall tile footprint.
+   * Only considers whether the cursor is over the physical 2D wall tile,
+   * completely ignoring the upward-projected roof sprite depth so that the space
+   * behind the wall can be freely targeted on open ground.
    */
-  static findWallOverlappingCollider(aimX, aimY, radius, arena, hoverScale = 0) {
-    const scale = hoverScale > 0 ? hoverScale : 0;
+  static findWallOverlappingCollider(aimX, aimY, _radius = 0, arena, _hoverScale = 0) {
     let bestWall = null;
     let bestDist = Infinity;
-    let bestPhysX = aimX;
-    let bestPhysY = aimY;
     for (const wall of arena.walls) {
-      const wallH = wall.wallHeight;
-      const roofTopY = wall.y - wallH * scale;
-      const baseBottomY = wall.y + wall.height;
-      const groundOverlap = ThrowModule.testWallIntersection(aimX, aimY, radius, wall);
-      const testPhysY = aimY + wallH * scale;
-      const wallTopOverlap = ThrowModule.testWallIntersection(aimX, testPhysY, radius, wall);
-      const closestScreenX = Math.max(wall.x, Math.min(wall.x + wall.width, aimX));
-      const closestScreenY = Math.max(roofTopY, Math.min(baseBottomY, aimY));
-      const sDx = aimX - closestScreenX;
-      const sDy = aimY - closestScreenY;
-      const screenOverlap = sDx * sDx + sDy * sDy <= radius * radius;
-      if (groundOverlap || wallTopOverlap || screenOverlap) {
+      const isOverWallTile = aimX >= wall.x && aimX <= wall.x + wall.width && aimY >= wall.y && aimY <= wall.y + wall.height;
+      if (isOverWallTile) {
         const midX = wall.x + wall.width * 0.5;
         const midY = wall.y + wall.height * 0.5;
-        const d = Math.hypot(midX - aimX, midY - testPhysY);
+        const d = Math.hypot(midX - aimX, midY - aimY);
         if (d < bestDist) {
           bestDist = d;
           bestWall = wall;
-          bestPhysX = aimX;
-          bestPhysY = testPhysY;
         }
       }
     }
@@ -6319,8 +6301,8 @@ class ThrowModule {
       return {
         wall: bestWall,
         targetSurfaceHeight: bestWall.wallHeight,
-        physX: bestPhysX,
-        physY: bestPhysY
+        physX: aimX,
+        physY: aimY
       };
     }
     return null;

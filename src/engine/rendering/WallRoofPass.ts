@@ -74,7 +74,8 @@ export class WallRoofPass {
     ppu: number,
     entities: GameObject[],
     viewSettings: ViewSettings,
-    getEffectiveObjectPosition: (obj: GameObject) => { x: number; y: number; z: number }
+    getEffectiveObjectPosition: (obj: GameObject) => { x: number; y: number; z: number },
+    aimTargets?: { x: number; y: number; z?: number }[]
   ): void {
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
@@ -118,6 +119,30 @@ export class WallRoofPass {
         if (overlapsTopSquare) {
           isAnyCovered = true;
           break;
+        }
+      }
+
+      // Check if any aim target (throw landing pos, laser aim/endpoint, or cursor) is targeting the ground behind this wall:
+      if (!isAnyCovered && aimTargets && aimTargets.length > 0) {
+        for (const target of aimTargets) {
+          const targetZ = target.z ?? 0;
+          const isTargetOnGround = targetZ < arena.wallHeight - 0.05;
+          if (!isTargetOnGround) continue;
+
+          // Target is in the horizontal column of the wall
+          const overlapX = target.x >= wall.x - 0.15 && target.x <= wall.x + wall.width + 0.15;
+          if (!overlapX) continue;
+
+          // Target is physically behind (north of) the wall's front footprint:
+          const isAboveWallCollider = target.y <= wall.y + 0.05;
+          if (!isAboveWallCollider) continue;
+
+          // Target falls under the area covered by the visual roof square:
+          const overlapsTopSquare = target.y >= topSquareY - 0.15;
+          if (overlapsTopSquare) {
+            isAnyCovered = true;
+            break;
+          }
         }
       }
 

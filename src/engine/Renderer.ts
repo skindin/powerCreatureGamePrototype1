@@ -517,8 +517,44 @@ export class Renderer {
       }
 
       // 5. Top of Walls (squares representing the tops - renders OVER ground objects and ground shadows!)
-      WallRoofPass.drawWallTops(ctx, arena, ppu, allRenderables, this.viewSettings, (obj) =>
-        this.getEffectiveObjectPosition(obj, arena, characters)
+      const activeAimTargets: { x: number; y: number; z?: number }[] = [];
+      for (const char of characters) {
+        if (isRemoteForThisView(char)) continue;
+
+        if (char.activeTrajectory?.landPoint) {
+          activeAimTargets.push({
+            x: char.activeTrajectory.landPoint.x,
+            y: char.activeTrajectory.landPoint.y,
+            z: char.activeTrajectory.landPoint.z ?? char.activeTrajectory.targetSurfaceHeight ?? 0,
+          });
+        }
+
+        if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
+          if (char.laserModule.currentEndpoint) {
+            activeAimTargets.push({
+              x: char.laserModule.currentEndpoint.x,
+              y: char.laserModule.currentEndpoint.y,
+              z: char.laserModule.currentEndpoint.z,
+            });
+          }
+        }
+      }
+
+      if (Array.isArray(activeAimCursorsOrIsGamepad)) {
+        for (const cursor of activeAimCursorsOrIsGamepad) {
+          if (cursor.character && isRemoteForThisView(cursor.character)) continue;
+          activeAimTargets.push({ x: cursor.x, y: cursor.y, z: 0 });
+        }
+      }
+
+      WallRoofPass.drawWallTops(
+        ctx,
+        arena,
+        ppu,
+        allRenderables,
+        this.viewSettings,
+        (obj) => this.getEffectiveObjectPosition(obj, arena, characters),
+        activeAimTargets
       );
 
       // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
