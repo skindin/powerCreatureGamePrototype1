@@ -100,48 +100,62 @@ export class WallRoofPass {
       const topY = (wall.y - arena.wallHeight * hoverScale) * ppu;
       const topSquareY = wall.y - arena.wallHeight * hoverScale;
 
-      let isAnyCovered = false;
-      for (const obj of entities) {
-        const objR = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.35);
-        const eff = getEffectiveObjectPosition(obj);
-        const objX = eff.x;
-        const objY = eff.y;
-        const isObjOnGround = eff.z < arena.wallHeight - 0.05;
-        if (!isObjOnGround) continue;
-
-        const overlapX = (objX + objR > wall.x) && (objX - objR < wall.x + wall.width);
-        if (!overlapX) continue;
-
-        const isCompletelyAboveWallCollider = (objY + objR <= wall.y + 0.05);
-        if (!isCompletelyAboveWallCollider) continue;
-
-        const overlapsTopSquare = (objY + objR >= topSquareY - 0.05);
-        if (overlapsTopSquare) {
-          isAnyCovered = true;
+      // Walls should only be able to become transparent if the tile right above them is not a wall
+      const row = Math.floor((wall.y + wall.height * 0.5) / arena.tileSize);
+      const startCol = Math.floor(wall.x / arena.tileSize);
+      const endCol = Math.floor((wall.x + wall.width - 0.001) / arena.tileSize);
+      let tileAboveIsWall = false;
+      for (let c = startCol; c <= endCol; c++) {
+        if (arena.hasWall(c, row - 1)) {
+          tileAboveIsWall = true;
           break;
         }
       }
 
-      // Check if any aim target (throw landing pos, laser aim/endpoint, or cursor) is targeting the ground behind this wall:
-      if (!isAnyCovered && aimTargets && aimTargets.length > 0) {
-        for (const target of aimTargets) {
-          const targetZ = target.z ?? 0;
-          const isTargetOnGround = targetZ < arena.wallHeight - 0.05;
-          if (!isTargetOnGround) continue;
+      let isAnyCovered = false;
+      if (!tileAboveIsWall) {
+        for (const obj of entities) {
+          const objR = obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.35);
+          const eff = getEffectiveObjectPosition(obj);
+          const objX = eff.x;
+          const objY = eff.y;
+          const isObjOnGround = eff.z < arena.wallHeight - 0.05;
+          if (!isObjOnGround) continue;
 
-          // Target is in the horizontal column of the wall
-          const overlapX = target.x >= wall.x - 0.15 && target.x <= wall.x + wall.width + 0.15;
+          const overlapX = (objX + objR > wall.x) && (objX - objR < wall.x + wall.width);
           if (!overlapX) continue;
 
-          // Target is physically behind (north of) the wall's front footprint:
-          const isAboveWallCollider = target.y <= wall.y + 0.05;
-          if (!isAboveWallCollider) continue;
+          const isCompletelyAboveWallCollider = (objY + objR <= wall.y + 0.05);
+          if (!isCompletelyAboveWallCollider) continue;
 
-          // Target falls under the area covered by the visual roof square:
-          const overlapsTopSquare = target.y >= topSquareY - 0.15;
+          const overlapsTopSquare = (objY + objR >= topSquareY - 0.05);
           if (overlapsTopSquare) {
             isAnyCovered = true;
             break;
+          }
+        }
+
+        // Check if any aim target (throw landing pos, laser aim/endpoint, or cursor) is targeting the ground behind this wall:
+        if (!isAnyCovered && aimTargets && aimTargets.length > 0) {
+          for (const target of aimTargets) {
+            const targetZ = target.z ?? 0;
+            const isTargetOnGround = targetZ < arena.wallHeight - 0.05;
+            if (!isTargetOnGround) continue;
+
+            // Target is in the horizontal column of the wall
+            const overlapX = target.x >= wall.x - 0.15 && target.x <= wall.x + wall.width + 0.15;
+            if (!overlapX) continue;
+
+            // Target is physically behind (north of) the wall's front footprint:
+            const isAboveWallCollider = target.y <= wall.y + 0.05;
+            if (!isAboveWallCollider) continue;
+
+            // Target falls under the area covered by the visual roof square:
+            const overlapsTopSquare = target.y >= topSquareY - 0.15;
+            if (overlapsTopSquare) {
+              isAnyCovered = true;
+              break;
+            }
           }
         }
       }
