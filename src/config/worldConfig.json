@@ -1,6 +1,6 @@
 {
-  "version": 28,
-  "lastSaved": "2026-10-21T08:16:50.104Z",
+  "version": 29,
+  "lastSaved": "2026-10-21T09:00:15.135Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -321,45 +321,6 @@
     "gravity": 30,
     "collisionDamageScale": 0.1,
     "collisionMode": "dynamic"
-  },
-  "player": {
-    "name": "Player",
-    "prefabId": "prefab_player",
-    "color": "#f59e0b",
-    "mass": 1.2,
-    "colliderRadius": 0.44,
-    "hasWalking": true,
-    "walkingModule": {
-      "maxWalkForce": 80,
-      "maxWalkSpeed": 5.2,
-      "sprintSpeed": 8.5,
-      "canSprint": true,
-      "walkInAir": false
-    },
-    "hasJump": true,
-    "jumpModule": {
-      "jumpImpulse": 18.5
-    },
-    "hasThrow": true,
-    "throwModule": {
-      "throwForce": 14
-    },
-    "hasClimbing": true,
-    "climbingModule": {
-      "climbSpeed": 3.5
-    },
-    "hasHealth": true,
-    "healthModule": {
-      "maxHp": 100,
-      "currentHp": 100,
-      "naturalHealRate": 5
-    },
-    "hasEnergyPool": true,
-    "energyPool": {
-      "staminaCapacity": 5000,
-      "staminaRegenRate": 500,
-      "energyPoolCapacity": 10000
-    }
   },
   "objects": [
     {
@@ -1075,5 +1036,54 @@
         "minRadiusFloor": 0.12
       }
     }
-  ]
+  ],
+  "player": {
+    "name": "Player 1",
+    "prefabId": "prefab_player",
+    "color": "#f59e0b",
+    "mass": 1.2,
+    "colliderRadius": 0.44,
+    "hasWalking": true,
+    "walkingModule": {
+      "maxWalkForce": 80,
+      "maxWalkSpeed": 5.2,
+      "sprintSpeed": 8.5,
+      "canSprint": true,
+      "walkInAir": false
+    },
+    "hasJump": true,
+    "jumpModule": {
+      "jumpImpulse": 18.5
+    },
+    "hasThrow": true,
+    "throwModule": {
+      "throwForce": 14
+    },
+    "hasClimbing": false,
+    "climbingModule": {
+      "climbSpeed": 3.5
+    },
+    "hasHealth": true,
+    "healthModule": {
+      "maxHp": 100,
+      "currentHp": 100,
+      "naturalHealRate": 5
+    },
+    "hasEnergyPool": true,
+    "energyPool": {
+      "staminaCapacity": 5000,
+      "staminaRegenRate": 500,
+      "energyPoolCapacity": 10000
+    },
+    "id": "obj-pebetl4",
+    "hasLaser": true,
+    "laserModule": {
+      "maxRange": 15,
+      "damageRate": 50
+    },
+    "hasMelee": true,
+    "meleeModule": {
+      "impactForce": 350
+    }
+  }
 }

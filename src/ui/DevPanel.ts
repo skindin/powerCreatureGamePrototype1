@@ -31,7 +31,7 @@ import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistr
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
-import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializeCharacter, applyCharacterConfig } from "../config/WorldConfig.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializeCharacter } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -483,48 +483,18 @@ export class DevPanel {
           <button id="submode-walls" class="submode-btn ${this.editTool === 'walls' ? 'active' : ''}">🧱 Edit Walls</button>
         </div>
 
-        <!-- Project Save & Version Control Persistence Bar -->
+        <!-- Project Save & Version Control Persistence Bar (Arena & Physics only) -->
         <div class="project-save-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; margin-top: 6px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
           <div style="display: flex; align-items: center; gap: 6px;">
             <span id="dev-save-badge" class="badge-status-clean" style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3);">
               ✓ In Sync (v1)
             </span>
           </div>
-            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changes to src/config/worldConfig.json">
-              💾 Save to Project
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button id="btn-revert-from-project" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.70rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);" title="Reload arena and physics from project config">↺ Reload</button>
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save Arena walls and global physics to src/config/worldConfig.json">
+              💾 Save Arena & Physics
             </button>
-            <button id="btn-toggle-save-options" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.72rem;" title="Selective Save Options">
-              ⚙️
-            </button>
-          </div>
-        </div>
-
-        <!-- Selective Save Popover -->
-        <div id="save-options-popover" style="display: none; padding: 6px 8px; margin-top: 4px; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; font-size: 0.72rem;">
-          <div style="font-weight: 600; color: #94a3b8; margin-bottom: 4px;">Selective Save Sections:</div>
-          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
-            <input type="checkbox" id="check-save-physics" checked>
-            <span>Global Physics (Gravity / Collision)</span>
-            <span id="badge-dirty-physics" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
-            <input type="checkbox" id="check-save-player" checked>
-            <span>Player 1 & Prefab Archetype</span>
-            <span id="badge-dirty-player" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
-            <input type="checkbox" id="check-save-objects" checked>
-            <span>Freebody Objects & Placements</span>
-            <span id="badge-dirty-objects" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer;">
-            <input type="checkbox" id="check-save-arena" checked>
-            <span>Arena Walls & Dimensions</span>
-            <span id="badge-dirty-arena" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
-          </label>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 4px;">
-            <button id="btn-revert-from-project" class="btn-secondary-action" style="font-size: 0.68rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">↺ Reload</button>
-            <button id="btn-save-all-project" class="btn-primary-action" style="font-size: 0.68rem; background: #0284c7; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer;" title="Save all sections and objects">Save All</button>
           </div>
         </div>
       </div>
@@ -3773,25 +3743,13 @@ export class DevPanel {
       this.setEditTool("walls");
     });
 
-    // 1b. Project Config Save & Selective Options
+    // 1b. Project Config Save (Arena & Physics only)
     this.container.querySelector("#btn-save-project-config")?.addEventListener("click", () => {
-      this.saveProjectConfig(true);
-    });
-
-    const btnToggleSaveOptions = this.container.querySelector("#btn-toggle-save-options");
-    const saveOptionsPopover = this.container.querySelector("#save-options-popover") as HTMLElement | null;
-    btnToggleSaveOptions?.addEventListener("click", () => {
-      if (saveOptionsPopover) {
-        saveOptionsPopover.style.display = saveOptionsPopover.style.display === "none" ? "block" : "none";
-      }
+      this.saveProjectConfig();
     });
 
     this.container.querySelector("#btn-revert-from-project")?.addEventListener("click", () => {
       this.reloadFromDisk();
-    });
-
-    this.container.querySelector("#btn-save-all-project")?.addEventListener("click", () => {
-      this.saveProjectConfig(true);
     });
 
 
@@ -5405,9 +5363,6 @@ export class DevPanel {
     let count = 0;
     if (this.dirtyState.arena) count++;
     if (this.dirtyState.globalPhysics) count++;
-    if (this.dirtyState.player) count++;
-    count += this.dirtyState.modifiedObjects.size;
-    count += this.dirtyState.deletedObjectIds.size;
 
     const badge = this.container.querySelector("#dev-save-badge") as HTMLElement | null;
     if (badge) {
@@ -5423,18 +5378,6 @@ export class DevPanel {
         badge.style.borderColor = "rgba(34, 197, 94, 0.3)";
       }
     }
-
-    const badgePhys = this.container.querySelector("#badge-dirty-physics") as HTMLElement | null;
-    if (badgePhys) badgePhys.style.display = this.dirtyState.globalPhysics ? "inline" : "none";
-
-    const badgePlayer = this.container.querySelector("#badge-dirty-player") as HTMLElement | null;
-    if (badgePlayer) badgePlayer.style.display = this.dirtyState.player ? "inline" : "none";
-
-    const badgeObjs = this.container.querySelector("#badge-dirty-objects") as HTMLElement | null;
-    if (badgeObjs) badgeObjs.style.display = (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0) ? "inline" : "none";
-
-    const badgeArena = this.container.querySelector("#badge-dirty-arena") as HTMLElement | null;
-    if (badgeArena) badgeArena.style.display = this.dirtyState.arena ? "inline" : "none";
   }
 
   public showSaveToast(message: string, isError: boolean = false): void {
@@ -5547,28 +5490,19 @@ export class DevPanel {
     }
   }
 
-  public async saveProjectConfig(saveAll: boolean = true): Promise<void> {
+  public async saveProjectConfig(): Promise<void> {
     if (this.isOnlineLocked) {
       this.showSaveToast("🔒 DevTools save disabled in online mode", true);
       return;
     }
 
-    const checkPhysics = (this.container.querySelector("#check-save-physics") as HTMLInputElement)?.checked ?? true;
-    const checkPlayer = (this.container.querySelector("#check-save-player") as HTMLInputElement)?.checked ?? true;
-    const checkObjects = (this.container.querySelector("#check-save-objects") as HTMLInputElement)?.checked ?? true;
-    const checkArena = (this.container.querySelector("#check-save-arena") as HTMLInputElement)?.checked ?? true;
+    const sections: ("arena" | "globalPhysics")[] = [];
+    if (this.dirtyState.globalPhysics) sections.push("globalPhysics");
+    if (this.dirtyState.arena) sections.push("arena");
 
-    const sections: ("arena" | "globalPhysics" | "player" | "objects")[] = [];
-    if (saveAll || (checkPhysics && this.dirtyState.globalPhysics)) sections.push("globalPhysics");
-    if (saveAll || (checkArena && this.dirtyState.arena)) sections.push("arena");
-    if (saveAll || (checkPlayer && this.dirtyState.player)) sections.push("player");
-    if (saveAll || (checkObjects && (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0))) sections.push("objects");
-
-    if (saveAll) {
-      if (!sections.includes("globalPhysics")) sections.push("globalPhysics");
-      if (!sections.includes("arena")) sections.push("arena");
-      if (!sections.includes("player")) sections.push("player");
-      if (!sections.includes("objects")) sections.push("objects");
+    // If neither was marked dirty, save both explicitly
+    if (sections.length === 0) {
+      sections.push("arena", "globalPhysics");
     }
 
     const delta: WorldConfigDelta = {
@@ -5597,38 +5531,10 @@ export class DevPanel {
       };
     }
 
-    if (sections.includes("player") && this.character) {
-      delta.player = serializeCharacter(this.character);
-      const playerPrefab = prefabManager.get("prefab_player");
-      if (playerPrefab) {
-        applyCharacterConfig(playerPrefab.archetype as Character, delta.player);
-      }
-    }
-
-    if (sections.includes("objects")) {
-      delta.objectsDelta = {
-        replaceAll: this.objects.map((o) => serializeGameObject(o)),
-        upsert: this.objects.map((o) => serializeGameObject(o)),
-        deletedIds: Array.from(this.dirtyState.deletedObjectIds),
-      };
-    }
-
-    const hasAnyChanges = sections.length > 0;
     const btn = this.container.querySelector("#btn-save-project-config") as HTMLButtonElement | null;
-
-    if (!hasAnyChanges) {
-      if (btn) {
-        const prev = btn.textContent;
-        btn.textContent = "Nothing to Save";
-        setTimeout(() => { if (btn) btn.textContent = prev; }, 1200);
-      }
-      this.showSaveToast("✓ Everything is already in sync with project");
-      return;
-    }
-
     if (btn) {
       btn.disabled = true;
-      btn.textContent = saveAll ? "💾 Saving All..." : "💾 Saving...";
+      btn.textContent = "💾 Saving...";
     }
 
     try {
@@ -5646,50 +5552,28 @@ export class DevPanel {
       const res = await resp.json();
       this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
 
-      if (saveAll) {
-        this.dirtyState.globalPhysics = false;
-        this.dirtyState.arena = false;
-        this.dirtyState.player = false;
-        this.dirtyState.modifiedObjects.clear();
-        this.dirtyState.deletedObjectIds.clear();
-      } else {
-        if (delta.globalPhysics) this.dirtyState.globalPhysics = false;
-        if (delta.arena) this.dirtyState.arena = false;
-        if (delta.player) this.dirtyState.player = false;
-        if (delta.objectsDelta) {
-          if (delta.objectsDelta.upsert) {
-            for (const item of delta.objectsDelta.upsert) {
-              this.dirtyState.modifiedObjects.delete(item.id);
-            }
-          }
-          if (delta.objectsDelta.deletedIds) {
-            for (const delId of delta.objectsDelta.deletedIds) {
-              this.dirtyState.deletedObjectIds.delete(delId);
-            }
-          }
-        }
-      }
-
+      this.dirtyState.globalPhysics = false;
+      this.dirtyState.arena = false;
       this.updateDirtyBadge();
 
       if (btn) {
-        btn.textContent = saveAll ? "✓ Saved Everything!" : "✓ Saved!";
+        btn.textContent = "✓ Saved Arena & Physics!";
         setTimeout(() => {
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "💾 Save to Project";
+            btn.textContent = "💾 Save Arena & Physics";
           }
         }, 1500);
       }
 
-      this.showSaveToast(saveAll ? `💾 Saved everything to project! (v${this.currentConfigVersion})` : `💾 Saved changes to project! (v${this.currentConfigVersion})`);
+      this.showSaveToast(`💾 Saved Arena & Physics to project! (v${this.currentConfigVersion})`);
     } catch (err: any) {
       console.error("Failed to save project config:", err);
       this.showSaveToast(`❌ Failed to save: ${err.message || String(err)}`, true);
       alert("Failed to save project configuration:\n" + (err.message || String(err)));
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "💾 Save to Project";
+        btn.textContent = "💾 Save Arena & Physics";
       }
     }
   }

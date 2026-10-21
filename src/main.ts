@@ -1466,15 +1466,6 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener("keydown", (e) => {
-    // Ctrl + S / Cmd + S: Save everything to project
-    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S" || e.code === "KeyS")) {
-      e.preventDefault();
-      if (!devPanel.isOnlineLocked) {
-        devPanel.saveProjectConfig(true);
-      }
-      return;
-    }
-
     if (
       (e.code === "Backquote" || (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey)) &&
       !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
