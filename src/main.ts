@@ -248,6 +248,11 @@ async function bootstrap(): Promise<void> {
     }
   })();
 
+  // 1b. Load Scene Prefabs from worldConfig if present
+  if (worldConfig.prefabs && Array.isArray(worldConfig.prefabs)) {
+    prefabManager.loadFromConfig(worldConfig.prefabs);
+  }
+
   // 2. Initialize Base Character from prefab_player (and worldConfig.player if present)
   const playerPrefab = prefabManager.get("prefab_player");
   if (worldConfig.player && playerPrefab) {

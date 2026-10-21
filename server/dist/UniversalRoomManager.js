@@ -11665,6 +11665,14 @@ function generateDefaultWorldConfig() {
     objects: defaultStones.map(serializeGameObject)
   };
 }
+function serializePrefab(prefab) {
+  return {
+    id: prefab.id,
+    name: prefab.name,
+    icon: prefab.icon,
+    archetype: serializeGameObject(prefab.archetype)
+  };
+}
 class Prefab {
   constructor(options) {
     __publicField(this, "id");
@@ -12247,6 +12255,34 @@ class PrefabManager {
   }
   get(id) {
     return this.prefabs.get(id);
+  }
+  /**
+   * Loads or updates prefab definitions from serialized world configuration.
+   */
+  loadFromConfig(configs) {
+    if (!configs || !Array.isArray(configs)) return;
+    for (const cfg of configs) {
+      if (!cfg || !cfg.id || !cfg.archetype) continue;
+      const archetype = deserializeGameObject(cfg.archetype);
+      const existing = this.prefabs.get(cfg.id);
+      if (existing) {
+        existing.name = cfg.name;
+        if (cfg.icon) existing.icon = cfg.icon;
+        existing.archetype = archetype;
+      } else {
+        const prefab = new Prefab({
+          id: cfg.id,
+          name: cfg.name,
+          icon: cfg.icon,
+          archetype
+        });
+        this.prefabs.set(cfg.id, prefab);
+      }
+    }
+    this.notifyChanged();
+  }
+  exportAll() {
+    return Array.from(this.prefabs.values()).map(serializePrefab);
   }
   /**
    * Creates a new Prefab from an existing scene GameObject.

@@ -29,9 +29,10 @@ import { TagSelectorControl } from "./TagSelectorControl.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import { Prefab } from "../engine/prefab/Prefab.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
-import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, SerializedCharacterConfig } from "../config/WorldConfig.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializePrefab, SerializedPrefabConfig, SerializedCharacterConfig } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -4606,6 +4607,7 @@ export class DevPanel {
       decimals?: number;
       suffix?: string;
       onChange: (val: number) => void;
+      onSave?: (val: number) => Promise<void> | void;
     }
   ): FloatScrubber | null {
     const cont = this.container.querySelector(`#${containerId}`) as HTMLElement;
@@ -4997,12 +4999,14 @@ export class DevPanel {
       html += `
         <div class="behavior-card" data-prefab-card-id="${prefab.id}" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(30, 27, 75, 0.25); margin-bottom: 10px; border-radius: 6px; padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+            <div style="display: flex; align-items: center; gap: 4px; flex: 1;">
               <span style="font-size: 1.0rem;">${prefab.icon}</span>
               <input class="dev-input input-prefab-name" data-prefab-id="${prefab.id}" value="${prefab.name}" style="flex: 1; padding: 3px 6px; font-weight: 600; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #f1f5f9;" />
+              <button class="prop-save-btn btn-save-prefab-name" data-prefab-id="${prefab.id}" title="Save Prefab Name directly to project" style="padding: 2px 6px;">💾</button>
             </div>
             <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
               <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem;">${liveCount} live</span>
+              <button class="btn-secondary-action btn-save-whole-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Save entire prefab archetype and live instances to project">💾 Save All</button>
               <button class="btn-secondary-action btn-spawn-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Spawn one instance on the arena floor">➕ Spawn</button>
               <button class="btn-icon-subtle btn-delete-prefab" data-prefab-id="${prefab.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Prefab (unlinks live instances)">🗑️</button>
             </div>
@@ -5010,12 +5014,13 @@ export class DevPanel {
 
           <!-- Prefab Archetype Settings -->
           <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(168, 85, 247, 0.15);">
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 6px; align-items: center;">
               <label style="font-size: 0.74rem; color: #94a3b8; flex: 0 0 45px;">Visual:</label>
               <input type="color" class="prefab-color-picker" data-prefab-id="${prefab.id}" value="${arc.color}" style="width: 28px; height: 22px; padding: 0; border: none; cursor: pointer; background: transparent; border-radius: 3px;" title="Archetype Color" />
               <button class="btn-secondary-action prefab-shape-toggle" data-prefab-id="${prefab.id}" style="padding: 2px 8px; font-size: 0.72rem; flex: 1;">
                 ${arc.visualShape === "box" ? "Box 📦" : "Circle ⚪"}
               </button>
+              <button class="prop-save-btn btn-save-prefab-visuals" data-prefab-id="${prefab.id}" title="Save Visual Appearance to project" style="padding: 2px 6px;">💾</button>
             </div>
 
             <div id="scrub-container-prefab-mass-${prefab.id}"></div>
@@ -5023,11 +5028,12 @@ export class DevPanel {
 
             ${isConsumable ? `
               <div style="margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(168, 85, 247, 0.2);">
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
                   <label style="font-size: 0.74rem; color: #f472b6; flex: 0 0 45px;">Tag:</label>
                   <select class="dev-select prefab-tag-select" data-prefab-id="${prefab.id}" style="flex: 1; padding: 2px 6px; font-size: 0.74rem;">
                     ${tagOptionsHtml}
                   </select>
+                  <button class="prop-save-btn btn-save-prefab-tag" data-prefab-id="${prefab.id}" title="Save Tag to project" style="padding: 2px 6px;">💾</button>
                 </div>
                 <div id="scrub-container-prefab-energy-${prefab.id}"></div>
                 <div id="scrub-container-prefab-rate-${prefab.id}"></div>
@@ -5059,6 +5065,7 @@ export class DevPanel {
             this.syncEntitySliders();
           }
         },
+        onSave: (val: number) => this.savePrefabProperty(prefab, "mass", val, "Mass"),
       });
 
       // Radius Scrubber
@@ -5075,6 +5082,7 @@ export class DevPanel {
             this.syncEntitySliders();
           }
         },
+        onSave: (val: number) => this.savePrefabProperty(prefab, "colliderRadius", val, "Collider Radius"),
       });
 
       if (arc.consumableModule) {
@@ -5093,6 +5101,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_totalEnergy", val, "Energy Capacity"),
         });
 
         // Rate Scrubber
@@ -5109,6 +5118,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_consumeRate", val, "Consume Rate"),
         });
 
         // Heal Rate Scrubber
@@ -5125,6 +5135,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_healRate", val, "Heal Rate"),
         });
       }
     }
@@ -5137,6 +5148,21 @@ export class DevPanel {
         if (p) {
           p.name = (e.target as HTMLInputElement).value;
           p.archetype.name = p.name;
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-prefab-name").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          const input = listEl.querySelector(`.input-prefab-name[data-prefab-id="${pid}"]`) as HTMLInputElement | null;
+          if (input) {
+            p.name = input.value;
+            p.archetype.name = p.name;
+          }
+          await this.savePrefabProperty(p, "name", p.name, "Prefab Name");
         }
       });
     });
@@ -5170,6 +5196,16 @@ export class DevPanel {
       });
     });
 
+    listEl.querySelectorAll(".btn-save-prefab-visuals").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          await this.savePrefab(p);
+        }
+      });
+    });
+
     listEl.querySelectorAll(".prefab-tag-select").forEach((select) => {
       select.addEventListener("change", (e) => {
         const pid = (select as HTMLElement).dataset.prefabId!;
@@ -5180,6 +5216,26 @@ export class DevPanel {
           if (this.selectedEntity && this.selectedEntity.prefabId === pid && !this.selectedEntity.overriddenProperties.has("consumable_tag")) {
             this.renderEntityModules();
           }
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-prefab-tag").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p && p.archetype.consumableModule) {
+          await this.savePrefabProperty(p, "consumable_tag", p.archetype.consumableModule.tag, "Consumable Tag");
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-whole-prefab").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          await this.savePrefab(p);
         }
       });
     });
@@ -5781,19 +5837,28 @@ export class DevPanel {
       this.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
     } else {
       // Regular GameObject
+      let affectedObjects: GameObject[] = [owner];
+      let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
+      const sections: ("objects" | "prefabs")[] = ["objects"];
+
       if (owner.prefabId) {
         const prefab = prefabManager.get(owner.prefabId);
         if (prefab) {
           prefab.setProperty(canonicalPath, value, this.objects);
+          prefabsUpsert = [serializePrefab(prefab)];
+          sections.push("prefabs");
+          affectedObjects = this.objects.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(canonicalPath));
+          if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
         }
       }
 
       const delta: WorldConfigDelta = {
         clientVersion: this.currentConfigVersion,
-        sections: ["objects"],
+        sections,
         objectsDelta: {
-          upsert: [serializeGameObject(owner)],
+          upsert: affectedObjects.map(serializeGameObject),
         },
+        prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : undefined,
       };
 
       const resp = await fetch("/api/dev/save-config", {
@@ -5807,9 +5872,12 @@ export class DevPanel {
       }
       const res = await resp.json();
       this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
-      this.dirtyState.modifiedObjects.delete(owner.id);
+      for (const obj of affectedObjects) {
+        this.dirtyState.modifiedObjects.delete(obj.id);
+      }
       this.updateDirtyBadge();
-      this.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} for ${owner.name}`);
+      const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+      this.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
     }
   }
 
@@ -5859,18 +5927,27 @@ export class DevPanel {
         this.updateDirtyBadge();
         this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
       } else {
+        let affectedObjects: GameObject[] = [owner];
+        let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
+        const sections: ("objects" | "prefabs")[] = ["objects"];
+
         if (owner.prefabId) {
           const prefab = prefabManager.get(owner.prefabId);
           if (prefab) {
             prefab.setProperty(keyPath, value, this.objects);
+            prefabsUpsert = [serializePrefab(prefab)];
+            sections.push("prefabs");
+            affectedObjects = this.objects.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(keyPath));
+            if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
           }
         }
         const delta: WorldConfigDelta = {
           clientVersion: this.currentConfigVersion,
-          sections: ["objects"],
+          sections,
           objectsDelta: {
-            upsert: [serializeGameObject(owner)],
+            upsert: affectedObjects.map(serializeGameObject),
           },
+          prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : undefined,
         };
         const resp = await fetch("/api/dev/save-config", {
           method: "POST",
@@ -5880,9 +5957,12 @@ export class DevPanel {
         if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
         const res = await resp.json();
         this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
-        this.dirtyState.modifiedObjects.delete(owner.id);
+        for (const obj of affectedObjects) {
+          this.dirtyState.modifiedObjects.delete(obj.id);
+        }
         this.updateDirtyBadge();
-        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} for ${owner.name}`);
+        const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
       }
     } catch (err: any) {
       console.error(`Failed to save toggle ${label}:`, err);
@@ -5893,6 +5973,81 @@ export class DevPanel {
         saveBtn.style.opacity = "1";
       }
     }
+  }
+
+  public async savePrefabProperty(prefab: Prefab, propKey: string, value: any, label?: string): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    prefab.setProperty(propKey, value, this.objects);
+    const affectedObjects = this.objects.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
+
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)],
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject),
+      },
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+    for (const obj of affectedObjects) {
+      this.dirtyState.modifiedObjects.delete(obj.id);
+    }
+    this.updateDirtyBadge();
+    const valDisplay = typeof value === "number" ? Number(value.toFixed(2)) : value;
+    this.showSaveToast(`💾 Saved ${label || propKey}: ${valDisplay} to ${prefab.name} Prefab & ${affectedObjects.length} live instance${affectedObjects.length === 1 ? "" : "s"}`);
+  }
+
+  public async savePrefab(prefab: Prefab): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const affectedObjects = this.objects.filter((o) => o.prefabId === prefab.id);
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)],
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject),
+      },
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+    for (const obj of affectedObjects) {
+      this.dirtyState.modifiedObjects.delete(obj.id);
+    }
+    this.updateDirtyBadge();
+    this.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
   }
 
   public async saveProjectConfig(): Promise<void> {
@@ -6020,6 +6175,11 @@ export class DevPanel {
           const obj = deserializeGameObject(ser);
           this.onSpawnObject(obj);
         }
+      }
+
+      if (config.prefabs && Array.isArray(config.prefabs)) {
+        prefabManager.loadFromConfig(config.prefabs);
+        this.renderScenePrefabs();
       }
 
       this.currentConfigVersion = config.version;

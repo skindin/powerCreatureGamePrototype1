@@ -1,6 +1,6 @@
 {
-  "version": 45,
-  "lastSaved": "2026-10-21T10:36:24.379Z",
+  "version": 47,
+  "lastSaved": "2026-10-21T11:06:31.963Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -321,6 +321,55 @@
     "gravity": 30,
     "collisionDamageScale": 0.05,
     "collisionMode": "dynamic"
+  },
+  "player": {
+    "name": "Player 1",
+    "prefabId": "prefab_player",
+    "color": "#f59e0b",
+    "mass": 1.2,
+    "colliderRadius": 0.44,
+    "hasWalking": true,
+    "walkingModule": {
+      "walkInAir": true,
+      "canSprint": true,
+      "maxWalkForce": 80,
+      "maxWalkSpeed": 5.2,
+      "sprintSpeed": 8.5,
+      "walkPowerCapacity": 400,
+      "sprintPowerCapacity": 1200,
+      "airFriction": 0.5
+    },
+    "hasJump": true,
+    "jumpModule": {
+      "jumpImpulse": 18.5,
+      "maxInitialSpeed": 9.67,
+      "jumpPowerCapacity": 1200
+    },
+    "hasThrow": true,
+    "throwModule": {
+      "throwPowerCapacity": 1200,
+      "maxPower": 1200
+    },
+    "hasHealth": true,
+    "healthModule": {
+      "maxHp": 100,
+      "naturalHealRate": 5
+    },
+    "hasEnergyPool": true,
+    "energyPool": {
+      "staminaCapacity": 5000,
+      "staminaRegenRate": 500,
+      "energyPoolCapacity": 10000
+    },
+    "hasMelee": true,
+    "meleeModule": {
+      "impactForce": 350,
+      "maxPower": 1000
+    },
+    "hasLaser": true,
+    "laserModule": {
+      "maxPower": 2000
+    }
   },
   "objects": [
     {
@@ -1035,55 +1084,200 @@
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
       }
+    },
+    {
+      "id": "obj-3veyg9h",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 16.5,
+        "y": 7,
+        "z": 0
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 1200,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
     }
   ],
-  "player": {
-    "name": "Player 1",
-    "prefabId": "prefab_player",
-    "color": "#f59e0b",
-    "mass": 1.2,
-    "colliderRadius": 0.44,
-    "hasWalking": true,
-    "walkingModule": {
-      "walkInAir": true,
-      "canSprint": true,
-      "maxWalkForce": 80,
-      "maxWalkSpeed": 5.2,
-      "sprintSpeed": 8.5,
-      "walkPowerCapacity": 400,
-      "sprintPowerCapacity": 1200,
-      "airFriction": 0.15
+  "prefabs": [
+    {
+      "id": "prefab_apple",
+      "name": "Apple",
+      "icon": "🍏",
+      "archetype": {
+        "id": "archetype_apple",
+        "name": "Apple",
+        "position": { "x": 0, "y": 0, "z": 0 },
+        "color": "#22c55e",
+        "visualShape": "circle",
+        "mass": 0.35,
+        "colliderRadius": 0.25,
+        "bounceMod": 0.2,
+        "verticalBounce": true,
+        "hasRigidbody": true,
+        "hasCollider": true,
+        "hasFriction": true,
+        "hasBounce": true,
+        "hasVerticalPosition": true,
+        "hasGravity": true,
+        "hasRollModule": false,
+        "hasConsumableModule": true,
+        "hasHealthModule": false,
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": false,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.35,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.25
+        },
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.2,
+          "verticalBounce": true
+        },
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "gravityModule": {
+          "enabled": true
+        },
+        "consumableModule": {
+          "enabled": true,
+          "tag": "food",
+          "totalEnergyJoules": 4000,
+          "remainingEnergyJoules": 4000,
+          "consumeRateWatts": 800,
+          "healRate": 0,
+          "minScaleFloor": 0.35,
+          "minRadiusFloor": 0.12
+        }
+      }
     },
-    "hasJump": true,
-    "jumpModule": {
-      "jumpImpulse": 18.5,
-      "maxInitialSpeed": 9.67,
-      "jumpPowerCapacity": 1200
-    },
-    "hasThrow": true,
-    "throwModule": {
-      "throwPowerCapacity": 1200,
-      "maxPower": 1200
-    },
-    "hasHealth": true,
-    "healthModule": {
-      "maxHp": 100,
-      "naturalHealRate": 5
-    },
-    "hasEnergyPool": true,
-    "energyPool": {
-      "staminaCapacity": 5000,
-      "staminaRegenRate": 500,
-      "energyPoolCapacity": 10000
-    },
-    "hasMelee": true,
-    "meleeModule": {
-      "impactForce": 350,
-      "maxPower": 1000
-    },
-    "hasLaser": true,
-    "laserModule": {
-      "maxPower": 2000
+    {
+      "id": "prefab_stone",
+      "name": "Stone",
+      "icon": "🪨",
+      "archetype": {
+        "id": "archetype_stone",
+        "name": "Stone",
+        "position": { "x": 0, "y": 0, "z": 0 },
+        "color": "#78716c",
+        "visualShape": "circle",
+        "mass": 0.85,
+        "colliderRadius": 0.22,
+        "bounceMod": 0.15,
+        "verticalBounce": true,
+        "hasRigidbody": true,
+        "hasCollider": true,
+        "hasFriction": true,
+        "hasBounce": true,
+        "hasVerticalPosition": true,
+        "hasGravity": true,
+        "hasRollModule": true,
+        "hasConsumableModule": false,
+        "hasHealthModule": false,
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": false,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.85,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.22
+        },
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.15,
+          "verticalBounce": true
+        },
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "gravityModule": {
+          "enabled": true
+        },
+        "rollModule": {
+          "enabled": true,
+          "rollResistance": 0.45,
+          "bumpyRollEnabled": true,
+          "bumpiness": 0.28,
+          "seed": 100
+        }
+      }
     }
-  }
+  ]
 }

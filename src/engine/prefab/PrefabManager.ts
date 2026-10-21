@@ -4,6 +4,7 @@ import { RollModule } from "../RollModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
+import { SerializedPrefabConfig, deserializeGameObject, serializePrefab } from "../../config/WorldConfig.js";
 
 export class PrefabManager {
   private prefabs: Map<string, Prefab> = new Map();
@@ -101,6 +102,36 @@ export class PrefabManager {
 
   public get(id: string): Prefab | undefined {
     return this.prefabs.get(id);
+  }
+
+  /**
+   * Loads or updates prefab definitions from serialized world configuration.
+   */
+  public loadFromConfig(configs: SerializedPrefabConfig[]): void {
+    if (!configs || !Array.isArray(configs)) return;
+    for (const cfg of configs) {
+      if (!cfg || !cfg.id || !cfg.archetype) continue;
+      const archetype = deserializeGameObject(cfg.archetype);
+      const existing = this.prefabs.get(cfg.id);
+      if (existing) {
+        existing.name = cfg.name;
+        if (cfg.icon) existing.icon = cfg.icon;
+        existing.archetype = archetype;
+      } else {
+        const prefab = new Prefab({
+          id: cfg.id,
+          name: cfg.name,
+          icon: cfg.icon,
+          archetype,
+        });
+        this.prefabs.set(cfg.id, prefab);
+      }
+    }
+    this.notifyChanged();
+  }
+
+  public exportAll(): SerializedPrefabConfig[] {
+    return Array.from(this.prefabs.values()).map(serializePrefab);
   }
 
   /**

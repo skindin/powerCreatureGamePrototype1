@@ -13,6 +13,7 @@ export interface FloatScrubberOptions {
   decimals?: number;
   suffix?: string;
   onChange: (val: number) => void;
+  onSave?: (val: number) => Promise<void> | void;
 }
 
 export class FloatScrubber {
@@ -25,6 +26,8 @@ export class FloatScrubber {
   private _step: number;
   private _decimals: number;
   private _onChange: (val: number) => void;
+  private _onSave?: (val: number) => Promise<void> | void;
+  private _saveBtn?: HTMLButtonElement;
 
   constructor(options: FloatScrubberOptions) {
     this._value = options.value;
@@ -33,6 +36,7 @@ export class FloatScrubber {
     this._step = options.step ?? 0.05;
     this._decimals = options.decimals ?? 2;
     this._onChange = options.onChange;
+    this._onSave = options.onSave;
 
     this._element = document.createElement("div");
     this._element.className = "float-scrubber-container";
@@ -121,11 +125,58 @@ export class FloatScrubber {
       this._field.appendChild(suffixSpan);
     }
 
-    this._element.appendChild(this._field);
+    if (this._onSave) {
+      const controlRow = document.createElement("div");
+      controlRow.style.display = "flex";
+      controlRow.style.alignItems = "center";
+      controlRow.style.gap = "4px";
+
+      this._field.style.flex = "1";
+      controlRow.appendChild(this._field);
+
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "prop-save-btn";
+      saveBtn.innerHTML = "💾";
+      saveBtn.title = options.label ? `Save "${options.label}" directly to project` : "Save to project";
+      saveBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = "⏳";
+        try {
+          await this._onSave!(this._value);
+          saveBtn.innerHTML = "✓";
+          saveBtn.style.color = "#10b981";
+          setTimeout(() => {
+            saveBtn.innerHTML = "💾";
+            saveBtn.style.color = "";
+            saveBtn.disabled = false;
+          }, 1200);
+        } catch {
+          saveBtn.innerHTML = "❌";
+          saveBtn.style.color = "#ef4444";
+          setTimeout(() => {
+            saveBtn.innerHTML = "💾";
+            saveBtn.style.color = "";
+            saveBtn.disabled = false;
+          }, 1500);
+        }
+      });
+
+      this._saveBtn = saveBtn;
+      controlRow.appendChild(saveBtn);
+      this._element.appendChild(controlRow);
+    } else {
+      this._element.appendChild(this._field);
+    }
   }
 
   public get element(): HTMLElement {
     return this._element;
+  }
+
+  public get saveButton(): HTMLButtonElement | undefined {
+    return this._saveBtn;
   }
 
   public getValue(): number {

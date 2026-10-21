@@ -252,6 +252,13 @@ export interface SerializedCharacterConfig {
   } | null;
 }
 
+export interface SerializedPrefabConfig {
+  id: string;
+  name: string;
+  icon?: string;
+  archetype: SerializedGameObjectConfig;
+}
+
 export interface WorldConfig {
   version: number;
   lastSaved: string;
@@ -269,11 +276,12 @@ export interface WorldConfig {
   };
   player?: SerializedCharacterConfig;
   objects: SerializedGameObjectConfig[];
+  prefabs?: SerializedPrefabConfig[];
 }
 
 export interface WorldConfigDelta {
   clientVersion: number;
-  sections: ("arena" | "globalPhysics" | "player" | "objects")[];
+  sections: ("arena" | "globalPhysics" | "player" | "objects" | "prefabs")[];
   arena?: Partial<WorldConfig["arena"]>;
   globalPhysics?: Partial<WorldConfig["globalPhysics"]>;
   player?: SerializedCharacterConfig;
@@ -281,6 +289,11 @@ export interface WorldConfigDelta {
     upsert?: SerializedGameObjectConfig[];
     deletedIds?: string[];
     replaceAll?: SerializedGameObjectConfig[];
+  };
+  prefabsDelta?: {
+    upsert?: SerializedPrefabConfig[];
+    deletedIds?: string[];
+    replaceAll?: SerializedPrefabConfig[];
   };
 }
 
@@ -930,6 +943,7 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
     globalPhysics: { ...base.globalPhysics },
     player: base.player ? { ...base.player } : undefined,
     objects: [...base.objects],
+    prefabs: base.prefabs ? [...base.prefabs] : undefined,
   };
 
   for (const section of delta.sections) {
@@ -975,8 +989,44 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
 
         updated.objects = Array.from(objectMap.values());
       }
+    } else if (section === "prefabs" && delta.prefabsDelta) {
+      if (delta.prefabsDelta.replaceAll) {
+        updated.prefabs = [...delta.prefabsDelta.replaceAll];
+      } else {
+        const { upsert, deletedIds } = delta.prefabsDelta;
+        const prefabMap = new Map<string, SerializedPrefabConfig>();
+        for (const p of (updated.prefabs || [])) {
+          prefabMap.set(p.id, p);
+        }
+
+        if (deletedIds) {
+          for (const id of deletedIds) {
+            prefabMap.delete(id);
+          }
+        }
+
+        if (upsert) {
+          for (const item of upsert) {
+            prefabMap.set(item.id, item);
+          }
+        }
+
+        updated.prefabs = Array.from(prefabMap.values());
+      }
     }
   }
 
   return updated;
+}
+
+/**
+ * Serializes a Prefab archetype into a persistent JSON-safe configuration object.
+ */
+export function serializePrefab(prefab: { id: string; name: string; icon?: string; archetype: GameObject }): SerializedPrefabConfig {
+  return {
+    id: prefab.id,
+    name: prefab.name,
+    icon: prefab.icon,
+    archetype: serializeGameObject(prefab.archetype),
+  };
 }

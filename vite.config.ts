@@ -389,6 +389,7 @@ function autoTunnelPlugin(): Plugin {
               globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
               player: delta.player ? deepMerge(currentConfig.player || {}, delta.player) : currentConfig.player,
               objects: [...(currentConfig.objects || [])],
+              prefabs: currentConfig.prefabs ? [...currentConfig.prefabs] : undefined,
             };
 
             if (delta.arena?.tileGrid) {
@@ -411,6 +412,25 @@ function autoTunnelPlugin(): Plugin {
                   for (const item of upsert) objectMap.set(item.id, item);
                 }
                 updatedConfig.objects = Array.from(objectMap.values());
+              }
+            }
+
+            if (delta.prefabsDelta) {
+              if (delta.prefabsDelta.replaceAll && Array.isArray(delta.prefabsDelta.replaceAll)) {
+                updatedConfig.prefabs = [...delta.prefabsDelta.replaceAll];
+              } else {
+                const { upsert, deletedIds } = delta.prefabsDelta;
+                const prefabMap = new Map();
+                for (const p of (updatedConfig.prefabs || [])) {
+                  prefabMap.set(p.id, p);
+                }
+                if (deletedIds && Array.isArray(deletedIds)) {
+                  for (const id of deletedIds) prefabMap.delete(id);
+                }
+                if (upsert && Array.isArray(upsert)) {
+                  for (const item of upsert) prefabMap.set(item.id, item);
+                }
+                updatedConfig.prefabs = Array.from(prefabMap.values());
               }
             }
 
