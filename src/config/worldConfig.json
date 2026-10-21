@@ -1,6 +1,6 @@
 {
-  "version": 15,
-  "lastSaved": "2026-10-21T07:33:44.712Z",
+  "version": 27,
+  "lastSaved": "2026-10-21T08:15:38.381Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -328,19 +328,57 @@
       "name": "Small Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 19.59752837852763,
-        "y": 3.5689356289076333,
+        "x": 19.6,
+        "y": 3.57,
         "z": 0
       },
       "color": "#a8a29e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.65,
       "colliderRadius": 0.18,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.18
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -354,19 +392,57 @@
       "name": "Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 4.8,
-        "y": 8.5,
-        "z": 0
+        "x": 5.2,
+        "y": 8.43,
+        "z": 0.45
       },
       "color": "#78716c",
       "visualShape": "circle",
+      "isSleeping": false,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.85,
       "colliderRadius": 0.22,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.85,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0.45
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -380,19 +456,57 @@
       "name": "Heavy Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 19.68108627839068,
-        "y": 4.589332929762109,
+        "x": 19.68,
+        "y": 4.59,
         "z": 0
       },
       "color": "#57534e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 1.25,
       "colliderRadius": 0.28,
       "bounceMod": 0.1,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 1.25,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.28
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.1,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.5,
@@ -412,13 +526,51 @@
       },
       "color": "#78716c",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.85,
       "colliderRadius": 0.22,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.85,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -432,19 +584,57 @@
       "name": "Small Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 15.2,
-        "y": 5.8,
+        "x": 17.44,
+        "y": 9.96,
         "z": 0
       },
       "color": "#a8a29e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.65,
       "colliderRadius": 0.18,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.18
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -458,19 +648,57 @@
       "name": "Heavy Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 15.8,
-        "y": 8.5,
+        "x": 15.76,
+        "y": 8.64,
         "z": 0
       },
       "color": "#57534e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 1.25,
       "colliderRadius": 0.28,
       "bounceMod": 0.1,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 1.25,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.28
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.1,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.5,
@@ -490,13 +718,51 @@
       },
       "color": "#78716c",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.9,
       "colliderRadius": 0.23,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.9,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.23
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 1
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -516,13 +782,51 @@
       },
       "color": "#78716c",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": true,
+      "hasConsumableModule": false,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.9,
       "colliderRadius": 0.23,
       "bounceMod": 0.15,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.9,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.23
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 1
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "rollModule": {
         "enabled": true,
         "rollResistance": 0.45,
@@ -542,13 +846,51 @@
       },
       "color": "#22c55e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.35,
       "colliderRadius": 0.25,
       "bounceMod": 0.2,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
-      "isSleeping": true,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "consumableModule": {
         "enabled": true,
         "tag": "food",
@@ -571,13 +913,252 @@
       },
       "color": "#22c55e",
       "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
       "mass": 0.35,
       "colliderRadius": 0.25,
       "bounceMod": 0.2,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 800,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
+    },
+    {
+      "id": "obj-e1gv0uu",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 10,
+        "y": 11.8,
+        "z": 0
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
       "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 800,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
+    },
+    {
+      "id": "obj-da9v27p",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 10,
+        "y": 7,
+        "z": 1
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 1
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 800,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
+    },
+    {
+      "id": "obj-bsvcgi1",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 10,
+        "y": 2.2,
+        "z": 0
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
       "consumableModule": {
         "enabled": true,
         "tag": "food",

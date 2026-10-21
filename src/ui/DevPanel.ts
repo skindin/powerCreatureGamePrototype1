@@ -485,7 +485,7 @@ export class DevPanel {
               ✓ In Sync (v1)
             </span>
           </div>
-            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changes to src/config/worldConfig.json (Ctrl+S to save all)">
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changes to src/config/worldConfig.json">
               💾 Save to Project
             </button>
             <button id="btn-toggle-save-options" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.72rem;" title="Selective Save Options">
@@ -514,7 +514,7 @@ export class DevPanel {
           </label>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 4px;">
             <button id="btn-revert-from-project" class="btn-secondary-action" style="font-size: 0.68rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">↺ Reload</button>
-            <button id="btn-save-all-project" class="btn-primary-action" style="font-size: 0.68rem; background: #0284c7; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer;" title="Save all sections and objects (Ctrl+S)">Save All (Ctrl+S)</button>
+            <button id="btn-save-all-project" class="btn-primary-action" style="font-size: 0.68rem; background: #0284c7; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer;" title="Save all sections and objects">Save All</button>
           </div>
         </div>
       </div>
@@ -3754,13 +3754,6 @@ export class DevPanel {
       this.saveProjectConfig(true);
     });
 
-    // Global Ctrl+S / Cmd+S shortcut to save everything to project
-    window.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S" || e.code === "KeyS")) {
-        e.preventDefault();
-        this.saveProjectConfig(true);
-      }
-    });
 
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
