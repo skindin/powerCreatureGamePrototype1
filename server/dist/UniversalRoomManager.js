@@ -12,6 +12,8 @@ import require$$7 from "url";
 import require$$0 from "zlib";
 import require$$0$1 from "buffer";
 import require$$2$1 from "util";
+import fs from "node:fs";
+import path from "node:path";
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
@@ -7102,7 +7104,7 @@ class WallEdgeAssistModule {
     return this.hangDistanceProp.get(registry);
   }
 }
-class HealthModule {
+const _HealthModule = class _HealthModule {
   constructor(options) {
     __publicField(this, "id", "health");
     __publicField(this, "name", "Health & Vitality");
@@ -7378,18 +7380,26 @@ class HealthModule {
     }
   }
   /**
+   * Returns a random clearing spawn location (matching death respawn placement).
+   */
+  static getRandomSpawnPosition() {
+    const spawns = _HealthModule.RESPAWN_SPAWNS;
+    const picked = spawns[Math.floor(Math.random() * spawns.length)];
+    return { x: picked.x, y: picked.y, z: picked.z ?? 0 };
+  }
+  /**
    * Resets character state on death:
    * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */
   dieAndRespawn(character, arena, explicitPos) {
     character.dieAndRespawn(arena, explicitPos);
   }
-}
+};
 /**
  * Authoritative clearing spawn points (West, East, Southwest, Southeast).
  * Open clearings safely away from arena cover walls.
  */
-__publicField(HealthModule, "RESPAWN_SPAWNS", [
+__publicField(_HealthModule, "RESPAWN_SPAWNS", [
   { x: 3.5, y: 7, z: 0 },
   // Slot 1 (West open midfield)
   { x: 17, y: 3.5, z: 0 },
@@ -7399,6 +7409,7 @@ __publicField(HealthModule, "RESPAWN_SPAWNS", [
   { x: 17, y: 11, z: 0 }
   // Slot 4 (Southeast open clearing)
 ]);
+let HealthModule = _HealthModule;
 class DamageSolverModule {
   // 60ms ~ 3-4 frames
   constructor(options) {
@@ -8679,9 +8690,11 @@ class Character extends GameObject {
     const initialColor = options.color ?? "#f59e0b";
     const determinedRole = options.role ?? (options.controllerType === "none" ? "dummy" : options.controllerType === "remote" ? "remote_player" : options.controllerType === "ai" ? "local_ai" : "local_player");
     const initialCharacterModule = options.characterModule !== void 0 ? options.characterModule : new CharacterModule({ role: determinedRole });
-    const initX = options.position ? options.position.x : options.x ?? 5;
-    const initY = options.position ? options.position.y : options.y ?? 7;
-    const initZ = ((_a = options.position) == null ? void 0 : _a.z) ?? 0;
+    const defaultSpawn = determinedRole !== "dummy" ? HealthModule.getRandomSpawnPosition() : { x: 5, y: 7, z: 0 };
+    const useRandom = options.randomSpawn ?? (options.position === void 0 && options.x === void 0 && determinedRole !== "dummy");
+    const initX = useRandom ? defaultSpawn.x : options.position ? options.position.x : options.x ?? defaultSpawn.x;
+    const initY = useRandom ? defaultSpawn.y : options.position ? options.position.y : options.y ?? defaultSpawn.y;
+    const initZ = useRandom ? defaultSpawn.z : ((_a = options.position) == null ? void 0 : _a.z) ?? (options.x !== void 0 ? 0 : defaultSpawn.z);
     super({
       id: options.id,
       name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
@@ -11204,7 +11217,6 @@ const QUARRY_APPLE_SPAWN_POINTS = [
   { x: 10, y: 7, z: 0 }
   // Center gateway
 ];
-const QUARRY_PLAYER_SPAWN = { x: 5.5, y: 7 };
 const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
 function createQuarryStones() {
   return [
@@ -12074,6 +12086,355 @@ class ServerTelemetryBroadcaster {
     );
   }
 }
+class DamageAuraModule {
+  constructor(options) {
+    __publicField(this, "id", "damageAura");
+    __publicField(this, "name", "Damage Aura");
+    __publicField(this, "enabled", true);
+    /** Radius in world units within which objects take damage */
+    __publicField(this, "damageRadiusProp");
+    /** Health points drained per second (HP / s) */
+    __publicField(this, "damageRateProp");
+    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
+    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get damageRadius() {
+    return this.damageRadiusProp.literalValue;
+  }
+  set damageRadius(val) {
+    this.damageRadiusProp.literalValue = Math.max(0.1, val);
+  }
+  get damageRate() {
+    return this.damageRateProp.literalValue;
+  }
+  set damageRate(val) {
+    this.damageRateProp.literalValue = Math.max(0, val);
+  }
+  getDamageRadius(registry) {
+    return this.damageRadiusProp.get(registry);
+  }
+  getDamageRate(registry) {
+    return this.damageRateProp.get(registry);
+  }
+  /**
+   * Continuous update tick:
+   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
+   */
+  update(dt, sourceEntity, arenaOrTargets) {
+    if (!this.enabled || dt <= 0) return;
+    const registry = sourceEntity.properties;
+    const radius = this.getDamageRadius(registry);
+    const rate = this.getDamageRate(registry);
+    if (radius <= 0.01 || rate <= 0) return;
+    const damageThisFrame = rate * dt;
+    const srcX = sourceEntity.position.x;
+    const srcY = sourceEntity.position.y;
+    const srcZ = sourceEntity.position.z ?? 0;
+    const radiusSq = radius * radius;
+    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
+    for (const target of entities) {
+      if (target === sourceEntity) continue;
+      const healthMod = target.healthModule;
+      if (!healthMod || !healthMod.enabled) continue;
+      const targetX = target.position.x;
+      const targetY = target.position.y;
+      const targetZ = target.position.z ?? 0;
+      const dx = targetX - srcX;
+      const dy = targetY - srcY;
+      const dz = targetZ - srcZ;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq <= radiusSq) {
+        healthMod.takeDamage(damageThisFrame, target.properties, {
+          id: "damage_aura",
+          name: "Aura",
+          type: "continuous",
+          rate,
+          color: "#a855f7",
+          isHeal: false
+        });
+      }
+    }
+  }
+}
+function serializeGameObject(obj) {
+  var _a;
+  const result = {
+    id: obj.id,
+    name: obj.name,
+    prefabId: obj.prefabId || void 0,
+    position: {
+      x: Math.round(obj.position.x * 100) / 100,
+      y: Math.round(obj.position.y * 100) / 100,
+      z: Math.round(obj.position.z * 100) / 100
+    },
+    color: obj.color,
+    visualShape: obj.visualShape,
+    isSleeping: obj.isSleeping,
+    hasRigidbody: obj.rigidbodyModule !== null,
+    hasCollider: obj.colliderModule !== null,
+    hasFriction: obj.frictionModule !== null,
+    hasBounce: obj.bounceModule !== null,
+    hasVerticalPosition: obj.verticalPositionModule !== null,
+    hasGravity: obj.gravityModule !== null,
+    hasRollModule: obj.rollModule !== null,
+    hasConsumableModule: obj.consumableModule !== null,
+    hasHealthModule: obj.healthModule !== null,
+    hasDamageAuraModule: obj.damageAuraModule !== null,
+    hasDamageSolverModule: obj.damageSolverModule !== null,
+    mass: obj.rigidbodyModule ? obj.rigidbodyModule.massProp.get(obj.properties) : 1,
+    colliderRadius: obj.colliderModule ? obj.colliderModule.radiusProp.get(obj.properties) : 0.35,
+    bounceMod: obj.bounceModule ? obj.bounceModule.bounceModProp.get(obj.properties) : 0.4,
+    verticalBounce: ((_a = obj.bounceModule) == null ? void 0 : _a.verticalBounce) ?? false,
+    staticGroundFrictionMod: obj.frictionModule ? obj.frictionModule.staticFrictionProp.get(obj.properties) : 1,
+    dynamicGroundFrictionMod: obj.frictionModule ? obj.frictionModule.dynamicFrictionProp.get(obj.properties) : 1
+  };
+  if (obj.rigidbodyModule) {
+    result.rigidbodyModule = {
+      enabled: obj.rigidbodyModule.enabled,
+      mass: obj.rigidbodyModule.massProp.get(obj.properties),
+      collisionMode: obj.collisionMode,
+      hasVerticalVelocity: obj.rigidbodyModule.hasVerticalVelocity
+    };
+  }
+  if (obj.colliderModule) {
+    result.colliderModule = {
+      enabled: obj.colliderModule.enabled,
+      radius: obj.colliderModule.radiusProp.get(obj.properties)
+    };
+  }
+  if (obj.frictionModule) {
+    result.frictionModule = {
+      enabled: obj.frictionModule.enabled,
+      staticFrictionMod: obj.frictionModule.staticFrictionProp.get(obj.properties),
+      dynamicFrictionMod: obj.frictionModule.dynamicFrictionProp.get(obj.properties)
+    };
+  }
+  if (obj.bounceModule) {
+    result.bounceModule = {
+      enabled: obj.bounceModule.enabled,
+      bounceMod: obj.bounceModule.bounceModProp.get(obj.properties),
+      verticalBounce: obj.bounceModule.verticalBounce
+    };
+  }
+  if (obj.verticalPositionModule) {
+    result.verticalPositionModule = {
+      enabled: obj.verticalPositionModule.enabled,
+      z: Math.round(obj.position.z * 100) / 100
+    };
+  }
+  if (obj.gravityModule) {
+    result.gravityModule = {
+      enabled: obj.gravityModule.enabled
+    };
+  }
+  if (obj.rollModule) {
+    result.rollModule = {
+      enabled: obj.rollModule.enabled,
+      rollResistance: obj.rollModule.rollResistanceProp.get(obj.properties),
+      bumpyRollEnabled: obj.rollModule.bumpyRollEnabled,
+      bumpiness: obj.rollModule.bumpinessProp.get(obj.properties),
+      seed: obj.rollModule.seed
+    };
+  }
+  if (obj.consumableModule) {
+    result.consumableModule = {
+      enabled: obj.consumableModule.enabled,
+      tag: obj.consumableModule.tag,
+      totalEnergyJoules: obj.consumableModule.getTotalEnergy(obj.properties),
+      remainingEnergyJoules: obj.consumableModule.getRemainingEnergy(obj.properties),
+      consumeRateWatts: obj.consumableModule.getConsumeRate(obj.properties),
+      healRate: obj.consumableModule.getHealRate(obj.properties),
+      minScaleFloor: obj.consumableModule.minScaleFloor,
+      minRadiusFloor: obj.consumableModule.minRadiusFloor
+    };
+  }
+  if (obj.healthModule) {
+    result.healthModule = {
+      enabled: obj.healthModule.enabled,
+      maxHp: obj.healthModule.getMaxHp(obj.properties),
+      currentHp: obj.healthModule.getCurrentHp(obj.properties),
+      naturalHealRate: obj.healthModule.getMaxHealRate(obj.properties)
+    };
+  }
+  if (obj.damageAuraModule) {
+    result.damageAuraModule = {
+      enabled: obj.damageAuraModule.enabled,
+      damageRadius: obj.damageAuraModule.damageRadiusProp.get(obj.properties),
+      damageRate: obj.damageAuraModule.damageRateProp.get(obj.properties)
+    };
+  }
+  if (obj.damageSolverModule) {
+    result.damageSolverModule = {
+      enabled: obj.damageSolverModule.enabled,
+      impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
+      minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties)
+    };
+  }
+  return result;
+}
+function deserializeGameObject(config) {
+  const options = {
+    id: config.id,
+    name: config.name,
+    prefabId: config.prefabId,
+    position: { x: config.position.x, y: config.position.y, z: config.position.z },
+    color: config.color,
+    visualShape: config.visualShape || "circle"
+  };
+  if (config.hasRigidbody === false) {
+    options.rigidbodyModule = null;
+    options.hasRigidbody = false;
+  } else if (config.rigidbodyModule) {
+    options.rigidbodyModule = new RigidbodyModule({
+      mass: config.rigidbodyModule.mass ?? config.mass ?? 1,
+      velocity: { x: 0, y: 0 },
+      hasVerticalVelocity: config.rigidbodyModule.hasVerticalVelocity ?? true,
+      verticalVelocity: 0,
+      collisionMode: config.rigidbodyModule.collisionMode ?? "dynamic",
+      enabled: config.rigidbodyModule.enabled ?? true
+    });
+  } else {
+    options.mass = config.mass ?? 1;
+  }
+  if (config.hasCollider === false) {
+    options.colliderModule = null;
+  } else if (config.colliderModule) {
+    options.colliderModule = new ColliderModule({
+      radius: config.colliderModule.radius ?? config.colliderRadius ?? 0.35,
+      enabled: config.colliderModule.enabled ?? true
+    });
+  } else if (config.colliderRadius !== void 0) {
+    options.colliderRadius = config.colliderRadius;
+  }
+  if (config.hasFriction === false) {
+    options.frictionModule = null;
+  } else if (config.frictionModule) {
+    options.frictionModule = new FrictionModule({
+      staticFrictionMod: config.frictionModule.staticFrictionMod ?? config.staticGroundFrictionMod ?? 1,
+      dynamicFrictionMod: config.frictionModule.dynamicFrictionMod ?? config.dynamicGroundFrictionMod ?? 1,
+      enabled: config.frictionModule.enabled ?? true
+    });
+  } else {
+    options.staticGroundFrictionMod = config.staticGroundFrictionMod ?? 1;
+    options.dynamicGroundFrictionMod = config.dynamicGroundFrictionMod ?? 1;
+  }
+  if (config.hasBounce === false) {
+    options.bounceModule = null;
+  } else if (config.bounceModule) {
+    options.bounceModule = new BounceModule({
+      bounceMod: config.bounceModule.bounceMod ?? config.bounceMod ?? 0.4,
+      verticalBounce: config.bounceModule.verticalBounce ?? config.verticalBounce ?? false,
+      enabled: config.bounceModule.enabled ?? true
+    });
+  } else if (config.bounceMod !== void 0) {
+    options.bounceMod = config.bounceMod;
+  }
+  if (config.hasVerticalPosition === false) {
+    options.verticalPositionModule = null;
+    options.hasVerticalPosition = false;
+  } else if (config.verticalPositionModule) {
+    options.verticalPositionModule = new VerticalPositionModule({
+      z: config.verticalPositionModule.z ?? config.position.z ?? 0,
+      hasVerticalVelocity: true,
+      verticalVelocity: 0,
+      enabled: config.verticalPositionModule.enabled ?? true
+    });
+  } else {
+    options.hasVerticalPosition = true;
+  }
+  if (config.hasGravity === false) {
+    options.gravityModule = null;
+    options.hasGravity = false;
+  } else if (config.gravityModule) {
+    options.gravityModule = new GravityModule({
+      enabled: config.gravityModule.enabled ?? true
+    });
+  } else {
+    options.hasGravity = true;
+  }
+  if (config.hasRollModule === false) {
+    options.rollModule = null;
+  } else if (config.rollModule) {
+    options.rollModule = new RollModule({
+      enabled: config.rollModule.enabled,
+      rollResistance: config.rollModule.rollResistance,
+      bumpyRollEnabled: config.rollModule.bumpyRollEnabled ?? true,
+      bumpiness: config.rollModule.bumpiness ?? 0.22,
+      seed: config.rollModule.seed
+    });
+  }
+  if (config.hasConsumableModule === false) {
+    options.consumableModule = null;
+  } else if (config.consumableModule) {
+    options.consumableModule = new ConsumableModule({
+      enabled: config.consumableModule.enabled,
+      tag: config.consumableModule.tag,
+      totalEnergyJoules: config.consumableModule.totalEnergyJoules,
+      remainingEnergyJoules: config.consumableModule.remainingEnergyJoules,
+      consumeRateWatts: config.consumableModule.consumeRateWatts,
+      healRate: config.consumableModule.healRate,
+      minScaleFloor: config.consumableModule.minScaleFloor,
+      minRadiusFloor: config.consumableModule.minRadiusFloor
+    });
+  }
+  if (config.hasHealthModule === false) {
+    options.healthModule = null;
+  } else if (config.healthModule) {
+    options.healthModule = new HealthModule({
+      enabled: config.healthModule.enabled,
+      baseMaxHp: config.healthModule.maxHp,
+      maxHp: config.healthModule.maxHp,
+      currentHp: config.healthModule.currentHp,
+      baseMaxHealRate: config.healthModule.naturalHealRate,
+      maxHealRate: config.healthModule.naturalHealRate,
+      consumesEnergy: false
+    });
+  }
+  if (config.hasDamageAuraModule === false) {
+    options.damageAuraModule = null;
+  } else if (config.damageAuraModule) {
+    options.damageAuraModule = new DamageAuraModule({
+      enabled: config.damageAuraModule.enabled,
+      damageRadius: config.damageAuraModule.damageRadius,
+      damageRate: config.damageAuraModule.damageRate
+    });
+  }
+  if (config.hasDamageSolverModule === false) {
+    options.damageSolverModule = null;
+  } else if (config.damageSolverModule) {
+    options.damageSolverModule = new DamageSolverModule({
+      enabled: config.damageSolverModule.enabled,
+      impactSusceptibility: config.damageSolverModule.impactSusceptibility,
+      damageThresholdHp: config.damageSolverModule.minShockThreshold
+    });
+  }
+  const obj = new GameObject(options);
+  if (config.isSleeping !== void 0) {
+    obj.isSleeping = config.isSleeping;
+  }
+  return obj;
+}
+function generateDefaultWorldConfig() {
+  const defaultStones = createQuarryStones();
+  return {
+    version: 1,
+    lastSaved: (/* @__PURE__ */ new Date()).toISOString(),
+    arena: {
+      width: 20,
+      height: 14,
+      wallHeight: 1,
+      presetId: quarryPreset.id,
+      tileGrid: quarryPreset.generate(20, 14)
+    },
+    globalPhysics: {
+      gravity: 24,
+      collisionDamageScale: 1,
+      collisionMode: "dynamic"
+    },
+    objects: defaultStones.map(serializeGameObject)
+  };
+}
 class ServerGameSimulation {
   constructor(config) {
     __publicField(this, "arena");
@@ -12211,38 +12572,77 @@ class ServerGameSimulation {
     this.jitterBuffer.clear();
   }
   /**
+   * Initializes or hot-reloads the authoritative server simulation world from a persistent WorldConfig.
+   */
+  initializeFromConfig(config) {
+    if (config.arena) {
+      if (config.arena.width && config.arena.height) {
+        this.arena.width = config.arena.width;
+        this.arena.height = config.arena.height;
+      }
+      if (config.arena.wallHeight !== void 0) {
+        this.arena.setStandardWallHeight(config.arena.wallHeight);
+      }
+      if (config.arena.tileGrid) {
+        this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+        this.arena.rebuildWalls();
+      } else if (config.arena.presetId) {
+        this.arena.loadWallPreset(config.arena.presetId);
+      }
+    }
+    if (config.globalPhysics) {
+      if (config.globalPhysics.gravity !== void 0) {
+        this.arena.gravity = config.globalPhysics.gravity;
+      }
+      if (config.globalPhysics.collisionDamageScale !== void 0) {
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+      }
+      if (config.globalPhysics.collisionMode) {
+        this.collisionMode = config.globalPhysics.collisionMode;
+      }
+    }
+    if (this.characters.size === 0) {
+      const p1Spawn = HealthModule.getRandomSpawnPosition();
+      const player1 = new Character({
+        x: p1Spawn.x,
+        y: p1Spawn.y,
+        color: "#f59e0b",
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1,
+        playerId: "player-1",
+        playerNumber: 1,
+        name: "Server Player 1"
+      });
+      player1.position.z = p1Spawn.z;
+      this.characters.set(player1.playerId, player1);
+      const dummy = new Character({
+        id: "dummy-1",
+        x: QUARRY_DUMMY_SPAWN.x,
+        y: QUARRY_DUMMY_SPAWN.y,
+        color: "#64748b",
+        colliderRadius: 0.44,
+        mass: 1.5,
+        strength: 0,
+        name: "Sparring Dummy",
+        controllerType: "none",
+        role: "dummy"
+      });
+      this.characters.set(dummy.id, dummy);
+    }
+    if (config.objects && config.objects.length > 0) {
+      this.objects = config.objects.map(deserializeGameObject);
+    } else {
+      this.objects = createQuarryStones();
+    }
+    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
+    this.jitterBuffer.clear();
+  }
+  /**
    * Initializes default standard arena and freebodies if starting standalone without client.
    */
   initializeDefaultScenario() {
-    this.arena.loadWallPreset(quarryPreset.id);
-    const player1 = new Character({
-      x: QUARRY_PLAYER_SPAWN.x,
-      y: QUARRY_PLAYER_SPAWN.y,
-      color: "#f59e0b",
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1,
-      playerId: "player-1",
-      playerNumber: 1,
-      name: "Server Player 1"
-    });
-    this.characters.set(player1.playerId, player1);
-    const dummy = new Character({
-      id: "dummy-1",
-      x: QUARRY_DUMMY_SPAWN.x,
-      y: QUARRY_DUMMY_SPAWN.y,
-      color: "#64748b",
-      colliderRadius: 0.44,
-      mass: 1.5,
-      strength: 0,
-      name: "Sparring Dummy",
-      controllerType: "none",
-      role: "dummy"
-    });
-    this.characters.set(dummy.id, dummy);
-    this.objects = createQuarryStones();
-    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-    this.jitterBuffer.clear();
+    this.initializeFromConfig(generateDefaultWorldConfig());
   }
   /**
    * Enqueues an incoming input packet from a player into the server jitter buffer.
@@ -13033,7 +13433,36 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       broadcastRateHz: 60,
       deltaCompression: false
     });
+    this.loadInitialWorldConfig();
+  }
+  loadInitialWorldConfig() {
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), "src/config/worldConfig.json"),
+        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
+        path.resolve(process.cwd(), "config/worldConfig.json")
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, "utf8");
+          const config = JSON.parse(raw);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.simulation.initializeFromConfig(config);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ [UniversalRoom] Could not load worldConfig.json, using default scenario:", err);
+    }
     this.simulation.initializeDefaultScenario();
+  }
+  /**
+   * Hot-reloads the authoritative simulation with newly saved world settings without dropping connections.
+   */
+  reloadWorldConfig(config) {
+    console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.simulation.initializeFromConfig(config);
+    this.needsMapReload = true;
   }
   static getInstance() {
     if (!_UniversalRoomManager.instance) {
@@ -13248,9 +13677,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const spawnX = 4.8;
-    const spawnY = 7;
-    const spawnZ = 0;
+    const spawnPos = HealthModule.getRandomSpawnPosition();
+    const spawnX = spawnPos.x;
+    const spawnY = spawnPos.y;
+    const spawnZ = spawnPos.z;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -13481,9 +13911,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
-            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? 3.5;
-            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
-            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
+            const defaultSpawn = HealthModule.getRandomSpawnPosition();
+            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? defaultSpawn.x;
+            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? defaultSpawn.y;
+            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? defaultSpawn.z;
             const newChar = new Character({
               id: serverCharId,
               x: spawnX,

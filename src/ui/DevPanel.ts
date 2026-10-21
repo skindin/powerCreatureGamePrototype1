@@ -744,6 +744,20 @@ export class DevPanel {
           <div id="collapse-body-behaviors" style="display: ${this.isSectionCollapsed('behaviors') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
 
+          <!-- Object Name & Color Controls (Non-character objects) -->
+          <div id="row-entity-name" style="${this.selectedEntity instanceof Character ? 'display:none;' : 'margin-bottom: 8px;'}">
+            <label style="font-size: 0.74rem; color: #94a3b8; display: block; margin-bottom: 4px;">Object Name</label>
+            <input type="text" id="input-entity-name" class="dev-input" value="${this.selectedEntity ? this.selectedEntity.name : ''}" style="width: 100%;" />
+          </div>
+
+          <div id="row-entity-color" class="color-row" style="${this.selectedEntity instanceof Character ? 'display:none;' : 'margin-bottom: 8px;'}">
+            <label>Color</label>
+            <div class="color-input-wrapper">
+              <input type="color" id="input-entity-color" value="${this.selectedEntity ? this.selectedEntity.color : '#94a3b8'}">
+              <span id="val-entity-color" style="font-size: 0.76rem; font-family: monospace; color: #cbd5e1;">${this.selectedEntity ? this.selectedEntity.color : '#94a3b8'}</span>
+            </div>
+          </div>
+
           <!-- Visual Shape -->
           <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity instanceof Character ? 'display:none;' : ''}">
             <label>Visual Shape</label>
@@ -1066,6 +1080,22 @@ export class DevPanel {
         btnShape.classList.remove("active");
       }
     }
+
+    // Object Name and Color controls sync
+    const entityNameInput = this.container.querySelector("#input-entity-name") as HTMLInputElement | null;
+    if (entityNameInput && document.activeElement !== entityNameInput) {
+      entityNameInput.value = e.name;
+    }
+    const entityColorInput = this.container.querySelector("#input-entity-color") as HTMLInputElement | null;
+    const entityColorVal = this.container.querySelector("#val-entity-color") as HTMLElement | null;
+    if (entityColorInput) {
+      entityColorInput.value = e.color;
+      if (entityColorVal) entityColorVal.textContent = e.color;
+    }
+    const rowName = this.container.querySelector("#row-entity-name") as HTMLElement | null;
+    if (rowName) rowName.style.display = isChar ? "none" : "block";
+    const rowColor = this.container.querySelector("#row-entity-color") as HTMLElement | null;
+    if (rowColor) rowColor.style.display = isChar ? "none" : "flex";
 
     // Physical behaviors sliders (only affects elements currently rendered)
     this.setSliderVal("slide-entity-radius", "val-entity-radius", e.colliderModule?.radius ?? 0.32, 2);
@@ -2456,6 +2486,9 @@ export class DevPanel {
       const badge = this.container.querySelector("#badge-rb-collision-mode");
       if (badge) badge.textContent = e.collisionMode.toUpperCase();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     });
 
     const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
@@ -2472,10 +2505,16 @@ export class DevPanel {
       }
       this.renderEntityModules();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     });
 
     this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
       e.verticalVelocity = val;
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     }, 2);
 
     // Collider
@@ -2491,6 +2530,9 @@ export class DevPanel {
           if (e.prefabId) {
             e.overriddenProperties.add("colliderRadius");
             this.updatePrefabInfoBadge();
+          }
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
           }
         },
       });
@@ -2510,6 +2552,9 @@ export class DevPanel {
             e.overriddenProperties.add("mass");
             this.updatePrefabInfoBadge();
           }
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
         },
       });
       massSocketEl.appendChild(massCtrl.element);
@@ -2523,6 +2568,11 @@ export class DevPanel {
         owner: e,
         label: "Static Friction Mod",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       staticFricSocketEl.appendChild(sfCtrl.element);
     }
@@ -2533,6 +2583,11 @@ export class DevPanel {
         owner: e,
         label: "Dynamic Friction Mod",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       dynFricSocketEl.appendChild(dfCtrl.element);
     }
@@ -2545,6 +2600,11 @@ export class DevPanel {
         owner: e,
         label: "Bounciness (Restitution)",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       bounceSocketEl.appendChild(bCtrl.element);
     }
@@ -2555,6 +2615,9 @@ export class DevPanel {
       }
       this.syncEntitySliders();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     });
 
     // Vertical Position
@@ -2565,6 +2628,9 @@ export class DevPanel {
       e.position.z = val;
       this.syncEntitySliders();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     }, 2);
 
     // Roll Resistance (Dynamic Property Socket)
@@ -2575,6 +2641,11 @@ export class DevPanel {
         owner: e,
         label: "Roll Resistance (u/s²)",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       rollResistSocketEl.appendChild(rollCtrl.element);
     }
@@ -2589,6 +2660,9 @@ export class DevPanel {
           const hopEffEl = this.container.querySelector("#prop-socket-roll-hop-efficiency") as HTMLElement | null;
           if (bumpinessEl) bumpinessEl.style.display = checkBumpyRoll.checked ? "block" : "none";
           if (hopEffEl) hopEffEl.style.display = checkBumpyRoll.checked ? "block" : "none";
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
         }
       });
     }
@@ -2602,6 +2676,11 @@ export class DevPanel {
         step: 0.01,
         min: 0.0,
         max: 1.0,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       rollBumpSocketEl.appendChild(bumpCtrl.element);
     }
@@ -2948,6 +3027,11 @@ export class DevPanel {
           owner: e,
           label: "Current Health (HP)",
           step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpCurSocketEl.appendChild(curCtrl.element);
       }
@@ -2959,6 +3043,11 @@ export class DevPanel {
           owner: e,
           label: "Max Health (HP)",
           step: 5.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpMaxSocketEl.appendChild(maxCtrl.element);
       }
@@ -2970,6 +3059,11 @@ export class DevPanel {
           owner: e,
           label: "Passive Heal Rate (HP/s)",
           step: 0.5,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpHealSocketEl.appendChild(hrCtrl.element);
       }
@@ -2981,6 +3075,11 @@ export class DevPanel {
           owner: e,
           label: "Healing Efficiency (HP/Joule)",
           step: 0.005,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpPerJouleSocketEl.appendChild(jCtrl.element);
       }
@@ -2991,6 +3090,11 @@ export class DevPanel {
           owner: e,
           label: "Max Healing Power (Watts)",
           step: 25.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpPowerCapSocketEl.appendChild(pCtrl.element);
       }
@@ -3001,9 +3105,15 @@ export class DevPanel {
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
         if (fieldHealthPartialPower) fieldHealthPartialPower.style.display = checkHealthEnergy.checked ? "flex" : "none";
+        if (!(e instanceof Character)) {
+          this.markDirty("objects", e);
+        }
       });
       checkHealthPartialPower?.addEventListener("change", () => {
         hm.allowPartialPower = checkHealthPartialPower.checked;
+        if (!(e instanceof Character)) {
+          this.markDirty("objects", e);
+        }
       });
 
       // Quick test buttons
@@ -3053,6 +3163,11 @@ export class DevPanel {
           owner: e,
           label: "Aura Radius (3D) (u)",
           step: 0.2,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         auraRadiusSocketEl.appendChild(arCtrl.element);
       }
@@ -3064,6 +3179,11 @@ export class DevPanel {
           owner: e,
           label: "Damage Rate (HP/s)",
           step: 2.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         auraRateSocketEl.appendChild(rateCtrl.element);
       }
@@ -3080,6 +3200,11 @@ export class DevPanel {
           owner: e,
           label: "Impact Susceptibility (Multiplier)",
           step: 0.1,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         suscSocketEl.appendChild(suscCtrl.element);
       }
@@ -3091,6 +3216,11 @@ export class DevPanel {
           owner: e,
           label: "Collision Damage Threshold (HP)",
           step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         threshSocketEl.appendChild(threshCtrl.element);
       }
@@ -3147,6 +3277,9 @@ export class DevPanel {
               e.overriddenProperties.add("consumable_tag");
               this.updatePrefabInfoBadge();
             }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
           },
         });
         tagSocketEl.appendChild(tagCtrl.element);
@@ -3164,6 +3297,9 @@ export class DevPanel {
               e.overriddenProperties.add("consumable_totalEnergy");
               this.updatePrefabInfoBadge();
             }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
           },
         });
         totalEnergySocketEl.appendChild(totalCtrl.element);
@@ -3176,6 +3312,11 @@ export class DevPanel {
           owner: e,
           label: "Remaining Energy (J)",
           step: 50.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         remEnergySocketEl.appendChild(remCtrl.element);
       }
@@ -3191,6 +3332,9 @@ export class DevPanel {
             if (e.prefabId) {
               e.overriddenProperties.add("consumable_consumeRate");
               this.updatePrefabInfoBadge();
+            }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
             }
           },
         });
@@ -3208,6 +3352,9 @@ export class DevPanel {
             if (e.prefabId) {
               e.overriddenProperties.add("consumable_healRate");
               this.updatePrefabInfoBadge();
+            }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
             }
           },
         });
@@ -3588,7 +3735,7 @@ export class DevPanel {
 
     // 1b. Project Config Save & Selective Options
     this.container.querySelector("#btn-save-project-config")?.addEventListener("click", () => {
-      this.saveProjectConfig();
+      this.saveProjectConfig(true);
     });
 
     const btnToggleSaveOptions = this.container.querySelector("#btn-toggle-save-options");
@@ -3708,6 +3855,26 @@ export class DevPanel {
         maxCount: 5,
       });
       this.renderSceneSpawners();
+    });
+
+    // 3d. Object Name & Color Listeners
+    const entityNameInput = this.container.querySelector("#input-entity-name") as HTMLInputElement | null;
+    entityNameInput?.addEventListener("input", () => {
+      if (this.selectedEntity && !(this.selectedEntity instanceof Character)) {
+        this.selectedEntity.name = entityNameInput.value.trim() || "Object";
+        this.updateSelectorOptions();
+        this.markDirty("objects", this.selectedEntity);
+      }
+    });
+
+    const entityColorInput = this.container.querySelector("#input-entity-color") as HTMLInputElement | null;
+    const entityColorVal = this.container.querySelector("#val-entity-color") as HTMLElement | null;
+    entityColorInput?.addEventListener("input", () => {
+      if (this.selectedEntity && !(this.selectedEntity instanceof Character)) {
+        this.selectedEntity.color = entityColorInput.value;
+        if (entityColorVal) entityColorVal.textContent = entityColorInput.value;
+        this.markDirty("objects", this.selectedEntity);
+      }
     });
 
     // 4. Shape Toggle
@@ -4317,6 +4484,9 @@ export class DevPanel {
       rollModule: s.hasRollModule ? new RollModule({ rollResistance: s.rollResistance }) : null,
     });
 
+    if (!this.objects.includes(newObj)) {
+      this.objects.push(newObj);
+    }
     this.onSpawnObject(newObj);
     this.setSelectedEntity(newObj);
     this.markDirty("objects", newObj);
@@ -4356,6 +4526,9 @@ export class DevPanel {
       rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance, enabled: orig.rollModule.enabled, bumpyRollEnabled: orig.rollModule.bumpyRollEnabled, bumpiness: orig.rollModule.bumpiness, seed: orig.rollModule.seed }) : null,
     });
 
+    if (!this.objects.includes(clone)) {
+      this.objects.push(clone);
+    }
     this.onSpawnObject(clone);
     this.setSelectedEntity(clone);
     this.markDirty("objects", clone);
@@ -4376,6 +4549,10 @@ export class DevPanel {
 
     if (this.onDeleteObject) {
       this.onDeleteObject(target);
+    }
+    const idx = this.objects.indexOf(target);
+    if (idx !== -1) {
+      this.objects.splice(idx, 1);
     }
 
     this.dirtyState.deletedObjectIds.add(target.id);
@@ -4981,7 +5158,11 @@ export class DevPanel {
         const pos = { x: this.arena.width / 2, y: this.arena.height / 2, z: 0 };
         const spawned = prefabManager.spawn(pid, pos, this.arena, this.objects);
         if (spawned) {
+          if (!this.objects.includes(spawned)) {
+            this.objects.push(spawned);
+          }
           this.onSpawnObject(spawned);
+          this.markDirty("objects", spawned);
           this.updateSelectorOptions();
           this.renderScenePrefabs();
         }
@@ -5256,7 +5437,7 @@ export class DevPanel {
     }, 2400);
   }
 
-  public async saveProjectConfig(saveAll: boolean = false): Promise<void> {
+  public async saveProjectConfig(saveAll: boolean = true): Promise<void> {
     if (this.isOnlineLocked) {
       this.showSaveToast("🔒 DevTools save disabled in online mode", true);
       return;
@@ -5304,18 +5485,11 @@ export class DevPanel {
     }
 
     if (sections.includes("objects")) {
-      if (saveAll) {
-        delta.objectsDelta = {
-          replaceAll: this.objects.map((o) => serializeGameObject(o)),
-          upsert: this.objects.map((o) => serializeGameObject(o)),
-          deletedIds: Array.from(this.dirtyState.deletedObjectIds),
-        };
-      } else {
-        delta.objectsDelta = {
-          upsert: Array.from(this.dirtyState.modifiedObjects.values()).map((o) => serializeGameObject(o)),
-          deletedIds: Array.from(this.dirtyState.deletedObjectIds),
-        };
-      }
+      delta.objectsDelta = {
+        replaceAll: this.objects.map((o) => serializeGameObject(o)),
+        upsert: this.objects.map((o) => serializeGameObject(o)),
+        deletedIds: Array.from(this.dirtyState.deletedObjectIds),
+      };
     }
 
     const hasAnyChanges = sections.length > 0;

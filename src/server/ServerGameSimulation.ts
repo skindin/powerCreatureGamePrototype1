@@ -16,7 +16,8 @@ import {
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
-import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
 import { WorldConfig, deserializeGameObject, generateDefaultWorldConfig } from "../config/WorldConfig.js";
 import { HealthModule } from "../character/HealthModule.js";
 

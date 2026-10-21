@@ -12,7 +12,7 @@ import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { WorldConfig, generateDefaultWorldConfig } from "../config/WorldConfig.js";
+import { WorldConfig } from "../config/WorldConfig.js";
 
 export interface ClientCharacterEntry {
   localPlayerId: string;

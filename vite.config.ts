@@ -200,6 +200,12 @@ function autoTunnelPlugin(): Plugin {
 
   return {
     name: 'auto-localtunnel',
+    handleHotUpdate({ file }) {
+      if (file.includes('worldConfig')) {
+        // Return empty array to strictly prevent any HMR or page reload when worldConfig.json changes
+        return [];
+      }
+    },
     configureServer(server) {
       if (server.httpServer) {
         import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
@@ -345,13 +351,11 @@ function autoTunnelPlugin(): Plugin {
             return;
           }
 
-          // Strict Security Guard: Only allow from localhost / loopback, never from tunnel or external production
-          const reqHost = (req.headers['host'] || '').toLowerCase();
-          const isLocal = reqHost.startsWith('localhost') || reqHost.startsWith('127.0.0.1');
-          if (!isLocal || isTunnel) {
+          // Strict Security Guard: Only allow from local machine/LAN, never from external public tunnel
+          if (isTunnel) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: 'World config saving is only permitted on local host' }));
+            res.end(JSON.stringify({ error: 'World config saving is not permitted via public tunnel' }));
             return;
           }
 
@@ -378,22 +382,32 @@ function autoTunnelPlugin(): Plugin {
             }
 
             if (delta.objectsDelta) {
-              const { upsert, deletedIds } = delta.objectsDelta;
-              const objectMap = new Map();
-              for (const obj of updatedConfig.objects) {
-                objectMap.set(obj.id, obj);
+              if (delta.objectsDelta.replaceAll && Array.isArray(delta.objectsDelta.replaceAll)) {
+                updatedConfig.objects = [...delta.objectsDelta.replaceAll];
+              } else {
+                const { upsert, deletedIds } = delta.objectsDelta;
+                const objectMap = new Map();
+                for (const obj of updatedConfig.objects) {
+                  objectMap.set(obj.id, obj);
+                }
+                if (deletedIds && Array.isArray(deletedIds)) {
+                  for (const id of deletedIds) objectMap.delete(id);
+                }
+                if (upsert && Array.isArray(upsert)) {
+                  for (const item of upsert) objectMap.set(item.id, item);
+                }
+                updatedConfig.objects = Array.from(objectMap.values());
               }
-              if (deletedIds && Array.isArray(deletedIds)) {
-                for (const id of deletedIds) objectMap.delete(id);
-              }
-              if (upsert && Array.isArray(upsert)) {
-                for (const item of upsert) objectMap.set(item.id, item);
-              }
-              updatedConfig.objects = Array.from(objectMap.values());
             }
 
             const jsonStr = JSON.stringify(updatedConfig, null, 2);
             fs.writeFileSync(configPath, jsonStr, 'utf8');
+
+            // Keep moduleGraph fresh for future reads without triggering HMR reload
+            try {
+              const mod = server.moduleGraph.getModuleById(configPath);
+              if (mod) server.moduleGraph.invalidateModule(mod);
+            } catch {}
 
             // Also keep public/dist in sync if present
             try {
@@ -404,14 +418,10 @@ function autoTunnelPlugin(): Plugin {
               }
             } catch {}
 
-            // Hot reload UniversalRoomManager in background
+            // Hot reload UniversalRoomManager in background without triggering dev server SSR re-eval
             import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
               UniversalRoomManager.getInstance().reloadWorldConfig?.(updatedConfig);
-            }).catch(() => {
-              server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
-                UniversalRoomManager.getInstance().reloadWorldConfig?.(updatedConfig);
-              }).catch(() => {});
-            });
+            }).catch(() => {});
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -437,6 +447,7 @@ function autoTunnelPlugin(): Plugin {
       // 2. Auto-rebuild dist on source file changes in background so dist is always live
       let buildTimeout: any = null;
       server.watcher.on('change', (file) => {
+        if (file.includes('worldConfig.json') || file.includes('worldConfig')) return;
         if (file.includes('src') || file.includes('index.html')) {
           clearTimeout(buildTimeout);
           buildTimeout = setTimeout(async () => {
@@ -489,6 +500,7 @@ export default defineConfig(({ command }) => ({
         '**/.git/**',
         '**/tunnel.json',
         '**/dist/**',
+        /worldConfig/,
       ],
     },
   },
