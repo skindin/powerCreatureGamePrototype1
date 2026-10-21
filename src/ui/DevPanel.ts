@@ -31,7 +31,7 @@ import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistr
 import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
-import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializeCharacter } from "../config/WorldConfig.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, SerializedCharacterConfig } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -1246,6 +1246,19 @@ export class DevPanel {
       </div>
     `;
 
+    const renderToggleRow = (checkboxId: string, label: string, isChecked: boolean, title: string = "Save setting to project") => {
+      const saveBtnId = `btn-save-${checkboxId.replace(/^check-/, '')}`;
+      return `
+        <div class="toggle-row" style="margin-top: 5px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.8rem; color: #cbd5e1;">${label}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="${checkboxId}" ${isChecked ? 'checked' : ''}>
+            <button type="button" class="prop-save-btn" id="${saveBtnId}" title="${title}">💾</button>
+          </div>
+        </div>
+      `;
+    };
+
     // 0. Character Module (Role: local_player, local_ai, remote_player, remote_ai, dummy)
     if (hasCharModule) {
       attachedCount++;
@@ -1379,11 +1392,8 @@ export class DevPanel {
           ${!bounceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Bounciness behavior is disabled</div>` : ''}
           ${bounceMassWarning}
           <div id="prop-socket-bounce"></div>
-          <div class="toggle-subrow" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-              <input type="checkbox" id="check-mod-vert-bounce" ${e.bounceModule?.verticalBounce ? 'checked' : ''}>
-              <span>Vertical Bounce</span>
-            </label>
+          <div style="margin-top: 6px;">
+            ${renderToggleRow("check-mod-vert-bounce", "Vertical Bounce", Boolean(e.bounceModule?.verticalBounce), "Save Vertical Bounce to project")}
           </div>
           ${bounceVertWarning}
           </div>
@@ -1450,10 +1460,7 @@ export class DevPanel {
           ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
           ${rollFricWarning}
           <div id="prop-socket-roll-resist"></div>
-          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
-            <span style="font-size: 0.8rem; color: #cbd5e1;">Bumpy Roll (Hop on Bumps)</span>
-            <input type="checkbox" id="check-roll-bumpy-enabled" ${e.rollModule?.bumpyRollEnabled ? 'checked' : ''}>
-          </div>
+          ${renderToggleRow("check-roll-bumpy-enabled", "Bumpy Roll (Hop on Bumps)", Boolean(e.rollModule?.bumpyRollEnabled), "Save Bumpy Roll to project")}
           <div id="prop-socket-roll-bumpiness" style="display: ${e.rollModule?.bumpyRollEnabled ? 'block' : 'none'};"></div>
           </div>
         </div>
@@ -1479,14 +1486,8 @@ export class DevPanel {
             ${!walkEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Walking Ability is disabled</div>` : ''}
             ${walkFricWarning}
             ${walkStrWarning}
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
-              <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
-            </div>
-            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 4px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Can Sprint (Shift / Gamepad)</span>
-              <input type="checkbox" id="check-can-sprint" ${char.walkingModule?.canSprint ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-walk-in-air", "Air Control (Walk in Air)", Boolean(char.walkingModule?.walkInAir), "Save Air Control to project")}
+            ${renderToggleRow("check-can-sprint", "Can Sprint (Shift / Gamepad)", Boolean(char.walkingModule?.canSprint), "Save Can Sprint to project")}
             <div id="prop-socket-walk-force"></div>
             <div id="prop-socket-walk-speed"></div>
             <div id="prop-socket-walk-power-cap"></div>
@@ -1496,18 +1497,12 @@ export class DevPanel {
             <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
               <div id="prop-socket-strength"></div>
             </div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Walk Consumes Energy</span>
-              <input type="checkbox" id="check-walk-energy" ${char.walkingModule?.walkConsumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-walk-energy", "Walk Consumes Energy", Boolean(char.walkingModule?.walkConsumesEnergy), "Save Walk Consumes Energy to project")}
             <div id="field-walk-partial-power" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-walk-partial-power" ${char.walkingModule?.walkAllowPartialPower ? 'checked' : ''}>
             </div>
-            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
-              <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-sprint-energy", "Sprint Consumes Energy", Boolean(char.walkingModule?.sprintConsumesEnergy), "Save Sprint Consumes Energy to project")}
             <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-sprint-partial-power" ${char.walkingModule?.sprintAllowPartialPower ? 'checked' : ''}>
@@ -1526,10 +1521,7 @@ export class DevPanel {
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div id="prop-socket-pickup-reach"></div>
             <div id="prop-socket-pickup-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-pickup-energy", "Consumes Energy", Boolean(char.pickupModule?.consumesEnergy), "Save Pickup Consumes Energy to project")}
             <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-pickup-partial-power" ${char.pickupModule?.allowPartialPower ? 'checked' : ''}>
@@ -1554,10 +1546,7 @@ export class DevPanel {
             <div id="prop-socket-throw-force"></div>
             <div id="prop-socket-throw-max-height"></div>
             <div id="prop-socket-throw-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-throw-energy", "Consumes Energy", Boolean(char.throwModule?.consumesEnergy), "Save Throw Consumes Energy to project")}
             </div>
           </div>
         `;
@@ -1578,10 +1567,7 @@ export class DevPanel {
             <div id="prop-socket-jump-strength"></div>
             <div id="prop-socket-jump-max-speed"></div>
             <div id="prop-socket-jump-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-jump-energy", "Consumes Energy", Boolean(char.jumpConsumesEnergy), "Save Jump Consumes Energy to project")}
             <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-jump-partial-power" ${char.jumpAllowPartialPower ? 'checked' : ''}>
@@ -1636,10 +1622,7 @@ export class DevPanel {
             <div id="prop-socket-climb-adhesion"></div>
             <div id="prop-socket-climb-speed"></div>
             <div id="prop-socket-climb-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-climb-energy", "Consumes Energy", Boolean(char.climbingModule?.consumesEnergy), "Save Climb Consumes Energy to project")}
             <div id="field-climb-partial-power" style="display: ${char.climbingModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
               <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
               <input type="checkbox" id="check-climb-partial-power" ${char.climbingModule?.allowPartialPower ? 'checked' : ''}>
@@ -1672,10 +1655,7 @@ export class DevPanel {
           <div id="prop-socket-health-hpperjoule"></div>
           <div id="prop-socket-health-power-cap"></div>
 
-          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-            <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
-            <input type="checkbox" id="check-health-energy" ${hm.consumesEnergy ? 'checked' : ''}>
-          </div>
+          ${renderToggleRow("check-health-energy", "Healing Consumes Energy", Boolean(hm.consumesEnergy), "Save Healing Consumes Energy to project")}
           <div id="field-health-partial-power" style="display: ${hm.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
             <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
             <input type="checkbox" id="check-health-partial-power" ${hm.allowPartialPower ? 'checked' : ''}>
@@ -2441,6 +2421,19 @@ export class DevPanel {
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
 
+    const bindToggleSave = (checkboxId: string, owner: GameObject, keyPath: string, label: string, onApply?: (val: boolean) => void) => {
+      const chk = this.container.querySelector(`#${checkboxId}`) as HTMLInputElement | null;
+      const saveBtnId = `btn-save-${checkboxId.replace(/^check-/, '')}`;
+      const btn = this.container.querySelector(`#${saveBtnId}`) as HTMLButtonElement | null;
+      if (!chk || !btn) return;
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const val = chk.checked;
+        if (onApply) onApply(val);
+        this.saveIndividualToggle(owner, keyPath, val, label, btn);
+      });
+    };
+
     // Character Module Role Selector
     const selectCharRole = this.container.querySelector("#select-char-role") as HTMLSelectElement | null;
     selectCharRole?.addEventListener("change", () => {
@@ -2599,6 +2592,9 @@ export class DevPanel {
         this.markDirty("objects", e);
       }
     });
+    bindToggleSave("check-mod-vert-bounce", e, "verticalBounce", "Vertical Bounce", (v) => {
+      if (e.bounceModule) e.bounceModule.verticalBounce = v;
+    });
 
     // Vertical Position
     this.setupSlider("slide-entity-elevation", "val-entity-elevation", (val) => {
@@ -2644,6 +2640,9 @@ export class DevPanel {
             this.markDirty("objects", e);
           }
         }
+      });
+      bindToggleSave("check-roll-bumpy-enabled", e, "bumpyRollEnabled", "Bumpy Roll", (v) => {
+        if (e.rollModule) e.rollModule.bumpyRollEnabled = v;
       });
     }
 
@@ -2692,12 +2691,18 @@ export class DevPanel {
           char.walkingModule.walkInAir = checkWalkInAir.checked;
         }
       });
+      bindToggleSave("check-walk-in-air", char, "walkInAir", "Air Control (Walk in Air)", (v) => {
+        if (char.walkingModule) char.walkingModule.walkInAir = v;
+      });
 
       const canSprintCheck = this.container.querySelector("#check-can-sprint") as HTMLInputElement;
       canSprintCheck?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.canSprint = canSprintCheck.checked;
         }
+      });
+      bindToggleSave("check-can-sprint", char, "canSprint", "Can Sprint", (v) => {
+        if (char.walkingModule) char.walkingModule.canSprint = v;
       });
 
       // Walking sockets
@@ -2772,6 +2777,9 @@ export class DevPanel {
           if (fieldWalkPartialPower) fieldWalkPartialPower.style.display = checkWalkEnergy.checked ? "flex" : "none";
         }
       });
+      bindToggleSave("check-walk-energy", char, "walkConsumesEnergy", "Walk Consumes Energy", (v) => {
+        if (char.walkingModule) char.walkingModule.walkConsumesEnergy = v;
+      });
       checkWalkPartialPower?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.walkAllowPartialPower = checkWalkPartialPower.checked;
@@ -2786,6 +2794,9 @@ export class DevPanel {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
           if (fieldSprintPartialPower) fieldSprintPartialPower.style.display = checkSprintEnergy.checked ? "flex" : "none";
         }
+      });
+      bindToggleSave("check-sprint-energy", char, "sprintConsumesEnergy", "Sprint Consumes Energy", (v) => {
+        if (char.walkingModule) char.walkingModule.sprintConsumesEnergy = v;
       });
       checkSprintPartialPower?.addEventListener("change", () => {
         if (char.walkingModule) {
@@ -2835,6 +2846,9 @@ export class DevPanel {
           if (fieldPickupPartialPower) fieldPickupPartialPower.style.display = checkPickupEnergy.checked ? "flex" : "none";
         }
       });
+      bindToggleSave("check-pickup-energy", char, "pickupConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.pickupModule) char.pickupModule.consumesEnergy = v;
+      });
       checkPickupPartialPower?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.allowPartialPower = checkPickupPartialPower.checked;
@@ -2878,6 +2892,9 @@ export class DevPanel {
           char.throwModule.consumesEnergy = checkThrowEnergy.checked;
         }
       });
+      bindToggleSave("check-throw-energy", char, "throwConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.throwModule) char.throwModule.consumesEnergy = v;
+      });
 
       // Jump sockets
       const jumpStrSocketEl = this.container.querySelector("#prop-socket-jump-strength");
@@ -2916,6 +2933,9 @@ export class DevPanel {
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
         if (fieldJumpPartialPower) fieldJumpPartialPower.style.display = checkJumpEnergy.checked ? "flex" : "none";
+      });
+      bindToggleSave("check-jump-energy", char, "jumpConsumesEnergy", "Consumes Energy", (v) => {
+        char.jumpConsumesEnergy = v;
       });
       checkJumpPartialPower?.addEventListener("change", () => {
         char.jumpAllowPartialPower = checkJumpPartialPower.checked;
@@ -2988,6 +3008,9 @@ export class DevPanel {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
           if (fieldClimbPartialPower) fieldClimbPartialPower.style.display = checkClimbEnergy.checked ? "flex" : "none";
         }
+      });
+      bindToggleSave("check-climb-energy", char, "climbConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.climbingModule) char.climbingModule.consumesEnergy = v;
       });
       checkClimbPartialPower?.addEventListener("change", () => {
         if (char.climbingModule) {
@@ -3088,6 +3111,9 @@ export class DevPanel {
         if (!(e instanceof Character)) {
           this.markDirty("objects", e);
         }
+      });
+      bindToggleSave("check-health-energy", e, "healthConsumesEnergy", "Healing Consumes Energy", (v) => {
+        hm.consumesEnergy = v;
       });
       checkHealthPartialPower?.addEventListener("change", () => {
         hm.allowPartialPower = checkHealthPartialPower.checked;
@@ -5420,6 +5446,176 @@ export class DevPanel {
     }, 2400);
   }
 
+  private buildSinglePropertyPlayerDelta(propKey: string, value: any): SerializedCharacterConfig {
+    const norm = (propKey || "").trim();
+    switch (norm) {
+      // Walking Module
+      case "walkInAir":
+      case "walkingModule.walkInAir":
+      case "Air Control (Walk in Air)":
+        return { walkingModule: { walkInAir: Boolean(value) } };
+      case "canSprint":
+      case "walkingModule.canSprint":
+      case "Can Sprint (Shift / Gamepad)":
+      case "Can Sprint":
+        return { walkingModule: { canSprint: Boolean(value) } };
+      case "walkConsumesEnergy":
+      case "walkingModule.walkConsumesEnergy":
+      case "Walk Consumes Energy":
+        return { walkingModule: { walkConsumesEnergy: Boolean(value) } };
+      case "walkAllowPartialPower":
+      case "walkingModule.walkAllowPartialPower":
+        return { walkingModule: { walkAllowPartialPower: Boolean(value) } };
+      case "sprintConsumesEnergy":
+      case "walkingModule.sprintConsumesEnergy":
+      case "Sprint Consumes Energy":
+        return { walkingModule: { sprintConsumesEnergy: Boolean(value) } };
+      case "sprintAllowPartialPower":
+      case "walkingModule.sprintAllowPartialPower":
+        return { walkingModule: { sprintAllowPartialPower: Boolean(value) } };
+      case "maxWalkForce":
+      case "walkingModule.maxWalkForce":
+      case "Max Walk Force (N)":
+        return { walkingModule: { maxWalkForce: Number(value) } };
+      case "maxWalkSpeed":
+      case "walkingModule.maxWalkSpeed":
+      case "Max Walk Speed (u/s)":
+        return { walkingModule: { maxWalkSpeed: Number(value) } };
+      case "sprintSpeed":
+      case "maxSprintSpeed":
+      case "walkingModule.sprintSpeed":
+      case "Max Sprint Speed (u/s)":
+        return { walkingModule: { sprintSpeed: Number(value) } };
+      case "walkPowerCapacity":
+      case "maxWalkPower":
+      case "Max Walk Power (Watts)":
+        return { walkingModule: { maxWalkPower: Number(value) } };
+      case "sprintPowerCapacity":
+      case "maxSprintPower":
+      case "Max Sprint Power (Watts)":
+        return { walkingModule: { maxSprintPower: Number(value) } };
+
+      // Jump Module
+      case "jumpImpulse":
+      case "jumpStrength":
+      case "jumpModule.jumpImpulse":
+      case "Jump Impulse (N·s)":
+      case "Jump Strength (N·s)":
+        return { jumpModule: { jumpImpulse: Number(value) } };
+      case "maxInitialSpeed":
+      case "jumpModule.maxInitialSpeed":
+      case "Max Takeoff Speed (u/s)":
+        return { jumpModule: { maxInitialSpeed: Number(value) } };
+      case "jumpPowerCapacity":
+      case "maxJumpPower":
+      case "jumpModule.jumpPowerCapacity":
+      case "Max Jump Power (Watts)":
+        return { jumpModule: { jumpPowerCapacity: Number(value) } };
+      case "jumpConsumesEnergy":
+      case "jumpModule.jumpConsumesEnergy":
+        return { jumpModule: { jumpConsumesEnergy: Boolean(value) } };
+      case "jumpAllowPartialPower":
+      case "jumpModule.jumpAllowPartialPower":
+        return { jumpModule: { jumpAllowPartialPower: Boolean(value) } };
+
+      // Throw Module
+      case "throwForce":
+      case "maxThrowSpeed":
+      case "throwModule.maxThrowSpeed":
+      case "throwModule.throwForce":
+      case "Max Throw Speed (u/s)":
+        return { throwModule: { maxThrowSpeed: Number(value), throwForce: Number(value) } };
+      case "maxThrowHeight":
+      case "throwModule.maxThrowHeight":
+      case "Max Throw Height (u)":
+        return { throwModule: { maxThrowHeight: Number(value) } };
+      case "throwPowerCapacity":
+      case "maxPower":
+      case "maxThrowPower":
+      case "throwModule.throwPowerCapacity":
+      case "throwModule.maxPower":
+      case "Max Throw Power (Watts)":
+        return { throwModule: { throwPowerCapacity: Number(value), maxPower: Number(value) } };
+      case "throwConsumesEnergy":
+      case "throwModule.consumesEnergy":
+        return { throwModule: { consumesEnergy: Boolean(value) } };
+
+      // Pickup Module
+      case "pickupReach":
+      case "pickupModule.pickupReach":
+      case "Pickup Reach (3D) (u)":
+        return { pickupModule: { pickupReach: Number(value) } };
+      case "maxPickupPower":
+      case "pickupPowerCapacity":
+      case "pickupModule.maxPower":
+      case "Max Pickup Power (Watts)":
+        return { pickupModule: { maxPower: Number(value) } };
+      case "pickupConsumesEnergy":
+      case "pickupModule.consumesEnergy":
+        return { pickupModule: { consumesEnergy: Boolean(value) } };
+      case "pickupAllowPartialPower":
+      case "pickupModule.allowPartialPower":
+        return { pickupModule: { allowPartialPower: Boolean(value) } };
+
+      // Climbing Module
+      case "climbSpeed":
+      case "climbingModule.climbSpeed":
+      case "Max Climb Speed (u/s)":
+        return { climbingModule: { climbSpeed: Number(value) } };
+      case "climbConsumesEnergy":
+      case "climbingModule.climbConsumesEnergy":
+        return { climbingModule: { consumesEnergy: Boolean(value) } };
+      case "climbAllowPartialPower":
+      case "climbingModule.allowPartialPower":
+        return { climbingModule: { allowPartialPower: Boolean(value) } };
+
+      // Health Module
+      case "maxHp":
+      case "healthModule.maxHp":
+        return { healthModule: { maxHp: Number(value) } };
+      case "naturalHealRate":
+      case "healthModule.naturalHealRate":
+        return { healthModule: { naturalHealRate: Number(value) } };
+      case "healthConsumesEnergy":
+      case "healthModule.consumesEnergy":
+        return { healthModule: { consumesEnergy: Boolean(value) } };
+      case "healthAllowPartialPower":
+      case "healthModule.allowPartialPower":
+        return { healthModule: { allowPartialPower: Boolean(value) } };
+
+      // Energy Pool / Stamina
+      case "staminaCapacity":
+      case "energyPool.staminaCapacity":
+        return { energyPool: { staminaCapacity: Number(value) } };
+      case "staminaRegenRate":
+      case "energyPool.staminaRegenRate":
+        return { energyPool: { staminaRegenRate: Number(value) } };
+      case "energyPoolCapacity":
+      case "energyPool.energyPoolCapacity":
+        return { energyPool: { energyPoolCapacity: Number(value) } };
+
+      // Root properties
+      case "mass":
+        return { mass: Number(value) };
+      case "colliderRadius":
+        return { colliderRadius: Number(value) };
+
+      default:
+        if (norm.includes(".")) {
+          const parts = norm.split(".");
+          const res: any = {};
+          let curr = res;
+          for (let i = 0; i < parts.length - 1; i++) {
+            curr[parts[i]] = {};
+            curr = curr[parts[i]];
+          }
+          curr[parts[parts.length - 1]] = value;
+          return res;
+        }
+        return { [norm]: value } as any;
+    }
+  }
+
   public async saveIndividualProperty(owner: GameObject, prop: DynamicProperty, value: number, label?: string): Promise<void> {
     if (this.isOnlineLocked) {
       this.showSaveToast("🔒 DevTools save disabled in online mode", true);
@@ -5429,17 +5625,19 @@ export class DevPanel {
     const isChar = owner instanceof Character || (owner as any).isCharacter;
     if (isChar) {
       const char = owner as Character;
+      const propKey = prop.referenceKey || label || "prop";
       // 1. Update player prefab archetype if prefab exists
       const playerPrefab = prefabManager.get("prefab_player");
       if (playerPrefab) {
-        playerPrefab.setProperty(prop.referenceKey || label || "prop", value, this.getAllCharacters ? this.getAllCharacters() : [char]);
+        playerPrefab.setProperty(propKey, value, this.getAllCharacters ? this.getAllCharacters() : [char]);
       }
 
-      // 2. Persist character config to worldConfig.json
+      // 2. Persist ONLY targeted single property delta to worldConfig.json
+      const playerDelta = this.buildSinglePropertyPlayerDelta(propKey, value);
       const delta: WorldConfigDelta = {
         clientVersion: this.currentConfigVersion,
         sections: ["player"],
-        player: serializeCharacter(char),
+        player: playerDelta,
       };
 
       const resp = await fetch("/api/dev/save-config", {
@@ -5487,6 +5685,88 @@ export class DevPanel {
       this.dirtyState.modifiedObjects.delete(owner.id);
       this.updateDirtyBadge();
       this.showSaveToast(`💾 Saved ${label || "property"}: ${Number(value.toFixed(2))} for ${owner.name}`);
+    }
+  }
+
+  public async saveIndividualToggle(
+    owner: GameObject,
+    keyPath: string,
+    value: boolean,
+    label: string,
+    saveBtn?: HTMLButtonElement | null
+  ): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = "0.5";
+    }
+
+    try {
+      const isChar = owner instanceof Character || (owner as any).isCharacter;
+      if (isChar) {
+        const char = owner as Character;
+        const playerPrefab = prefabManager.get("prefab_player");
+        if (playerPrefab) {
+          playerPrefab.setProperty(keyPath, value, this.getAllCharacters ? this.getAllCharacters() : [char]);
+        }
+
+        const playerDelta = this.buildSinglePropertyPlayerDelta(keyPath, value);
+        const delta: WorldConfigDelta = {
+          clientVersion: this.currentConfigVersion,
+          sections: ["player"],
+          player: playerDelta,
+        };
+
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta),
+        });
+
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+        this.dirtyState.player = false;
+        this.updateDirtyBadge();
+        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
+      } else {
+        if (owner.prefabId) {
+          const prefab = prefabManager.get(owner.prefabId);
+          if (prefab) {
+            prefab.setProperty(keyPath, value, this.objects);
+          }
+        }
+        const delta: WorldConfigDelta = {
+          clientVersion: this.currentConfigVersion,
+          sections: ["objects"],
+          objectsDelta: {
+            upsert: [serializeGameObject(owner)],
+          },
+        };
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta),
+        });
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+        this.dirtyState.modifiedObjects.delete(owner.id);
+        this.updateDirtyBadge();
+        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} for ${owner.name}`);
+      }
+    } catch (err: any) {
+      console.error(`Failed to save toggle ${label}:`, err);
+      this.showSaveToast(`❌ Failed to save ${label}: ${err.message || err}`, true);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = "1";
+      }
     }
   }
 

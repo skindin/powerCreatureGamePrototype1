@@ -313,12 +313,25 @@ const server = http.createServer(async (req, res) => {
         }
       } catch {}
 
+      function deepMerge(target, source) {
+        if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
+        const result = { ...(target || {}) };
+        for (const key of Object.keys(source)) {
+          if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            result[key] = deepMerge(result[key], source[key]);
+          } else {
+            result[key] = source[key];
+          }
+        }
+        return result;
+      }
+
       const updatedConfig = {
         version: (currentConfig.version || 1) + 1,
         lastSaved: new Date().toISOString(),
         arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
         globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
-        player: delta.player ? { ...(currentConfig.player || {}), ...delta.player } : currentConfig.player,
+        player: delta.player ? deepMerge(currentConfig.player || {}, delta.player) : currentConfig.player,
         objects: [...(currentConfig.objects || [])],
       };
 

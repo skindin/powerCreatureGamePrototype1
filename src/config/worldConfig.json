@@ -1049,7 +1049,7 @@
       "maxWalkSpeed": 5.2,
       "sprintSpeed": 8.5,
       "canSprint": true,
-      "walkInAir": false
+      "walkInAir": true
     },
     "hasJump": true,
     "jumpModule": {
@@ -1066,14 +1066,9 @@
       "maxThrowHeight": 5,
       "consumesEnergy": true
     },
-    "hasClimbing": false,
-    "climbingModule": {
-      "climbSpeed": 3.5
-    },
     "hasHealth": true,
     "healthModule": {
       "maxHp": 100,
-      "currentHp": 100,
       "naturalHealRate": 5
     },
     "hasEnergyPool": true,
@@ -1081,12 +1076,6 @@
       "staminaCapacity": 5000,
       "staminaRegenRate": 500,
       "energyPoolCapacity": 10000
-    },
-    "id": "obj-y5v89wu",
-    "hasLaser": true,
-    "laserModule": {
-      "maxRange": 15,
-      "damageRate": 50
     },
     "hasMelee": true,
     "meleeModule": {

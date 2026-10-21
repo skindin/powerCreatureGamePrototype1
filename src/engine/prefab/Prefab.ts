@@ -163,6 +163,70 @@ export class Prefab {
         case "Max Sprint Speed (u/s)":
           if (char.walkingModule) char.walkingModule.maxSprintSpeedProp.set(Number(value), char.properties);
           return;
+        case "walkInAir":
+        case "walkingModule.walkInAir":
+        case "Air Control (Walk in Air)":
+          if (char.walkingModule) char.walkingModule.walkInAir = Boolean(value);
+          return;
+        case "canSprint":
+        case "walkingModule.canSprint":
+        case "Can Sprint (Shift / Gamepad)":
+          if (char.walkingModule) char.walkingModule.canSprint = Boolean(value);
+          return;
+        case "walkConsumesEnergy":
+        case "walkingModule.walkConsumesEnergy":
+          if (char.walkingModule) char.walkingModule.walkConsumesEnergy = Boolean(value);
+          return;
+        case "walkAllowPartialPower":
+        case "walkingModule.walkAllowPartialPower":
+          if (char.walkingModule) char.walkingModule.walkAllowPartialPower = Boolean(value);
+          return;
+        case "sprintConsumesEnergy":
+        case "walkingModule.sprintConsumesEnergy":
+          if (char.walkingModule) char.walkingModule.sprintConsumesEnergy = Boolean(value);
+          return;
+        case "sprintAllowPartialPower":
+        case "walkingModule.sprintAllowPartialPower":
+          if (char.walkingModule) char.walkingModule.sprintAllowPartialPower = Boolean(value);
+          return;
+        case "jumpConsumesEnergy":
+        case "jumpModule.jumpConsumesEnergy":
+          char.jumpConsumesEnergy = Boolean(value);
+          return;
+        case "jumpAllowPartialPower":
+        case "jumpModule.jumpAllowPartialPower":
+          char.jumpAllowPartialPower = Boolean(value);
+          return;
+        case "throwConsumesEnergy":
+        case "throwModule.consumesEnergy":
+          if (char.throwModule) char.throwModule.consumesEnergy = Boolean(value);
+          return;
+        case "pickupConsumesEnergy":
+        case "pickupModule.consumesEnergy":
+          if (char.pickupModule) char.pickupModule.consumesEnergy = Boolean(value);
+          return;
+        case "pickupAllowPartialPower":
+        case "pickupModule.allowPartialPower":
+          if (char.pickupModule) char.pickupModule.allowPartialPower = Boolean(value);
+          return;
+        case "climbConsumesEnergy":
+        case "climbingModule.climbConsumesEnergy":
+        case "climbingModule.consumesEnergy":
+          if (char.climbingModule) char.climbingModule.consumesEnergy = Boolean(value);
+          return;
+        case "climbAllowPartialPower":
+        case "climbingModule.climbAllowPartialPower":
+        case "climbingModule.allowPartialPower":
+          if (char.climbingModule) char.climbingModule.allowPartialPower = Boolean(value);
+          return;
+        case "healthConsumesEnergy":
+        case "healthModule.consumesEnergy":
+          if (char.healthModule) char.healthModule.consumesEnergy = Boolean(value);
+          return;
+        case "healthAllowPartialPower":
+        case "healthModule.allowPartialPower":
+          if (char.healthModule) char.healthModule.allowPartialPower = Boolean(value);
+          return;
         case "jumpImpulse":
         case "Jump Impulse (N·s)":
         case "Jump Strength (N·s)":

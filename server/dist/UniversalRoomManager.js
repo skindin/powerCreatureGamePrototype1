@@ -11223,6 +11223,12 @@ function applyCharacterConfig(char, config) {
     if (config.walkingModule.sprintSpeed !== void 0) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
     if (config.walkingModule.canSprint !== void 0) char.walkingModule.canSprint = config.walkingModule.canSprint;
     if (config.walkingModule.walkInAir !== void 0) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
+    if (config.walkingModule.walkConsumesEnergy !== void 0) char.walkingModule.walkConsumesEnergy = config.walkingModule.walkConsumesEnergy;
+    if (config.walkingModule.walkAllowPartialPower !== void 0) char.walkingModule.walkAllowPartialPower = config.walkingModule.walkAllowPartialPower;
+    if (config.walkingModule.sprintConsumesEnergy !== void 0) char.walkingModule.sprintConsumesEnergy = config.walkingModule.sprintConsumesEnergy;
+    if (config.walkingModule.sprintAllowPartialPower !== void 0) char.walkingModule.sprintAllowPartialPower = config.walkingModule.sprintAllowPartialPower;
+    if (config.walkingModule.maxWalkPower !== void 0) char.walkingModule.maxWalkPowerProp.set(config.walkingModule.maxWalkPower, char.properties);
+    if (config.walkingModule.maxSprintPower !== void 0) char.walkingModule.maxSprintPowerProp.set(config.walkingModule.maxSprintPower, char.properties);
   }
   if (config.hasJump === false) {
     char.jumpModule = null;
@@ -11231,6 +11237,8 @@ function applyCharacterConfig(char, config) {
     if (config.jumpModule.jumpImpulse !== void 0) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
     if (config.jumpModule.maxInitialSpeed !== void 0) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
     if (config.jumpModule.jumpPowerCapacity !== void 0 && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
+    if (config.jumpModule.jumpConsumesEnergy !== void 0) char.jumpConsumesEnergy = config.jumpModule.jumpConsumesEnergy;
+    if (config.jumpModule.jumpAllowPartialPower !== void 0) char.jumpAllowPartialPower = config.jumpModule.jumpAllowPartialPower;
   }
   if (config.hasThrow === false) {
     char.throwModule = null;
@@ -11243,6 +11251,23 @@ function applyCharacterConfig(char, config) {
     if (config.throwModule.maxThrowHeight !== void 0) char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
     if (config.throwModule.consumesEnergy !== void 0) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
   }
+  if (config.hasPickup === false) {
+    char.pickupModule = null;
+  } else if (config.pickupModule && char.pickupModule) {
+    char.pickupModule.enabled = true;
+    if (config.pickupModule.pickupReach !== void 0) char.pickupModule.pickupReachProp.set(config.pickupModule.pickupReach, char.properties);
+    if (config.pickupModule.maxPower !== void 0) char.pickupModule.maxPowerProp.set(config.pickupModule.maxPower, char.properties);
+    if (config.pickupModule.consumesEnergy !== void 0) char.pickupModule.consumesEnergy = config.pickupModule.consumesEnergy;
+    if (config.pickupModule.allowPartialPower !== void 0) char.pickupModule.allowPartialPower = config.pickupModule.allowPartialPower;
+  }
+  if (config.hasClimbing === false) {
+    char.climbingModule = null;
+  } else if (config.climbingModule && char.climbingModule) {
+    char.climbingModule.enabled = true;
+    if (config.climbingModule.climbSpeed !== void 0) char.climbingModule.maxClimbSpeedProp.set(config.climbingModule.climbSpeed, char.properties);
+    if (config.climbingModule.consumesEnergy !== void 0) char.climbingModule.consumesEnergy = config.climbingModule.consumesEnergy;
+    if (config.climbingModule.allowPartialPower !== void 0) char.climbingModule.allowPartialPower = config.climbingModule.allowPartialPower;
+  }
   if (config.hasHealth === false) {
     char.healthModule = null;
   } else if (config.healthModule && char.healthModule) {
@@ -11250,6 +11275,16 @@ function applyCharacterConfig(char, config) {
     if (config.healthModule.maxHp !== void 0) char.healthModule.maxHp = config.healthModule.maxHp;
     if (config.healthModule.currentHp !== void 0) char.healthModule.currentHp = config.healthModule.currentHp;
     if (config.healthModule.naturalHealRate !== void 0) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+    if (config.healthModule.consumesEnergy !== void 0) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
+    if (config.healthModule.allowPartialPower !== void 0) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;
+  }
+  if (config.hasEnergyPool === false) {
+    char.energyPool = null;
+  } else if (config.energyPool && char.energyPool) {
+    char.energyPool.enabled = true;
+    if (config.energyPool.staminaCapacity !== void 0) char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
+    if (config.energyPool.staminaRegenRate !== void 0) char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
+    if (config.energyPool.energyPoolCapacity !== void 0) char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
   }
 }
 function serializeGameObject(obj) {
@@ -11652,6 +11687,70 @@ class Prefab {
         case "maxSprintSpeed":
         case "Max Sprint Speed (u/s)":
           if (char.walkingModule) char.walkingModule.maxSprintSpeedProp.set(Number(value), char.properties);
+          return;
+        case "walkInAir":
+        case "walkingModule.walkInAir":
+        case "Air Control (Walk in Air)":
+          if (char.walkingModule) char.walkingModule.walkInAir = Boolean(value);
+          return;
+        case "canSprint":
+        case "walkingModule.canSprint":
+        case "Can Sprint (Shift / Gamepad)":
+          if (char.walkingModule) char.walkingModule.canSprint = Boolean(value);
+          return;
+        case "walkConsumesEnergy":
+        case "walkingModule.walkConsumesEnergy":
+          if (char.walkingModule) char.walkingModule.walkConsumesEnergy = Boolean(value);
+          return;
+        case "walkAllowPartialPower":
+        case "walkingModule.walkAllowPartialPower":
+          if (char.walkingModule) char.walkingModule.walkAllowPartialPower = Boolean(value);
+          return;
+        case "sprintConsumesEnergy":
+        case "walkingModule.sprintConsumesEnergy":
+          if (char.walkingModule) char.walkingModule.sprintConsumesEnergy = Boolean(value);
+          return;
+        case "sprintAllowPartialPower":
+        case "walkingModule.sprintAllowPartialPower":
+          if (char.walkingModule) char.walkingModule.sprintAllowPartialPower = Boolean(value);
+          return;
+        case "jumpConsumesEnergy":
+        case "jumpModule.jumpConsumesEnergy":
+          char.jumpConsumesEnergy = Boolean(value);
+          return;
+        case "jumpAllowPartialPower":
+        case "jumpModule.jumpAllowPartialPower":
+          char.jumpAllowPartialPower = Boolean(value);
+          return;
+        case "throwConsumesEnergy":
+        case "throwModule.consumesEnergy":
+          if (char.throwModule) char.throwModule.consumesEnergy = Boolean(value);
+          return;
+        case "pickupConsumesEnergy":
+        case "pickupModule.consumesEnergy":
+          if (char.pickupModule) char.pickupModule.consumesEnergy = Boolean(value);
+          return;
+        case "pickupAllowPartialPower":
+        case "pickupModule.allowPartialPower":
+          if (char.pickupModule) char.pickupModule.allowPartialPower = Boolean(value);
+          return;
+        case "climbConsumesEnergy":
+        case "climbingModule.climbConsumesEnergy":
+        case "climbingModule.consumesEnergy":
+          if (char.climbingModule) char.climbingModule.consumesEnergy = Boolean(value);
+          return;
+        case "climbAllowPartialPower":
+        case "climbingModule.climbAllowPartialPower":
+        case "climbingModule.allowPartialPower":
+          if (char.climbingModule) char.climbingModule.allowPartialPower = Boolean(value);
+          return;
+        case "healthConsumesEnergy":
+        case "healthModule.consumesEnergy":
+          if (char.healthModule) char.healthModule.consumesEnergy = Boolean(value);
+          return;
+        case "healthAllowPartialPower":
+        case "healthModule.allowPartialPower":
+          if (char.healthModule) char.healthModule.allowPartialPower = Boolean(value);
           return;
         case "jumpImpulse":
         case "Jump Impulse (N·s)":

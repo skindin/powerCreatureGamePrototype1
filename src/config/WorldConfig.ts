@@ -140,6 +140,12 @@ export interface SerializedCharacterConfig {
     sprintSpeed?: number;
     canSprint?: boolean;
     walkInAir?: boolean;
+    walkConsumesEnergy?: boolean;
+    walkAllowPartialPower?: boolean;
+    sprintConsumesEnergy?: boolean;
+    sprintAllowPartialPower?: boolean;
+    maxWalkPower?: number;
+    maxSprintPower?: number;
   };
 
   hasJump?: boolean;
@@ -147,6 +153,8 @@ export interface SerializedCharacterConfig {
     jumpImpulse?: number;
     maxInitialSpeed?: number;
     jumpPowerCapacity?: number;
+    jumpConsumesEnergy?: boolean;
+    jumpAllowPartialPower?: boolean;
   };
 
   hasThrow?: boolean;
@@ -159,9 +167,19 @@ export interface SerializedCharacterConfig {
     consumesEnergy?: boolean;
   };
 
+  hasPickup?: boolean;
+  pickupModule?: {
+    pickupReach?: number;
+    maxPower?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+  };
+
   hasClimbing?: boolean;
   climbingModule?: {
     climbSpeed?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
   };
 
   hasHealth?: boolean;
@@ -169,6 +187,8 @@ export interface SerializedCharacterConfig {
     maxHp?: number;
     currentHp?: number;
     naturalHealRate?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
   };
 
   hasLaser?: boolean;
@@ -350,6 +370,12 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     if (config.walkingModule.sprintSpeed !== undefined) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
     if (config.walkingModule.canSprint !== undefined) char.walkingModule.canSprint = config.walkingModule.canSprint;
     if (config.walkingModule.walkInAir !== undefined) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
+    if (config.walkingModule.walkConsumesEnergy !== undefined) char.walkingModule.walkConsumesEnergy = config.walkingModule.walkConsumesEnergy;
+    if (config.walkingModule.walkAllowPartialPower !== undefined) char.walkingModule.walkAllowPartialPower = config.walkingModule.walkAllowPartialPower;
+    if (config.walkingModule.sprintConsumesEnergy !== undefined) char.walkingModule.sprintConsumesEnergy = config.walkingModule.sprintConsumesEnergy;
+    if (config.walkingModule.sprintAllowPartialPower !== undefined) char.walkingModule.sprintAllowPartialPower = config.walkingModule.sprintAllowPartialPower;
+    if (config.walkingModule.maxWalkPower !== undefined) char.walkingModule.maxWalkPowerProp.set(config.walkingModule.maxWalkPower, char.properties);
+    if (config.walkingModule.maxSprintPower !== undefined) char.walkingModule.maxSprintPowerProp.set(config.walkingModule.maxSprintPower, char.properties);
   }
 
   if (config.hasJump === false) {
@@ -359,6 +385,8 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     if (config.jumpModule.jumpImpulse !== undefined) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
     if (config.jumpModule.maxInitialSpeed !== undefined) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
     if (config.jumpModule.jumpPowerCapacity !== undefined && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
+    if (config.jumpModule.jumpConsumesEnergy !== undefined) char.jumpConsumesEnergy = config.jumpModule.jumpConsumesEnergy;
+    if (config.jumpModule.jumpAllowPartialPower !== undefined) char.jumpAllowPartialPower = config.jumpModule.jumpAllowPartialPower;
   }
 
   if (config.hasThrow === false) {
@@ -373,6 +401,25 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     if (config.throwModule.consumesEnergy !== undefined) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
   }
 
+  if (config.hasPickup === false) {
+    char.pickupModule = null;
+  } else if (config.pickupModule && char.pickupModule) {
+    char.pickupModule.enabled = true;
+    if (config.pickupModule.pickupReach !== undefined) char.pickupModule.pickupReachProp.set(config.pickupModule.pickupReach, char.properties);
+    if (config.pickupModule.maxPower !== undefined) char.pickupModule.maxPowerProp.set(config.pickupModule.maxPower, char.properties);
+    if (config.pickupModule.consumesEnergy !== undefined) char.pickupModule.consumesEnergy = config.pickupModule.consumesEnergy;
+    if (config.pickupModule.allowPartialPower !== undefined) char.pickupModule.allowPartialPower = config.pickupModule.allowPartialPower;
+  }
+
+  if (config.hasClimbing === false) {
+    char.climbingModule = null;
+  } else if (config.climbingModule && char.climbingModule) {
+    char.climbingModule.enabled = true;
+    if (config.climbingModule.climbSpeed !== undefined) char.climbingModule.maxClimbSpeedProp.set(config.climbingModule.climbSpeed, char.properties);
+    if (config.climbingModule.consumesEnergy !== undefined) char.climbingModule.consumesEnergy = config.climbingModule.consumesEnergy;
+    if (config.climbingModule.allowPartialPower !== undefined) char.climbingModule.allowPartialPower = config.climbingModule.allowPartialPower;
+  }
+
   if (config.hasHealth === false) {
     char.healthModule = null;
   } else if (config.healthModule && char.healthModule) {
@@ -380,6 +427,17 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     if (config.healthModule.maxHp !== undefined) char.healthModule.maxHp = config.healthModule.maxHp;
     if (config.healthModule.currentHp !== undefined) char.healthModule.currentHp = config.healthModule.currentHp;
     if (config.healthModule.naturalHealRate !== undefined) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+    if (config.healthModule.consumesEnergy !== undefined) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
+    if (config.healthModule.allowPartialPower !== undefined) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;
+  }
+
+  if (config.hasEnergyPool === false) {
+    char.energyPool = null;
+  } else if (config.energyPool && char.energyPool) {
+    char.energyPool.enabled = true;
+    if (config.energyPool.staminaCapacity !== undefined) char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
+    if (config.energyPool.staminaRegenRate !== undefined) char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
+    if (config.energyPool.energyPoolCapacity !== undefined) char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
   }
 }
 
