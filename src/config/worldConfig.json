@@ -1,6 +1,6 @@
 {
-  "version": 36,
-  "lastSaved": "2026-10-21T09:30:29.144Z",
+  "version": 45,
+  "lastSaved": "2026-10-21T10:36:24.379Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1045,11 +1045,14 @@
     "colliderRadius": 0.44,
     "hasWalking": true,
     "walkingModule": {
+      "walkInAir": true,
+      "canSprint": true,
       "maxWalkForce": 80,
       "maxWalkSpeed": 5.2,
       "sprintSpeed": 8.5,
-      "canSprint": true,
-      "walkInAir": true
+      "walkPowerCapacity": 400,
+      "sprintPowerCapacity": 1200,
+      "airFriction": 0.15
     },
     "hasJump": true,
     "jumpModule": {
@@ -1059,12 +1062,8 @@
     },
     "hasThrow": true,
     "throwModule": {
-      "throwForce": 100,
-      "throwPowerCapacity": 2000,
-      "maxPower": 2000,
-      "maxThrowSpeed": 100,
-      "maxThrowHeight": 5,
-      "consumesEnergy": true
+      "throwPowerCapacity": 1200,
+      "maxPower": 1200
     },
     "hasHealth": true,
     "healthModule": {
@@ -1079,7 +1078,12 @@
     },
     "hasMelee": true,
     "meleeModule": {
-      "impactForce": 350
+      "impactForce": 350,
+      "maxPower": 1000
+    },
+    "hasLaser": true,
+    "laserModule": {
+      "maxPower": 2000
     }
   }
 }

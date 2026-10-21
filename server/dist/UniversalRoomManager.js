@@ -11112,7 +11112,7 @@ function createQuarryStones() {
   ];
 }
 function serializeCharacter(char) {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p;
   const result = {
     id: char.id,
     name: char.name,
@@ -11121,6 +11121,11 @@ function serializeCharacter(char) {
     mass: char.rigidbodyModule ? char.rigidbodyModule.massProp.get(char.properties) : char.mass,
     colliderRadius: char.colliderModule ? char.colliderModule.radiusProp.get(char.properties) : char.colliderRadius
   };
+  if (char.strengthProp) {
+    result.strength = char.strengthProp.get(char.properties);
+  } else if (char.strength !== void 0) {
+    result.strength = char.strength;
+  }
   if (char.walkingModule) {
     result.hasWalking = char.walkingModule.enabled;
     result.walkingModule = {
@@ -11128,7 +11133,14 @@ function serializeCharacter(char) {
       maxWalkSpeed: char.walkingModule.maxWalkSpeedProp.get(char.properties),
       sprintSpeed: char.walkingModule.maxSprintSpeedProp.get(char.properties),
       canSprint: char.walkingModule.canSprint,
-      walkInAir: char.walkingModule.walkInAir
+      walkInAir: char.walkingModule.walkInAir,
+      walkConsumesEnergy: char.walkingModule.walkConsumesEnergy,
+      walkAllowPartialPower: char.walkingModule.walkAllowPartialPower,
+      sprintConsumesEnergy: char.walkingModule.sprintConsumesEnergy,
+      sprintAllowPartialPower: char.walkingModule.sprintAllowPartialPower,
+      maxWalkPower: char.walkingModule.maxWalkPowerProp ? char.walkingModule.maxWalkPowerProp.get(char.properties) : void 0,
+      maxSprintPower: char.walkingModule.maxSprintPowerProp ? char.walkingModule.maxSprintPowerProp.get(char.properties) : void 0,
+      airFriction: char.walkingModule.airFrictionProp ? char.walkingModule.airFrictionProp.get(char.properties) : void 0
     };
   } else {
     result.hasWalking = false;
@@ -11138,7 +11150,9 @@ function serializeCharacter(char) {
     result.jumpModule = {
       jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties),
       maxInitialSpeed: char.jumpModule.maxInitialSpeedProp.get(char.properties),
-      jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : void 0
+      jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : void 0,
+      jumpConsumesEnergy: char.jumpConsumesEnergy,
+      jumpAllowPartialPower: char.jumpAllowPartialPower
     };
   } else {
     result.hasJump = false;
@@ -11156,10 +11170,26 @@ function serializeCharacter(char) {
   } else {
     result.hasThrow = false;
   }
+  if (char.pickupModule) {
+    result.hasPickup = char.pickupModule.enabled;
+    result.pickupModule = {
+      pickupReach: char.pickupModule.pickupReachProp ? char.pickupModule.pickupReachProp.get(char.properties) : 1.2,
+      maxPower: char.pickupModule.maxPowerProp ? char.pickupModule.maxPowerProp.get(char.properties) : void 0,
+      consumesEnergy: char.pickupModule.consumesEnergy,
+      allowPartialPower: char.pickupModule.allowPartialPower
+    };
+  } else {
+    result.hasPickup = false;
+  }
   if (char.climbingModule) {
     result.hasClimbing = char.climbingModule.enabled;
     result.climbingModule = {
-      climbSpeed: ((_a = char.climbingModule.maxClimbSpeedProp) == null ? void 0 : _a.get(char.properties)) ?? 3.5
+      climbSpeed: ((_a = char.climbingModule.maxClimbSpeedProp) == null ? void 0 : _a.get(char.properties)) ?? 3.5,
+      maxAdhesion: ((_b = char.climbingModule.maxAdhesionProp) == null ? void 0 : _b.get(char.properties)) ?? 20,
+      maxPower: (_c = char.climbingModule.maxPowerProp) == null ? void 0 : _c.get(char.properties),
+      horizontalClimb: char.climbingModule.horizontalClimb,
+      consumesEnergy: char.climbingModule.consumesEnergy,
+      allowPartialPower: char.climbingModule.allowPartialPower
     };
   } else {
     result.hasClimbing = false;
@@ -11169,7 +11199,11 @@ function serializeCharacter(char) {
     result.healthModule = {
       maxHp: char.healthModule.getMaxHp(char.properties),
       currentHp: char.healthModule.getCurrentHp(char.properties),
-      naturalHealRate: char.healthModule.getMaxHealRate(char.properties)
+      naturalHealRate: char.healthModule.getMaxHealRate(char.properties),
+      hpPerJoule: char.healthModule.hpPerJouleProp ? char.healthModule.hpPerJouleProp.get(char.properties) : void 0,
+      maxPower: char.healthModule.maxPowerProp ? char.healthModule.maxPowerProp.get(char.properties) : void 0,
+      consumesEnergy: char.healthModule.consumesEnergy,
+      allowPartialPower: char.healthModule.allowPartialPower
     };
   } else {
     result.hasHealth = false;
@@ -11178,7 +11212,10 @@ function serializeCharacter(char) {
     result.hasLaser = char.laserModule.enabled;
     result.laserModule = {
       maxRange: 15,
-      damageRate: ((_b = char.laserModule.damageRateProp) == null ? void 0 : _b.get(char.properties)) ?? 25
+      damageRate: ((_d = char.laserModule.damageRateProp) == null ? void 0 : _d.get(char.properties)) ?? 25,
+      thickness: ((_e = char.laserModule.thicknessProp) == null ? void 0 : _e.get(char.properties)) ?? 0.1,
+      maxPower: ((_f = char.laserModule.maxPowerProp) == null ? void 0 : _f.get(char.properties)) ?? 2e3,
+      allowPartialPower: char.laserModule.allowPartialPower
     };
   } else {
     result.hasLaser = false;
@@ -11186,7 +11223,12 @@ function serializeCharacter(char) {
   if (char.meleeModule) {
     result.hasMelee = char.meleeModule.enabled;
     result.meleeModule = {
-      impactForce: ((_c = char.meleeModule.maxForceProp) == null ? void 0 : _c.get(char.properties)) ?? 15
+      impactForce: ((_g = char.meleeModule.maxForceProp) == null ? void 0 : _g.get(char.properties)) ?? 350,
+      maxPower: ((_h = char.meleeModule.maxPowerProp) == null ? void 0 : _h.get(char.properties)) ?? 1e3,
+      punchFrequency: ((_i = char.meleeModule.punchFrequencyProp) == null ? void 0 : _i.get(char.properties)) ?? 2.5,
+      reach: ((_j = char.meleeModule.reachProp) == null ? void 0 : _j.get(char.properties)) ?? 1.2,
+      width: ((_k = char.meleeModule.widthProp) == null ? void 0 : _k.get(char.properties)) ?? 0.8,
+      allowPartialPower: char.meleeModule.allowPartialPower
     };
   } else {
     result.hasMelee = false;
@@ -11194,12 +11236,22 @@ function serializeCharacter(char) {
   if (char.energyPool) {
     result.hasEnergyPool = char.energyPool.enabled;
     result.energyPool = {
-      staminaCapacity: ((_d = char.energyPool.maxStaminaProp) == null ? void 0 : _d.get(char.properties)) ?? 5e3,
-      staminaRegenRate: ((_e = char.energyPool.staminaRegenRateProp) == null ? void 0 : _e.get(char.properties)) ?? 500,
-      energyPoolCapacity: ((_f = char.energyPool.maxEnergyProp) == null ? void 0 : _f.get(char.properties)) ?? 1e4
+      staminaCapacity: ((_l = char.energyPool.maxStaminaProp) == null ? void 0 : _l.get(char.properties)) ?? 5e3,
+      staminaRegenRate: ((_m = char.energyPool.staminaRegenRateProp) == null ? void 0 : _m.get(char.properties)) ?? 500,
+      energyPoolCapacity: ((_n = char.energyPool.maxEnergyProp) == null ? void 0 : _n.get(char.properties)) ?? 1e4,
+      currentStamina: (_o = char.energyPool.currentStaminaProp) == null ? void 0 : _o.get(char.properties),
+      currentEnergy: (_p = char.energyPool.currentEnergyProp) == null ? void 0 : _p.get(char.properties),
+      infiniteEnergy: char.energyPool.infiniteEnergy,
+      debugAutoRefillOnEmpty: char.energyPool.debugAutoRefillOnEmpty
     };
   } else {
     result.hasEnergyPool = false;
+  }
+  if (char.wallEdgeAssistModule) {
+    result.wallEdgeAssistModule = {
+      hangDistance: char.wallEdgeAssistModule.hangDistanceProp ? char.wallEdgeAssistModule.hangDistanceProp.get(char.properties) : 0.3,
+      preventWalkOff: char.wallEdgeAssistModule.preventWalkOff
+    };
   }
   return result;
 }
@@ -11229,6 +11281,11 @@ function applyCharacterConfig(char, config) {
     if (config.walkingModule.sprintAllowPartialPower !== void 0) char.walkingModule.sprintAllowPartialPower = config.walkingModule.sprintAllowPartialPower;
     if (config.walkingModule.maxWalkPower !== void 0) char.walkingModule.maxWalkPowerProp.set(config.walkingModule.maxWalkPower, char.properties);
     if (config.walkingModule.maxSprintPower !== void 0) char.walkingModule.maxSprintPowerProp.set(config.walkingModule.maxSprintPower, char.properties);
+    if (config.walkingModule.airFriction !== void 0) char.walkingModule.airFrictionProp.set(config.walkingModule.airFriction, char.properties);
+  }
+  if (config.strength !== void 0) {
+    char.strength = config.strength;
+    if (char.strengthProp) char.strengthProp.set(config.strength, char.properties);
   }
   if (config.hasJump === false) {
     char.jumpModule = null;
@@ -11265,6 +11322,9 @@ function applyCharacterConfig(char, config) {
   } else if (config.climbingModule && char.climbingModule) {
     char.climbingModule.enabled = true;
     if (config.climbingModule.climbSpeed !== void 0) char.climbingModule.maxClimbSpeedProp.set(config.climbingModule.climbSpeed, char.properties);
+    if (config.climbingModule.maxAdhesion !== void 0) char.climbingModule.maxAdhesionProp.set(config.climbingModule.maxAdhesion, char.properties);
+    if (config.climbingModule.maxPower !== void 0) char.climbingModule.maxPowerProp.set(config.climbingModule.maxPower, char.properties);
+    if (config.climbingModule.horizontalClimb !== void 0) char.climbingModule.horizontalClimb = config.climbingModule.horizontalClimb;
     if (config.climbingModule.consumesEnergy !== void 0) char.climbingModule.consumesEnergy = config.climbingModule.consumesEnergy;
     if (config.climbingModule.allowPartialPower !== void 0) char.climbingModule.allowPartialPower = config.climbingModule.allowPartialPower;
   }
@@ -11275,6 +11335,8 @@ function applyCharacterConfig(char, config) {
     if (config.healthModule.maxHp !== void 0) char.healthModule.maxHp = config.healthModule.maxHp;
     if (config.healthModule.currentHp !== void 0) char.healthModule.currentHp = config.healthModule.currentHp;
     if (config.healthModule.naturalHealRate !== void 0) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+    if (config.healthModule.hpPerJoule !== void 0) char.healthModule.hpPerJouleProp.set(config.healthModule.hpPerJoule, char.properties);
+    if (config.healthModule.maxPower !== void 0) char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
     if (config.healthModule.consumesEnergy !== void 0) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
     if (config.healthModule.allowPartialPower !== void 0) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;
   }
@@ -11285,6 +11347,44 @@ function applyCharacterConfig(char, config) {
     if (config.energyPool.staminaCapacity !== void 0) char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
     if (config.energyPool.staminaRegenRate !== void 0) char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
     if (config.energyPool.energyPoolCapacity !== void 0) char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
+    if (config.energyPool.currentStamina !== void 0) char.energyPool.currentStaminaProp.set(config.energyPool.currentStamina, char.properties);
+    if (config.energyPool.currentEnergy !== void 0) char.energyPool.currentEnergyProp.set(config.energyPool.currentEnergy, char.properties);
+    if (config.energyPool.infiniteEnergy !== void 0) char.energyPool.infiniteEnergy = config.energyPool.infiniteEnergy;
+    if (config.energyPool.debugAutoRefillOnEmpty !== void 0) char.energyPool.debugAutoRefillOnEmpty = config.energyPool.debugAutoRefillOnEmpty;
+  }
+  if (config.wallEdgeAssistModule && char.wallEdgeAssistModule) {
+    if (config.wallEdgeAssistModule.hangDistance !== void 0) char.wallEdgeAssistModule.hangDistanceProp.set(config.wallEdgeAssistModule.hangDistance, char.properties);
+    if (config.wallEdgeAssistModule.preventWalkOff !== void 0) char.wallEdgeAssistModule.preventWalkOff = config.wallEdgeAssistModule.preventWalkOff;
+  }
+  if (config.hasLaser === false) {
+    char.laserModule = null;
+  } else if (config.laserModule) {
+    if (!char.laserModule) char.laserModule = new LaserModule();
+    char.laserModule.enabled = true;
+    if (config.laserModule.damageRate !== void 0) char.laserModule.damageRateProp.set(config.laserModule.damageRate, char.properties);
+    if (config.laserModule.thickness !== void 0) char.laserModule.thicknessProp.set(config.laserModule.thickness, char.properties);
+    if (config.laserModule.maxPower !== void 0) char.laserModule.maxPowerProp.set(config.laserModule.maxPower, char.properties);
+    if (config.laserModule.allowPartialPower !== void 0) char.laserModule.allowPartialPower = config.laserModule.allowPartialPower;
+  }
+  if (config.hasMelee === false) {
+    char.meleeModule = null;
+  } else if (config.meleeModule) {
+    if (!char.meleeModule) char.meleeModule = new MeleeModule();
+    char.meleeModule.enabled = true;
+    if (config.meleeModule.impactForce !== void 0) char.meleeModule.maxForceProp.set(config.meleeModule.impactForce, char.properties);
+    if (config.meleeModule.maxPower !== void 0) char.meleeModule.maxPowerProp.set(config.meleeModule.maxPower, char.properties);
+    if (config.meleeModule.punchFrequency !== void 0) char.meleeModule.punchFrequencyProp.set(config.meleeModule.punchFrequency, char.properties);
+    if (config.meleeModule.reach !== void 0) char.meleeModule.reachProp.set(config.meleeModule.reach, char.properties);
+    if (config.meleeModule.width !== void 0) char.meleeModule.widthProp.set(config.meleeModule.width, char.properties);
+    if (config.meleeModule.allowPartialPower !== void 0) char.meleeModule.allowPartialPower = config.meleeModule.allowPartialPower;
+  }
+  if (config.damageAuraModule && char.damageAuraModule) {
+    if (config.damageAuraModule.damageRadius !== void 0) char.damageAuraModule.damageRadiusProp.set(config.damageAuraModule.damageRadius, char.properties);
+    if (config.damageAuraModule.damageRate !== void 0) char.damageAuraModule.damageRateProp.set(config.damageAuraModule.damageRate, char.properties);
+  }
+  if (config.damageSolverModule && char.damageSolverModule) {
+    if (config.damageSolverModule.impactSusceptibility !== void 0) char.damageSolverModule.impactSusceptibilityProp.set(config.damageSolverModule.impactSusceptibility, char.properties);
+    if (config.damageSolverModule.minShockThreshold !== void 0) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
   }
 }
 function serializeGameObject(obj) {
@@ -11671,22 +11771,43 @@ class Prefab {
     }
   }
   applyPropertyToEntity(ent, propKey, value) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     if (ent.isCharacter) {
       const char = ent;
       switch (propKey) {
+        // Walking
         case "maxWalkSpeed":
+        case "walkingModule.maxWalkSpeed":
         case "Max Walk Speed (u/s)":
           if (char.walkingModule) char.walkingModule.maxWalkSpeedProp.set(Number(value), char.properties);
           return;
         case "maxWalkForce":
+        case "walkingModule.maxWalkForce":
         case "Max Walk Force (N)":
           if (char.walkingModule) char.walkingModule.maxWalkForceProp.set(Number(value), char.properties);
           return;
         case "sprintSpeed":
         case "maxSprintSpeed":
+        case "walkingModule.sprintSpeed":
         case "Max Sprint Speed (u/s)":
           if (char.walkingModule) char.walkingModule.maxSprintSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxWalkPower":
+        case "walkPowerCapacity":
+        case "walkingModule.maxWalkPower":
+        case "Max Walk Power (Watts)":
+          if (char.walkingModule) char.walkingModule.maxWalkPowerProp.set(Number(value), char.properties);
+          return;
+        case "maxSprintPower":
+        case "sprintPowerCapacity":
+        case "walkingModule.maxSprintPower":
+        case "Max Sprint Power (Watts)":
+          if (char.walkingModule) char.walkingModule.maxSprintPowerProp.set(Number(value), char.properties);
+          return;
+        case "airFriction":
+        case "walkingModule.airFriction":
+        case "Air / Floating Friction":
+          if (char.walkingModule) char.walkingModule.airFrictionProp.set(Number(value), char.properties);
           return;
         case "walkInAir":
         case "walkingModule.walkInAir":
@@ -11696,10 +11817,12 @@ class Prefab {
         case "canSprint":
         case "walkingModule.canSprint":
         case "Can Sprint (Shift / Gamepad)":
+        case "Can Sprint":
           if (char.walkingModule) char.walkingModule.canSprint = Boolean(value);
           return;
         case "walkConsumesEnergy":
         case "walkingModule.walkConsumesEnergy":
+        case "Walk Consumes Energy":
           if (char.walkingModule) char.walkingModule.walkConsumesEnergy = Boolean(value);
           return;
         case "walkAllowPartialPower":
@@ -11708,35 +11831,119 @@ class Prefab {
           return;
         case "sprintConsumesEnergy":
         case "walkingModule.sprintConsumesEnergy":
+        case "Sprint Consumes Energy":
           if (char.walkingModule) char.walkingModule.sprintConsumesEnergy = Boolean(value);
           return;
         case "sprintAllowPartialPower":
         case "walkingModule.sprintAllowPartialPower":
           if (char.walkingModule) char.walkingModule.sprintAllowPartialPower = Boolean(value);
           return;
+        // Jump
+        case "jumpImpulse":
+        case "jumpStrength":
+        case "jumpModule.jumpImpulse":
+        case "Jump Impulse (N·s)":
+        case "Jump Strength (N·s)":
+          if (char.jumpModule) char.jumpModule.jumpStrengthProp.set(Number(value), char.properties);
+          return;
+        case "maxInitialSpeed":
+        case "jumpModule.maxInitialSpeed":
+        case "Max Takeoff Speed (u/s)":
+          if (char.jumpModule) char.jumpModule.maxInitialSpeedProp.set(Number(value), char.properties);
+          return;
+        case "jumpPowerCapacity":
+        case "maxJumpPower":
+        case "jumpModule.jumpPowerCapacity":
+        case "Jump Power (Watts)":
+        case "Max Jump Power (Watts)":
+          if (char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(Number(value), char.properties);
+          return;
         case "jumpConsumesEnergy":
         case "jumpModule.jumpConsumesEnergy":
+        case "Jump Consumes Energy":
           char.jumpConsumesEnergy = Boolean(value);
           return;
         case "jumpAllowPartialPower":
         case "jumpModule.jumpAllowPartialPower":
           char.jumpAllowPartialPower = Boolean(value);
           return;
+        // Throw
+        case "throwForce":
+        case "maxThrowSpeed":
+        case "throwModule.maxThrowSpeed":
+        case "throwModule.throwForce":
+        case "Throw Launch Speed (u/s)":
+        case "Max Throw Speed (u/s)":
+          if (char.throwModule) {
+            char.throwModule.baseThrowForceProp.set(Number(value), char.properties);
+            char.throwModule.maxThrowSpeedProp.set(Number(value), char.properties);
+          }
+          return;
+        case "maxThrowHeight":
+        case "throwModule.maxThrowHeight":
+        case "Max Throw Height (u)":
+          if (char.throwModule) char.throwModule.maxThrowHeightProp.set(Number(value), char.properties);
+          return;
+        case "throwPowerCapacity":
+        case "maxPower":
+        case "maxThrowPower":
+        case "throwModule.maxPower":
+        case "throwModule.throwPowerCapacity":
+        case "Max Throw Power (Watts)":
+          if (char.throwModule) char.throwModule.maxPowerProp.set(Number(value), char.properties);
+          return;
         case "throwConsumesEnergy":
         case "throwModule.consumesEnergy":
+        case "Throw Consumes Energy":
           if (char.throwModule) char.throwModule.consumesEnergy = Boolean(value);
+          return;
+        // Pickup
+        case "pickupReach":
+        case "pickupModule.pickupReach":
+        case "Pickup Reach (3D) (u)":
+          if (char.pickupModule) char.pickupModule.pickupReachProp.set(Number(value), char.properties);
+          return;
+        case "maxPickupPower":
+        case "pickupPowerCapacity":
+        case "pickupModule.maxPower":
+        case "Max Pickup Power (Watts)":
+          if (char.pickupModule) char.pickupModule.maxPowerProp.set(Number(value), char.properties);
           return;
         case "pickupConsumesEnergy":
         case "pickupModule.consumesEnergy":
+        case "Pickup Consumes Energy":
           if (char.pickupModule) char.pickupModule.consumesEnergy = Boolean(value);
           return;
         case "pickupAllowPartialPower":
         case "pickupModule.allowPartialPower":
           if (char.pickupModule) char.pickupModule.allowPartialPower = Boolean(value);
           return;
+        // Climbing
+        case "climbSpeed":
+        case "climbingModule.climbSpeed":
+        case "Climb Speed (u/s)":
+        case "Max Climb Speed (u/s)":
+          if ((_a = char.climbingModule) == null ? void 0 : _a.maxClimbSpeedProp) char.climbingModule.maxClimbSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxAdhesion":
+        case "climbingModule.maxAdhesion":
+        case "Max Adhesion (N)":
+          if ((_b = char.climbingModule) == null ? void 0 : _b.maxAdhesionProp) char.climbingModule.maxAdhesionProp.set(Number(value), char.properties);
+          return;
+        case "climbPowerCapacity":
+        case "climbMaxPower":
+        case "climbingModule.maxPower":
+        case "Max Climb Power (Watts)":
+          if ((_c = char.climbingModule) == null ? void 0 : _c.maxPowerProp) char.climbingModule.maxPowerProp.set(Number(value), char.properties);
+          return;
+        case "horizontalClimb":
+        case "climbingModule.horizontalClimb":
+          if (char.climbingModule) char.climbingModule.horizontalClimb = Boolean(value);
+          return;
         case "climbConsumesEnergy":
         case "climbingModule.climbConsumesEnergy":
         case "climbingModule.consumesEnergy":
+        case "Climb Consumes Energy":
           if (char.climbingModule) char.climbingModule.consumesEnergy = Boolean(value);
           return;
         case "climbAllowPartialPower":
@@ -11744,80 +11951,168 @@ class Prefab {
         case "climbingModule.allowPartialPower":
           if (char.climbingModule) char.climbingModule.allowPartialPower = Boolean(value);
           return;
+        // Health
+        case "maxHp":
+        case "healthModule.maxHp":
+        case "Max HP":
+        case "Max Health (HP)":
+          if (char.healthModule) {
+            char.healthModule.maxHp = Number(value);
+            if (char.healthModule.maxHpProp) char.healthModule.maxHpProp.set(Number(value), char.properties);
+          }
+          return;
+        case "currentHp":
+        case "healthModule.currentHp":
+        case "Current HP":
+        case "Current Health (HP)":
+          if (char.healthModule) {
+            char.healthModule.currentHp = Number(value);
+            if (char.healthModule.currentHpProp) char.healthModule.currentHpProp.set(Number(value), char.properties);
+          }
+          return;
+        case "naturalHealRate":
+        case "healthModule.naturalHealRate":
+        case "Passive Heal Rate (HP/s)":
+          if (char.healthModule) {
+            char.healthModule.maxHealRate = Number(value);
+            if (char.healthModule.maxHealRateProp) char.healthModule.maxHealRateProp.set(Number(value), char.properties);
+          }
+          return;
+        case "hpPerJoule":
+        case "healthModule.hpPerJoule":
+        case "Healing Efficiency (HP/Joule)":
+          if ((_d = char.healthModule) == null ? void 0 : _d.hpPerJouleProp) char.healthModule.hpPerJouleProp.set(Number(value), char.properties);
+          return;
+        case "healthPowerCapacity":
+        case "healthMaxPower":
+        case "healthModule.maxPower":
+        case "Max Healing Power (Watts)":
+          if ((_e = char.healthModule) == null ? void 0 : _e.maxPowerProp) char.healthModule.maxPowerProp.set(Number(value), char.properties);
+          return;
         case "healthConsumesEnergy":
         case "healthModule.consumesEnergy":
+        case "Healing Consumes Energy":
           if (char.healthModule) char.healthModule.consumesEnergy = Boolean(value);
           return;
         case "healthAllowPartialPower":
         case "healthModule.allowPartialPower":
           if (char.healthModule) char.healthModule.allowPartialPower = Boolean(value);
           return;
-        case "jumpImpulse":
-        case "Jump Impulse (N·s)":
-        case "Jump Strength (N·s)":
-          if (char.jumpModule) char.jumpModule.jumpStrengthProp.set(Number(value), char.properties);
-          return;
-        case "maxInitialSpeed":
-        case "Max Takeoff Speed (u/s)":
-          if (char.jumpModule) char.jumpModule.maxInitialSpeedProp.set(Number(value), char.properties);
-          return;
-        case "jumpPowerCapacity":
-        case "Jump Power (Watts)":
-          if (char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(Number(value), char.properties);
-          return;
-        case "throwForce":
-        case "Throw Launch Speed (u/s)":
-          if (char.throwModule) char.throwModule.baseThrowForceProp.set(Number(value), char.properties);
-          return;
-        case "throwPowerCapacity":
-        case "maxPower":
-        case "Max Throw Power (Watts)":
-          if (char.throwModule) char.throwModule.maxPowerProp.set(Number(value), char.properties);
-          return;
-        case "maxThrowSpeed":
-        case "Max Throw Speed (u/s)":
-          if (char.throwModule) char.throwModule.maxThrowSpeedProp.set(Number(value), char.properties);
-          return;
-        case "maxThrowHeight":
-        case "Max Throw Height (u)":
-          if (char.throwModule) char.throwModule.maxThrowHeightProp.set(Number(value), char.properties);
-          return;
-        case "climbSpeed":
-        case "Climb Speed (u/s)":
-          if ((_a = char.climbingModule) == null ? void 0 : _a.maxClimbSpeedProp) char.climbingModule.maxClimbSpeedProp.set(Number(value), char.properties);
-          return;
-        case "maxHp":
-        case "Max HP":
-          if (char.healthModule) char.healthModule.maxHp = Number(value);
-          return;
-        case "currentHp":
-        case "Current HP":
-          if (char.healthModule) char.healthModule.currentHp = Number(value);
-          return;
-        case "naturalHealRate":
-        case "Passive Heal Rate (HP/s)":
-          if (char.healthModule) char.healthModule.maxHealRate = Number(value);
-          return;
+        // Energy Pool / Stamina
         case "staminaCapacity":
+        case "energyPool.staminaCapacity":
         case "Stamina Capacity (J)":
-          if ((_b = char.energyPool) == null ? void 0 : _b.maxStaminaProp) char.energyPool.maxStaminaProp.set(Number(value), char.properties);
+          if ((_f = char.energyPool) == null ? void 0 : _f.maxStaminaProp) char.energyPool.maxStaminaProp.set(Number(value), char.properties);
           return;
         case "staminaRegenRate":
+        case "energyPool.staminaRegenRate":
         case "Stamina Regen (W)":
-          if ((_c = char.energyPool) == null ? void 0 : _c.staminaRegenRateProp) char.energyPool.staminaRegenRateProp.set(Number(value), char.properties);
+        case "Passive Regen Rate (W = J/s)":
+          if ((_g = char.energyPool) == null ? void 0 : _g.staminaRegenRateProp) char.energyPool.staminaRegenRateProp.set(Number(value), char.properties);
           return;
         case "energyPoolCapacity":
+        case "energyPool.energyPoolCapacity":
         case "Calorie Pool Capacity (J)":
-          if ((_d = char.energyPool) == null ? void 0 : _d.maxEnergyProp) char.energyPool.maxEnergyProp.set(Number(value), char.properties);
+        case "Energy Pool Capacity (J)":
+        case "Max Energy Capacity (J)":
+          if ((_h = char.energyPool) == null ? void 0 : _h.maxEnergyProp) char.energyPool.maxEnergyProp.set(Number(value), char.properties);
           return;
+        case "currentStamina":
+        case "energyPool.currentStamina":
+        case "Current Stamina (Joules)":
+          if ((_i = char.energyPool) == null ? void 0 : _i.currentStaminaProp) char.energyPool.currentStaminaProp.set(Number(value), char.properties);
+          return;
+        case "currentEnergy":
+        case "energyPool.currentEnergy":
+        case "Current Energy (J)":
+          if ((_j = char.energyPool) == null ? void 0 : _j.currentEnergyProp) char.energyPool.currentEnergyProp.set(Number(value), char.properties);
+          return;
+        // Laser
         case "laserDamageRate":
-          if ((_e = char.laserModule) == null ? void 0 : _e.damageRateProp) char.laserModule.damageRateProp.set(Number(value), char.properties);
+        case "laserModule.damageRate":
+        case "Laser Damage Rate (HP/s)":
+          if ((_k = char.laserModule) == null ? void 0 : _k.damageRateProp) char.laserModule.damageRateProp.set(Number(value), char.properties);
           return;
+        case "laserThickness":
+        case "laserModule.thickness":
+        case "Beam Thickness (World Units)":
+          if ((_l = char.laserModule) == null ? void 0 : _l.thicknessProp) char.laserModule.thicknessProp.set(Number(value), char.properties);
+          return;
+        case "laserMaxPower":
+        case "laserModule.maxPower":
+        case "Max Power Rating (Watts)":
+        case "Laser Max Power (Watts)":
+          if ((_m = char.laserModule) == null ? void 0 : _m.maxPowerProp) char.laserModule.maxPowerProp.set(Number(value), char.properties);
+          return;
+        case "laserAllowPartialPower":
+        case "laserModule.allowPartialPower":
+          if (char.laserModule) char.laserModule.allowPartialPower = Boolean(value);
+          return;
+        // Melee
         case "meleeImpactForce":
-          if ((_f = char.meleeModule) == null ? void 0 : _f.maxForceProp) char.meleeModule.maxForceProp.set(Number(value), char.properties);
+        case "meleeModule.impactForce":
+        case "Impact Force (N·s)":
+        case "Max Punch Force (Newtons)":
+          if ((_n = char.meleeModule) == null ? void 0 : _n.maxForceProp) char.meleeModule.maxForceProp.set(Number(value), char.properties);
           return;
+        case "punchFrequency":
+        case "meleeModule.punchFrequency":
+        case "Punch Frequency (Hz)":
+          if ((_o = char.meleeModule) == null ? void 0 : _o.punchFrequencyProp) char.meleeModule.punchFrequencyProp.set(Number(value), char.properties);
+          return;
+        case "meleeReach":
+        case "meleeModule.reach":
+        case "Attack Reach (Meters)":
+          if ((_p = char.meleeModule) == null ? void 0 : _p.reachProp) char.meleeModule.reachProp.set(Number(value), char.properties);
+          return;
+        case "meleeWidth":
+        case "meleeModule.width":
+        case "Attack Width (Meters)":
+          if ((_q = char.meleeModule) == null ? void 0 : _q.widthProp) char.meleeModule.widthProp.set(Number(value), char.properties);
+          return;
+        case "meleeMaxPower":
+        case "meleeModule.maxPower":
+        case "Max Attack Power (Watts)":
+        case "Melee Max Power (Watts)":
+          if ((_r = char.meleeModule) == null ? void 0 : _r.maxPowerProp) char.meleeModule.maxPowerProp.set(Number(value), char.properties);
+          return;
+        case "meleeAllowPartialPower":
+        case "meleeModule.allowPartialPower":
+          if (char.meleeModule) char.meleeModule.allowPartialPower = Boolean(value);
+          return;
+        // Wall Edge Assist
+        case "hangDistance":
+        case "wallEdgeAssistModule.hangDistance":
+        case "Ledge Hang Distance (u)":
+          if ((_s = char.wallEdgeAssistModule) == null ? void 0 : _s.hangDistanceProp) char.wallEdgeAssistModule.hangDistanceProp.set(Number(value), char.properties);
+          return;
+        // Strength
         case "strength":
+        case "Muscle Strength Ratio (×)":
           char.strength = Number(value);
+          if (char.strengthProp) char.strengthProp.set(Number(value), char.properties);
+          return;
+        // Damage Aura
+        case "auraRadius":
+        case "damageAuraModule.damageRadius":
+        case "Aura Radius (u)":
+          if ((_t = char.damageAuraModule) == null ? void 0 : _t.damageRadiusProp) char.damageAuraModule.damageRadiusProp.set(Number(value), char.properties);
+          return;
+        case "damageAuraRate":
+        case "damageAuraModule.damageRate":
+        case "Damage Rate (HP/s)":
+          if ((_u = char.damageAuraModule) == null ? void 0 : _u.damageRateProp) char.damageAuraModule.damageRateProp.set(Number(value), char.properties);
+          return;
+        // Damage Solver
+        case "impactSusceptibility":
+        case "damageSolverModule.impactSusceptibility":
+        case "Impact Susceptibility (×)":
+          if ((_v = char.damageSolverModule) == null ? void 0 : _v.impactSusceptibilityProp) char.damageSolverModule.impactSusceptibilityProp.set(Number(value), char.properties);
+          return;
+        case "minShockThreshold":
+        case "damageSolverModule.minShockThreshold":
+        case "Min Shock Threshold (N·s)":
+          if ((_w = char.damageSolverModule) == null ? void 0 : _w.damageThresholdHpProp) char.damageSolverModule.damageThresholdHpProp.set(Number(value), char.properties);
           return;
       }
     }
