@@ -79,6 +79,7 @@ export interface WorldConfigDelta {
   objectsDelta?: {
     upsert?: SerializedGameObjectConfig[];
     deletedIds?: string[];
+    replaceAll?: SerializedGameObjectConfig[];
   };
 }
 
@@ -255,25 +256,29 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
         ...delta.globalPhysics,
       };
     } else if (section === "objects" && delta.objectsDelta) {
-      const { upsert, deletedIds } = delta.objectsDelta;
-      const objectMap = new Map<string, SerializedGameObjectConfig>();
-      for (const obj of updated.objects) {
-        objectMap.set(obj.id, obj);
-      }
-
-      if (deletedIds) {
-        for (const id of deletedIds) {
-          objectMap.delete(id);
+      if (delta.objectsDelta.replaceAll) {
+        updated.objects = [...delta.objectsDelta.replaceAll];
+      } else {
+        const { upsert, deletedIds } = delta.objectsDelta;
+        const objectMap = new Map<string, SerializedGameObjectConfig>();
+        for (const obj of updated.objects) {
+          objectMap.set(obj.id, obj);
         }
-      }
 
-      if (upsert) {
-        for (const item of upsert) {
-          objectMap.set(item.id, item);
+        if (deletedIds) {
+          for (const id of deletedIds) {
+            objectMap.delete(id);
+          }
         }
-      }
 
-      updated.objects = Array.from(objectMap.values());
+        if (upsert) {
+          for (const item of upsert) {
+            objectMap.set(item.id, item);
+          }
+        }
+
+        updated.objects = Array.from(objectMap.values());
+      }
     }
   }
 

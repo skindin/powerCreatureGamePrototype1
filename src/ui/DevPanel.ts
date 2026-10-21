@@ -485,8 +485,7 @@ export class DevPanel {
               ✓ In Sync (v1)
             </span>
           </div>
-          <div style="display: flex; gap: 4px;">
-            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changed settings to src/config/worldConfig.json">
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changes to src/config/worldConfig.json (Ctrl+S to save all)">
               💾 Save to Project
             </button>
             <button id="btn-toggle-save-options" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.72rem;" title="Selective Save Options">
@@ -513,8 +512,9 @@ export class DevPanel {
             <span>Arena Walls & Dimensions</span>
             <span id="badge-dirty-arena" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
           </label>
-          <div style="display: flex; justify-content: flex-end; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 4px;">
-            <button id="btn-revert-from-project" class="btn-secondary-action" style="font-size: 0.68rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">↺ Reload from Disk</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 4px;">
+            <button id="btn-revert-from-project" class="btn-secondary-action" style="font-size: 0.68rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">↺ Reload</button>
+            <button id="btn-save-all-project" class="btn-primary-action" style="font-size: 0.68rem; background: #0284c7; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer;" title="Save all sections and objects (Ctrl+S)">Save All (Ctrl+S)</button>
           </div>
         </div>
       </div>
@@ -3603,6 +3603,18 @@ export class DevPanel {
       this.reloadFromDisk();
     });
 
+    this.container.querySelector("#btn-save-all-project")?.addEventListener("click", () => {
+      this.saveProjectConfig(true);
+    });
+
+    // Global Ctrl+S / Cmd+S shortcut to save everything to project
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S" || e.code === "KeyS")) {
+        e.preventDefault();
+        this.saveProjectConfig(true);
+      }
+    });
+
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
       const selectedId = this.entitySelectorEl.value;
@@ -5204,15 +5216,66 @@ export class DevPanel {
     if (badgeArena) badgeArena.style.display = this.dirtyState.arena ? "inline" : "none";
   }
 
-  public async saveProjectConfig(): Promise<void> {
+  public showSaveToast(message: string, isError: boolean = false): void {
+    let toast = document.getElementById("dev-save-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "dev-save-toast";
+      toast.style.position = "fixed";
+      toast.style.bottom = "24px";
+      toast.style.right = "24px";
+      toast.style.zIndex = "99999";
+      toast.style.padding = "8px 14px";
+      toast.style.borderRadius = "8px";
+      toast.style.fontSize = "0.80rem";
+      toast.style.fontWeight = "600";
+      toast.style.fontFamily = "system-ui, -apple-system, sans-serif";
+      toast.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.4)";
+      toast.style.display = "flex";
+      toast.style.alignItems = "center";
+      toast.style.gap = "8px";
+      toast.style.transition = "opacity 0.25s ease, transform 0.25s ease";
+      toast.style.pointerEvents = "none";
+      document.body.appendChild(toast);
+    }
+    toast.style.background = isError ? "rgba(185, 28, 28, 0.95)" : "rgba(15, 23, 42, 0.95)";
+    toast.style.color = isError ? "#fecaca" : "#38bdf8";
+    toast.style.border = isError ? "1px solid rgba(239, 68, 68, 0.5)" : "1px solid rgba(56, 189, 248, 0.4)";
+    toast.textContent = message;
+    toast.style.opacity = "1";
+    toast.style.transform = "translateY(0)";
+
+    if ((this as any)._toastTimeout) {
+      clearTimeout((this as any)._toastTimeout);
+    }
+    (this as any)._toastTimeout = setTimeout(() => {
+      if (toast) {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(10px)";
+      }
+    }, 2400);
+  }
+
+  public async saveProjectConfig(saveAll: boolean = false): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
     const checkPhysics = (this.container.querySelector("#check-save-physics") as HTMLInputElement)?.checked ?? true;
     const checkObjects = (this.container.querySelector("#check-save-objects") as HTMLInputElement)?.checked ?? true;
     const checkArena = (this.container.querySelector("#check-save-arena") as HTMLInputElement)?.checked ?? true;
 
     const sections: ("arena" | "globalPhysics" | "objects")[] = [];
-    if (checkPhysics && this.dirtyState.globalPhysics) sections.push("globalPhysics");
-    if (checkArena && this.dirtyState.arena) sections.push("arena");
-    if (checkObjects && (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0)) sections.push("objects");
+    if (saveAll || (checkPhysics && this.dirtyState.globalPhysics)) sections.push("globalPhysics");
+    if (saveAll || (checkArena && this.dirtyState.arena)) sections.push("arena");
+    if (saveAll || (checkObjects && (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0))) sections.push("objects");
+
+    if (saveAll) {
+      if (!sections.includes("globalPhysics")) sections.push("globalPhysics");
+      if (!sections.includes("arena")) sections.push("arena");
+      if (!sections.includes("objects")) sections.push("objects");
+    }
 
     const delta: WorldConfigDelta = {
       clientVersion: this.currentConfigVersion,
@@ -5241,10 +5304,18 @@ export class DevPanel {
     }
 
     if (sections.includes("objects")) {
-      delta.objectsDelta = {
-        upsert: Array.from(this.dirtyState.modifiedObjects.values()).map((o) => serializeGameObject(o)),
-        deletedIds: Array.from(this.dirtyState.deletedObjectIds),
-      };
+      if (saveAll) {
+        delta.objectsDelta = {
+          replaceAll: this.objects.map((o) => serializeGameObject(o)),
+          upsert: this.objects.map((o) => serializeGameObject(o)),
+          deletedIds: Array.from(this.dirtyState.deletedObjectIds),
+        };
+      } else {
+        delta.objectsDelta = {
+          upsert: Array.from(this.dirtyState.modifiedObjects.values()).map((o) => serializeGameObject(o)),
+          deletedIds: Array.from(this.dirtyState.deletedObjectIds),
+        };
+      }
     }
 
     const hasAnyChanges = sections.length > 0;
@@ -5256,12 +5327,13 @@ export class DevPanel {
         btn.textContent = "Nothing to Save";
         setTimeout(() => { if (btn) btn.textContent = prev; }, 1200);
       }
+      this.showSaveToast("✓ Everything is already in sync with project");
       return;
     }
 
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "💾 Saving...";
+      btn.textContent = saveAll ? "💾 Saving All..." : "💾 Saving...";
     }
 
     try {
@@ -5279,17 +5351,24 @@ export class DevPanel {
       const res = await resp.json();
       this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
 
-      if (delta.globalPhysics) this.dirtyState.globalPhysics = false;
-      if (delta.arena) this.dirtyState.arena = false;
-      if (delta.objectsDelta) {
-        if (delta.objectsDelta.upsert) {
-          for (const item of delta.objectsDelta.upsert) {
-            this.dirtyState.modifiedObjects.delete(item.id);
+      if (saveAll) {
+        this.dirtyState.globalPhysics = false;
+        this.dirtyState.arena = false;
+        this.dirtyState.modifiedObjects.clear();
+        this.dirtyState.deletedObjectIds.clear();
+      } else {
+        if (delta.globalPhysics) this.dirtyState.globalPhysics = false;
+        if (delta.arena) this.dirtyState.arena = false;
+        if (delta.objectsDelta) {
+          if (delta.objectsDelta.upsert) {
+            for (const item of delta.objectsDelta.upsert) {
+              this.dirtyState.modifiedObjects.delete(item.id);
+            }
           }
-        }
-        if (delta.objectsDelta.deletedIds) {
-          for (const delId of delta.objectsDelta.deletedIds) {
-            this.dirtyState.deletedObjectIds.delete(delId);
+          if (delta.objectsDelta.deletedIds) {
+            for (const delId of delta.objectsDelta.deletedIds) {
+              this.dirtyState.deletedObjectIds.delete(delId);
+            }
           }
         }
       }
@@ -5297,7 +5376,7 @@ export class DevPanel {
       this.updateDirtyBadge();
 
       if (btn) {
-        btn.textContent = "✓ Saved!";
+        btn.textContent = saveAll ? "✓ Saved Everything!" : "✓ Saved!";
         setTimeout(() => {
           if (btn) {
             btn.disabled = false;
@@ -5305,8 +5384,11 @@ export class DevPanel {
           }
         }, 1500);
       }
+
+      this.showSaveToast(saveAll ? `💾 Saved everything to project! (v${this.currentConfigVersion})` : `💾 Saved changes to project! (v${this.currentConfigVersion})`);
     } catch (err: any) {
       console.error("Failed to save project config:", err);
+      this.showSaveToast(`❌ Failed to save: ${err.message || String(err)}`, true);
       alert("Failed to save project configuration:\n" + (err.message || String(err)));
       if (btn) {
         btn.disabled = false;
