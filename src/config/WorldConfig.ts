@@ -123,6 +123,66 @@ export interface SerializedGameObjectConfig {
   dynamicGroundFrictionMod?: number;
 }
 
+import type { Character } from "../character/Character.js";
+
+export interface SerializedCharacterConfig {
+  id?: string;
+  name?: string;
+  prefabId?: string;
+  color?: string;
+  mass?: number;
+  colliderRadius?: number;
+
+  hasWalking?: boolean;
+  walkingModule?: {
+    maxWalkForce?: number;
+    maxWalkSpeed?: number;
+    sprintSpeed?: number;
+    canSprint?: boolean;
+    walkInAir?: boolean;
+  };
+
+  hasJump?: boolean;
+  jumpModule?: {
+    jumpImpulse?: number;
+  };
+
+  hasThrow?: boolean;
+  throwModule?: {
+    throwForce?: number;
+  };
+
+  hasClimbing?: boolean;
+  climbingModule?: {
+    climbSpeed?: number;
+  };
+
+  hasHealth?: boolean;
+  healthModule?: {
+    maxHp?: number;
+    currentHp?: number;
+    naturalHealRate?: number;
+  };
+
+  hasLaser?: boolean;
+  laserModule?: {
+    maxRange?: number;
+    damageRate?: number;
+  };
+
+  hasMelee?: boolean;
+  meleeModule?: {
+    impactForce?: number;
+  };
+
+  hasEnergyPool?: boolean;
+  energyPool?: {
+    staminaCapacity?: number;
+    staminaRegenRate?: number;
+    energyPoolCapacity?: number;
+  };
+}
+
 export interface WorldConfig {
   version: number;
   lastSaved: string;
@@ -138,19 +198,168 @@ export interface WorldConfig {
     collisionDamageScale: number;
     collisionMode?: "dynamic" | "discrete" | "continuous" | "naive";
   };
+  player?: SerializedCharacterConfig;
   objects: SerializedGameObjectConfig[];
 }
 
 export interface WorldConfigDelta {
   clientVersion: number;
-  sections: ("arena" | "globalPhysics" | "objects")[];
+  sections: ("arena" | "globalPhysics" | "player" | "objects")[];
   arena?: Partial<WorldConfig["arena"]>;
   globalPhysics?: Partial<WorldConfig["globalPhysics"]>;
+  player?: SerializedCharacterConfig;
   objectsDelta?: {
     upsert?: SerializedGameObjectConfig[];
     deletedIds?: string[];
     replaceAll?: SerializedGameObjectConfig[];
   };
+}
+
+/**
+ * Serializes a live runtime Character into a persistent JSON-safe configuration object.
+ */
+export function serializeCharacter(char: Character): SerializedCharacterConfig {
+  const result: SerializedCharacterConfig = {
+    id: char.id,
+    name: char.name,
+    prefabId: char.prefabId || "prefab_player",
+    color: char.color,
+    mass: char.rigidbodyModule ? char.rigidbodyModule.massProp.get(char.properties) : char.mass,
+    colliderRadius: char.colliderModule ? char.colliderModule.radiusProp.get(char.properties) : char.colliderRadius,
+  };
+
+  if (char.walkingModule) {
+    result.hasWalking = char.walkingModule.enabled;
+    result.walkingModule = {
+      maxWalkForce: char.walkingModule.maxWalkForceProp.get(char.properties),
+      maxWalkSpeed: char.walkingModule.maxWalkSpeedProp.get(char.properties),
+      sprintSpeed: char.walkingModule.maxSprintSpeedProp.get(char.properties),
+      canSprint: char.walkingModule.canSprint,
+      walkInAir: char.walkingModule.walkInAir,
+    };
+  } else {
+    result.hasWalking = false;
+  }
+
+  if (char.jumpModule) {
+    result.hasJump = char.jumpModule.enabled;
+    result.jumpModule = {
+      jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties),
+    };
+  } else {
+    result.hasJump = false;
+  }
+
+  if (char.throwModule) {
+    result.hasThrow = char.throwModule.enabled;
+    result.throwModule = {
+      throwForce: char.throwModule.baseThrowForceProp.get(char.properties),
+    };
+  } else {
+    result.hasThrow = false;
+  }
+
+  if (char.climbingModule) {
+    result.hasClimbing = char.climbingModule.enabled;
+    result.climbingModule = {
+      climbSpeed: char.climbingModule.maxClimbSpeedProp?.get(char.properties) ?? 3.5,
+    };
+  } else {
+    result.hasClimbing = false;
+  }
+
+  if (char.healthModule) {
+    result.hasHealth = char.healthModule.enabled;
+    result.healthModule = {
+      maxHp: char.healthModule.getMaxHp(char.properties),
+      currentHp: char.healthModule.getCurrentHp(char.properties),
+      naturalHealRate: char.healthModule.getMaxHealRate(char.properties),
+    };
+  } else {
+    result.hasHealth = false;
+  }
+
+  if (char.laserModule) {
+    result.hasLaser = char.laserModule.enabled;
+    result.laserModule = {
+      maxRange: 15,
+      damageRate: char.laserModule.damageRateProp?.get(char.properties) ?? 25,
+    };
+  } else {
+    result.hasLaser = false;
+  }
+
+  if (char.meleeModule) {
+    result.hasMelee = char.meleeModule.enabled;
+    result.meleeModule = {
+      impactForce: char.meleeModule.maxForceProp?.get(char.properties) ?? 15,
+    };
+  } else {
+    result.hasMelee = false;
+  }
+
+  if (char.energyPool) {
+    result.hasEnergyPool = char.energyPool.enabled;
+    result.energyPool = {
+      staminaCapacity: char.energyPool.maxStaminaProp?.get(char.properties) ?? 5000,
+      staminaRegenRate: char.energyPool.staminaRegenRateProp?.get(char.properties) ?? 500,
+      energyPoolCapacity: char.energyPool.maxEnergyProp?.get(char.properties) ?? 10000,
+    };
+  } else {
+    result.hasEnergyPool = false;
+  }
+
+  return result;
+}
+
+/**
+ * Applies saved character configuration onto an active Character instance.
+ */
+export function applyCharacterConfig(char: Character, config: SerializedCharacterConfig): void {
+  if (config.name) char.name = config.name;
+  if (config.color) char.color = config.color;
+  if (config.mass !== undefined) {
+    char.mass = config.mass;
+    if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);
+  }
+  if (config.colliderRadius !== undefined) {
+    char.colliderRadius = config.colliderRadius;
+    if (char.colliderModule) char.colliderModule.radiusProp.set(config.colliderRadius, char.properties);
+  }
+
+  if (config.hasWalking === false) {
+    char.walkingModule = null;
+  } else if (config.walkingModule && char.walkingModule) {
+    char.walkingModule.enabled = true;
+    if (config.walkingModule.maxWalkForce !== undefined) char.walkingModule.maxWalkForceProp.set(config.walkingModule.maxWalkForce, char.properties);
+    if (config.walkingModule.maxWalkSpeed !== undefined) char.walkingModule.maxWalkSpeedProp.set(config.walkingModule.maxWalkSpeed, char.properties);
+    if (config.walkingModule.sprintSpeed !== undefined) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
+    if (config.walkingModule.canSprint !== undefined) char.walkingModule.canSprint = config.walkingModule.canSprint;
+    if (config.walkingModule.walkInAir !== undefined) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
+  }
+
+  if (config.hasJump === false) {
+    char.jumpModule = null;
+  } else if (config.jumpModule && char.jumpModule) {
+    char.jumpModule.enabled = true;
+    if (config.jumpModule.jumpImpulse !== undefined) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+  }
+
+  if (config.hasThrow === false) {
+    char.throwModule = null;
+  } else if (config.throwModule && char.throwModule) {
+    char.throwModule.enabled = true;
+    if (config.throwModule.throwForce !== undefined) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+  }
+
+  if (config.hasHealth === false) {
+    char.healthModule = null;
+  } else if (config.healthModule && char.healthModule) {
+    char.healthModule.enabled = true;
+    if (config.healthModule.maxHp !== undefined) char.healthModule.maxHp = config.healthModule.maxHp;
+    if (config.healthModule.currentHp !== undefined) char.healthModule.currentHp = config.healthModule.currentHp;
+    if (config.healthModule.naturalHealRate !== undefined) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+  }
 }
 
 /**

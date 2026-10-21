@@ -1,6 +1,6 @@
 {
-  "version": 27,
-  "lastSaved": "2026-10-21T08:15:38.381Z",
+  "version": 28,
+  "lastSaved": "2026-10-21T08:16:50.104Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -322,14 +322,53 @@
     "collisionDamageScale": 0.1,
     "collisionMode": "dynamic"
   },
+  "player": {
+    "name": "Player",
+    "prefabId": "prefab_player",
+    "color": "#f59e0b",
+    "mass": 1.2,
+    "colliderRadius": 0.44,
+    "hasWalking": true,
+    "walkingModule": {
+      "maxWalkForce": 80,
+      "maxWalkSpeed": 5.2,
+      "sprintSpeed": 8.5,
+      "canSprint": true,
+      "walkInAir": false
+    },
+    "hasJump": true,
+    "jumpModule": {
+      "jumpImpulse": 18.5
+    },
+    "hasThrow": true,
+    "throwModule": {
+      "throwForce": 14
+    },
+    "hasClimbing": true,
+    "climbingModule": {
+      "climbSpeed": 3.5
+    },
+    "hasHealth": true,
+    "healthModule": {
+      "maxHp": 100,
+      "currentHp": 100,
+      "naturalHealRate": 5
+    },
+    "hasEnergyPool": true,
+    "energyPool": {
+      "staminaCapacity": 5000,
+      "staminaRegenRate": 500,
+      "energyPoolCapacity": 10000
+    }
+  },
   "objects": [
     {
       "id": "stone-ground-1",
       "name": "Small Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 19.6,
-        "y": 3.57,
+        "x": 4.2,
+        "y": 5.8,
         "z": 0
       },
       "color": "#a8a29e",
@@ -392,8 +431,8 @@
       "name": "Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 5.2,
-        "y": 8.43,
+        "x": 4.9,
+        "y": 8.38,
         "z": 0.45
       },
       "color": "#78716c",
@@ -456,8 +495,8 @@
       "name": "Heavy Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 19.68,
-        "y": 4.59,
+        "x": 8.2,
+        "y": 4.5,
         "z": 0
       },
       "color": "#57534e",
@@ -584,8 +623,8 @@
       "name": "Small Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 17.44,
-        "y": 9.96,
+        "x": 15.2,
+        "y": 5.8,
         "z": 0
       },
       "color": "#a8a29e",
@@ -648,8 +687,8 @@
       "name": "Heavy Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 15.76,
-        "y": 8.64,
+        "x": 15.8,
+        "y": 8.5,
         "z": 0
       },
       "color": "#57534e",
@@ -836,280 +875,146 @@
       }
     },
     {
-      "id": "obj-er3juaz",
-      "name": "Apple",
-      "prefabId": "prefab_apple",
-      "position": {
-        "x": 3.5,
-        "y": 7,
-        "z": 0
-      },
-      "color": "#22c55e",
-      "visualShape": "circle",
-      "isSleeping": true,
-      "hasRigidbody": true,
-      "hasCollider": true,
-      "hasFriction": true,
-      "hasBounce": true,
-      "hasVerticalPosition": true,
-      "hasGravity": true,
-      "hasRollModule": false,
-      "hasConsumableModule": true,
-      "hasHealthModule": false,
-      "hasDamageAuraModule": false,
-      "hasDamageSolverModule": false,
-      "mass": 0.35,
-      "colliderRadius": 0.25,
-      "bounceMod": 0.2,
-      "verticalBounce": true,
-      "staticGroundFrictionMod": 1,
-      "dynamicGroundFrictionMod": 1,
-      "rigidbodyModule": {
-        "enabled": true,
-        "mass": 0.35,
-        "collisionMode": "dynamic",
-        "hasVerticalVelocity": true
-      },
-      "colliderModule": {
-        "enabled": true,
-        "radius": 0.25
-      },
-      "frictionModule": {
-        "enabled": true,
-        "staticFrictionMod": 1,
-        "dynamicFrictionMod": 1
-      },
-      "bounceModule": {
-        "enabled": true,
-        "bounceMod": 0.2,
-        "verticalBounce": true
-      },
-      "verticalPositionModule": {
-        "enabled": true,
-        "z": 0
-      },
-      "gravityModule": {
-        "enabled": true
-      },
-      "consumableModule": {
-        "enabled": true,
-        "tag": "food",
-        "totalEnergyJoules": 4000,
-        "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
-        "healRate": 0,
-        "minScaleFloor": 0.35,
-        "minRadiusFloor": 0.12
-      }
-    },
-    {
-      "id": "obj-ws3275o",
-      "name": "Apple",
-      "prefabId": "prefab_apple",
-      "position": {
-        "x": 16.5,
-        "y": 7,
-        "z": 0
-      },
-      "color": "#22c55e",
-      "visualShape": "circle",
-      "isSleeping": true,
-      "hasRigidbody": true,
-      "hasCollider": true,
-      "hasFriction": true,
-      "hasBounce": true,
-      "hasVerticalPosition": true,
-      "hasGravity": true,
-      "hasRollModule": false,
-      "hasConsumableModule": true,
-      "hasHealthModule": false,
-      "hasDamageAuraModule": false,
-      "hasDamageSolverModule": false,
-      "mass": 0.35,
-      "colliderRadius": 0.25,
-      "bounceMod": 0.2,
-      "verticalBounce": true,
-      "staticGroundFrictionMod": 1,
-      "dynamicGroundFrictionMod": 1,
-      "rigidbodyModule": {
-        "enabled": true,
-        "mass": 0.35,
-        "collisionMode": "dynamic",
-        "hasVerticalVelocity": true
-      },
-      "colliderModule": {
-        "enabled": true,
-        "radius": 0.25
-      },
-      "frictionModule": {
-        "enabled": true,
-        "staticFrictionMod": 1,
-        "dynamicFrictionMod": 1
-      },
-      "bounceModule": {
-        "enabled": true,
-        "bounceMod": 0.2,
-        "verticalBounce": true
-      },
-      "verticalPositionModule": {
-        "enabled": true,
-        "z": 0
-      },
-      "gravityModule": {
-        "enabled": true
-      },
-      "consumableModule": {
-        "enabled": true,
-        "tag": "food",
-        "totalEnergyJoules": 4000,
-        "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
-        "healRate": 0,
-        "minScaleFloor": 0.35,
-        "minRadiusFloor": 0.12
-      }
-    },
-    {
-      "id": "obj-e1gv0uu",
-      "name": "Apple",
-      "prefabId": "prefab_apple",
-      "position": {
-        "x": 10,
-        "y": 11.8,
-        "z": 0
-      },
-      "color": "#22c55e",
-      "visualShape": "circle",
-      "isSleeping": true,
-      "hasRigidbody": true,
-      "hasCollider": true,
-      "hasFriction": true,
-      "hasBounce": true,
-      "hasVerticalPosition": true,
-      "hasGravity": true,
-      "hasRollModule": false,
-      "hasConsumableModule": true,
-      "hasHealthModule": false,
-      "hasDamageAuraModule": false,
-      "hasDamageSolverModule": false,
-      "mass": 0.35,
-      "colliderRadius": 0.25,
-      "bounceMod": 0.2,
-      "verticalBounce": true,
-      "staticGroundFrictionMod": 1,
-      "dynamicGroundFrictionMod": 1,
-      "rigidbodyModule": {
-        "enabled": true,
-        "mass": 0.35,
-        "collisionMode": "dynamic",
-        "hasVerticalVelocity": true
-      },
-      "colliderModule": {
-        "enabled": true,
-        "radius": 0.25
-      },
-      "frictionModule": {
-        "enabled": true,
-        "staticFrictionMod": 1,
-        "dynamicFrictionMod": 1
-      },
-      "bounceModule": {
-        "enabled": true,
-        "bounceMod": 0.2,
-        "verticalBounce": true
-      },
-      "verticalPositionModule": {
-        "enabled": true,
-        "z": 0
-      },
-      "gravityModule": {
-        "enabled": true
-      },
-      "consumableModule": {
-        "enabled": true,
-        "tag": "food",
-        "totalEnergyJoules": 4000,
-        "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
-        "healRate": 0,
-        "minScaleFloor": 0.35,
-        "minRadiusFloor": 0.12
-      }
-    },
-    {
-      "id": "obj-da9v27p",
-      "name": "Apple",
-      "prefabId": "prefab_apple",
-      "position": {
-        "x": 10,
-        "y": 7,
-        "z": 1
-      },
-      "color": "#22c55e",
-      "visualShape": "circle",
-      "isSleeping": true,
-      "hasRigidbody": true,
-      "hasCollider": true,
-      "hasFriction": true,
-      "hasBounce": true,
-      "hasVerticalPosition": true,
-      "hasGravity": true,
-      "hasRollModule": false,
-      "hasConsumableModule": true,
-      "hasHealthModule": false,
-      "hasDamageAuraModule": false,
-      "hasDamageSolverModule": false,
-      "mass": 0.35,
-      "colliderRadius": 0.25,
-      "bounceMod": 0.2,
-      "verticalBounce": true,
-      "staticGroundFrictionMod": 1,
-      "dynamicGroundFrictionMod": 1,
-      "rigidbodyModule": {
-        "enabled": true,
-        "mass": 0.35,
-        "collisionMode": "dynamic",
-        "hasVerticalVelocity": true
-      },
-      "colliderModule": {
-        "enabled": true,
-        "radius": 0.25
-      },
-      "frictionModule": {
-        "enabled": true,
-        "staticFrictionMod": 1,
-        "dynamicFrictionMod": 1
-      },
-      "bounceModule": {
-        "enabled": true,
-        "bounceMod": 0.2,
-        "verticalBounce": true
-      },
-      "verticalPositionModule": {
-        "enabled": true,
-        "z": 1
-      },
-      "gravityModule": {
-        "enabled": true
-      },
-      "consumableModule": {
-        "enabled": true,
-        "tag": "food",
-        "totalEnergyJoules": 4000,
-        "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
-        "healRate": 0,
-        "minScaleFloor": 0.35,
-        "minRadiusFloor": 0.12
-      }
-    },
-    {
-      "id": "obj-bsvcgi1",
+      "id": "obj-u5fhrng",
       "name": "Apple",
       "prefabId": "prefab_apple",
       "position": {
         "x": 10,
         "y": 2.2,
+        "z": 0
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 800,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
+    },
+    {
+      "id": "obj-4qdj5db",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 10,
+        "y": 7,
+        "z": 1
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 1
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 800,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
+    },
+    {
+      "id": "obj-zblid1b",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 3.5,
+        "y": 7,
         "z": 0
       },
       "color": "#22c55e",

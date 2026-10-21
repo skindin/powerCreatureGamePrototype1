@@ -369,13 +369,22 @@ function autoTunnelPlugin(): Plugin {
             } catch {}
 
             // Merge delta selectively
-            const updatedConfig = {
+            const updatedConfig: any = {
               version: (currentConfig.version || 1) + 1,
               lastSaved: new Date().toISOString(),
               arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
               globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
               objects: [...(currentConfig.objects || [])],
             };
+
+            if (delta.player) {
+              updatedConfig.player = {
+                ...(currentConfig.player || {}),
+                ...delta.player,
+              };
+            } else if (currentConfig.player) {
+              updatedConfig.player = currentConfig.player;
+            }
 
             if (delta.arena?.tileGrid) {
               updatedConfig.arena.tileGrid = delta.arena.tileGrid.map((row: any) => [...row]);

@@ -10880,296 +10880,77 @@ class SceneSpawner {
     return { x: arena.width / 2, y: arena.height / 2, z: 0 };
   }
 }
-class Prefab {
+class DamageAuraModule {
   constructor(options) {
-    __publicField(this, "id");
-    __publicField(this, "name");
-    __publicField(this, "icon");
-    __publicField(this, "archetype");
-    this.id = options.id;
-    this.name = options.name;
-    this.icon = options.icon ?? "📦";
-    this.archetype = options.archetype;
+    __publicField(this, "id", "damageAura");
+    __publicField(this, "name", "Damage Aura");
+    __publicField(this, "enabled", true);
+    /** Radius in world units within which objects take damage */
+    __publicField(this, "damageRadiusProp");
+    /** Health points drained per second (HP / s) */
+    __publicField(this, "damageRateProp");
+    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
+    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  get damageRadius() {
+    return this.damageRadiusProp.literalValue;
+  }
+  set damageRadius(val) {
+    this.damageRadiusProp.literalValue = Math.max(0.1, val);
+  }
+  get damageRate() {
+    return this.damageRateProp.literalValue;
+  }
+  set damageRate(val) {
+    this.damageRateProp.literalValue = Math.max(0, val);
+  }
+  getDamageRadius(registry) {
+    return this.damageRadiusProp.get(registry);
+  }
+  getDamageRate(registry) {
+    return this.damageRateProp.get(registry);
   }
   /**
-   * Instantiates a new live GameObject from this prefab.
+   * Continuous update tick:
+   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
    */
-  instantiate(pos, arena) {
-    const GameObjectClass = this.archetype.constructor;
-    let cloneConsumable = null;
-    if (this.archetype.consumableModule) {
-      const src = this.archetype.consumableModule;
-      cloneConsumable = new ConsumableModule({
-        tag: src.tag,
-        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        consumeRateWatts: src.consumeRateWattsProp.literalValue,
-        healRate: src.healRateProp.literalValue,
-        minScaleFloor: src.minScaleFloor,
-        minRadiusFloor: src.minRadiusFloor
-      });
-      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
-    }
-    let cloneRoll = null;
-    if (this.archetype.rollModule) {
-      cloneRoll = new RollModule({
-        enabled: this.archetype.rollModule.enabled,
-        rollResistance: this.archetype.rollModule.rollResistance,
-        bumpyRollEnabled: this.archetype.rollModule.bumpyRollEnabled,
-        bumpiness: this.archetype.rollModule.bumpiness,
-        seed: this.archetype.rollModule.seed
-      });
-    }
-    const spawnPos = {
-      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
-      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
-      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
-    };
-    const instance = new GameObjectClass({
-      name: this.archetype.name,
-      position: spawnPos,
-      color: this.archetype.color,
-      visualShape: this.archetype.visualShape,
-      mass: this.archetype.mass,
-      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
-      bounceMod: this.archetype.bounceMod,
-      hasGravity: this.archetype.hasGravity,
-      hasVerticalPosition: this.archetype.hasVerticalPosition,
-      consumableModule: cloneConsumable,
-      rollModule: cloneRoll
-    });
-    instance.prefabId = this.id;
-    instance.overriddenProperties = /* @__PURE__ */ new Set();
-    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
-      arena.syncEntitiesWithWalls([instance]);
-    }
-    return instance;
-  }
-  /**
-   * Updates a property on the prefab archetype and cascades the change to all
-   * live instances that have not overridden this property.
-   */
-  setProperty(propKey, value, liveObjects) {
-    this.applyPropertyToEntity(this.archetype, propKey, value);
-    for (const obj of liveObjects) {
-      if (obj.prefabId === this.id) {
-        if (!obj.overriddenProperties.has(propKey)) {
-          this.applyPropertyToEntity(obj, propKey, value);
-        }
+  update(dt, sourceEntity, arenaOrTargets) {
+    if (!this.enabled || dt <= 0) return;
+    const registry = sourceEntity.properties;
+    const radius = this.getDamageRadius(registry);
+    const rate = this.getDamageRate(registry);
+    if (radius <= 0.01 || rate <= 0) return;
+    const damageThisFrame = rate * dt;
+    const srcX = sourceEntity.position.x;
+    const srcY = sourceEntity.position.y;
+    const srcZ = sourceEntity.position.z ?? 0;
+    const radiusSq = radius * radius;
+    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
+    for (const target of entities) {
+      if (target === sourceEntity) continue;
+      const healthMod = target.healthModule;
+      if (!healthMod || !healthMod.enabled) continue;
+      const targetX = target.position.x;
+      const targetY = target.position.y;
+      const targetZ = target.position.z ?? 0;
+      const dx = targetX - srcX;
+      const dy = targetY - srcY;
+      const dz = targetZ - srcZ;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq <= radiusSq) {
+        healthMod.takeDamage(damageThisFrame, target.properties, {
+          id: "damage_aura",
+          name: "Aura",
+          type: "continuous",
+          rate,
+          color: "#a855f7",
+          isHeal: false
+        });
       }
     }
   }
-  applyPropertyToEntity(ent, propKey, value) {
-    switch (propKey) {
-      case "name":
-        ent.name = String(value);
-        break;
-      case "color":
-        ent.color = String(value);
-        break;
-      case "visualShape":
-        ent.visualShape = value === "box" ? "box" : "circle";
-        break;
-      case "mass":
-        ent.mass = Number(value);
-        if (ent.rigidbodyModule) ent.rigidbodyModule.massProp.literalValue = Number(value);
-        break;
-      case "colliderRadius":
-        ent.colliderRadius = Number(value);
-        if (ent.colliderModule) ent.colliderModule.radius = Number(value);
-        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
-        break;
-      case "consumable_totalEnergy":
-        if (ent.consumableModule) {
-          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
-          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
-            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
-          }
-        }
-        break;
-      case "consumable_consumeRate":
-        if (ent.consumableModule) {
-          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
-        }
-        break;
-      case "consumable_healRate":
-        if (ent.consumableModule) {
-          ent.consumableModule.healRateProp.literalValue = Number(value);
-        }
-        break;
-      case "consumable_tag":
-        if (ent.consumableModule) {
-          ent.consumableModule.tag = String(value);
-        }
-        break;
-    }
-  }
 }
-class PrefabManager {
-  constructor() {
-    __publicField(this, "prefabs", /* @__PURE__ */ new Map());
-    __publicField(this, "onPrefabChangedCallbacks", /* @__PURE__ */ new Set());
-    this.initDefaultPrefabs();
-  }
-  initDefaultPrefabs() {
-    const appleArchetype = new GameObject({
-      id: "archetype_apple",
-      name: "Apple",
-      position: { x: 0, y: 0, z: 0 },
-      color: "#22c55e",
-      visualShape: "circle",
-      mass: 0.35,
-      colliderRadius: 0.25,
-      bounceMod: 0.2,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      consumableModule: new ConsumableModule({
-        tag: "food",
-        totalEnergyJoules: 4e3,
-        remainingEnergyJoules: 4e3,
-        consumeRateWatts: 800,
-        healRate: 0,
-        minScaleFloor: 0.35,
-        minRadiusFloor: 0.12
-      })
-    });
-    const applePrefab = new Prefab({
-      id: "prefab_apple",
-      name: "Apple",
-      icon: "🍏",
-      archetype: appleArchetype
-    });
-    this.prefabs.set(applePrefab.id, applePrefab);
-    const stoneArchetype = new GameObject({
-      id: "archetype_stone",
-      name: "Stone",
-      position: { x: 0, y: 0, z: 0 },
-      color: "#78716c",
-      visualShape: "circle",
-      mass: 0.85,
-      colliderRadius: 0.22,
-      bounceMod: 0.15,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      rollModule: new RollModule({
-        rollResistance: 0.45,
-        bumpyRollEnabled: true,
-        bumpiness: 0.28
-      })
-    });
-    const stonePrefab = new Prefab({
-      id: "prefab_stone",
-      name: "Stone",
-      icon: "🪨",
-      archetype: stoneArchetype
-    });
-    this.prefabs.set(stonePrefab.id, stonePrefab);
-  }
-  getAll() {
-    return Array.from(this.prefabs.values());
-  }
-  get(id) {
-    return this.prefabs.get(id);
-  }
-  /**
-   * Creates a new Prefab from an existing scene GameObject.
-   * Links the source entity to the new prefab as its first instance.
-   */
-  createFromEntity(entity, name) {
-    const id = `prefab_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
-    const prefabName = name || entity.name || "Custom Prefab";
-    const icon = entity.consumableModule ? "🍎" : entity.visualShape === "box" ? "📦" : "⚪";
-    const GameObjectClass = entity.constructor;
-    let cloneConsumable = null;
-    if (entity.consumableModule) {
-      const src = entity.consumableModule;
-      cloneConsumable = new ConsumableModule({
-        tag: src.tag,
-        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        consumeRateWatts: src.consumeRateWattsProp.literalValue,
-        healRate: src.healRateProp.literalValue,
-        minScaleFloor: src.minScaleFloor,
-        minRadiusFloor: src.minRadiusFloor
-      });
-      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
-    }
-    let cloneRoll = null;
-    if (entity.rollModule) {
-      cloneRoll = new RollModule({
-        enabled: entity.rollModule.enabled,
-        rollResistance: entity.rollModule.rollResistance,
-        bumpyRollEnabled: entity.rollModule.bumpyRollEnabled,
-        bumpiness: entity.rollModule.bumpiness,
-        seed: entity.rollModule.seed
-      });
-    }
-    const archetype = new GameObjectClass({
-      name: prefabName,
-      position: { x: 0, y: 0, z: 0 },
-      color: entity.color,
-      visualShape: entity.visualShape,
-      mass: entity.mass,
-      colliderRadius: entity.consumableModule ? entity.consumableModule.initialColliderRadius || entity.colliderRadius : entity.colliderRadius,
-      bounceMod: entity.bounceMod,
-      hasGravity: entity.hasGravity,
-      hasVerticalPosition: entity.hasVerticalPosition,
-      consumableModule: cloneConsumable,
-      rollModule: cloneRoll
-    });
-    const prefab = new Prefab({
-      id,
-      name: prefabName,
-      icon,
-      archetype
-    });
-    this.prefabs.set(id, prefab);
-    entity.prefabId = id;
-    entity.overriddenProperties.clear();
-    this.notifyChanged();
-    return prefab;
-  }
-  /**
-   * Instantiates a prefab into the scene.
-   */
-  spawn(prefabId, pos, arena, objects) {
-    const prefab = this.prefabs.get(prefabId);
-    if (!prefab) return null;
-    const instance = prefab.instantiate(pos, arena);
-    if (objects && !objects.includes(instance)) {
-      objects.push(instance);
-    }
-    return instance;
-  }
-  /**
-   * Deletes a prefab without deleting live instances.
-   * Any live instances simply have their prefabId cleared.
-   */
-  delete(prefabId, liveObjects) {
-    if (!this.prefabs.has(prefabId)) return false;
-    this.prefabs.delete(prefabId);
-    if (liveObjects) {
-      for (const obj of liveObjects) {
-        if (obj.prefabId === prefabId) {
-          obj.prefabId = null;
-          obj.overriddenProperties.clear();
-        }
-      }
-    }
-    this.notifyChanged();
-    return true;
-  }
-  onPrefabsChanged(cb) {
-    this.onPrefabChangedCallbacks.add(cb);
-    return () => this.onPrefabChangedCallbacks.delete(cb);
-  }
-  notifyChanged() {
-    for (const cb of this.onPrefabChangedCallbacks) {
-      cb();
-    }
-  }
-}
-const prefabManager = new PrefabManager();
 const quarryPreset = {
   id: "quarry",
   name: "🪨 The Stone Quarry",
@@ -11328,6 +11109,812 @@ function createQuarryStones() {
     })
   ];
 }
+function serializeCharacter(char) {
+  var _a, _b, _c, _d, _e, _f;
+  const result = {
+    id: char.id,
+    name: char.name,
+    prefabId: char.prefabId || "prefab_player",
+    color: char.color,
+    mass: char.rigidbodyModule ? char.rigidbodyModule.massProp.get(char.properties) : char.mass,
+    colliderRadius: char.colliderModule ? char.colliderModule.radiusProp.get(char.properties) : char.colliderRadius
+  };
+  if (char.walkingModule) {
+    result.hasWalking = char.walkingModule.enabled;
+    result.walkingModule = {
+      maxWalkForce: char.walkingModule.maxWalkForceProp.get(char.properties),
+      maxWalkSpeed: char.walkingModule.maxWalkSpeedProp.get(char.properties),
+      sprintSpeed: char.walkingModule.maxSprintSpeedProp.get(char.properties),
+      canSprint: char.walkingModule.canSprint,
+      walkInAir: char.walkingModule.walkInAir
+    };
+  } else {
+    result.hasWalking = false;
+  }
+  if (char.jumpModule) {
+    result.hasJump = char.jumpModule.enabled;
+    result.jumpModule = {
+      jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties)
+    };
+  } else {
+    result.hasJump = false;
+  }
+  if (char.throwModule) {
+    result.hasThrow = char.throwModule.enabled;
+    result.throwModule = {
+      throwForce: char.throwModule.baseThrowForceProp.get(char.properties)
+    };
+  } else {
+    result.hasThrow = false;
+  }
+  if (char.climbingModule) {
+    result.hasClimbing = char.climbingModule.enabled;
+    result.climbingModule = {
+      climbSpeed: ((_a = char.climbingModule.maxClimbSpeedProp) == null ? void 0 : _a.get(char.properties)) ?? 3.5
+    };
+  } else {
+    result.hasClimbing = false;
+  }
+  if (char.healthModule) {
+    result.hasHealth = char.healthModule.enabled;
+    result.healthModule = {
+      maxHp: char.healthModule.getMaxHp(char.properties),
+      currentHp: char.healthModule.getCurrentHp(char.properties),
+      naturalHealRate: char.healthModule.getMaxHealRate(char.properties)
+    };
+  } else {
+    result.hasHealth = false;
+  }
+  if (char.laserModule) {
+    result.hasLaser = char.laserModule.enabled;
+    result.laserModule = {
+      maxRange: 15,
+      damageRate: ((_b = char.laserModule.damageRateProp) == null ? void 0 : _b.get(char.properties)) ?? 25
+    };
+  } else {
+    result.hasLaser = false;
+  }
+  if (char.meleeModule) {
+    result.hasMelee = char.meleeModule.enabled;
+    result.meleeModule = {
+      impactForce: ((_c = char.meleeModule.maxForceProp) == null ? void 0 : _c.get(char.properties)) ?? 15
+    };
+  } else {
+    result.hasMelee = false;
+  }
+  if (char.energyPool) {
+    result.hasEnergyPool = char.energyPool.enabled;
+    result.energyPool = {
+      staminaCapacity: ((_d = char.energyPool.maxStaminaProp) == null ? void 0 : _d.get(char.properties)) ?? 5e3,
+      staminaRegenRate: ((_e = char.energyPool.staminaRegenRateProp) == null ? void 0 : _e.get(char.properties)) ?? 500,
+      energyPoolCapacity: ((_f = char.energyPool.maxEnergyProp) == null ? void 0 : _f.get(char.properties)) ?? 1e4
+    };
+  } else {
+    result.hasEnergyPool = false;
+  }
+  return result;
+}
+function applyCharacterConfig(char, config) {
+  if (config.name) char.name = config.name;
+  if (config.color) char.color = config.color;
+  if (config.mass !== void 0) {
+    char.mass = config.mass;
+    if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);
+  }
+  if (config.colliderRadius !== void 0) {
+    char.colliderRadius = config.colliderRadius;
+    if (char.colliderModule) char.colliderModule.radiusProp.set(config.colliderRadius, char.properties);
+  }
+  if (config.hasWalking === false) {
+    char.walkingModule = null;
+  } else if (config.walkingModule && char.walkingModule) {
+    char.walkingModule.enabled = true;
+    if (config.walkingModule.maxWalkForce !== void 0) char.walkingModule.maxWalkForceProp.set(config.walkingModule.maxWalkForce, char.properties);
+    if (config.walkingModule.maxWalkSpeed !== void 0) char.walkingModule.maxWalkSpeedProp.set(config.walkingModule.maxWalkSpeed, char.properties);
+    if (config.walkingModule.sprintSpeed !== void 0) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
+    if (config.walkingModule.canSprint !== void 0) char.walkingModule.canSprint = config.walkingModule.canSprint;
+    if (config.walkingModule.walkInAir !== void 0) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
+  }
+  if (config.hasJump === false) {
+    char.jumpModule = null;
+  } else if (config.jumpModule && char.jumpModule) {
+    char.jumpModule.enabled = true;
+    if (config.jumpModule.jumpImpulse !== void 0) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+  }
+  if (config.hasThrow === false) {
+    char.throwModule = null;
+  } else if (config.throwModule && char.throwModule) {
+    char.throwModule.enabled = true;
+    if (config.throwModule.throwForce !== void 0) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+  }
+  if (config.hasHealth === false) {
+    char.healthModule = null;
+  } else if (config.healthModule && char.healthModule) {
+    char.healthModule.enabled = true;
+    if (config.healthModule.maxHp !== void 0) char.healthModule.maxHp = config.healthModule.maxHp;
+    if (config.healthModule.currentHp !== void 0) char.healthModule.currentHp = config.healthModule.currentHp;
+    if (config.healthModule.naturalHealRate !== void 0) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+  }
+}
+function serializeGameObject(obj) {
+  var _a;
+  const result = {
+    id: obj.id,
+    name: obj.name,
+    prefabId: obj.prefabId || void 0,
+    position: {
+      x: Math.round(obj.position.x * 100) / 100,
+      y: Math.round(obj.position.y * 100) / 100,
+      z: Math.round(obj.position.z * 100) / 100
+    },
+    color: obj.color,
+    visualShape: obj.visualShape,
+    isSleeping: obj.isSleeping,
+    hasRigidbody: obj.rigidbodyModule !== null,
+    hasCollider: obj.colliderModule !== null,
+    hasFriction: obj.frictionModule !== null,
+    hasBounce: obj.bounceModule !== null,
+    hasVerticalPosition: obj.verticalPositionModule !== null,
+    hasGravity: obj.gravityModule !== null,
+    hasRollModule: obj.rollModule !== null,
+    hasConsumableModule: obj.consumableModule !== null,
+    hasHealthModule: obj.healthModule !== null,
+    hasDamageAuraModule: obj.damageAuraModule !== null,
+    hasDamageSolverModule: obj.damageSolverModule !== null,
+    mass: obj.rigidbodyModule ? obj.rigidbodyModule.massProp.get(obj.properties) : 1,
+    colliderRadius: obj.colliderModule ? obj.colliderModule.radiusProp.get(obj.properties) : 0.35,
+    bounceMod: obj.bounceModule ? obj.bounceModule.bounceModProp.get(obj.properties) : 0.4,
+    verticalBounce: ((_a = obj.bounceModule) == null ? void 0 : _a.verticalBounce) ?? false,
+    staticGroundFrictionMod: obj.frictionModule ? obj.frictionModule.staticFrictionProp.get(obj.properties) : 1,
+    dynamicGroundFrictionMod: obj.frictionModule ? obj.frictionModule.dynamicFrictionProp.get(obj.properties) : 1
+  };
+  if (obj.rigidbodyModule) {
+    result.rigidbodyModule = {
+      enabled: obj.rigidbodyModule.enabled,
+      mass: obj.rigidbodyModule.massProp.get(obj.properties),
+      collisionMode: obj.collisionMode,
+      hasVerticalVelocity: obj.rigidbodyModule.hasVerticalVelocity
+    };
+  }
+  if (obj.colliderModule) {
+    result.colliderModule = {
+      enabled: obj.colliderModule.enabled,
+      radius: obj.colliderModule.radiusProp.get(obj.properties)
+    };
+  }
+  if (obj.frictionModule) {
+    result.frictionModule = {
+      enabled: obj.frictionModule.enabled,
+      staticFrictionMod: obj.frictionModule.staticFrictionProp.get(obj.properties),
+      dynamicFrictionMod: obj.frictionModule.dynamicFrictionProp.get(obj.properties)
+    };
+  }
+  if (obj.bounceModule) {
+    result.bounceModule = {
+      enabled: obj.bounceModule.enabled,
+      bounceMod: obj.bounceModule.bounceModProp.get(obj.properties),
+      verticalBounce: obj.bounceModule.verticalBounce
+    };
+  }
+  if (obj.verticalPositionModule) {
+    result.verticalPositionModule = {
+      enabled: obj.verticalPositionModule.enabled,
+      z: Math.round(obj.position.z * 100) / 100
+    };
+  }
+  if (obj.gravityModule) {
+    result.gravityModule = {
+      enabled: obj.gravityModule.enabled
+    };
+  }
+  if (obj.rollModule) {
+    result.rollModule = {
+      enabled: obj.rollModule.enabled,
+      rollResistance: obj.rollModule.rollResistanceProp.get(obj.properties),
+      bumpyRollEnabled: obj.rollModule.bumpyRollEnabled,
+      bumpiness: obj.rollModule.bumpinessProp.get(obj.properties),
+      seed: obj.rollModule.seed
+    };
+  }
+  if (obj.consumableModule) {
+    result.consumableModule = {
+      enabled: obj.consumableModule.enabled,
+      tag: obj.consumableModule.tag,
+      totalEnergyJoules: obj.consumableModule.getTotalEnergy(obj.properties),
+      remainingEnergyJoules: obj.consumableModule.getRemainingEnergy(obj.properties),
+      consumeRateWatts: obj.consumableModule.getConsumeRate(obj.properties),
+      healRate: obj.consumableModule.getHealRate(obj.properties),
+      minScaleFloor: obj.consumableModule.minScaleFloor,
+      minRadiusFloor: obj.consumableModule.minRadiusFloor
+    };
+  }
+  if (obj.healthModule) {
+    result.healthModule = {
+      enabled: obj.healthModule.enabled,
+      maxHp: obj.healthModule.getMaxHp(obj.properties),
+      currentHp: obj.healthModule.getCurrentHp(obj.properties),
+      naturalHealRate: obj.healthModule.getMaxHealRate(obj.properties)
+    };
+  }
+  if (obj.damageAuraModule) {
+    result.damageAuraModule = {
+      enabled: obj.damageAuraModule.enabled,
+      damageRadius: obj.damageAuraModule.damageRadiusProp.get(obj.properties),
+      damageRate: obj.damageAuraModule.damageRateProp.get(obj.properties)
+    };
+  }
+  if (obj.damageSolverModule) {
+    result.damageSolverModule = {
+      enabled: obj.damageSolverModule.enabled,
+      impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
+      minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties)
+    };
+  }
+  return result;
+}
+function deserializeGameObject(config) {
+  const options = {
+    id: config.id,
+    name: config.name,
+    prefabId: config.prefabId,
+    position: { x: config.position.x, y: config.position.y, z: config.position.z },
+    color: config.color,
+    visualShape: config.visualShape || "circle"
+  };
+  if (config.hasRigidbody === false) {
+    options.rigidbodyModule = null;
+    options.hasRigidbody = false;
+  } else if (config.rigidbodyModule) {
+    options.rigidbodyModule = new RigidbodyModule({
+      mass: config.rigidbodyModule.mass ?? config.mass ?? 1,
+      velocity: { x: 0, y: 0 },
+      hasVerticalVelocity: config.rigidbodyModule.hasVerticalVelocity ?? true,
+      verticalVelocity: 0,
+      collisionMode: config.rigidbodyModule.collisionMode ?? "dynamic",
+      enabled: config.rigidbodyModule.enabled ?? true
+    });
+  } else {
+    options.mass = config.mass ?? 1;
+  }
+  if (config.hasCollider === false) {
+    options.colliderModule = null;
+  } else if (config.colliderModule) {
+    options.colliderModule = new ColliderModule({
+      radius: config.colliderModule.radius ?? config.colliderRadius ?? 0.35,
+      enabled: config.colliderModule.enabled ?? true
+    });
+  } else if (config.colliderRadius !== void 0) {
+    options.colliderRadius = config.colliderRadius;
+  }
+  if (config.hasFriction === false) {
+    options.frictionModule = null;
+  } else if (config.frictionModule) {
+    options.frictionModule = new FrictionModule({
+      staticFrictionMod: config.frictionModule.staticFrictionMod ?? config.staticGroundFrictionMod ?? 1,
+      dynamicFrictionMod: config.frictionModule.dynamicFrictionMod ?? config.dynamicGroundFrictionMod ?? 1,
+      enabled: config.frictionModule.enabled ?? true
+    });
+  } else {
+    options.staticGroundFrictionMod = config.staticGroundFrictionMod ?? 1;
+    options.dynamicGroundFrictionMod = config.dynamicGroundFrictionMod ?? 1;
+  }
+  if (config.hasBounce === false) {
+    options.bounceModule = null;
+  } else if (config.bounceModule) {
+    options.bounceModule = new BounceModule({
+      bounceMod: config.bounceModule.bounceMod ?? config.bounceMod ?? 0.4,
+      verticalBounce: config.bounceModule.verticalBounce ?? config.verticalBounce ?? false,
+      enabled: config.bounceModule.enabled ?? true
+    });
+  } else if (config.bounceMod !== void 0) {
+    options.bounceMod = config.bounceMod;
+  }
+  if (config.hasVerticalPosition === false) {
+    options.verticalPositionModule = null;
+    options.hasVerticalPosition = false;
+  } else if (config.verticalPositionModule) {
+    options.verticalPositionModule = new VerticalPositionModule({
+      z: config.verticalPositionModule.z ?? config.position.z ?? 0,
+      hasVerticalVelocity: true,
+      verticalVelocity: 0,
+      enabled: config.verticalPositionModule.enabled ?? true
+    });
+  } else {
+    options.hasVerticalPosition = true;
+  }
+  if (config.hasGravity === false) {
+    options.gravityModule = null;
+    options.hasGravity = false;
+  } else if (config.gravityModule) {
+    options.gravityModule = new GravityModule({
+      enabled: config.gravityModule.enabled ?? true
+    });
+  } else {
+    options.hasGravity = true;
+  }
+  if (config.hasRollModule === false) {
+    options.rollModule = null;
+  } else if (config.rollModule) {
+    options.rollModule = new RollModule({
+      enabled: config.rollModule.enabled,
+      rollResistance: config.rollModule.rollResistance,
+      bumpyRollEnabled: config.rollModule.bumpyRollEnabled ?? true,
+      bumpiness: config.rollModule.bumpiness ?? 0.22,
+      seed: config.rollModule.seed
+    });
+  }
+  if (config.hasConsumableModule === false) {
+    options.consumableModule = null;
+  } else if (config.consumableModule) {
+    options.consumableModule = new ConsumableModule({
+      enabled: config.consumableModule.enabled,
+      tag: config.consumableModule.tag,
+      totalEnergyJoules: config.consumableModule.totalEnergyJoules,
+      remainingEnergyJoules: config.consumableModule.remainingEnergyJoules,
+      consumeRateWatts: config.consumableModule.consumeRateWatts,
+      healRate: config.consumableModule.healRate,
+      minScaleFloor: config.consumableModule.minScaleFloor,
+      minRadiusFloor: config.consumableModule.minRadiusFloor
+    });
+  }
+  if (config.hasHealthModule === false) {
+    options.healthModule = null;
+  } else if (config.healthModule) {
+    options.healthModule = new HealthModule({
+      enabled: config.healthModule.enabled,
+      baseMaxHp: config.healthModule.maxHp,
+      maxHp: config.healthModule.maxHp,
+      currentHp: config.healthModule.currentHp,
+      baseMaxHealRate: config.healthModule.naturalHealRate,
+      maxHealRate: config.healthModule.naturalHealRate,
+      consumesEnergy: false
+    });
+  }
+  if (config.hasDamageAuraModule === false) {
+    options.damageAuraModule = null;
+  } else if (config.damageAuraModule) {
+    options.damageAuraModule = new DamageAuraModule({
+      enabled: config.damageAuraModule.enabled,
+      damageRadius: config.damageAuraModule.damageRadius,
+      damageRate: config.damageAuraModule.damageRate
+    });
+  }
+  if (config.hasDamageSolverModule === false) {
+    options.damageSolverModule = null;
+  } else if (config.damageSolverModule) {
+    options.damageSolverModule = new DamageSolverModule({
+      enabled: config.damageSolverModule.enabled,
+      impactSusceptibility: config.damageSolverModule.impactSusceptibility,
+      damageThresholdHp: config.damageSolverModule.minShockThreshold
+    });
+  }
+  const obj = new GameObject(options);
+  if (config.isSleeping !== void 0) {
+    obj.isSleeping = config.isSleeping;
+  }
+  return obj;
+}
+function generateDefaultWorldConfig() {
+  const defaultStones = createQuarryStones();
+  return {
+    version: 1,
+    lastSaved: (/* @__PURE__ */ new Date()).toISOString(),
+    arena: {
+      width: 20,
+      height: 14,
+      wallHeight: 1,
+      presetId: quarryPreset.id,
+      tileGrid: quarryPreset.generate(20, 14)
+    },
+    globalPhysics: {
+      gravity: 24,
+      collisionDamageScale: 1,
+      collisionMode: "dynamic"
+    },
+    objects: defaultStones.map(serializeGameObject)
+  };
+}
+class Prefab {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "icon");
+    __publicField(this, "archetype");
+    this.id = options.id;
+    this.name = options.name;
+    this.icon = options.icon ?? "📦";
+    this.archetype = options.archetype;
+  }
+  /**
+   * Instantiates a new live GameObject from this prefab.
+   */
+  instantiate(pos, arena) {
+    if (this.archetype.isCharacter) {
+      const srcChar = this.archetype;
+      const spawnPos2 = {
+        x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
+        y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
+        z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
+      };
+      const instance2 = new Character({
+        name: srcChar.name,
+        color: srcChar.color,
+        colliderRadius: srcChar.colliderRadius,
+        mass: srcChar.mass,
+        strength: srcChar.strength,
+        randomSpawn: pos ? false : true,
+        x: spawnPos2.x,
+        y: spawnPos2.y
+      });
+      instance2.position.z = spawnPos2.z;
+      instance2.prefabId = this.id;
+      instance2.overriddenProperties = /* @__PURE__ */ new Set();
+      applyCharacterConfig(instance2, serializeCharacter(srcChar));
+      if (arena && typeof arena.syncEntitiesWithWalls === "function") {
+        arena.syncEntitiesWithWalls([instance2]);
+      }
+      return instance2;
+    }
+    const GameObjectClass = this.archetype.constructor;
+    let cloneConsumable = null;
+    if (this.archetype.consumableModule) {
+      const src = this.archetype.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    let cloneRoll = null;
+    if (this.archetype.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: this.archetype.rollModule.enabled,
+        rollResistance: this.archetype.rollModule.rollResistance,
+        bumpyRollEnabled: this.archetype.rollModule.bumpyRollEnabled,
+        bumpiness: this.archetype.rollModule.bumpiness,
+        seed: this.archetype.rollModule.seed
+      });
+    }
+    const spawnPos = {
+      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
+      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
+      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
+    };
+    const instance = new GameObjectClass({
+      name: this.archetype.name,
+      position: spawnPos,
+      color: this.archetype.color,
+      visualShape: this.archetype.visualShape,
+      mass: this.archetype.mass,
+      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
+      bounceMod: this.archetype.bounceMod,
+      hasGravity: this.archetype.hasGravity,
+      hasVerticalPosition: this.archetype.hasVerticalPosition,
+      consumableModule: cloneConsumable,
+      rollModule: cloneRoll
+    });
+    instance.prefabId = this.id;
+    instance.overriddenProperties = /* @__PURE__ */ new Set();
+    if (arena && typeof arena.syncEntitiesWithWalls === "function") {
+      arena.syncEntitiesWithWalls([instance]);
+    }
+    return instance;
+  }
+  /**
+   * Updates a property on the prefab archetype and cascades the change to all
+   * live instances that have not overridden this property.
+   */
+  setProperty(propKey, value, liveObjects) {
+    this.applyPropertyToEntity(this.archetype, propKey, value);
+    for (const obj of liveObjects) {
+      if (obj.prefabId === this.id) {
+        if (!obj.overriddenProperties.has(propKey)) {
+          this.applyPropertyToEntity(obj, propKey, value);
+        }
+      }
+    }
+  }
+  applyPropertyToEntity(ent, propKey, value) {
+    var _a, _b, _c, _d, _e, _f;
+    if (ent.isCharacter) {
+      const char = ent;
+      switch (propKey) {
+        case "maxWalkSpeed":
+        case "Max Walk Speed (u/s)":
+          if (char.walkingModule) char.walkingModule.maxWalkSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxWalkForce":
+        case "Max Walk Force (N)":
+          if (char.walkingModule) char.walkingModule.maxWalkForceProp.set(Number(value), char.properties);
+          return;
+        case "sprintSpeed":
+        case "maxSprintSpeed":
+        case "Max Sprint Speed (u/s)":
+          if (char.walkingModule) char.walkingModule.maxSprintSpeedProp.set(Number(value), char.properties);
+          return;
+        case "jumpImpulse":
+        case "Jump Impulse (N·s)":
+          if (char.jumpModule) char.jumpModule.jumpStrengthProp.set(Number(value), char.properties);
+          return;
+        case "throwForce":
+        case "Throw Launch Speed (u/s)":
+          if (char.throwModule) char.throwModule.baseThrowForceProp.set(Number(value), char.properties);
+          return;
+        case "climbSpeed":
+        case "Climb Speed (u/s)":
+          if ((_a = char.climbingModule) == null ? void 0 : _a.maxClimbSpeedProp) char.climbingModule.maxClimbSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxHp":
+        case "Max HP":
+          if (char.healthModule) char.healthModule.maxHp = Number(value);
+          return;
+        case "currentHp":
+        case "Current HP":
+          if (char.healthModule) char.healthModule.currentHp = Number(value);
+          return;
+        case "naturalHealRate":
+        case "Passive Heal Rate (HP/s)":
+          if (char.healthModule) char.healthModule.maxHealRate = Number(value);
+          return;
+        case "staminaCapacity":
+        case "Stamina Capacity (J)":
+          if ((_b = char.energyPool) == null ? void 0 : _b.maxStaminaProp) char.energyPool.maxStaminaProp.set(Number(value), char.properties);
+          return;
+        case "staminaRegenRate":
+        case "Stamina Regen (W)":
+          if ((_c = char.energyPool) == null ? void 0 : _c.staminaRegenRateProp) char.energyPool.staminaRegenRateProp.set(Number(value), char.properties);
+          return;
+        case "energyPoolCapacity":
+        case "Calorie Pool Capacity (J)":
+          if ((_d = char.energyPool) == null ? void 0 : _d.maxEnergyProp) char.energyPool.maxEnergyProp.set(Number(value), char.properties);
+          return;
+        case "laserDamageRate":
+          if ((_e = char.laserModule) == null ? void 0 : _e.damageRateProp) char.laserModule.damageRateProp.set(Number(value), char.properties);
+          return;
+        case "meleeImpactForce":
+          if ((_f = char.meleeModule) == null ? void 0 : _f.maxForceProp) char.meleeModule.maxForceProp.set(Number(value), char.properties);
+          return;
+        case "strength":
+          char.strength = Number(value);
+          return;
+      }
+    }
+    switch (propKey) {
+      case "name":
+        ent.name = String(value);
+        break;
+      case "color":
+        ent.color = String(value);
+        break;
+      case "visualShape":
+        ent.visualShape = value === "box" ? "box" : "circle";
+        break;
+      case "mass":
+        ent.mass = Number(value);
+        if (ent.rigidbodyModule) ent.rigidbodyModule.massProp.literalValue = Number(value);
+        break;
+      case "colliderRadius":
+        ent.colliderRadius = Number(value);
+        if (ent.colliderModule) ent.colliderModule.radius = Number(value);
+        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
+        break;
+      case "consumable_totalEnergy":
+        if (ent.consumableModule) {
+          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
+          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
+            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
+          }
+        }
+        break;
+      case "consumable_consumeRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_healRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.healRateProp.literalValue = Number(value);
+        }
+        break;
+      case "consumable_tag":
+        if (ent.consumableModule) {
+          ent.consumableModule.tag = String(value);
+        }
+        break;
+      default:
+        if (ent.properties && ent.properties.has(propKey)) {
+          ent.properties.set(propKey, Number(value));
+        }
+        break;
+    }
+  }
+}
+class PrefabManager {
+  constructor() {
+    __publicField(this, "prefabs", /* @__PURE__ */ new Map());
+    __publicField(this, "onPrefabChangedCallbacks", /* @__PURE__ */ new Set());
+    this.initDefaultPrefabs();
+  }
+  initDefaultPrefabs() {
+    const appleArchetype = new GameObject({
+      id: "archetype_apple",
+      name: "Apple",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#22c55e",
+      visualShape: "circle",
+      mass: 0.35,
+      colliderRadius: 0.25,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        totalEnergyJoules: 4e3,
+        remainingEnergyJoules: 4e3,
+        consumeRateWatts: 800,
+        healRate: 0,
+        minScaleFloor: 0.35,
+        minRadiusFloor: 0.12
+      })
+    });
+    const applePrefab = new Prefab({
+      id: "prefab_apple",
+      name: "Apple",
+      icon: "🍏",
+      archetype: appleArchetype
+    });
+    this.prefabs.set(applePrefab.id, applePrefab);
+    const stoneArchetype = new GameObject({
+      id: "archetype_stone",
+      name: "Stone",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#78716c",
+      visualShape: "circle",
+      mass: 0.85,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({
+        rollResistance: 0.45,
+        bumpyRollEnabled: true,
+        bumpiness: 0.28
+      })
+    });
+    const stonePrefab = new Prefab({
+      id: "prefab_stone",
+      name: "Stone",
+      icon: "🪨",
+      archetype: stoneArchetype
+    });
+    this.prefabs.set(stonePrefab.id, stonePrefab);
+    const playerArchetype = new Character({
+      id: "archetype_player",
+      name: "Player",
+      color: "#f59e0b",
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1,
+      randomSpawn: false
+    });
+    const playerPrefab = new Prefab({
+      id: "prefab_player",
+      name: "Player",
+      icon: "🧙",
+      archetype: playerArchetype
+    });
+    this.prefabs.set(playerPrefab.id, playerPrefab);
+  }
+  getAll() {
+    return Array.from(this.prefabs.values());
+  }
+  get(id) {
+    return this.prefabs.get(id);
+  }
+  /**
+   * Creates a new Prefab from an existing scene GameObject.
+   * Links the source entity to the new prefab as its first instance.
+   */
+  createFromEntity(entity, name) {
+    const id = `prefab_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
+    const prefabName = name || entity.name || "Custom Prefab";
+    const icon = entity.consumableModule ? "🍎" : entity.visualShape === "box" ? "📦" : "⚪";
+    const GameObjectClass = entity.constructor;
+    let cloneConsumable = null;
+    if (entity.consumableModule) {
+      const src = entity.consumableModule;
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
+        consumeRateWatts: src.consumeRateWattsProp.literalValue,
+        healRate: src.healRateProp.literalValue,
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    let cloneRoll = null;
+    if (entity.rollModule) {
+      cloneRoll = new RollModule({
+        enabled: entity.rollModule.enabled,
+        rollResistance: entity.rollModule.rollResistance,
+        bumpyRollEnabled: entity.rollModule.bumpyRollEnabled,
+        bumpiness: entity.rollModule.bumpiness,
+        seed: entity.rollModule.seed
+      });
+    }
+    const archetype = new GameObjectClass({
+      name: prefabName,
+      position: { x: 0, y: 0, z: 0 },
+      color: entity.color,
+      visualShape: entity.visualShape,
+      mass: entity.mass,
+      colliderRadius: entity.consumableModule ? entity.consumableModule.initialColliderRadius || entity.colliderRadius : entity.colliderRadius,
+      bounceMod: entity.bounceMod,
+      hasGravity: entity.hasGravity,
+      hasVerticalPosition: entity.hasVerticalPosition,
+      consumableModule: cloneConsumable,
+      rollModule: cloneRoll
+    });
+    const prefab = new Prefab({
+      id,
+      name: prefabName,
+      icon,
+      archetype
+    });
+    this.prefabs.set(id, prefab);
+    entity.prefabId = id;
+    entity.overriddenProperties.clear();
+    this.notifyChanged();
+    return prefab;
+  }
+  /**
+   * Instantiates a prefab into the scene.
+   */
+  spawn(prefabId, pos, arena, objects) {
+    const prefab = this.prefabs.get(prefabId);
+    if (!prefab) return null;
+    const instance = prefab.instantiate(pos, arena);
+    if (objects && !objects.includes(instance)) {
+      objects.push(instance);
+    }
+    return instance;
+  }
+  /**
+   * Deletes a prefab without deleting live instances.
+   * Any live instances simply have their prefabId cleared.
+   */
+  delete(prefabId, liveObjects) {
+    if (!this.prefabs.has(prefabId)) return false;
+    this.prefabs.delete(prefabId);
+    if (liveObjects) {
+      for (const obj of liveObjects) {
+        if (obj.prefabId === prefabId) {
+          obj.prefabId = null;
+          obj.overriddenProperties.clear();
+        }
+      }
+    }
+    this.notifyChanged();
+    return true;
+  }
+  onPrefabsChanged(cb) {
+    this.onPrefabChangedCallbacks.add(cb);
+    return () => this.onPrefabChangedCallbacks.delete(cb);
+  }
+  notifyChanged() {
+    for (const cb of this.onPrefabChangedCallbacks) {
+      cb();
+    }
+  }
+}
+const prefabManager = new PrefabManager();
 class SceneSpawnerManager {
   constructor(pm = prefabManager) {
     __publicField(this, "spawners", /* @__PURE__ */ new Map());
@@ -12085,355 +12672,6 @@ class ServerTelemetryBroadcaster {
       forceKeyframe
     );
   }
-}
-class DamageAuraModule {
-  constructor(options) {
-    __publicField(this, "id", "damageAura");
-    __publicField(this, "name", "Damage Aura");
-    __publicField(this, "enabled", true);
-    /** Radius in world units within which objects take damage */
-    __publicField(this, "damageRadiusProp");
-    /** Health points drained per second (HP / s) */
-    __publicField(this, "damageRateProp");
-    this.damageRadiusProp = new DynamicProperty((options == null ? void 0 : options.damageRadius) ?? 2.5);
-    this.damageRateProp = new DynamicProperty((options == null ? void 0 : options.damageRate) ?? 25);
-    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
-  }
-  get damageRadius() {
-    return this.damageRadiusProp.literalValue;
-  }
-  set damageRadius(val) {
-    this.damageRadiusProp.literalValue = Math.max(0.1, val);
-  }
-  get damageRate() {
-    return this.damageRateProp.literalValue;
-  }
-  set damageRate(val) {
-    this.damageRateProp.literalValue = Math.max(0, val);
-  }
-  getDamageRadius(registry) {
-    return this.damageRadiusProp.get(registry);
-  }
-  getDamageRate(registry) {
-    return this.damageRateProp.get(registry);
-  }
-  /**
-   * Continuous update tick:
-   * Applies damage to any entity in the arena that has a HealthModule and is within 3D spherical radius.
-   */
-  update(dt, sourceEntity, arenaOrTargets) {
-    if (!this.enabled || dt <= 0) return;
-    const registry = sourceEntity.properties;
-    const radius = this.getDamageRadius(registry);
-    const rate = this.getDamageRate(registry);
-    if (radius <= 0.01 || rate <= 0) return;
-    const damageThisFrame = rate * dt;
-    const srcX = sourceEntity.position.x;
-    const srcY = sourceEntity.position.y;
-    const srcZ = sourceEntity.position.z ?? 0;
-    const radiusSq = radius * radius;
-    const entities = Array.isArray(arenaOrTargets) ? arenaOrTargets : arenaOrTargets.entities ?? [];
-    for (const target of entities) {
-      if (target === sourceEntity) continue;
-      const healthMod = target.healthModule;
-      if (!healthMod || !healthMod.enabled) continue;
-      const targetX = target.position.x;
-      const targetY = target.position.y;
-      const targetZ = target.position.z ?? 0;
-      const dx = targetX - srcX;
-      const dy = targetY - srcY;
-      const dz = targetZ - srcZ;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq <= radiusSq) {
-        healthMod.takeDamage(damageThisFrame, target.properties, {
-          id: "damage_aura",
-          name: "Aura",
-          type: "continuous",
-          rate,
-          color: "#a855f7",
-          isHeal: false
-        });
-      }
-    }
-  }
-}
-function serializeGameObject(obj) {
-  var _a;
-  const result = {
-    id: obj.id,
-    name: obj.name,
-    prefabId: obj.prefabId || void 0,
-    position: {
-      x: Math.round(obj.position.x * 100) / 100,
-      y: Math.round(obj.position.y * 100) / 100,
-      z: Math.round(obj.position.z * 100) / 100
-    },
-    color: obj.color,
-    visualShape: obj.visualShape,
-    isSleeping: obj.isSleeping,
-    hasRigidbody: obj.rigidbodyModule !== null,
-    hasCollider: obj.colliderModule !== null,
-    hasFriction: obj.frictionModule !== null,
-    hasBounce: obj.bounceModule !== null,
-    hasVerticalPosition: obj.verticalPositionModule !== null,
-    hasGravity: obj.gravityModule !== null,
-    hasRollModule: obj.rollModule !== null,
-    hasConsumableModule: obj.consumableModule !== null,
-    hasHealthModule: obj.healthModule !== null,
-    hasDamageAuraModule: obj.damageAuraModule !== null,
-    hasDamageSolverModule: obj.damageSolverModule !== null,
-    mass: obj.rigidbodyModule ? obj.rigidbodyModule.massProp.get(obj.properties) : 1,
-    colliderRadius: obj.colliderModule ? obj.colliderModule.radiusProp.get(obj.properties) : 0.35,
-    bounceMod: obj.bounceModule ? obj.bounceModule.bounceModProp.get(obj.properties) : 0.4,
-    verticalBounce: ((_a = obj.bounceModule) == null ? void 0 : _a.verticalBounce) ?? false,
-    staticGroundFrictionMod: obj.frictionModule ? obj.frictionModule.staticFrictionProp.get(obj.properties) : 1,
-    dynamicGroundFrictionMod: obj.frictionModule ? obj.frictionModule.dynamicFrictionProp.get(obj.properties) : 1
-  };
-  if (obj.rigidbodyModule) {
-    result.rigidbodyModule = {
-      enabled: obj.rigidbodyModule.enabled,
-      mass: obj.rigidbodyModule.massProp.get(obj.properties),
-      collisionMode: obj.collisionMode,
-      hasVerticalVelocity: obj.rigidbodyModule.hasVerticalVelocity
-    };
-  }
-  if (obj.colliderModule) {
-    result.colliderModule = {
-      enabled: obj.colliderModule.enabled,
-      radius: obj.colliderModule.radiusProp.get(obj.properties)
-    };
-  }
-  if (obj.frictionModule) {
-    result.frictionModule = {
-      enabled: obj.frictionModule.enabled,
-      staticFrictionMod: obj.frictionModule.staticFrictionProp.get(obj.properties),
-      dynamicFrictionMod: obj.frictionModule.dynamicFrictionProp.get(obj.properties)
-    };
-  }
-  if (obj.bounceModule) {
-    result.bounceModule = {
-      enabled: obj.bounceModule.enabled,
-      bounceMod: obj.bounceModule.bounceModProp.get(obj.properties),
-      verticalBounce: obj.bounceModule.verticalBounce
-    };
-  }
-  if (obj.verticalPositionModule) {
-    result.verticalPositionModule = {
-      enabled: obj.verticalPositionModule.enabled,
-      z: Math.round(obj.position.z * 100) / 100
-    };
-  }
-  if (obj.gravityModule) {
-    result.gravityModule = {
-      enabled: obj.gravityModule.enabled
-    };
-  }
-  if (obj.rollModule) {
-    result.rollModule = {
-      enabled: obj.rollModule.enabled,
-      rollResistance: obj.rollModule.rollResistanceProp.get(obj.properties),
-      bumpyRollEnabled: obj.rollModule.bumpyRollEnabled,
-      bumpiness: obj.rollModule.bumpinessProp.get(obj.properties),
-      seed: obj.rollModule.seed
-    };
-  }
-  if (obj.consumableModule) {
-    result.consumableModule = {
-      enabled: obj.consumableModule.enabled,
-      tag: obj.consumableModule.tag,
-      totalEnergyJoules: obj.consumableModule.getTotalEnergy(obj.properties),
-      remainingEnergyJoules: obj.consumableModule.getRemainingEnergy(obj.properties),
-      consumeRateWatts: obj.consumableModule.getConsumeRate(obj.properties),
-      healRate: obj.consumableModule.getHealRate(obj.properties),
-      minScaleFloor: obj.consumableModule.minScaleFloor,
-      minRadiusFloor: obj.consumableModule.minRadiusFloor
-    };
-  }
-  if (obj.healthModule) {
-    result.healthModule = {
-      enabled: obj.healthModule.enabled,
-      maxHp: obj.healthModule.getMaxHp(obj.properties),
-      currentHp: obj.healthModule.getCurrentHp(obj.properties),
-      naturalHealRate: obj.healthModule.getMaxHealRate(obj.properties)
-    };
-  }
-  if (obj.damageAuraModule) {
-    result.damageAuraModule = {
-      enabled: obj.damageAuraModule.enabled,
-      damageRadius: obj.damageAuraModule.damageRadiusProp.get(obj.properties),
-      damageRate: obj.damageAuraModule.damageRateProp.get(obj.properties)
-    };
-  }
-  if (obj.damageSolverModule) {
-    result.damageSolverModule = {
-      enabled: obj.damageSolverModule.enabled,
-      impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
-      minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties)
-    };
-  }
-  return result;
-}
-function deserializeGameObject(config) {
-  const options = {
-    id: config.id,
-    name: config.name,
-    prefabId: config.prefabId,
-    position: { x: config.position.x, y: config.position.y, z: config.position.z },
-    color: config.color,
-    visualShape: config.visualShape || "circle"
-  };
-  if (config.hasRigidbody === false) {
-    options.rigidbodyModule = null;
-    options.hasRigidbody = false;
-  } else if (config.rigidbodyModule) {
-    options.rigidbodyModule = new RigidbodyModule({
-      mass: config.rigidbodyModule.mass ?? config.mass ?? 1,
-      velocity: { x: 0, y: 0 },
-      hasVerticalVelocity: config.rigidbodyModule.hasVerticalVelocity ?? true,
-      verticalVelocity: 0,
-      collisionMode: config.rigidbodyModule.collisionMode ?? "dynamic",
-      enabled: config.rigidbodyModule.enabled ?? true
-    });
-  } else {
-    options.mass = config.mass ?? 1;
-  }
-  if (config.hasCollider === false) {
-    options.colliderModule = null;
-  } else if (config.colliderModule) {
-    options.colliderModule = new ColliderModule({
-      radius: config.colliderModule.radius ?? config.colliderRadius ?? 0.35,
-      enabled: config.colliderModule.enabled ?? true
-    });
-  } else if (config.colliderRadius !== void 0) {
-    options.colliderRadius = config.colliderRadius;
-  }
-  if (config.hasFriction === false) {
-    options.frictionModule = null;
-  } else if (config.frictionModule) {
-    options.frictionModule = new FrictionModule({
-      staticFrictionMod: config.frictionModule.staticFrictionMod ?? config.staticGroundFrictionMod ?? 1,
-      dynamicFrictionMod: config.frictionModule.dynamicFrictionMod ?? config.dynamicGroundFrictionMod ?? 1,
-      enabled: config.frictionModule.enabled ?? true
-    });
-  } else {
-    options.staticGroundFrictionMod = config.staticGroundFrictionMod ?? 1;
-    options.dynamicGroundFrictionMod = config.dynamicGroundFrictionMod ?? 1;
-  }
-  if (config.hasBounce === false) {
-    options.bounceModule = null;
-  } else if (config.bounceModule) {
-    options.bounceModule = new BounceModule({
-      bounceMod: config.bounceModule.bounceMod ?? config.bounceMod ?? 0.4,
-      verticalBounce: config.bounceModule.verticalBounce ?? config.verticalBounce ?? false,
-      enabled: config.bounceModule.enabled ?? true
-    });
-  } else if (config.bounceMod !== void 0) {
-    options.bounceMod = config.bounceMod;
-  }
-  if (config.hasVerticalPosition === false) {
-    options.verticalPositionModule = null;
-    options.hasVerticalPosition = false;
-  } else if (config.verticalPositionModule) {
-    options.verticalPositionModule = new VerticalPositionModule({
-      z: config.verticalPositionModule.z ?? config.position.z ?? 0,
-      hasVerticalVelocity: true,
-      verticalVelocity: 0,
-      enabled: config.verticalPositionModule.enabled ?? true
-    });
-  } else {
-    options.hasVerticalPosition = true;
-  }
-  if (config.hasGravity === false) {
-    options.gravityModule = null;
-    options.hasGravity = false;
-  } else if (config.gravityModule) {
-    options.gravityModule = new GravityModule({
-      enabled: config.gravityModule.enabled ?? true
-    });
-  } else {
-    options.hasGravity = true;
-  }
-  if (config.hasRollModule === false) {
-    options.rollModule = null;
-  } else if (config.rollModule) {
-    options.rollModule = new RollModule({
-      enabled: config.rollModule.enabled,
-      rollResistance: config.rollModule.rollResistance,
-      bumpyRollEnabled: config.rollModule.bumpyRollEnabled ?? true,
-      bumpiness: config.rollModule.bumpiness ?? 0.22,
-      seed: config.rollModule.seed
-    });
-  }
-  if (config.hasConsumableModule === false) {
-    options.consumableModule = null;
-  } else if (config.consumableModule) {
-    options.consumableModule = new ConsumableModule({
-      enabled: config.consumableModule.enabled,
-      tag: config.consumableModule.tag,
-      totalEnergyJoules: config.consumableModule.totalEnergyJoules,
-      remainingEnergyJoules: config.consumableModule.remainingEnergyJoules,
-      consumeRateWatts: config.consumableModule.consumeRateWatts,
-      healRate: config.consumableModule.healRate,
-      minScaleFloor: config.consumableModule.minScaleFloor,
-      minRadiusFloor: config.consumableModule.minRadiusFloor
-    });
-  }
-  if (config.hasHealthModule === false) {
-    options.healthModule = null;
-  } else if (config.healthModule) {
-    options.healthModule = new HealthModule({
-      enabled: config.healthModule.enabled,
-      baseMaxHp: config.healthModule.maxHp,
-      maxHp: config.healthModule.maxHp,
-      currentHp: config.healthModule.currentHp,
-      baseMaxHealRate: config.healthModule.naturalHealRate,
-      maxHealRate: config.healthModule.naturalHealRate,
-      consumesEnergy: false
-    });
-  }
-  if (config.hasDamageAuraModule === false) {
-    options.damageAuraModule = null;
-  } else if (config.damageAuraModule) {
-    options.damageAuraModule = new DamageAuraModule({
-      enabled: config.damageAuraModule.enabled,
-      damageRadius: config.damageAuraModule.damageRadius,
-      damageRate: config.damageAuraModule.damageRate
-    });
-  }
-  if (config.hasDamageSolverModule === false) {
-    options.damageSolverModule = null;
-  } else if (config.damageSolverModule) {
-    options.damageSolverModule = new DamageSolverModule({
-      enabled: config.damageSolverModule.enabled,
-      impactSusceptibility: config.damageSolverModule.impactSusceptibility,
-      damageThresholdHp: config.damageSolverModule.minShockThreshold
-    });
-  }
-  const obj = new GameObject(options);
-  if (config.isSleeping !== void 0) {
-    obj.isSleeping = config.isSleeping;
-  }
-  return obj;
-}
-function generateDefaultWorldConfig() {
-  const defaultStones = createQuarryStones();
-  return {
-    version: 1,
-    lastSaved: (/* @__PURE__ */ new Date()).toISOString(),
-    arena: {
-      width: 20,
-      height: 14,
-      wallHeight: 1,
-      presetId: quarryPreset.id,
-      tileGrid: quarryPreset.generate(20, 14)
-    },
-    globalPhysics: {
-      gravity: 24,
-      collisionDamageScale: 1,
-      collisionMode: "dynamic"
-    },
-    objects: defaultStones.map(serializeGameObject)
-  };
 }
 class ServerGameSimulation {
   constructor(config) {

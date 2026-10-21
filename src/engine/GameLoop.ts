@@ -429,11 +429,12 @@ export class GameLoop {
         }
         this.accumulator -= this.fixedDt;
       }
+
+      this.energyHud?.update(deltaSeconds);
     }
 
     this.renderFrame(deltaSeconds);
     this.devPanel.updateInspector();
-    this.energyHud?.update(deltaSeconds);
 
     requestAnimationFrame((t) => this.tick(t));
   }

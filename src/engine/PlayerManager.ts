@@ -5,6 +5,7 @@ import { InputManager, calculateClampedForwardAimPos, type GamepadSlotState } fr
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
+import { prefabManager } from "./prefab/PrefabManager.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -229,17 +230,28 @@ export class PlayerManager {
     if (!char) {
       const pNum = data.playerNumber ?? (this.players.size + this.remotePlayers.size + 1);
       const color = data.color || PLAYER_COLORS[(pNum - 1) % PLAYER_COLORS.length];
-      char = new Character({
-        x: data.x,
-        y: data.y,
-        color,
-        colliderRadius: data.radius || 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: data.id,
-        playerNumber: pNum,
-        name: data.name || `Player ${pNum}`,
-      });
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        char = playerPrefab.instantiate({ x: data.x, y: data.y, z: data.z }, this.arena) as Character;
+        char.id = data.id;
+        char.color = color;
+        char.playerColor = color;
+        char.playerId = data.id;
+        char.playerNumber = pNum;
+        char.name = data.name || `Player ${pNum}`;
+      } else {
+        char = new Character({
+          x: data.x,
+          y: data.y,
+          color,
+          colliderRadius: data.radius || 0.44,
+          mass: 1.2,
+          strength: 1.0,
+          playerId: data.id,
+          playerNumber: pNum,
+          name: data.name || `Player ${pNum}`,
+        });
+      }
       char.position.z = data.z;
       if (data.facingAngle !== undefined) char.facingAngle = data.facingAngle;
       if (data.isClimbing !== undefined) char.isClimbing = data.isClimbing;
@@ -315,16 +327,26 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-      char = new Character({
-        randomSpawn: true,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: "keyboard",
-        playerNumber: playerNum,
-        name: `Player ${playerNum}`,
-      });
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        char = playerPrefab.instantiate(undefined, this.arena) as Character;
+        char.color = color;
+        char.playerColor = color;
+        char.playerId = "keyboard";
+        char.playerNumber = playerNum;
+        char.name = `Player ${playerNum}`;
+      } else {
+        char = new Character({
+          randomSpawn: true,
+          color,
+          colliderRadius: 0.44,
+          mass: 1.2,
+          strength: 1.0,
+          playerId: "keyboard",
+          playerNumber: playerNum,
+          name: `Player ${playerNum}`,
+        });
+      }
       this.arena.syncEntitiesWithWalls([char]);
     }
 
@@ -412,17 +434,28 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-      char = new Character({
-        randomSpawn: true,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: key,
-        playerNumber: playerNum,
-        name: `Player ${playerNum}`,
-        hasCustomName: false,
-      });
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        char = playerPrefab.instantiate(undefined, this.arena) as Character;
+        char.color = color;
+        char.playerColor = color;
+        char.playerId = key;
+        char.playerNumber = playerNum;
+        char.name = `Player ${playerNum}`;
+        char.hasCustomName = false;
+      } else {
+        char = new Character({
+          randomSpawn: true,
+          color,
+          colliderRadius: 0.44,
+          mass: 1.2,
+          strength: 1.0,
+          playerId: key,
+          playerNumber: playerNum,
+          name: `Player ${playerNum}`,
+          hasCustomName: false,
+        });
+      }
       char.hasCustomName = false;
       this.arena.syncEntitiesWithWalls([char]);
     }

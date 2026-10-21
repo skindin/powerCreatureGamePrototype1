@@ -3,6 +3,7 @@ import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
+import { Character } from "../../character/Character.js";
 
 export class PrefabManager {
   private prefabs: Map<string, Prefab> = new Map();
@@ -72,6 +73,26 @@ export class PrefabManager {
     });
 
     this.prefabs.set(stonePrefab.id, stonePrefab);
+
+    // 🧙 Default "Player" character prefab
+    const playerArchetype = new Character({
+      id: "archetype_player",
+      name: "Player",
+      color: "#f59e0b",
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+      randomSpawn: false,
+    });
+
+    const playerPrefab = new Prefab({
+      id: "prefab_player",
+      name: "Player",
+      icon: "🧙",
+      archetype: playerArchetype,
+    });
+
+    this.prefabs.set(playerPrefab.id, playerPrefab);
   }
 
   public getAll(): Prefab[] {

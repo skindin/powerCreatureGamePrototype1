@@ -16,7 +16,8 @@ import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
 import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
 import initialWorldConfig from "./config/worldConfig.json";
-import { deserializeGameObject } from "./config/WorldConfig.js";
+import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
+import { prefabManager } from "./engine/prefab/PrefabManager.js";
 
 // Prevent Vite from triggering full browser reloads when worldConfig.json is updated on disk
 if ((import.meta as any).hot) {
@@ -247,15 +248,28 @@ async function bootstrap(): Promise<void> {
     }
   })();
 
-  // 2. Initialize Base Character at a random clearing spawn (matching death respawn)
-  const character = new Character({
-    randomSpawn: true,
-    color: "#f59e0b", // Amber body
-    colliderRadius: 0.44,
-    mass: 1.2,
-    strength: 1.0,
-    name: initialPlayerHandle,
-  });
+  // 2. Initialize Base Character from prefab_player (and worldConfig.player if present)
+  const playerPrefab = prefabManager.get("prefab_player");
+  if (worldConfig.player && playerPrefab) {
+    applyCharacterConfig(playerPrefab.archetype as Character, worldConfig.player);
+  }
+
+  const character = playerPrefab
+    ? (playerPrefab.instantiate(undefined, arena) as Character)
+    : new Character({
+        randomSpawn: true,
+        color: "#f59e0b", // Amber body
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        name: initialPlayerHandle,
+      });
+
+  character.name = initialPlayerHandle;
+  character.prefabId = "prefab_player";
+  if (worldConfig.player) {
+    applyCharacterConfig(character, worldConfig.player);
+  }
 
   // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)
   const dummyCharacter = new Character({

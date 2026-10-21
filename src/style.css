@@ -4523,6 +4523,31 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
   color: #38bdf8;
 }
 
+.prop-save-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prop-save-btn:hover {
+  background: rgba(2, 132, 199, 0.3);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.prop-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Limbo Warning Bar */
 .prop-limbo-bar {
   display: flex;

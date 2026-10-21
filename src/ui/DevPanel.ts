@@ -28,9 +28,10 @@ import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
 import { FloatScrubber } from "./FloatScrubber.js";
 import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
-import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject } from "../config/WorldConfig.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializeCharacter, applyCharacterConfig } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -79,6 +80,7 @@ export class DevPanel {
   public dirtyState = {
     arena: false,
     globalPhysics: false,
+    player: false,
     modifiedObjects: new Map<string, GameObject>(),
     deletedObjectIds: new Set<string>(),
   };
@@ -348,6 +350,8 @@ export class DevPanel {
       this.renderSceneSpawners();
     });
 
+    PropertyControl.defaultSaveHandler = (owner, prop, val, label) => this.saveIndividualProperty(owner, prop, val, label);
+
     this.renderPanel();
   }
 
@@ -469,9 +473,10 @@ export class DevPanel {
             <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
           </div>
         </div>
-        <div class="mode-switcher">
+        <div class="mode-switcher" style="display: flex; gap: 4px; align-items: center;">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
           <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
+          <button id="btn-top-sim-pause" class="mode-btn" style="flex: 0 0 auto; padding: 4px 8px; font-weight: 600; font-size: 0.74rem;" title="Freeze or resume physics simulation">⏸️ Pause</button>
         </div>
         <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode ? 'flex' : 'none'};">
           <button id="submode-entities" class="submode-btn ${this.editTool === 'entities' ? 'active' : ''}">📦 Move Entities</button>
@@ -501,6 +506,11 @@ export class DevPanel {
             <input type="checkbox" id="check-save-physics" checked>
             <span>Global Physics (Gravity / Collision)</span>
             <span id="badge-dirty-physics" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
+            <input type="checkbox" id="check-save-player" checked>
+            <span>Player 1 & Prefab Archetype</span>
+            <span id="badge-dirty-player" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
           </label>
           <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
             <input type="checkbox" id="check-save-objects" checked>
@@ -3725,6 +3735,36 @@ export class DevPanel {
       this.setMode(true);
     });
 
+    const btnTopPause = this.container.querySelector("#btn-top-sim-pause") as HTMLButtonElement | null;
+    const updatePauseUI = (paused: boolean) => {
+      if (btnTopPause) {
+        btnTopPause.textContent = paused ? "▶️ Resume" : "⏸️ Pause";
+        btnTopPause.style.background = paused ? "#059669" : "";
+        btnTopPause.style.borderColor = paused ? "#34d399" : "";
+        btnTopPause.style.color = paused ? "#ffffff" : "";
+        btnTopPause.style.boxShadow = paused ? "0 0 10px rgba(16, 185, 129, 0.5)" : "";
+      }
+      const btnSimPause = this.container.querySelector("#btn-sim-pause") as HTMLButtonElement | null;
+      if (btnSimPause) {
+        btnSimPause.textContent = paused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
+        btnSimPause.style.color = paused ? "#10b981" : "#f1f5f9";
+      }
+    };
+
+    // Synchronize initial state
+    setTimeout(() => {
+      const loop = this.getGameLoop?.();
+      if (loop) updatePauseUI(loop.isPhysicsPaused);
+    }, 100);
+
+    btnTopPause?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.isPhysicsPaused = !loop.isPhysicsPaused;
+      updatePauseUI(loop.isPhysicsPaused);
+      this.showSaveToast(loop.isPhysicsPaused ? "⏸️ Simulation Frozen (safe to inspect and save)" : "▶️ Simulation Resumed");
+    });
+
     this.container.querySelector("#submode-entities")?.addEventListener("click", () => {
       this.setEditTool("entities");
     });
@@ -3915,10 +3955,7 @@ export class DevPanel {
       const loop = this.getGameLoop?.();
       if (!loop) return;
       loop.isPhysicsPaused = !loop.isPhysicsPaused;
-      if (btnSimPause) {
-        btnSimPause.textContent = loop.isPhysicsPaused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
-        btnSimPause.style.color = loop.isPhysicsPaused ? "#10b981" : "#f1f5f9";
-      }
+      updatePauseUI(loop.isPhysicsPaused);
     });
 
     btnSimStep?.addEventListener("click", () => {
@@ -5343,16 +5380,22 @@ export class DevPanel {
     }
   }
 
-  public markDirty(category: "arena" | "globalPhysics" | "objects", targetEntity?: GameObject): void {
+  public markDirty(category: "arena" | "globalPhysics" | "player" | "objects", targetEntity?: GameObject): void {
     if (this.isOnlineLocked) return;
 
     if (category === "arena") {
       this.dirtyState.arena = true;
     } else if (category === "globalPhysics") {
       this.dirtyState.globalPhysics = true;
+    } else if (category === "player") {
+      this.dirtyState.player = true;
     } else if (category === "objects") {
-      if (targetEntity && !(targetEntity instanceof Character)) {
-        this.dirtyState.modifiedObjects.set(targetEntity.id, targetEntity);
+      if (targetEntity) {
+        if (targetEntity instanceof Character || (targetEntity as any).isCharacter) {
+          this.dirtyState.player = true;
+        } else {
+          this.dirtyState.modifiedObjects.set(targetEntity.id, targetEntity);
+        }
       }
     }
     this.updateDirtyBadge();
@@ -5362,6 +5405,7 @@ export class DevPanel {
     let count = 0;
     if (this.dirtyState.arena) count++;
     if (this.dirtyState.globalPhysics) count++;
+    if (this.dirtyState.player) count++;
     count += this.dirtyState.modifiedObjects.size;
     count += this.dirtyState.deletedObjectIds.size;
 
@@ -5382,6 +5426,9 @@ export class DevPanel {
 
     const badgePhys = this.container.querySelector("#badge-dirty-physics") as HTMLElement | null;
     if (badgePhys) badgePhys.style.display = this.dirtyState.globalPhysics ? "inline" : "none";
+
+    const badgePlayer = this.container.querySelector("#badge-dirty-player") as HTMLElement | null;
+    if (badgePlayer) badgePlayer.style.display = this.dirtyState.player ? "inline" : "none";
 
     const badgeObjs = this.container.querySelector("#badge-dirty-objects") as HTMLElement | null;
     if (badgeObjs) badgeObjs.style.display = (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0) ? "inline" : "none";
@@ -5430,6 +5477,76 @@ export class DevPanel {
     }, 2400);
   }
 
+  public async saveIndividualProperty(owner: GameObject, prop: DynamicProperty, value: number, label?: string): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const isChar = owner instanceof Character || (owner as any).isCharacter;
+    if (isChar) {
+      const char = owner as Character;
+      // 1. Update player prefab archetype if prefab exists
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        playerPrefab.setProperty(prop.referenceKey || label || "prop", value, this.getAllCharacters ? this.getAllCharacters() : [char]);
+      }
+
+      // 2. Persist character config to worldConfig.json
+      const delta: WorldConfigDelta = {
+        clientVersion: this.currentConfigVersion,
+        sections: ["player"],
+        player: serializeCharacter(char),
+      };
+
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+      this.dirtyState.player = false;
+      this.updateDirtyBadge();
+      this.showSaveToast(`💾 Saved ${label || "property"}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
+    } else {
+      // Regular GameObject
+      if (owner.prefabId) {
+        const prefab = prefabManager.get(owner.prefabId);
+        if (prefab) {
+          prefab.setProperty(prop.referenceKey || label || "prop", value, this.objects);
+        }
+      }
+
+      const delta: WorldConfigDelta = {
+        clientVersion: this.currentConfigVersion,
+        sections: ["objects"],
+        objectsDelta: {
+          upsert: [serializeGameObject(owner)],
+        },
+      };
+
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+      this.dirtyState.modifiedObjects.delete(owner.id);
+      this.updateDirtyBadge();
+      this.showSaveToast(`💾 Saved ${label || "property"}: ${Number(value.toFixed(2))} for ${owner.name}`);
+    }
+  }
+
   public async saveProjectConfig(saveAll: boolean = true): Promise<void> {
     if (this.isOnlineLocked) {
       this.showSaveToast("🔒 DevTools save disabled in online mode", true);
@@ -5437,17 +5554,20 @@ export class DevPanel {
     }
 
     const checkPhysics = (this.container.querySelector("#check-save-physics") as HTMLInputElement)?.checked ?? true;
+    const checkPlayer = (this.container.querySelector("#check-save-player") as HTMLInputElement)?.checked ?? true;
     const checkObjects = (this.container.querySelector("#check-save-objects") as HTMLInputElement)?.checked ?? true;
     const checkArena = (this.container.querySelector("#check-save-arena") as HTMLInputElement)?.checked ?? true;
 
-    const sections: ("arena" | "globalPhysics" | "objects")[] = [];
+    const sections: ("arena" | "globalPhysics" | "player" | "objects")[] = [];
     if (saveAll || (checkPhysics && this.dirtyState.globalPhysics)) sections.push("globalPhysics");
     if (saveAll || (checkArena && this.dirtyState.arena)) sections.push("arena");
+    if (saveAll || (checkPlayer && this.dirtyState.player)) sections.push("player");
     if (saveAll || (checkObjects && (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0))) sections.push("objects");
 
     if (saveAll) {
       if (!sections.includes("globalPhysics")) sections.push("globalPhysics");
       if (!sections.includes("arena")) sections.push("arena");
+      if (!sections.includes("player")) sections.push("player");
       if (!sections.includes("objects")) sections.push("objects");
     }
 
@@ -5475,6 +5595,14 @@ export class DevPanel {
         presetId: this.arena.currentPresetId,
         tileGrid,
       };
+    }
+
+    if (sections.includes("player") && this.character) {
+      delta.player = serializeCharacter(this.character);
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        applyCharacterConfig(playerPrefab.archetype as Character, delta.player);
+      }
     }
 
     if (sections.includes("objects")) {
@@ -5521,11 +5649,13 @@ export class DevPanel {
       if (saveAll) {
         this.dirtyState.globalPhysics = false;
         this.dirtyState.arena = false;
+        this.dirtyState.player = false;
         this.dirtyState.modifiedObjects.clear();
         this.dirtyState.deletedObjectIds.clear();
       } else {
         if (delta.globalPhysics) this.dirtyState.globalPhysics = false;
         if (delta.arena) this.dirtyState.arena = false;
+        if (delta.player) this.dirtyState.player = false;
         if (delta.objectsDelta) {
           if (delta.objectsDelta.upsert) {
             for (const item of delta.objectsDelta.upsert) {
