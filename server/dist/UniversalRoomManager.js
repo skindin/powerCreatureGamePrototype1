@@ -7426,12 +7426,19 @@ class DamageSolverModule {
      * Clamps the final HP deduction at 0 (e.g., a threshold of 5.0 HP absorbs the first 5 HP of any impact).
      */
     __publicField(this, "damageThresholdHpProp");
+    /**
+     * Weight [0.0, 1.0] for self-velocity contribution in collisions.
+     * 0.0 = arcade (only other moving threats/projectiles damage you, resting props do 0).
+     * 1.0 = Newtonian simulation (sprinting into walls/rocks deals full damage).
+     */
+    __publicField(this, "selfImpactWeightProp");
     /** Cooldown timer to prevent multi-substep collision spam in a single frame */
     __publicField(this, "lastImpactTime", 0);
     __publicField(this, "impactCooldownMs", 60);
     this.impactSusceptibilityProp = new DynamicProperty((options == null ? void 0 : options.impactSusceptibility) ?? 1);
     const initialThresh = (options == null ? void 0 : options.damageThresholdHp) ?? (options == null ? void 0 : options.minShockThreshold) ?? 5;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
+    this.selfImpactWeightProp = new DynamicProperty((options == null ? void 0 : options.selfImpactWeight) ?? 0);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
   get minShockThresholdProp() {
@@ -7442,6 +7449,9 @@ class DamageSolverModule {
   }
   getDamageThresholdHp(registry) {
     return this.damageThresholdHpProp.get(registry);
+  }
+  getSelfImpactWeight(registry) {
+    return this.selfImpactWeightProp.get(registry);
   }
   /** Backwards compatibility alias for getDamageThresholdHp */
   getMinShockThreshold(registry) {
@@ -8652,7 +8662,7 @@ class MeleeModule {
           target.velocity.x = (target.velocity.x ?? 0) + uX * targetDv;
           target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
         }
-        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : target.isCharacter ? 0.2 : 0;
+        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : 0;
         const absFrac = Math.max(0.1, 1 - Math.min(1, targetBounce * targetBounce));
         const shock = targetDv * 60 * absFrac;
         target.dispatchImpact({
@@ -9813,7 +9823,7 @@ class CollisionResolver {
       return false;
     }
     const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
-    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : entity.isCharacter ? 0.2 : 0;
+    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0;
     if (mode === "naive") {
       entity.position.x = cx + normX * r;
       entity.position.y = cy + normY * r;
@@ -9843,21 +9853,39 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const shock = impactSpeed * 60 * absFrac;
+      const kSelf = entity.isUnderKnockback ? 1 : entity.damageSolverModule ? entity.damageSolverModule.getSelfImpactWeight(entity.properties) : 0;
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf);
+      const effectiveSpeed = impactSpeed * threatRatio;
+      const shock = effectiveSpeed * 60 * absFrac;
       if (shock > 0.01) {
-        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
-        if (canTakeWallDamage) {
-          entity.dispatchImpact({
-            absorbedShock: shock,
-            impactSpeed,
-            otherEntity: null,
-            normalX: normX,
-            normalY: normY
-          });
-        }
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed: effectiveSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY
+        });
       }
     }
     return true;
+  }
+  /**
+   * Calculates the effective velocity fraction of a collision for an entity based on the
+   * relative closing contribution of the other object vs self-directed velocity.
+   *
+   * Formula:
+   *   otherShare = u_other / (u_other + u_self)
+   *   effectiveRatio = otherShare + k_self * (1 - otherShare)
+   *
+   * When k_self = 0 (arcade): resting obstacles deliver 0 shock.
+   * When k_self = 1 (simulation): standard Newtonian relative impact.
+   * When entity is under knockback: k_self defaults to 1.0 (flung into obstacles).
+   */
+  static calculateThreatRatio(uSelf, uOther, kSelf) {
+    const totalClosing = uSelf + uOther;
+    if (totalClosing <= 1e-4) return 1;
+    const otherShare = Math.max(0, Math.min(1, uOther / totalClosing));
+    return Math.max(0, Math.min(1, otherShare + kSelf * (1 - otherShare)));
   }
   /**
    * Applies impulse at contact point respecting the Massless vs Massive rule.
@@ -9960,8 +9988,8 @@ class CollisionResolver {
       }
     }
     const relSpeed = impactSpeed;
-    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : a.isCharacter ? 0.2 : 0;
-    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : b.isCharacter ? 0.2 : 0;
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const absFracA = Math.max(0, 1 - Math.min(1, bModA * bModA));
     const absFracB = Math.max(0, 1 - Math.min(1, bModB * bModB));
     let deltaVa = relSpeed * 0.5;
@@ -9988,12 +10016,22 @@ class CollisionResolver {
     const massB = Math.max(0.1, b.mass);
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
-    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const uSelfA = Math.max(0, a.velocity.x * normX + a.velocity.y * normY);
+    const uOtherA = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
+    const uSelfB = uOtherA;
+    const uOtherB = uSelfA;
+    const kSelfA = a.isUnderKnockback ? 1 : a.damageSolverModule ? a.damageSolverModule.getSelfImpactWeight(a.properties) : 0;
+    const kSelfB = b.isUnderKnockback ? 1 : b.damageSolverModule ? b.damageSolverModule.getSelfImpactWeight(b.properties) : 0;
+    const threatRatioA = CollisionResolver.calculateThreatRatio(uSelfA, uOtherA, kSelfA);
+    const threatRatioB = CollisionResolver.calculateThreatRatio(uSelfB, uOtherB, kSelfB);
+    const effectiveDeltaVa = deltaVa * threatRatioA;
+    const effectiveDeltaVb = deltaVb * threatRatioB;
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatioA,
         otherEntity: b,
         normalX: -normX,
         normalY: -normY
@@ -10005,7 +10043,7 @@ class CollisionResolver {
     if (shockB > 0.01) {
       b.dispatchImpact({
         absorbedShock: shockB,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatioB,
         otherEntity: a,
         normalX: normX,
         normalY: normY
@@ -11253,6 +11291,17 @@ function serializeCharacter(char) {
       preventWalkOff: char.wallEdgeAssistModule.preventWalkOff
     };
   }
+  if (char.damageSolverModule) {
+    result.hasDamageSolverModule = char.damageSolverModule.enabled;
+    result.damageSolverModule = {
+      enabled: char.damageSolverModule.enabled,
+      impactSusceptibility: char.damageSolverModule.impactSusceptibilityProp.get(char.properties),
+      minShockThreshold: char.damageSolverModule.damageThresholdHpProp.get(char.properties),
+      selfImpactWeight: char.damageSolverModule.selfImpactWeightProp.get(char.properties)
+    };
+  } else {
+    result.hasDamageSolverModule = false;
+  }
   return result;
 }
 function applyCharacterConfig(char, config) {
@@ -11385,6 +11434,7 @@ function applyCharacterConfig(char, config) {
   if (config.damageSolverModule && char.damageSolverModule) {
     if (config.damageSolverModule.impactSusceptibility !== void 0) char.damageSolverModule.impactSusceptibilityProp.set(config.damageSolverModule.impactSusceptibility, char.properties);
     if (config.damageSolverModule.minShockThreshold !== void 0) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
+    if (config.damageSolverModule.selfImpactWeight !== void 0) char.damageSolverModule.selfImpactWeightProp.set(config.damageSolverModule.selfImpactWeight, char.properties);
   }
 }
 function serializeGameObject(obj) {
@@ -11498,7 +11548,8 @@ function serializeGameObject(obj) {
     result.damageSolverModule = {
       enabled: obj.damageSolverModule.enabled,
       impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
-      minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties)
+      minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties),
+      selfImpactWeight: obj.damageSolverModule.selfImpactWeightProp.get(obj.properties)
     };
   }
   return result;
@@ -11636,7 +11687,8 @@ function deserializeGameObject(config) {
     options.damageSolverModule = new DamageSolverModule({
       enabled: config.damageSolverModule.enabled,
       impactSusceptibility: config.damageSolverModule.impactSusceptibility,
-      damageThresholdHp: config.damageSolverModule.minShockThreshold
+      damageThresholdHp: config.damageSolverModule.minShockThreshold,
+      selfImpactWeight: config.damageSolverModule.selfImpactWeight
     });
   }
   const obj = new GameObject(options);
@@ -11779,7 +11831,7 @@ class Prefab {
     }
   }
   applyPropertyToEntity(ent, propKey, value) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
     if (ent.isCharacter) {
       const char = ent;
       switch (propKey) {
@@ -12121,6 +12173,11 @@ class Prefab {
         case "damageSolverModule.minShockThreshold":
         case "Min Shock Threshold (N·s)":
           if ((_w = char.damageSolverModule) == null ? void 0 : _w.damageThresholdHpProp) char.damageSolverModule.damageThresholdHpProp.set(Number(value), char.properties);
+          return;
+        case "selfImpactWeight":
+        case "damageSolverModule.selfImpactWeight":
+        case "Self Impact Weight":
+          if ((_x = char.damageSolverModule) == null ? void 0 : _x.selfImpactWeightProp) char.damageSolverModule.selfImpactWeightProp.set(Number(value), char.properties);
           return;
       }
     }

@@ -283,7 +283,7 @@ export class MeleeModule {
         }
 
         // Apply HP damage via target's DamageSolverModule (consistent with 60Hz collision shock)
-        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : (target.isCharacter ? 0.2 : 0);
+        const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : 0;
         const absFrac = Math.max(0.1, 1.0 - Math.min(1.0, targetBounce * targetBounce));
         const shock = targetDv * 60 * absFrac;
 

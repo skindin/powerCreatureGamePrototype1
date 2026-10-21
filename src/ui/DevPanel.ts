@@ -1709,6 +1709,7 @@ export class DevPanel {
           </div>
           <div id="prop-socket-impact-susceptibility"></div>
           <div id="prop-socket-min-shock-thresh"></div>
+          <div id="prop-socket-self-impact-weight"></div>
           <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
             <div id="scrub-container-mod-collision-damage-scale"></div>
             <div class="module-global-warning">
@@ -3242,6 +3243,24 @@ export class DevPanel {
           },
         });
         threshSocketEl.appendChild(threshCtrl.element);
+      }
+
+      const selfWeightSocketEl = this.container.querySelector("#prop-socket-self-impact-weight");
+      if (selfWeightSocketEl) {
+        const selfWeightCtrl = new PropertyControl({
+          property: ds.selfImpactWeightProp,
+          owner: e,
+          label: "Self-Speed Damage Weight (0 = Arcade, 1 = Realism)",
+          step: 0.05,
+          min: 0.0,
+          max: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
+        });
+        selfWeightSocketEl.appendChild(selfWeightCtrl.element);
       }
 
       this.setupScrubber("scrub-container-mod-collision-damage-scale", {
@@ -5627,6 +5646,11 @@ export class DevPanel {
     if (owner.damageAuraModule) {
       if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
       if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";
+    }
+    if (owner.damageSolverModule) {
+      if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
+      if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
+      if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
     }
 
     // If it has a referenceKey, use that

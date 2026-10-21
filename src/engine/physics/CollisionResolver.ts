@@ -367,7 +367,7 @@ export class CollisionResolver {
     }
 
     const { tHitFraction: alpha, cx, cy, normX, normY } = wallHit;
-    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : (entity.isCharacter ? 0.2 : 0);
+    const bRestitution = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : 0;
 
     if (mode === "naive") {
       // Legacy push-out
@@ -407,25 +407,53 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const shock = impactSpeed * 60 * absFrac;
+
+      // Wall is stationary geometry (uOther = 0, uSelf = impactSpeed).
+      // Self-impact sensitivity factor kSelf:
+      const kSelf = entity.isUnderKnockback
+        ? 1.0
+        : (entity.damageSolverModule ? entity.damageSolverModule.getSelfImpactWeight(entity.properties) : 0.0);
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf);
+      const effectiveSpeed = impactSpeed * threatRatio;
+      const shock = effectiveSpeed * 60 * absFrac;
+
       if (shock > 0.01) {
-        // Ground Locomotion Wall Exemption:
-        // Characters under self-directed voluntary movement do not take wall collision damage.
-        // Wall collision damage only applies if the character was knocked back, flung, or thrown into the wall.
-        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
-        if (canTakeWallDamage) {
-          entity.dispatchImpact({
-            absorbedShock: shock,
-            impactSpeed,
-            otherEntity: null,
-            normalX: normX,
-            normalY: normY,
-          });
-        }
+        // [User Request: floor condition commented out in favor of the selfImpactWeight / threat ratio model]
+        // const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed: effectiveSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY,
+        });
       }
     }
 
     return true;
+  }
+
+  /**
+   * Calculates the effective velocity fraction of a collision for an entity based on the
+   * relative closing contribution of the other object vs self-directed velocity.
+   *
+   * Formula:
+   *   otherShare = u_other / (u_other + u_self)
+   *   effectiveRatio = otherShare + k_self * (1 - otherShare)
+   *
+   * When k_self = 0 (arcade): resting obstacles deliver 0 shock.
+   * When k_self = 1 (simulation): standard Newtonian relative impact.
+   * When entity is under knockback: k_self defaults to 1.0 (flung into obstacles).
+   */
+  public static calculateThreatRatio(
+    uSelf: number,
+    uOther: number,
+    kSelf: number
+  ): number {
+    const totalClosing = uSelf + uOther;
+    if (totalClosing <= 0.0001) return 1.0;
+    const otherShare = Math.max(0, Math.min(1.0, uOther / totalClosing));
+    return Math.max(0, Math.min(1.0, otherShare + kSelf * (1.0 - otherShare)));
   }
 
   /**
@@ -565,8 +593,8 @@ export class CollisionResolver {
     // Injury is caused by plasticity (permanent deformation / tissue trauma), whereas bounce implies elasticity.
     // The bouncier an entity is (higher restitution e), the less plastic damage it sustains: absFrac = (1 - e^2).
     const relSpeed = impactSpeed;
-    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : (a.isCharacter ? 0.2 : 0);
-    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : (b.isCharacter ? 0.2 : 0);
+    const bModA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
+    const bModB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA * bModA));
     const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB * bModB));
 
@@ -601,13 +629,35 @@ export class CollisionResolver {
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
 
-    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    // Closing speed breakdown along contact normal:
+    // norm points from A toward B.
+    // uSelfA: A moving toward B along normal.
+    // uOtherA: B moving toward A along normal.
+    const uSelfA = Math.max(0, a.velocity.x * normX + a.velocity.y * normY);
+    const uOtherA = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
+    const uSelfB = uOtherA;
+    const uOtherB = uSelfA;
+
+    const kSelfA = a.isUnderKnockback
+      ? 1.0
+      : (a.damageSolverModule ? a.damageSolverModule.getSelfImpactWeight(a.properties) : 0.0);
+    const kSelfB = b.isUnderKnockback
+      ? 1.0
+      : (b.damageSolverModule ? b.damageSolverModule.getSelfImpactWeight(b.properties) : 0.0);
+
+    const threatRatioA = CollisionResolver.calculateThreatRatio(uSelfA, uOtherA, kSelfA);
+    const threatRatioB = CollisionResolver.calculateThreatRatio(uSelfB, uOtherB, kSelfB);
+
+    const effectiveDeltaVa = deltaVa * threatRatioA;
+    const effectiveDeltaVb = deltaVb * threatRatioB;
+
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
 
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatioA,
         otherEntity: b,
         normalX: -normX,
         normalY: -normY,
@@ -621,7 +671,7 @@ export class CollisionResolver {
     if (shockB > 0.01) {
       b.dispatchImpact({
         absorbedShock: shockB,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatioB,
         otherEntity: a,
         normalX: normX,
         normalY: normY,

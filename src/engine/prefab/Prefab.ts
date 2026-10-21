@@ -500,6 +500,11 @@ export class Prefab {
         case "Min Shock Threshold (N·s)":
           if (char.damageSolverModule?.damageThresholdHpProp) char.damageSolverModule.damageThresholdHpProp.set(Number(value), char.properties);
           return;
+        case "selfImpactWeight":
+        case "damageSolverModule.selfImpactWeight":
+        case "Self Impact Weight":
+          if (char.damageSolverModule?.selfImpactWeightProp) char.damageSolverModule.selfImpactWeightProp.set(Number(value), char.properties);
+          return;
       }
     }
 

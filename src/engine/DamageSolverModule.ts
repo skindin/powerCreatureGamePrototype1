@@ -25,6 +25,12 @@ export interface DamageSolverModuleOptions {
   damageThresholdHp?: number;
   /** Backwards compatibility alias for damageThresholdHp */
   minShockThreshold?: number;
+  /**
+   * Sensitivity factor (0.0 to 1.0) for how much self-directed closing speed contributes to collision damage.
+   * 0.0 = Arcade mode: self-velocity does not cause damage against walls or stationary objects.
+   * 1.0 = Full realism: relative velocity applies symmetrically.
+   */
+  selfImpactWeight?: number;
   enabled?: boolean;
 }
 
@@ -53,6 +59,13 @@ export class DamageSolverModule {
    */
   public damageThresholdHpProp: DynamicProperty;
 
+  /**
+   * Weight [0.0, 1.0] for self-velocity contribution in collisions.
+   * 0.0 = arcade (only other moving threats/projectiles damage you, resting props do 0).
+   * 1.0 = Newtonian simulation (sprinting into walls/rocks deals full damage).
+   */
+  public selfImpactWeightProp: DynamicProperty;
+
   /** Cooldown timer to prevent multi-substep collision spam in a single frame */
   private lastImpactTime: number = 0;
   private readonly impactCooldownMs: number = 60; // 60ms ~ 3-4 frames
@@ -61,6 +74,7 @@ export class DamageSolverModule {
     this.impactSusceptibilityProp = new DynamicProperty(options?.impactSusceptibility ?? 1.0);
     const initialThresh = options?.damageThresholdHp ?? options?.minShockThreshold ?? 5.0;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
+    this.selfImpactWeightProp = new DynamicProperty(options?.selfImpactWeight ?? 0.0);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
 
@@ -74,6 +88,10 @@ export class DamageSolverModule {
 
   public getDamageThresholdHp(registry?: ObjectPropertiesRegistry): number {
     return this.damageThresholdHpProp.get(registry);
+  }
+
+  public getSelfImpactWeight(registry?: ObjectPropertiesRegistry): number {
+    return this.selfImpactWeightProp.get(registry);
   }
 
   /** Backwards compatibility alias for getDamageThresholdHp */

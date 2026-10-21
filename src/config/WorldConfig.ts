@@ -114,6 +114,7 @@ export interface SerializedGameObjectConfig {
     enabled: boolean;
     impactSusceptibility: number;
     minShockThreshold: number;
+    selfImpactWeight?: number;
   } | null;
 
   // Backwards compatibility legacy fields
@@ -249,6 +250,7 @@ export interface SerializedCharacterConfig {
     enabled?: boolean;
     impactSusceptibility?: number;
     minShockThreshold?: number;
+    selfImpactWeight?: number;
   } | null;
 }
 
@@ -453,6 +455,18 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     };
   }
 
+  if (char.damageSolverModule) {
+    result.hasDamageSolverModule = char.damageSolverModule.enabled;
+    result.damageSolverModule = {
+      enabled: char.damageSolverModule.enabled,
+      impactSusceptibility: char.damageSolverModule.impactSusceptibilityProp.get(char.properties),
+      minShockThreshold: char.damageSolverModule.damageThresholdHpProp.get(char.properties),
+      selfImpactWeight: char.damageSolverModule.selfImpactWeightProp.get(char.properties),
+    };
+  } else {
+    result.hasDamageSolverModule = false;
+  }
+
   return result;
 }
 
@@ -602,6 +616,7 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   if (config.damageSolverModule && char.damageSolverModule) {
     if (config.damageSolverModule.impactSusceptibility !== undefined) char.damageSolverModule.impactSusceptibilityProp.set(config.damageSolverModule.impactSusceptibility, char.properties);
     if (config.damageSolverModule.minShockThreshold !== undefined) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
+    if (config.damageSolverModule.selfImpactWeight !== undefined) char.damageSolverModule.selfImpactWeightProp.set(config.damageSolverModule.selfImpactWeight, char.properties);
   }
 }
 
@@ -732,6 +747,7 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       enabled: obj.damageSolverModule.enabled,
       impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
       minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties),
+      selfImpactWeight: obj.damageSolverModule.selfImpactWeightProp.get(obj.properties),
     };
   }
 
@@ -897,6 +913,7 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
       enabled: config.damageSolverModule.enabled,
       impactSusceptibility: config.damageSolverModule.impactSusceptibility,
       damageThresholdHp: config.damageSolverModule.minShockThreshold,
+      selfImpactWeight: config.damageSolverModule.selfImpactWeight,
     });
   }
 

@@ -1,6 +1,6 @@
 {
-  "version": 47,
-  "lastSaved": "2026-10-21T11:06:31.963Z",
+  "version": 50,
+  "lastSaved": "2026-10-21T11:24:00.509Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -319,7 +319,7 @@
   },
   "globalPhysics": {
     "gravity": 30,
-    "collisionDamageScale": 0.05,
+    "collisionDamageScale": 0.1,
     "collisionMode": "dynamic"
   },
   "player": {
@@ -945,7 +945,7 @@
         "tag": "food",
         "totalEnergyJoules": 4000,
         "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
+        "consumeRateWatts": 1200,
         "healRate": 0,
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
@@ -1012,7 +1012,7 @@
         "tag": "food",
         "totalEnergyJoules": 4000,
         "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
+        "consumeRateWatts": 1200,
         "healRate": 0,
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
@@ -1079,7 +1079,7 @@
         "tag": "food",
         "totalEnergyJoules": 4000,
         "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 800,
+        "consumeRateWatts": 1200,
         "healRate": 0,
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
@@ -1151,6 +1151,73 @@
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
       }
+    },
+    {
+      "id": "obj-mcnn4yg",
+      "name": "Apple",
+      "prefabId": "prefab_apple",
+      "position": {
+        "x": 10,
+        "y": 11.8,
+        "z": 0
+      },
+      "color": "#22c55e",
+      "visualShape": "circle",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.35,
+      "colliderRadius": 0.25,
+      "bounceMod": 0.2,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.35,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.25
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.2,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "consumableModule": {
+        "enabled": true,
+        "tag": "food",
+        "totalEnergyJoules": 4000,
+        "remainingEnergyJoules": 4000,
+        "consumeRateWatts": 1200,
+        "healRate": 0,
+        "minScaleFloor": 0.35,
+        "minRadiusFloor": 0.12
+      }
     }
   ],
   "prefabs": [
@@ -1161,13 +1228,14 @@
       "archetype": {
         "id": "archetype_apple",
         "name": "Apple",
-        "position": { "x": 0, "y": 0, "z": 0 },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "color": "#22c55e",
         "visualShape": "circle",
-        "mass": 0.35,
-        "colliderRadius": 0.25,
-        "bounceMod": 0.2,
-        "verticalBounce": true,
+        "isSleeping": false,
         "hasRigidbody": true,
         "hasCollider": true,
         "hasFriction": true,
@@ -1179,6 +1247,12 @@
         "hasHealthModule": false,
         "hasDamageAuraModule": false,
         "hasDamageSolverModule": false,
+        "mass": 0.35,
+        "colliderRadius": 0.25,
+        "bounceMod": 0.2,
+        "verticalBounce": true,
+        "staticGroundFrictionMod": 1,
+        "dynamicGroundFrictionMod": 1,
         "rigidbodyModule": {
           "enabled": true,
           "mass": 0.35,
@@ -1211,7 +1285,7 @@
           "tag": "food",
           "totalEnergyJoules": 4000,
           "remainingEnergyJoules": 4000,
-          "consumeRateWatts": 800,
+          "consumeRateWatts": 1200,
           "healRate": 0,
           "minScaleFloor": 0.35,
           "minRadiusFloor": 0.12
@@ -1225,7 +1299,11 @@
       "archetype": {
         "id": "archetype_stone",
         "name": "Stone",
-        "position": { "x": 0, "y": 0, "z": 0 },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "color": "#78716c",
         "visualShape": "circle",
         "mass": 0.85,
