@@ -26,10 +26,11 @@ import { MeleeModule } from "../character/MeleeModule.js";
 import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
-import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { FloatScrubber } from "./FloatScrubber.js";
+import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -71,6 +72,16 @@ export class DevPanel {
   public getGameLoop?: () => any;
   public getRenderer?: () => any;
   public rollbackDepthTicks: number = 30;
+
+  // Project persistence & dirty state tracking
+  public isOnlineLocked: boolean = false;
+  public currentConfigVersion: number = 1;
+  public dirtyState = {
+    arena: false,
+    globalPhysics: false,
+    modifiedObjects: new Map<string, GameObject>(),
+    deletedObjectIds: new Set<string>(),
+  };
 
 
   // Preserved Creator State
@@ -465,6 +476,46 @@ export class DevPanel {
         <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode ? 'flex' : 'none'};">
           <button id="submode-entities" class="submode-btn ${this.editTool === 'entities' ? 'active' : ''}">📦 Move Entities</button>
           <button id="submode-walls" class="submode-btn ${this.editTool === 'walls' ? 'active' : ''}">🧱 Edit Walls</button>
+        </div>
+
+        <!-- Project Save & Version Control Persistence Bar -->
+        <div class="project-save-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; margin-top: 6px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="dev-save-badge" class="badge-status-clean" style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3);">
+              ✓ In Sync (v1)
+            </span>
+          </div>
+          <div style="display: flex; gap: 4px;">
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save changed settings to src/config/worldConfig.json">
+              💾 Save to Project
+            </button>
+            <button id="btn-toggle-save-options" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.72rem;" title="Selective Save Options">
+              ⚙️
+            </button>
+          </div>
+        </div>
+
+        <!-- Selective Save Popover -->
+        <div id="save-options-popover" style="display: none; padding: 6px 8px; margin-top: 4px; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; font-size: 0.72rem;">
+          <div style="font-weight: 600; color: #94a3b8; margin-bottom: 4px;">Selective Save Sections:</div>
+          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
+            <input type="checkbox" id="check-save-physics" checked>
+            <span>Global Physics (Gravity / Collision)</span>
+            <span id="badge-dirty-physics" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; cursor: pointer;">
+            <input type="checkbox" id="check-save-objects" checked>
+            <span>Freebody Objects & Placements</span>
+            <span id="badge-dirty-objects" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer;">
+            <input type="checkbox" id="check-save-arena" checked>
+            <span>Arena Walls & Dimensions</span>
+            <span id="badge-dirty-arena" style="display: none; color: #f59e0b; font-weight: bold;">●</span>
+          </label>
+          <div style="display: flex; justify-content: flex-end; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 4px;">
+            <button id="btn-revert-from-project" class="btn-secondary-action" style="font-size: 0.68rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);">↺ Reload from Disk</button>
+          </div>
         </div>
       </div>
 
@@ -2108,6 +2159,9 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    }
   }
 
   private removeModuleFromSelectedEntity(modId: string): void {
@@ -2220,6 +2274,9 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    }
   }
 
   private addModuleToSelectedEntity(modId: string): void {
@@ -2364,6 +2421,9 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    }
   }
 
   private bindDynamicModuleControls(): void {
@@ -3526,6 +3586,23 @@ export class DevPanel {
       this.setEditTool("walls");
     });
 
+    // 1b. Project Config Save & Selective Options
+    this.container.querySelector("#btn-save-project-config")?.addEventListener("click", () => {
+      this.saveProjectConfig();
+    });
+
+    const btnToggleSaveOptions = this.container.querySelector("#btn-toggle-save-options");
+    const saveOptionsPopover = this.container.querySelector("#save-options-popover") as HTMLElement | null;
+    btnToggleSaveOptions?.addEventListener("click", () => {
+      if (saveOptionsPopover) {
+        saveOptionsPopover.style.display = saveOptionsPopover.style.display === "none" ? "block" : "none";
+      }
+    });
+
+    this.container.querySelector("#btn-revert-from-project")?.addEventListener("click", () => {
+      this.reloadFromDisk();
+    });
+
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
       const selectedId = this.entitySelectorEl.value;
@@ -3630,6 +3707,9 @@ export class DevPanel {
       if (this.selectedEntity.prefabId) {
         this.selectedEntity.overriddenProperties.add("visualShape");
         this.updatePrefabInfoBadge();
+      }
+      if (!(this.selectedEntity instanceof Character)) {
+        this.markDirty("objects", this.selectedEntity);
       }
       this.updateSelectorOptions();
     });
@@ -3887,6 +3967,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.gravity = val;
         this.setScrubberVal("scrub-container-mod-gravity", val);
+        this.markDirty("globalPhysics");
       },
     });
 
@@ -3901,6 +3982,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.setStandardWallHeight(val);
         this.setScrubberVal("scrub-container-editor-wall-height", val);
+        this.markDirty("arena");
       },
     });
 
@@ -3915,6 +3997,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.setStandardWallHeight(val);
         this.setScrubberVal("scrub-container-wall-height", val);
+        this.markDirty("arena");
       },
     });
 
@@ -3923,6 +4006,7 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(selectWallPreset.value, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-prev-wall-map")?.addEventListener("click", () => {
@@ -3932,6 +4016,7 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(presets[prevIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-next-wall-map")?.addEventListener("click", () => {
@@ -3941,18 +4026,21 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(presets[nextIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.resetDefaultWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.clearAllWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.setupScrubber("scrub-container-friction", {
@@ -3996,6 +4084,7 @@ export class DevPanel {
           loop.worldCollisionDamageScale = val;
         }
         this.setScrubberVal("scrub-container-mod-collision-damage-scale", val);
+        this.markDirty("globalPhysics");
       },
     });
 
@@ -4171,7 +4260,12 @@ export class DevPanel {
 
     // 11. Clear All Objects
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
+      for (const obj of this.objects) {
+        this.dirtyState.deletedObjectIds.add(obj.id);
+      }
+      this.dirtyState.modifiedObjects.clear();
       this.onClearObjects();
+      this.markDirty("objects");
       const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.setSelectedEntity(chars[0] || (null as any));
     });
@@ -4213,6 +4307,7 @@ export class DevPanel {
 
     this.onSpawnObject(newObj);
     this.setSelectedEntity(newObj);
+    this.markDirty("objects", newObj);
   }
 
   public duplicateSelectedEntity(): void {
@@ -4251,6 +4346,7 @@ export class DevPanel {
 
     this.onSpawnObject(clone);
     this.setSelectedEntity(clone);
+    this.markDirty("objects", clone);
   }
 
   public deleteSelectedEntity(): void {
@@ -4269,6 +4365,10 @@ export class DevPanel {
     if (this.onDeleteObject) {
       this.onDeleteObject(target);
     }
+
+    this.dirtyState.deletedObjectIds.add(target.id);
+    this.dirtyState.modifiedObjects.delete(target.id);
+    this.markDirty("objects");
 
     this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
   }
@@ -5054,6 +5154,223 @@ export class DevPanel {
           timerEl.style.color = "#4ade80";
         }
       }
+    }
+  }
+
+  public markDirty(category: "arena" | "globalPhysics" | "objects", targetEntity?: GameObject): void {
+    if (this.isOnlineLocked) return;
+
+    if (category === "arena") {
+      this.dirtyState.arena = true;
+    } else if (category === "globalPhysics") {
+      this.dirtyState.globalPhysics = true;
+    } else if (category === "objects") {
+      if (targetEntity && !(targetEntity instanceof Character)) {
+        this.dirtyState.modifiedObjects.set(targetEntity.id, targetEntity);
+      }
+    }
+    this.updateDirtyBadge();
+  }
+
+  public updateDirtyBadge(): void {
+    let count = 0;
+    if (this.dirtyState.arena) count++;
+    if (this.dirtyState.globalPhysics) count++;
+    count += this.dirtyState.modifiedObjects.size;
+    count += this.dirtyState.deletedObjectIds.size;
+
+    const badge = this.container.querySelector("#dev-save-badge") as HTMLElement | null;
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = `● Unsaved (${count} change${count === 1 ? "" : "s"})`;
+        badge.style.background = "rgba(245, 158, 11, 0.15)";
+        badge.style.color = "#f59e0b";
+        badge.style.borderColor = "rgba(245, 158, 11, 0.3)";
+      } else {
+        badge.textContent = `✓ In Sync (v${this.currentConfigVersion})`;
+        badge.style.background = "rgba(34, 197, 94, 0.15)";
+        badge.style.color = "#22c55e";
+        badge.style.borderColor = "rgba(34, 197, 94, 0.3)";
+      }
+    }
+
+    const badgePhys = this.container.querySelector("#badge-dirty-physics") as HTMLElement | null;
+    if (badgePhys) badgePhys.style.display = this.dirtyState.globalPhysics ? "inline" : "none";
+
+    const badgeObjs = this.container.querySelector("#badge-dirty-objects") as HTMLElement | null;
+    if (badgeObjs) badgeObjs.style.display = (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0) ? "inline" : "none";
+
+    const badgeArena = this.container.querySelector("#badge-dirty-arena") as HTMLElement | null;
+    if (badgeArena) badgeArena.style.display = this.dirtyState.arena ? "inline" : "none";
+  }
+
+  public async saveProjectConfig(): Promise<void> {
+    const checkPhysics = (this.container.querySelector("#check-save-physics") as HTMLInputElement)?.checked ?? true;
+    const checkObjects = (this.container.querySelector("#check-save-objects") as HTMLInputElement)?.checked ?? true;
+    const checkArena = (this.container.querySelector("#check-save-arena") as HTMLInputElement)?.checked ?? true;
+
+    const sections: ("arena" | "globalPhysics" | "objects")[] = [];
+    if (checkPhysics && this.dirtyState.globalPhysics) sections.push("globalPhysics");
+    if (checkArena && this.dirtyState.arena) sections.push("arena");
+    if (checkObjects && (this.dirtyState.modifiedObjects.size > 0 || this.dirtyState.deletedObjectIds.size > 0)) sections.push("objects");
+
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections,
+    };
+
+    if (sections.includes("globalPhysics")) {
+      delta.globalPhysics = {
+        gravity: this.arena.gravity,
+        collisionDamageScale: GameObject.globalWorldCollisionDamageScale ?? 1.0,
+      };
+    }
+
+    if (sections.includes("arena")) {
+      const tileGrid: number[][] = [];
+      for (let r = 0; r < this.arena.rows; r++) {
+        tileGrid.push([...this.arena.tileGrid[r]]);
+      }
+      delta.arena = {
+        width: this.arena.width,
+        height: this.arena.height,
+        wallHeight: this.arena.wallHeight,
+        presetId: this.arena.currentPresetId,
+        tileGrid,
+      };
+    }
+
+    if (sections.includes("objects")) {
+      delta.objectsDelta = {
+        upsert: Array.from(this.dirtyState.modifiedObjects.values()).map((o) => serializeGameObject(o)),
+        deletedIds: Array.from(this.dirtyState.deletedObjectIds),
+      };
+    }
+
+    const hasAnyChanges = sections.length > 0;
+    const btn = this.container.querySelector("#btn-save-project-config") as HTMLButtonElement | null;
+
+    if (!hasAnyChanges) {
+      if (btn) {
+        const prev = btn.textContent;
+        btn.textContent = "Nothing to Save";
+        setTimeout(() => { if (btn) btn.textContent = prev; }, 1200);
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "💾 Saving...";
+    }
+
+    try {
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+
+      if (delta.globalPhysics) this.dirtyState.globalPhysics = false;
+      if (delta.arena) this.dirtyState.arena = false;
+      if (delta.objectsDelta) {
+        if (delta.objectsDelta.upsert) {
+          for (const item of delta.objectsDelta.upsert) {
+            this.dirtyState.modifiedObjects.delete(item.id);
+          }
+        }
+        if (delta.objectsDelta.deletedIds) {
+          for (const delId of delta.objectsDelta.deletedIds) {
+            this.dirtyState.deletedObjectIds.delete(delId);
+          }
+        }
+      }
+
+      this.updateDirtyBadge();
+
+      if (btn) {
+        btn.textContent = "✓ Saved!";
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "💾 Save to Project";
+          }
+        }, 1500);
+      }
+    } catch (err: any) {
+      console.error("Failed to save project config:", err);
+      alert("Failed to save project configuration:\n" + (err.message || String(err)));
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "💾 Save to Project";
+      }
+    }
+  }
+
+  public async reloadFromDisk(): Promise<void> {
+    try {
+      const resp = await fetch("/api/dev/world-config");
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch world-config: ${resp.status}`);
+      }
+      const config: WorldConfig = await resp.json();
+
+      if (config.arena) {
+        this.arena.setStandardWallHeight(config.arena.wallHeight);
+        if (config.arena.presetId && config.arena.presetId !== "custom") {
+          const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+          this.arena.loadWallPreset(config.arena.presetId, [...chars, ...this.objects]);
+        } else if (config.arena.tileGrid) {
+          this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+          this.arena.rebuildWalls();
+        }
+        const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+        this.arena.syncEntitiesWithWalls([...chars, ...this.objects]);
+        this.updateWallPresetUI();
+      }
+
+      if (config.globalPhysics) {
+        this.arena.gravity = config.globalPhysics.gravity;
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        const loop = this.getGameLoop ? this.getGameLoop() : null;
+        if (loop) {
+          loop.worldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        }
+      }
+
+      if (config.objects) {
+        this.onClearObjects();
+        for (const ser of config.objects) {
+          const obj = deserializeGameObject(ser);
+          this.onSpawnObject(obj);
+        }
+      }
+
+      this.currentConfigVersion = config.version;
+      this.dirtyState.arena = false;
+      this.dirtyState.globalPhysics = false;
+      this.dirtyState.modifiedObjects.clear();
+      this.dirtyState.deletedObjectIds.clear();
+
+      this.updateDirtyBadge();
+      this.updateSelectorOptions();
+      this.renderEntityModules();
+      this.syncEntitySliders();
+      this.updateInspector();
+
+      const popover = this.container.querySelector("#save-options-popover") as HTMLElement | null;
+      if (popover) popover.style.display = "none";
+    } catch (err: any) {
+      console.error("Failed to reload config from disk:", err);
+      alert("Failed to reload from disk:\n" + (err.message || String(err)));
     }
   }
 }

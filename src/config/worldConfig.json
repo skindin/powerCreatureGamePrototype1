@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "lastSaved": "2026-10-21T00:00:00.000Z",
+  "arena": {
+    "width": 20,
+    "height": 14,
+    "wallHeight": 1.0,
+    "presetId": "quarry",
+    "tileGrid": [
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+      [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+      [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+      [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  "globalPhysics": {
+    "gravity": 24,
+    "collisionDamageScale": 1.0,
+    "collisionMode": "dynamic"
+  },
+  "objects": [
+    {
+      "id": "stone-ground-1",
+      "name": "Small Throwing Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 4.2, "y": 5.8, "z": 0 },
+      "color": "#a8a29e",
+      "visualShape": "circle",
+      "mass": 0.65,
+      "colliderRadius": 0.18,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 101
+      }
+    },
+    {
+      "id": "stone-ground-2",
+      "name": "Throwing Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 4.8, "y": 8.5, "z": 0 },
+      "color": "#78716c",
+      "visualShape": "circle",
+      "mass": 0.85,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 102
+      }
+    },
+    {
+      "id": "stone-ground-3",
+      "name": "Heavy Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 8.2, "y": 4.5, "z": 0 },
+      "color": "#57534e",
+      "visualShape": "circle",
+      "mass": 1.25,
+      "colliderRadius": 0.28,
+      "bounceMod": 0.1,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.5,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 103
+      }
+    },
+    {
+      "id": "stone-ground-4",
+      "name": "Throwing Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 11.8, "y": 9.5, "z": 0 },
+      "color": "#78716c",
+      "visualShape": "circle",
+      "mass": 0.85,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 104
+      }
+    },
+    {
+      "id": "stone-ground-5",
+      "name": "Small Throwing Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 15.2, "y": 5.8, "z": 0 },
+      "color": "#a8a29e",
+      "visualShape": "circle",
+      "mass": 0.65,
+      "colliderRadius": 0.18,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 105
+      }
+    },
+    {
+      "id": "stone-ground-6",
+      "name": "Heavy Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 15.8, "y": 8.5, "z": 0 },
+      "color": "#57534e",
+      "visualShape": "circle",
+      "mass": 1.25,
+      "colliderRadius": 0.28,
+      "bounceMod": 0.1,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.5,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 106
+      }
+    },
+    {
+      "id": "stone-elevated-1",
+      "name": "Rampart Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 6.5, "y": 2.5, "z": 1.0 },
+      "color": "#78716c",
+      "visualShape": "circle",
+      "mass": 0.9,
+      "colliderRadius": 0.23,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 107
+      }
+    },
+    {
+      "id": "stone-elevated-2",
+      "name": "Rampart Stone",
+      "prefabId": "prefab_stone",
+      "position": { "x": 13.5, "y": 11.5, "z": 1.0 },
+      "color": "#78716c",
+      "visualShape": "circle",
+      "mass": 0.9,
+      "colliderRadius": 0.23,
+      "bounceMod": 0.15,
+      "verticalBounce": false,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rollModule": {
+        "enabled": true,
+        "rollResistance": 0.45,
+        "bumpyRollEnabled": true,
+        "bumpiness": 0.28,
+        "seed": 108
+      }
+    }
+  ]
+}

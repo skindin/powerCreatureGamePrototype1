@@ -307,6 +307,123 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
+        // World Config API endpoints (Local Development Only)
+        if (urlPath === '/api/dev/world-config') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+          if (fs.existsSync(configPath)) {
+            const data = fs.readFileSync(configPath, 'utf8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.end(data);
+          } else {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Config not found' }));
+          }
+          return;
+        }
+
+        if (urlPath === '/api/dev/save-config') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          // Strict Security Guard: Only allow from localhost / loopback, never from tunnel or external production
+          const reqHost = (req.headers['host'] || '').toLowerCase();
+          const isLocal = reqHost.startsWith('localhost') || reqHost.startsWith('127.0.0.1');
+          if (!isLocal || isTunnel) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'World config saving is only permitted on local host' }));
+            return;
+          }
+
+          parseJsonBody(req).then((delta: any) => {
+            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+            let currentConfig: any = {};
+            try {
+              if (fs.existsSync(configPath)) {
+                currentConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              }
+            } catch {}
+
+            // Merge delta selectively
+            const updatedConfig = {
+              version: (currentConfig.version || 1) + 1,
+              lastSaved: new Date().toISOString(),
+              arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
+              globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
+              objects: [...(currentConfig.objects || [])],
+            };
+
+            if (delta.arena?.tileGrid) {
+              updatedConfig.arena.tileGrid = delta.arena.tileGrid.map((row: any) => [...row]);
+            }
+
+            if (delta.objectsDelta) {
+              const { upsert, deletedIds } = delta.objectsDelta;
+              const objectMap = new Map();
+              for (const obj of updatedConfig.objects) {
+                objectMap.set(obj.id, obj);
+              }
+              if (deletedIds && Array.isArray(deletedIds)) {
+                for (const id of deletedIds) objectMap.delete(id);
+              }
+              if (upsert && Array.isArray(upsert)) {
+                for (const item of upsert) objectMap.set(item.id, item);
+              }
+              updatedConfig.objects = Array.from(objectMap.values());
+            }
+
+            const jsonStr = JSON.stringify(updatedConfig, null, 2);
+            fs.writeFileSync(configPath, jsonStr, 'utf8');
+
+            // Also keep public/dist in sync if present
+            try {
+              const distConfigPath = path.resolve(__dirname, 'dist/config/worldConfig.json');
+              if (fs.existsSync(path.resolve(__dirname, 'dist'))) {
+                fs.mkdirSync(path.dirname(distConfigPath), { recursive: true });
+                fs.writeFileSync(distConfigPath, jsonStr, 'utf8');
+              }
+            } catch {}
+
+            // Hot reload UniversalRoomManager in background
+            import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
+              UniversalRoomManager.getInstance().reloadWorldConfig?.(updatedConfig);
+            }).catch(() => {
+              server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
+                UniversalRoomManager.getInstance().reloadWorldConfig?.(updatedConfig);
+              }).catch(() => {});
+            });
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: true, version: updatedConfig.version, lastSaved: updatedConfig.lastSaved }));
+          }).catch((err) => {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Failed to parse delta payload', details: err?.message }));
+          });
+          return;
+        }
+
         if (isTunnel) {
 
 

@@ -314,7 +314,7 @@ export class Character extends GameObject {
     controllerType?: CharacterControllerType;
     role?: CharacterRole;
     characterModule?: CharacterModule | null;
-    damageSolverModule?: DamageSolverModule | null;
+    randomSpawn?: boolean;
     dynamicGroundFrictionMod?: number;
     staticGroundFrictionMod?: number;
   } = {}) {
@@ -332,9 +332,14 @@ export class Character extends GameObject {
       ? options.characterModule
       : new CharacterModule({ role: determinedRole });
 
-    const initX = options.position ? options.position.x : (options.x ?? 5.0);
-    const initY = options.position ? options.position.y : (options.y ?? 7.0);
-    const initZ = options.position?.z ?? 0;
+    const defaultSpawn = determinedRole !== "dummy"
+      ? HealthModule.getRandomSpawnPosition()
+      : { x: 5.0, y: 7.0, z: 0 };
+
+    const useRandom = options.randomSpawn ?? (options.position === undefined && options.x === undefined && determinedRole !== "dummy");
+    const initX = useRandom ? defaultSpawn.x : (options.position ? options.position.x : (options.x ?? defaultSpawn.x));
+    const initY = useRandom ? defaultSpawn.y : (options.position ? options.position.y : (options.y ?? defaultSpawn.y));
+    const initZ = useRandom ? defaultSpawn.z : (options.position?.z ?? (options.x !== undefined ? 0 : defaultSpawn.z));
 
     super({
       id: options.id,

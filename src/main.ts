@@ -15,6 +15,8 @@ import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
 import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import initialWorldConfig from "./config/worldConfig.json";
+import { deserializeGameObject } from "./config/WorldConfig.js";
 
 function bootstrap(): void {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -31,9 +33,24 @@ function bootstrap(): void {
     return;
   }
 
-  // 1. Initialize Arena (20 units wide x 14 units tall, 1 wall = 1 unit)
-  const arena = new Arena(20, 14, 1.0);
-  arena.loadWallPreset(quarryPreset.id);
+  // 1. Initialize Arena from worldConfig.json (or fallback to default Quarry map)
+  const arenaW = initialWorldConfig.arena?.width ?? 20;
+  const arenaH = initialWorldConfig.arena?.height ?? 14;
+  const arenaWallH = initialWorldConfig.arena?.wallHeight ?? 1.0;
+  const arena = new Arena(arenaW, arenaH, arenaWallH);
+  if (initialWorldConfig.arena?.tileGrid && initialWorldConfig.arena.tileGrid.length > 0) {
+    arena.tileGrid = initialWorldConfig.arena.tileGrid.map((row: any) => [...row]);
+    arena.rebuildWalls();
+  } else if (initialWorldConfig.arena?.presetId) {
+    arena.loadWallPreset(initialWorldConfig.arena.presetId);
+  } else {
+    arena.loadWallPreset(quarryPreset.id);
+  }
+  if (initialWorldConfig.globalPhysics) {
+    arena.gravity = initialWorldConfig.globalPhysics.gravity;
+    (arena as any).collisionDamageScale = initialWorldConfig.globalPhysics.collisionDamageScale;
+    GameObject.globalWorldCollisionDamageScale = initialWorldConfig.globalPhysics.collisionDamageScale;
+  }
   canvas.width = 1000;
   canvas.height = 700;
 
@@ -211,10 +228,9 @@ function bootstrap(): void {
     }
   })();
 
-  // 2. Initialize Base Character in unit coordinates
+  // 2. Initialize Base Character at a random clearing spawn (matching death respawn)
   const character = new Character({
-    x: QUARRY_PLAYER_SPAWN.x,
-    y: QUARRY_PLAYER_SPAWN.y,
+    randomSpawn: true,
     color: "#f59e0b", // Amber body
     colliderRadius: 0.44,
     mass: 1.2,
@@ -236,8 +252,10 @@ function bootstrap(): void {
     role: "dummy",
   });
 
-  // 3. Initialize Initial Freebody Objects in unit coordinates (Nothing but stones placed at first!)
-  const objects: GameObject[] = createQuarryStones();
+  // 3. Initialize Initial Freebody Objects in unit coordinates (from worldConfig.json or createQuarryStones fallback)
+  const objects: GameObject[] = (initialWorldConfig.objects && initialWorldConfig.objects.length > 0)
+    ? initialWorldConfig.objects.map((o: any) => deserializeGameObject(o))
+    : createQuarryStones();
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
   arena.syncEntitiesWithWalls([character, dummyCharacter, ...objects]);
@@ -277,6 +295,8 @@ function bootstrap(): void {
       devPanel.updateSelectorOptions();
     },
   });
+  devPanel.currentConfigVersion = initialWorldConfig.version ?? 1;
+  devPanel.updateDirtyBadge();
 
   // 5. Initialize Input Manager with Dev Panel interaction
   const inputManager = new InputManager(canvas, arena);
@@ -632,6 +652,23 @@ function bootstrap(): void {
     mobileModeLocalBtn?.classList.toggle("active", mode === "local");
     mobileModeBoomerangBtn?.classList.toggle("active", mode === "boomerang");
     mobileModeOnlineBtn?.classList.toggle("active", mode === "online");
+
+    // DevPanel & Editor access: Disable and hide completely when in authoritative online mode
+    if (mode === "online") {
+      devPanel.isOnlineLocked = true;
+      devPanel.setMode(false);
+      setSidebarOpen(false);
+      const toggleBtn = document.getElementById("toggle-sidebar-btn");
+      const quickTab = document.getElementById("quick-sidebar-tab");
+      if (toggleBtn) toggleBtn.style.display = "none";
+      if (quickTab) quickTab.style.display = "none";
+    } else {
+      devPanel.isOnlineLocked = false;
+      const toggleBtn = document.getElementById("toggle-sidebar-btn");
+      const quickTab = document.getElementById("quick-sidebar-tab");
+      if (toggleBtn) toggleBtn.style.display = "";
+      if (quickTab) quickTab.style.display = "";
+    }
 
     if (mode === "local") {
       persistentPingHud?.classList.add("hidden");
@@ -1400,6 +1437,7 @@ function bootstrap(): void {
       (e.code === "Backquote" || (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey)) &&
       !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
     ) {
+      if (devPanel.isOnlineLocked) return;
       const isCollapsed = devContainer.classList.contains("collapsed");
       setSidebarOpen(isCollapsed);
     }
@@ -1537,6 +1575,7 @@ function bootstrap(): void {
 
   mobileBtnInspector?.addEventListener("click", () => {
     setMobileMenuOpen(false);
+    if (devPanel.isOnlineLocked) return;
     const isCollapsed = devContainer.classList.contains("collapsed");
     setSidebarOpen(isCollapsed);
   });

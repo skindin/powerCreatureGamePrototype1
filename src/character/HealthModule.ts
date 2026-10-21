@@ -375,6 +375,15 @@ export class HealthModule {
   ];
 
   /**
+   * Returns a random clearing spawn location (matching death respawn placement).
+   */
+  public static getRandomSpawnPosition(): { x: number; y: number; z: number } {
+    const spawns = HealthModule.RESPAWN_SPAWNS;
+    const picked = spawns[Math.floor(Math.random() * spawns.length)];
+    return { x: picked.x, y: picked.y, z: picked.z ?? 0 };
+  }
+
+  /**
    * Resets character state on death:
    * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */

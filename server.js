@@ -273,6 +273,98 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // World Config API endpoints (Local Development Only)
+  if (urlPath === '/api/dev/world-config') {
+    const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+    const distConfigPath = path.resolve(__dirname, 'dist/config/worldConfig.json');
+    const targetFile = fs.existsSync(configPath) ? configPath : (fs.existsSync(distConfigPath) ? distConfigPath : null);
+    if (targetFile) {
+      const data = fs.readFileSync(targetFile, 'utf8');
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
+      res.end(data);
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Config not found' }));
+    }
+    return;
+  }
+
+  if (urlPath === '/api/dev/save-config') {
+    // Strict Security Guard: Only allow from localhost / loopback, never from tunnel or external production
+    const reqHost = (req.headers['host'] || '').toLowerCase();
+    const isLocal = reqHost.startsWith('localhost') || reqHost.startsWith('127.0.0.1');
+    const isProduction = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_GIT_COMMIT_SHA);
+    if (!isLocal || isProduction) {
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'World config saving is strictly disabled on production/remote servers' }));
+      return;
+    }
+
+    try {
+      const delta = await parseJsonBody(req);
+      const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+      let currentConfig = {};
+      try {
+        if (fs.existsSync(configPath)) {
+          currentConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+      } catch {}
+
+      const updatedConfig = {
+        version: (currentConfig.version || 1) + 1,
+        lastSaved: new Date().toISOString(),
+        arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
+        globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
+        objects: [...(currentConfig.objects || [])],
+      };
+
+      if (delta.arena?.tileGrid) {
+        updatedConfig.arena.tileGrid = delta.arena.tileGrid.map((row) => [...row]);
+      }
+
+      if (delta.objectsDelta) {
+        const { upsert, deletedIds } = delta.objectsDelta;
+        const objectMap = new Map();
+        for (const obj of updatedConfig.objects) {
+          objectMap.set(obj.id, obj);
+        }
+        if (deletedIds && Array.isArray(deletedIds)) {
+          for (const id of deletedIds) objectMap.delete(id);
+        }
+        if (upsert && Array.isArray(upsert)) {
+          for (const item of upsert) objectMap.set(item.id, item);
+        }
+        updatedConfig.objects = Array.from(objectMap.values());
+      }
+
+      const jsonStr = JSON.stringify(updatedConfig, null, 2);
+      fs.writeFileSync(configPath, jsonStr, 'utf8');
+
+      try {
+        const distConfigPath = path.resolve(__dirname, 'dist/config/worldConfig.json');
+        if (fs.existsSync(DIST_DIR)) {
+          fs.mkdirSync(path.dirname(distConfigPath), { recursive: true });
+          fs.writeFileSync(distConfigPath, jsonStr, 'utf8');
+        }
+      } catch {}
+
+      if (universalRoomManager && typeof universalRoomManager.reloadWorldConfig === 'function') {
+        universalRoomManager.reloadWorldConfig(updatedConfig);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ success: true, version: updatedConfig.version, lastSaved: updatedConfig.lastSaved }));
+      return;
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Failed to save config delta', details: err?.message }));
+      return;
+    }
+  }
+
   // Only allow GET and HEAD for static files
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });

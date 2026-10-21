@@ -1615,6 +1615,7 @@ export class InputManager {
         arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
+        devPanel?.markDirty("arena");
       }
     };
 
@@ -1627,6 +1628,7 @@ export class InputManager {
         arena.syncEntitiesWithWalls(allEntities);
         arena.currentPresetId = "custom";
         devPanel?.updateWallPresetUI();
+        devPanel?.markDirty("arena");
       }
     };
 
@@ -1723,6 +1725,9 @@ export class InputManager {
     this.onMouseUp = (_x: number, _y: number) => {
       if (this.draggedEntity) {
         arena.syncEntitiesWithWalls([this.draggedEntity]);
+        if (!(this.draggedEntity instanceof Character)) {
+          devPanel?.markDirty("objects", this.draggedEntity);
+        }
         this.draggedEntity = null;
       }
       if (devPanel?.isEditMode) {

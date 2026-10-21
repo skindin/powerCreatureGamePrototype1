@@ -16,8 +16,9 @@ import {
   AuthoritativeWorldSnapshot,
 } from "./AuthoritativeSnapshotManager.js";
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
-import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
 import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { WorldConfig, deserializeGameObject, generateDefaultWorldConfig } from "../config/WorldConfig.js";
+import { HealthModule } from "../character/HealthModule.js";
 
 export type { ContestedGrabResult, DeathRespawnEvent };
 
@@ -202,46 +203,85 @@ export class ServerGameSimulation {
   }
 
   /**
-   * Initializes default standard arena and freebodies if starting standalone without client.
+   * Initializes or hot-reloads the authoritative server simulation world from a persistent WorldConfig.
    */
-  public initializeDefaultScenario(): void {
-    // Generate Quarry preset walls
-    this.arena.loadWallPreset(quarryPreset.id);
+  public initializeFromConfig(config: WorldConfig): void {
+    if (config.arena) {
+      if (config.arena.width && config.arena.height) {
+        this.arena.width = config.arena.width;
+        this.arena.height = config.arena.height;
+      }
+      if (config.arena.wallHeight !== undefined) {
+        this.arena.setStandardWallHeight(config.arena.wallHeight);
+      }
+      if (config.arena.tileGrid) {
+        this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+        this.arena.rebuildWalls();
+      } else if (config.arena.presetId) {
+        this.arena.loadWallPreset(config.arena.presetId);
+      }
+    }
 
-    // Spawn player 1
-    const player1 = new Character({
-      x: QUARRY_PLAYER_SPAWN.x,
-      y: QUARRY_PLAYER_SPAWN.y,
-      color: "#f59e0b",
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1.0,
-      playerId: "player-1",
-      playerNumber: 1,
-      name: "Server Player 1",
-    });
-    this.characters.set(player1.playerId, player1);
+    if (config.globalPhysics) {
+      if (config.globalPhysics.gravity !== undefined) {
+        this.arena.gravity = config.globalPhysics.gravity;
+      }
+      if (config.globalPhysics.collisionDamageScale !== undefined) {
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+      }
+      if (config.globalPhysics.collisionMode) {
+        this.collisionMode = config.globalPhysics.collisionMode;
+      }
+    }
 
-    // Spawn authoritative Sparring Dummy (inert character with controllerType "none")
-    const dummy = new Character({
-      id: "dummy-1",
-      x: QUARRY_DUMMY_SPAWN.x,
-      y: QUARRY_DUMMY_SPAWN.y,
-      color: "#64748b",
-      colliderRadius: 0.44,
-      mass: 1.5,
-      strength: 0,
-      name: "Sparring Dummy",
-      controllerType: "none",
-      role: "dummy",
-    });
-    this.characters.set(dummy.id, dummy);
+    // Preserve existing players, or spawn defaults if empty
+    if (this.characters.size === 0) {
+      const p1Spawn = HealthModule.getRandomSpawnPosition();
+      const player1 = new Character({
+        x: p1Spawn.x,
+        y: p1Spawn.y,
+        color: "#f59e0b",
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId: "player-1",
+        playerNumber: 1,
+        name: "Server Player 1",
+      });
+      player1.position.z = p1Spawn.z;
+      this.characters.set(player1.playerId, player1);
 
-    // Spawn default freebody test stones
-    this.objects = createQuarryStones();
+      const dummy = new Character({
+        id: "dummy-1",
+        x: QUARRY_DUMMY_SPAWN.x,
+        y: QUARRY_DUMMY_SPAWN.y,
+        color: "#64748b",
+        colliderRadius: 0.44,
+        mass: 1.5,
+        strength: 0,
+        name: "Sparring Dummy",
+        controllerType: "none",
+        role: "dummy",
+      });
+      this.characters.set(dummy.id, dummy);
+    }
+
+    // Instantiate freebody objects from configuration
+    if (config.objects && config.objects.length > 0) {
+      this.objects = config.objects.map(deserializeGameObject);
+    } else {
+      this.objects = createQuarryStones();
+    }
 
     this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
     this.jitterBuffer.clear();
+  }
+
+  /**
+   * Initializes default standard arena and freebodies if starting standalone without client.
+   */
+  public initializeDefaultScenario(): void {
+    this.initializeFromConfig(generateDefaultWorldConfig());
   }
 
   /**
