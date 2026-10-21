@@ -318,6 +318,7 @@ const server = http.createServer(async (req, res) => {
         lastSaved: new Date().toISOString(),
         arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
         globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
+        player: delta.player ? { ...(currentConfig.player || {}), ...delta.player } : currentConfig.player,
         objects: [...(currentConfig.objects || [])],
       };
 

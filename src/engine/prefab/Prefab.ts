@@ -165,11 +165,33 @@ export class Prefab {
           return;
         case "jumpImpulse":
         case "Jump Impulse (N·s)":
+        case "Jump Strength (N·s)":
           if (char.jumpModule) char.jumpModule.jumpStrengthProp.set(Number(value), char.properties);
+          return;
+        case "maxInitialSpeed":
+        case "Max Takeoff Speed (u/s)":
+          if (char.jumpModule) char.jumpModule.maxInitialSpeedProp.set(Number(value), char.properties);
+          return;
+        case "jumpPowerCapacity":
+        case "Jump Power (Watts)":
+          if (char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(Number(value), char.properties);
           return;
         case "throwForce":
         case "Throw Launch Speed (u/s)":
           if (char.throwModule) char.throwModule.baseThrowForceProp.set(Number(value), char.properties);
+          return;
+        case "throwPowerCapacity":
+        case "maxPower":
+        case "Max Throw Power (Watts)":
+          if (char.throwModule) char.throwModule.maxPowerProp.set(Number(value), char.properties);
+          return;
+        case "maxThrowSpeed":
+        case "Max Throw Speed (u/s)":
+          if (char.throwModule) char.throwModule.maxThrowSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxThrowHeight":
+        case "Max Throw Height (u)":
+          if (char.throwModule) char.throwModule.maxThrowHeightProp.set(Number(value), char.properties);
           return;
         case "climbSpeed":
         case "Climb Speed (u/s)":

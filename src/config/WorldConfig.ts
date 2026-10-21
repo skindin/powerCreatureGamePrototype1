@@ -145,11 +145,18 @@ export interface SerializedCharacterConfig {
   hasJump?: boolean;
   jumpModule?: {
     jumpImpulse?: number;
+    maxInitialSpeed?: number;
+    jumpPowerCapacity?: number;
   };
 
   hasThrow?: boolean;
   throwModule?: {
     throwForce?: number;
+    throwPowerCapacity?: number;
+    maxPower?: number;
+    maxThrowSpeed?: number;
+    maxThrowHeight?: number;
+    consumesEnergy?: boolean;
   };
 
   hasClimbing?: boolean;
@@ -245,6 +252,8 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     result.hasJump = char.jumpModule.enabled;
     result.jumpModule = {
       jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties),
+      maxInitialSpeed: char.jumpModule.maxInitialSpeedProp.get(char.properties),
+      jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : undefined,
     };
   } else {
     result.hasJump = false;
@@ -254,6 +263,11 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     result.hasThrow = char.throwModule.enabled;
     result.throwModule = {
       throwForce: char.throwModule.baseThrowForceProp.get(char.properties),
+      throwPowerCapacity: char.throwModule.maxPowerProp.get(char.properties),
+      maxPower: char.throwModule.maxPowerProp.get(char.properties),
+      maxThrowSpeed: char.throwModule.maxThrowSpeedProp.get(char.properties),
+      maxThrowHeight: char.throwModule.maxThrowHeightProp.get(char.properties),
+      consumesEnergy: char.throwModule.consumesEnergy,
     };
   } else {
     result.hasThrow = false;
@@ -343,6 +357,8 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   } else if (config.jumpModule && char.jumpModule) {
     char.jumpModule.enabled = true;
     if (config.jumpModule.jumpImpulse !== undefined) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+    if (config.jumpModule.maxInitialSpeed !== undefined) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
+    if (config.jumpModule.jumpPowerCapacity !== undefined && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
   }
 
   if (config.hasThrow === false) {
@@ -350,6 +366,11 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   } else if (config.throwModule && char.throwModule) {
     char.throwModule.enabled = true;
     if (config.throwModule.throwForce !== undefined) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+    if (config.throwModule.throwPowerCapacity !== undefined) char.throwModule.maxPowerProp.set(config.throwModule.throwPowerCapacity, char.properties);
+    if (config.throwModule.maxPower !== undefined) char.throwModule.maxPowerProp.set(config.throwModule.maxPower, char.properties);
+    if (config.throwModule.maxThrowSpeed !== undefined) char.throwModule.maxThrowSpeedProp.set(config.throwModule.maxThrowSpeed, char.properties);
+    if (config.throwModule.maxThrowHeight !== undefined) char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
+    if (config.throwModule.consumesEnergy !== undefined) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
   }
 
   if (config.hasHealth === false) {
@@ -698,11 +719,17 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
     lastSaved: new Date().toISOString(),
     arena: { ...base.arena },
     globalPhysics: { ...base.globalPhysics },
+    player: base.player ? { ...base.player } : undefined,
     objects: [...base.objects],
   };
 
   for (const section of delta.sections) {
-    if (section === "arena" && delta.arena) {
+    if (section === "player" && delta.player) {
+      updated.player = {
+        ...(updated.player || {}),
+        ...delta.player,
+      };
+    } else if (section === "arena" && delta.arena) {
       updated.arena = {
         ...updated.arena,
         ...delta.arena,

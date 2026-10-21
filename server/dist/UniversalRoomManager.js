@@ -11134,7 +11134,9 @@ function serializeCharacter(char) {
   if (char.jumpModule) {
     result.hasJump = char.jumpModule.enabled;
     result.jumpModule = {
-      jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties)
+      jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties),
+      maxInitialSpeed: char.jumpModule.maxInitialSpeedProp.get(char.properties),
+      jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : void 0
     };
   } else {
     result.hasJump = false;
@@ -11142,7 +11144,12 @@ function serializeCharacter(char) {
   if (char.throwModule) {
     result.hasThrow = char.throwModule.enabled;
     result.throwModule = {
-      throwForce: char.throwModule.baseThrowForceProp.get(char.properties)
+      throwForce: char.throwModule.baseThrowForceProp.get(char.properties),
+      throwPowerCapacity: char.throwModule.maxPowerProp.get(char.properties),
+      maxPower: char.throwModule.maxPowerProp.get(char.properties),
+      maxThrowSpeed: char.throwModule.maxThrowSpeedProp.get(char.properties),
+      maxThrowHeight: char.throwModule.maxThrowHeightProp.get(char.properties),
+      consumesEnergy: char.throwModule.consumesEnergy
     };
   } else {
     result.hasThrow = false;
@@ -11220,12 +11227,19 @@ function applyCharacterConfig(char, config) {
   } else if (config.jumpModule && char.jumpModule) {
     char.jumpModule.enabled = true;
     if (config.jumpModule.jumpImpulse !== void 0) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+    if (config.jumpModule.maxInitialSpeed !== void 0) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
+    if (config.jumpModule.jumpPowerCapacity !== void 0 && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
   }
   if (config.hasThrow === false) {
     char.throwModule = null;
   } else if (config.throwModule && char.throwModule) {
     char.throwModule.enabled = true;
     if (config.throwModule.throwForce !== void 0) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+    if (config.throwModule.throwPowerCapacity !== void 0) char.throwModule.maxPowerProp.set(config.throwModule.throwPowerCapacity, char.properties);
+    if (config.throwModule.maxPower !== void 0) char.throwModule.maxPowerProp.set(config.throwModule.maxPower, char.properties);
+    if (config.throwModule.maxThrowSpeed !== void 0) char.throwModule.maxThrowSpeedProp.set(config.throwModule.maxThrowSpeed, char.properties);
+    if (config.throwModule.maxThrowHeight !== void 0) char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
+    if (config.throwModule.consumesEnergy !== void 0) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
   }
   if (config.hasHealth === false) {
     char.healthModule = null;
@@ -11639,11 +11653,33 @@ class Prefab {
           return;
         case "jumpImpulse":
         case "Jump Impulse (N·s)":
+        case "Jump Strength (N·s)":
           if (char.jumpModule) char.jumpModule.jumpStrengthProp.set(Number(value), char.properties);
+          return;
+        case "maxInitialSpeed":
+        case "Max Takeoff Speed (u/s)":
+          if (char.jumpModule) char.jumpModule.maxInitialSpeedProp.set(Number(value), char.properties);
+          return;
+        case "jumpPowerCapacity":
+        case "Jump Power (Watts)":
+          if (char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(Number(value), char.properties);
           return;
         case "throwForce":
         case "Throw Launch Speed (u/s)":
           if (char.throwModule) char.throwModule.baseThrowForceProp.set(Number(value), char.properties);
+          return;
+        case "throwPowerCapacity":
+        case "maxPower":
+        case "Max Throw Power (Watts)":
+          if (char.throwModule) char.throwModule.maxPowerProp.set(Number(value), char.properties);
+          return;
+        case "maxThrowSpeed":
+        case "Max Throw Speed (u/s)":
+          if (char.throwModule) char.throwModule.maxThrowSpeedProp.set(Number(value), char.properties);
+          return;
+        case "maxThrowHeight":
+        case "Max Throw Height (u)":
+          if (char.throwModule) char.throwModule.maxThrowHeightProp.set(Number(value), char.properties);
           return;
         case "climbSpeed":
         case "Climb Speed (u/s)":
