@@ -50,6 +50,9 @@ export class CollisionResolver {
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
 
+        // Skip collision between thrown projectile and its thrower until it exits thrower reach
+        if (a.lastThrower === b || b.lastThrower === a) continue;
+
         // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
         if (a.isSleeping && b.isSleeping) continue;
 
@@ -648,6 +651,7 @@ export class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
+          if (a.lastThrower === b || b.lastThrower === a) continue;
 
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);

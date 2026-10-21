@@ -1,6 +1,6 @@
 {
-  "version": 29,
-  "lastSaved": "2026-10-21T09:00:15.135Z",
+  "version": 36,
+  "lastSaved": "2026-10-21T09:30:29.144Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -319,7 +319,7 @@
   },
   "globalPhysics": {
     "gravity": 30,
-    "collisionDamageScale": 0.1,
+    "collisionDamageScale": 0.05,
     "collisionMode": "dynamic"
   },
   "objects": [
@@ -1053,11 +1053,18 @@
     },
     "hasJump": true,
     "jumpModule": {
-      "jumpImpulse": 18.5
+      "jumpImpulse": 18.5,
+      "maxInitialSpeed": 9.67,
+      "jumpPowerCapacity": 1200
     },
     "hasThrow": true,
     "throwModule": {
-      "throwForce": 14
+      "throwForce": 100,
+      "throwPowerCapacity": 2000,
+      "maxPower": 2000,
+      "maxThrowSpeed": 100,
+      "maxThrowHeight": 5,
+      "consumesEnergy": true
     },
     "hasClimbing": false,
     "climbingModule": {
@@ -1075,7 +1082,7 @@
       "staminaRegenRate": 500,
       "energyPoolCapacity": 10000
     },
-    "id": "obj-pebetl4",
+    "id": "obj-y5v89wu",
     "hasLaser": true,
     "laserModule": {
       "maxRange": 15,

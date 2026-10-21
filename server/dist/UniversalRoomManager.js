@@ -5291,7 +5291,7 @@ const _GameObject = class _GameObject {
         }
       }
     }
-    const maxLinearSpeed = 16;
+    const maxLinearSpeed = this.isInFlight ? 120 : 60;
     const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
     if (currentSpeed > maxLinearSpeed) {
       const scale = maxLinearSpeed / currentSpeed;
@@ -9587,6 +9587,7 @@ class CollisionResolver {
         const b = entities[j];
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
+        if (a.lastThrower === b || b.lastThrower === a) continue;
         if (a.isSleeping && b.isSleeping) continue;
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
@@ -10027,6 +10028,7 @@ class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
+          if (a.lastThrower === b || b.lastThrower === a) continue;
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
           if (layerA !== layerB) continue;

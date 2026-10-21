@@ -910,7 +910,8 @@ export class GameObject {
     }
 
     // 6. Absolute physical speed bounds
-    const maxLinearSpeed = 16.0;
+    // Thrown projectiles and fast dynamic bodies can reach high ballistic speeds (up to 120 m/s)
+    const maxLinearSpeed = this.isInFlight ? 120.0 : 60.0;
     const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
     if (currentSpeed > maxLinearSpeed) {
       const scale = maxLinearSpeed / currentSpeed;
