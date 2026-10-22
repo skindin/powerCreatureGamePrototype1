@@ -51,6 +51,16 @@ public partial class Form1 : Form
     private int unpushedCommitsCount = 0;
     private System.Windows.Forms.Timer? gitPollTimer = null;
 
+    private static readonly HttpClient devClient = new HttpClient(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        ConnectTimeout = TimeSpan.FromMilliseconds(500),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(15)
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(35)
+    };
+
     public Form1()
     {
         InitializeComponent();
@@ -768,8 +778,7 @@ public partial class Form1 : Form
         if (currentPort <= 0) return;
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            var resp = await client.GetAsync($"http://localhost:{currentPort}/api/dev/git-status");
+            var resp = await devClient.GetAsync($"http://127.0.0.1:{currentPort}/api/dev/git-status");
             if (!resp.IsSuccessStatusCode) return;
 
             var jsonStr = await resp.Content.ReadAsStringAsync();
@@ -878,8 +887,7 @@ public partial class Form1 : Form
         btnPushData.Text = "⏳ Pushing Data...";
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
-            var resp = await client.PostAsync($"http://localhost:{currentPort}/api/dev/git-push-data", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+            var resp = await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/git-push-data", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
             var content = await resp.Content.ReadAsStringAsync();
             if (resp.IsSuccessStatusCode)
             {
@@ -931,8 +939,7 @@ public partial class Form1 : Form
         try
         {
             // Reset server physics simulation so room returns to pristine spawn state
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            await client.PostAsync($"http://localhost:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+            await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
         }
         catch { }
         finally
@@ -949,13 +956,12 @@ public partial class Form1 : Form
     {
         btnSyncNewCode.Enabled = false;
         btnSyncNewCode.Text = "⏳ Syncing...";
-        statusLabel.Text = "🟡 Rebuilding snapshot...";
+        statusLabel.Text = "🟡 Checking for code changes...";
         statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
 
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(40) };
-            var resp = await client.PostAsync($"http://localhost:{currentPort}/api/dev/sync-rebuild", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+            var resp = await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/sync-rebuild", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
             var content = await resp.Content.ReadAsStringAsync();
 
             if (resp.IsSuccessStatusCode)
