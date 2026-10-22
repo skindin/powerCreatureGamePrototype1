@@ -154,7 +154,7 @@ export class DeployNotifier {
       }
 
       // 2. Check if a build is IN THE PROCESS OF DEPLOYING (Building on Railway)
-      if (build && (build.isBuilding || build.state === "pending")) {
+      if (build && build.isBuilding && build.state === "pending") {
         const buildingCommit = build.shortSha || build.sha?.substring(0, 7) || "latest";
         if (this.notifiedBuildingCommit !== buildingCommit) {
           this.notifiedBuildingCommit = buildingCommit;
@@ -163,8 +163,8 @@ export class DeployNotifier {
         return;
       }
 
-      // Clear building notification if no longer building
-      if (this.notifiedBuildingCommit) {
+      // Clear building notification if no longer actively building
+      if (!build?.isBuilding || build?.state !== "pending") {
         this.notifiedBuildingCommit = null;
         const toast = document.getElementById("deploy-toast-notification");
         if (toast && toast.classList.contains("building")) {

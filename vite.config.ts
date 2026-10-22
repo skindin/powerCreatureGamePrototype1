@@ -104,16 +104,22 @@ async function getLiveBuildStatus() {
     }
 
     const data: any = await res.json();
-    const primary = data.statuses && data.statuses.length > 0 ? data.statuses[0] : null;
+    const statuses = Array.isArray(data.statuses) ? data.statuses : [];
+    const totalCount = typeof data.total_count === 'number' ? data.total_count : statuses.length;
+    const primary = statuses.length > 0 ? statuses[0] : null;
     const sha = data.sha || '';
     const shortSha = sha ? sha.substring(0, 7) : '';
-    const state = data.state || 'unknown';
-    const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
+
+    // GitHub API Quirk: When total_count === 0, GitHub returns state="pending" by default!
+    // We only consider it a real status if totalCount > 0 and statuses array has actual entries.
+    const hasActualStatus = totalCount > 0 && statuses.length > 0;
+    const state = hasActualStatus ? (data.state || 'unknown') : 'idle';
+    const desc = primary?.description || (hasActualStatus && state === 'pending' ? 'Building on Railway...' : '');
     const targetUrl = primary?.target_url || '';
 
-    const isBuilding = state === 'pending';
-    const isFailed = state === 'failure' || state === 'error';
-    const isSuccess = state === 'success';
+    const isBuilding = hasActualStatus && state === 'pending';
+    const isFailed = hasActualStatus && (state === 'failure' || state === 'error');
+    const isSuccess = hasActualStatus && state === 'success';
 
     cachedBuildStatus = {
       state,
@@ -129,7 +135,7 @@ async function getLiveBuildStatus() {
     lastBuildStatusFetch = now;
     return cachedBuildStatus;
   } catch (err: any) {
-    return cachedBuildStatus || { state: 'unknown', isBuilding: false, isFailed: false, isSuccess: false, error: err?.message };
+    return cachedBuildStatus || { state: 'idle', isBuilding: false, isFailed: false, isSuccess: false, error: err?.message };
   }
 }
 
