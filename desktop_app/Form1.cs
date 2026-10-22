@@ -26,9 +26,8 @@ public partial class Form1 : Form
     private Button btnCopyLink = null!;
     private Button btnViewSettings = null!;
     private Button btnPushData = null!;
-    private Button btnSyncBoth = null!;
-    private Button btnReloadServer = null!;
-    private Button btnReloadClient = null!;
+    private Button btnReloadCurrent = null!;
+    private Button btnSyncNewCode = null!;
     private Button btnFullscreen = null!;
     private Button btnDevTools = null!;
     private Button btnBrowser = null!;
@@ -159,16 +158,13 @@ public partial class Form1 : Form
         btnPushData.ForeColor = Color.FromArgb(148, 163, 184);
         toolTip.SetToolTip(btnPushData, "Commit and push worldConfig.json data changes to GitHub");
 
-        btnSyncBoth = CreateHeaderButton("🚀 Sync Both", async (s, e) => await HandleSyncBothClickAsync());
-        btnSyncBoth.ForeColor = Color.FromArgb(56, 189, 248);
-        toolTip.SetToolTip(btnSyncBoth, "Rebuilds client & server bundles with latest code and reloads both");
+        btnReloadCurrent = CreateHeaderButton("🔄 Reload (Current)", async (s, e) => await HandleReloadCurrentClickAsync());
+        btnReloadCurrent.ForeColor = Color.FromArgb(203, 213, 225);
+        toolTip.SetToolTip(btnReloadCurrent, "Reloads client and resets server using currently loaded code (F5) - safe while agent is editing");
 
-        btnReloadServer = CreateHeaderButton("⚡ Server", async (s, e) => await HandleReloadServerClickAsync());
-        btnReloadServer.ForeColor = Color.FromArgb(234, 179, 8);
-        toolTip.SetToolTip(btnReloadServer, "Restart server room physics simulation without reloading client");
-
-        btnReloadClient = CreateHeaderButton("🔄 Client", (s, e) => webView?.Reload());
-        toolTip.SetToolTip(btnReloadClient, "Reload client view (F5)");
+        btnSyncNewCode = CreateHeaderButton("🚀 Sync New Code", async (s, e) => await HandleSyncNewCodeClickAsync());
+        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+        toolTip.SetToolTip(btnSyncNewCode, "Rebuilds client & server bundles with latest code from disk and reloads both");
 
         btnFullscreen = CreateHeaderButton("⛶ Fullscreen", (s, e) => ToggleFullscreen());
         btnDevTools = CreateHeaderButton("🛠 DevTools", (s, e) => webView?.CoreWebView2?.OpenDevToolsWindow());
@@ -184,9 +180,8 @@ public partial class Form1 : Form
         buttonFlow.Controls.Add(btnCopyLink);
         buttonFlow.Controls.Add(btnViewSettings);
         buttonFlow.Controls.Add(btnPushData);
-        buttonFlow.Controls.Add(btnSyncBoth);
-        buttonFlow.Controls.Add(btnReloadServer);
-        buttonFlow.Controls.Add(btnReloadClient);
+        buttonFlow.Controls.Add(btnReloadCurrent);
+        buttonFlow.Controls.Add(btnSyncNewCode);
         buttonFlow.Controls.Add(btnFullscreen);
         buttonFlow.Controls.Add(btnDevTools);
         buttonFlow.Controls.Add(btnBrowser);
@@ -715,7 +710,7 @@ public partial class Form1 : Form
         }
         else if (e.KeyCode == Keys.F5 || (e.Control && e.KeyCode == Keys.R))
         {
-            webView?.Reload();
+            _ = HandleReloadCurrentClickAsync();
             e.Handled = true;
         }
         else if (e.KeyCode == Keys.F12)
@@ -824,19 +819,19 @@ public partial class Form1 : Form
 
                     if (!string.IsNullOrEmpty(bootCommit) && !string.IsNullOrEmpty(latestCommit) && bootCommit != latestCommit)
                     {
-                        btnSyncBoth.Text = "🚀 Sync Both (New Code!)";
-                        btnSyncBoth.ForeColor = Color.FromArgb(56, 189, 248);
-                        btnSyncBoth.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
-                        btnSyncBoth.BackColor = Color.FromArgb(15, 30, 50);
-                        toolTip.SetToolTip(btnSyncBoth, $"Antigravity pushed code {latestCommit} (you are on {bootCommit}). Click to test & sync.");
+                        btnSyncNewCode.Text = "🚀 Sync New Code (Available!)";
+                        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.BackColor = Color.FromArgb(15, 30, 50);
+                        toolTip.SetToolTip(btnSyncNewCode, $"Antigravity pushed code {latestCommit} (you are on {bootCommit}). Click to compile & test.");
                     }
                     else
                     {
-                        btnSyncBoth.Text = "🚀 Sync Both";
-                        btnSyncBoth.ForeColor = Color.FromArgb(56, 189, 248);
-                        btnSyncBoth.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85);
-                        btnSyncBoth.BackColor = Color.FromArgb(30, 41, 59);
-                        toolTip.SetToolTip(btnSyncBoth, "Rebuilds client & server bundles with latest code and reloads both.");
+                        btnSyncNewCode.Text = "🚀 Sync New Code";
+                        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85);
+                        btnSyncNewCode.BackColor = Color.FromArgb(30, 41, 59);
+                        toolTip.SetToolTip(btnSyncNewCode, "Rebuilds client & server bundles with latest code from disk and reloads both.");
                     }
                 });
             }
@@ -852,7 +847,7 @@ public partial class Form1 : Form
                 $"⚠️ Code Updated by Antigravity!\n\n" +
                 $"Antigravity committed/pushed new code ({latestCommit}) since you launched this session ({bootCommit}).\n" +
                 $"Your data tweaks were made against code {bootCommit}.\n\n" +
-                $"• Click YES to Sync & Reload with the new code first (recommended so you can verify how your tweaks feel).\n" +
+                $"• Click YES to Sync New Code first (recommended so you can verify how your tweaks feel).\n" +
                 $"• Click NO to Push Data directly to GitHub right now without testing.\n" +
                 $"• Click CANCEL to abort.",
                 "Confirm Data Push (Code Version Mismatch)",
@@ -862,7 +857,7 @@ public partial class Form1 : Form
 
             if (choice == DialogResult.Yes)
             {
-                await HandleSyncBothClickAsync();
+                await HandleSyncNewCodeClickAsync();
                 return;
             }
             else if (choice == DialogResult.Cancel)
@@ -900,10 +895,35 @@ public partial class Form1 : Form
         }
     }
 
-    private async Task HandleSyncBothClickAsync()
+    private async Task HandleReloadCurrentClickAsync()
     {
-        btnSyncBoth.Enabled = false;
-        btnSyncBoth.Text = "⏳ Syncing...";
+        btnReloadCurrent.Enabled = false;
+        btnReloadCurrent.Text = "⏳ Reloading...";
+        statusLabel.Text = "🟡 Reloading match (current code)...";
+        statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
+
+        try
+        {
+            // 1. Reset server physics simulation so room returns to pristine spawn state
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            await client.PostAsync($"http://localhost:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+        }
+        catch { }
+        finally
+        {
+            // 2. Reload client WebView2 from the currently loaded/frozen code snapshot
+            webView?.Reload();
+            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+            btnReloadCurrent.Enabled = true;
+            btnReloadCurrent.Text = "🔄 Reload (Current)";
+        }
+    }
+
+    private async Task HandleSyncNewCodeClickAsync()
+    {
+        btnSyncNewCode.Enabled = false;
+        btnSyncNewCode.Text = "⏳ Syncing...";
         statusLabel.Text = "🟡 Rebuilding snapshot...";
         statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
 
@@ -919,7 +939,7 @@ public partial class Form1 : Form
                 statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
                 await CheckGitStatusAsync();
                 bootCommit = latestCommit; // update baseline
-                btnSyncBoth.Text = "🚀 Sync Both";
+                btnSyncNewCode.Text = "🚀 Sync New Code";
                 webView?.Reload();
             }
             else
@@ -935,30 +955,8 @@ public partial class Form1 : Form
         }
         finally
         {
-            btnSyncBoth.Enabled = true;
-            btnSyncBoth.Text = "🚀 Sync Both";
-        }
-    }
-
-    private async Task HandleReloadServerClickAsync()
-    {
-        btnReloadServer.Enabled = false;
-        btnReloadServer.Text = "⏳ Resetting...";
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var resp = await client.PostAsync($"http://localhost:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
-            if (resp.IsSuccessStatusCode)
-            {
-                statusLabel.Text = "⚡ Server simulation reset!";
-                statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
-            }
-        }
-        catch { }
-        finally
-        {
-            btnReloadServer.Enabled = true;
-            btnReloadServer.Text = "⚡ Server";
+            btnSyncNewCode.Enabled = true;
+            btnSyncNewCode.Text = "🚀 Sync New Code";
         }
     }
 }
