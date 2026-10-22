@@ -4756,9 +4756,9 @@ class MeleeModule {
     /** Whether to allow punches at partial force when pool cannot grant 100% burst energy */
     __publicField(this, "allowPartialPower", true);
     /** Time of last punch execution (performance.now ms) */
-    __publicField(this, "lastPunchTime", 0);
+    __publicField(this, "lastPunchTime", -Infinity);
     /** Visual indicator state: timestamp of recent punch for rendering strike effect */
-    __publicField(this, "lastVisualPunchTime", 0);
+    __publicField(this, "lastVisualPunchTime", -Infinity);
     __publicField(this, "lastVisualPunchDir", { x: 1, y: 0 });
     __publicField(this, "lastVisualPunchReach", 1.2);
     __publicField(this, "lastVisualPunchWidth", 0.8);

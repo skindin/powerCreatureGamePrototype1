@@ -1608,9 +1608,9 @@ export class Renderer {
    * Renders the dynamic directional shockwave rectangle and impact crescent of an active melee attack.
    */
   public drawMeleeEffect(char: Character, ppu: number, arena: Arena, now = performance.now()): void {
-    if (!char.meleeModule) return;
+    if (!char.meleeModule || char.meleeModule.lastVisualPunchTime <= 0) return;
     const elapsed = now - char.meleeModule.lastVisualPunchTime;
-    if (elapsed > 140) return; // Flash effect for 140ms
+    if (elapsed > 140 || elapsed < 0) return; // Flash effect for 140ms
 
     const progress = elapsed / 140; // 0 to 1
     const alpha = (1 - progress) * 0.8;

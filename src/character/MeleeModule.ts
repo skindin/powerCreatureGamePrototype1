@@ -57,9 +57,9 @@ export class MeleeModule {
   public allowPartialPower: boolean = true;
 
   /** Time of last punch execution (performance.now ms) */
-  public lastPunchTime: number = 0;
+  public lastPunchTime: number = -Infinity;
   /** Visual indicator state: timestamp of recent punch for rendering strike effect */
-  public lastVisualPunchTime: number = 0;
+  public lastVisualPunchTime: number = -Infinity;
   public lastVisualPunchDir: { x: number; y: number } = { x: 1, y: 0 };
   public lastVisualPunchReach: number = 1.2;
   public lastVisualPunchWidth: number = 0.8;
