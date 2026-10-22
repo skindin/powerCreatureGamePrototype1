@@ -10020,7 +10020,7 @@ class ServerGameSimulation {
         let throwTarget = char.heldObject;
         if (!throwTarget && act.targetObjectId) {
           const candidate = this.objects.find((o) => o.id === act.targetObjectId);
-          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
+          if (candidate && !candidate.isInFlight && candidate.lastThrower !== char && (!candidate.isHeld || candidate.heldBy === char)) {
             candidate.isHeld = true;
             candidate.heldBy = char;
             char.heldObject = candidate;
@@ -10230,6 +10230,34 @@ class ServerGameSimulation {
           if (result.isDepleted) {
             this.triggerObjectDeletion(heldObj.id);
           }
+        }
+        if (catchupPkt.isDrop && char.heldObject && char.pickupModule) {
+          char.pickupModule.drop(char);
+        }
+        if (catchupPkt.isThrow && char.heldObject && char.throwModule) {
+          const aimX = catchupPkt.aimX !== void 0 ? catchupPkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
+          const aimY = catchupPkt.aimY !== void 0 ? catchupPkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = catchupPkt.launchVx !== void 0 ? {
+            vx: catchupPkt.launchVx,
+            vy: catchupPkt.launchVy,
+            vz: catchupPkt.launchVz ?? 0
+          } : void 0;
+          const launchPos = catchupPkt.launchStartX !== void 0 ? {
+            x: catchupPkt.launchStartX,
+            y: catchupPkt.launchStartY,
+            z: catchupPkt.launchStartZ ?? 0
+          } : void 0;
+          char.throwModule.throwHeldObject(
+            char,
+            aimX,
+            aimY,
+            this.arena,
+            void 0,
+            void 0,
+            catchupPkt.isLockHeld,
+            launchVel,
+            launchPos
+          );
         }
         if (catchupPkt.facingAngle !== void 0) {
           char.facingAngle = catchupPkt.facingAngle;

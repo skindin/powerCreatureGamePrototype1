@@ -895,13 +895,20 @@ export class GameLoop {
       }
 
       // 5. Hard Teleport on Massive Divergence (> 3.0 units)
+      const surfaceH = localObj.supportingSurfaceHeight ?? 0;
+      const isLocallyGrounded = localObj.position.z <= surfaceH + 0.05;
+
       if (dist > 3.0) {
         localObj.position.x = sObj.x;
         localObj.position.y = sObj.y;
-        localObj.position.z = sObj.z;
+        if (!isLocallyGrounded || sObj.z <= surfaceH + 0.05) {
+          localObj.position.z = sObj.z;
+          localObj.verticalVelocity = sObj.vz ?? 0;
+        } else {
+          localObj.verticalVelocity = 0;
+        }
         localObj.velocity.x = sObj.vx;
         localObj.velocity.y = sObj.vy;
-        localObj.verticalVelocity = sObj.vz ?? 0;
         if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
           localObj.rollModule.angularVelocity.x = sObj.angX;
           localObj.rollModule.angularVelocity.y = sObj.angY;
@@ -917,8 +924,6 @@ export class GameLoop {
 
       // 7. Smart Smooth Convergence
       // Prevent trailing airborne server snapshots from yanking a grounded object upward into the air!
-      const surfaceH = localObj.supportingSurfaceHeight ?? 0;
-      const isLocallyGrounded = localObj.position.z <= surfaceH + 0.02;
       const effectiveDz = (isLocallyGrounded && dz > 0) ? 0 : dz;
 
       const blend = localSpeed > 0.2 ? 0.25 : 0.25;

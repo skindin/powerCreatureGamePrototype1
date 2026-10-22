@@ -688,6 +688,26 @@ export class PlayerManager {
         input.exitPointerLock();
       }
 
+      if (input.isKeyboardThrowRequested && kChar.heldObject && kChar.throwModule && !kChar.activeTrajectory) {
+        const aimX = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.x
+          : input.actualMousePos.x;
+        const aimY = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+          ? input.recordedMousePos.y
+          : input.actualMousePos.y;
+        kChar.activeTrajectory = kChar.throwModule.calculateTrajectory(
+          kChar,
+          aimX,
+          aimY,
+          this.arena,
+          objects,
+          this.arena.visualAltitudeScale,
+          Boolean(input.isRightMouseDown && input.lockedAimPos),
+          input.lockedAimPos,
+          0
+        );
+      }
+
       const kLaunchVel = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
       const kLaunchPos = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
 
@@ -801,6 +821,24 @@ export class PlayerManager {
         cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
       }
       // If none of the above: DO NOT CHANGE cChar.facingAngle!
+
+      if (slot.isThrowRequested && cChar.heldObject && cChar.throwModule && !cChar.activeTrajectory) {
+        const aimPos = slot.lockedAimPos ?? {
+          x: cChar.position.x + Math.cos(cChar.facingAngle) * 3,
+          y: cChar.position.y + Math.sin(cChar.facingAngle) * 3
+        };
+        cChar.activeTrajectory = cChar.throwModule.calculateTrajectory(
+          cChar,
+          aimPos.x,
+          aimPos.y,
+          this.arena,
+          objects,
+          this.arena.visualAltitudeScale,
+          slot.isLockHeld ?? false,
+          slot.lockedAimPos,
+          0
+        );
+      }
 
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
@@ -981,17 +1019,22 @@ export class PlayerManager {
             aimX: throwAimX,
             aimY: throwAimY,
             isLockHeld: pkt.isLockHeld,
-            ...(clientLaunchVel ? {
-              launchVx: clientLaunchVel.vx,
-              launchVy: clientLaunchVel.vy,
-              launchVz: clientLaunchVel.vz,
-            } : {}),
-            ...(clientLaunchPos ? {
-              launchStartX: clientLaunchPos.x,
-              launchStartY: clientLaunchPos.y,
-              launchStartZ: clientLaunchPos.z,
-            } : {})
+            launchVx: thrownObj.velocity.x,
+            launchVy: thrownObj.velocity.y,
+            launchVz: thrownObj.hasVerticalVelocity ? thrownObj.verticalVelocity : 0,
+            launchStartX: thrownObj.position.x,
+            launchStartY: thrownObj.position.y,
+            launchStartZ: thrownObj.hasVerticalPosition ? thrownObj.position.z : 0,
           } as any;
+
+          // Also guarantee pkt sent to server on this tick has exact physical launch velocity
+          (pkt as any).launchVx = thrownObj.velocity.x;
+          (pkt as any).launchVy = thrownObj.velocity.y;
+          (pkt as any).launchVz = thrownObj.hasVerticalVelocity ? thrownObj.verticalVelocity : 0;
+          (pkt as any).launchStartX = thrownObj.position.x;
+          (pkt as any).launchStartY = thrownObj.position.y;
+          (pkt as any).launchStartZ = thrownObj.hasVerticalPosition ? thrownObj.position.z : 0;
+
           if (!isReplay) {
             this.onReliableActionDispatched?.(action);
           }
