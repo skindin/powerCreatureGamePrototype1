@@ -5,6 +5,7 @@ import localtunnel from 'localtunnel';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 
 import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
 
@@ -221,7 +222,7 @@ function autoTunnelPlugin(): Plugin {
 
       // 1. Intercept public tunnel requests (loca.lt) and serve the single pre-bundled production dist/
       // This prevents 50+ concurrent unbundled ESM requests from choking localtunnel with 502 Bad Gateway
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         const host = (req.headers['host'] || '').toString().toLowerCase();
         const forwardedHost = (req.headers['x-forwarded-host'] || '').toString().toLowerCase();
         const isTunnel =
@@ -468,32 +469,227 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
-        if (isTunnel) {
+        // Git Data Status API (inspects worldConfig, ahead commits, and active branch)
+        if (urlPath === '/api/dev/git-status') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
 
+          try {
+            const branch = execSync('git branch --show-current', { encoding: 'utf8', timeout: 2000 }).trim() || 'feat/dynamic-property-references';
+            const headCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
+            const configStatus = execSync('git status --porcelain src/config/worldConfig.json', { encoding: 'utf8', timeout: 2000 }).trim();
+            const dataModified = configStatus.length > 0;
+
+            let aheadCount = 0;
+            try {
+              const aheadOut = execSync(`git rev-list --count origin/${branch}..HEAD`, { encoding: 'utf8', timeout: 2000 }).trim();
+              aheadCount = parseInt(aheadOut, 10) || 0;
+            } catch {}
+
+            let codeModified = false;
+            let codeFilesCount = 0;
+            try {
+              const allStatus = execSync('git status --porcelain src/', { encoding: 'utf8', timeout: 2000 }).trim();
+              const codeLines = allStatus.split('\n').filter(l => l.trim() && !l.includes('worldConfig.json'));
+              codeModified = codeLines.length > 0;
+              codeFilesCount = codeLines.length;
+            } catch {}
+
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              branch,
+              headCommit,
+              dataModified,
+              aheadCount,
+              codeModified,
+              codeFilesCount,
+            }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err?.message || String(err) }));
+          }
+          return;
+        }
+
+        // Git Push Data API (Commits and pushes ONLY worldConfig.json)
+        if (urlPath === '/api/dev/git-push-data') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          if (isTunnel) {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ error: 'Git push operations are prohibited via public tunnel' }));
+            return;
+          }
+
+          try {
+            const branch = execSync('git branch --show-current', { encoding: 'utf8', timeout: 2000 }).trim() || 'feat/dynamic-property-references';
+            
+            // Check if worldConfig.json has uncommitted changes
+            const configStatus = execSync('git status --porcelain src/config/worldConfig.json', { encoding: 'utf8', timeout: 2000 }).trim();
+            let commitCreated = false;
+            if (configStatus.length > 0) {
+              execSync('git add src/config/worldConfig.json', { encoding: 'utf8', timeout: 2000 });
+              execSync('git commit -m "chore(data): update world properties and configuration from editor"', { encoding: 'utf8', timeout: 4000 });
+              commitCreated = true;
+            }
+
+            // Push to remote branch
+            execSync(`git push origin ${branch}`, { encoding: 'utf8', timeout: 20000 });
+            const newHead = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
+
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              branch,
+              commitSha: newHead,
+              commitCreated,
+              message: `Successfully pushed data to origin/${branch}`,
+            }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err?.message || String(err) }));
+          }
+          return;
+        }
+
+        // Sync & Rebuild API (Verifies tsc, rebuilds dist snapshot, reloads server)
+        if (urlPath === '/api/dev/sync-rebuild') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          if (isTunnel) {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ error: 'Sync/rebuild prohibited via public tunnel' }));
+            return;
+          }
+
+          // Pre-flight type check to prevent compiling broken code mid-agent-edit
+          try {
+            console.log('🔍 [SyncRebuild] Checking TypeScript compilation...');
+            execSync('npx tsc --noEmit', { encoding: 'utf8', timeout: 20000, stdio: 'pipe' });
+          } catch (tscErr: any) {
+            const details = tscErr.stdout || tscErr.stderr || tscErr.message;
+            console.warn('⚠️ [SyncRebuild] TypeScript errors detected. Aborting rebuild snapshot:', details);
+            res.statusCode = 422;
+            res.end(JSON.stringify({
+              success: false,
+              error: 'TypeScript compile errors detected. An agent may be actively editing code.',
+              details,
+            }));
+            return;
+          }
+
+          try {
+            console.log('🔄 [SyncRebuild] Rebuilding client and server bundles...');
+            await build({ build: { emptyOutDir: false } });
+            await build({ build: { ssr: 'src/server/UniversalRoomManager.ts', outDir: 'server/dist', emptyOutDir: false } });
+
+            // Reload server simulation with latest worldConfig
+            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+            if (fs.existsSync(configPath)) {
+              const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              const serverMod = './server/dist/UniversalRoomManager.js';
+              const { UniversalRoomManager } = await import(serverMod);
+              UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
+            }
+
+            const headCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
+            console.log(`✅ [SyncRebuild] Successfully updated runtime snapshot to commit ${headCommit}!`);
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              commitSha: headCommit,
+              timestamp: new Date().toISOString(),
+              message: 'Runtime snapshot rebuilt and synced successfully.',
+            }));
+          } catch (err: any) {
+            console.error('❌ [SyncRebuild] Build error:', err);
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: 'Build failed: ' + (err?.message || String(err)) }));
+          }
+          return;
+        }
+
+        // Restart Server Simulation API
+        if (urlPath === '/api/dev/restart-server') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          try {
+            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+            if (fs.existsSync(configPath)) {
+              const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              const serverMod = './server/dist/UniversalRoomManager.js';
+              const { UniversalRoomManager } = await import(serverMod);
+              UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
+            }
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, message: 'Server physics simulation restarted cleanly.' }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: err?.message || String(err) }));
+          }
+          return;
+        }
+
+        // Isolated Playtest Mode Detection
+        const cookies = (req.headers['cookie'] || '').toString();
+        const referer = (req.headers['referer'] || '').toString();
+
+        let isIsolated =
+          urlObj.searchParams.get('isolated') === '1' ||
+          urlObj.searchParams.get('snapshot') === '1' ||
+          cookies.includes('pcg_isolated=1') ||
+          referer.includes('isolated=1') ||
+          referer.includes('snapshot=1');
+
+        if (urlObj.searchParams.get('isolated') === '0') {
+          isIsolated = false;
+          res.setHeader('Set-Cookie', 'pcg_isolated=0; Path=/; Max-Age=0');
+        } else if (urlObj.searchParams.get('isolated') === '1' || urlObj.searchParams.get('snapshot') === '1') {
+          res.setHeader('Set-Cookie', 'pcg_isolated=1; Path=/; SameSite=Lax');
+        }
+
+        if (isTunnel || isIsolated) {
           if (serveDistFile(req.url || '/', res)) {
             return;
           }
         }
         next();
-      });
-
-      // 2. Auto-rebuild dist on source file changes in background so dist is always live
-      let buildTimeout: any = null;
-      server.watcher.on('change', (file) => {
-        if (file.includes('worldConfig.json') || file.includes('worldConfig')) return;
-        if (file.includes('src') || file.includes('index.html')) {
-          clearTimeout(buildTimeout);
-          buildTimeout = setTimeout(async () => {
-            try {
-              console.log('🔄 [AutoBundle] Updating dist for remote tunnel devices...');
-              await build({ build: { emptyOutDir: false } });
-              console.log('✅ [AutoBundle] dist updated!');
-            } catch (e: any) {
-              console.warn('⚠️ [AutoBundle] Build error:', e?.message || e);
-            }
-          }, 600);
-        }
       });
 
       // 3. Start tunnel

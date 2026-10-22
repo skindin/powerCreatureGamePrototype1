@@ -115,4 +115,9 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 4. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously.
 5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
 6. **No-LaTeX Policy**: Antigravity UI does NOT parse LaTeX math formatting (`$...$` or `$$...$$`). Always use code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode characters (`ω`, `θ`, `Δ`, `×`, `²`, `√`).
+7. **Code vs. Data Commit Separation**: Code commits (`.ts`, `.html`, `.css`, engine/character systems) are strictly managed by Antigravity. Game data commits (`worldConfig.json`, balance values, prefabs, object spawns, map tiles) are managed by the user via the game Exe/DevPanel. Agents must never run broad `git add .` or commit unverified property data.
+8. **Schema Refactoring & Data Backward-Compatibility Rule**: When refactoring, renaming, or restructuring property sockets, traits, or config fields:
+   - You **MUST** support the previous property name as a fallback in code (e.g. `this.getProp('newProp') ?? this.getProp('legacyProp') ?? defaultVal`).
+   - You **MUST** keep `src/config/worldConfig.json` updated with the new property names.
+   - Code must never crash or discard user tuning when encountering older schema property names.
 

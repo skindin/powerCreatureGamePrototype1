@@ -6162,6 +6162,34 @@ export class DevPanel {
     }
   }
 
+  public async pushDataToGit(): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 Git operations disabled in online mode", true);
+      return;
+    }
+
+    try {
+      this.showSaveToast("⏳ Pushing data changes to GitHub...");
+      const resp = await fetch("/api/dev/git-push-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+
+      const res = await resp.json();
+      this.showSaveToast(`✅ Data pushed to GitHub! (${res.commitSha || "synced"})`);
+    } catch (err: any) {
+      console.error("Failed to push data to git:", err);
+      this.showSaveToast(`❌ Failed to push: ${err.message || String(err)}`, true);
+      alert("Failed to push data to GitHub:\n" + (err.message || String(err)));
+    }
+  }
+
   public async reloadFromDisk(): Promise<void> {
     try {
       const resp = await fetch("/api/dev/world-config");
