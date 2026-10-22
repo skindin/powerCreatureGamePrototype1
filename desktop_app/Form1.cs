@@ -26,7 +26,8 @@ public partial class Form1 : Form
     private Button btnCopyLink = null!;
     private Button btnViewSettings = null!;
     private Button btnPushData = null!;
-    private Button btnReloadCurrent = null!;
+    private Button btnRefreshClient = null!;
+    private Button btnResetMatch = null!;
     private Button btnSyncNewCode = null!;
     private Button btnFullscreen = null!;
     private Button btnDevTools = null!;
@@ -158,9 +159,13 @@ public partial class Form1 : Form
         btnPushData.ForeColor = Color.FromArgb(148, 163, 184);
         toolTip.SetToolTip(btnPushData, "Commit and push worldConfig.json data changes to GitHub");
 
-        btnReloadCurrent = CreateHeaderButton("🔄 Reload (Current)", async (s, e) => await HandleReloadCurrentClickAsync());
-        btnReloadCurrent.ForeColor = Color.FromArgb(203, 213, 225);
-        toolTip.SetToolTip(btnReloadCurrent, "Reloads client and resets server using currently loaded code (F5) - safe while agent is editing");
+        btnRefreshClient = CreateHeaderButton("🔄 Refresh Client", (s, e) => HandleRefreshClientClick());
+        btnRefreshClient.ForeColor = Color.FromArgb(203, 213, 225);
+        toolTip.SetToolTip(btnRefreshClient, "Refreshes only the client UI/view (F5), exactly like browser refresh. Server keeps running.");
+
+        btnResetMatch = CreateHeaderButton("⚡ Reset Match", async (s, e) => await HandleResetMatchClickAsync());
+        btnResetMatch.ForeColor = Color.FromArgb(250, 204, 21);
+        toolTip.SetToolTip(btnResetMatch, "Resets server room & physical arena to initial spawn state, keeping current code.");
 
         btnSyncNewCode = CreateHeaderButton("🚀 Sync New Code", async (s, e) => await HandleSyncNewCodeClickAsync());
         btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
@@ -180,7 +185,8 @@ public partial class Form1 : Form
         buttonFlow.Controls.Add(btnCopyLink);
         buttonFlow.Controls.Add(btnViewSettings);
         buttonFlow.Controls.Add(btnPushData);
-        buttonFlow.Controls.Add(btnReloadCurrent);
+        buttonFlow.Controls.Add(btnRefreshClient);
+        buttonFlow.Controls.Add(btnResetMatch);
         buttonFlow.Controls.Add(btnSyncNewCode);
         buttonFlow.Controls.Add(btnFullscreen);
         buttonFlow.Controls.Add(btnDevTools);
@@ -710,7 +716,7 @@ public partial class Form1 : Form
         }
         else if (e.KeyCode == Keys.F5 || (e.Control && e.KeyCode == Keys.R))
         {
-            _ = HandleReloadCurrentClickAsync();
+            HandleRefreshClientClick();
             e.Handled = true;
         }
         else if (e.KeyCode == Keys.F12)
@@ -895,28 +901,45 @@ public partial class Form1 : Form
         }
     }
 
-    private async Task HandleReloadCurrentClickAsync()
+    private void HandleRefreshClientClick()
     {
-        btnReloadCurrent.Enabled = false;
-        btnReloadCurrent.Text = "⏳ Reloading...";
-        statusLabel.Text = "🟡 Reloading match (current code)...";
+        btnRefreshClient.Text = "⏳ Refreshing...";
+        statusLabel.Text = "🟡 Refreshing client...";
+        statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
+        try
+        {
+            webView?.Reload();
+        }
+        catch { }
+        finally
+        {
+            btnRefreshClient.Text = "🔄 Refresh Client";
+            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+        }
+    }
+
+    private async Task HandleResetMatchClickAsync()
+    {
+        btnResetMatch.Enabled = false;
+        btnResetMatch.Text = "⏳ Resetting...";
+        statusLabel.Text = "🟡 Resetting arena & room simulation...";
         statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
 
         try
         {
-            // 1. Reset server physics simulation so room returns to pristine spawn state
+            // Reset server physics simulation so room returns to pristine spawn state
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             await client.PostAsync($"http://localhost:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
         }
         catch { }
         finally
         {
-            // 2. Reload client WebView2 from the currently loaded/frozen code snapshot
             webView?.Reload();
             statusLabel.Text = $"🟢 Online (Port {currentPort})";
             statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
-            btnReloadCurrent.Enabled = true;
-            btnReloadCurrent.Text = "🔄 Reload (Current)";
+            btnResetMatch.Enabled = true;
+            btnResetMatch.Text = "⚡ Reset Match";
         }
     }
 
