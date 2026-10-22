@@ -14,7 +14,7 @@ import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
-import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
 import initialWorldConfig from "./config/worldConfig.json";
 import { deserializeGameObject } from "./config/WorldConfig.js";
 

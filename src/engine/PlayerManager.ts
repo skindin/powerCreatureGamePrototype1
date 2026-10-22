@@ -937,6 +937,17 @@ export class PlayerManager {
             }
           }
 
+          const finalLaunchVel = clientLaunchVel || (thrownObj ? {
+            vx: thrownObj.velocity.x,
+            vy: thrownObj.velocity.y,
+            vz: thrownObj.verticalVelocity,
+          } : undefined);
+          const finalLaunchPos = clientLaunchPos || (thrownObj ? {
+            x: thrownObj.position.x,
+            y: thrownObj.position.y,
+            z: thrownObj.position.z,
+          } : undefined);
+
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {
             actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
@@ -948,15 +959,15 @@ export class PlayerManager {
             aimX: throwAimX,
             aimY: throwAimY,
             isLockHeld: pkt.isLockHeld,
-            ...(clientLaunchVel ? {
-              launchVx: clientLaunchVel.vx,
-              launchVy: clientLaunchVel.vy,
-              launchVz: clientLaunchVel.vz,
+            ...(finalLaunchVel ? {
+              launchVx: finalLaunchVel.vx,
+              launchVy: finalLaunchVel.vy,
+              launchVz: finalLaunchVel.vz,
             } : {}),
-            ...(clientLaunchPos ? {
-              launchStartX: clientLaunchPos.x,
-              launchStartY: clientLaunchPos.y,
-              launchStartZ: clientLaunchPos.z,
+            ...(finalLaunchPos ? {
+              launchStartX: finalLaunchPos.x,
+              launchStartY: finalLaunchPos.y,
+              launchStartZ: finalLaunchPos.z,
             } : {})
           } as any;
           if (!isReplay) {

@@ -1,4 +1,3 @@
-import { Arena, WallMapPreset } from "../engine/Arena.js";
 import { GameObject } from "../engine/GameObject.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
@@ -89,13 +88,13 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
   const result: SerializedGameObjectConfig = {
     id: obj.id,
     name: obj.name,
-    prefabId: obj.prefabId,
+    prefabId: obj.prefabId ?? undefined,
     position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
     color: obj.color,
     visualShape: obj.visualShape,
     mass: obj.mass,
     colliderRadius: obj.hasCollider ? obj.colliderRadius : (obj.colliderModule?.radius ?? 0.35),
-    bounceMod: obj.bounceMod,
+    bounceMod: obj.bounceMod ?? 0,
     verticalBounce: obj.bounceModule?.verticalBounce ?? false,
     staticGroundFrictionMod: obj.staticGroundFrictionMod,
     dynamicGroundFrictionMod: obj.dynamicGroundFrictionMod,
@@ -130,15 +129,15 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       enabled: obj.healthModule.enabled,
       maxHp: obj.healthModule.maxHp,
       currentHp: obj.healthModule.currentHp,
-      naturalHealRate: obj.healthModule.healRateProp.literalValue,
+      naturalHealRate: obj.healthModule.maxHealRateProp.literalValue,
     };
   }
 
   if (obj.damageAuraModule) {
     result.damageAuraModule = {
       enabled: obj.damageAuraModule.enabled,
-      damageRadius: obj.damageAuraModule.radiusProp.literalValue,
-      damageRate: obj.damageAuraModule.rateProp.literalValue,
+      damageRadius: obj.damageAuraModule.damageRadius,
+      damageRate: obj.damageAuraModule.damageRate,
     };
   }
 

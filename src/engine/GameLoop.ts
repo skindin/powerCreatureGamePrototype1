@@ -857,21 +857,33 @@ export class GameLoop {
       }
 
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
-      // While a thrown object is in ballistic flight from local player, allow local prediction
-      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
+      // While a thrown object is in ballistic flight from local player, allow local prediction.
       const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      if (sObj.isGrounded) {
-        localObj.isInFlight = false;
-        localObj.originalThrower = null;
-      }
-      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping && !sObj.isGrounded) {
-        const flightDx = sObj.x - localObj.position.x;
-        const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.6) {
+
+      if (wasThrownByLocal && (localObj.isInFlight || isAirborne)) {
+        if (!isAirborne) {
+          localObj.isInFlight = false;
+          localObj.originalThrower = null;
+        } else {
+          // While airborne locally, never let delayed trailing server snapshots (with sObj.isGrounded or sObj.z = 0)
+          // abort in-flight state or pull the object down to the floor.
+          if (sObj.isSleeping) {
+            localObj.position.x = sObj.x;
+            localObj.position.y = sObj.y;
+            localObj.position.z = sObj.z;
+            localObj.putToSleep();
+          }
           continue;
         }
+      }
+
+      // If the object has landed on a surface locally, prevent trailing airborne snapshots from lifting it back up
+      const isGroundedLocally = localObj.isRestingOnSurface || localObj.position.z <= (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      if (isGroundedLocally && sObj.z > (localObj.supportingSurfaceHeight ?? 0) + 0.1 && !sObj.isSleeping) {
+        sObj.z = localObj.position.z;
+        sObj.vz = 0;
       }
 
       // 3. Check physical distance to authoritative server position

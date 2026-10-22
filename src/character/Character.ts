@@ -314,6 +314,7 @@ export class Character extends GameObject {
     controllerType?: CharacterControllerType;
     role?: CharacterRole;
     characterModule?: CharacterModule | null;
+    damageSolverModule?: DamageSolverModule | null;
     randomSpawn?: boolean;
     dynamicGroundFrictionMod?: number;
     staticGroundFrictionMod?: number;
