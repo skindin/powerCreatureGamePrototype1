@@ -99,7 +99,8 @@ export class PlayerManager {
     this.baseCharacter = options.character || new Character({
       name: initialHandle,
       color: PLAYER_COLORS[0],
-      randomSpawn: true,
+      x: 4.8,
+      y: 7.0,
       colliderRadius: 0.44,
       mass: 1.2,
       strength: 1.0,
@@ -316,7 +317,8 @@ export class PlayerManager {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
       char = new Character({
-        randomSpawn: true,
+        x: 4.8,
+        y: 7.0,
         color,
         colliderRadius: 0.44,
         mass: 1.2,
@@ -413,7 +415,8 @@ export class PlayerManager {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
       char = new Character({
-        randomSpawn: true,
+        x: 4.8 + (slotIndex + 1) * 1.2,
+        y: 7.0,
         color,
         colliderRadius: 0.44,
         mass: 1.2,

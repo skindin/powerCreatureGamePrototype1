@@ -202,10 +202,10 @@ function autoTunnelPlugin(): Plugin {
     name: 'auto-localtunnel',
     configureServer(server) {
       if (server.httpServer) {
-        import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
+        server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
           UniversalRoomManager.attach(server.httpServer!);
-        }).catch((err) => {
-          server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
+        }).catch(() => {
+          import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
             UniversalRoomManager.attach(server.httpServer!);
           }).catch((err2) => {
             console.warn('⚠️ [Vite] Notice attaching UniversalRoomManager:', err2?.message || err2);

@@ -8690,11 +8690,12 @@ class Character extends GameObject {
     const initialColor = options.color ?? "#f59e0b";
     const determinedRole = options.role ?? (options.controllerType === "none" ? "dummy" : options.controllerType === "remote" ? "remote_player" : options.controllerType === "ai" ? "local_ai" : "local_player");
     const initialCharacterModule = options.characterModule !== void 0 ? options.characterModule : new CharacterModule({ role: determinedRole });
-    const defaultSpawn = determinedRole !== "dummy" ? HealthModule.getRandomSpawnPosition() : { x: 5, y: 7, z: 0 };
-    const useRandom = options.randomSpawn ?? (options.position === void 0 && options.x === void 0 && determinedRole !== "dummy");
-    const initX = useRandom ? defaultSpawn.x : options.position ? options.position.x : options.x ?? defaultSpawn.x;
-    const initY = useRandom ? defaultSpawn.y : options.position ? options.position.y : options.y ?? defaultSpawn.y;
-    const initZ = useRandom ? defaultSpawn.z : ((_a = options.position) == null ? void 0 : _a.z) ?? (options.x !== void 0 ? 0 : defaultSpawn.z);
+    const defaultSpawn = { x: 5, y: 7, z: 0 };
+    const useRandom = options.randomSpawn ?? false;
+    const randomPos = useRandom ? HealthModule.getRandomSpawnPosition() : null;
+    const initX = useRandom ? randomPos.x : options.position ? options.position.x : options.x ?? defaultSpawn.x;
+    const initY = useRandom ? randomPos.y : options.position ? options.position.y : options.y ?? defaultSpawn.y;
+    const initZ = useRandom ? randomPos.z : ((_a = options.position) == null ? void 0 : _a.z) ?? (options.x !== void 0 ? 0 : defaultSpawn.z);
     super({
       id: options.id,
       name: options.name ?? (determinedRole === "dummy" ? "Sparring Dummy" : `Player ${options.playerNumber ?? 1}`),
@@ -11217,6 +11218,7 @@ const QUARRY_APPLE_SPAWN_POINTS = [
   { x: 10, y: 7, z: 0 }
   // Center gateway
 ];
+const QUARRY_PLAYER_SPAWN = { x: 5.5, y: 7 };
 const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
 function createQuarryStones() {
   return [
@@ -12204,8 +12206,8 @@ function generateDefaultWorldConfig() {
       tileGrid: quarryPreset.generate(20, 14)
     },
     globalPhysics: {
-      gravity: 24,
-      collisionDamageScale: 1,
+      gravity: 30,
+      collisionDamageScale: 0.1,
       collisionMode: "dynamic"
     },
     objects: defaultStones.map(serializeGameObject)
@@ -12378,10 +12380,9 @@ class ServerGameSimulation {
       }
     }
     if (this.characters.size === 0) {
-      const p1Spawn = HealthModule.getRandomSpawnPosition();
       const player1 = new Character({
-        x: p1Spawn.x,
-        y: p1Spawn.y,
+        x: QUARRY_PLAYER_SPAWN.x,
+        y: QUARRY_PLAYER_SPAWN.y,
         color: "#f59e0b",
         colliderRadius: 0.44,
         mass: 1.2,
@@ -12390,7 +12391,6 @@ class ServerGameSimulation {
         playerNumber: 1,
         name: "Server Player 1"
       });
-      player1.position.z = p1Spawn.z;
       this.characters.set(player1.playerId, player1);
       const dummy = new Character({
         id: "dummy-1",
@@ -13453,10 +13453,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const spawnPos = HealthModule.getRandomSpawnPosition();
-    const spawnX = spawnPos.x;
-    const spawnY = spawnPos.y;
-    const spawnZ = spawnPos.z;
+    const spawnX = 4.8;
+    const spawnY = 7;
+    const spawnZ = 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -13687,10 +13686,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
-            const defaultSpawn = HealthModule.getRandomSpawnPosition();
-            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? defaultSpawn.x;
-            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? defaultSpawn.y;
-            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? defaultSpawn.z;
+            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? 3.5;
+            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
+            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
             const newChar = new Character({
               id: serverCharId,
               x: spawnX,

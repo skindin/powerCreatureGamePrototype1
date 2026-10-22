@@ -333,14 +333,12 @@ export class Character extends GameObject {
       ? options.characterModule
       : new CharacterModule({ role: determinedRole });
 
-    const defaultSpawn = determinedRole !== "dummy"
-      ? HealthModule.getRandomSpawnPosition()
-      : { x: 5.0, y: 7.0, z: 0 };
-
-    const useRandom = options.randomSpawn ?? (options.position === undefined && options.x === undefined && determinedRole !== "dummy");
-    const initX = useRandom ? defaultSpawn.x : (options.position ? options.position.x : (options.x ?? defaultSpawn.x));
-    const initY = useRandom ? defaultSpawn.y : (options.position ? options.position.y : (options.y ?? defaultSpawn.y));
-    const initZ = useRandom ? defaultSpawn.z : (options.position?.z ?? (options.x !== undefined ? 0 : defaultSpawn.z));
+    const defaultSpawn = { x: 5.0, y: 7.0, z: 0 };
+    const useRandom = options.randomSpawn ?? false;
+    const randomPos = useRandom ? HealthModule.getRandomSpawnPosition() : null;
+    const initX = useRandom ? randomPos!.x : (options.position ? options.position.x : (options.x ?? defaultSpawn.x));
+    const initY = useRandom ? randomPos!.y : (options.position ? options.position.y : (options.y ?? defaultSpawn.y));
+    const initZ = useRandom ? randomPos!.z : (options.position?.z ?? (options.x !== undefined ? 0 : defaultSpawn.z));
 
     super({
       id: options.id,

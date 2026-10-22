@@ -218,8 +218,8 @@ export function generateDefaultWorldConfig(): WorldConfig {
       tileGrid: quarryPreset.generate(20, 14),
     },
     globalPhysics: {
-      gravity: 24,
-      collisionDamageScale: 1.0,
+      gravity: 30.0,
+      collisionDamageScale: 0.1,
       collisionMode: "dynamic",
     },
     objects: defaultStones.map(serializeGameObject),

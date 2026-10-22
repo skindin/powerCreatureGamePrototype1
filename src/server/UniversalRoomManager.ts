@@ -8,7 +8,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { ServerGameSimulation } from "./ServerGameSimulation.js";
 import { Character } from "../character/Character.js";
-import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
@@ -354,11 +353,10 @@ export class UniversalRoomManager {
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
     // SERVER-AUTHORITATIVE DEDICATED SPAWN POSITION:
-    // When a player is first added to the scene, place them at a random spawn location just like if they died!
-    const spawnPos = HealthModule.getRandomSpawnPosition();
-    const spawnX = spawnPos.x;
-    const spawnY = spawnPos.y;
-    const spawnZ = spawnPos.z;
+    // All players start at the dedicated spawn position (4.8, 7.0, 0).
+    const spawnX = 4.8;
+    const spawnY = 7.0;
+    const spawnZ = 0;
 
     const character = new Character({
       x: spawnX,
@@ -630,11 +628,9 @@ export class UniversalRoomManager {
 
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
-            // Instantiate physical character using server-authoritative spawn position!
-            const defaultSpawn = HealthModule.getRandomSpawnPosition();
-            const spawnX = charEntry.spawnPos?.x ?? defaultSpawn.x;
-            const spawnY = charEntry.spawnPos?.y ?? defaultSpawn.y;
-            const spawnZ = charEntry.spawnPos?.z ?? defaultSpawn.z;
+            const spawnX = charEntry.spawnPos?.x ?? 3.5;
+            const spawnY = charEntry.spawnPos?.y ?? 7.0;
+            const spawnZ = charEntry.spawnPos?.z ?? 0;
             const newChar = new Character({
               id: serverCharId,
               x: spawnX,

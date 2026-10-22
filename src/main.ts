@@ -14,7 +14,7 @@ import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
-import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
 import initialWorldConfig from "./config/worldConfig.json";
 import { deserializeGameObject } from "./config/WorldConfig.js";
 
@@ -228,9 +228,10 @@ function bootstrap(): void {
     }
   })();
 
-  // 2. Initialize Base Character at a random clearing spawn (matching death respawn)
+  // 2. Initialize Base Character in unit coordinates
   const character = new Character({
-    randomSpawn: true,
+    x: QUARRY_PLAYER_SPAWN.x,
+    y: QUARRY_PLAYER_SPAWN.y,
     color: "#f59e0b", // Amber body
     colliderRadius: 0.44,
     mass: 1.2,

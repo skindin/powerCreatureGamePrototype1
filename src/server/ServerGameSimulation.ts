@@ -17,9 +17,8 @@ import {
 } from "./AuthoritativeSnapshotManager.js";
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
 import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
-import { QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
 import { WorldConfig, deserializeGameObject, generateDefaultWorldConfig } from "../config/WorldConfig.js";
-import { HealthModule } from "../character/HealthModule.js";
 
 export type { ContestedGrabResult, DeathRespawnEvent };
 
@@ -237,10 +236,9 @@ export class ServerGameSimulation {
 
     // Preserve existing players, or spawn defaults if empty
     if (this.characters.size === 0) {
-      const p1Spawn = HealthModule.getRandomSpawnPosition();
       const player1 = new Character({
-        x: p1Spawn.x,
-        y: p1Spawn.y,
+        x: QUARRY_PLAYER_SPAWN.x,
+        y: QUARRY_PLAYER_SPAWN.y,
         color: "#f59e0b",
         colliderRadius: 0.44,
         mass: 1.2,
@@ -249,7 +247,6 @@ export class ServerGameSimulation {
         playerNumber: 1,
         name: "Server Player 1",
       });
-      player1.position.z = p1Spawn.z;
       this.characters.set(player1.playerId, player1);
 
       const dummy = new Character({
