@@ -4,11 +4,14 @@ if (typeof process !== "undefined" && process.env) {
 }
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import { ServerGameSimulation } from "./ServerGameSimulation.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
+import { WorldConfig } from "../config/WorldConfig.js";
 
 export interface ClientCharacterEntry {
   localPlayerId: string;
@@ -55,7 +58,38 @@ export class UniversalRoomManager {
       broadcastRateHz: 60,
       deltaCompression: false,
     });
+    this.loadInitialWorldConfig();
+  }
+
+  private loadInitialWorldConfig(): void {
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), "src/config/worldConfig.json"),
+        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
+        path.resolve(process.cwd(), "config/worldConfig.json"),
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, "utf8");
+          const config = JSON.parse(raw);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.simulation.initializeFromConfig(config);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ [UniversalRoom] Could not load worldConfig.json, using default scenario:", err);
+    }
     this.simulation.initializeDefaultScenario();
+  }
+
+  /**
+   * Hot-reloads the authoritative simulation with newly saved world settings without dropping connections.
+   */
+  public reloadWorldConfig(config: WorldConfig): void {
+    console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.simulation.initializeFromConfig(config);
+    this.needsMapReload = true;
   }
 
   public static getInstance(): UniversalRoomManager {

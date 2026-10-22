@@ -15,8 +15,21 @@ import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
 import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import initialWorldConfig from "./config/worldConfig.json";
+import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
+import { prefabManager } from "./engine/prefab/PrefabManager.js";
 
-function bootstrap(): void {
+// Prevent Vite from triggering full browser reloads when worldConfig.json is updated on disk
+if ((import.meta as any).hot) {
+  (import.meta as any).hot.accept("./config/worldConfig.json", () => {
+    // No-op: keep current live state, do NOT reload browser
+  });
+  (import.meta as any).hot.accept(() => {
+    // Self-accept main.ts to prevent browser reloads
+  });
+}
+
+async function bootstrap(): Promise<void> {
   const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
   const devContainer = document.getElementById("dev-sidebar") as HTMLElement;
 
@@ -31,9 +44,32 @@ function bootstrap(): void {
     return;
   }
 
-  // 1. Initialize Arena (20 units wide x 14 units tall, 1 wall = 1 unit)
-  const arena = new Arena(20, 14, 1.0);
-  arena.loadWallPreset(quarryPreset.id);
+  // Fetch freshest world configuration from disk via local dev API if available
+  let worldConfig: any = initialWorldConfig;
+  try {
+    const resp = await fetch("/api/dev/world-config", { cache: "no-store" });
+    if (resp.ok) {
+      worldConfig = await resp.json();
+    }
+  } catch {}
+
+  // 1. Initialize Arena from worldConfig (or fallback to default Quarry map)
+  const arenaW = worldConfig.arena?.width ?? 20;
+  const arenaH = worldConfig.arena?.height ?? 14;
+  const arenaWallH = worldConfig.arena?.wallHeight ?? 1.0;
+  const arena = new Arena(arenaW, arenaH, arenaWallH);
+  if (worldConfig.arena?.tileGrid && worldConfig.arena.tileGrid.length > 0) {
+    arena.tileGrid = worldConfig.arena.tileGrid.map((row: any) => [...row]);
+    arena.rebuildWalls();
+  } else if (worldConfig.arena?.presetId) {
+    arena.loadWallPreset(worldConfig.arena.presetId);
+  } else {
+    arena.loadWallPreset(quarryPreset.id);
+  }
+  if (worldConfig.globalPhysics) {
+    arena.gravity = worldConfig.globalPhysics.gravity ?? 30.0;
+    GameObject.globalWorldCollisionDamageScale = worldConfig.globalPhysics.collisionDamageScale ?? 0.1;
+  }
   canvas.width = 1000;
   canvas.height = 700;
 
@@ -211,6 +247,11 @@ function bootstrap(): void {
     }
   })();
 
+  // 1b. Load Scene Prefabs from worldConfig if present
+  if (worldConfig.prefabs && Array.isArray(worldConfig.prefabs)) {
+    prefabManager.loadFromConfig(worldConfig.prefabs);
+  }
+
   // 2. Initialize Base Character in unit coordinates
   const character = new Character({
     x: QUARRY_PLAYER_SPAWN.x,
@@ -221,6 +262,10 @@ function bootstrap(): void {
     strength: 1.0,
     name: initialPlayerHandle,
   });
+  character.prefabId = "prefab_player";
+  if (worldConfig.player) {
+    applyCharacterConfig(character, worldConfig.player);
+  }
 
   // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)
   const dummyCharacter = new Character({
@@ -236,8 +281,10 @@ function bootstrap(): void {
     role: "dummy",
   });
 
-  // 3. Initialize Initial Freebody Objects in unit coordinates (Nothing but stones placed at first!)
-  const objects: GameObject[] = createQuarryStones();
+  // 3. Initialize Initial Freebody Objects in unit coordinates (from worldConfig.json or createQuarryStones fallback)
+  const objects: GameObject[] = (worldConfig.objects && worldConfig.objects.length > 0)
+    ? worldConfig.objects.map((o: any) => deserializeGameObject(o))
+    : createQuarryStones();
 
   // Synchronize initial entities with the arena walls so any entity placed on a wall starts at wall elevation (Layer 2)
   arena.syncEntitiesWithWalls([character, dummyCharacter, ...objects]);
@@ -277,6 +324,8 @@ function bootstrap(): void {
       devPanel.updateSelectorOptions();
     },
   });
+  devPanel.currentConfigVersion = worldConfig.version ?? 1;
+  devPanel.updateDirtyBadge();
 
   // 5. Initialize Input Manager with Dev Panel interaction
   const inputManager = new InputManager(canvas, arena);

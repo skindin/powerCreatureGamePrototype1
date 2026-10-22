@@ -9,6 +9,8 @@ import { GameObject } from "../engine/GameObject.js";
  * - Dropdown menu: Searchable list, inline rename, delete, and create new property.
  */
 export class PropertyControl {
+  public static defaultSaveHandler?: (owner: GameObject, prop: DynamicProperty, val: number, label: string) => Promise<void> | void;
+
   private _container: HTMLElement;
   private _property: DynamicProperty;
   private _owner: GameObject;
@@ -20,6 +22,7 @@ export class PropertyControl {
   private _isDropdownOpen: boolean = false;
   private _searchTerm: string = "";
   private _onUserChange?: (val: number) => void;
+  private _onSaveIndividual?: (prop: DynamicProperty, val: number) => Promise<void> | void;
 
   constructor(options: {
     property: DynamicProperty;
@@ -30,6 +33,7 @@ export class PropertyControl {
     max?: number;
     decimals?: number;
     onUserChange?: (val: number) => void;
+    onSaveIndividual?: ((prop: DynamicProperty, val: number) => Promise<void> | void) | null;
   }) {
     this._property = options.property;
     this._owner = options.owner;
@@ -39,6 +43,12 @@ export class PropertyControl {
     this._max = options.max;
     this._decimals = options.decimals ?? (options.step && options.step < 0.01 ? 3 : 2);
     this._onUserChange = options.onUserChange;
+
+    if (options.onSaveIndividual !== undefined) {
+      this._onSaveIndividual = options.onSaveIndividual ? options.onSaveIndividual : undefined;
+    } else if (PropertyControl.defaultSaveHandler) {
+      this._onSaveIndividual = (prop, val) => PropertyControl.defaultSaveHandler!(this._owner, prop, val, this._label);
+    }
 
     this._container = document.createElement("div");
     this._container.className = "prop-socket-control";
@@ -167,6 +177,41 @@ export class PropertyControl {
     });
 
     controlRow.appendChild(linkBtn);
+
+    // 2b. Inline Save Property Button
+    if (this._onSaveIndividual) {
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "prop-save-btn";
+      saveBtn.innerHTML = "💾";
+      saveBtn.title = `Save "${this._label}" directly to project`;
+      saveBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const currentVal = this._property.get(this._owner.properties);
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = "⏳";
+        try {
+          await this._onSaveIndividual!(this._property, currentVal);
+          saveBtn.innerHTML = "✓";
+          saveBtn.style.color = "#10b981";
+          setTimeout(() => {
+            saveBtn.innerHTML = "💾";
+            saveBtn.style.color = "";
+            saveBtn.disabled = false;
+          }, 1200);
+        } catch {
+          saveBtn.innerHTML = "❌";
+          saveBtn.style.color = "#ef4444";
+          setTimeout(() => {
+            saveBtn.innerHTML = "💾";
+            saveBtn.style.color = "";
+            saveBtn.disabled = false;
+          }, 1500);
+        }
+      });
+      controlRow.appendChild(saveBtn);
+    }
+
     this._container.appendChild(controlRow);
 
     // 3. Limbo Expedited Quick-Fix Bar (if broken reference)

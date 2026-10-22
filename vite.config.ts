@@ -200,16 +200,40 @@ function autoTunnelPlugin(): Plugin {
 
   return {
     name: 'auto-localtunnel',
+    handleHotUpdate({ file }) {
+      if (file.includes('worldConfig')) {
+        // Return empty array to strictly prevent any HMR or page reload when worldConfig.json changes
+        return [];
+      }
+    },
     configureServer(server) {
+      let activeRoomManager: any = null;
+      const getRoomManager = async () => {
+        if (activeRoomManager) return activeRoomManager;
+        try {
+          const mod = await server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts');
+          if (mod?.UniversalRoomManager) {
+            activeRoomManager = mod.UniversalRoomManager;
+            return activeRoomManager;
+          }
+        } catch (err: any) {
+          console.warn('⚠️ [Vite] Could not SSR load UniversalRoomManager.ts, falling back:', err?.message || err);
+        }
+        try {
+          const mod = await import('./server/dist/UniversalRoomManager.js');
+          if (mod?.UniversalRoomManager) {
+            activeRoomManager = mod.UniversalRoomManager;
+            return activeRoomManager;
+          }
+        } catch (err: any) {}
+        return null;
+      };
+
       if (server.httpServer) {
-        import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
-          UniversalRoomManager.attach(server.httpServer!);
-        }).catch((err) => {
-          server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
+        getRoomManager().then((UniversalRoomManager) => {
+          if (UniversalRoomManager) {
             UniversalRoomManager.attach(server.httpServer!);
-          }).catch((err2) => {
-            console.warn('⚠️ [Vite] Notice attaching UniversalRoomManager:', err2?.message || err2);
-          });
+          }
         });
       }
 
@@ -226,6 +250,161 @@ function autoTunnelPlugin(): Plugin {
         const rawUrl = req.url || '/';
         const urlObj = new URL(rawUrl, `http://${req.headers['host'] || 'localhost'}`);
         const urlPath = decodeURIComponent(urlObj.pathname);
+
+        // World Config API endpoints (Local Development Only)
+        if (urlPath === '/api/dev/world-config') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+          if (fs.existsSync(configPath)) {
+            const data = fs.readFileSync(configPath, 'utf8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.end(data);
+          } else {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Config not found' }));
+          }
+          return;
+        }
+
+        if (urlPath === '/api/dev/save-config') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+
+          // Strict Security Guard: Only allow from local machine/LAN, never from external public tunnel
+          if (isTunnel) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'World config saving is not permitted via public tunnel' }));
+            return;
+          }
+
+          parseJsonBody(req).then((delta: any) => {
+            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+            let currentConfig: any = {};
+            try {
+              if (fs.existsSync(configPath)) {
+                currentConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              }
+            } catch {}
+
+            function deepMerge(target: any, source: any): any {
+              if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
+              const result = { ...(target || {}) };
+              for (const key of Object.keys(source)) {
+                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                  result[key] = deepMerge(result[key], source[key]);
+                } else {
+                  result[key] = source[key];
+                }
+              }
+              return result;
+            }
+
+            // Merge delta selectively
+            const updatedConfig: any = {
+              version: (currentConfig.version || 1) + 1,
+              lastSaved: new Date().toISOString(),
+              arena: { ...(currentConfig.arena || {}), ...(delta.arena || {}) },
+              globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
+              player: delta.player ? deepMerge(currentConfig.player || {}, delta.player) : currentConfig.player,
+              objects: [...(currentConfig.objects || [])],
+              prefabs: currentConfig.prefabs ? [...currentConfig.prefabs] : undefined,
+            };
+
+            if (delta.arena?.tileGrid) {
+              updatedConfig.arena.tileGrid = delta.arena.tileGrid.map((row: any) => [...row]);
+            }
+
+            if (delta.objectsDelta) {
+              if (delta.objectsDelta.replaceAll && Array.isArray(delta.objectsDelta.replaceAll)) {
+                updatedConfig.objects = [...delta.objectsDelta.replaceAll];
+              } else {
+                const { upsert, deletedIds } = delta.objectsDelta;
+                const objectMap = new Map();
+                for (const obj of updatedConfig.objects) {
+                  objectMap.set(obj.id, obj);
+                }
+                if (deletedIds && Array.isArray(deletedIds)) {
+                  for (const id of deletedIds) objectMap.delete(id);
+                }
+                if (upsert && Array.isArray(upsert)) {
+                  for (const item of upsert) objectMap.set(item.id, item);
+                }
+                updatedConfig.objects = Array.from(objectMap.values());
+              }
+            }
+
+            if (delta.prefabsDelta) {
+              if (delta.prefabsDelta.replaceAll && Array.isArray(delta.prefabsDelta.replaceAll)) {
+                updatedConfig.prefabs = [...delta.prefabsDelta.replaceAll];
+              } else {
+                const { upsert, deletedIds } = delta.prefabsDelta;
+                const prefabMap = new Map();
+                for (const p of (updatedConfig.prefabs || [])) {
+                  prefabMap.set(p.id, p);
+                }
+                if (deletedIds && Array.isArray(deletedIds)) {
+                  for (const id of deletedIds) prefabMap.delete(id);
+                }
+                if (upsert && Array.isArray(upsert)) {
+                  for (const item of upsert) prefabMap.set(item.id, item);
+                }
+                updatedConfig.prefabs = Array.from(prefabMap.values());
+              }
+            }
+
+            const jsonStr = JSON.stringify(updatedConfig, null, 2);
+            fs.writeFileSync(configPath, jsonStr, 'utf8');
+
+            // Keep moduleGraph fresh for future reads without triggering HMR reload
+            try {
+              const mod = server.moduleGraph.getModuleById(configPath);
+              if (mod) server.moduleGraph.invalidateModule(mod);
+            } catch {}
+
+            // Also keep public/dist in sync if present
+            try {
+              const distConfigPath = path.resolve(__dirname, 'dist/config/worldConfig.json');
+              if (fs.existsSync(path.resolve(__dirname, 'dist'))) {
+                fs.mkdirSync(path.dirname(distConfigPath), { recursive: true });
+                fs.writeFileSync(distConfigPath, jsonStr, 'utf8');
+              }
+            } catch {}
+
+            // Hot reload UniversalRoomManager in background without triggering dev server SSR re-eval
+            getRoomManager().then((UniversalRoomManager) => {
+              UniversalRoomManager?.getInstance().reloadWorldConfig?.(updatedConfig);
+            }).catch(() => {});
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: true, version: updatedConfig.version, lastSaved: updatedConfig.lastSaved }));
+          }).catch((err) => {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Failed to parse delta payload', details: err?.message }));
+          });
+          return;
+        }
 
         // Feedback API endpoints
         if (urlPath === '/api/feedback') {
@@ -372,6 +551,7 @@ export default defineConfig(({ command }) => ({
         '**/.git/**',
         '**/tunnel.json',
         '**/dist/**',
+        /worldConfig/,
       ],
     },
   },

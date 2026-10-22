@@ -26,10 +26,13 @@ import { MeleeModule } from "../character/MeleeModule.js";
 import { SpawnerModule } from "../engine/SpawnerModule.js";
 import { PropertyControl } from "./PropertyControl.js";
 import { TagSelectorControl } from "./TagSelectorControl.js";
-import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
 import { FloatScrubber } from "./FloatScrubber.js";
+import { consumableTagRegistry } from "../engine/properties/ConsumableTagRegistry.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import { Prefab } from "../engine/prefab/Prefab.js";
 import { prefabManager } from "../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../engine/spawner/SceneSpawnerManager.js";
+import { WorldConfig, WorldConfigDelta, serializeGameObject, deserializeGameObject, serializePrefab, SerializedPrefabConfig, SerializedCharacterConfig } from "../config/WorldConfig.js";
 
 export interface CreatorPreset {
   name: string;
@@ -71,6 +74,17 @@ export class DevPanel {
   public getGameLoop?: () => any;
   public getRenderer?: () => any;
   public rollbackDepthTicks: number = 30;
+
+  // Project persistence & dirty state tracking
+  public isOnlineLocked: boolean = false;
+  public currentConfigVersion: number = 1;
+  public dirtyState = {
+    arena: false,
+    globalPhysics: false,
+    player: false,
+    modifiedObjects: new Map<string, GameObject>(),
+    deletedObjectIds: new Set<string>(),
+  };
 
 
   // Preserved Creator State
@@ -337,6 +351,8 @@ export class DevPanel {
       this.renderSceneSpawners();
     });
 
+    PropertyControl.defaultSaveHandler = (owner, prop, val, label) => this.saveIndividualProperty(owner, prop, val, label);
+
     this.renderPanel();
   }
 
@@ -458,13 +474,29 @@ export class DevPanel {
             <button id="btn-close-dev-panel" class="btn-close-panel" title="Collapse Inspector Sidebar (I or \`)">✕</button>
           </div>
         </div>
-        <div class="mode-switcher">
+        <div class="mode-switcher" style="display: flex; gap: 4px; align-items: center;">
           <button id="mode-play" class="mode-btn ${!this.isEditMode ? 'active-play' : ''}">🎮 Play Mode</button>
           <button id="mode-edit" class="mode-btn ${this.isEditMode ? 'active-edit' : ''}">✏️ Edit Mode</button>
+          <button id="btn-top-sim-pause" class="mode-btn" style="flex: 0 0 auto; padding: 4px 8px; font-weight: 600; font-size: 0.74rem;" title="Freeze or resume physics simulation">⏸️ Pause</button>
         </div>
         <div id="edit-submode-container" class="edit-submode-switcher" style="display: ${this.isEditMode ? 'flex' : 'none'};">
           <button id="submode-entities" class="submode-btn ${this.editTool === 'entities' ? 'active' : ''}">📦 Move Entities</button>
           <button id="submode-walls" class="submode-btn ${this.editTool === 'walls' ? 'active' : ''}">🧱 Edit Walls</button>
+        </div>
+
+        <!-- Project Save & Version Control Persistence Bar (Arena & Physics only) -->
+        <div class="project-save-bar" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; margin-top: 6px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="dev-save-badge" class="badge-status-clean" style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3);">
+              ✓ In Sync (v1)
+            </span>
+          </div>
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button id="btn-revert-from-project" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.70rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);" title="Reload arena and physics from project config">↺ Reload</button>
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save Arena walls and global physics to src/config/worldConfig.json">
+              💾 Save Arena & Physics
+            </button>
+          </div>
         </div>
       </div>
 
@@ -692,6 +724,20 @@ export class DevPanel {
           ${this.renderCollapsibleHeader("behaviors", "🧩 Physical Behaviors")}
           <div id="collapse-body-behaviors" style="display: ${this.isSectionCollapsed('behaviors') ? 'none' : 'block'}; margin-top: 8px;">
           <p class="section-desc">Attach or detach isolated physics behaviors for the selected entity.</p>
+
+          <!-- Object Name & Color Controls (Non-character objects) -->
+          <div id="row-entity-name" style="${this.selectedEntity instanceof Character ? 'display:none;' : 'margin-bottom: 8px;'}">
+            <label style="font-size: 0.74rem; color: #94a3b8; display: block; margin-bottom: 4px;">Object Name</label>
+            <input type="text" id="input-entity-name" class="dev-input" value="${this.selectedEntity ? this.selectedEntity.name : ''}" style="width: 100%;" />
+          </div>
+
+          <div id="row-entity-color" class="color-row" style="${this.selectedEntity instanceof Character ? 'display:none;' : 'margin-bottom: 8px;'}">
+            <label>Color</label>
+            <div class="color-input-wrapper">
+              <input type="color" id="input-entity-color" value="${this.selectedEntity ? this.selectedEntity.color : '#94a3b8'}">
+              <span id="val-entity-color" style="font-size: 0.76rem; font-family: monospace; color: #cbd5e1;">${this.selectedEntity ? this.selectedEntity.color : '#94a3b8'}</span>
+            </div>
+          </div>
 
           <!-- Visual Shape -->
           <div class="toggle-row" id="row-visual-shape" style="${this.selectedEntity instanceof Character ? 'display:none;' : ''}">
@@ -1016,6 +1062,22 @@ export class DevPanel {
       }
     }
 
+    // Object Name and Color controls sync
+    const entityNameInput = this.container.querySelector("#input-entity-name") as HTMLInputElement | null;
+    if (entityNameInput && document.activeElement !== entityNameInput) {
+      entityNameInput.value = e.name;
+    }
+    const entityColorInput = this.container.querySelector("#input-entity-color") as HTMLInputElement | null;
+    const entityColorVal = this.container.querySelector("#val-entity-color") as HTMLElement | null;
+    if (entityColorInput) {
+      entityColorInput.value = e.color;
+      if (entityColorVal) entityColorVal.textContent = e.color;
+    }
+    const rowName = this.container.querySelector("#row-entity-name") as HTMLElement | null;
+    if (rowName) rowName.style.display = isChar ? "none" : "block";
+    const rowColor = this.container.querySelector("#row-entity-color") as HTMLElement | null;
+    if (rowColor) rowColor.style.display = isChar ? "none" : "flex";
+
     // Physical behaviors sliders (only affects elements currently rendered)
     this.setSliderVal("slide-entity-radius", "val-entity-radius", e.colliderModule?.radius ?? 0.32, 2);
     this.setSliderVal("slide-entity-mass", "val-entity-mass", e.mass, 1);
@@ -1185,6 +1247,19 @@ export class DevPanel {
       </div>
     `;
 
+    const renderToggleRow = (checkboxId: string, label: string, isChecked: boolean, title: string = "Save setting to project") => {
+      const saveBtnId = `btn-save-${checkboxId.replace(/^check-/, '')}`;
+      return `
+        <div class="toggle-row" style="margin-top: 5px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.8rem; color: #cbd5e1;">${label}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="${checkboxId}" ${isChecked ? 'checked' : ''}>
+            <button type="button" class="prop-save-btn" id="${saveBtnId}" title="${title}">💾</button>
+          </div>
+        </div>
+      `;
+    };
+
     // 0. Character Module (Role: local_player, local_ai, remote_player, remote_ai, dummy)
     if (hasCharModule) {
       attachedCount++;
@@ -1318,11 +1393,8 @@ export class DevPanel {
           ${!bounceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Bounciness behavior is disabled</div>` : ''}
           ${bounceMassWarning}
           <div id="prop-socket-bounce"></div>
-          <div class="toggle-subrow" style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 0.8rem; color: #e2e8f0; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-              <input type="checkbox" id="check-mod-vert-bounce" ${e.bounceModule?.verticalBounce ? 'checked' : ''}>
-              <span>Vertical Bounce</span>
-            </label>
+          <div style="margin-top: 6px;">
+            ${renderToggleRow("check-mod-vert-bounce", "Vertical Bounce", Boolean(e.bounceModule?.verticalBounce), "Save Vertical Bounce to project")}
           </div>
           ${bounceVertWarning}
           </div>
@@ -1389,10 +1461,7 @@ export class DevPanel {
           ${!rollEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll behavior is disabled</div>` : ''}
           ${rollFricWarning}
           <div id="prop-socket-roll-resist"></div>
-          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
-            <span style="font-size: 0.8rem; color: #cbd5e1;">Bumpy Roll (Hop on Bumps)</span>
-            <input type="checkbox" id="check-roll-bumpy-enabled" ${e.rollModule?.bumpyRollEnabled ? 'checked' : ''}>
-          </div>
+          ${renderToggleRow("check-roll-bumpy-enabled", "Bumpy Roll (Hop on Bumps)", Boolean(e.rollModule?.bumpyRollEnabled), "Save Bumpy Roll to project")}
           <div id="prop-socket-roll-bumpiness" style="display: ${e.rollModule?.bumpyRollEnabled ? 'block' : 'none'};"></div>
           </div>
         </div>
@@ -1418,14 +1487,8 @@ export class DevPanel {
             ${!walkEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Walking Ability is disabled</div>` : ''}
             ${walkFricWarning}
             ${walkStrWarning}
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 4px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Air Control (Walk in Air)</span>
-              <input type="checkbox" id="check-walk-in-air" ${char.walkingModule?.walkInAir ? 'checked' : ''}>
-            </div>
-            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 4px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Can Sprint (Shift / Gamepad)</span>
-              <input type="checkbox" id="check-can-sprint" ${char.walkingModule?.canSprint ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-walk-in-air", "Air Control (Walk in Air)", Boolean(char.walkingModule?.walkInAir), "Save Air Control to project")}
+            ${renderToggleRow("check-can-sprint", "Can Sprint (Shift / Gamepad)", Boolean(char.walkingModule?.canSprint), "Save Can Sprint to project")}
             <div id="prop-socket-walk-force"></div>
             <div id="prop-socket-walk-speed"></div>
             <div id="prop-socket-walk-power-cap"></div>
@@ -1435,21 +1498,13 @@ export class DevPanel {
             <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
               <div id="prop-socket-strength"></div>
             </div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Walk Consumes Energy</span>
-              <input type="checkbox" id="check-walk-energy" ${char.walkingModule?.walkConsumesEnergy ? 'checked' : ''}>
+            ${renderToggleRow("check-walk-energy", "Walk Consumes Energy", Boolean(char.walkingModule?.walkConsumesEnergy), "Save Walk Consumes Energy to project")}
+            <div id="field-walk-partial-power" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+              ${renderToggleRow("check-walk-partial-power", "Allow Partial Power", Boolean(char.walkingModule?.walkAllowPartialPower), "Save Walk Partial Power to project")}
             </div>
-            <div id="field-walk-partial-power" style="display: ${char.walkingModule?.walkConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-              <input type="checkbox" id="check-walk-partial-power" ${char.walkingModule?.walkAllowPartialPower ? 'checked' : ''}>
-            </div>
-            <div class="toggle-row" style="margin-top: 4px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Sprint Consumes Energy</span>
-              <input type="checkbox" id="check-sprint-energy" ${char.walkingModule?.sprintConsumesEnergy ? 'checked' : ''}>
-            </div>
-            <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-              <input type="checkbox" id="check-sprint-partial-power" ${char.walkingModule?.sprintAllowPartialPower ? 'checked' : ''}>
+            ${renderToggleRow("check-sprint-energy", "Sprint Consumes Energy", Boolean(char.walkingModule?.sprintConsumesEnergy), "Save Sprint Consumes Energy to project")}
+            <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+              ${renderToggleRow("check-sprint-partial-power", "Allow Partial Power", Boolean(char.walkingModule?.sprintAllowPartialPower), "Save Sprint Partial Power to project")}
             </div>
             </div>
           </div>
@@ -1465,13 +1520,9 @@ export class DevPanel {
             ${!pickupEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Pickup Ability is disabled</div>` : ''}
             <div id="prop-socket-pickup-reach"></div>
             <div id="prop-socket-pickup-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-pickup-energy" ${char.pickupModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
-            <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-              <input type="checkbox" id="check-pickup-partial-power" ${char.pickupModule?.allowPartialPower ? 'checked' : ''}>
+            ${renderToggleRow("check-pickup-energy", "Consumes Energy", Boolean(char.pickupModule?.consumesEnergy), "Save Pickup Consumes Energy to project")}
+            <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+              ${renderToggleRow("check-pickup-partial-power", "Allow Partial Power", Boolean(char.pickupModule?.allowPartialPower), "Save Pickup Partial Power to project")}
             </div>
             </div>
           </div>
@@ -1493,10 +1544,7 @@ export class DevPanel {
             <div id="prop-socket-throw-force"></div>
             <div id="prop-socket-throw-max-height"></div>
             <div id="prop-socket-throw-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-throw-energy" ${char.throwModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
+            ${renderToggleRow("check-throw-energy", "Consumes Energy", Boolean(char.throwModule?.consumesEnergy), "Save Throw Consumes Energy to project")}
             </div>
           </div>
         `;
@@ -1517,13 +1565,9 @@ export class DevPanel {
             <div id="prop-socket-jump-strength"></div>
             <div id="prop-socket-jump-max-speed"></div>
             <div id="prop-socket-jump-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-jump-energy" ${char.jumpConsumesEnergy ? 'checked' : ''}>
-            </div>
-            <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-              <input type="checkbox" id="check-jump-partial-power" ${char.jumpAllowPartialPower ? 'checked' : ''}>
+            ${renderToggleRow("check-jump-energy", "Consumes Energy", Boolean(char.jumpConsumesEnergy), "Save Jump Consumes Energy to project")}
+            <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+              ${renderToggleRow("check-jump-partial-power", "Allow Partial Power", Boolean(char.jumpAllowPartialPower), "Save Jump Partial Power to project")}
             </div>
             </div>
           </div>
@@ -1575,13 +1619,9 @@ export class DevPanel {
             <div id="prop-socket-climb-adhesion"></div>
             <div id="prop-socket-climb-speed"></div>
             <div id="prop-socket-climb-power-cap"></div>
-            <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-              <span style="font-size: 0.8rem; color: #cbd5e1;">Consumes Energy</span>
-              <input type="checkbox" id="check-climb-energy" ${char.climbingModule?.consumesEnergy ? 'checked' : ''}>
-            </div>
-            <div id="field-climb-partial-power" style="display: ${char.climbingModule?.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-              <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-              <input type="checkbox" id="check-climb-partial-power" ${char.climbingModule?.allowPartialPower ? 'checked' : ''}>
+            ${renderToggleRow("check-climb-energy", "Consumes Energy", Boolean(char.climbingModule?.consumesEnergy), "Save Climb Consumes Energy to project")}
+            <div id="field-climb-partial-power" style="display: ${char.climbingModule?.consumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+              ${renderToggleRow("check-climb-partial-power", "Allow Partial Power", Boolean(char.climbingModule?.allowPartialPower), "Save Climb Partial Power to project")}
             </div>
             </div>
           </div>
@@ -1611,13 +1651,9 @@ export class DevPanel {
           <div id="prop-socket-health-hpperjoule"></div>
           <div id="prop-socket-health-power-cap"></div>
 
-          <div class="toggle-row" style="margin-top: 6px; margin-bottom: 2px;">
-            <span style="font-size: 0.8rem; color: #cbd5e1;">Healing Consumes Energy</span>
-            <input type="checkbox" id="check-health-energy" ${hm.consumesEnergy ? 'checked' : ''}>
-          </div>
-          <div id="field-health-partial-power" style="display: ${hm.consumesEnergy ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-top: 2px; margin-bottom: 4px; padding-left: 8px;">
-            <span style="font-size: 0.76rem; color: #94a3b8;">Allow Partial Power</span>
-            <input type="checkbox" id="check-health-partial-power" ${hm.allowPartialPower ? 'checked' : ''}>
+          ${renderToggleRow("check-health-energy", "Healing Consumes Energy", Boolean(hm.consumesEnergy), "Save Healing Consumes Energy to project")}
+          <div id="field-health-partial-power" style="display: ${hm.consumesEnergy ? 'block' : 'none'}; padding-left: 8px;">
+            ${renderToggleRow("check-health-partial-power", "Allow Partial Power", Boolean(hm.allowPartialPower), "Save Health Partial Power to project")}
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px;">
             <button id="btn-health-sub10" class="btn-secondary-action" style="padding: 4px; font-size: 0.75rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">
@@ -1673,6 +1709,7 @@ export class DevPanel {
           </div>
           <div id="prop-socket-impact-susceptibility"></div>
           <div id="prop-socket-min-shock-thresh"></div>
+          <div id="prop-socket-self-impact-weight"></div>
           <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
             <div id="scrub-container-mod-collision-damage-scale"></div>
             <div class="module-global-warning">
@@ -1735,10 +1772,7 @@ export class DevPanel {
 
 
 
-          <div class="toggle-row" style="margin-top: 6px;">
-            <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
-            <input type="checkbox" id="check-laser-partial-power" ${lm.allowPartialPower ? 'checked' : ''}>
-          </div>
+          ${renderToggleRow("check-laser-partial-power", "Allow Partial Power", Boolean(lm.allowPartialPower), "Save Laser Partial Power to project")}
           </div>
         </div>
       `;
@@ -1763,10 +1797,7 @@ export class DevPanel {
           <div id="prop-socket-melee-width"></div>
           <div id="prop-socket-melee-max-power"></div>
 
-          <div class="toggle-row" style="margin-top: 6px;">
-            <span style="font-size: 0.78rem; color: #cbd5e1;">Allow Partial Power</span>
-            <input type="checkbox" id="check-melee-partial-power" ${mm.allowPartialPower ? 'checked' : ''}>
-          </div>
+          ${renderToggleRow("check-melee-partial-power", "Allow Partial Power", Boolean(mm.allowPartialPower), "Save Melee Partial Power to project")}
           </div>
         </div>
       `;
@@ -2108,6 +2139,11 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    } else {
+      this.markDirty("player", e);
+    }
   }
 
   private removeModuleFromSelectedEntity(modId: string): void {
@@ -2220,6 +2256,11 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    } else {
+      this.markDirty("player", e);
+    }
   }
 
   private addModuleToSelectedEntity(modId: string): void {
@@ -2364,12 +2405,30 @@ export class DevPanel {
     this.renderEntityModules();
     this.updateSelectorOptions();
     this.updateInspector();
+    if (!(e instanceof Character)) {
+      this.markDirty("objects", e);
+    } else {
+      this.markDirty("player", e);
+    }
   }
 
   private bindDynamicModuleControls(): void {
     const e = this.selectedEntity;
     const isChar = e instanceof Character;
     const char = isChar ? (e as Character) : null;
+
+    const bindToggleSave = (checkboxId: string, owner: GameObject, keyPath: string, label: string, onApply?: (val: boolean) => void) => {
+      const chk = this.container.querySelector(`#${checkboxId}`) as HTMLInputElement | null;
+      const saveBtnId = `btn-save-${checkboxId.replace(/^check-/, '')}`;
+      const btn = this.container.querySelector(`#${saveBtnId}`) as HTMLButtonElement | null;
+      if (!chk || !btn) return;
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const val = chk.checked;
+        if (onApply) onApply(val);
+        this.saveIndividualToggle(owner, keyPath, val, label, btn);
+      });
+    };
 
     // Character Module Role Selector
     const selectCharRole = this.container.querySelector("#select-char-role") as HTMLSelectElement | null;
@@ -2396,6 +2455,9 @@ export class DevPanel {
       const badge = this.container.querySelector("#badge-rb-collision-mode");
       if (badge) badge.textContent = e.collisionMode.toUpperCase();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     });
 
     const btnVertVel = this.container.querySelector("#toggle-mod-vert-vel") as HTMLButtonElement;
@@ -2412,10 +2474,16 @@ export class DevPanel {
       }
       this.renderEntityModules();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     });
 
     this.setupSlider("slide-entity-vert-vel", "val-entity-vert-vel", (val) => {
       e.verticalVelocity = val;
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     }, 2);
 
     // Collider
@@ -2431,6 +2499,9 @@ export class DevPanel {
           if (e.prefabId) {
             e.overriddenProperties.add("colliderRadius");
             this.updatePrefabInfoBadge();
+          }
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
           }
         },
       });
@@ -2450,6 +2521,9 @@ export class DevPanel {
             e.overriddenProperties.add("mass");
             this.updatePrefabInfoBadge();
           }
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
         },
       });
       massSocketEl.appendChild(massCtrl.element);
@@ -2463,6 +2537,11 @@ export class DevPanel {
         owner: e,
         label: "Static Friction Mod",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       staticFricSocketEl.appendChild(sfCtrl.element);
     }
@@ -2473,6 +2552,11 @@ export class DevPanel {
         owner: e,
         label: "Dynamic Friction Mod",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       dynFricSocketEl.appendChild(dfCtrl.element);
     }
@@ -2485,6 +2569,11 @@ export class DevPanel {
         owner: e,
         label: "Bounciness (Restitution)",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       bounceSocketEl.appendChild(bCtrl.element);
     }
@@ -2495,6 +2584,12 @@ export class DevPanel {
       }
       this.syncEntitySliders();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
+    });
+    bindToggleSave("check-mod-vert-bounce", e, "verticalBounce", "Vertical Bounce", (v) => {
+      if (e.bounceModule) e.bounceModule.verticalBounce = v;
     });
 
     // Vertical Position
@@ -2505,6 +2600,9 @@ export class DevPanel {
       e.position.z = val;
       this.syncEntitySliders();
       this.updateInspector();
+      if (!(e instanceof Character)) {
+        this.markDirty("objects", e);
+      }
     }, 2);
 
     // Roll Resistance (Dynamic Property Socket)
@@ -2515,6 +2613,11 @@ export class DevPanel {
         owner: e,
         label: "Roll Resistance (u/s²)",
         step: 0.05,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       rollResistSocketEl.appendChild(rollCtrl.element);
     }
@@ -2529,7 +2632,13 @@ export class DevPanel {
           const hopEffEl = this.container.querySelector("#prop-socket-roll-hop-efficiency") as HTMLElement | null;
           if (bumpinessEl) bumpinessEl.style.display = checkBumpyRoll.checked ? "block" : "none";
           if (hopEffEl) hopEffEl.style.display = checkBumpyRoll.checked ? "block" : "none";
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
         }
+      });
+      bindToggleSave("check-roll-bumpy-enabled", e, "bumpyRollEnabled", "Bumpy Roll", (v) => {
+        if (e.rollModule) e.rollModule.bumpyRollEnabled = v;
       });
     }
 
@@ -2542,6 +2651,11 @@ export class DevPanel {
         step: 0.01,
         min: 0.0,
         max: 1.0,
+        onUserChange: () => {
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        },
       });
       rollBumpSocketEl.appendChild(bumpCtrl.element);
     }
@@ -2573,12 +2687,18 @@ export class DevPanel {
           char.walkingModule.walkInAir = checkWalkInAir.checked;
         }
       });
+      bindToggleSave("check-walk-in-air", char, "walkInAir", "Air Control (Walk in Air)", (v) => {
+        if (char.walkingModule) char.walkingModule.walkInAir = v;
+      });
 
       const canSprintCheck = this.container.querySelector("#check-can-sprint") as HTMLInputElement;
       canSprintCheck?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.canSprint = canSprintCheck.checked;
         }
+      });
+      bindToggleSave("check-can-sprint", char, "canSprint", "Can Sprint", (v) => {
+        if (char.walkingModule) char.walkingModule.canSprint = v;
       });
 
       // Walking sockets
@@ -2653,6 +2773,12 @@ export class DevPanel {
           if (fieldWalkPartialPower) fieldWalkPartialPower.style.display = checkWalkEnergy.checked ? "flex" : "none";
         }
       });
+      bindToggleSave("check-walk-energy", char, "walkConsumesEnergy", "Walk Consumes Energy", (v) => {
+        if (char.walkingModule) char.walkingModule.walkConsumesEnergy = v;
+      });
+      bindToggleSave("check-walk-partial-power", char, "walkingModule.walkAllowPartialPower", "Walk Partial Power", (v) => {
+        if (char.walkingModule) char.walkingModule.walkAllowPartialPower = v;
+      });
       checkWalkPartialPower?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.walkAllowPartialPower = checkWalkPartialPower.checked;
@@ -2665,8 +2791,14 @@ export class DevPanel {
       checkSprintEnergy?.addEventListener("change", () => {
         if (char.walkingModule) {
           char.walkingModule.sprintConsumesEnergy = checkSprintEnergy.checked;
-          if (fieldSprintPartialPower) fieldSprintPartialPower.style.display = checkSprintEnergy.checked ? "flex" : "none";
+          if (fieldSprintPartialPower) fieldSprintPartialPower.style.display = checkSprintEnergy.checked ? "block" : "none";
         }
+      });
+      bindToggleSave("check-sprint-energy", char, "sprintConsumesEnergy", "Sprint Consumes Energy", (v) => {
+        if (char.walkingModule) char.walkingModule.sprintConsumesEnergy = v;
+      });
+      bindToggleSave("check-sprint-partial-power", char, "walkingModule.sprintAllowPartialPower", "Sprint Partial Power", (v) => {
+        if (char.walkingModule) char.walkingModule.sprintAllowPartialPower = v;
       });
       checkSprintPartialPower?.addEventListener("change", () => {
         if (char.walkingModule) {
@@ -2713,8 +2845,14 @@ export class DevPanel {
       checkPickupEnergy?.addEventListener("change", () => {
         if (char.pickupModule) {
           char.pickupModule.consumesEnergy = checkPickupEnergy.checked;
-          if (fieldPickupPartialPower) fieldPickupPartialPower.style.display = checkPickupEnergy.checked ? "flex" : "none";
+          if (fieldPickupPartialPower) fieldPickupPartialPower.style.display = checkPickupEnergy.checked ? "block" : "none";
         }
+      });
+      bindToggleSave("check-pickup-energy", char, "pickupConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.pickupModule) char.pickupModule.consumesEnergy = v;
+      });
+      bindToggleSave("check-pickup-partial-power", char, "pickupModule.allowPartialPower", "Pickup Partial Power", (v) => {
+        if (char.pickupModule) char.pickupModule.allowPartialPower = v;
       });
       checkPickupPartialPower?.addEventListener("change", () => {
         if (char.pickupModule) {
@@ -2759,6 +2897,9 @@ export class DevPanel {
           char.throwModule.consumesEnergy = checkThrowEnergy.checked;
         }
       });
+      bindToggleSave("check-throw-energy", char, "throwConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.throwModule) char.throwModule.consumesEnergy = v;
+      });
 
       // Jump sockets
       const jumpStrSocketEl = this.container.querySelector("#prop-socket-jump-strength");
@@ -2797,6 +2938,12 @@ export class DevPanel {
       checkJumpEnergy?.addEventListener("change", () => {
         char.jumpConsumesEnergy = checkJumpEnergy.checked;
         if (fieldJumpPartialPower) fieldJumpPartialPower.style.display = checkJumpEnergy.checked ? "flex" : "none";
+      });
+      bindToggleSave("check-jump-energy", char, "jumpConsumesEnergy", "Consumes Energy", (v) => {
+        char.jumpConsumesEnergy = v;
+      });
+      bindToggleSave("check-jump-partial-power", char, "jumpModule.jumpAllowPartialPower", "Jump Partial Power", (v) => {
+        char.jumpAllowPartialPower = v;
       });
       checkJumpPartialPower?.addEventListener("change", () => {
         char.jumpAllowPartialPower = checkJumpPartialPower.checked;
@@ -2867,8 +3014,14 @@ export class DevPanel {
       checkClimbEnergy?.addEventListener("change", () => {
         if (char.climbingModule) {
           char.climbingModule.consumesEnergy = checkClimbEnergy.checked;
-          if (fieldClimbPartialPower) fieldClimbPartialPower.style.display = checkClimbEnergy.checked ? "flex" : "none";
+          if (fieldClimbPartialPower) fieldClimbPartialPower.style.display = checkClimbEnergy.checked ? "block" : "none";
         }
+      });
+      bindToggleSave("check-climb-energy", char, "climbConsumesEnergy", "Consumes Energy", (v) => {
+        if (char.climbingModule) char.climbingModule.consumesEnergy = v;
+      });
+      bindToggleSave("check-climb-partial-power", char, "climbingModule.allowPartialPower", "Climb Partial Power", (v) => {
+        if (char.climbingModule) char.climbingModule.allowPartialPower = v;
       });
       checkClimbPartialPower?.addEventListener("change", () => {
         if (char.climbingModule) {
@@ -2888,6 +3041,11 @@ export class DevPanel {
           owner: e,
           label: "Current Health (HP)",
           step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpCurSocketEl.appendChild(curCtrl.element);
       }
@@ -2899,6 +3057,11 @@ export class DevPanel {
           owner: e,
           label: "Max Health (HP)",
           step: 5.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpMaxSocketEl.appendChild(maxCtrl.element);
       }
@@ -2910,6 +3073,11 @@ export class DevPanel {
           owner: e,
           label: "Passive Heal Rate (HP/s)",
           step: 0.5,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpHealSocketEl.appendChild(hrCtrl.element);
       }
@@ -2921,6 +3089,11 @@ export class DevPanel {
           owner: e,
           label: "Healing Efficiency (HP/Joule)",
           step: 0.005,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpPerJouleSocketEl.appendChild(jCtrl.element);
       }
@@ -2931,6 +3104,11 @@ export class DevPanel {
           owner: e,
           label: "Max Healing Power (Watts)",
           step: 25.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         hpPowerCapSocketEl.appendChild(pCtrl.element);
       }
@@ -2940,10 +3118,22 @@ export class DevPanel {
       const checkHealthPartialPower = this.container.querySelector("#check-health-partial-power") as HTMLInputElement;
       checkHealthEnergy?.addEventListener("change", () => {
         hm.consumesEnergy = checkHealthEnergy.checked;
-        if (fieldHealthPartialPower) fieldHealthPartialPower.style.display = checkHealthEnergy.checked ? "flex" : "none";
+        if (fieldHealthPartialPower) fieldHealthPartialPower.style.display = checkHealthEnergy.checked ? "block" : "none";
+        if (!(e instanceof Character)) {
+          this.markDirty("objects", e);
+        }
+      });
+      bindToggleSave("check-health-energy", e, "healthConsumesEnergy", "Healing Consumes Energy", (v) => {
+        hm.consumesEnergy = v;
+      });
+      bindToggleSave("check-health-partial-power", e, "healthModule.allowPartialPower", "Health Partial Power", (v) => {
+        hm.allowPartialPower = v;
       });
       checkHealthPartialPower?.addEventListener("change", () => {
         hm.allowPartialPower = checkHealthPartialPower.checked;
+        if (!(e instanceof Character)) {
+          this.markDirty("objects", e);
+        }
       });
 
       // Quick test buttons
@@ -2993,6 +3183,11 @@ export class DevPanel {
           owner: e,
           label: "Aura Radius (3D) (u)",
           step: 0.2,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         auraRadiusSocketEl.appendChild(arCtrl.element);
       }
@@ -3004,6 +3199,11 @@ export class DevPanel {
           owner: e,
           label: "Damage Rate (HP/s)",
           step: 2.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         auraRateSocketEl.appendChild(rateCtrl.element);
       }
@@ -3020,6 +3220,11 @@ export class DevPanel {
           owner: e,
           label: "Impact Susceptibility (Multiplier)",
           step: 0.1,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         suscSocketEl.appendChild(suscCtrl.element);
       }
@@ -3031,8 +3236,31 @@ export class DevPanel {
           owner: e,
           label: "Collision Damage Threshold (HP)",
           step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         threshSocketEl.appendChild(threshCtrl.element);
+      }
+
+      const selfWeightSocketEl = this.container.querySelector("#prop-socket-self-impact-weight");
+      if (selfWeightSocketEl) {
+        const selfWeightCtrl = new PropertyControl({
+          property: ds.selfImpactWeightProp,
+          owner: e,
+          label: "Self-Speed Damage Weight (0 = Arcade, 1 = Realism)",
+          step: 0.05,
+          min: 0.0,
+          max: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
+        });
+        selfWeightSocketEl.appendChild(selfWeightCtrl.element);
       }
 
       this.setupScrubber("scrub-container-mod-collision-damage-scale", {
@@ -3087,6 +3315,9 @@ export class DevPanel {
               e.overriddenProperties.add("consumable_tag");
               this.updatePrefabInfoBadge();
             }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
           },
         });
         tagSocketEl.appendChild(tagCtrl.element);
@@ -3104,6 +3335,9 @@ export class DevPanel {
               e.overriddenProperties.add("consumable_totalEnergy");
               this.updatePrefabInfoBadge();
             }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
           },
         });
         totalEnergySocketEl.appendChild(totalCtrl.element);
@@ -3116,6 +3350,11 @@ export class DevPanel {
           owner: e,
           label: "Remaining Energy (J)",
           step: 50.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
+            }
+          },
         });
         remEnergySocketEl.appendChild(remCtrl.element);
       }
@@ -3131,6 +3370,9 @@ export class DevPanel {
             if (e.prefabId) {
               e.overriddenProperties.add("consumable_consumeRate");
               this.updatePrefabInfoBadge();
+            }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
             }
           },
         });
@@ -3148,6 +3390,9 @@ export class DevPanel {
             if (e.prefabId) {
               e.overriddenProperties.add("consumable_healRate");
               this.updatePrefabInfoBadge();
+            }
+            if (!(e instanceof Character)) {
+              this.markDirty("objects", e);
             }
           },
         });
@@ -3203,6 +3448,9 @@ export class DevPanel {
       checkPartial?.addEventListener("change", () => {
         lm.allowPartialPower = checkPartial.checked;
         this.updateInspector();
+      });
+      bindToggleSave("check-laser-partial-power", char, "laserModule.allowPartialPower", "Laser Partial Power", (v) => {
+        lm.allowPartialPower = v;
       });
     }
 
@@ -3269,6 +3517,9 @@ export class DevPanel {
       checkPartial?.addEventListener("change", () => {
         mm.allowPartialPower = checkPartial.checked;
         this.updateInspector();
+      });
+      bindToggleSave("check-melee-partial-power", char, "meleeModule.allowPartialPower", "Melee Partial Power", (v) => {
+        mm.allowPartialPower = v;
       });
     }
 
@@ -3518,6 +3769,36 @@ export class DevPanel {
       this.setMode(true);
     });
 
+    const btnTopPause = this.container.querySelector("#btn-top-sim-pause") as HTMLButtonElement | null;
+    const updatePauseUI = (paused: boolean) => {
+      if (btnTopPause) {
+        btnTopPause.textContent = paused ? "▶️ Resume" : "⏸️ Pause";
+        btnTopPause.style.background = paused ? "#059669" : "";
+        btnTopPause.style.borderColor = paused ? "#34d399" : "";
+        btnTopPause.style.color = paused ? "#ffffff" : "";
+        btnTopPause.style.boxShadow = paused ? "0 0 10px rgba(16, 185, 129, 0.5)" : "";
+      }
+      const btnSimPause = this.container.querySelector("#btn-sim-pause") as HTMLButtonElement | null;
+      if (btnSimPause) {
+        btnSimPause.textContent = paused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
+        btnSimPause.style.color = paused ? "#10b981" : "#f1f5f9";
+      }
+    };
+
+    // Synchronize initial state
+    setTimeout(() => {
+      const loop = this.getGameLoop?.();
+      if (loop) updatePauseUI(loop.isPhysicsPaused);
+    }, 100);
+
+    btnTopPause?.addEventListener("click", () => {
+      const loop = this.getGameLoop?.();
+      if (!loop) return;
+      loop.isPhysicsPaused = !loop.isPhysicsPaused;
+      updatePauseUI(loop.isPhysicsPaused);
+      this.showSaveToast(loop.isPhysicsPaused ? "⏸️ Simulation Frozen (safe to inspect and save)" : "▶️ Simulation Resumed");
+    });
+
     this.container.querySelector("#submode-entities")?.addEventListener("click", () => {
       this.setEditTool("entities");
     });
@@ -3525,6 +3806,16 @@ export class DevPanel {
     this.container.querySelector("#submode-walls")?.addEventListener("click", () => {
       this.setEditTool("walls");
     });
+
+    // 1b. Project Config Save (Arena & Physics only)
+    this.container.querySelector("#btn-save-project-config")?.addEventListener("click", () => {
+      this.saveProjectConfig();
+    });
+
+    this.container.querySelector("#btn-revert-from-project")?.addEventListener("click", () => {
+      this.reloadFromDisk();
+    });
+
 
     // 2. Selector Change
     this.entitySelectorEl.addEventListener("change", () => {
@@ -3621,6 +3912,26 @@ export class DevPanel {
       this.renderSceneSpawners();
     });
 
+    // 3d. Object Name & Color Listeners
+    const entityNameInput = this.container.querySelector("#input-entity-name") as HTMLInputElement | null;
+    entityNameInput?.addEventListener("input", () => {
+      if (this.selectedEntity && !(this.selectedEntity instanceof Character)) {
+        this.selectedEntity.name = entityNameInput.value.trim() || "Object";
+        this.updateSelectorOptions();
+        this.markDirty("objects", this.selectedEntity);
+      }
+    });
+
+    const entityColorInput = this.container.querySelector("#input-entity-color") as HTMLInputElement | null;
+    const entityColorVal = this.container.querySelector("#val-entity-color") as HTMLElement | null;
+    entityColorInput?.addEventListener("input", () => {
+      if (this.selectedEntity && !(this.selectedEntity instanceof Character)) {
+        this.selectedEntity.color = entityColorInput.value;
+        if (entityColorVal) entityColorVal.textContent = entityColorInput.value;
+        this.markDirty("objects", this.selectedEntity);
+      }
+    });
+
     // 4. Shape Toggle
     const btnShapeToggle = this.container.querySelector("#toggle-entity-shape") as HTMLButtonElement;
     btnShapeToggle?.addEventListener("click", () => {
@@ -3630,6 +3941,9 @@ export class DevPanel {
       if (this.selectedEntity.prefabId) {
         this.selectedEntity.overriddenProperties.add("visualShape");
         this.updatePrefabInfoBadge();
+      }
+      if (!(this.selectedEntity instanceof Character)) {
+        this.markDirty("objects", this.selectedEntity);
       }
       this.updateSelectorOptions();
     });
@@ -3663,10 +3977,7 @@ export class DevPanel {
       const loop = this.getGameLoop?.();
       if (!loop) return;
       loop.isPhysicsPaused = !loop.isPhysicsPaused;
-      if (btnSimPause) {
-        btnSimPause.textContent = loop.isPhysicsPaused ? "▶️ Resume Sim" : "⏸️ Pause Sim";
-        btnSimPause.style.color = loop.isPhysicsPaused ? "#10b981" : "#f1f5f9";
-      }
+      updatePauseUI(loop.isPhysicsPaused);
     });
 
     btnSimStep?.addEventListener("click", () => {
@@ -3887,6 +4198,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.gravity = val;
         this.setScrubberVal("scrub-container-mod-gravity", val);
+        this.markDirty("globalPhysics");
       },
     });
 
@@ -3901,6 +4213,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.setStandardWallHeight(val);
         this.setScrubberVal("scrub-container-editor-wall-height", val);
+        this.markDirty("arena");
       },
     });
 
@@ -3915,6 +4228,7 @@ export class DevPanel {
       onChange: (val) => {
         this.arena.setStandardWallHeight(val);
         this.setScrubberVal("scrub-container-wall-height", val);
+        this.markDirty("arena");
       },
     });
 
@@ -3923,6 +4237,7 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(selectWallPreset.value, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-prev-wall-map")?.addEventListener("click", () => {
@@ -3932,6 +4247,7 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(presets[prevIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-next-wall-map")?.addEventListener("click", () => {
@@ -3941,18 +4257,21 @@ export class DevPanel {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.loadWallPreset(presets[nextIdx].id, [...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-reset-walls")?.addEventListener("click", () => {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.resetDefaultWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.container.querySelector("#btn-clear-walls")?.addEventListener("click", () => {
       const allChars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.arena.clearAllWalls([...allChars, ...this.objects]);
       this.updateWallPresetUI();
+      this.markDirty("arena");
     });
 
     this.setupScrubber("scrub-container-friction", {
@@ -3996,6 +4315,7 @@ export class DevPanel {
           loop.worldCollisionDamageScale = val;
         }
         this.setScrubberVal("scrub-container-mod-collision-damage-scale", val);
+        this.markDirty("globalPhysics");
       },
     });
 
@@ -4171,7 +4491,12 @@ export class DevPanel {
 
     // 11. Clear All Objects
     this.container.querySelector("#btn-clear-entities")?.addEventListener("click", () => {
+      for (const obj of this.objects) {
+        this.dirtyState.deletedObjectIds.add(obj.id);
+      }
+      this.dirtyState.modifiedObjects.clear();
       this.onClearObjects();
+      this.markDirty("objects");
       const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
       this.setSelectedEntity(chars[0] || (null as any));
     });
@@ -4211,8 +4536,12 @@ export class DevPanel {
       rollModule: s.hasRollModule ? new RollModule({ rollResistance: s.rollResistance }) : null,
     });
 
+    if (!this.objects.includes(newObj)) {
+      this.objects.push(newObj);
+    }
     this.onSpawnObject(newObj);
     this.setSelectedEntity(newObj);
+    this.markDirty("objects", newObj);
   }
 
   public duplicateSelectedEntity(): void {
@@ -4249,8 +4578,12 @@ export class DevPanel {
       rollModule: orig.rollModule ? new RollModule({ rollResistance: orig.rollModule.rollResistance, enabled: orig.rollModule.enabled, bumpyRollEnabled: orig.rollModule.bumpyRollEnabled, bumpiness: orig.rollModule.bumpiness, seed: orig.rollModule.seed }) : null,
     });
 
+    if (!this.objects.includes(clone)) {
+      this.objects.push(clone);
+    }
     this.onSpawnObject(clone);
     this.setSelectedEntity(clone);
+    this.markDirty("objects", clone);
   }
 
   public deleteSelectedEntity(): void {
@@ -4269,6 +4602,14 @@ export class DevPanel {
     if (this.onDeleteObject) {
       this.onDeleteObject(target);
     }
+    const idx = this.objects.indexOf(target);
+    if (idx !== -1) {
+      this.objects.splice(idx, 1);
+    }
+
+    this.dirtyState.deletedObjectIds.add(target.id);
+    this.dirtyState.modifiedObjects.delete(target.id);
+    this.markDirty("objects");
 
     this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
   }
@@ -4285,6 +4626,7 @@ export class DevPanel {
       decimals?: number;
       suffix?: string;
       onChange: (val: number) => void;
+      onSave?: (val: number) => Promise<void> | void;
     }
   ): FloatScrubber | null {
     const cont = this.container.querySelector(`#${containerId}`) as HTMLElement;
@@ -4676,12 +5018,14 @@ export class DevPanel {
       html += `
         <div class="behavior-card" data-prefab-card-id="${prefab.id}" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(30, 27, 75, 0.25); margin-bottom: 10px; border-radius: 6px; padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+            <div style="display: flex; align-items: center; gap: 4px; flex: 1;">
               <span style="font-size: 1.0rem;">${prefab.icon}</span>
               <input class="dev-input input-prefab-name" data-prefab-id="${prefab.id}" value="${prefab.name}" style="flex: 1; padding: 3px 6px; font-weight: 600; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #f1f5f9;" />
+              <button class="prop-save-btn btn-save-prefab-name" data-prefab-id="${prefab.id}" title="Save Prefab Name directly to project" style="padding: 2px 6px;">💾</button>
             </div>
             <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
               <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem;">${liveCount} live</span>
+              <button class="btn-secondary-action btn-save-whole-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Save entire prefab archetype and live instances to project">💾 Save All</button>
               <button class="btn-secondary-action btn-spawn-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Spawn one instance on the arena floor">➕ Spawn</button>
               <button class="btn-icon-subtle btn-delete-prefab" data-prefab-id="${prefab.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Prefab (unlinks live instances)">🗑️</button>
             </div>
@@ -4689,12 +5033,13 @@ export class DevPanel {
 
           <!-- Prefab Archetype Settings -->
           <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(168, 85, 247, 0.15);">
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 6px; align-items: center;">
               <label style="font-size: 0.74rem; color: #94a3b8; flex: 0 0 45px;">Visual:</label>
               <input type="color" class="prefab-color-picker" data-prefab-id="${prefab.id}" value="${arc.color}" style="width: 28px; height: 22px; padding: 0; border: none; cursor: pointer; background: transparent; border-radius: 3px;" title="Archetype Color" />
               <button class="btn-secondary-action prefab-shape-toggle" data-prefab-id="${prefab.id}" style="padding: 2px 8px; font-size: 0.72rem; flex: 1;">
                 ${arc.visualShape === "box" ? "Box 📦" : "Circle ⚪"}
               </button>
+              <button class="prop-save-btn btn-save-prefab-visuals" data-prefab-id="${prefab.id}" title="Save Visual Appearance to project" style="padding: 2px 6px;">💾</button>
             </div>
 
             <div id="scrub-container-prefab-mass-${prefab.id}"></div>
@@ -4702,11 +5047,12 @@ export class DevPanel {
 
             ${isConsumable ? `
               <div style="margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(168, 85, 247, 0.2);">
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
                   <label style="font-size: 0.74rem; color: #f472b6; flex: 0 0 45px;">Tag:</label>
                   <select class="dev-select prefab-tag-select" data-prefab-id="${prefab.id}" style="flex: 1; padding: 2px 6px; font-size: 0.74rem;">
                     ${tagOptionsHtml}
                   </select>
+                  <button class="prop-save-btn btn-save-prefab-tag" data-prefab-id="${prefab.id}" title="Save Tag to project" style="padding: 2px 6px;">💾</button>
                 </div>
                 <div id="scrub-container-prefab-energy-${prefab.id}"></div>
                 <div id="scrub-container-prefab-rate-${prefab.id}"></div>
@@ -4738,6 +5084,7 @@ export class DevPanel {
             this.syncEntitySliders();
           }
         },
+        onSave: (val: number) => this.savePrefabProperty(prefab, "mass", val, "Mass"),
       });
 
       // Radius Scrubber
@@ -4754,6 +5101,7 @@ export class DevPanel {
             this.syncEntitySliders();
           }
         },
+        onSave: (val: number) => this.savePrefabProperty(prefab, "colliderRadius", val, "Collider Radius"),
       });
 
       if (arc.consumableModule) {
@@ -4772,6 +5120,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_totalEnergy", val, "Energy Capacity"),
         });
 
         // Rate Scrubber
@@ -4788,6 +5137,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_consumeRate", val, "Consume Rate"),
         });
 
         // Heal Rate Scrubber
@@ -4804,6 +5154,7 @@ export class DevPanel {
               this.renderEntityModules();
             }
           },
+          onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_healRate", val, "Heal Rate"),
         });
       }
     }
@@ -4816,6 +5167,21 @@ export class DevPanel {
         if (p) {
           p.name = (e.target as HTMLInputElement).value;
           p.archetype.name = p.name;
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-prefab-name").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          const input = listEl.querySelector(`.input-prefab-name[data-prefab-id="${pid}"]`) as HTMLInputElement | null;
+          if (input) {
+            p.name = input.value;
+            p.archetype.name = p.name;
+          }
+          await this.savePrefabProperty(p, "name", p.name, "Prefab Name");
         }
       });
     });
@@ -4849,6 +5215,16 @@ export class DevPanel {
       });
     });
 
+    listEl.querySelectorAll(".btn-save-prefab-visuals").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          await this.savePrefab(p);
+        }
+      });
+    });
+
     listEl.querySelectorAll(".prefab-tag-select").forEach((select) => {
       select.addEventListener("change", (e) => {
         const pid = (select as HTMLElement).dataset.prefabId!;
@@ -4863,13 +5239,37 @@ export class DevPanel {
       });
     });
 
+    listEl.querySelectorAll(".btn-save-prefab-tag").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p && p.archetype.consumableModule) {
+          await this.savePrefabProperty(p, "consumable_tag", p.archetype.consumableModule.tag, "Consumable Tag");
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-whole-prefab").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          await this.savePrefab(p);
+        }
+      });
+    });
+
     listEl.querySelectorAll(".btn-spawn-prefab").forEach((btn) => {
       btn.addEventListener("click", () => {
         const pid = (btn as HTMLElement).dataset.prefabId!;
         const pos = { x: this.arena.width / 2, y: this.arena.height / 2, z: 0 };
         const spawned = prefabManager.spawn(pid, pos, this.arena, this.objects);
         if (spawned) {
+          if (!this.objects.includes(spawned)) {
+            this.objects.push(spawned);
+          }
           this.onSpawnObject(spawned);
+          this.markDirty("objects", spawned);
           this.updateSelectorOptions();
           this.renderScenePrefabs();
         }
@@ -5054,6 +5454,803 @@ export class DevPanel {
           timerEl.style.color = "#4ade80";
         }
       }
+    }
+  }
+
+  public markDirty(category: "arena" | "globalPhysics" | "player" | "objects", targetEntity?: GameObject): void {
+    if (this.isOnlineLocked) return;
+
+    if (category === "arena") {
+      this.dirtyState.arena = true;
+    } else if (category === "globalPhysics") {
+      this.dirtyState.globalPhysics = true;
+    } else if (category === "player") {
+      this.dirtyState.player = true;
+    } else if (category === "objects") {
+      if (targetEntity) {
+        if (targetEntity instanceof Character || (targetEntity as any).isCharacter) {
+          this.dirtyState.player = true;
+        } else {
+          this.dirtyState.modifiedObjects.set(targetEntity.id, targetEntity);
+        }
+      }
+    }
+    this.updateDirtyBadge();
+  }
+
+  public updateDirtyBadge(): void {
+    let count = 0;
+    if (this.dirtyState.arena) count++;
+    if (this.dirtyState.globalPhysics) count++;
+
+    const badge = this.container.querySelector("#dev-save-badge") as HTMLElement | null;
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = `● Unsaved (${count} change${count === 1 ? "" : "s"})`;
+        badge.style.background = "rgba(245, 158, 11, 0.15)";
+        badge.style.color = "#f59e0b";
+        badge.style.borderColor = "rgba(245, 158, 11, 0.3)";
+      } else {
+        badge.textContent = `✓ In Sync (v${this.currentConfigVersion})`;
+        badge.style.background = "rgba(34, 197, 94, 0.15)";
+        badge.style.color = "#22c55e";
+        badge.style.borderColor = "rgba(34, 197, 94, 0.3)";
+      }
+    }
+  }
+
+  public showSaveToast(message: string, isError: boolean = false): void {
+    let toast = document.getElementById("dev-save-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "dev-save-toast";
+      toast.style.position = "fixed";
+      toast.style.bottom = "24px";
+      toast.style.right = "24px";
+      toast.style.zIndex = "99999";
+      toast.style.padding = "8px 14px";
+      toast.style.borderRadius = "8px";
+      toast.style.fontSize = "0.80rem";
+      toast.style.fontWeight = "600";
+      toast.style.fontFamily = "system-ui, -apple-system, sans-serif";
+      toast.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.4)";
+      toast.style.display = "flex";
+      toast.style.alignItems = "center";
+      toast.style.gap = "8px";
+      toast.style.transition = "opacity 0.25s ease, transform 0.25s ease";
+      toast.style.pointerEvents = "none";
+      document.body.appendChild(toast);
+    }
+    toast.style.background = isError ? "rgba(185, 28, 28, 0.95)" : "rgba(15, 23, 42, 0.95)";
+    toast.style.color = isError ? "#fecaca" : "#38bdf8";
+    toast.style.border = isError ? "1px solid rgba(239, 68, 68, 0.5)" : "1px solid rgba(56, 189, 248, 0.4)";
+    toast.textContent = message;
+    toast.style.opacity = "1";
+    toast.style.transform = "translateY(0)";
+
+    if ((this as any)._toastTimeout) {
+      clearTimeout((this as any)._toastTimeout);
+    }
+    (this as any)._toastTimeout = setTimeout(() => {
+      if (toast) {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(10px)";
+      }
+    }, 2400);
+  }
+
+  private setNestedProperty(target: any, path: string, value: any): void {
+    const parts = path.split(".");
+    let curr = target;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
+        curr[parts[i]] = {};
+      }
+      curr = curr[parts[i]];
+    }
+    curr[parts[parts.length - 1]] = value;
+  }
+
+  public resolvePropertyPath(owner: GameObject, prop: DynamicProperty, label?: string): string {
+    const isChar = owner instanceof Character || (owner as any).isCharacter;
+    if (isChar) {
+      const char = owner as Character;
+      // Walking Module
+      if (char.walkingModule) {
+        if (prop === char.walkingModule.maxWalkForceProp) return "walkingModule.maxWalkForce";
+        if (prop === char.walkingModule.maxWalkSpeedProp) return "walkingModule.maxWalkSpeed";
+        if (prop === char.walkingModule.maxSprintSpeedProp) return "walkingModule.sprintSpeed";
+        if (prop === char.walkingModule.maxWalkPowerProp || prop === char.walkingModule.walkPowerCapacityProp) return "walkingModule.maxWalkPower";
+        if (prop === char.walkingModule.maxSprintPowerProp || prop === char.walkingModule.sprintPowerCapacityProp) return "walkingModule.maxSprintPower";
+        if (prop === char.walkingModule.airFrictionProp) return "walkingModule.airFriction";
+      }
+      // Jump Module
+      if (char.jumpModule) {
+        if (prop === char.jumpModule.jumpStrengthProp) return "jumpModule.jumpImpulse";
+        if (prop === char.jumpModule.maxInitialSpeedProp) return "jumpModule.maxInitialSpeed";
+      }
+      if (char.jumpPowerCapacityProp && prop === char.jumpPowerCapacityProp) {
+        return "jumpModule.jumpPowerCapacity";
+      }
+      // Throw Module
+      if (char.throwModule) {
+        if (prop === char.throwModule.maxPowerProp) return "throwModule.throwPowerCapacity";
+        if (prop === char.throwModule.maxThrowSpeedProp) return "throwModule.maxThrowSpeed";
+        if (prop === char.throwModule.maxThrowHeightProp) return "throwModule.maxThrowHeight";
+      }
+      // Pickup Module
+      if (char.pickupModule) {
+        if (prop === char.pickupModule.pickupReachProp) return "pickupModule.pickupReach";
+        if (prop === char.pickupModule.maxPowerProp) return "pickupModule.maxPower";
+      }
+      // Climbing Module
+      if (char.climbingModule) {
+        if (prop === char.climbingModule.maxClimbSpeedProp) return "climbingModule.climbSpeed";
+        if (prop === char.climbingModule.maxPowerProp) return "climbingModule.maxPower";
+        if (prop === char.climbingModule.maxAdhesionProp) return "climbingModule.maxAdhesion";
+      }
+      // Laser Module
+      if (char.laserModule) {
+        if (prop === char.laserModule.damageRateProp) return "laserModule.damageRate";
+        if (prop === char.laserModule.thicknessProp) return "laserModule.thickness";
+        if (prop === char.laserModule.maxPowerProp) return "laserModule.maxPower";
+      }
+      // Melee Module
+      if (char.meleeModule) {
+        if (prop === char.meleeModule.maxForceProp) return "meleeModule.impactForce";
+        if (prop === char.meleeModule.maxPowerProp) return "meleeModule.maxPower";
+        if (prop === char.meleeModule.punchFrequencyProp) return "meleeModule.punchFrequency";
+        if (prop === char.meleeModule.reachProp) return "meleeModule.reach";
+        if (prop === char.meleeModule.widthProp) return "meleeModule.width";
+      }
+      // Health Module
+      if (char.healthModule) {
+        if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
+        if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
+        if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
+      }
+      // Energy Pool
+      if (char.energyPool) {
+        if (prop === char.energyPool.maxStaminaProp) return "energyPool.staminaCapacity";
+        if (prop === char.energyPool.staminaRegenRateProp) return "energyPool.staminaRegenRate";
+        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
+      }
+      // Wall Edge Assist
+      if (char.wallEdgeAssistModule) {
+        if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
+      }
+      // Root Character properties
+      if (char.strengthProp && prop === char.strengthProp) return "strength";
+      if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
+      if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
+    }
+
+    // Common GameObject properties
+    if (owner.rigidbodyModule && prop === owner.rigidbodyModule.massProp) return "mass";
+    if (owner.colliderModule && prop === owner.colliderModule.radiusProp) return "colliderRadius";
+    if (owner.frictionModule) {
+      if (prop === owner.frictionModule.staticFrictionProp) return "friction";
+      if (prop === owner.frictionModule.dynamicFrictionProp) return "dynamicFriction";
+    }
+    if (owner.bounceModule && prop === owner.bounceModule.bounceModProp) return "restitution";
+    if (owner.rollModule) {
+      if (prop === owner.rollModule.rollResistanceProp) return "rollResistance";
+      if (prop === owner.rollModule.bumpinessProp) return "bumpiness";
+    }
+    if (owner.consumableModule) {
+      if (prop === owner.consumableModule.totalEnergyJoulesProp) return "consumableModule.totalEnergyJoules";
+      if (prop === owner.consumableModule.remainingEnergyJoulesProp) return "consumableModule.remainingEnergyJoules";
+      if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
+      if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
+    }
+    if (owner.damageAuraModule) {
+      if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
+      if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";
+    }
+    if (owner.damageSolverModule) {
+      if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
+      if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
+      if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
+    }
+
+    // If it has a referenceKey, use that
+    if (prop.referenceKey && prop.referenceKey.trim().length > 0) {
+      return prop.referenceKey.trim();
+    }
+
+    // Fallback: match by label
+    if (label) {
+      const l = label.trim().toLowerCase();
+      if (l.includes("walk force")) return "walkingModule.maxWalkForce";
+      if (l.includes("walk speed")) return "walkingModule.maxWalkSpeed";
+      if (l.includes("sprint speed")) return "walkingModule.sprintSpeed";
+      if (l.includes("walk power")) return "walkingModule.maxWalkPower";
+      if (l.includes("sprint power")) return "walkingModule.maxSprintPower";
+      if (l.includes("air control") || l.includes("walk in air")) return "walkingModule.walkInAir";
+      if (l.includes("air fric")) return "walkingModule.airFriction";
+      if (l.includes("can sprint")) return "walkingModule.canSprint";
+      if (l.includes("jump impulse") || l.includes("jump strength")) return "jumpModule.jumpImpulse";
+      if (l.includes("takeoff speed")) return "jumpModule.maxInitialSpeed";
+      if (l.includes("jump power")) return "jumpModule.jumpPowerCapacity";
+      if (l.includes("throw speed") || l.includes("throw force")) return "throwModule.maxThrowSpeed";
+      if (l.includes("throw height")) return "throwModule.maxThrowHeight";
+      if (l.includes("throw power") || l.includes("throw wattage")) return "throwModule.throwPowerCapacity";
+      if (l.includes("pickup reach")) return "pickupModule.pickupReach";
+      if (l.includes("pickup power")) return "pickupModule.maxPower";
+      if (l.includes("climb speed")) return "climbingModule.climbSpeed";
+      if (l.includes("climb power")) return "climbingModule.maxPower";
+      if (l.includes("sideways climb") || l.includes("horizontal climb")) return "climbingModule.horizontalClimbMultiplier";
+      if (l.includes("adhesion")) return "climbingModule.wallAdhesionRange";
+      if (l.includes("laser max power") || l.includes("power rating")) return "laserModule.maxPower";
+      if (l.includes("beam range") || l.includes("laser range")) return "laserModule.maxRange";
+      if (l.includes("beam damage") || l.includes("laser damage")) return "laserModule.damageRate";
+      if (l.includes("beam width") || l.includes("beam thickness") || l.includes("laser thickness")) return "laserModule.thickness";
+      if (l.includes("punch force") || l.includes("attack force")) return "meleeModule.impactForce";
+      if (l.includes("attack power") || l.includes("punch power") || l.includes("melee max power")) return "meleeModule.maxPower";
+      if (l.includes("punch freq") || l.includes("attack freq")) return "meleeModule.punchFrequency";
+      if (l.includes("punch reach") || l.includes("attack reach")) return "meleeModule.reach";
+      if (l.includes("attack width") || l.includes("punch width")) return "meleeModule.width";
+      if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
+      if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
+      if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
+      if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
+      if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
+      if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
+      if (l.includes("max power out")) return "energyPool.maxPowerOutput";
+      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.assistRadius";
+      if (l.includes("mass")) return "mass";
+      if (l.includes("strength")) return "strength";
+      if (l.includes("collider radius")) return "colliderRadius";
+      if (l.includes("friction")) return "friction";
+      if (l.includes("bounciness") || l.includes("restitution")) return "restitution";
+      if (l.includes("roll resist")) return "rollResistance";
+    }
+
+    return label || "prop";
+  }
+
+  private buildSinglePropertyPlayerDelta(propKey: string, value: any): SerializedCharacterConfig {
+    const norm = (propKey || "").trim();
+    let canonical = norm;
+    // Map known non-dotted aliases to canonical dotted paths
+    const aliasMap: Record<string, string> = {
+      walkInAir: "walkingModule.walkInAir",
+      "Air Control (Walk in Air)": "walkingModule.walkInAir",
+      canSprint: "walkingModule.canSprint",
+      "Can Sprint": "walkingModule.canSprint",
+      "Can Sprint (Shift / Gamepad)": "walkingModule.canSprint",
+      walkConsumesEnergy: "walkingModule.walkConsumesEnergy",
+      "Walk Consumes Energy": "walkingModule.walkConsumesEnergy",
+      walkAllowPartialPower: "walkingModule.walkAllowPartialPower",
+      sprintConsumesEnergy: "walkingModule.sprintConsumesEnergy",
+      "Sprint Consumes Energy": "walkingModule.sprintConsumesEnergy",
+      sprintAllowPartialPower: "walkingModule.sprintAllowPartialPower",
+      maxWalkForce: "walkingModule.maxWalkForce",
+      walkForce: "walkingModule.maxWalkForce",
+      "Max Walk Force (N)": "walkingModule.maxWalkForce",
+      maxWalkSpeed: "walkingModule.maxWalkSpeed",
+      walkSpeed: "walkingModule.maxWalkSpeed",
+      "Max Walk Speed (u/s)": "walkingModule.maxWalkSpeed",
+      sprintSpeed: "walkingModule.sprintSpeed",
+      maxSprintSpeed: "walkingModule.sprintSpeed",
+      "Max Sprint Speed (u/s)": "walkingModule.sprintSpeed",
+      walkPowerCapacity: "walkingModule.maxWalkPower",
+      maxWalkPower: "walkingModule.maxWalkPower",
+      "Max Walk Power (Watts)": "walkingModule.maxWalkPower",
+      sprintPowerCapacity: "walkingModule.maxSprintPower",
+      maxSprintPower: "walkingModule.maxSprintPower",
+      "Max Sprint Power (Watts)": "walkingModule.maxSprintPower",
+      airFriction: "walkingModule.airFriction",
+      jumpImpulse: "jumpModule.jumpImpulse",
+      jumpStrength: "jumpModule.jumpImpulse",
+      "Jump Impulse (N·s)": "jumpModule.jumpImpulse",
+      "Jump Strength (N·s)": "jumpModule.jumpImpulse",
+      maxInitialSpeed: "jumpModule.maxInitialSpeed",
+      "Max Takeoff Speed (u/s)": "jumpModule.maxInitialSpeed",
+      jumpPowerCapacity: "jumpModule.jumpPowerCapacity",
+      maxJumpPower: "jumpModule.jumpPowerCapacity",
+      "Max Jump Power (Watts)": "jumpModule.jumpPowerCapacity",
+      jumpConsumesEnergy: "jumpModule.jumpConsumesEnergy",
+      jumpAllowPartialPower: "jumpModule.jumpAllowPartialPower",
+      throwForce: "throwModule.maxThrowSpeed",
+      maxThrowSpeed: "throwModule.maxThrowSpeed",
+      "Max Throw Speed (u/s)": "throwModule.maxThrowSpeed",
+      maxThrowHeight: "throwModule.maxThrowHeight",
+      "Max Throw Height (u)": "throwModule.maxThrowHeight",
+      throwPowerCapacity: "throwModule.throwPowerCapacity",
+      maxPower: "throwModule.throwPowerCapacity",
+      maxThrowPower: "throwModule.throwPowerCapacity",
+      throwWattage: "throwModule.throwPowerCapacity",
+      "Max Throw Power (Watts)": "throwModule.throwPowerCapacity",
+      throwConsumesEnergy: "throwModule.consumesEnergy",
+      pickupReach: "pickupModule.pickupReach",
+      "Pickup Reach (3D) (u)": "pickupModule.pickupReach",
+      maxPickupPower: "pickupModule.maxPower",
+      pickupPowerCapacity: "pickupModule.maxPower",
+      "Max Pickup Power (Watts)": "pickupModule.maxPower",
+      pickupConsumesEnergy: "pickupModule.consumesEnergy",
+      pickupAllowPartialPower: "pickupModule.allowPartialPower",
+      climbSpeed: "climbingModule.climbSpeed",
+      "Max Climb Speed (u/s)": "climbingModule.climbSpeed",
+      climbPowerCapacity: "climbingModule.maxPower",
+      maxClimbPower: "climbingModule.maxPower",
+      "Max Climb Power (Watts)": "climbingModule.maxPower",
+      climbConsumesEnergy: "climbingModule.consumesEnergy",
+      climbAllowPartialPower: "climbingModule.allowPartialPower",
+      horizontalClimbMultiplier: "climbingModule.horizontalClimbMultiplier",
+      wallAdhesionRange: "climbingModule.wallAdhesionRange",
+      maxHp: "healthModule.maxHp",
+      "Max Health (HP)": "healthModule.maxHp",
+      naturalHealRate: "healthModule.naturalHealRate",
+      "Natural Heal Rate (HP/s)": "healthModule.naturalHealRate",
+      healthMaxPower: "healthModule.maxPower",
+      healthConsumesEnergy: "healthModule.consumesEnergy",
+      healthAllowPartialPower: "healthModule.allowPartialPower",
+      laserMaxPower: "laserModule.maxPower",
+      laserPowerCapacity: "laserModule.maxPower",
+      laserMaxRange: "laserModule.maxRange",
+      laserDamageRate: "laserModule.damageRate",
+      laserThickness: "laserModule.thickness",
+      laserAllowPartialPower: "laserModule.allowPartialPower",
+      meleeImpactForce: "meleeModule.impactForce",
+      meleeMaxPower: "meleeModule.maxPower",
+      meleePunchFrequency: "meleeModule.punchFrequency",
+      meleeReach: "meleeModule.reach",
+      meleeWidth: "meleeModule.width",
+      meleeAllowPartialPower: "meleeModule.allowPartialPower",
+      staminaCapacity: "energyPool.staminaCapacity",
+      "Stamina Capacity (J)": "energyPool.staminaCapacity",
+      staminaRegenRate: "energyPool.staminaRegenRate",
+      "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
+      energyPoolCapacity: "energyPool.energyPoolCapacity",
+      "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
+      maxPowerOutput: "energyPool.maxPowerOutput",
+      assistRadius: "wallEdgeAssistModule.assistRadius",
+    };
+
+    if (aliasMap[norm]) {
+      canonical = aliasMap[norm];
+    }
+
+    const res: any = {};
+    if (canonical.includes(".")) {
+      this.setNestedProperty(res, canonical, value);
+    } else {
+      res[canonical] = value;
+    }
+    return res;
+  }
+
+  public async saveIndividualProperty(owner: GameObject, prop: DynamicProperty, value: number, label?: string): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const canonicalPath = this.resolvePropertyPath(owner, prop, label);
+    const isChar = owner instanceof Character || (owner as any).isCharacter;
+    if (isChar) {
+      const char = owner as Character;
+      // 1. Update player prefab archetype if prefab exists
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        playerPrefab.setProperty(canonicalPath, value, this.getAllCharacters ? this.getAllCharacters() : [char]);
+      }
+
+      // 2. Persist ONLY targeted single property delta to worldConfig.json
+      const playerDelta = this.buildSinglePropertyPlayerDelta(canonicalPath, value);
+      const delta: WorldConfigDelta = {
+        clientVersion: this.currentConfigVersion,
+        sections: ["player"],
+        player: playerDelta,
+      };
+
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+      this.dirtyState.player = false;
+      this.updateDirtyBadge();
+      this.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
+    } else {
+      // Regular GameObject
+      let affectedObjects: GameObject[] = [owner];
+      let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
+      const sections: ("objects" | "prefabs")[] = ["objects"];
+
+      if (owner.prefabId) {
+        const prefab = prefabManager.get(owner.prefabId);
+        if (prefab) {
+          prefab.setProperty(canonicalPath, value, this.objects);
+          prefabsUpsert = [serializePrefab(prefab)];
+          sections.push("prefabs");
+          affectedObjects = this.objects.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(canonicalPath));
+          if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
+        }
+      }
+
+      const delta: WorldConfigDelta = {
+        clientVersion: this.currentConfigVersion,
+        sections,
+        objectsDelta: {
+          upsert: affectedObjects.map(serializeGameObject),
+        },
+        prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : undefined,
+      };
+
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+      for (const obj of affectedObjects) {
+        this.dirtyState.modifiedObjects.delete(obj.id);
+      }
+      this.updateDirtyBadge();
+      const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+      this.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
+    }
+  }
+
+  public async saveIndividualToggle(
+    owner: GameObject,
+    keyPath: string,
+    value: boolean,
+    label: string,
+    saveBtn?: HTMLButtonElement | null
+  ): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = "0.5";
+    }
+
+    try {
+      const isChar = owner instanceof Character || (owner as any).isCharacter;
+      if (isChar) {
+        const char = owner as Character;
+        const playerPrefab = prefabManager.get("prefab_player");
+        if (playerPrefab) {
+          playerPrefab.setProperty(keyPath, value, this.getAllCharacters ? this.getAllCharacters() : [char]);
+        }
+
+        const playerDelta = this.buildSinglePropertyPlayerDelta(keyPath, value);
+        const delta: WorldConfigDelta = {
+          clientVersion: this.currentConfigVersion,
+          sections: ["player"],
+          player: playerDelta,
+        };
+
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta),
+        });
+
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+        this.dirtyState.player = false;
+        this.updateDirtyBadge();
+        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
+      } else {
+        let affectedObjects: GameObject[] = [owner];
+        let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
+        const sections: ("objects" | "prefabs")[] = ["objects"];
+
+        if (owner.prefabId) {
+          const prefab = prefabManager.get(owner.prefabId);
+          if (prefab) {
+            prefab.setProperty(keyPath, value, this.objects);
+            prefabsUpsert = [serializePrefab(prefab)];
+            sections.push("prefabs");
+            affectedObjects = this.objects.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(keyPath));
+            if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
+          }
+        }
+        const delta: WorldConfigDelta = {
+          clientVersion: this.currentConfigVersion,
+          sections,
+          objectsDelta: {
+            upsert: affectedObjects.map(serializeGameObject),
+          },
+          prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : undefined,
+        };
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta),
+        });
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+        for (const obj of affectedObjects) {
+          this.dirtyState.modifiedObjects.delete(obj.id);
+        }
+        this.updateDirtyBadge();
+        const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+        this.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
+      }
+    } catch (err: any) {
+      console.error(`Failed to save toggle ${label}:`, err);
+      this.showSaveToast(`❌ Failed to save ${label}: ${err.message || err}`, true);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = "1";
+      }
+    }
+  }
+
+  public async savePrefabProperty(prefab: Prefab, propKey: string, value: any, label?: string): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    prefab.setProperty(propKey, value, this.objects);
+    const affectedObjects = this.objects.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
+
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)],
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject),
+      },
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+    for (const obj of affectedObjects) {
+      this.dirtyState.modifiedObjects.delete(obj.id);
+    }
+    this.updateDirtyBadge();
+    const valDisplay = typeof value === "number" ? Number(value.toFixed(2)) : value;
+    this.showSaveToast(`💾 Saved ${label || propKey}: ${valDisplay} to ${prefab.name} Prefab & ${affectedObjects.length} live instance${affectedObjects.length === 1 ? "" : "s"}`);
+  }
+
+  public async savePrefab(prefab: Prefab): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const affectedObjects = this.objects.filter((o) => o.prefabId === prefab.id);
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)],
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject),
+      },
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+    for (const obj of affectedObjects) {
+      this.dirtyState.modifiedObjects.delete(obj.id);
+    }
+    this.updateDirtyBadge();
+    this.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
+  }
+
+  public async saveProjectConfig(): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const sections: ("arena" | "globalPhysics")[] = [];
+    if (this.dirtyState.globalPhysics) sections.push("globalPhysics");
+    if (this.dirtyState.arena) sections.push("arena");
+
+    // If neither was marked dirty, save both explicitly
+    if (sections.length === 0) {
+      sections.push("arena", "globalPhysics");
+    }
+
+    const delta: WorldConfigDelta = {
+      clientVersion: this.currentConfigVersion,
+      sections,
+    };
+
+    if (sections.includes("globalPhysics")) {
+      delta.globalPhysics = {
+        gravity: this.arena.gravity,
+        collisionDamageScale: GameObject.globalWorldCollisionDamageScale ?? 1.0,
+      };
+    }
+
+    if (sections.includes("arena")) {
+      const tileGrid: number[][] = [];
+      for (let r = 0; r < this.arena.rows; r++) {
+        tileGrid.push([...this.arena.tileGrid[r]]);
+      }
+      delta.arena = {
+        width: this.arena.width,
+        height: this.arena.height,
+        wallHeight: this.arena.wallHeight,
+        presetId: this.arena.currentPresetId,
+        tileGrid,
+      };
+    }
+
+    const btn = this.container.querySelector("#btn-save-project-config") as HTMLButtonElement | null;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "💾 Saving...";
+    }
+
+    try {
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+
+      const res = await resp.json();
+      this.currentConfigVersion = res.version ?? (this.currentConfigVersion + 1);
+
+      this.dirtyState.globalPhysics = false;
+      this.dirtyState.arena = false;
+      this.updateDirtyBadge();
+
+      if (btn) {
+        btn.textContent = "✓ Saved Arena & Physics!";
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "💾 Save Arena & Physics";
+          }
+        }, 1500);
+      }
+
+      this.showSaveToast(`💾 Saved Arena & Physics to project! (v${this.currentConfigVersion})`);
+    } catch (err: any) {
+      console.error("Failed to save project config:", err);
+      this.showSaveToast(`❌ Failed to save: ${err.message || String(err)}`, true);
+      alert("Failed to save project configuration:\n" + (err.message || String(err)));
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "💾 Save Arena & Physics";
+      }
+    }
+  }
+
+  public async pushDataToGit(): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 Git operations disabled in online mode", true);
+      return;
+    }
+
+    try {
+      this.showSaveToast("⏳ Pushing data changes to GitHub...");
+      const resp = await fetch("/api/dev/git-push-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+
+      const res = await resp.json();
+      this.showSaveToast(`✅ Data pushed to GitHub! (${res.commitSha || "synced"})`);
+    } catch (err: any) {
+      console.error("Failed to push data to git:", err);
+      this.showSaveToast(`❌ Failed to push: ${err.message || String(err)}`, true);
+      alert("Failed to push data to GitHub:\n" + (err.message || String(err)));
+    }
+  }
+
+  public async reloadFromDisk(): Promise<void> {
+    try {
+      const resp = await fetch("/api/dev/world-config");
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch world-config: ${resp.status}`);
+      }
+      const config: WorldConfig = await resp.json();
+
+      if (config.arena) {
+        this.arena.setStandardWallHeight(config.arena.wallHeight);
+        if (config.arena.tileGrid && config.arena.tileGrid.length > 0) {
+          this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+          this.arena.rebuildWalls();
+        } else if (config.arena.presetId) {
+          const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+          this.arena.loadWallPreset(config.arena.presetId, [...chars, ...this.objects]);
+        }
+        const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+        this.arena.syncEntitiesWithWalls([...chars, ...this.objects]);
+        this.updateWallPresetUI();
+      }
+
+      if (config.globalPhysics) {
+        this.arena.gravity = config.globalPhysics.gravity;
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        const loop = this.getGameLoop ? this.getGameLoop() : null;
+        if (loop) {
+          loop.worldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        }
+      }
+
+      if (config.objects) {
+        this.onClearObjects();
+        for (const ser of config.objects) {
+          const obj = deserializeGameObject(ser);
+          this.onSpawnObject(obj);
+        }
+      }
+
+      if (config.prefabs && Array.isArray(config.prefabs)) {
+        prefabManager.loadFromConfig(config.prefabs);
+        this.renderScenePrefabs();
+      }
+
+      this.currentConfigVersion = config.version;
+      this.dirtyState.arena = false;
+      this.dirtyState.globalPhysics = false;
+      this.dirtyState.modifiedObjects.clear();
+      this.dirtyState.deletedObjectIds.clear();
+
+      this.updateDirtyBadge();
+      this.updateSelectorOptions();
+      this.renderEntityModules();
+      this.syncEntitySliders();
+      this.updateInspector();
+
+      const popover = this.container.querySelector("#save-options-popover") as HTMLElement | null;
+      if (popover) popover.style.display = "none";
+    } catch (err: any) {
+      console.error("Failed to reload config from disk:", err);
+      alert("Failed to reload from disk:\n" + (err.message || String(err)));
     }
   }
 }
