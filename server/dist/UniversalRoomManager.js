@@ -5855,7 +5855,16 @@ class CollisionResolver {
         const b = entities[j];
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
-        if (a.lastThrower === b || b.lastThrower === a) continue;
+        if (a.lastThrower === b || b.lastThrower === a) {
+          const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
+          const minDist = a.colliderRadius + b.colliderRadius;
+          if (dSq > (minDist + 0.1) ** 2) {
+            if (a.lastThrower === b) a.lastThrower = null;
+            if (b.lastThrower === a) b.lastThrower = null;
+          } else {
+            continue;
+          }
+        }
         if (a.isSleeping && b.isSleeping) continue;
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
@@ -6324,7 +6333,16 @@ class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
-          if (a.lastThrower === b || b.lastThrower === a) continue;
+          if (a.lastThrower === b || b.lastThrower === a) {
+            const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
+            const minDist2 = a.colliderRadius + b.colliderRadius;
+            if (dSq > (minDist2 + 0.1) ** 2) {
+              if (a.lastThrower === b) a.lastThrower = null;
+              if (b.lastThrower === a) b.lastThrower = null;
+            } else {
+              continue;
+            }
+          }
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
           if (layerA !== layerB) continue;
@@ -10457,17 +10475,26 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.loadInitialWorldConfig();
   }
   loadInitialWorldConfig() {
+    var _a, _b, _c;
     try {
+      const cwd = process.cwd();
       const candidates = [
-        path.resolve(process.cwd(), "src/config/worldConfig.json"),
-        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
-        path.resolve(process.cwd(), "config/worldConfig.json")
+        path.resolve(cwd, "src/config/worldConfig.json"),
+        path.resolve(cwd, "dist/config/worldConfig.json"),
+        path.resolve(cwd, "config/worldConfig.json")
       ];
+      if (typeof __dirname !== "undefined") {
+        candidates.push(
+          path.resolve(__dirname, "../../src/config/worldConfig.json"),
+          path.resolve(__dirname, "../src/config/worldConfig.json"),
+          path.resolve(__dirname, "./config/worldConfig.json")
+        );
+      }
       for (const p of candidates) {
         if (fs.existsSync(p)) {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
-          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p} (preset=${(_a = config.arena) == null ? void 0 : _a.presetId}, walls=${((_c = (_b = config.arena) == null ? void 0 : _b.tileGrid) == null ? void 0 : _c.length) || 0})`);
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -10483,7 +10510,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
   reloadWorldConfig(config) {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = true;
+    this.needsMapReload = false;
   }
   static getInstance() {
     if (!_UniversalRoomManager.instance) {
@@ -10665,8 +10692,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
    * Reloads the pristine default scenario when a player tries to connect to an empty room.
    */
   reloadMap() {
-    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
-    this.simulation.initializeDefaultScenario();
+    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map from persistent config...");
+    this.loadInitialWorldConfig();
     if (this.simulation.characters.has("player-1")) {
       const p1 = this.simulation.characters.get("player-1");
       p1 == null ? void 0 : p1.cleanupBeforeRemoval();
@@ -10676,7 +10703,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.lastTimeHr = process.hrtime.bigint();
     this.accumulator = 0;
     this.needsMapReload = false;
-    console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
+    console.log("🌐 [UniversalRoom] Persistent online map reloaded. Ready for players.");
   }
   registerCharacter(client, localPlayerId, name, _spawnPos) {
     const existing = client.characters.get(localPlayerId);

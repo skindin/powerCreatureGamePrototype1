@@ -857,20 +857,20 @@ export class GameLoop {
         continue;
       }
 
-      // 5. Ballistic In-Flight & Rolling Prediction for LOCAL player's throw:
-      // While a thrown object is in ballistic flight or skidding/rolling from local player, allow local prediction
-      // unless server reports sleeping (rest) or significant divergence (> 0.8 units).
+      // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
+      // While a thrown object is in ballistic flight from local player, allow local prediction
+      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
+      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
-      if (sObj.isSleeping) {
+      if (sObj.isGrounded) {
         localObj.isInFlight = false;
         localObj.originalThrower = null;
       }
-      if (wasThrownByLocal && !sObj.isSleeping && (localObj.isInFlight || localSpeed > 0.15)) {
+      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping && !sObj.isGrounded) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.8) {
+        if (Math.hypot(flightDx, flightDy) < 0.6) {
           continue;
         }
       }
@@ -911,28 +911,14 @@ export class GameLoop {
         continue;
       }
 
-      // 6. Moving Object Synchronization (eliminates 60Hz sawtooth vibration):
-      // When both client and server agree on movement direction and trajectory (deltaV < 0.6 and dist < 0.8),
-      // the positional offset is purely network propagation delay. Do NOT drag the object backward into the past!
-      const serverSpeed = Math.hypot(sObj.vx, sObj.vy);
-      const deltaV = Math.hypot(sObj.vx - localObj.velocity.x, sObj.vy - localObj.velocity.y);
-      if (localSpeed > 0.15 && serverSpeed > 0.15 && deltaV < 0.6 && dist < 0.8) {
-        // Smoothly guide velocities to stay coupled without positional jerking
-        localObj.velocity.x += (sObj.vx - localObj.velocity.x) * 0.15;
-        localObj.velocity.y += (sObj.vy - localObj.velocity.y) * 0.15;
-        if (sObj.vz !== undefined) {
-          localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * 0.15;
-        }
-        continue;
-      }
-
-      // 7. Deadzone & micro-flutter filter for resting/slow objects:
+      // 6. Deadzone & micro-flutter filter:
       if (dist < 0.02) {
         continue;
       }
 
-      // 8. Smart Smooth Convergence for deflections / bounces / settling
-      const blend = localSpeed > 0.2 ? 0.20 : 0.25;
+      // 7. Smart Smooth Convergence
+      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+      const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
       localObj.position.z += dz * blend;

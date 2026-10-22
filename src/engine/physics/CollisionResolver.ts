@@ -51,7 +51,16 @@ export class CollisionResolver {
         if (!a.hasCollider || !b.hasCollider) continue;
 
         // Skip collision between thrown projectile and its thrower until it exits thrower reach
-        if (a.lastThrower === b || b.lastThrower === a) continue;
+        if (a.lastThrower === b || b.lastThrower === a) {
+          const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
+          const minDist = a.colliderRadius + b.colliderRadius;
+          if (dSq > (minDist + 0.1) ** 2) {
+            if (a.lastThrower === b) a.lastThrower = null;
+            if (b.lastThrower === a) b.lastThrower = null;
+          } else {
+            continue;
+          }
+        }
 
         // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
         if (a.isSleeping && b.isSleeping) continue;
@@ -701,7 +710,16 @@ export class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
-          if (a.lastThrower === b || b.lastThrower === a) continue;
+          if (a.lastThrower === b || b.lastThrower === a) {
+            const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
+            const minDist = a.colliderRadius + b.colliderRadius;
+            if (dSq > (minDist + 0.1) ** 2) {
+              if (a.lastThrower === b) a.lastThrower = null;
+              if (b.lastThrower === a) b.lastThrower = null;
+            } else {
+              continue;
+            }
+          }
 
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);

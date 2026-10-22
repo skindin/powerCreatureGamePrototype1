@@ -64,16 +64,24 @@ export class UniversalRoomManager {
 
   private loadInitialWorldConfig(): void {
     try {
+      const cwd = process.cwd();
       const candidates = [
-        path.resolve(process.cwd(), "src/config/worldConfig.json"),
-        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
-        path.resolve(process.cwd(), "config/worldConfig.json"),
+        path.resolve(cwd, "src/config/worldConfig.json"),
+        path.resolve(cwd, "dist/config/worldConfig.json"),
+        path.resolve(cwd, "config/worldConfig.json"),
       ];
+      if (typeof __dirname !== "undefined") {
+        candidates.push(
+          path.resolve(__dirname, "../../src/config/worldConfig.json"),
+          path.resolve(__dirname, "../src/config/worldConfig.json"),
+          path.resolve(__dirname, "./config/worldConfig.json")
+        );
+      }
       for (const p of candidates) {
         if (fs.existsSync(p)) {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
-          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p} (preset=${config.arena?.presetId}, walls=${config.arena?.tileGrid?.length || 0})`);
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -90,7 +98,7 @@ export class UniversalRoomManager {
   public reloadWorldConfig(config: WorldConfig): void {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = true;
+    this.needsMapReload = false;
   }
 
   public static getInstance(): UniversalRoomManager {
@@ -305,8 +313,8 @@ export class UniversalRoomManager {
    * Reloads the pristine default scenario when a player tries to connect to an empty room.
    */
   public reloadMap(): void {
-    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
-    this.simulation.initializeDefaultScenario();
+    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map from persistent config...");
+    this.loadInitialWorldConfig();
     // Remove placeholder player-1 so only real connecting players occupy slots
     if (this.simulation.characters.has("player-1")) {
       const p1 = this.simulation.characters.get("player-1");
@@ -317,7 +325,7 @@ export class UniversalRoomManager {
     this.lastTimeHr = process.hrtime.bigint();
     this.accumulator = 0;
     this.needsMapReload = false;
-    console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
+    console.log("🌐 [UniversalRoom] Persistent online map reloaded. Ready for players.");
   }
 
   public registerCharacter(
