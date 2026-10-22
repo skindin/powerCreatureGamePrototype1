@@ -775,15 +775,15 @@ export class OnlineSessionManager {
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
-          }
+        // Local character position is dictated authoritatively by local simulation.
+        // We do NOT pull or blend the local player's position toward the delayed server ghost,
+        // which completely eliminates position fighting, rubber-banding, and jitter.
+        // Only adopt extreme server teleports (> 8.0u) if needed.
+        if (dist > 8.0) {
+          localChar.position.x = myServerState.x;
+          localChar.position.y = myServerState.y;
+          localChar.velocity.x = myServerState.vx;
+          localChar.velocity.y = myServerState.vy;
         }
       }
     }

@@ -69,6 +69,9 @@ export class UniversalRoomManager {
         path.resolve(cwd, "src/config/worldConfig.json"),
         path.resolve(cwd, "dist/config/worldConfig.json"),
         path.resolve(cwd, "config/worldConfig.json"),
+        path.resolve(cwd, "../src/config/worldConfig.json"),
+        path.resolve(cwd, "../dist/config/worldConfig.json"),
+        path.resolve(cwd, "../config/worldConfig.json"),
       ];
       if (typeof __dirname !== "undefined") {
         candidates.push(

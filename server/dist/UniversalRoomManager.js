@@ -7987,7 +7987,7 @@ function generateDefaultWorldConfig() {
     },
     globalPhysics: {
       gravity: 24,
-      collisionDamageScale: 1,
+      collisionDamageScale: 0.1,
       collisionMode: "dynamic"
     },
     objects: defaultStones.map(serializeGameObject)
@@ -10481,7 +10481,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       const candidates = [
         path.resolve(cwd, "src/config/worldConfig.json"),
         path.resolve(cwd, "dist/config/worldConfig.json"),
-        path.resolve(cwd, "config/worldConfig.json")
+        path.resolve(cwd, "config/worldConfig.json"),
+        path.resolve(cwd, "../src/config/worldConfig.json"),
+        path.resolve(cwd, "../dist/config/worldConfig.json"),
+        path.resolve(cwd, "../config/worldConfig.json")
       ];
       if (typeof __dirname !== "undefined") {
         candidates.push(

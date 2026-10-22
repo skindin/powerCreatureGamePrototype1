@@ -941,7 +941,7 @@ export function generateDefaultWorldConfig(): WorldConfig {
     },
     globalPhysics: {
       gravity: 24,
-      collisionDamageScale: 1.0,
+      collisionDamageScale: 0.1,
       collisionMode: "dynamic",
     },
     objects: defaultStones.map(serializeGameObject),
