@@ -1,6 +1,6 @@
 {
-  "version": 50,
-  "lastSaved": "2026-10-21T11:24:00.509Z",
+  "version": 53,
+  "lastSaved": "2026-10-22T02:05:00.260Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -369,6 +369,9 @@
     "hasLaser": true,
     "laserModule": {
       "maxPower": 2000
+    },
+    "damageSolverModule": {
+      "selfImpactWeight": 0
     }
   },
   "objects": [
