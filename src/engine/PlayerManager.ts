@@ -688,8 +688,33 @@ export class PlayerManager {
         input.exitPointerLock();
       }
 
-      const kLaunchVel = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
-      const kLaunchPos = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
+      const isKeyboardThrow = isCtrlDown ? false : (input.isKeyboardThrowRequested ?? false);
+      const keyboardAimX = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+        ? input.recordedMousePos.x
+        : input.actualMousePos.x;
+      const keyboardAimY = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
+        ? input.recordedMousePos.y
+        : input.actualMousePos.y;
+
+      let kLaunchVel = isKeyboardThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
+      let kLaunchPos = isKeyboardThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
+
+      if (isKeyboardThrow && kChar.heldObject && kChar.throwModule && (!kLaunchVel || !kLaunchPos)) {
+        const traj = kChar.throwModule.calculateTrajectory(
+          kChar,
+          keyboardAimX,
+          keyboardAimY,
+          this.arena,
+          this.arena.entities,
+          this.arena.visualAltitudeScale,
+          false,
+          input.lockedAimPos
+        );
+        if (traj?.launchVel && traj?.launchPos) {
+          kLaunchVel = traj.launchVel;
+          kLaunchPos = traj.launchPos;
+        }
+      }
 
       map.set("keyboard", {
         playerId: "keyboard",
@@ -802,8 +827,25 @@ export class PlayerManager {
       }
       // If none of the above: DO NOT CHANGE cChar.facingAngle!
 
-      const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
-      const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
+      let activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
+      let activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
+
+      if (slot.isThrowRequested && cChar.heldObject && cChar.throwModule && (!activeLaunchVel || !activeLaunchPos)) {
+        const traj = cChar.throwModule.calculateTrajectory(
+          cChar,
+          aimX,
+          aimY,
+          this.arena,
+          this.arena.entities,
+          this.arena.visualAltitudeScale,
+          false,
+          slot.lockedAimPos
+        );
+        if (traj?.launchVel && traj?.launchPos) {
+          activeLaunchVel = traj.launchVel;
+          activeLaunchPos = traj.launchPos;
+        }
+      }
 
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
       if (!slot.rtHeld) {
@@ -931,12 +973,29 @@ export class PlayerManager {
         }
 
         // Use the exact pre-calculated launch velocity and start position from the packet or client's active trajectory preview
-        const clientLaunchVel = (pkt as any).launchVx !== undefined
+        let clientLaunchVel = (pkt as any).launchVx !== undefined
           ? { vx: (pkt as any).launchVx, vy: (pkt as any).launchVy, vz: (pkt as any).launchVz }
           : char.activeTrajectory?.launchVel;
-        const clientLaunchPos = (pkt as any).launchStartX !== undefined
+        let clientLaunchPos = (pkt as any).launchStartX !== undefined
           ? { x: (pkt as any).launchStartX, y: (pkt as any).launchStartY, z: (pkt as any).launchStartZ }
           : char.activeTrajectory?.launchPos;
+
+        if (!clientLaunchVel || !clientLaunchPos) {
+          const traj = char.throwModule.calculateTrajectory(
+            char,
+            throwAimX,
+            throwAimY,
+            this.arena,
+            this.arena.entities,
+            this.arena.visualAltitudeScale,
+            false,
+            (pkt as any).lockedAimPos ?? null
+          );
+          if (traj?.launchVel && traj?.launchPos) {
+            clientLaunchVel = traj.launchVel;
+            clientLaunchPos = traj.launchPos;
+          }
+        }
 
         const thrown = char.throwModule.throwHeldObject(
           char,

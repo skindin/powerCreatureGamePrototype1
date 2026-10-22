@@ -633,10 +633,15 @@ export class CollisionResolver {
     // norm points from A toward B.
     // uSelfA: A moving toward B along normal.
     // uOtherA: B moving toward A along normal.
+    // Threat check: Normal voluntary ground walking is peaceful locomotion and delivers 0 incoming impact threat.
+    // An entity only poses an incoming collision threat if it is an in-flight projectile, flung under knockback, or actively sprinting.
+    const isThreatA = a.isInFlight || a.isUnderKnockback || (a.isCharacter && Boolean((a as any).isSprinting));
+    const isThreatB = b.isInFlight || b.isUnderKnockback || (b.isCharacter && Boolean((b as any).isSprinting));
+
     const uSelfA = Math.max(0, a.velocity.x * normX + a.velocity.y * normY);
-    const uOtherA = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
-    const uSelfB = uOtherA;
-    const uOtherB = uSelfA;
+    const uOtherA = isThreatB ? Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY)) : 0;
+    const uSelfB = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
+    const uOtherB = isThreatA ? Math.max(0, a.velocity.x * normX + a.velocity.y * normY) : 0;
 
     const kSelfA = a.isUnderKnockback
       ? 1.0

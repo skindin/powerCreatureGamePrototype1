@@ -722,16 +722,33 @@ export class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? (char.position.x + Math.cos(char.facingAngle) * 3);
           const aimY = act.aimY ?? (char.position.y + Math.sin(char.facingAngle) * 3);
-          const launchVel = (act as any).launchVx !== undefined ? {
+          let launchVel = (act as any).launchVx !== undefined ? {
             vx: (act as any).launchVx,
             vy: (act as any).launchVy,
             vz: (act as any).launchVz ?? 0
           } : undefined;
-          const launchPos = (act as any).launchStartX !== undefined ? {
+          let launchPos = (act as any).launchStartX !== undefined ? {
             x: (act as any).launchStartX,
             y: (act as any).launchStartY,
             z: (act as any).launchStartZ ?? 0
           } : undefined;
+
+          if (!launchVel || !launchPos) {
+            const traj = char.throwModule.calculateTrajectory(
+              char,
+              aimX,
+              aimY,
+              this.arena,
+              this.arena.entities,
+              this.arena.visualAltitudeScale,
+              false,
+              (act as any).lockedAimPos ?? null
+            );
+            if (traj?.launchVel && traj?.launchPos) {
+              launchVel = launchVel ?? traj.launchVel;
+              launchPos = launchPos ?? traj.launchPos;
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -982,16 +999,33 @@ export class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : (pkt.aimX !== undefined ? pkt.aimX : (char.position.x + Math.cos(char.facingAngle) * 3));
           const aimY = aimTarget ? aimTarget.y : (pkt.aimY !== undefined ? pkt.aimY : (char.position.y + Math.sin(char.facingAngle) * 3));
-          const launchVel = (pkt as any).launchVx !== undefined ? {
+          let launchVel = (pkt as any).launchVx !== undefined ? {
             vx: (pkt as any).launchVx,
             vy: (pkt as any).launchVy,
             vz: (pkt as any).launchVz ?? 0
           } : undefined;
-          const launchPos = (pkt as any).launchStartX !== undefined ? {
+          let launchPos = (pkt as any).launchStartX !== undefined ? {
             x: (pkt as any).launchStartX,
             y: (pkt as any).launchStartY,
             z: (pkt as any).launchStartZ ?? 0
           } : undefined;
+
+          if (!launchVel || !launchPos) {
+            const traj = char.throwModule.calculateTrajectory(
+              char,
+              aimX,
+              aimY,
+              this.arena,
+              this.arena.entities,
+              this.arena.visualAltitudeScale,
+              false,
+              (pkt as any).lockedAimPos ?? null
+            );
+            if (traj?.launchVel && traj?.launchPos) {
+              launchVel = launchVel ?? traj.launchVel;
+              launchPos = launchPos ?? traj.launchPos;
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,

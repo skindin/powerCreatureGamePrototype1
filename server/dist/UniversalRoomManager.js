@@ -6274,10 +6274,12 @@ class CollisionResolver {
     const massB = Math.max(0.1, b.mass);
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
+    const isThreatA = a.isInFlight || a.isUnderKnockback || a.isCharacter && Boolean(a.isSprinting);
+    const isThreatB = b.isInFlight || b.isUnderKnockback || b.isCharacter && Boolean(b.isSprinting);
     const uSelfA = Math.max(0, a.velocity.x * normX + a.velocity.y * normY);
-    const uOtherA = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
-    const uSelfB = uOtherA;
-    const uOtherB = uSelfA;
+    const uOtherA = isThreatB ? Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY)) : 0;
+    const uSelfB = Math.max(0, -(b.velocity.x * normX + b.velocity.y * normY));
+    const uOtherB = isThreatA ? Math.max(0, a.velocity.x * normX + a.velocity.y * normY) : 0;
     const kSelfA = a.isUnderKnockback ? 1 : a.damageSolverModule ? a.damageSolverModule.getSelfImpactWeight(a.properties) : 0;
     const kSelfB = b.isUnderKnockback ? 1 : b.damageSolverModule ? b.damageSolverModule.getSelfImpactWeight(b.properties) : 0;
     const threatRatioA = CollisionResolver.calculateThreatRatio(uSelfA, uOtherA, kSelfA);
@@ -10018,16 +10020,32 @@ class ServerGameSimulation {
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
-          const launchVel = act.launchVx !== void 0 ? {
+          let launchVel = act.launchVx !== void 0 ? {
             vx: act.launchVx,
             vy: act.launchVy,
             vz: act.launchVz ?? 0
           } : void 0;
-          const launchPos = act.launchStartX !== void 0 ? {
+          let launchPos = act.launchStartX !== void 0 ? {
             x: act.launchStartX,
             y: act.launchStartY,
             z: act.launchStartZ ?? 0
           } : void 0;
+          if (!launchVel || !launchPos) {
+            const traj = char.throwModule.calculateTrajectory(
+              char,
+              aimX,
+              aimY,
+              this.arena,
+              this.arena.entities,
+              this.arena.visualAltitudeScale,
+              false,
+              act.lockedAimPos ?? null
+            );
+            if ((traj == null ? void 0 : traj.launchVel) && (traj == null ? void 0 : traj.launchPos)) {
+              launchVel = launchVel ?? traj.launchVel;
+              launchPos = launchPos ?? traj.launchPos;
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -10245,16 +10263,32 @@ class ServerGameSimulation {
         if (pkt.isThrow && char.heldObject && char.throwModule) {
           const aimX = aimTarget ? aimTarget.x : pkt.aimX !== void 0 ? pkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = aimTarget ? aimTarget.y : pkt.aimY !== void 0 ? pkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
-          const launchVel = pkt.launchVx !== void 0 ? {
+          let launchVel = pkt.launchVx !== void 0 ? {
             vx: pkt.launchVx,
             vy: pkt.launchVy,
             vz: pkt.launchVz ?? 0
           } : void 0;
-          const launchPos = pkt.launchStartX !== void 0 ? {
+          let launchPos = pkt.launchStartX !== void 0 ? {
             x: pkt.launchStartX,
             y: pkt.launchStartY,
             z: pkt.launchStartZ ?? 0
           } : void 0;
+          if (!launchVel || !launchPos) {
+            const traj = char.throwModule.calculateTrajectory(
+              char,
+              aimX,
+              aimY,
+              this.arena,
+              this.arena.entities,
+              this.arena.visualAltitudeScale,
+              false,
+              pkt.lockedAimPos ?? null
+            );
+            if ((traj == null ? void 0 : traj.launchVel) && (traj == null ? void 0 : traj.launchPos)) {
+              launchVel = launchVel ?? traj.launchVel;
+              launchPos = launchPos ?? traj.launchPos;
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,

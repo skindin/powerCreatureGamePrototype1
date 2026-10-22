@@ -859,8 +859,12 @@ export class GameLoop {
 
       // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
       // While a thrown object is in ballistic flight from local player, allow local prediction
-      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
-      const isLocalGrounded = localObj.isRestingOnSurface || localObj.position.z <= (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      // unless server reports collision/landing (sleeping/grounded) or severe divergence (> 3.5m, e.g. obstacle hit).
+      const surfaceZ = localObj.supportingSurfaceHeight ?? 0;
+      const isLocalNearSurface = localObj.isRestingOnSurface || localObj.position.z <= surfaceZ + 0.30 || !localObj.isInFlight;
+      const isAirborneServer = !sObj.isGrounded && sObj.z > surfaceZ + 0.30;
+      const canSyncVertical = !isLocalNearSurface || sObj.isGrounded || !isAirborneServer;
+
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
       if (sObj.isGrounded) {
@@ -870,7 +874,7 @@ export class GameLoop {
       if (wasThrownByLocal && localObj.isInFlight && !sObj.isSleeping && !sObj.isGrounded) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.6) {
+        if (Math.hypot(flightDx, flightDy) < 3.5) {
           continue;
         }
       }
@@ -895,11 +899,11 @@ export class GameLoop {
         }
       }
 
-      // 5. Hard Teleport on Massive Divergence (> 3.0 units)
-      if (dist > 3.0) {
+      // 5. Hard Teleport on Massive Divergence (> 3.5 units)
+      if (dist > 3.5) {
         localObj.position.x = sObj.x;
         localObj.position.y = sObj.y;
-        if (!isLocalGrounded || sObj.isGrounded) {
+        if (canSyncVertical) {
           localObj.position.z = sObj.z;
           localObj.verticalVelocity = sObj.vz ?? 0;
         }
@@ -923,7 +927,7 @@ export class GameLoop {
       const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
-      if (!isLocalGrounded || sObj.isGrounded) {
+      if (canSyncVertical) {
         localObj.position.z += dz * blend;
         if (sObj.vz !== undefined) {
           localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
