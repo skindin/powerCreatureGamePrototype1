@@ -335,6 +335,8 @@ public partial class Form1 : Form
             {
                 loadingPanel.Visible = false;
                 webView.Visible = true;
+                statusLabel.Text = $"🟢 Online (Port {currentPort})";
+                statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
                 if (Form.ActiveForm == this)
                 {
                     webView.Focus();
@@ -958,12 +960,27 @@ public partial class Form1 : Form
 
             if (resp.IsSuccessStatusCode)
             {
-                statusLabel.Text = "✅ Snapshot updated! Reloading...";
+                bool isRebuild = !content.Contains("already up to date");
+                statusLabel.Text = isRebuild ? "✅ Code snapshot rebuilt! Reloading..." : "⚡ Code is up to date! Refreshing...";
                 statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
                 await CheckGitStatusAsync();
                 bootCommit = latestCommit; // update baseline
                 btnSyncNewCode.Text = "🚀 Sync New Code";
                 webView?.Reload();
+
+                // Auto-reset status label after reload completes
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1500);
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                    {
+                        this.BeginInvoke(() =>
+                        {
+                            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+                            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+                        });
+                    }
+                });
             }
             else
             {
