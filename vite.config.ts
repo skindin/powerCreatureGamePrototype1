@@ -4,10 +4,15 @@ import { defineConfig, type Plugin, build } from 'vite';
 import localtunnel from 'localtunnel';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
+
+function getUniversalRoomManagerModule(): Promise<any> {
+  const absPath = path.resolve(__dirname, 'server/dist/UniversalRoomManager.js');
+  return import(pathToFileURL(absPath).href);
+}
 
 function parseJsonBody(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -215,7 +220,7 @@ function autoTunnelPlugin(): Plugin {
     },
     configureServer(server) {
       if (server.httpServer) {
-        import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
+        getUniversalRoomManagerModule().then(({ UniversalRoomManager }) => {
           UniversalRoomManager.attach(server.httpServer!);
         }).catch((err) => {
           server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts').then(({ UniversalRoomManager }) => {
@@ -460,7 +465,7 @@ function autoTunnelPlugin(): Plugin {
             } catch {}
 
             // Hot reload UniversalRoomManager in background without triggering dev server SSR re-eval
-            import('./server/dist/UniversalRoomManager.js').then(({ UniversalRoomManager }) => {
+            getUniversalRoomManagerModule().then(({ UniversalRoomManager }) => {
               UniversalRoomManager.getInstance().reloadWorldConfig?.(updatedConfig);
             }).catch(() => {});
 
@@ -620,8 +625,7 @@ function autoTunnelPlugin(): Plugin {
             const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
             if (fs.existsSync(configPath)) {
               const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-              const serverMod = './server/dist/UniversalRoomManager.js';
-              const { UniversalRoomManager } = await import(serverMod);
+              const { UniversalRoomManager } = await getUniversalRoomManagerModule();
               UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
             }
 
@@ -659,8 +663,7 @@ function autoTunnelPlugin(): Plugin {
             const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
             if (fs.existsSync(configPath)) {
               const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-              const serverMod = './server/dist/UniversalRoomManager.js';
-              const { UniversalRoomManager } = await import(serverMod);
+              const { UniversalRoomManager } = await getUniversalRoomManagerModule();
               UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
             }
             res.statusCode = 200;
@@ -721,7 +724,7 @@ function autoTunnelPlugin(): Plugin {
 export default defineConfig(({ command }) => ({
   plugins: command === 'serve' ? [autoTunnelPlugin()] : [],
   ssr: {
-    noExternal: ['ws'],
+    external: ['ws'],
   },
   server: {
     host: '0.0.0.0', // Listen on all network addresses (0.0.0.0)
