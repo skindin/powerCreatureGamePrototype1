@@ -581,6 +581,49 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
+function getLastSyncInfo(): { timestamp: number; commit: string } {
+  try {
+    const p = path.resolve(__dirname, 'dist/.last-sync.json');
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    }
+  } catch {}
+  return { timestamp: 0, commit: '' };
+}
+
+function saveLastSyncInfo(info: { timestamp: number; commit: string }) {
+  try {
+    const p = path.resolve(__dirname, 'dist/.last-sync.json');
+    fs.writeFileSync(p, JSON.stringify(info), 'utf8');
+  } catch {}
+}
+
+function hasSourceCodeChangedSince(sinceMs: number): boolean {
+  if (sinceMs <= 0) return true;
+  try {
+    const srcDir = path.resolve(__dirname, 'src');
+    const indexHtml = path.resolve(__dirname, 'index.html');
+    if (fs.existsSync(indexHtml) && fs.statSync(indexHtml).mtimeMs > sinceMs) return true;
+
+    function checkDir(dir: string): boolean {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (checkDir(full)) return true;
+        } else if (entry.isFile()) {
+          if (entry.name === 'worldConfig.json') continue;
+          if (fs.statSync(full).mtimeMs > sinceMs) return true;
+        }
+      }
+      return false;
+    }
+    return checkDir(srcDir);
+  } catch {
+    return true;
+  }
+}
+
         // Sync & Rebuild API (Verifies tsc, rebuilds dist snapshot, reloads server)
         if (urlPath === '/api/dev/sync-rebuild') {
           res.setHeader('Access-Control-Allow-Origin', '*');
@@ -600,10 +643,41 @@ function autoTunnelPlugin(): Plugin {
             return;
           }
 
+          let currentHead = '';
+          try {
+            currentHead = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
+          } catch {}
+
+          const lastSync = getLastSyncInfo();
+          const codeChanged = hasSourceCodeChangedSince(lastSync.timestamp);
+          const commitChanged = currentHead !== lastSync.commit;
+
+          // Instant return if no code has changed and commit is unchanged
+          if (!codeChanged && !commitChanged && lastSync.timestamp > 0) {
+            console.log(`⚡ [SyncRebuild] Code is already up to date (${currentHead}). Reusing snapshot in <10ms.`);
+            try {
+              const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+              if (fs.existsSync(configPath)) {
+                const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                const { UniversalRoomManager } = await getUniversalRoomManagerModule();
+                UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
+              }
+            } catch {}
+            res.statusCode = 200;
+            res.end(JSON.stringify({
+              success: true,
+              commitSha: currentHead,
+              timestamp: new Date().toISOString(),
+              message: 'Runtime snapshot is already up to date.',
+            }));
+            return;
+          }
+
           // Pre-flight type check to prevent compiling broken code mid-agent-edit
           try {
             console.log('🔍 [SyncRebuild] Checking TypeScript compilation...');
-            execSync('npx tsc --noEmit', { encoding: 'utf8', timeout: 20000, stdio: 'pipe' });
+            const tscPath = path.resolve(__dirname, 'node_modules/typescript/bin/tsc');
+            execSync(`"${process.execPath}" "${tscPath}" --noEmit`, { encoding: 'utf8', timeout: 20000, stdio: 'pipe' });
           } catch (tscErr: any) {
             const details = tscErr.stdout || tscErr.stderr || tscErr.message;
             console.warn('⚠️ [SyncRebuild] TypeScript errors detected. Aborting rebuild snapshot:', details);
@@ -629,12 +703,13 @@ function autoTunnelPlugin(): Plugin {
               UniversalRoomManager.getInstance().reloadWorldConfig?.(cfg);
             }
 
-            const headCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
-            console.log(`✅ [SyncRebuild] Successfully updated runtime snapshot to commit ${headCommit}!`);
+            saveLastSyncInfo({ timestamp: Date.now(), commit: currentHead });
+
+            console.log(`✅ [SyncRebuild] Successfully updated runtime snapshot to commit ${currentHead}!`);
             res.statusCode = 200;
             res.end(JSON.stringify({
               success: true,
-              commitSha: headCommit,
+              commitSha: currentHead,
               timestamp: new Date().toISOString(),
               message: 'Runtime snapshot rebuilt and synced successfully.',
             }));
