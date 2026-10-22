@@ -15,6 +15,7 @@ desktop_app/obj/
 # Logs & Temporary Files
 *.log
 *.tmp
+*.tsbuildinfo
 public/tunnel.json
 dist/tunnel.json
 
