@@ -6200,12 +6200,12 @@ export class DevPanel {
 
       if (config.arena) {
         this.arena.setStandardWallHeight(config.arena.wallHeight);
-        if (config.arena.presetId && config.arena.presetId !== "custom") {
-          const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
-          this.arena.loadWallPreset(config.arena.presetId, [...chars, ...this.objects]);
-        } else if (config.arena.tileGrid) {
+        if (config.arena.tileGrid && config.arena.tileGrid.length > 0) {
           this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
           this.arena.rebuildWalls();
+        } else if (config.arena.presetId) {
+          const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+          this.arena.loadWallPreset(config.arena.presetId, [...chars, ...this.objects]);
         }
         const chars = this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
         this.arena.syncEntitiesWithWalls([...chars, ...this.objects]);

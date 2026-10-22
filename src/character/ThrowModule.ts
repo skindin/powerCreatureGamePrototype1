@@ -9,7 +9,7 @@ export interface TrajectoryPoint {
   t: number;
   couldClearWall: boolean; // True if z > standard wall height
   isOverWall: boolean;     // True if intersecting a wall tile
-  collidesWall: boolean;   // True if impacts wall
+  collidesWall: boolean;   // True if impacts wall //comment to test new code
 }
 
 export interface TrajectoryCalculation {
@@ -1160,37 +1160,37 @@ export class ThrowModule {
 
     let launch = launchVel
       ? {
-          vx: launchVel.vx,
-          vy: launchVel.vy,
-          vz: launchVel.vz,
-          totalTime: 1.0,
-          finalTargetX: aimTargetX,
-          finalTargetY: aimTargetY,
-          targetSurfaceHeight: 0,
-          targetObject: null as GameObject | null,
-          isAutoLocked: false,
-          tMin: 1.0,
-          tMax: 1.0,
-          tOpt: 1.0,
-        }
+        vx: launchVel.vx,
+        vy: launchVel.vy,
+        vz: launchVel.vz,
+        totalTime: 1.0,
+        finalTargetX: aimTargetX,
+        finalTargetY: aimTargetY,
+        targetSurfaceHeight: 0,
+        targetObject: null as GameObject | null,
+        isAutoLocked: false,
+        tMin: 1.0,
+        tMax: 1.0,
+        tOpt: 1.0,
+      }
       : this.computeLaunchVelocity(
-          startX,
-          startY,
-          startZ,
-          effectiveAimX,
-          effectiveAimY,
-          arena,
-          maxSpeed,
-          held.hasGravity,
-          held.hasVerticalVelocity,
-          held.colliderRadius,
-          charVel,
-          candidateEntities,
-          scale,
-          character,
-          held,
-          autoLock
-        );
+        startX,
+        startY,
+        startZ,
+        effectiveAimX,
+        effectiveAimY,
+        arena,
+        maxSpeed,
+        held.hasGravity,
+        held.hasVerticalVelocity,
+        held.colliderRadius,
+        charVel,
+        candidateEntities,
+        scale,
+        character,
+        held,
+        autoLock
+      );
 
     if (!launch) return null;
 

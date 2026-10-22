@@ -811,11 +811,11 @@ public partial class Form1 : Form
                 {
                     if (isDataModified)
                     {
-                        btnPushData.Text = "💾 Push Data (Unsaved)";
+                        btnPushData.Text = "💾 Push Data (Local Changes)";
                         btnPushData.ForeColor = Color.FromArgb(253, 224, 71);
                         btnPushData.FlatAppearance.BorderColor = Color.FromArgb(234, 179, 8);
                         btnPushData.BackColor = Color.FromArgb(40, 35, 15);
-                        toolTip.SetToolTip(btnPushData, "You have unsaved changes in worldConfig.json. Click to commit & push to GitHub.");
+                        toolTip.SetToolTip(btnPushData, "Local changes detected in worldConfig.json that are not yet on GitHub. Click to commit & push.");
                     }
                     else if (unpushedCommitsCount > 0)
                     {
