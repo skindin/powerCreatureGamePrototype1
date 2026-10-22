@@ -857,20 +857,20 @@ export class GameLoop {
         continue;
       }
 
-      // 5. Ballistic In-Flight & Post-Landing Rolling Prediction for LOCAL player's throw:
-      // While a thrown object is in flight or rolling/skidding from a local player throw,
-      // allow local client prediction unless server reports sleep or significant horizontal divergence (> 0.8 units).
+      // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
+      // While a thrown object is in ballistic flight from local player, allow local prediction
+      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
+      const isLocalGrounded = localObj.isRestingOnSurface || localObj.position.z <= (localObj.supportingSurfaceHeight ?? 0) + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
-      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
-      if (sObj.isSleeping) {
+      if (sObj.isGrounded) {
         localObj.isInFlight = false;
         localObj.originalThrower = null;
       }
-      if (wasThrownByLocal && !sObj.isSleeping && (localObj.isInFlight || localSpeed > 0.15)) {
+      if (wasThrownByLocal && localObj.isInFlight && !sObj.isSleeping && !sObj.isGrounded) {
         const flightDx = sObj.x - localObj.position.x;
         const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.8) {
+        if (Math.hypot(flightDx, flightDy) < 0.6) {
           continue;
         }
       }
@@ -884,6 +884,7 @@ export class GameLoop {
 
       // 4. Server Sleeping / Resting State Synchronization
       if (sObj.isSleeping) {
+        const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
         // If nearby and moving slowly, snap to exact bit-level rest position and sleep
         if (dist < 1.0 && localSpeed < 0.3) {
           localObj.position.x = sObj.x;
@@ -895,17 +896,12 @@ export class GameLoop {
       }
 
       // 5. Hard Teleport on Massive Divergence (> 3.0 units)
-      const surfaceH = localObj.supportingSurfaceHeight ?? 0;
-      const isLocallyGrounded = localObj.position.z <= surfaceH + 0.05;
-
       if (dist > 3.0) {
         localObj.position.x = sObj.x;
         localObj.position.y = sObj.y;
-        if (!isLocallyGrounded || sObj.z <= surfaceH + 0.05) {
+        if (!isLocalGrounded || sObj.isGrounded) {
           localObj.position.z = sObj.z;
           localObj.verticalVelocity = sObj.vz ?? 0;
-        } else {
-          localObj.verticalVelocity = 0;
         }
         localObj.velocity.x = sObj.vx;
         localObj.velocity.y = sObj.vy;
@@ -923,17 +919,15 @@ export class GameLoop {
       }
 
       // 7. Smart Smooth Convergence
-      // Prevent trailing airborne server snapshots from yanking a grounded object upward into the air!
-      const effectiveDz = (isLocallyGrounded && dz > 0) ? 0 : dz;
-
-      const blend = localSpeed > 0.2 ? 0.25 : 0.25;
+      const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
+      const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
-      localObj.position.z += effectiveDz * blend;
-      localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
-      localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
-      if (sObj.vz !== undefined && !isLocallyGrounded) {
-        localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+      if (!isLocalGrounded || sObj.isGrounded) {
+        localObj.position.z += dz * blend;
+        if (sObj.vz !== undefined) {
+          localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+        }
       }
       if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
         localObj.rollModule.angularVelocity.x += (sObj.angX - localObj.rollModule.angularVelocity.x) * blend;

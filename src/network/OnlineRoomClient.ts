@@ -45,7 +45,7 @@ export class OnlineRoomClient {
   public lastServerMessageTime: number = 0;
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
-  public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string; arena?: { width: number; height: number; wallHeight: number; tileGrid: number[][] } }) => void;
+  public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
   public onPlayerRegistered?: (info: { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }) => void;
   public onPlayerRemoved?: (localPlayerId: string) => void;
   public onPlayerLeft?: (charId: string) => void;
@@ -196,7 +196,6 @@ export class OnlineRoomClient {
               playerNumber: msg.playerNumber,
               name: msg.name,
               color: msg.color || this.assignedColor,
-              arena: msg.arena,
             });
             return;
           }

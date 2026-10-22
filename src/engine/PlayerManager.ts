@@ -688,26 +688,6 @@ export class PlayerManager {
         input.exitPointerLock();
       }
 
-      if (input.isKeyboardThrowRequested && kChar.heldObject && kChar.throwModule && !kChar.activeTrajectory) {
-        const aimX = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-          ? input.recordedMousePos.x
-          : input.actualMousePos.x;
-        const aimY = (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-          ? input.recordedMousePos.y
-          : input.actualMousePos.y;
-        kChar.activeTrajectory = kChar.throwModule.calculateTrajectory(
-          kChar,
-          aimX,
-          aimY,
-          this.arena,
-          objects,
-          this.arena.visualAltitudeScale,
-          Boolean(input.isRightMouseDown && input.lockedAimPos),
-          input.lockedAimPos,
-          0
-        );
-      }
-
       const kLaunchVel = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
       const kLaunchPos = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
 
@@ -821,24 +801,6 @@ export class PlayerManager {
         cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
       }
       // If none of the above: DO NOT CHANGE cChar.facingAngle!
-
-      if (slot.isThrowRequested && cChar.heldObject && cChar.throwModule && !cChar.activeTrajectory) {
-        const aimPos = slot.lockedAimPos ?? {
-          x: cChar.position.x + Math.cos(cChar.facingAngle) * 3,
-          y: cChar.position.y + Math.sin(cChar.facingAngle) * 3
-        };
-        cChar.activeTrajectory = cChar.throwModule.calculateTrajectory(
-          cChar,
-          aimPos.x,
-          aimPos.y,
-          this.arena,
-          objects,
-          this.arena.visualAltitudeScale,
-          slot.isLockHeld ?? false,
-          slot.lockedAimPos,
-          0
-        );
-      }
 
       const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
@@ -1009,6 +971,21 @@ export class PlayerManager {
           }
 
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          const finalLaunchVx = thrown.velocity.x;
+          const finalLaunchVy = thrown.velocity.y;
+          const finalLaunchVz = thrown.hasVerticalVelocity ? thrown.verticalVelocity : 0;
+          const finalLaunchStartX = thrown.position.x;
+          const finalLaunchStartY = thrown.position.y;
+          const finalLaunchStartZ = thrown.hasVerticalPosition ? thrown.position.z : 0;
+
+          // Stamp onto current input packet so both stream telemetry and reliable actions have exact ground-truth launch vectors
+          (pkt as any).launchVx = finalLaunchVx;
+          (pkt as any).launchVy = finalLaunchVy;
+          (pkt as any).launchVz = finalLaunchVz;
+          (pkt as any).launchStartX = finalLaunchStartX;
+          (pkt as any).launchStartY = finalLaunchStartY;
+          (pkt as any).launchStartZ = finalLaunchStartZ;
+
           const action: ReliableActionCommand = {
             actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
             type: "throw",
@@ -1019,22 +996,13 @@ export class PlayerManager {
             aimX: throwAimX,
             aimY: throwAimY,
             isLockHeld: pkt.isLockHeld,
-            launchVx: thrownObj.velocity.x,
-            launchVy: thrownObj.velocity.y,
-            launchVz: thrownObj.hasVerticalVelocity ? thrownObj.verticalVelocity : 0,
-            launchStartX: thrownObj.position.x,
-            launchStartY: thrownObj.position.y,
-            launchStartZ: thrownObj.hasVerticalPosition ? thrownObj.position.z : 0,
+            launchVx: finalLaunchVx,
+            launchVy: finalLaunchVy,
+            launchVz: finalLaunchVz,
+            launchStartX: finalLaunchStartX,
+            launchStartY: finalLaunchStartY,
+            launchStartZ: finalLaunchStartZ,
           } as any;
-
-          // Also guarantee pkt sent to server on this tick has exact physical launch velocity
-          (pkt as any).launchVx = thrownObj.velocity.x;
-          (pkt as any).launchVy = thrownObj.velocity.y;
-          (pkt as any).launchVz = thrownObj.hasVerticalVelocity ? thrownObj.verticalVelocity : 0;
-          (pkt as any).launchStartX = thrownObj.position.x;
-          (pkt as any).launchStartY = thrownObj.position.y;
-          (pkt as any).launchStartZ = thrownObj.hasVerticalPosition ? thrownObj.position.z : 0;
-
           if (!isReplay) {
             this.onReliableActionDispatched?.(action);
           }
@@ -1060,7 +1028,7 @@ export class PlayerManager {
         char.laserPowerFraction = typeof (pkt as any).laserPowerFraction === "number"
           ? (pkt as any).laserPowerFraction
           : 1.0;
-        char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
+        char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
       }
 
       // Set Melee inputs on character before physical capability update
@@ -1069,7 +1037,7 @@ export class PlayerManager {
         char.meleeAimDir = (pkt as any).meleeAimX !== undefined
           ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
           : null;
-        char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
+        char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
       }
 
       if (pkt.facingAngle !== undefined) {

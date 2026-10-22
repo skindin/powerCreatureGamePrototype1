@@ -18,7 +18,7 @@ import {
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
 import { QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
 import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
-import { WorldConfig, deserializeGameObject, generateDefaultWorldConfig } from "../config/WorldConfig.js";
+import { WorldConfig, deserializeGameObject, generateDefaultWorldConfig, applyCharacterConfig } from "../config/WorldConfig.js";
 import { HealthModule } from "../character/HealthModule.js";
 
 export type { ContestedGrabResult, DeathRespawnEvent };
@@ -235,6 +235,10 @@ export class ServerGameSimulation {
       }
     }
 
+    if (config.prefabs && Array.isArray(config.prefabs)) {
+      this.prefabManager.loadFromConfig(config.prefabs);
+    }
+
     // Preserve existing players, or spawn defaults if empty
     if (this.characters.size === 0) {
       const p1Spawn = HealthModule.getRandomSpawnPosition();
@@ -250,6 +254,9 @@ export class ServerGameSimulation {
         name: "Server Player 1",
       });
       player1.position.z = p1Spawn.z;
+      if (config.player) {
+        applyCharacterConfig(player1, config.player);
+      }
       this.characters.set(player1.playerId, player1);
 
       const dummy = new Character({
@@ -705,8 +712,7 @@ export class ServerGameSimulation {
         let throwTarget = char.heldObject;
         if (!throwTarget && act.targetObjectId) {
           const candidate = this.objects.find((o) => o.id === act.targetObjectId);
-          // Only re-bind if the candidate was not already thrown into flight
-          if (candidate && !candidate.isInFlight && candidate.lastThrower !== char && (!candidate.isHeld || candidate.heldBy === char)) {
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
             candidate.isHeld = true;
             candidate.heldBy = char;
             char.heldObject = candidate;
@@ -943,34 +949,6 @@ export class ServerGameSimulation {
           if (result.isDepleted) {
             this.triggerObjectDeletion(heldObj.id);
           }
-        }
-        if (catchupPkt.isDrop && char.heldObject && char.pickupModule) {
-          char.pickupModule.drop(char);
-        }
-        if (catchupPkt.isThrow && char.heldObject && char.throwModule) {
-          const aimX = catchupPkt.aimX !== undefined ? catchupPkt.aimX : (char.position.x + Math.cos(char.facingAngle) * 3);
-          const aimY = catchupPkt.aimY !== undefined ? catchupPkt.aimY : (char.position.y + Math.sin(char.facingAngle) * 3);
-          const launchVel = (catchupPkt as any).launchVx !== undefined ? {
-            vx: (catchupPkt as any).launchVx,
-            vy: (catchupPkt as any).launchVy,
-            vz: (catchupPkt as any).launchVz ?? 0
-          } : undefined;
-          const launchPos = (catchupPkt as any).launchStartX !== undefined ? {
-            x: (catchupPkt as any).launchStartX,
-            y: (catchupPkt as any).launchStartY,
-            z: (catchupPkt as any).launchStartZ ?? 0
-          } : undefined;
-          char.throwModule.throwHeldObject(
-            char,
-            aimX,
-            aimY,
-            this.arena,
-            undefined,
-            undefined,
-            catchupPkt.isLockHeld,
-            launchVel,
-            launchPos
-          );
         }
         if (catchupPkt.facingAngle !== undefined) {
           char.facingAngle = catchupPkt.facingAngle;

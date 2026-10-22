@@ -12,7 +12,7 @@ import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { WorldConfig } from "../config/WorldConfig.js";
+import { WorldConfig, applyCharacterConfig } from "../config/WorldConfig.js";
 
 export interface ClientCharacterEntry {
   localPlayerId: string;
@@ -53,6 +53,7 @@ export class UniversalRoomManager {
   private lastTimeHr: bigint = process.hrtime.bigint();
   private accumulator: number = 0;
   private readonly fixedDt: number = 1 / 60;
+  public currentWorldConfig: WorldConfig | null = null;
 
   constructor() {
     this.simulation = new ServerGameSimulation({
@@ -64,27 +65,17 @@ export class UniversalRoomManager {
 
   private loadInitialWorldConfig(): void {
     try {
-      const cwd = process.cwd();
       const candidates = [
-        path.resolve(cwd, "src/config/worldConfig.json"),
-        path.resolve(cwd, "dist/config/worldConfig.json"),
-        path.resolve(cwd, "config/worldConfig.json"),
-        path.resolve(cwd, "../src/config/worldConfig.json"),
-        path.resolve(cwd, "../dist/config/worldConfig.json"),
-        path.resolve(cwd, "../config/worldConfig.json"),
+        path.resolve(process.cwd(), "src/config/worldConfig.json"),
+        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
+        path.resolve(process.cwd(), "config/worldConfig.json"),
       ];
-      if (typeof __dirname !== "undefined") {
-        candidates.push(
-          path.resolve(__dirname, "../../src/config/worldConfig.json"),
-          path.resolve(__dirname, "../src/config/worldConfig.json"),
-          path.resolve(__dirname, "./config/worldConfig.json")
-        );
-      }
       for (const p of candidates) {
         if (fs.existsSync(p)) {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
-          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p} (preset=${config.arena?.presetId}, walls=${config.arena?.tileGrid?.length || 0})`);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.currentWorldConfig = config;
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -100,8 +91,9 @@ export class UniversalRoomManager {
    */
   public reloadWorldConfig(config: WorldConfig): void {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = false;
+    this.needsMapReload = true;
   }
 
   public static getInstance(): UniversalRoomManager {
@@ -316,8 +308,8 @@ export class UniversalRoomManager {
    * Reloads the pristine default scenario when a player tries to connect to an empty room.
    */
   public reloadMap(): void {
-    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map from persistent config...");
-    this.loadInitialWorldConfig();
+    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
+    this.simulation.initializeDefaultScenario();
     // Remove placeholder player-1 so only real connecting players occupy slots
     if (this.simulation.characters.has("player-1")) {
       const p1 = this.simulation.characters.get("player-1");
@@ -328,7 +320,7 @@ export class UniversalRoomManager {
     this.lastTimeHr = process.hrtime.bigint();
     this.accumulator = 0;
     this.needsMapReload = false;
-    console.log("🌐 [UniversalRoom] Persistent online map reloaded. Ready for players.");
+    console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
 
   public registerCharacter(
@@ -661,6 +653,9 @@ export class UniversalRoomManager {
             });
             newChar.serverCharId = serverCharId;
             newChar.position.z = spawnZ;
+            if (this.currentWorldConfig?.player) {
+              applyCharacterConfig(newChar, this.currentWorldConfig.player);
+            }
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

@@ -5855,16 +5855,7 @@ class CollisionResolver {
         const b = entities[j];
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
-        if (a.lastThrower === b || b.lastThrower === a) {
-          const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
-          const minDist = a.colliderRadius + b.colliderRadius;
-          if (dSq > (minDist + 0.1) ** 2) {
-            if (a.lastThrower === b) a.lastThrower = null;
-            if (b.lastThrower === a) b.lastThrower = null;
-          } else {
-            continue;
-          }
-        }
+        if (a.lastThrower === b || b.lastThrower === a) continue;
         if (a.isSleeping && b.isSleeping) continue;
         const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
@@ -6333,16 +6324,7 @@ class CollisionResolver {
           const b = entities[j];
           if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
           if (!a.hasCollider || !b.hasCollider) continue;
-          if (a.lastThrower === b || b.lastThrower === a) {
-            const dSq = (b.position.x - a.position.x) ** 2 + (b.position.y - a.position.y) ** 2;
-            const minDist2 = a.colliderRadius + b.colliderRadius;
-            if (dSq > (minDist2 + 0.1) ** 2) {
-              if (a.lastThrower === b) a.lastThrower = null;
-              if (b.lastThrower === a) b.lastThrower = null;
-            } else {
-              continue;
-            }
-          }
+          if (a.lastThrower === b || b.lastThrower === a) continue;
           const layerA = GameObject.getEntityLayer(a, arena.wallHeight);
           const layerB = GameObject.getEntityLayer(b, arena.wallHeight);
           if (layerA !== layerB) continue;
@@ -7987,7 +7969,7 @@ function generateDefaultWorldConfig() {
     },
     globalPhysics: {
       gravity: 24,
-      collisionDamageScale: 0.1,
+      collisionDamageScale: 1,
       collisionMode: "dynamic"
     },
     objects: defaultStones.map(serializeGameObject)
@@ -9640,6 +9622,9 @@ class ServerGameSimulation {
         this.collisionMode = config.globalPhysics.collisionMode;
       }
     }
+    if (config.prefabs && Array.isArray(config.prefabs)) {
+      this.prefabManager.loadFromConfig(config.prefabs);
+    }
     if (this.characters.size === 0) {
       const p1Spawn = HealthModule.getRandomSpawnPosition();
       const player1 = new Character({
@@ -9654,6 +9639,9 @@ class ServerGameSimulation {
         name: "Server Player 1"
       });
       player1.position.z = p1Spawn.z;
+      if (config.player) {
+        applyCharacterConfig(player1, config.player);
+      }
       this.characters.set(player1.playerId, player1);
       const dummy = new Character({
         id: "dummy-1",
@@ -10020,7 +10008,7 @@ class ServerGameSimulation {
         let throwTarget = char.heldObject;
         if (!throwTarget && act.targetObjectId) {
           const candidate = this.objects.find((o) => o.id === act.targetObjectId);
-          if (candidate && !candidate.isInFlight && candidate.lastThrower !== char && (!candidate.isHeld || candidate.heldBy === char)) {
+          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
             candidate.isHeld = true;
             candidate.heldBy = char;
             char.heldObject = candidate;
@@ -10230,34 +10218,6 @@ class ServerGameSimulation {
           if (result.isDepleted) {
             this.triggerObjectDeletion(heldObj.id);
           }
-        }
-        if (catchupPkt.isDrop && char.heldObject && char.pickupModule) {
-          char.pickupModule.drop(char);
-        }
-        if (catchupPkt.isThrow && char.heldObject && char.throwModule) {
-          const aimX = catchupPkt.aimX !== void 0 ? catchupPkt.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
-          const aimY = catchupPkt.aimY !== void 0 ? catchupPkt.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
-          const launchVel = catchupPkt.launchVx !== void 0 ? {
-            vx: catchupPkt.launchVx,
-            vy: catchupPkt.launchVy,
-            vz: catchupPkt.launchVz ?? 0
-          } : void 0;
-          const launchPos = catchupPkt.launchStartX !== void 0 ? {
-            x: catchupPkt.launchStartX,
-            y: catchupPkt.launchStartY,
-            z: catchupPkt.launchStartZ ?? 0
-          } : void 0;
-          char.throwModule.throwHeldObject(
-            char,
-            aimX,
-            aimY,
-            this.arena,
-            void 0,
-            void 0,
-            catchupPkt.isLockHeld,
-            launchVel,
-            launchPos
-          );
         }
         if (catchupPkt.facingAngle !== void 0) {
           char.facingAngle = catchupPkt.facingAngle;
@@ -10496,6 +10456,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     __publicField(this, "lastTimeHr", process.hrtime.bigint());
     __publicField(this, "accumulator", 0);
     __publicField(this, "fixedDt", 1 / 60);
+    __publicField(this, "currentWorldConfig", null);
     this.simulation = new ServerGameSimulation({
       broadcastRateHz: 60,
       deltaCompression: false
@@ -10503,29 +10464,18 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.loadInitialWorldConfig();
   }
   loadInitialWorldConfig() {
-    var _a, _b, _c;
     try {
-      const cwd = process.cwd();
       const candidates = [
-        path.resolve(cwd, "src/config/worldConfig.json"),
-        path.resolve(cwd, "dist/config/worldConfig.json"),
-        path.resolve(cwd, "config/worldConfig.json"),
-        path.resolve(cwd, "../src/config/worldConfig.json"),
-        path.resolve(cwd, "../dist/config/worldConfig.json"),
-        path.resolve(cwd, "../config/worldConfig.json")
+        path.resolve(process.cwd(), "src/config/worldConfig.json"),
+        path.resolve(process.cwd(), "dist/config/worldConfig.json"),
+        path.resolve(process.cwd(), "config/worldConfig.json")
       ];
-      if (typeof __dirname !== "undefined") {
-        candidates.push(
-          path.resolve(__dirname, "../../src/config/worldConfig.json"),
-          path.resolve(__dirname, "../src/config/worldConfig.json"),
-          path.resolve(__dirname, "./config/worldConfig.json")
-        );
-      }
       for (const p of candidates) {
         if (fs.existsSync(p)) {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
-          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p} (preset=${(_a = config.arena) == null ? void 0 : _a.presetId}, walls=${((_c = (_b = config.arena) == null ? void 0 : _b.tileGrid) == null ? void 0 : _c.length) || 0})`);
+          console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.currentWorldConfig = config;
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -10540,8 +10490,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
    */
   reloadWorldConfig(config) {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = false;
+    this.needsMapReload = true;
   }
   static getInstance() {
     if (!_UniversalRoomManager.instance) {
@@ -10723,8 +10674,8 @@ const _UniversalRoomManager = class _UniversalRoomManager {
    * Reloads the pristine default scenario when a player tries to connect to an empty room.
    */
   reloadMap() {
-    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map from persistent config...");
-    this.loadInitialWorldConfig();
+    console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
+    this.simulation.initializeDefaultScenario();
     if (this.simulation.characters.has("player-1")) {
       const p1 = this.simulation.characters.get("player-1");
       p1 == null ? void 0 : p1.cleanupBeforeRemoval();
@@ -10734,7 +10685,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.lastTimeHr = process.hrtime.bigint();
     this.accumulator = 0;
     this.needsMapReload = false;
-    console.log("🌐 [UniversalRoom] Persistent online map reloaded. Ready for players.");
+    console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
   registerCharacter(client, localPlayerId, name, _spawnPos) {
     const existing = client.characters.get(localPlayerId);
@@ -10873,7 +10824,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     this.clients.set(clientId, client);
     console.log(`🌐 [UniversalRoom] Client connected: ${clientId} (Total clients in room: ${this.clients.size})`);
     ws.on("message", (raw) => {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
       try {
         client.lastSeen = Date.now();
         const text = raw.toString();
@@ -11009,6 +10960,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
             });
             newChar.serverCharId = serverCharId;
             newChar.position.z = spawnZ;
+            if ((_e = this.currentWorldConfig) == null ? void 0 : _e.player) {
+              applyCharacterConfig(newChar, this.currentWorldConfig.player);
+            }
             this.simulation.characters.set(serverCharId, newChar);
             this.simulation.arena.entities = [...this.simulation.allCharacters, ...this.simulation.objects];
             sChar = newChar;

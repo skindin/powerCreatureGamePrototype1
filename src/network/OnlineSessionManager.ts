@@ -357,23 +357,8 @@ export class OnlineSessionManager {
     }
   }
 
-  private handleJoined(info: { clientId: string; playerNumber: number; name: string; color: string; arena?: { width: number; height: number; wallHeight: number; tileGrid: number[][] } }): void {
+  private handleJoined(info: { clientId: string; playerNumber: number; name: string; color: string }): void {
     console.log(`🌐 [OnlineSession] Joined universal room as ${info.name} (P${info.playerNumber}) with color ${info.color}`);
-
-    // Authoritative Server Arena Wall Synchronization:
-    // Guarantees client and server use the exact same bit-for-bit arena dimensions and wall grid!
-    if (info.arena && this.gameLoop?.arena) {
-      const sArena = info.arena;
-      console.log(`🌐 [OnlineSession] Synchronizing authoritative arena grid (${sArena.width}x${sArena.height}, wallHeight=${sArena.wallHeight})`);
-      this.gameLoop.arena.width = sArena.width;
-      this.gameLoop.arena.height = sArena.height;
-      this.gameLoop.arena.setStandardWallHeight(sArena.wallHeight);
-      if (Array.isArray(sArena.tileGrid) && sArena.tileGrid.length > 0) {
-        this.gameLoop.arena.tileGrid = sArena.tileGrid.map((row) => [...row]);
-        this.gameLoop.arena.rebuildWalls();
-      }
-      this.gameLoop.arena.syncEntitiesWithWalls([...this.gameLoop.allCharacters, ...this.gameLoop.objects]);
-    }
     const wireConsumableConsumed = (c: Character) => {
       (c as any)._onConsumableConsumed = (objId: string) => {
         this.client.unacknowledgedConsumedObjectIds.add(objId);
@@ -771,19 +756,23 @@ export class OnlineSessionManager {
     for (const { char: localChar, serverId: localServerId } of allLocalChars) {
       const myServerState = ghostChars.find((gc) => gc.id === localServerId);
       if (myServerState) {
+        // Local character position is dictated authoritatively by local simulation.
+        // We do NOT pull or blend the local player's position toward the delayed server ghost,
+        // which completely eliminates position fighting and join oscillations.
+        // Only adopt extreme server teleports (> 8.0u) if needed.
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        // Local character position is dictated authoritatively by local simulation.
-        // We do NOT pull or blend the local player's position toward the delayed server ghost,
-        // which completely eliminates position fighting, rubber-banding, and jitter.
-        // Only adopt extreme server teleports (> 8.0u) if needed.
-        if (dist > 8.0) {
-          localChar.position.x = myServerState.x;
-          localChar.position.y = myServerState.y;
-          localChar.velocity.x = myServerState.vx;
-          localChar.velocity.y = myServerState.vy;
+        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
+        if (dist > 0.06) {
+          const blend = dist > 2.0 ? 1.0 : 0.35;
+          localChar.position.x += dx * blend;
+          localChar.position.y += dy * blend;
+          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
+            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
+            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+          }
         }
       }
     }
