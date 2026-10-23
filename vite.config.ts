@@ -5,7 +5,10 @@ import localtunnel from 'localtunnel';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { exec, execSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(exec);
 
 import { getAllFeedback, createFeedback, updateFeedbackStatus } from './server/feedbackStore.js';
 
@@ -199,6 +202,64 @@ function autoTunnelPlugin(): Plugin {
     try { fs.writeFileSync(path.resolve(__dirname, 'dist/tunnel.json'), payload); } catch {}
   }
 
+  let cachedGitStatus: any = null;
+  let lastGitStatusCheck = 0;
+  let inFlightGitCheck: Promise<any> | null = null;
+
+  async function getGitStatusAsync() {
+    const now = Date.now();
+    if (cachedGitStatus && now - lastGitStatusCheck < 4000) {
+      return cachedGitStatus;
+    }
+    if (inFlightGitCheck) {
+      return inFlightGitCheck;
+    }
+
+    inFlightGitCheck = (async () => {
+      try {
+        const [branchRes, headRes, configRes] = await Promise.all([
+          execAsync('git branch --show-current', { encoding: 'utf8', timeout: 3000 }).catch(() => ({ stdout: 'clean-physics-baseline' })),
+          execAsync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 3000 }).catch(() => ({ stdout: '' })),
+          execAsync('git status --porcelain src/config/worldConfig.json', { encoding: 'utf8', timeout: 3000 }).catch(() => ({ stdout: '' })),
+        ]);
+
+        const branch = branchRes.stdout.trim() || 'clean-physics-baseline';
+        const headCommit = headRes.stdout.trim();
+        const dataModified = configRes.stdout.trim().length > 0;
+
+        let aheadCount = 0;
+        try {
+          const aheadRes = await execAsync(`git rev-list --count origin/${branch}..HEAD`, { encoding: 'utf8', timeout: 3000 });
+          aheadCount = parseInt(aheadRes.stdout.trim(), 10) || 0;
+        } catch {}
+
+        let codeModified = false;
+        let codeFilesCount = 0;
+        try {
+          const allRes = await execAsync('git status --porcelain src/', { encoding: 'utf8', timeout: 3000 });
+          const codeLines = allRes.stdout.trim().split('\n').filter((l) => l.trim() && !l.includes('worldConfig.json'));
+          codeModified = codeLines.length > 0;
+          codeFilesCount = codeLines.length;
+        } catch {}
+
+        cachedGitStatus = {
+          branch,
+          headCommit,
+          dataModified,
+          aheadCount,
+          codeModified,
+          codeFilesCount,
+        };
+        lastGitStatusCheck = Date.now();
+        return cachedGitStatus;
+      } finally {
+        inFlightGitCheck = null;
+      }
+    })();
+
+    return inFlightGitCheck;
+  }
+
   function getLastSyncInfo(): { timestamp: number; commit: string } {
     try {
       const p = path.resolve(__dirname, 'dist/.last-sync.json');
@@ -212,6 +273,7 @@ function autoTunnelPlugin(): Plugin {
   function saveLastSyncInfo(info: { timestamp: number; commit: string }) {
     try {
       const p = path.resolve(__dirname, 'dist/.last-sync.json');
+      fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, JSON.stringify(info), 'utf8');
     } catch {}
   }
@@ -450,7 +512,7 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
-        // Git Data Status API (inspects worldConfig, ahead commits, and active branch)
+        // Git Data Status API (inspects worldConfig, ahead commits, and active branch non-blockingly)
         if (urlPath === '/api/dev/git-status') {
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -465,35 +527,9 @@ function autoTunnelPlugin(): Plugin {
           }
 
           try {
-            const branch = execSync('git branch --show-current', { encoding: 'utf8', timeout: 2000 }).trim() || 'clean-physics-baseline';
-            const headCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
-            const configStatus = execSync('git status --porcelain src/config/worldConfig.json', { encoding: 'utf8', timeout: 2000 }).trim();
-            const dataModified = configStatus.length > 0;
-
-            let aheadCount = 0;
-            try {
-              const aheadOut = execSync(`git rev-list --count origin/${branch}..HEAD`, { encoding: 'utf8', timeout: 2000 }).trim();
-              aheadCount = parseInt(aheadOut, 10) || 0;
-            } catch {}
-
-            let codeModified = false;
-            let codeFilesCount = 0;
-            try {
-              const allStatus = execSync('git status --porcelain src/', { encoding: 'utf8', timeout: 2000 }).trim();
-              const codeLines = allStatus.split('\n').filter(l => l.trim() && !l.includes('worldConfig.json'));
-              codeModified = codeLines.length > 0;
-              codeFilesCount = codeLines.length;
-            } catch {}
-
+            const status = await getGitStatusAsync();
             res.statusCode = 200;
-            res.end(JSON.stringify({
-              branch,
-              headCommit,
-              dataModified,
-              aheadCount,
-              codeModified,
-              codeFilesCount,
-            }));
+            res.end(JSON.stringify(status));
           } catch (err: any) {
             res.statusCode = 500;
             res.end(JSON.stringify({ error: err?.message || String(err) }));
@@ -535,6 +571,8 @@ function autoTunnelPlugin(): Plugin {
             // Push to remote branch
             execSync(`git push origin ${branch}`, { encoding: 'utf8', timeout: 20000 });
             const newHead = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
+            cachedGitStatus = null;
+            lastGitStatusCheck = 0;
 
             res.statusCode = 200;
             res.end(JSON.stringify({

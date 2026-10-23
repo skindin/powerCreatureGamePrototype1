@@ -65,11 +65,12 @@ function requireConstants() {
   };
   return constants;
 }
-throw new Error(`Could not resolve "bufferutil" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_bufferutil_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_bufferutil_ws = {};
+const __viteOptionalPeerDep_bufferutil_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_bufferutil_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws);
+const require$$1 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_bufferutil_ws$1);
 var hasRequiredBufferUtil;
 function requireBufferUtil() {
   if (hasRequiredBufferUtil) return bufferUtil.exports;
@@ -578,11 +579,12 @@ function requirePermessageDeflate() {
   return permessageDeflate;
 }
 var validation = { exports: {} };
-throw new Error(`Could not resolve "utf-8-validate" imported by "ws". Is it installed?`);
-const __viteOptionalPeerDep_utf8Validate_ws = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null
+const __viteOptionalPeerDep_utf8Validate_ws = {};
+const __viteOptionalPeerDep_utf8Validate_ws$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  default: __viteOptionalPeerDep_utf8Validate_ws
 }, Symbol.toStringTag, { value: "Module" }));
-const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws);
+const require$$2 = /* @__PURE__ */ getAugmentedNamespace(__viteOptionalPeerDep_utf8Validate_ws$1);
 var hasRequiredValidation;
 function requireValidation() {
   if (hasRequiredValidation) return validation.exports;

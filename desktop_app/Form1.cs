@@ -355,8 +355,8 @@ public partial class Form1 : Form
             string cacheBustUrl = activeUrl + (activeUrl.Contains("?") ? "&" : "?") + $"_v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             webView.CoreWebView2.Navigate(cacheBustUrl);
 
-            // Start background Git status polling every 4 seconds
-            gitPollTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            // Start background Git status polling every 6 seconds
+            gitPollTimer = new System.Windows.Forms.Timer { Interval = 6000 };
             gitPollTimer.Tick += async (s, e) => await CheckGitStatusAsync();
             gitPollTimer.Start();
             _ = CheckGitStatusAsync(isInitialBoot: true);
