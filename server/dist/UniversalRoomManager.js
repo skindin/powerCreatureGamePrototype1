@@ -7690,7 +7690,6 @@ class EnergyPool {
   }
   beginTick() {
     this.livePowerDraw = 0;
-    this.hadPhysicalExertion = false;
   }
   registerDemand(abilityId, demandedWatts, allowPartialPower = true) {
     const effectiveAbilityId = abilityId === "locomotion" ? this.activeLocomotionId : abilityId;
@@ -12581,7 +12580,8 @@ class ServerTelemetryBroadcaster {
         maxEnergyJoules: isOwnedByRecipient && c.energyPool ? Number(c.energyPool.getMaxEnergy(c.properties).toFixed(1)) : void 0,
         currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
         maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
-        currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0
+        currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0,
+        isExhausted: isOwnedByRecipient && c.energyPool ? Boolean(c.energyPool.isExhausted) : void 0
       };
     });
     return {
@@ -13250,6 +13250,17 @@ class ServerGameSimulation {
             y: act.launchStartY,
             z: act.launchStartZ ?? 0
           } : void 0;
+          if (char.energyPool && launchVel) {
+            const pool = char.energyPool;
+            const poolJoules = pool.getCurrentEnergy(char.properties);
+            if (poolJoules >= 5 || pool.infiniteEnergy) {
+              const curStamina = pool.getCurrentStamina(char.properties);
+              if (curStamina < 5 || pool.isExhausted) {
+                pool.isExhausted = false;
+                pool.currentStaminaProp.set(Math.max(curStamina, 5), char.properties);
+              }
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -13488,6 +13499,17 @@ class ServerGameSimulation {
             y: pkt.launchStartY,
             z: pkt.launchStartZ ?? 0
           } : void 0;
+          if (char.energyPool && launchVel) {
+            const pool = char.energyPool;
+            const poolJoules = pool.getCurrentEnergy(char.properties);
+            if (poolJoules >= 5 || pool.infiniteEnergy) {
+              const curStamina = pool.getCurrentStamina(char.properties);
+              if (curStamina < 5 || pool.isExhausted) {
+                pool.isExhausted = false;
+                pool.currentStaminaProp.set(Math.max(curStamina, 5), char.properties);
+              }
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,

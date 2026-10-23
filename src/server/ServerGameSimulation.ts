@@ -798,6 +798,17 @@ export class ServerGameSimulation {
             y: (act as any).launchStartY,
             z: (act as any).launchStartZ ?? 0
           } : undefined;
+          if (char.energyPool && launchVel) {
+            const pool = char.energyPool;
+            const poolJoules = pool.getCurrentEnergy(char.properties);
+            if (poolJoules >= 5.0 || pool.infiniteEnergy) {
+              const curStamina = pool.getCurrentStamina(char.properties);
+              if (curStamina < 5.0 || pool.isExhausted) {
+                pool.isExhausted = false;
+                pool.currentStaminaProp.set(Math.max(curStamina, 5.0), char.properties);
+              }
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,
@@ -1084,6 +1095,17 @@ export class ServerGameSimulation {
             y: (pkt as any).launchStartY,
             z: (pkt as any).launchStartZ ?? 0
           } : undefined;
+          if (char.energyPool && launchVel) {
+            const pool = char.energyPool;
+            const poolJoules = pool.getCurrentEnergy(char.properties);
+            if (poolJoules >= 5.0 || pool.infiniteEnergy) {
+              const curStamina = pool.getCurrentStamina(char.properties);
+              if (curStamina < 5.0 || pool.isExhausted) {
+                pool.isExhausted = false;
+                pool.currentStaminaProp.set(Math.max(curStamina, 5.0), char.properties);
+              }
+            }
+          }
           char.throwModule.throwHeldObject(
             char,
             aimX,

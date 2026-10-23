@@ -240,7 +240,6 @@ export class EnergyPool {
 
   public beginTick(): void {
     this.livePowerDraw = 0;
-    this.hadPhysicalExertion = false;
   }
 
   public registerDemand(

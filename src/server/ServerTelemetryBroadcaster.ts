@@ -226,6 +226,7 @@ export class ServerTelemetryBroadcaster {
         currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : undefined,
         maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : undefined,
         currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : undefined,
+        isExhausted: isOwnedByRecipient && c.energyPool ? Boolean(c.energyPool.isExhausted) : undefined,
       };
     });
 

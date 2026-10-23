@@ -53,6 +53,7 @@ export interface GhostEntityState {
   currentStaminaSeconds?: number;
   maxStaminaSeconds?: number;
   currentWattage?: number;
+  isExhausted?: boolean;
 }
 
 export interface ObjectDeletionEvent {

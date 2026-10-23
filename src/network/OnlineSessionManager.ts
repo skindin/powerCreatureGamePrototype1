@@ -673,15 +673,29 @@ export class OnlineSessionManager {
                 if (c.currentEnergyJoules > curEnergy) {
                   localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
                 }
-              } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 1200.0) {
+              } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 2.0) {
                 localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
               }
+            }
+            if (c.isExhausted !== undefined && localChar.energyPool) {
+              localChar.energyPool.isExhausted = c.isExhausted;
             }
             const mainBus = localChar.getEnergyBus("bus_main") || localChar.energyBusses.values().next().value;
             if (mainBus && c.currentStaminaSeconds !== undefined) {
               const curStam = mainBus.getCurrentStamina(localChar.properties);
               if (Math.abs(curStam - c.currentStaminaSeconds) > 2.0) {
-                mainBus.currentStaminaProp.literalValue = c.currentStaminaSeconds;
+                mainBus.setCurrentStamina(c.currentStaminaSeconds, localChar.properties);
+              }
+            }
+            // Reconcile heldObject on local character if server state differs from prediction (e.g. rejected throw)
+            if (c.heldObjectId) {
+              if (!localChar.heldObject || localChar.heldObject.id !== c.heldObjectId) {
+                const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
+                if (targetObj) {
+                  localChar.heldObject = targetObj;
+                  targetObj.isHeld = true;
+                  targetObj.heldBy = localChar;
+                }
               }
             }
             const authoritativeColor = c.playerColor || c.color || (p ? p.color : this.client.assignedColor);
