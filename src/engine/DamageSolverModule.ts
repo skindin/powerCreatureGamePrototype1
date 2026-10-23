@@ -60,9 +60,10 @@ export class DamageSolverModule {
   public damageThresholdHpProp: DynamicProperty;
 
   /**
-   * Weight [0.0, 1.0] for self-velocity contribution in collisions.
-   * 0.0 = arcade (only other moving threats/projectiles damage you, resting props do 0).
-   * 1.0 = Newtonian simulation (sprinting into walls/rocks deals full damage).
+   * Symmetrical multiplier [0.0, 1.0] for voluntary locomotion (walking/running) impact damage.
+   * 0.0 = arcade (voluntary walking into walls or stationary characters inflicts 0 damage on self and other).
+   * 1.0 = Newtonian simulation (walking/sprinting into walls or characters deals full physical shock to both).
+   * Note: Active threats (airborne projectiles, bodies under knockback) always use 1.0.
    */
   public selfImpactWeightProp: DynamicProperty;
 

@@ -5371,18 +5371,17 @@ const _GameObject = class _GameObject {
     }
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
-    const shockDeceleration = impactSpeed * 60 * absorbedFraction;
+    const kSelf = this.isUnderKnockback || this.isInFlight || !this.isCharacter ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
+    const effectiveSpeed = impactSpeed * kSelf;
+    const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
     if (shockDeceleration > 0.01) {
-      const canTakeWallDamage = !this.isCharacter || this.isUnderKnockback || this.isInFlight;
-      if (canTakeWallDamage) {
-        this.dispatchImpact({
-          absorbedShock: shockDeceleration,
-          impactSpeed,
-          otherEntity: null,
-          normalX,
-          normalY
-        });
-      }
+      this.dispatchImpact({
+        absorbedShock: shockDeceleration,
+        impactSpeed: effectiveSpeed,
+        otherEntity: null,
+        normalX,
+        normalY
+      });
     }
     if (this.hasFriction && this.rollModule && this.rollModule.enabled) {
       const roll = this.rollModule;
@@ -7440,9 +7439,10 @@ class DamageSolverModule {
      */
     __publicField(this, "damageThresholdHpProp");
     /**
-     * Weight [0.0, 1.0] for self-velocity contribution in collisions.
-     * 0.0 = arcade (only other moving threats/projectiles damage you, resting props do 0).
-     * 1.0 = Newtonian simulation (sprinting into walls/rocks deals full damage).
+     * Symmetrical multiplier [0.0, 1.0] for voluntary locomotion (walking/running) impact damage.
+     * 0.0 = arcade (voluntary walking into walls or stationary characters inflicts 0 damage on self and other).
+     * 1.0 = Newtonian simulation (walking/sprinting into walls or characters deals full physical shock to both).
+     * Note: Active threats (airborne projectiles, bodies under knockback) always use 1.0.
      */
     __publicField(this, "selfImpactWeightProp");
     /** Cooldown timer to prevent multi-substep collision spam in a single frame */
@@ -9868,21 +9868,37 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const shock = impactSpeed * 60 * absFrac;
+      const kSelf = entity.isUnderKnockback || entity.isInFlight || !entity.isCharacter ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 1);
+      const effectiveSpeed = impactSpeed * threatRatio;
+      const shock = effectiveSpeed * 60 * absFrac;
       if (shock > 0.01) {
-        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
-        if (canTakeWallDamage) {
-          entity.dispatchImpact({
-            absorbedShock: shock,
-            impactSpeed,
-            otherEntity: null,
-            normalX: normX,
-            normalY: normY
-          });
-        }
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed: effectiveSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY
+        });
       }
     }
     return true;
+  }
+  /**
+   * Calculates the symmetrical threat ratio [0.0, 1.0] for a collision.
+   *
+   * uA, uB: closing velocities along contact normal.
+   * multA, multB: gamification multipliers (0.0 = arcade voluntary locomotion, 1.0 = real threat / knockback / projectile).
+   *
+   * Symmetrical guarantee:
+   * If Character A voluntarily walks into resting Character B with multA = 0, both A and B experience threatRatio = 0.
+   * If multA is decreased or removed due to gamification, the impact inflicted on B scales down by that exact same proportion.
+   */
+  static calculateThreatRatio(uA, uB, multA, multB) {
+    const totalClosing = uA + uB;
+    if (totalClosing <= 1e-4) return 0;
+    const effectiveThreat = Math.max(0, uA * multA) + Math.max(0, uB * multB);
+    return Math.max(0, Math.min(1, effectiveThreat / totalClosing));
   }
   /**
    * Applies impulse at contact point respecting the Massless vs Massive rule.
@@ -10013,12 +10029,45 @@ class CollisionResolver {
     const massB = Math.max(0.1, b.mass);
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
-    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const vAn = a.isImmovable ? 0 : a.velocity.x * normX + a.velocity.y * normY;
+    const vBn = b.isImmovable ? 0 : b.velocity.x * normX + b.velocity.y * normY;
+    const relNorm = vAn - vBn;
+    let uA = 0;
+    let uB = 0;
+    if (relNorm > 1e-4) {
+      if (vAn > 0 && vBn < 0) {
+        uA = vAn;
+        uB = -vBn;
+      } else if (vAn > 0 && vBn >= 0) {
+        uA = relNorm;
+        uB = 0;
+      } else if (vAn <= 0 && vBn < 0) {
+        uA = 0;
+        uB = relNorm;
+      } else {
+        uA = relNorm * 0.5;
+        uB = relNorm * 0.5;
+      }
+    }
+    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    if (b.position.z >= a.position.z && relVz < -0.05) {
+      uB = Math.hypot(uB, Math.abs(relVz));
+    } else if (a.position.z >= b.position.z && relVz > 0.05) {
+      uA = Math.hypot(uA, Math.abs(relVz));
+    }
+    const multA = a.isUnderKnockback || a.isInFlight || !a.isCharacter ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
+    const multB = b.isUnderKnockback || b.isInFlight || !b.isCharacter ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
+    const threatRatio = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB);
+    const effectiveDeltaVa = deltaVa * threatRatio;
+    const effectiveDeltaVb = deltaVb * threatRatio;
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatio,
         otherEntity: b,
         normalX: -normX,
         normalY: -normY
@@ -10030,7 +10079,7 @@ class CollisionResolver {
     if (shockB > 0.01) {
       b.dispatchImpact({
         absorbedShock: shockB,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatio,
         otherEntity: a,
         normalX: normX,
         normalY: normY

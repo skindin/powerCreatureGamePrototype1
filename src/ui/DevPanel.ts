@@ -3250,7 +3250,7 @@ export class DevPanel {
         const selfWeightCtrl = new PropertyControl({
           property: ds.selfImpactWeightProp,
           owner: e,
-          label: "Self-Speed Damage Weight (0 = Arcade, 1 = Realism)",
+          label: "Voluntary Bump Weight (0 = Arcade, 1 = Realism)",
           step: 0.05,
           min: 0.0,
           max: 1.0,

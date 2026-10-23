@@ -1024,22 +1024,20 @@ export class GameObject {
     // Cushioning from bounciness (elasticity): absorbed shock is reduced by (1 - bounce).
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : (this.isCharacter ? 0.2 : 0);
     const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
-    const shockDeceleration = impactSpeed * 60 * absorbedFraction;
+    const kSelf = this.isUnderKnockback || this.isInFlight || !this.isCharacter
+      ? 1.0
+      : (this.damageSolverModule ? Math.max(0, Math.min(1.0, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0.0);
+    const effectiveSpeed = impactSpeed * kSelf;
+    const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
 
     if (shockDeceleration > 0.01) {
-      // Ground Locomotion Wall Exemption:
-      // Characters under self-directed voluntary movement do not take wall collision damage.
-      // Wall collision damage only applies if the character was knocked back, flung, or thrown into the wall.
-      const canTakeWallDamage = !this.isCharacter || this.isUnderKnockback || this.isInFlight;
-      if (canTakeWallDamage) {
-        this.dispatchImpact({
-          absorbedShock: shockDeceleration,
-          impactSpeed,
-          otherEntity: null,
-          normalX,
-          normalY,
-        });
-      }
+      this.dispatchImpact({
+        absorbedShock: shockDeceleration,
+        impactSpeed: effectiveSpeed,
+        otherEntity: null,
+        normalX,
+        normalY,
+      });
     }
 
     // Tangential friction and 3D angular velocity coupling on wall

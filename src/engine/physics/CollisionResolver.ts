@@ -404,25 +404,46 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const shock = impactSpeed * 60 * absFrac;
+      const kSelf = entity.isUnderKnockback || entity.isInFlight || !entity.isCharacter
+        ? 1.0
+        : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 1.0);
+      const effectiveSpeed = impactSpeed * threatRatio;
+      const shock = effectiveSpeed * 60 * absFrac;
       if (shock > 0.01) {
-        // Ground Locomotion Wall Exemption:
-        // Characters under self-directed voluntary movement do not take wall collision damage.
-        // Wall collision damage only applies if the character was knocked back, flung, or thrown into the wall.
-        const canTakeWallDamage = !entity.isCharacter || entity.isUnderKnockback || entity.isInFlight;
-        if (canTakeWallDamage) {
-          entity.dispatchImpact({
-            absorbedShock: shock,
-            impactSpeed,
-            otherEntity: null,
-            normalX: normX,
-            normalY: normY,
-          });
-        }
+        entity.dispatchImpact({
+          absorbedShock: shock,
+          impactSpeed: effectiveSpeed,
+          otherEntity: null,
+          normalX: normX,
+          normalY: normY,
+        });
       }
     }
 
     return true;
+  }
+
+  /**
+   * Calculates the symmetrical threat ratio [0.0, 1.0] for a collision.
+   *
+   * uA, uB: closing velocities along contact normal.
+   * multA, multB: gamification multipliers (0.0 = arcade voluntary locomotion, 1.0 = real threat / knockback / projectile).
+   *
+   * Symmetrical guarantee:
+   * If Character A voluntarily walks into resting Character B with multA = 0, both A and B experience threatRatio = 0.
+   * If multA is decreased or removed due to gamification, the impact inflicted on B scales down by that exact same proportion.
+   */
+  public static calculateThreatRatio(
+    uA: number,
+    uB: number,
+    multA: number,
+    multB: number
+  ): number {
+    const totalClosing = uA + uB;
+    if (totalClosing <= 0.0001) return 0.0;
+    const effectiveThreat = Math.max(0, uA * multA) + Math.max(0, uB * multB);
+    return Math.max(0, Math.min(1.0, effectiveThreat / totalClosing));
   }
 
   /**
@@ -598,13 +619,64 @@ export class CollisionResolver {
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
 
-    const shockA = Math.abs(deltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(deltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    // Symmetrical closing threat breakdown along contact normal:
+    // norm points from A toward B.
+    const vAn = a.isImmovable ? 0 : (a.velocity.x * normX + a.velocity.y * normY);
+    const vBn = b.isImmovable ? 0 : (b.velocity.x * normX + b.velocity.y * normY);
+    const relNorm = vAn - vBn; // Positive when closing in 2D
+    let uA = 0;
+    let uB = 0;
+    if (relNorm > 0.0001) {
+      if (vAn > 0 && vBn < 0) {
+        // Head-on closing: both contribute their forward velocity
+        uA = vAn;
+        uB = -vBn;
+      } else if (vAn > 0 && vBn >= 0) {
+        // A is chasing / pushing B
+        uA = relNorm;
+        uB = 0;
+      } else if (vAn <= 0 && vBn < 0) {
+        // B is reversing into A
+        uA = 0;
+        uB = relNorm;
+      } else {
+        uA = relNorm * 0.5;
+        uB = relNorm * 0.5;
+      }
+    }
+
+    // Include vertical closing velocity if closing vertically (e.g. landing on top)
+    const vzA = (!a.isImmovable && a.hasVerticalVelocity) ? a.verticalVelocity : 0;
+    const vzB = (!b.isImmovable && b.hasVerticalVelocity) ? b.verticalVelocity : 0;
+    const relVz = vzB - vzA;
+    if (b.position.z >= a.position.z && relVz < -0.05) {
+      uB = Math.hypot(uB, Math.abs(relVz));
+    } else if (a.position.z >= b.position.z && relVz > 0.05) {
+      uA = Math.hypot(uA, Math.abs(relVz));
+    }
+
+    // Gamification threat multipliers:
+    // Thrown items, airborne projectiles, or bodies under knockback represent full 1.0 physical threats.
+    // Characters under voluntary locomotion use their selfImpactWeight multiplier (default 0.0 = arcade bump immunity).
+    const multA = a.isUnderKnockback || a.isInFlight || !a.isCharacter
+      ? 1.0
+      : (a.damageSolverModule ? Math.max(0, Math.min(1.0, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0.0);
+    const multB = b.isUnderKnockback || b.isInFlight || !b.isCharacter
+      ? 1.0
+      : (b.damageSolverModule ? Math.max(0, Math.min(1.0, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0.0);
+
+    const threatRatio = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB);
+
+    const effectiveDeltaVa = deltaVa * threatRatio;
+    const effectiveDeltaVb = deltaVb * threatRatio;
+
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
 
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatio,
         otherEntity: b,
         normalX: -normX,
         normalY: -normY,
@@ -618,7 +690,7 @@ export class CollisionResolver {
     if (shockB > 0.01) {
       b.dispatchImpact({
         absorbedShock: shockB,
-        impactSpeed: relSpeed,
+        impactSpeed: relSpeed * threatRatio,
         otherEntity: a,
         normalX: normX,
         normalY: normY,

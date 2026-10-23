@@ -1,6 +1,6 @@
 {
-  "version": 57,
-  "lastSaved": "2026-10-23T00:53:03.398Z",
+  "version": 58,
+  "lastSaved": "2026-10-23T02:56:48.380Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -349,7 +349,7 @@
     "throwModule": {
       "throwPowerCapacity": 1200,
       "maxPower": 1200,
-      "maxThrowSpeed": 99
+      "maxThrowSpeed": 69
     },
     "hasHealth": true,
     "healthModule": {
