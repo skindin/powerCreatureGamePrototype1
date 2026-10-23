@@ -687,17 +687,6 @@ export class OnlineSessionManager {
                 mainBus.setCurrentStamina(c.currentStaminaSeconds, localChar.properties);
               }
             }
-            // Reconcile heldObject on local character if server state differs from prediction (e.g. rejected throw)
-            if (c.heldObjectId) {
-              if (!localChar.heldObject || localChar.heldObject.id !== c.heldObjectId) {
-                const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
-                if (targetObj) {
-                  localChar.heldObject = targetObj;
-                  targetObj.isHeld = true;
-                  targetObj.heldBy = localChar;
-                }
-              }
-            }
             const authoritativeColor = c.playerColor || c.color || (p ? p.color : this.client.assignedColor);
             if (authoritativeColor && (localChar.color !== authoritativeColor || localChar.playerColor !== authoritativeColor)) {
               localChar.color = authoritativeColor;

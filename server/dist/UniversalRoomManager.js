@@ -13213,30 +13213,11 @@ class ServerGameSimulation {
           }
         }
       } else if (act.type === "drop") {
-        let dropTarget = char.heldObject;
-        if (!dropTarget && act.targetObjectId) {
-          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
-          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
-            candidate.isHeld = true;
-            candidate.heldBy = char;
-            char.heldObject = candidate;
-            dropTarget = candidate;
-          }
-        }
-        if (dropTarget && char.pickupModule) {
+        if (char.heldObject && char.pickupModule) {
           char.pickupModule.drop(char);
         }
       } else if (act.type === "throw") {
-        let throwTarget = char.heldObject;
-        if (!throwTarget && act.targetObjectId) {
-          const candidate = this.objects.find((o) => o.id === act.targetObjectId);
-          if (candidate && (!candidate.isHeld || candidate.heldBy === char)) {
-            candidate.isHeld = true;
-            candidate.heldBy = char;
-            char.heldObject = candidate;
-            throwTarget = candidate;
-          }
-        }
+        const throwTarget = char.heldObject;
         if (throwTarget && char.throwModule) {
           const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
           const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;

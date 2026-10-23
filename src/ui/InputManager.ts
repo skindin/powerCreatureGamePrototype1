@@ -1786,7 +1786,8 @@ export class InputManager {
 
       // Play Mode:
       // 1. If holding an object:
-      if (activeChar.heldObject && !this.justPickedUp) {
+      if (activeChar.heldObject) {
+        this.justPickedUp = false;
         // If holding an item with an inherent primary ability (e.g. food consumable):
         // Default ability is triggered by Left Mouse.
         // Holding Alt switches to the alternative ability (Throw) until released.
@@ -1861,12 +1862,10 @@ export class InputManager {
           if (!pickedUp) {
             const idx = objects.indexOf(clone);
             if (idx !== -1) objects.splice(idx, 1);
-          } else {
-            this.justPickedUp = true;
           }
         }
-      } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
-        this.justPickedUp = true;
+      } else {
+        activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
       }
     };
 
