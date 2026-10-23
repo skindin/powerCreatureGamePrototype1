@@ -1,6 +1,8 @@
 process.env.WS_NO_BUFFER_UTIL = '1';
 process.env.WS_NO_UTF_8_VALIDATE = '1';
 import { defineConfig, type Plugin, build } from 'vite';
+import { WebSocketServer, type WebSocket } from 'ws';
+import type { IncomingMessage } from 'node:http';
 import localtunnel from 'localtunnel';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,8 +53,13 @@ function serveDistFile(reqPath: string, res: any): boolean {
   if (cleanPath === '/' || cleanPath === '') cleanPath = '/index.html';
 
   const distDir = path.resolve(__dirname, 'dist');
-  const filePath = path.resolve(distDir, cleanPath.replace(/^\//, ''));
+  let filePath = path.resolve(distDir, cleanPath.replace(/^\//, ''));
   if (!filePath.startsWith(distDir)) return false;
+
+  // SPA fallback for HTML routes without file extension
+  if (!fs.existsSync(filePath) && !path.extname(cleanPath)) {
+    filePath = path.resolve(distDir, 'index.html');
+  }
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
@@ -316,41 +323,104 @@ function autoTunnelPlugin(): Plugin {
       }
     },
     configureServer(server) {
-      let activeRoomManager: any = null;
-      const getRoomManager = async () => {
-        if (activeRoomManager) return activeRoomManager;
-        try {
-          const mod = await server.ssrLoadModule?.('/src/server/UniversalRoomManager.ts');
-          if (mod?.UniversalRoomManager) {
-            activeRoomManager = mod.UniversalRoomManager;
-            return activeRoomManager;
-          }
-        } catch (err: any) {
-          console.warn('⚠️ [Vite] Could not SSR load UniversalRoomManager.ts, falling back:', err?.message || err);
+      let currentRoomManagerInstance: any = null;
+
+      const loadServerSnapshot = async (forceReload = false) => {
+        const bundlePath = path.resolve(__dirname, 'server', 'dist', 'UniversalRoomManager.js');
+        if (!fs.existsSync(bundlePath)) {
+          console.log('🔄 [Vite] Building initial server snapshot (server/dist/UniversalRoomManager.js)...');
+          await build({ build: { ssr: 'src/server/UniversalRoomManager.ts', outDir: 'server/dist', emptyOutDir: false } });
         }
-        try {
-          let mod: any;
+
+        if (forceReload && currentRoomManagerInstance) {
           try {
-            mod = await import('./server/dist/UniversalRoomManager.js');
-          } catch {
-            const moduleUrl = pathToFileURL(path.resolve(__dirname, 'server', 'dist', 'UniversalRoomManager.js')).href;
-            mod = await import(moduleUrl);
+            console.log('🔄 [Vite] Stopping previous server simulation instance...');
+            currentRoomManagerInstance.stop();
+          } catch (err) {
+            console.warn('⚠️ [Vite] Error stopping previous room manager:', err);
           }
-          if (mod?.UniversalRoomManager) {
-            activeRoomManager = mod.UniversalRoomManager;
-            return activeRoomManager;
+          for (const client of currentRoomManagerInstance.clients?.values?.() || []) {
+            try {
+              client.ws.close(1001, 'Server restarted with new code snapshot');
+            } catch {}
           }
-        } catch (err: any) {
-          console.error('❌ [Vite] Could not load server/dist/UniversalRoomManager.js:', err?.message || err);
+          currentRoomManagerInstance = null;
         }
-        return null;
+
+        if (!currentRoomManagerInstance) {
+          try {
+            const moduleUrl = pathToFileURL(bundlePath).href + `?v=${Date.now()}`;
+            const mod = await import(moduleUrl);
+            const RoomManagerClass = mod.UniversalRoomManager;
+            currentRoomManagerInstance = RoomManagerClass.getInstance();
+
+            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
+            if (fs.existsSync(configPath)) {
+              try {
+                const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                currentRoomManagerInstance.reloadWorldConfig?.(cfg);
+              } catch {}
+            }
+            console.log('✅ [Vite] Server running from snapshot server/dist/UniversalRoomManager.js');
+          } catch (err: any) {
+            console.error('❌ [Vite] Could not load server/dist/UniversalRoomManager.js:', err?.message || err);
+          }
+        }
+        return currentRoomManagerInstance;
       };
 
-      if (server.httpServer) {
-        getRoomManager().then((UniversalRoomManager) => {
-          if (UniversalRoomManager) {
-            UniversalRoomManager.attach(server.httpServer!);
+      const getRoomManager = async () => {
+        if (!currentRoomManagerInstance) {
+          await loadServerSnapshot(false);
+        }
+        return {
+          getInstance: () => currentRoomManagerInstance,
+        };
+      };
+
+      // Ensure initial snapshots exist so the game starts from snapshot immediately
+      const clientIndex = path.resolve(__dirname, 'dist/index.html');
+      const serverBundle = path.resolve(__dirname, 'server/dist/UniversalRoomManager.js');
+      if (!fs.existsSync(clientIndex) || !fs.existsSync(serverBundle)) {
+        console.log('🔄 [Vite] Initial snapshot missing. Building baseline snapshot...');
+        try {
+          if (!fs.existsSync(clientIndex)) {
+            build({ build: { emptyOutDir: false } }).catch(() => {});
           }
+          if (!fs.existsSync(serverBundle)) {
+            build({ build: { ssr: 'src/server/UniversalRoomManager.ts', outDir: 'server/dist', emptyOutDir: false } }).catch(() => {});
+          }
+        } catch {}
+      }
+
+      if (server.httpServer) {
+        const wss = new WebSocketServer({ noServer: true });
+
+        server.httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
+          try {
+            const rawUrl = (req.url || '/').split('?')[0].replace(/\/+$/, '');
+            const isWsPath = rawUrl === '/ws' || rawUrl.endsWith('/ws');
+            if (isWsPath) {
+              wss.handleUpgrade(req, socket, head, (ws) => {
+                wss.emit('connection', ws, req);
+              });
+            }
+          } catch (err) {
+            console.warn('[Vite] WS upgrade error:', err);
+          }
+        });
+
+        wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+          if (currentRoomManagerInstance) {
+            currentRoomManagerInstance.handleConnection(ws, req);
+          } else {
+            console.warn('⚠️ [Vite] WS connection before server simulation ready, closing...');
+            try { ws.close(1013, 'Server initializing'); } catch {}
+          }
+        });
+
+        loadServerSnapshot(false).catch((err) => {
+          console.error('❌ [Vite] Error initializing server snapshot:', err);
         });
       }
 
@@ -624,31 +694,6 @@ function autoTunnelPlugin(): Plugin {
             currentHead = execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 2000 }).trim();
           } catch {}
 
-          const lastSync = getLastSyncInfo();
-          const codeChanged = hasSourceCodeChangedSince(lastSync.timestamp);
-          const commitChanged = currentHead !== lastSync.commit;
-
-          // Instant return if no code has changed and commit is unchanged
-          if (!codeChanged && !commitChanged && lastSync.timestamp > 0) {
-            console.log(`⚡ [SyncRebuild] Code is already up to date (${currentHead}). Reusing snapshot in <10ms.`);
-            try {
-              const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
-              if (fs.existsSync(configPath)) {
-                const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                const UniversalRoomManager = await getRoomManager();
-                UniversalRoomManager?.getInstance().reloadWorldConfig?.(cfg);
-              }
-            } catch {}
-            res.statusCode = 200;
-            res.end(JSON.stringify({
-              success: true,
-              commitSha: currentHead,
-              timestamp: new Date().toISOString(),
-              message: 'Runtime snapshot is already up to date.',
-            }));
-            return;
-          }
-
           // Pre-flight type check to prevent compiling broken code mid-agent-edit
           try {
             console.log('🔍 [SyncRebuild] Checking TypeScript compilation...');
@@ -667,21 +712,25 @@ function autoTunnelPlugin(): Plugin {
           }
 
           try {
-            console.log('🔄 [SyncRebuild] Rebuilding client and server bundles...');
+            console.log('🔄 [SyncRebuild] Dropping old snapshot and compiling new client & server snapshot...');
             await build({ build: { emptyOutDir: false } });
             await build({ build: { ssr: 'src/server/UniversalRoomManager.ts', outDir: 'server/dist', emptyOutDir: false } });
 
-            // Reload server simulation with latest worldConfig
-            const configPath = path.resolve(__dirname, 'src/config/worldConfig.json');
-            if (fs.existsSync(configPath)) {
-              const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-              const UniversalRoomManager = await getRoomManager();
-              UniversalRoomManager?.getInstance().reloadWorldConfig?.(cfg);
-            }
+            try {
+              const srcCfg = path.resolve(__dirname, 'src/config/worldConfig.json');
+              const dstCfg = path.resolve(__dirname, 'dist/config/worldConfig.json');
+              if (fs.existsSync(srcCfg)) {
+                fs.mkdirSync(path.dirname(dstCfg), { recursive: true });
+                fs.copyFileSync(srcCfg, dstCfg);
+              }
+            } catch {}
+
+            // Reload server simulation with the new code snapshot
+            await loadServerSnapshot(true);
 
             saveLastSyncInfo({ timestamp: Date.now(), commit: currentHead });
 
-            console.log(`✅ [SyncRebuild] Successfully updated runtime snapshot to commit ${currentHead}!`);
+            console.log(`✅ [SyncRebuild] Successfully updated runtime snapshot to commit ${currentHead || 'local'}!`);
             res.statusCode = 200;
             res.end(JSON.stringify({
               success: true,
@@ -806,32 +855,15 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
-        if (isTunnel) {
-
-
-          if (serveDistFile(req.url || '/', res)) {
-            return;
-          }
+        // Serve pre-bundled production snapshot from dist/ for all game requests
+        // (both local desktop app and remote tunnel devices).
+        // This guarantees the game runs from an immutable snapshot of code that DOES NOT CHANGE
+        // when files in src/ are edited. The snapshot only changes when the user clicks "Sync New Code".
+        if (serveDistFile(req.url || '/', res)) {
+          return;
         }
+
         next();
-      });
-
-      // 2. Auto-rebuild dist on source file changes in background so dist is always live
-      let buildTimeout: any = null;
-      server.watcher.on('change', (file) => {
-        if (file.includes('worldConfig')) return;
-        if (file.includes('src') || file.includes('index.html')) {
-          clearTimeout(buildTimeout);
-          buildTimeout = setTimeout(async () => {
-            try {
-              console.log('🔄 [AutoBundle] Updating dist for remote tunnel devices...');
-              await build({ build: { emptyOutDir: false } });
-              console.log('✅ [AutoBundle] dist updated!');
-            } catch (e: any) {
-              console.warn('⚠️ [AutoBundle] Build error:', e?.message || e);
-            }
-          }, 600);
-        }
       });
 
       // 3. Start tunnel
