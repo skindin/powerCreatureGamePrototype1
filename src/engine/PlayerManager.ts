@@ -761,13 +761,14 @@ export class PlayerManager {
 
       // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode (only if aim stick moved), movement direction when walking
       const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
+      const isAimFacingActive = Boolean(slot.isLaserAiming) || (isCharHolding && isThrowActive);
       if (slot.lockedAimPos) {
         const aimDx = slot.lockedAimPos.x - cChar.position.x;
         const aimDy = slot.lockedAimPos.y - cChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
           cChar.facingAngle = Math.atan2(aimDy, aimDx);
         }
-      } else if (slot.hasMovedAimStick) {
+      } else if (isAimFacingActive && slot.hasMovedAimStick) {
         const aimDx = aimX - cChar.position.x;
         const aimDy = aimY - cChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -1003,6 +1004,21 @@ export class PlayerManager {
           ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
           : null;
         char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+        char.onPunchExecuted = (_res, dirX, dirY) => {
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          const action: ReliableActionCommand = {
+            actionId: `act-${actPlayerId}-punch-${++this.actionSeq}-${Date.now()}`,
+            type: "punch" as any,
+            tick: pkt.tick ?? 0,
+            timestamp: performance.now(),
+            playerId: actPlayerId,
+            aimX: char.position.x + dirX * 3,
+            aimY: char.position.y + dirY * 3,
+          };
+          if (!isReplay) {
+            this.onReliableActionDispatched?.(action);
+          }
+        };
       }
 
       if (pkt.facingAngle !== undefined) {

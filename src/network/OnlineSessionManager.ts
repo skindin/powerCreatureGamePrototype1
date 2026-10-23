@@ -633,6 +633,29 @@ export class OnlineSessionManager {
             if (c.maxHp !== undefined && remChar.healthModule) {
               remChar.healthModule.maxHpProp.set(c.maxHp, remChar.properties);
             }
+            // Sync Laser state on remote character
+            if (remChar.laserModule) {
+              remChar.isLaserAiming = Boolean(c.isLaserAiming);
+              remChar.isLaserFiring = Boolean(c.isLaserFiring);
+              remChar.laserModule.isAiming = Boolean(c.isLaserAiming);
+              remChar.laserModule.isFiring = Boolean(c.isLaserFiring);
+              if (c.laserAimX !== undefined && c.laserAimY !== undefined) {
+                remChar.laserAimTarget = { x: c.laserAimX, y: c.laserAimY };
+                remChar.laserModule.currentEndpoint = { x: c.laserAimX, y: c.laserAimY, z: remChar.position.z };
+              }
+              if (c.laserPowerFraction !== undefined) {
+                remChar.laserPowerFraction = c.laserPowerFraction;
+              }
+            }
+            // Sync Melee visual strike on remote character
+            if (remChar.meleeModule && c.lastVisualPunchTime !== undefined) {
+              if (c.lastVisualPunchTime > remChar.meleeModule.lastVisualPunchTime) {
+                remChar.meleeModule.lastVisualPunchTime = c.lastVisualPunchTime;
+                if (c.visualPunchDirX !== undefined && c.visualPunchDirY !== undefined) {
+                  remChar.meleeModule.lastVisualPunchDir = { x: c.visualPunchDirX, y: c.visualPunchDirY };
+                }
+              }
+            }
             // Remote character energy, stamina, and wattage are private to that client and not updated on remote entities
             if (c.heldObjectId) {
               const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
@@ -649,15 +672,24 @@ export class OnlineSessionManager {
           const p = this.gameLoop.players.get(localPlayerId);
           const localChar = p?.character || (localPlayerId === "keyboard" ? (this.gameLoop.players.get("keyboard")?.character || this.gameLoop.playerManager.baseCharacter) : null);
           if (localChar) {
-            // Local client trusts its own predicted health, energy, and stamina, but softly reconciles if server diverges
+            // Local client trusts its own predicted health, energy, and stamina, but softly reconciles if server diverges or applies damage
             if (c.currentHp !== undefined && localChar.healthModule) {
               const curHp = localChar.healthModule.getCurrentHp(localChar.properties);
-              if (Math.abs(curHp - c.currentHp) > 15.0) {
+              if (c.currentHp < curHp || Math.abs(curHp - c.currentHp) > 15.0) {
                 const wasDeadOrZero = curHp <= 0.0001;
                 localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
                 // If server restored HP from 0 (respawn occurred), reset energy and stamina
                 if (wasDeadOrZero && c.currentHp > 10.0) {
                   localChar.resetDynamicValues();
+                }
+                // If authoritative damage was taken and server reports knockback impulse:
+                if (c.currentHp < curHp && c.vx !== undefined && c.vy !== undefined) {
+                  const serverSpeed = Math.hypot(c.vx, c.vy);
+                  if (serverSpeed > 1.5) {
+                    localChar.velocity.x = c.vx;
+                    localChar.velocity.y = c.vy;
+                    localChar.applyKnockbackWindow(800);
+                  }
                 }
               }
             }
@@ -779,20 +811,28 @@ export class OnlineSessionManager {
       if (myServerState) {
         // Local character position is dictated authoritatively by local simulation.
         // We do NOT pull or blend the local player's position toward the delayed server ghost,
-        // which completely eliminates position fighting and join oscillations.
-        // Only adopt extreme server teleports (> 8.0u) if needed.
+        // which completely eliminates position fighting, rubberbanding, and movement slowdowns.
+        // Only adopt extreme server teleports (> 6.0u) if needed (e.g. map reset / out of bounds).
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        // If server reports significant displacement (e.g. external tackle / push / hit by thrown rock):
-        if (dist > 0.06) {
-          const blend = dist > 2.0 ? 1.0 : 0.35;
-          localChar.position.x += dx * blend;
-          localChar.position.y += dy * blend;
-          if (Math.hypot(myServerState.vx, myServerState.vy) > Math.hypot(localChar.velocity.x, localChar.velocity.y)) {
-            localChar.velocity.x += (myServerState.vx - localChar.velocity.x) * blend;
-            localChar.velocity.y += (myServerState.vy - localChar.velocity.y) * blend;
+        if (dist > 6.0) {
+          localChar.position.x = myServerState.x;
+          localChar.position.y = myServerState.y;
+          if (myServerState.z !== undefined) {
+            localChar.position.z = myServerState.z;
+          }
+          localChar.velocity.x = myServerState.vx ?? 0;
+          localChar.velocity.y = myServerState.vy ?? 0;
+        } else {
+          // Massive external impulse from a tackle/explosion while local was near rest:
+          const localSpeed = Math.hypot(localChar.velocity.x, localChar.velocity.y);
+          const serverSpeed = Math.hypot(myServerState.vx, myServerState.vy);
+          if (serverSpeed > 8.0 && localSpeed < 2.0) {
+            localChar.velocity.x = myServerState.vx;
+            localChar.velocity.y = myServerState.vy;
+            localChar.applyKnockbackWindow(800);
           }
         }
       }

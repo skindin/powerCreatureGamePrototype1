@@ -5053,6 +5053,7 @@ class Character extends GameObject {
     __publicField(this, "isMeleeRequested", false);
     __publicField(this, "meleeAimDir", null);
     __publicField(this, "meleeCandidateEntities");
+    __publicField(this, "onPunchExecuted");
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -5209,9 +5210,6 @@ class Character extends GameObject {
         const poolEfficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
         if (pool && pool.enabled) {
-          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
-            return list;
-          }
           const throwCap = this.throwModule.maxPowerProp.get(this.properties);
           const currentStamina = pool.currentStaminaProp.get(this.properties);
           const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
@@ -5220,7 +5218,8 @@ class Character extends GameObject {
             currentStamina,
             poolEnergy
           );
-          if (metabolicJoules > maxDeliverable + 1e-3) {
+          metabolicJoules = Math.min(maxDeliverable, metabolicJoules);
+          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
             return list;
           }
         }
@@ -5547,9 +5546,15 @@ class Character extends GameObject {
     }
     if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
       const candidates = this.meleeCandidateEntities ?? arena.entities;
-      const dirX = Math.cos(this.facingAngle ?? 0);
-      const dirY = Math.sin(this.facingAngle ?? 0);
-      this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
+      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
+      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      const mag = Math.hypot(dirX, dirY);
+      const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(this.facingAngle ?? 0);
+      const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(this.facingAngle ?? 0);
+      const hitResult = this.meleeModule.executePunch(this, normDirX, normDirY, candidates, arena);
+      if (hitResult && this.onPunchExecuted) {
+        this.onPunchExecuted(hitResult, normDirX, normDirY);
+      }
     }
     if (this.energyPool && this.energyPool.enabled) {
       this.energyPool.update(dt, this.properties);
@@ -8906,7 +8911,15 @@ class ServerTelemetryBroadcaster {
         currentStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentStamina(c.properties).toFixed(2)) : void 0,
         maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : void 0,
         currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : void 0,
-        isExhausted: isOwnedByRecipient && c.energyPool ? Boolean(c.energyPool.isExhausted) : void 0
+        isExhausted: isOwnedByRecipient && c.energyPool ? Boolean(c.energyPool.isExhausted) : void 0,
+        lastVisualPunchTime: c.meleeModule ? c.meleeModule.lastVisualPunchTime : void 0,
+        visualPunchDirX: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.x.toFixed(3)) : void 0,
+        visualPunchDirY: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.y.toFixed(3)) : void 0,
+        isLaserAiming: Boolean(c.isLaserAiming),
+        isLaserFiring: Boolean(c.isLaserFiring),
+        laserAimX: c.laserAimTarget ? Number(c.laserAimTarget.x.toFixed(3)) : void 0,
+        laserAimY: c.laserAimTarget ? Number(c.laserAimTarget.y.toFixed(3)) : void 0,
+        laserPowerFraction: typeof c.laserPowerFraction === "number" ? Number(c.laserPowerFraction.toFixed(2)) : void 0
       };
     });
     return {
@@ -9558,13 +9571,20 @@ class ServerGameSimulation {
           } : void 0;
           if (char.energyPool && launchVel) {
             const pool = char.energyPool;
-            const poolJoules = pool.getCurrentEnergy(char.properties);
-            if (poolJoules >= 5 || pool.infiniteEnergy) {
-              const curStamina = pool.getCurrentStamina(char.properties);
-              if (curStamina < 5 || pool.isExhausted) {
-                pool.isExhausted = false;
-                pool.currentStaminaProp.set(Math.max(curStamina, 5), char.properties);
-              }
+            const heldMass = throwTarget.hasMass ? Math.max(0.1, throwTarget.mass) : 1;
+            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
+            const neededJoules = 0.5 * heldMass * launchSpeed * launchSpeed / poolEfficiency + 100;
+            pool.isExhausted = false;
+            const curStam = pool.getCurrentStamina(char.properties);
+            if (curStam < neededJoules) {
+              pool.currentStaminaProp.set(neededJoules, char.properties);
+            }
+            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
+              pool.currentEnergyProp.set(neededJoules, char.properties);
+            }
+            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
+              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
             }
           }
           char.throwModule.throwHeldObject(
@@ -9578,6 +9598,19 @@ class ServerGameSimulation {
             launchVel,
             launchPos
           );
+        }
+      } else if (act.type === "punch") {
+        if (char.meleeModule && char.meleeModule.enabled) {
+          const aimX = act.aimX !== void 0 ? act.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
+          const aimY = act.aimY !== void 0 ? act.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
+          const dirX = aimX - char.position.x;
+          const dirY = aimY - char.position.y;
+          const mag = Math.hypot(dirX, dirY);
+          const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(char.facingAngle);
+          const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(char.facingAngle);
+          char.facingAngle = Math.atan2(normDirY, normDirX);
+          const candidates = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+          char.melee(this.arena, candidates, normDirX, normDirY);
         }
       }
     }
@@ -9807,13 +9840,20 @@ class ServerGameSimulation {
           } : void 0;
           if (char.energyPool && launchVel) {
             const pool = char.energyPool;
-            const poolJoules = pool.getCurrentEnergy(char.properties);
-            if (poolJoules >= 5 || pool.infiniteEnergy) {
-              const curStamina = pool.getCurrentStamina(char.properties);
-              if (curStamina < 5 || pool.isExhausted) {
-                pool.isExhausted = false;
-                pool.currentStaminaProp.set(Math.max(curStamina, 5), char.properties);
-              }
+            const heldMass = char.heldObject.hasMass ? Math.max(0.1, char.heldObject.mass) : 1;
+            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
+            const neededJoules = 0.5 * heldMass * launchSpeed * launchSpeed / poolEfficiency + 100;
+            pool.isExhausted = false;
+            const curStam = pool.getCurrentStamina(char.properties);
+            if (curStam < neededJoules) {
+              pool.currentStaminaProp.set(neededJoules, char.properties);
+            }
+            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
+              pool.currentEnergyProp.set(neededJoules, char.properties);
+            }
+            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
+              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
             }
           }
           char.throwModule.throwHeldObject(
@@ -9857,6 +9897,18 @@ class ServerGameSimulation {
             grabRequests.push({ char, target, pkt });
           }
         }
+        if (char.laserModule) {
+          char.isLaserAiming = Boolean(pkt.isLaserAiming);
+          char.isLaserFiring = Boolean(pkt.isLaserFiring);
+          char.laserAimTarget = pkt.laserAimX !== void 0 ? { x: pkt.laserAimX, y: pkt.laserAimY } : null;
+          char.laserPowerFraction = typeof pkt.laserPowerFraction === "number" ? pkt.laserPowerFraction : 1;
+          char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+        }
+        if (char.meleeModule) {
+          char.isMeleeRequested = Boolean(pkt.isMeleeRequested);
+          char.meleeAimDir = pkt.meleeAimX !== void 0 ? { x: pkt.meleeAimX - char.position.x, y: pkt.meleeAimY - char.position.y } : null;
+          char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+        }
         char.updateCharacter(
           dt,
           { x: pkt.moveX, y: pkt.moveY },
@@ -9887,6 +9939,15 @@ class ServerGameSimulation {
       } else {
         if (!char.heldObject || !char.canConsumeHeldObject()) {
           char.isUsingItem = false;
+        }
+        if (char.laserModule) {
+          char.isLaserAiming = false;
+          char.isLaserFiring = false;
+          char.laserAimTarget = null;
+        }
+        if (char.meleeModule) {
+          char.isMeleeRequested = false;
+          char.meleeAimDir = null;
         }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }
@@ -10579,6 +10640,21 @@ const _UniversalRoomManager = class _UniversalRoomManager {
               data.character.color = sChar.color;
               if (data.character.isUsingItem !== void 0) {
                 sChar.isUsingItem = Boolean(data.character.isUsingItem);
+              }
+              if (data.character.lastVisualPunchTime !== void 0 && sChar.meleeModule) {
+                if (data.character.lastVisualPunchTime > sChar.meleeModule.lastVisualPunchTime) {
+                  sChar.meleeModule.lastVisualPunchTime = data.character.lastVisualPunchTime;
+                  if (data.character.visualPunchDirX !== void 0 && data.character.visualPunchDirY !== void 0) {
+                    sChar.meleeModule.lastVisualPunchDir = { x: data.character.visualPunchDirX, y: data.character.visualPunchDirY };
+                  }
+                }
+              }
+              if (sChar.laserModule && data.character.isLaserAiming !== void 0) {
+                sChar.isLaserAiming = Boolean(data.character.isLaserAiming);
+                sChar.isLaserFiring = Boolean(data.character.isLaserFiring);
+                if (data.character.laserAimX !== void 0 && data.character.laserAimY !== void 0) {
+                  sChar.laserAimTarget = { x: data.character.laserAimX, y: data.character.laserAimY };
+                }
               }
             }
             this.simulation.syncCharacterFromPacket(data.character);

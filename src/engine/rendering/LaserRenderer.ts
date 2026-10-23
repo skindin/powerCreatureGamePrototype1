@@ -29,7 +29,21 @@ export class LaserRenderer {
     const laser = character.laserModule;
     if (!laser || !laser.enabled) return;
     if (!laser.isAiming && !laser.isFiring) return;
-    if (!laser.currentEndpoint || !laser.startPoint) return;
+    // Start position fallback (character weapon/chest origin)
+    const startPoint = laser.startPoint ?? {
+      x: character.position.x,
+      y: character.position.y,
+      z: character.position.z ?? 0,
+    };
+
+    // End position fallback (adapting to target elevation)
+    const endPoint = laser.currentEndpoint ?? (character.laserAimTarget ? {
+      x: character.laserAimTarget.x,
+      y: character.laserAimTarget.y,
+      z: character.position.z ?? 0,
+    } : null);
+
+    if (!endPoint) return;
 
     const ctx = this.ctx;
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
@@ -37,16 +51,16 @@ export class LaserRenderer {
     const now = performance.now();
 
     // Start position in screen space (character weapon/chest origin)
-    const startX = laser.startPoint.x * ppu;
-    const startY = (laser.startPoint.y - laser.startPoint.z * scale) * ppu;
+    const startX = startPoint.x * ppu;
+    const startY = (startPoint.y - startPoint.z * scale) * ppu;
 
     // End position in screen space (adapting to target elevation)
-    const endX = laser.currentEndpoint.x * ppu;
-    const endY = (laser.currentEndpoint.y - laser.currentEndpoint.z * scale) * ppu;
+    const endX = endPoint.x * ppu;
+    const endY = (endPoint.y - endPoint.z * scale) * ppu;
 
     // Ground footprint position for altitude connector
-    const groundEndY = laser.currentEndpoint.y * ppu;
-    const isElevated = laser.currentEndpoint.z > 0.08;
+    const groundEndY = endPoint.y * ppu;
+    const isElevated = endPoint.z > 0.08;
 
     const maxDamage = Math.max(1, laser.getMaxDamageRate(character.properties));
 

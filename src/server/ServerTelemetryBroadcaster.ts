@@ -227,6 +227,14 @@ export class ServerTelemetryBroadcaster {
         maxStaminaSeconds: isOwnedByRecipient && mainBus ? Number(mainBus.getMaxStamina(c.properties).toFixed(2)) : undefined,
         currentWattage: isOwnedByRecipient && mainBus ? Number(mainBus.getCurrentWattage(c.properties).toFixed(1)) : undefined,
         isExhausted: isOwnedByRecipient && c.energyPool ? Boolean(c.energyPool.isExhausted) : undefined,
+        lastVisualPunchTime: c.meleeModule ? c.meleeModule.lastVisualPunchTime : undefined,
+        visualPunchDirX: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.x.toFixed(3)) : undefined,
+        visualPunchDirY: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.y.toFixed(3)) : undefined,
+        isLaserAiming: Boolean(c.isLaserAiming),
+        isLaserFiring: Boolean(c.isLaserFiring),
+        laserAimX: c.laserAimTarget ? Number(c.laserAimTarget.x.toFixed(3)) : undefined,
+        laserAimY: c.laserAimTarget ? Number(c.laserAimTarget.y.toFixed(3)) : undefined,
+        laserPowerFraction: typeof c.laserPowerFraction === "number" ? Number(c.laserPowerFraction.toFixed(2)) : undefined,
       };
     });
 

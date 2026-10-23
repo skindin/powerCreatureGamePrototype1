@@ -54,6 +54,16 @@ export interface GhostEntityState {
   maxStaminaSeconds?: number;
   currentWattage?: number;
   isExhausted?: boolean;
+  // Melee Attack visual sync fields
+  lastVisualPunchTime?: number;
+  visualPunchDirX?: number;
+  visualPunchDirY?: number;
+  // Laser Blast ability sync fields
+  isLaserAiming?: boolean;
+  isLaserFiring?: boolean;
+  laserAimX?: number;
+  laserAimY?: number;
+  laserPowerFraction?: number;
 }
 
 export interface ObjectDeletionEvent {

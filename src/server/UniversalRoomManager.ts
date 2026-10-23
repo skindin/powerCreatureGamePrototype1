@@ -727,6 +727,21 @@ export class UniversalRoomManager {
               if (data.character.isUsingItem !== undefined) {
                 sChar.isUsingItem = Boolean(data.character.isUsingItem);
               }
+              if (data.character.lastVisualPunchTime !== undefined && sChar.meleeModule) {
+                if (data.character.lastVisualPunchTime > sChar.meleeModule.lastVisualPunchTime) {
+                  sChar.meleeModule.lastVisualPunchTime = data.character.lastVisualPunchTime;
+                  if (data.character.visualPunchDirX !== undefined && data.character.visualPunchDirY !== undefined) {
+                    sChar.meleeModule.lastVisualPunchDir = { x: data.character.visualPunchDirX, y: data.character.visualPunchDirY };
+                  }
+                }
+              }
+              if (sChar.laserModule && data.character.isLaserAiming !== undefined) {
+                sChar.isLaserAiming = Boolean(data.character.isLaserAiming);
+                sChar.isLaserFiring = Boolean(data.character.isLaserFiring);
+                if (data.character.laserAimX !== undefined && data.character.laserAimY !== undefined) {
+                  sChar.laserAimTarget = { x: data.character.laserAimX, y: data.character.laserAimY };
+                }
+              }
             }
             this.simulation.syncCharacterFromPacket(data.character);
           }

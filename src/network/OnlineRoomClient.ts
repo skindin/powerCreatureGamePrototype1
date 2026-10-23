@@ -430,6 +430,14 @@ export class OnlineRoomClient {
         heldObjectId: character.heldObject ? character.heldObject.id : null,
         isHolding: Boolean(character.heldObject),
         isUsingItem: Boolean(character.isUsingItem),
+        isLaserAiming: Boolean(character.isLaserAiming),
+        isLaserFiring: Boolean(character.isLaserFiring),
+        laserAimX: character.laserAimTarget ? Number(character.laserAimTarget.x.toFixed(3)) : undefined,
+        laserAimY: character.laserAimTarget ? Number(character.laserAimTarget.y.toFixed(3)) : undefined,
+        laserPowerFraction: typeof character.laserPowerFraction === "number" ? Number(character.laserPowerFraction.toFixed(2)) : undefined,
+        lastVisualPunchTime: character.meleeModule ? character.meleeModule.lastVisualPunchTime : undefined,
+        visualPunchDirX: character.meleeModule ? Number(character.meleeModule.lastVisualPunchDir.x.toFixed(3)) : undefined,
+        visualPunchDirY: character.meleeModule ? Number(character.meleeModule.lastVisualPunchDir.y.toFixed(3)) : undefined,
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)

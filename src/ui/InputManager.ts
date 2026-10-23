@@ -1237,6 +1237,8 @@ export class InputManager {
           slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
           slot.isLockHeld = true;
           slot.arcModulationDeltaY = 0;
+          slot.hasMovedAimStick = true;
+          slot.aimMovedWhileInRange = true;
         }
 
         // Freeze cursor at lockedAimPos while RB is held
@@ -1249,6 +1251,8 @@ export class InputManager {
         if (Math.abs(ry) > deadzone) {
           const modulationSpeed = 450.0; // pixels per second on the rail
           slot.arcModulationDeltaY = (slot.arcModulationDeltaY ?? 0) + ry * modulationSpeed * dt;
+          slot.hasMovedAimStick = true;
+          slot.aimMovedWhileInRange = true;
         }
       } else {
         if (slot.isLockHeld) {
@@ -1289,8 +1293,8 @@ export class InputManager {
       }
 
       if (rMag > deadzone && !slot.isLockHeld) {
-        // Move aim cursor if aiming is enabled: throwing mode (LT held), or laser mode (LB held)
-        const canAim = !isHolding || !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld || slot.isLaserAiming;
+        // Move aim cursor if aiming is enabled: throwing mode (LT held or throwable held), laser mode (LB held), or selecting nearby grabbable objects
+        const canAim = slot.isLaserAiming || (isHolding && (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld)) || (!isHolding && hasReachable);
         if (canAim) {
           const cursorSpeed = 17.0;
           if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {

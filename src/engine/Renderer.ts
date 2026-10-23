@@ -488,7 +488,6 @@ export class Renderer {
 
       // 3c. Ground-Level Laser Blasts (Rendered BEFORE ground entities so objects at the same position render above the laser!)
       for (const char of characters) {
-        if (isRemoteForThisView(char)) continue;
         if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
           const isElevated = char.position.z >= arena.wallHeight - 0.05;
           if (!isElevated) {
@@ -565,7 +564,6 @@ export class Renderer {
 
       // 6b. Elevated Laser Blasts (Rendered AFTER wall tops, but BEFORE elevated entities so elevated objects render above the laser!)
       for (const char of characters) {
-        if (isRemoteForThisView(char)) continue;
         if (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)) {
           const isElevated = char.position.z >= arena.wallHeight - 0.05;
           if (isElevated) {

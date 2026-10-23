@@ -781,13 +781,20 @@ export class ServerGameSimulation {
           } : undefined;
           if (char.energyPool && launchVel) {
             const pool = char.energyPool;
-            const poolJoules = pool.getCurrentEnergy(char.properties);
-            if (poolJoules >= 5.0 || pool.infiniteEnergy) {
-              const curStamina = pool.getCurrentStamina(char.properties);
-              if (curStamina < 5.0 || pool.isExhausted) {
-                pool.isExhausted = false;
-                pool.currentStaminaProp.set(Math.max(curStamina, 5.0), char.properties);
-              }
+            const heldMass = throwTarget.hasMass ? Math.max(0.1, throwTarget.mass) : 1.0;
+            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
+            const neededJoules = (0.5 * heldMass * launchSpeed * launchSpeed) / poolEfficiency + 100;
+            pool.isExhausted = false;
+            const curStam = pool.getCurrentStamina(char.properties);
+            if (curStam < neededJoules) {
+              pool.currentStaminaProp.set(neededJoules, char.properties);
+            }
+            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
+              pool.currentEnergyProp.set(neededJoules, char.properties);
+            }
+            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
+              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
             }
           }
           char.throwModule.throwHeldObject(
@@ -801,6 +808,19 @@ export class ServerGameSimulation {
             launchVel,
             launchPos
           );
+        }
+      } else if ((act.type as string) === "punch") {
+        if (char.meleeModule && char.meleeModule.enabled) {
+          const aimX = act.aimX !== undefined ? act.aimX : (char.position.x + Math.cos(char.facingAngle) * 3);
+          const aimY = act.aimY !== undefined ? act.aimY : (char.position.y + Math.sin(char.facingAngle) * 3);
+          const dirX = aimX - char.position.x;
+          const dirY = aimY - char.position.y;
+          const mag = Math.hypot(dirX, dirY);
+          const normDirX = mag > 0.001 ? dirX / mag : Math.cos(char.facingAngle);
+          const normDirY = mag > 0.001 ? dirY / mag : Math.sin(char.facingAngle);
+          char.facingAngle = Math.atan2(normDirY, normDirX);
+          const candidates = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+          char.melee(this.arena, candidates, normDirX, normDirY);
         }
       }
     }
@@ -1078,13 +1098,20 @@ export class ServerGameSimulation {
           } : undefined;
           if (char.energyPool && launchVel) {
             const pool = char.energyPool;
-            const poolJoules = pool.getCurrentEnergy(char.properties);
-            if (poolJoules >= 5.0 || pool.infiniteEnergy) {
-              const curStamina = pool.getCurrentStamina(char.properties);
-              if (curStamina < 5.0 || pool.isExhausted) {
-                pool.isExhausted = false;
-                pool.currentStaminaProp.set(Math.max(curStamina, 5.0), char.properties);
-              }
+            const heldMass = char.heldObject.hasMass ? Math.max(0.1, char.heldObject.mass) : 1.0;
+            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
+            const neededJoules = (0.5 * heldMass * launchSpeed * launchSpeed) / poolEfficiency + 100;
+            pool.isExhausted = false;
+            const curStam = pool.getCurrentStamina(char.properties);
+            if (curStam < neededJoules) {
+              pool.currentStaminaProp.set(neededJoules, char.properties);
+            }
+            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
+              pool.currentEnergyProp.set(neededJoules, char.properties);
+            }
+            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
+              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
             }
           }
           char.throwModule.throwHeldObject(
@@ -1134,6 +1161,28 @@ export class ServerGameSimulation {
           }
         }
 
+        // Laser inputs
+        if (char.laserModule) {
+          char.isLaserAiming = Boolean((pkt as any).isLaserAiming);
+          char.isLaserFiring = Boolean((pkt as any).isLaserFiring);
+          char.laserAimTarget = (pkt as any).laserAimX !== undefined
+            ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
+            : null;
+          char.laserPowerFraction = typeof (pkt as any).laserPowerFraction === "number"
+            ? (pkt as any).laserPowerFraction
+            : 1.0;
+          char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+        }
+
+        // Melee inputs
+        if (char.meleeModule) {
+          char.isMeleeRequested = Boolean((pkt as any).isMeleeRequested);
+          char.meleeAimDir = (pkt as any).meleeAimX !== undefined
+            ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
+            : null;
+          char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
+        }
+
         // Integrate character movement & climbing
         char.updateCharacter(
           dt,
@@ -1168,6 +1217,15 @@ export class ServerGameSimulation {
         // Neutral step for character without input packet this tick
         if (!char.heldObject || !char.canConsumeHeldObject()) {
           char.isUsingItem = false;
+        }
+        if (char.laserModule) {
+          char.isLaserAiming = false;
+          char.isLaserFiring = false;
+          char.laserAimTarget = null;
+        }
+        if (char.meleeModule) {
+          char.isMeleeRequested = false;
+          char.meleeAimDir = null;
         }
         char.updateCharacter(dt, { x: 0, y: 0 }, false, null, this.arena, false, this.arena.entities, false);
       }

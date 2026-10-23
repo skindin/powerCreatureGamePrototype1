@@ -177,6 +177,7 @@ export class Character extends GameObject {
   public isMeleeRequested: boolean = false;
   public meleeAimDir: { x: number; y: number } | null = null;
   public meleeCandidateEntities?: GameObject[];
+  public onPunchExecuted?: (hitResult: MeleeHitResult, dirX: number, dirY: number) => void;
 
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
@@ -203,11 +204,8 @@ export class Character extends GameObject {
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
         // A single burst action cannot exceed the throw ability's power rating * strength,
-        // available stamina Joules, or pool reserves. Do not display anticipation if cannot afford:
+        // available stamina Joules, or pool reserves:
         if (pool && pool.enabled) {
-          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
-            return list;
-          }
           const throwCap = this.throwModule.maxPowerProp.get(this.properties);
           const currentStamina = pool.currentStaminaProp.get(this.properties);
           const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
@@ -216,7 +214,12 @@ export class Character extends GameObject {
             currentStamina,
             poolEnergy
           );
-          if (metabolicJoules > maxDeliverable + 0.001) {
+
+          // Discrete time-step Euler margin in vz can push raw mechanical work slightly above nominal max.
+          // Clamp metabolicJoules strictly to maxDeliverable so the preview accurately matches what will be deducted upon throw:
+          metabolicJoules = Math.min(maxDeliverable, metabolicJoules);
+
+          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
             return list;
           }
         }
@@ -777,9 +780,15 @@ export class Character extends GameObject {
     // 2b3. Process Melee Attack ability in character facing direction
     if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
       const candidates = this.meleeCandidateEntities ?? arena.entities;
-      const dirX = Math.cos(this.facingAngle ?? 0);
-      const dirY = Math.sin(this.facingAngle ?? 0);
-      this.meleeModule.executePunch(this, dirX, dirY, candidates, arena);
+      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
+      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
+      const mag = Math.hypot(dirX, dirY);
+      const normDirX = mag > 0.001 ? dirX / mag : Math.cos(this.facingAngle ?? 0);
+      const normDirY = mag > 0.001 ? dirY / mag : Math.sin(this.facingAngle ?? 0);
+      const hitResult = this.meleeModule.executePunch(this, normDirX, normDirY, candidates, arena);
+      if (hitResult && this.onPunchExecuted) {
+        this.onPunchExecuted(hitResult, normDirX, normDirY);
+      }
     }
 
     // 2c. Update energy pool stamina recovery (runs after all physical abilities and buffers in the tick)

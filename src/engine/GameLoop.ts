@@ -856,21 +856,39 @@ export class GameLoop {
         continue;
       }
 
-      // 5. Ballistic In-Flight Prediction for LOCAL player's throw:
-      // While a thrown object is in ballistic flight from local player, allow local prediction
-      // unless server reports collision/landing (sleeping) or significant divergence (> 0.6 units).
-      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > (localObj.supportingSurfaceHeight ?? 0) + 0.05;
+      // 5. Ballistic In-Flight & Landing Prediction for LOCAL player's throw:
+      // While a thrown object is in ballistic flight or settling upon ground impact,
+      // prevent delayed trailing server snapshots from pulling the object backward or back up into the air.
+      const groundZ = localObj.supportingSurfaceHeight ?? 0;
+      const isAirborne = !localObj.isRestingOnSurface && localObj.position.z > groundZ + 0.05;
       const thrower = (localObj.originalThrower || localObj.lastThrower) as Character | null;
       const wasThrownByLocal = Boolean(thrower && isLocalChar(thrower));
       if (sObj.isGrounded) {
         localObj.isInFlight = false;
         localObj.originalThrower = null;
       }
-      if (wasThrownByLocal && localObj.isInFlight && isAirborne && !sObj.isSleeping && !sObj.isGrounded) {
-        const flightDx = sObj.x - localObj.position.x;
-        const flightDy = sObj.y - localObj.position.y;
-        if (Math.hypot(flightDx, flightDy) < 0.6) {
-          continue;
+      if (wasThrownByLocal) {
+        const horizDist = Math.hypot(sObj.x - localObj.position.x, sObj.y - localObj.position.y);
+        if (!sObj.isSleeping && horizDist < 1.0) {
+          // If local object has already touched the ground, keep it grounded!
+          // NEVER pull a landed object back up into the air toward a trailing in-flight server ghost.
+          if (!isAirborne && sObj.z > groundZ + 0.05) {
+            localObj.position.z = groundZ;
+            localObj.verticalVelocity = Math.min(0, localObj.verticalVelocity);
+            continue;
+          }
+
+          // In flight and within expected latency envelope, local prediction continues smoothly
+          if (localObj.isInFlight && isAirborne && !sObj.isSleeping) {
+            continue;
+          }
+
+          // Recently landed and rolling out on the ground:
+          if (!isAirborne && (sObj.isGrounded || sObj.z <= groundZ + 0.15)) {
+            if (horizDist < 0.5) {
+              continue;
+            }
+          }
         }
       }
 
@@ -920,11 +938,14 @@ export class GameLoop {
       const blend = localSpeed > 0.2 ? 0.30 : 0.25;
       localObj.position.x += dx * blend;
       localObj.position.y += dy * blend;
-      localObj.position.z += dz * blend;
-      localObj.velocity.x += (sObj.vx - localObj.velocity.x) * blend;
-      localObj.velocity.y += (sObj.vy - localObj.velocity.y) * blend;
-      if (sObj.vz !== undefined) {
-        localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+      // Never blend altitude z back up into the air if the object is already on the ground/surface
+      if (!isAirborne && dz > 0 && sObj.z > groundZ + 0.05) {
+        localObj.position.z = groundZ;
+      } else {
+        localObj.position.z += dz * blend;
+        if (sObj.vz !== undefined) {
+          localObj.verticalVelocity += (sObj.vz - localObj.verticalVelocity) * blend;
+        }
       }
       if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
         localObj.rollModule.angularVelocity.x += (sObj.angX - localObj.rollModule.angularVelocity.x) * blend;
