@@ -669,6 +669,61 @@ async function bootstrap(): Promise<void> {
     if (e.key === "Escape") closeNameModal();
   });
 
+  // Setup Inspector Sidebar & Dev Tools Accessibility Controls
+  const toggleSidebarBtn = document.getElementById("toggle-sidebar-btn");
+  const quickSidebarTab = document.getElementById("quick-sidebar-tab");
+  const mobileBtnInspector = document.getElementById("mobile-btn-inspector");
+
+  const setSidebarOpen = (open: boolean) => {
+    if (!devContainer) return;
+    if (activeGameMode === "online" && open) {
+      return; // Dev tools strictly inaccessible in online mode
+    }
+    if (open) {
+      devContainer.classList.remove("collapsed");
+      toggleSidebarBtn?.classList.add("active");
+      quickSidebarTab?.classList.add("hidden");
+    } else {
+      devContainer.classList.add("collapsed");
+      toggleSidebarBtn?.classList.remove("active");
+      if (activeGameMode !== "online") {
+        quickSidebarTab?.classList.remove("hidden");
+      } else {
+        quickSidebarTab?.classList.add("hidden");
+      }
+    }
+    try {
+      localStorage.setItem("pcg_sidebar_open", open ? "true" : "false");
+    } catch {
+      // Ignore localStorage errors
+    }
+  };
+
+  const updateDevToolsAccessibility = (mode: GameModeType) => {
+    const isOnline = (mode === "online");
+    devPanel.setOnlineMode(isOnline);
+
+    if (isOnline) {
+      setSidebarOpen(false);
+      toggleSidebarBtn?.classList.add("hidden");
+      quickSidebarTab?.classList.add("hidden");
+      mobileBtnInspector?.classList.add("hidden");
+    } else {
+      toggleSidebarBtn?.classList.remove("hidden");
+      mobileBtnInspector?.classList.remove("hidden");
+      const isCollapsed = devContainer.classList.contains("collapsed");
+      if (isCollapsed) {
+        quickSidebarTab?.classList.remove("hidden");
+      } else {
+        quickSidebarTab?.classList.add("hidden");
+      }
+    }
+
+    try {
+      (window as any).chrome?.webview?.postMessage(JSON.stringify({ type: "gameMode", mode }));
+    } catch {}
+  };
+
   const setGameMode = (mode: GameModeType) => {
     activeGameMode = mode;
     if (gameLoop) {
@@ -684,6 +739,8 @@ async function bootstrap(): Promise<void> {
     mobileModeLocalBtn?.classList.toggle("active", mode === "local");
     mobileModeBoomerangBtn?.classList.toggle("active", mode === "boomerang");
     mobileModeOnlineBtn?.classList.toggle("active", mode === "online");
+
+    updateDevToolsAccessibility(mode);
 
     if (mode === "local") {
       persistentPingHud?.classList.add("hidden");
@@ -1017,27 +1074,6 @@ async function bootstrap(): Promise<void> {
   });
 
   // 8. Setup Inspector Sidebar Toggle & Auto-Responsive Layout
-  const toggleSidebarBtn = document.getElementById("toggle-sidebar-btn");
-  const quickSidebarTab = document.getElementById("quick-sidebar-tab");
-
-  const setSidebarOpen = (open: boolean) => {
-    if (!devContainer) return;
-    if (open) {
-      devContainer.classList.remove("collapsed");
-      toggleSidebarBtn?.classList.add("active");
-      quickSidebarTab?.classList.add("hidden");
-    } else {
-      devContainer.classList.add("collapsed");
-      toggleSidebarBtn?.classList.remove("active");
-      quickSidebarTab?.classList.remove("hidden");
-    }
-    try {
-      localStorage.setItem("pcg_sidebar_open", open ? "true" : "false");
-    } catch {
-      // Ignore localStorage errors
-    }
-  };
-
   // Default to open on desktop/laptop (>= 950px), or restore saved user preference
   let startSidebarOpen = true;
   const isMobileOrTouch = window.matchMedia("(pointer: coarse)").matches;
@@ -1056,11 +1092,13 @@ async function bootstrap(): Promise<void> {
   setSidebarOpen(startSidebarOpen);
 
   toggleSidebarBtn?.addEventListener("click", () => {
+    if (activeGameMode === "online") return;
     const isCollapsed = devContainer.classList.contains("collapsed");
     setSidebarOpen(isCollapsed);
   });
 
   quickSidebarTab?.addEventListener("click", () => {
+    if (activeGameMode === "online") return;
     setSidebarOpen(true);
   });
 
@@ -1452,6 +1490,7 @@ async function bootstrap(): Promise<void> {
       (e.code === "Backquote" || (e.code === "KeyI" && !e.ctrlKey && !e.metaKey && !e.altKey)) &&
       !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement)
     ) {
+      if (activeGameMode === "online") return;
       const isCollapsed = devContainer.classList.contains("collapsed");
       setSidebarOpen(isCollapsed);
     }
@@ -1540,7 +1579,6 @@ async function bootstrap(): Promise<void> {
   const mobileBtnCopyUrl = document.getElementById("mobile-btn-copy-url");
   const mobileBtnQr = document.getElementById("mobile-btn-qr");
   const mobileBtnPlayers = document.getElementById("mobile-btn-players");
-  const mobileBtnInspector = document.getElementById("mobile-btn-inspector");
   const mobilePlayersBadge = document.getElementById("mobile-players-badge");
 
   const setMobileMenuOpen = (open: boolean) => {
@@ -1588,6 +1626,7 @@ async function bootstrap(): Promise<void> {
   });
 
   mobileBtnInspector?.addEventListener("click", () => {
+    if (activeGameMode === "online") return;
     setMobileMenuOpen(false);
     const isCollapsed = devContainer.classList.contains("collapsed");
     setSidebarOpen(isCollapsed);

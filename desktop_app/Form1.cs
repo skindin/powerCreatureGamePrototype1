@@ -328,6 +328,37 @@ public partial class Form1 : Form
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
 
+            // In online mode, make DevTools inaccessible (both header button and F12 inspect window)
+            webView.CoreWebView2.WebMessageReceived += (s, e) =>
+            {
+                try
+                {
+                    string raw = e.TryGetWebMessageAsString();
+                    if (!string.IsNullOrEmpty(raw))
+                    {
+                        using var doc = JsonDocument.Parse(raw);
+                        if (doc.RootElement.TryGetProperty("type", out var typeProp) && typeProp.GetString() == "gameMode")
+                        {
+                            string mode = doc.RootElement.TryGetProperty("mode", out var mProp) ? (mProp.GetString() ?? "") : "";
+                            bool isOnline = (mode == "online");
+                            this.BeginInvoke(() =>
+                            {
+                                if (btnDevTools != null)
+                                {
+                                    btnDevTools.Enabled = !isOnline;
+                                    btnDevTools.Visible = !isOnline;
+                                }
+                                if (webView?.CoreWebView2?.Settings != null)
+                                {
+                                    webView.CoreWebView2.Settings.AreDevToolsEnabled = !isOnline;
+                                }
+                            });
+                        }
+                    }
+                }
+                catch { }
+            };
+
             // Clear all browsing data kinds on startup
             try
             {

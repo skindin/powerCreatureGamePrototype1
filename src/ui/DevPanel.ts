@@ -364,7 +364,15 @@ export class DevPanel {
     this.onSelectionChange?.(entity);
   }
 
+  public setOnlineMode(isOnline: boolean): void {
+    this.isOnlineLocked = isOnline;
+    if (isOnline) {
+      this.setMode(false);
+    }
+  }
+
   public setMode(editMode: boolean): void {
+    if (this.isOnlineLocked && editMode) return;
     this.isEditMode = editMode;
     if (this.isEditMode && typeof document !== "undefined" && document.pointerLockElement) {
       try {
