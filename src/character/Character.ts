@@ -203,8 +203,11 @@ export class Character extends GameObject {
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
         // A single burst action cannot exceed the throw ability's power rating * strength,
-        // available stamina Joules, or pool reserves:
+        // available stamina Joules, or pool reserves. Do not display anticipation if cannot afford:
         if (pool && pool.enabled) {
+          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
+            return list;
+          }
           const throwCap = this.throwModule.maxPowerProp.get(this.properties);
           const currentStamina = pool.currentStaminaProp.get(this.properties);
           const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
@@ -213,7 +216,9 @@ export class Character extends GameObject {
             currentStamina,
             poolEnergy
           );
-          metabolicJoules = Math.min(metabolicJoules, maxDeliverable);
+          if (metabolicJoules > maxDeliverable + 0.001) {
+            return list;
+          }
         }
 
         list.push({
@@ -235,7 +240,8 @@ export class Character extends GameObject {
         this.properties,
         this.laserPowerFraction > 0 ? this.laserPowerFraction : 1.0
       );
-      if (demandedPower > 0) {
+      const pool = this.energyPool;
+      if (demandedPower > 0 && (!pool || !pool.isExhausted)) {
         list.push({
           id: "anticipated_laser",
           abilityId: "laser_blast",

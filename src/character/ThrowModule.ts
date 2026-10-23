@@ -745,11 +745,10 @@ export class ThrowModule {
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
 
-    // Strictly enforce that launch speed never exceeds launchSpeed (with small discrete Euler allowance)
-    const maxAllowedLaunchSpeed = launchSpeed + 0.5 * g * dtFixed + 0.01;
+    // Strictly enforce that launch speed never exceeds launchSpeed
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > maxAllowedLaunchSpeed && computedSpeed > 0.001) {
-      const scale = maxAllowedLaunchSpeed / computedSpeed;
+    if (computedSpeed > launchSpeed && computedSpeed > 0.001) {
+      const scale = launchSpeed / computedSpeed;
       vx *= scale;
       vy *= scale;
       vz *= scale;
@@ -834,7 +833,7 @@ export class ThrowModule {
         const poolJoules = ep.infiniteEnergy ? Infinity : ep.getCurrentEnergy(character.properties);
         const currentStamina = ep.currentStaminaProp.get(character.properties);
         const throwCap = this.maxPowerProp.get(character.properties);
-        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+        if (currentStamina < 5 || poolJoules < 5) return null;
 
         const strength = character.strength ?? 1.0;
         const maxDeliverableMetabolicJoules = Math.min(
@@ -874,7 +873,30 @@ export class ThrowModule {
     );
     if (!launch) return null;
 
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
+    let { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
+
+    // Verify energy affordance and clamp launch velocity strictly within affordable speed
+    if (this.consumesEnergy) {
+      const ep = character.energyPool;
+      if (ep && ep.enabled) {
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
+        const poolEfficiency = Math.max(0.01, ep.getMuscleEfficiency(character.properties));
+        let actualLaunchSpeed = Math.hypot(vx, vy, vz);
+        if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 0.001) {
+          const scale = maxSpeed / actualLaunchSpeed;
+          vx *= scale;
+          vy *= scale;
+          vz *= scale;
+          actualLaunchSpeed = Math.hypot(vx, vy, vz);
+        }
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+
+        if (!ep.canSatisfyFullEnergy(metabolicJoules, 0.08, character.properties)) {
+          return null;
+        }
+      }
+    }
     const resolvedSurfaceHeight = targetSurfaceHeight;
     const deltaZ = targetSurfaceHeight - startZ;
     const g = arena.gravity;
@@ -1118,7 +1140,7 @@ export class ThrowModule {
         const poolJoules = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(character.properties);
         const currentStamina = pool.getCurrentStamina(character.properties);
         const throwCap = this.maxPowerProp.get(character.properties);
-        if (currentStamina <= 0.001 || poolJoules <= 0.001) return null;
+        if (currentStamina < 5 || poolJoules < 5) return null;
 
         const strength = character.strength ?? 1.0;
         const maxDeliverableMetabolicJoules = Math.min(
@@ -1214,9 +1236,8 @@ export class ThrowModule {
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
-        // Clamping by behavior maxPower (allowing for discrete Euler offset):
-        const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
-        if (!launchVel && metabolicJoules > maxAllowedMetabolicJoules) {
+        // Strictly clamp launch velocity and metabolic energy to maxDeliverableMetabolicJoules
+        if (metabolicJoules > maxDeliverableMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed = Math.sqrt((2 * Math.max(0, maxMechWork)) / heldMass);
           if (actualLaunchSpeed > 0.001) {

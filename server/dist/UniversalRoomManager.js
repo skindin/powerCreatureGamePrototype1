@@ -6564,10 +6564,9 @@ class ThrowModule {
     const horizontalSpeed = dist / totalTime;
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
-    const maxAllowedLaunchSpeed = launchSpeed + 0.5 * g * dtFixed + 0.01;
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > maxAllowedLaunchSpeed && computedSpeed > 1e-3) {
-      const scale2 = maxAllowedLaunchSpeed / computedSpeed;
+    if (computedSpeed > launchSpeed && computedSpeed > 1e-3) {
+      const scale2 = launchSpeed / computedSpeed;
       vx *= scale2;
       vy *= scale2;
       vz *= scale2;
@@ -6630,7 +6629,7 @@ class ThrowModule {
         const poolJoules = ep.infiniteEnergy ? Infinity : ep.getCurrentEnergy(character.properties);
         const currentStamina = ep.currentStaminaProp.get(character.properties);
         const throwCap = this.maxPowerProp.get(character.properties);
-        if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
+        if (currentStamina < 5 || poolJoules < 5) return null;
         const strength = character.strength ?? 1;
         const maxDeliverableMetabolicJoules = Math.min(
           throwCap * strength,
@@ -6666,7 +6665,27 @@ class ThrowModule {
       aimLockDelta
     );
     if (!launch) return null;
-    const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
+    let { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
+    if (this.consumesEnergy) {
+      const ep = character.energyPool;
+      if (ep && ep.enabled) {
+        const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
+        const poolEfficiency = Math.max(0.01, ep.getMuscleEfficiency(character.properties));
+        let actualLaunchSpeed = Math.hypot(vx, vy, vz);
+        if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 1e-3) {
+          const scale2 = maxSpeed / actualLaunchSpeed;
+          vx *= scale2;
+          vy *= scale2;
+          vz *= scale2;
+          actualLaunchSpeed = Math.hypot(vx, vy, vz);
+        }
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+        if (!ep.canSatisfyFullEnergy(metabolicJoules, 0.08, character.properties)) {
+          return null;
+        }
+      }
+    }
     const resolvedSurfaceHeight = targetSurfaceHeight;
     const deltaZ = targetSurfaceHeight - startZ;
     const g = arena.gravity;
@@ -6857,7 +6876,7 @@ class ThrowModule {
         const poolJoules = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(character.properties);
         const currentStamina = pool.getCurrentStamina(character.properties);
         const throwCap = this.maxPowerProp.get(character.properties);
-        if (currentStamina <= 1e-3 || poolJoules <= 1e-3) return null;
+        if (currentStamina < 5 || poolJoules < 5) return null;
         const strength = character.strength ?? 1;
         const maxDeliverableMetabolicJoules = Math.min(
           throwCap * strength,
@@ -6931,8 +6950,7 @@ class ThrowModule {
         let actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
-        const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
-        if (!launchVel && metabolicJoules > maxAllowedMetabolicJoules) {
+        if (metabolicJoules > maxDeliverableMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
           if (actualLaunchSpeed > 1e-3) {
@@ -7744,8 +7762,8 @@ class EnergyPool {
     if (this.infiniteEnergy) return true;
     if (this.isExhausted) return false;
     const curStamina = this.getCurrentStamina(registry);
-    if (joules > curStamina) return false;
-    if (this.getCurrentEnergy(registry) < joules) return false;
+    if (joules > curStamina + 1e-3) return false;
+    if (this.getCurrentEnergy(registry) < joules - 1e-3) return false;
     return true;
   }
   canSupportPowerInIsolation(_demandedWatts, minWattsThreshold, dt, registry) {
@@ -8917,6 +8935,9 @@ class Character extends GameObject {
         const poolEfficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
         if (pool && pool.enabled) {
+          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
+            return list;
+          }
           const throwCap = this.throwModule.maxPowerProp.get(this.properties);
           const currentStamina = pool.currentStaminaProp.get(this.properties);
           const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
@@ -8925,7 +8946,9 @@ class Character extends GameObject {
             currentStamina,
             poolEnergy
           );
-          metabolicJoules = Math.min(metabolicJoules, maxDeliverable);
+          if (metabolicJoules > maxDeliverable + 1e-3) {
+            return list;
+          }
         }
         list.push({
           id: "anticipated_throw",
@@ -8944,7 +8967,8 @@ class Character extends GameObject {
         this.properties,
         this.laserPowerFraction > 0 ? this.laserPowerFraction : 1
       );
-      if (demandedPower > 0) {
+      const pool = this.energyPool;
+      if (demandedPower > 0 && (!pool || !pool.isExhausted)) {
         list.push({
           id: "anticipated_laser",
           abilityId: "laser_blast",

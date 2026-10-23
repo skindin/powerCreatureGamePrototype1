@@ -315,8 +315,8 @@ export class EnergyBus {
     if (joules <= 0) return true;
     if (!this.enabled || this.isExhausted) return false;
     const curStamina = this.getCurrentStamina(registry);
-    if (joules > curStamina) return false;
-    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) < joules) return false;
+    if (joules > curStamina + 0.001) return false;
+    if (pool && !pool.infiniteEnergy && pool.getCurrentEnergy(registry) < joules - 0.001) return false;
     return true;
   }
 

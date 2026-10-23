@@ -357,8 +357,8 @@ export class EnergyPool {
     if (this.isExhausted) return false;
 
     const curStamina = this.getCurrentStamina(registry);
-    if (joules > curStamina) return false;
-    if (this.getCurrentEnergy(registry) < joules) return false;
+    if (joules > curStamina + 0.001) return false;
+    if (this.getCurrentEnergy(registry) < joules - 0.001) return false;
 
     return true;
   }
