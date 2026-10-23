@@ -11150,7 +11150,6 @@ const QUARRY_APPLE_SPAWN_POINTS = [
   { x: 10, y: 7, z: 0 }
   // Center gateway
 ];
-const QUARRY_PLAYER_SPAWN = { x: 5.5, y: 7 };
 const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
 function createQuarryStones() {
   return [
@@ -12766,9 +12765,10 @@ class ServerGameSimulation {
    */
   initializeDefaultScenario() {
     this.arena.loadWallPreset(quarryPreset.id);
+    const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
     const player1 = new Character({
-      x: QUARRY_PLAYER_SPAWN.x,
-      y: QUARRY_PLAYER_SPAWN.y,
+      x: p1Spawn.x,
+      y: p1Spawn.y,
       color: "#f59e0b",
       colliderRadius: 0.44,
       mass: 1.2,
@@ -12777,6 +12777,7 @@ class ServerGameSimulation {
       playerNumber: 1,
       name: "Server Player 1"
     });
+    player1.position.z = p1Spawn.z ?? 0;
     this.characters.set(player1.playerId, player1);
     const dummy = new Character({
       id: "dummy-1",
@@ -12827,9 +12828,10 @@ class ServerGameSimulation {
       }
     }
     if (this.characters.size === 0) {
+      const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
       const player1 = new Character({
-        x: QUARRY_PLAYER_SPAWN.x,
-        y: QUARRY_PLAYER_SPAWN.y,
+        x: p1Spawn.x,
+        y: p1Spawn.y,
         color: "#f59e0b",
         colliderRadius: 0.44,
         mass: 1.2,
@@ -12838,6 +12840,7 @@ class ServerGameSimulation {
         playerNumber: 1,
         name: "Server Player 1"
       });
+      player1.position.z = p1Spawn.z ?? 0;
       if (config.player) {
         applyCharacterConfig(player1, config.player);
         player1.playerId = "player-1";
@@ -13934,9 +13937,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     });
     const pool = availableSpawns.length > 0 ? availableSpawns : HealthModule.RESPAWN_SPAWNS;
     const defaultSpawn = pool[Math.floor(Math.random() * pool.length)];
-    const spawnX = _spawnPos && typeof _spawnPos.x === "number" && !isNaN(_spawnPos.x) ? _spawnPos.x : defaultSpawn.x;
-    const spawnY = _spawnPos && typeof _spawnPos.y === "number" && !isNaN(_spawnPos.y) ? _spawnPos.y : defaultSpawn.y;
-    const spawnZ = _spawnPos && typeof _spawnPos.z === "number" && !isNaN(_spawnPos.z) ? _spawnPos.z : defaultSpawn.z ?? 0;
+    const spawnX = defaultSpawn.x;
+    const spawnY = defaultSpawn.y;
+    const spawnZ = defaultSpawn.z ?? 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,
@@ -14177,9 +14180,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
-            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? 3.5;
-            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? 7;
-            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? 0;
+            const fallbackSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
+            const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? fallbackSpawn.x;
+            const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? fallbackSpawn.y;
+            const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? (fallbackSpawn.z ?? 0);
             const newChar = new Character({
               id: serverCharId,
               x: spawnX,

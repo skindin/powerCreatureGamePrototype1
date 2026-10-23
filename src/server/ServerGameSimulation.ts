@@ -17,7 +17,8 @@ import {
 } from "./AuthoritativeSnapshotManager.js";
 import { ContestedGrabArbiter, ContestedGrabResult } from "./ContestedGrabArbiter.js";
 import { ServerTelemetryBroadcaster } from "./ServerTelemetryBroadcaster.js";
-import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "../engine/maps/QuarryMap.js";
+import { HealthModule } from "../character/HealthModule.js";
 import { WorldConfig, deserializeGameObject, applyCharacterConfig } from "../config/WorldConfig.js";
 
 export type { ContestedGrabResult, DeathRespawnEvent };
@@ -210,9 +211,10 @@ export class ServerGameSimulation {
     this.arena.loadWallPreset(quarryPreset.id);
 
     // Spawn player 1
+    const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
     const player1 = new Character({
-      x: QUARRY_PLAYER_SPAWN.x,
-      y: QUARRY_PLAYER_SPAWN.y,
+      x: p1Spawn.x,
+      y: p1Spawn.y,
       color: "#f59e0b",
       colliderRadius: 0.44,
       mass: 1.2,
@@ -221,6 +223,7 @@ export class ServerGameSimulation {
       playerNumber: 1,
       name: "Server Player 1",
     });
+    player1.position.z = p1Spawn.z ?? 0;
     this.characters.set(player1.playerId, player1);
 
     // Spawn authoritative Sparring Dummy (inert character with controllerType "none")
@@ -279,9 +282,10 @@ export class ServerGameSimulation {
 
     // Preserve existing players, or spawn defaults deterministically at quarry spawn points
     if (this.characters.size === 0) {
+      const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
       const player1 = new Character({
-        x: QUARRY_PLAYER_SPAWN.x,
-        y: QUARRY_PLAYER_SPAWN.y,
+        x: p1Spawn.x,
+        y: p1Spawn.y,
         color: "#f59e0b",
         colliderRadius: 0.44,
         mass: 1.2,
@@ -290,6 +294,7 @@ export class ServerGameSimulation {
         playerNumber: 1,
         name: "Server Player 1",
       });
+      player1.position.z = p1Spawn.z ?? 0;
       if (config.player) {
         applyCharacterConfig(player1, config.player);
         player1.playerId = "player-1";

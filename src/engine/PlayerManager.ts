@@ -97,7 +97,7 @@ export class PlayerManager {
     })();
 
     // Base character that exists in the arena waiting for a device to claim it
-    const initialSpawn = HealthModule.RESPAWN_SPAWNS[0];
+    const initialSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
     this.baseCharacter = options.character || new Character({
       name: initialHandle,
       color: PLAYER_COLORS[0],

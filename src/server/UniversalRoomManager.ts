@@ -368,9 +368,9 @@ export class UniversalRoomManager {
     });
     const pool = availableSpawns.length > 0 ? availableSpawns : HealthModule.RESPAWN_SPAWNS;
     const defaultSpawn = pool[Math.floor(Math.random() * pool.length)];
-    const spawnX = (_spawnPos && typeof _spawnPos.x === "number" && !isNaN(_spawnPos.x)) ? _spawnPos.x : defaultSpawn.x;
-    const spawnY = (_spawnPos && typeof _spawnPos.y === "number" && !isNaN(_spawnPos.y)) ? _spawnPos.y : defaultSpawn.y;
-    const spawnZ = (_spawnPos && typeof _spawnPos.z === "number" && !isNaN(_spawnPos.z)) ? _spawnPos.z : (defaultSpawn.z ?? 0);
+    const spawnX = defaultSpawn.x;
+    const spawnY = defaultSpawn.y;
+    const spawnZ = defaultSpawn.z ?? 0;
 
     const character = new Character({
       x: spawnX,
@@ -654,9 +654,10 @@ export class UniversalRoomManager {
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
             // Instantiate physical character using server-authoritative spawn position!
-            const spawnX = charEntry.spawnPos?.x ?? 3.5;
-            const spawnY = charEntry.spawnPos?.y ?? 7.0;
-            const spawnZ = charEntry.spawnPos?.z ?? 0;
+            const fallbackSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
+            const spawnX = charEntry.spawnPos?.x ?? fallbackSpawn.x;
+            const spawnY = charEntry.spawnPos?.y ?? fallbackSpawn.y;
+            const spawnZ = charEntry.spawnPos?.z ?? (fallbackSpawn.z ?? 0);
             const newChar = new Character({
               id: serverCharId,
               x: spawnX,
