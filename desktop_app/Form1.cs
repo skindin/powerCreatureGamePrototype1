@@ -3,7 +3,9 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -23,7 +25,10 @@ public partial class Form1 : Form
     private Button btnToggleTunnel = null!;
     private Button btnCopyLink = null!;
     private Button btnViewSettings = null!;
-    private Button btnReload = null!;
+    private Button btnPushData = null!;
+    private Button btnRefreshClient = null!;
+    private Button btnResetMatch = null!;
+    private Button btnSyncNewCode = null!;
     private Button btnFullscreen = null!;
     private Button btnDevTools = null!;
     private Button btnBrowser = null!;
@@ -39,6 +44,22 @@ public partial class Form1 : Form
     private string ephemeralUserDataFolder = "";
     private FormWindowState previousWindowState = FormWindowState.Normal;
     private FormBorderStyle previousBorderStyle = FormBorderStyle.Sizable;
+
+    private string bootCommit = "";
+    private string latestCommit = "";
+    private bool isDataModified = false;
+    private int unpushedCommitsCount = 0;
+    private System.Windows.Forms.Timer? gitPollTimer = null;
+
+    private static readonly HttpClient devClient = new HttpClient(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        ConnectTimeout = TimeSpan.FromMilliseconds(500),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(15)
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(35)
+    };
 
     public Form1()
     {
@@ -144,12 +165,26 @@ public partial class Form1 : Form
         });
         toolTip.SetToolTip(btnViewSettings, "Toggle 3D View Settings (V)");
 
-        btnReload = CreateHeaderButton("🔄 Reload", (s, e) => webView?.Reload());
+        btnPushData = CreateHeaderButton("💾 Push Data", async (s, e) => await HandlePushDataClickAsync());
+        btnPushData.ForeColor = Color.FromArgb(148, 163, 184);
+        toolTip.SetToolTip(btnPushData, "Commit and push worldConfig.json data changes to GitHub");
+
+        btnRefreshClient = CreateHeaderButton("🔄 Refresh Client", (s, e) => HandleRefreshClientClick());
+        btnRefreshClient.ForeColor = Color.FromArgb(203, 213, 225);
+        toolTip.SetToolTip(btnRefreshClient, "Refreshes only the client UI/view (F5), exactly like browser refresh. Server keeps running.");
+
+        btnResetMatch = CreateHeaderButton("⚡ Reset Match", async (s, e) => await HandleResetMatchClickAsync());
+        btnResetMatch.ForeColor = Color.FromArgb(250, 204, 21);
+        toolTip.SetToolTip(btnResetMatch, "Resets server room & physical arena to initial spawn state, keeping current code.");
+
+        btnSyncNewCode = CreateHeaderButton("🚀 Sync New Code", async (s, e) => await HandleSyncNewCodeClickAsync());
+        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+        toolTip.SetToolTip(btnSyncNewCode, "Rebuilds client & server bundles with latest code from disk and reloads both");
+
         btnFullscreen = CreateHeaderButton("⛶ Fullscreen", (s, e) => ToggleFullscreen());
         btnDevTools = CreateHeaderButton("🛠 DevTools", (s, e) => webView?.CoreWebView2?.OpenDevToolsWindow());
         btnBrowser = CreateHeaderButton("🌐 Browser", (s, e) => OpenInBrowser());
 
-        toolTip.SetToolTip(btnReload, "Reload the game (F5)");
         toolTip.SetToolTip(btnFullscreen, "Toggle fullscreen (F11)");
         toolTip.SetToolTip(btnDevTools, "Open DevTools inspect window (F12)");
         toolTip.SetToolTip(btnBrowser, "Open http://localhost:5173 in your default web browser");
@@ -159,7 +194,10 @@ public partial class Form1 : Form
         buttonFlow.Controls.Add(btnToggleTunnel);
         buttonFlow.Controls.Add(btnCopyLink);
         buttonFlow.Controls.Add(btnViewSettings);
-        buttonFlow.Controls.Add(btnReload);
+        buttonFlow.Controls.Add(btnPushData);
+        buttonFlow.Controls.Add(btnRefreshClient);
+        buttonFlow.Controls.Add(btnResetMatch);
+        buttonFlow.Controls.Add(btnSyncNewCode);
         buttonFlow.Controls.Add(btnFullscreen);
         buttonFlow.Controls.Add(btnDevTools);
         buttonFlow.Controls.Add(btnBrowser);
@@ -316,6 +354,12 @@ public partial class Form1 : Form
             // Force cache busting timestamp on initial load URL to bypass any internal intermediary caches
             string cacheBustUrl = activeUrl + (activeUrl.Contains("?") ? "&" : "?") + $"_v={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             webView.CoreWebView2.Navigate(cacheBustUrl);
+
+            // Start background Git status polling every 4 seconds
+            gitPollTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            gitPollTimer.Tick += async (s, e) => await CheckGitStatusAsync();
+            gitPollTimer.Start();
+            _ = CheckGitStatusAsync(isInitialBoot: true);
 
             // Auto-start nationwide public tunnel so https://pcg-arena-teal.loca.lt is immediately live
             _ = StartTunnelAsync();
@@ -682,7 +726,7 @@ public partial class Form1 : Form
         }
         else if (e.KeyCode == Keys.F5 || (e.Control && e.KeyCode == Keys.R))
         {
-            webView?.Reload();
+            HandleRefreshClientClick();
             e.Handled = true;
         }
         else if (e.KeyCode == Keys.F12)
@@ -694,6 +738,10 @@ public partial class Form1 : Form
 
     private void CleanupServer()
     {
+        gitPollTimer?.Stop();
+        gitPollTimer?.Dispose();
+        gitPollTimer = null;
+
         StopTunnel();
         if (serverProcess != null && !serverProcess.HasExited)
         {
@@ -720,6 +768,239 @@ public partial class Form1 : Form
                 }
                 catch { }
             });
+        }
+    }
+
+    private async Task CheckGitStatusAsync(bool isInitialBoot = false)
+    {
+        if (currentPort <= 0) return;
+        try
+        {
+            var resp = await devClient.GetAsync($"http://127.0.0.1:{currentPort}/api/dev/git-status");
+            if (!resp.IsSuccessStatusCode) return;
+
+            var jsonStr = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(jsonStr);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("headCommit", out var hc))
+            {
+                string head = hc.GetString() ?? "";
+                if (isInitialBoot && string.IsNullOrEmpty(bootCommit))
+                {
+                    bootCommit = head;
+                }
+                latestCommit = head;
+            }
+
+            if (root.TryGetProperty("dataModified", out var dm))
+            {
+                isDataModified = dm.GetBoolean();
+            }
+
+            if (root.TryGetProperty("aheadCount", out var ac))
+            {
+                unpushedCommitsCount = ac.GetInt32();
+            }
+
+            if (this.IsHandleCreated && !this.IsDisposed)
+            {
+                this.BeginInvoke(() =>
+                {
+                    if (isDataModified)
+                    {
+                        btnPushData.Text = "💾 Push Data (Unsaved)";
+                        btnPushData.ForeColor = Color.FromArgb(253, 224, 71);
+                        btnPushData.FlatAppearance.BorderColor = Color.FromArgb(234, 179, 8);
+                        btnPushData.BackColor = Color.FromArgb(40, 35, 15);
+                        toolTip.SetToolTip(btnPushData, "You have unsaved changes in worldConfig.json. Click to commit & push to GitHub.");
+                    }
+                    else if (unpushedCommitsCount > 0)
+                    {
+                        btnPushData.Text = $"💾 Push Data ({unpushedCommitsCount} ahead)";
+                        btnPushData.ForeColor = Color.FromArgb(74, 222, 128);
+                        btnPushData.FlatAppearance.BorderColor = Color.FromArgb(34, 197, 94);
+                        btnPushData.BackColor = Color.FromArgb(20, 45, 25);
+                        toolTip.SetToolTip(btnPushData, $"{unpushedCommitsCount} unpushed data commit(s). Click to push to GitHub.");
+                    }
+                    else
+                    {
+                        btnPushData.Text = "💾 Push Data";
+                        btnPushData.ForeColor = Color.FromArgb(148, 163, 184);
+                        btnPushData.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85);
+                        btnPushData.BackColor = Color.FromArgb(30, 41, 59);
+                        toolTip.SetToolTip(btnPushData, "All game data is synced with GitHub origin.");
+                    }
+
+                    if (!string.IsNullOrEmpty(bootCommit) && !string.IsNullOrEmpty(latestCommit) && bootCommit != latestCommit)
+                    {
+                        btnSyncNewCode.Text = "🚀 Sync New Code (Available!)";
+                        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.BackColor = Color.FromArgb(15, 30, 50);
+                        toolTip.SetToolTip(btnSyncNewCode, $"Antigravity pushed code {latestCommit} (you are on {bootCommit}). Click to compile & test.");
+                    }
+                    else
+                    {
+                        btnSyncNewCode.Text = "🚀 Sync New Code";
+                        btnSyncNewCode.ForeColor = Color.FromArgb(56, 189, 248);
+                        btnSyncNewCode.FlatAppearance.BorderColor = Color.FromArgb(51, 65, 85);
+                        btnSyncNewCode.BackColor = Color.FromArgb(30, 41, 59);
+                        toolTip.SetToolTip(btnSyncNewCode, "Rebuilds client & server bundles with latest code from disk and reloads both.");
+                    }
+                });
+            }
+        }
+        catch { }
+    }
+
+    private async Task HandlePushDataClickAsync()
+    {
+        if (!string.IsNullOrEmpty(bootCommit) && !string.IsNullOrEmpty(latestCommit) && bootCommit != latestCommit)
+        {
+            var choice = MessageBox.Show(
+                $"⚠️ Code Updated by Antigravity!\n\n" +
+                $"Antigravity committed/pushed new code ({latestCommit}) since you launched this session ({bootCommit}).\n" +
+                $"Your data tweaks were made against code {bootCommit}.\n\n" +
+                $"• Click YES to Sync New Code first (recommended so you can verify how your tweaks feel).\n" +
+                $"• Click NO to Push Data directly to GitHub right now without testing.\n" +
+                $"• Click CANCEL to abort.",
+                "Confirm Data Push (Code Version Mismatch)",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question
+            );
+
+            if (choice == DialogResult.Yes)
+            {
+                await HandleSyncNewCodeClickAsync();
+                return;
+            }
+            else if (choice == DialogResult.Cancel)
+            {
+                return;
+            }
+        }
+
+        btnPushData.Enabled = false;
+        btnPushData.Text = "⏳ Pushing Data...";
+        try
+        {
+            var resp = await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/git-push-data", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+            var content = await resp.Content.ReadAsStringAsync();
+            if (resp.IsSuccessStatusCode)
+            {
+                statusLabel.Text = "✅ Data pushed to GitHub!";
+                statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+                MessageBox.Show("✅ Game data successfully committed and pushed to GitHub!", "Data Push Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await CheckGitStatusAsync();
+            }
+            else
+            {
+                MessageBox.Show($"Failed to push data:\n{content}", "Push Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error pushing data: {ex.Message}", "Network/Git Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            btnPushData.Enabled = true;
+        }
+    }
+
+    private void HandleRefreshClientClick()
+    {
+        btnRefreshClient.Text = "⏳ Refreshing...";
+        statusLabel.Text = "🟡 Refreshing client...";
+        statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
+        try
+        {
+            webView?.Reload();
+        }
+        catch { }
+        finally
+        {
+            btnRefreshClient.Text = "🔄 Refresh Client";
+            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+        }
+    }
+
+    private async Task HandleResetMatchClickAsync()
+    {
+        btnResetMatch.Enabled = false;
+        btnResetMatch.Text = "⏳ Resetting...";
+        statusLabel.Text = "🟡 Resetting arena & room simulation...";
+        statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
+
+        try
+        {
+            // Reset server physics simulation so room returns to pristine spawn state
+            await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/restart-server", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+        }
+        catch { }
+        finally
+        {
+            webView?.Reload();
+            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+            btnResetMatch.Enabled = true;
+            btnResetMatch.Text = "⚡ Reset Match";
+        }
+    }
+
+    private async Task HandleSyncNewCodeClickAsync()
+    {
+        btnSyncNewCode.Enabled = false;
+        btnSyncNewCode.Text = "⏳ Syncing...";
+        statusLabel.Text = "🟡 Checking for code changes...";
+        statusLabel.ForeColor = Color.FromArgb(253, 224, 71);
+
+        try
+        {
+            var resp = await devClient.PostAsync($"http://127.0.0.1:{currentPort}/api/dev/sync-rebuild", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+            var content = await resp.Content.ReadAsStringAsync();
+
+            if (resp.IsSuccessStatusCode)
+            {
+                bool isRebuild = !content.Contains("already up to date");
+                statusLabel.Text = isRebuild ? "✅ Code snapshot rebuilt! Reloading..." : "⚡ Code is up to date! Refreshing...";
+                statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+                await CheckGitStatusAsync();
+                bootCommit = latestCommit; // update baseline
+                btnSyncNewCode.Text = "🚀 Sync New Code";
+                webView?.Reload();
+
+                // Auto-reset status label after reload completes
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1500);
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                    {
+                        this.BeginInvoke(() =>
+                        {
+                            statusLabel.Text = $"🟢 Online (Port {currentPort})";
+                            statusLabel.ForeColor = Color.FromArgb(74, 222, 128);
+                        });
+                    }
+                });
+            }
+            else
+            {
+                MessageBox.Show($"Cannot sync code:\n{content}", "Sync / Build Blocked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                statusLabel.Text = "⚠️ Sync blocked (compilation error)";
+                statusLabel.ForeColor = Color.FromArgb(248, 113, 113);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Sync error: {ex.Message}", "Sync Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            btnSyncNewCode.Enabled = true;
+            btnSyncNewCode.Text = "🚀 Sync New Code";
         }
     }
 }
