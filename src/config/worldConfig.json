@@ -332,17 +332,17 @@
     "walkingModule": {
       "walkInAir": true,
       "canSprint": true,
-      "maxWalkForce": 80,
+      "maxWalkForce": 35,
       "maxWalkSpeed": 5.2,
-      "sprintSpeed": 8.5,
+      "sprintSpeed": 8.06,
       "walkPowerCapacity": 400,
       "sprintPowerCapacity": 1200,
-      "airFriction": 0.5
+      "airFriction": 1
     },
     "hasJump": true,
     "jumpModule": {
-      "jumpImpulse": 18.5,
-      "maxInitialSpeed": 9.67,
+      "jumpImpulse": 16.5,
+      "maxInitialSpeed": 8.8,
       "jumpPowerCapacity": 1200
     },
     "hasThrow": true,
@@ -444,13 +444,13 @@
       "name": "Throwing Stone",
       "prefabId": "prefab_stone",
       "position": {
-        "x": 4.9,
-        "y": 8.38,
-        "z": 0.45
+        "x": 4.8,
+        "y": 8.5,
+        "z": 0
       },
       "color": "#78716c",
       "visualShape": "circle",
-      "isSleeping": false,
+      "isSleeping": true,
       "hasRigidbody": true,
       "hasCollider": true,
       "hasFriction": true,

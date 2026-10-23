@@ -11,7 +11,7 @@ import { Character } from "../character/Character.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
-import { WorldConfig } from "../config/WorldConfig.js";
+import { WorldConfig, applyCharacterConfig } from "../config/WorldConfig.js";
 
 export interface ClientCharacterEntry {
   localPlayerId: string;
@@ -45,6 +45,7 @@ export class UniversalRoomManager {
   public simulation: ServerGameSimulation;
   public clients: Map<string, ConnectedRoomClient> = new Map();
   public isRunning = false;
+  public currentWorldConfig: WorldConfig | null = null;
   private needsMapReload: boolean = false;
 
   private loopInterval: NodeJS.Timeout | null = null;
@@ -73,6 +74,7 @@ export class UniversalRoomManager {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
           console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.currentWorldConfig = config;
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -88,6 +90,7 @@ export class UniversalRoomManager {
    */
   public reloadWorldConfig(config: WorldConfig): void {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
     this.needsMapReload = true;
   }
@@ -371,6 +374,17 @@ export class UniversalRoomManager {
       hasCustomName: isExplicitCustom,
     });
     character.position.z = spawnZ;
+
+    if (this.currentWorldConfig?.player) {
+      applyCharacterConfig(character, this.currentWorldConfig.player);
+      character.playerId = serverCharId;
+      character.playerNumber = playerNumber;
+      character.color = color;
+      if (isExplicitCustom) {
+        character.name = charName;
+        character.hasCustomName = true;
+      }
+    }
 
     // Gentle overlap resolution on spawn: if character overlaps an existing creature or object,
     // gently separate them away from each other. If directly on top of each other, choose a random direction.

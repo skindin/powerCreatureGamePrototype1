@@ -435,7 +435,7 @@ export class ThrowModule {
       tNear = Math.max(tNear, t1);
       tFar = Math.min(tFar, t2);
     } else {
-      if (startX < wall.x || startX > wall.x + wall.width) return null;
+      if (startX <= wall.x || startX >= wall.x + wall.width) return null;
     }
 
     if (Math.abs(dirY) > 1e-6) {
@@ -445,7 +445,7 @@ export class ThrowModule {
       tNear = Math.max(tNear, t1);
       tFar = Math.min(tFar, t2);
     } else {
-      if (startY < wall.y || startY > wall.y + wall.height) return null;
+      if (startY <= wall.y || startY >= wall.y + wall.height) return null;
     }
 
     if (tNear <= tFar && tFar >= 0) {
@@ -739,15 +739,17 @@ export class ThrowModule {
     }
     totalTime = Math.max(0.02, totalTime);
 
-    let vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const dtFixed = 1 / 60;
+    let vz = (deltaZ + 0.5 * g * totalTime * (totalTime + dtFixed)) / totalTime;
     const horizontalSpeed = dist / totalTime;
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
 
-    // Strictly enforce that launch speed never exceeds launchSpeed
+    // Strictly enforce that launch speed never exceeds launchSpeed (with small discrete Euler allowance)
+    const maxAllowedLaunchSpeed = launchSpeed + 0.5 * g * dtFixed + 0.01;
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > launchSpeed && computedSpeed > 0.001) {
-      const scale = launchSpeed / computedSpeed;
+    if (computedSpeed > maxAllowedLaunchSpeed && computedSpeed > 0.001) {
+      const scale = maxAllowedLaunchSpeed / computedSpeed;
       vx *= scale;
       vy *= scale;
       vz *= scale;
@@ -874,8 +876,9 @@ export class ThrowModule {
 
     if (this.consumesEnergy) {
       const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-      if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 0.001) {
-        const scale = maxSpeed / actualLaunchSpeed;
+      const maxAllowedSpeed = maxSpeed + 0.5 * arena.gravity * (1 / 60) + 0.01;
+      if (actualLaunchSpeed > maxAllowedSpeed && actualLaunchSpeed > 0.001) {
+        const scale = maxAllowedSpeed / actualLaunchSpeed;
         launch.vx *= scale;
         launch.vy *= scale;
         launch.vz *= scale;
@@ -907,9 +910,10 @@ export class ThrowModule {
       // At the final step, enforce exact final target coordinates
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
-      const calculatedZ = canFlyVertically ? (startZ + vz * t - 0.5 * arena.gravity * t * t) : startZ;
+      const dtFixed = 1 / 60;
+      const calculatedZ = canFlyVertically ? (startZ + (vz - 0.5 * arena.gravity * dtFixed) * t - 0.5 * arena.gravity * t * t) : startZ;
       const currentZ = canFlyVertically ? (step === steps ? resolvedSurfaceHeight : (step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ))) : startZ;
-      const currentVz = canFlyVertically ? (vz - arena.gravity * t) : 0;
+      const currentVz = canFlyVertically ? (vz - 0.5 * arena.gravity * dtFixed - arena.gravity * t) : 0;
 
       if (currentZ > peakHeight) {
         peakHeight = currentZ;
@@ -977,7 +981,8 @@ export class ThrowModule {
     // Helper to simulate boundary arc points for ghost previews
     const simulateGhostArc = (simFlightTime: number): TrajectoryPoint[] => {
       const gTime = Math.max(0.02, simFlightTime);
-      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const dtFixed = 1 / 60;
+      const gVz = (deltaZ + 0.5 * g * gTime * (gTime + dtFixed)) / gTime;
       const gHSpd = dist / gTime;
       const gVx = dirX * gHSpd;
       const gVy = dirY * gHSpd;
@@ -990,7 +995,7 @@ export class ThrowModule {
         const t = s * gDt;
         const curX = s === gSteps ? finalTargetX : startX + gVx * t;
         const curY = s === gSteps ? finalTargetY : startY + gVy * t;
-        const calcZ = canFlyVertically ? (startZ + gVz * t - 0.5 * arena.gravity * t * t) : startZ;
+        const calcZ = canFlyVertically ? (startZ + (gVz - 0.5 * arena.gravity * dtFixed) * t - 0.5 * arena.gravity * t * t) : startZ;
         const curZ = canFlyVertically
           ? (s === gSteps ? resolvedSurfaceHeight : (s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ)))
           : startZ;
@@ -1220,8 +1225,9 @@ export class ThrowModule {
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
-        // Clamping by behavior maxPower:
-        if (metabolicJoules > maxDeliverableMetabolicJoules) {
+        // Clamping by behavior maxPower (allowing for discrete Euler offset):
+        const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
+        if (metabolicJoules > maxAllowedMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed = Math.sqrt((2 * Math.max(0, maxMechWork)) / heldMass);
           if (actualLaunchSpeed > 0.001) {

@@ -5291,7 +5291,7 @@ const _GameObject = class _GameObject {
         }
       }
     }
-    const maxLinearSpeed = 16;
+    const maxLinearSpeed = 100;
     const currentSpeed = Math.hypot(this.velocity.x, this.velocity.y);
     if (currentSpeed > maxLinearSpeed) {
       const scale = maxLinearSpeed / currentSpeed;
@@ -6353,7 +6353,7 @@ class ThrowModule {
       tNear = Math.max(tNear, t1);
       tFar = Math.min(tFar, t2);
     } else {
-      if (startX < wall.x || startX > wall.x + wall.width) return null;
+      if (startX <= wall.x || startX >= wall.x + wall.width) return null;
     }
     if (Math.abs(dirY) > 1e-6) {
       let t1 = (wall.y - startY) / dirY;
@@ -6366,7 +6366,7 @@ class ThrowModule {
       tNear = Math.max(tNear, t1);
       tFar = Math.min(tFar, t2);
     } else {
-      if (startY < wall.y || startY > wall.y + wall.height) return null;
+      if (startY <= wall.y || startY >= wall.y + wall.height) return null;
     }
     if (tNear <= tFar && tFar >= 0) {
       return { enterDist: Math.max(0, tNear), exitDist: tFar };
@@ -6559,13 +6559,15 @@ class ThrowModule {
       totalTime = Math.max(totalTime, Math.sqrt(2 * deltaZ / g));
     }
     totalTime = Math.max(0.02, totalTime);
-    let vz = (deltaZ + 0.5 * g * totalTime * totalTime) / totalTime;
+    const dtFixed = 1 / 60;
+    let vz = (deltaZ + 0.5 * g * totalTime * (totalTime + dtFixed)) / totalTime;
     const horizontalSpeed = dist / totalTime;
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
+    const maxAllowedLaunchSpeed = launchSpeed + 0.5 * g * dtFixed + 0.01;
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > launchSpeed && computedSpeed > 1e-3) {
-      const scale2 = launchSpeed / computedSpeed;
+    if (computedSpeed > maxAllowedLaunchSpeed && computedSpeed > 1e-3) {
+      const scale2 = maxAllowedLaunchSpeed / computedSpeed;
       vx *= scale2;
       vy *= scale2;
       vz *= scale2;
@@ -6666,8 +6668,9 @@ class ThrowModule {
     if (!launch) return null;
     if (this.consumesEnergy) {
       const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-      if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 1e-3) {
-        const scale2 = maxSpeed / actualLaunchSpeed;
+      const maxAllowedSpeed = maxSpeed + 0.5 * arena.gravity * (1 / 60) + 0.01;
+      if (actualLaunchSpeed > maxAllowedSpeed && actualLaunchSpeed > 1e-3) {
+        const scale2 = maxAllowedSpeed / actualLaunchSpeed;
         launch.vx *= scale2;
         launch.vy *= scale2;
         launch.vz *= scale2;
@@ -6693,9 +6696,10 @@ class ThrowModule {
       const t = step * dtStep;
       const currentX = step === steps ? finalTargetX : startX + vx * t;
       const currentY = step === steps ? finalTargetY : startY + vy * t;
-      const calculatedZ = canFlyVertically ? startZ + vz * t - 0.5 * arena.gravity * t * t : startZ;
+      const dtFixed = 1 / 60;
+      const calculatedZ = canFlyVertically ? startZ + (vz - 0.5 * arena.gravity * dtFixed) * t - 0.5 * arena.gravity * t * t : startZ;
       const currentZ = canFlyVertically ? step === steps ? resolvedSurfaceHeight : step > steps - 3 ? Math.max(resolvedSurfaceHeight, calculatedZ) : Math.max(0, calculatedZ) : startZ;
-      const currentVz = canFlyVertically ? vz - arena.gravity * t : 0;
+      const currentVz = canFlyVertically ? vz - 0.5 * arena.gravity * dtFixed - arena.gravity * t : 0;
       if (currentZ > peakHeight) {
         peakHeight = currentZ;
       }
@@ -6746,7 +6750,8 @@ class ThrowModule {
     }
     const simulateGhostArc = (simFlightTime) => {
       const gTime = Math.max(0.02, simFlightTime);
-      const gVz = (deltaZ + 0.5 * g * gTime * gTime) / gTime;
+      const dtFixed = 1 / 60;
+      const gVz = (deltaZ + 0.5 * g * gTime * (gTime + dtFixed)) / gTime;
       const gHSpd = dist / gTime;
       const gVx = dirX * gHSpd;
       const gVy = dirY * gHSpd;
@@ -6757,7 +6762,7 @@ class ThrowModule {
         const t = s * gDt;
         const curX = s === gSteps ? finalTargetX : startX + gVx * t;
         const curY = s === gSteps ? finalTargetY : startY + gVy * t;
-        const calcZ = canFlyVertically ? startZ + gVz * t - 0.5 * arena.gravity * t * t : startZ;
+        const calcZ = canFlyVertically ? startZ + (gVz - 0.5 * arena.gravity * dtFixed) * t - 0.5 * arena.gravity * t * t : startZ;
         const curZ = canFlyVertically ? s === gSteps ? resolvedSurfaceHeight : s > gSteps - 3 ? Math.max(resolvedSurfaceHeight, calcZ) : Math.max(0, calcZ) : startZ;
         let isOver = false;
         let collides = false;
@@ -6936,7 +6941,8 @@ class ThrowModule {
         let actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
-        if (metabolicJoules > maxDeliverableMetabolicJoules) {
+        const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
+        if (metabolicJoules > maxAllowedMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
           if (actualLaunchSpeed > 1e-3) {
@@ -11234,6 +11240,135 @@ function createQuarryStones() {
     })
   ];
 }
+function applyCharacterConfig(char, config) {
+  if (config.name) char.name = config.name;
+  if (config.color) char.color = config.color;
+  if (config.mass !== void 0) {
+    char.mass = config.mass;
+    if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);
+  }
+  if (config.colliderRadius !== void 0) {
+    char.colliderRadius = config.colliderRadius;
+    if (char.colliderModule) char.colliderModule.radiusProp.set(config.colliderRadius, char.properties);
+  }
+  if (config.hasWalking === false) {
+    char.walkingModule = null;
+  } else if (config.walkingModule && char.walkingModule) {
+    char.walkingModule.enabled = true;
+    if (config.walkingModule.maxWalkForce !== void 0) char.walkingModule.maxWalkForceProp.set(config.walkingModule.maxWalkForce, char.properties);
+    if (config.walkingModule.maxWalkSpeed !== void 0) char.walkingModule.maxWalkSpeedProp.set(config.walkingModule.maxWalkSpeed, char.properties);
+    if (config.walkingModule.sprintSpeed !== void 0) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
+    if (config.walkingModule.canSprint !== void 0) char.walkingModule.canSprint = config.walkingModule.canSprint;
+    if (config.walkingModule.walkInAir !== void 0) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
+    if (config.walkingModule.walkConsumesEnergy !== void 0) char.walkingModule.walkConsumesEnergy = config.walkingModule.walkConsumesEnergy;
+    if (config.walkingModule.walkAllowPartialPower !== void 0) char.walkingModule.walkAllowPartialPower = config.walkingModule.walkAllowPartialPower;
+    if (config.walkingModule.sprintConsumesEnergy !== void 0) char.walkingModule.sprintConsumesEnergy = config.walkingModule.sprintConsumesEnergy;
+    if (config.walkingModule.sprintAllowPartialPower !== void 0) char.walkingModule.sprintAllowPartialPower = config.walkingModule.sprintAllowPartialPower;
+    if (config.walkingModule.maxWalkPower !== void 0 && char.walkingModule.maxWalkPowerProp) char.walkingModule.maxWalkPowerProp.set(config.walkingModule.maxWalkPower, char.properties);
+    if (config.walkingModule.maxSprintPower !== void 0 && char.walkingModule.maxSprintPowerProp) char.walkingModule.maxSprintPowerProp.set(config.walkingModule.maxSprintPower, char.properties);
+    if (config.walkingModule.airFriction !== void 0 && char.walkingModule.airFrictionProp) char.walkingModule.airFrictionProp.set(config.walkingModule.airFriction, char.properties);
+  }
+  if (config.hasJump === false) {
+    char.jumpModule = null;
+  } else if (config.jumpModule && char.jumpModule) {
+    char.jumpModule.enabled = true;
+    if (config.jumpModule.jumpImpulse !== void 0) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+    if (config.jumpModule.maxInitialSpeed !== void 0) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
+    if (config.jumpModule.jumpPowerCapacity !== void 0 && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
+    if (config.jumpModule.jumpConsumesEnergy !== void 0) char.jumpConsumesEnergy = config.jumpModule.jumpConsumesEnergy;
+    if (config.jumpModule.jumpAllowPartialPower !== void 0) char.jumpAllowPartialPower = config.jumpModule.jumpAllowPartialPower;
+  }
+  if (config.hasThrow === false) {
+    char.throwModule = null;
+  } else if (config.throwModule && char.throwModule) {
+    char.throwModule.enabled = true;
+    if (config.throwModule.throwForce !== void 0) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+    if (config.throwModule.maxPower !== void 0) char.throwModule.maxPowerProp.set(config.throwModule.maxPower, char.properties);
+    if (config.throwModule.throwPowerCapacity !== void 0) char.throwModule.maxPowerProp.set(config.throwModule.throwPowerCapacity, char.properties);
+    if (config.throwModule.maxThrowSpeed !== void 0) char.throwModule.maxThrowSpeedProp.set(config.throwModule.maxThrowSpeed, char.properties);
+    if (config.throwModule.maxThrowHeight !== void 0) char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
+    if (config.throwModule.consumesEnergy !== void 0) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
+  }
+  if (config.hasPickup === false) {
+    char.pickupModule = null;
+  } else if (config.pickupModule && char.pickupModule) {
+    char.pickupModule.enabled = true;
+    if (config.pickupModule.pickupReach !== void 0 && char.pickupModule.pickupReachProp) char.pickupModule.pickupReachProp.set(config.pickupModule.pickupReach, char.properties);
+    if (config.pickupModule.maxPower !== void 0 && char.pickupModule.maxPowerProp) char.pickupModule.maxPowerProp.set(config.pickupModule.maxPower, char.properties);
+    if (config.pickupModule.consumesEnergy !== void 0) char.pickupModule.consumesEnergy = config.pickupModule.consumesEnergy;
+    if (config.pickupModule.allowPartialPower !== void 0) char.pickupModule.allowPartialPower = config.pickupModule.allowPartialPower;
+  }
+  if (config.hasClimbing === false) {
+    char.climbingModule = null;
+  } else if (config.climbingModule && char.climbingModule) {
+    char.climbingModule.enabled = true;
+    if (config.climbingModule.climbSpeed !== void 0 && char.climbingModule.maxClimbSpeedProp) char.climbingModule.maxClimbSpeedProp.set(config.climbingModule.climbSpeed, char.properties);
+    if (config.climbingModule.maxAdhesion !== void 0 && char.climbingModule.maxAdhesionProp) char.climbingModule.maxAdhesionProp.set(config.climbingModule.maxAdhesion, char.properties);
+    if (config.climbingModule.maxPower !== void 0 && char.climbingModule.maxPowerProp) char.climbingModule.maxPowerProp.set(config.climbingModule.maxPower, char.properties);
+    if (config.climbingModule.horizontalClimb !== void 0) char.climbingModule.horizontalClimb = config.climbingModule.horizontalClimb;
+    if (config.climbingModule.consumesEnergy !== void 0) char.climbingModule.consumesEnergy = config.climbingModule.consumesEnergy;
+    if (config.climbingModule.allowPartialPower !== void 0) char.climbingModule.allowPartialPower = config.climbingModule.allowPartialPower;
+  }
+  if (config.hasHealth === false) {
+    char.healthModule = null;
+  } else if (config.healthModule && char.healthModule) {
+    char.healthModule.enabled = true;
+    if (config.healthModule.maxHp !== void 0) char.healthModule.maxHp = config.healthModule.maxHp;
+    if (config.healthModule.currentHp !== void 0) char.healthModule.currentHp = config.healthModule.currentHp;
+    if (config.healthModule.naturalHealRate !== void 0) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+    if (config.healthModule.hpPerJoule !== void 0 && char.healthModule.hpPerJouleProp) char.healthModule.hpPerJouleProp.set(config.healthModule.hpPerJoule, char.properties);
+    if (config.healthModule.maxPower !== void 0 && char.healthModule.maxPowerProp) char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
+    if (config.healthModule.consumesEnergy !== void 0) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
+    if (config.healthModule.allowPartialPower !== void 0) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;
+  }
+  if (config.hasEnergyPool === false) {
+    char.energyPool = null;
+  } else if (config.energyPool && char.energyPool) {
+    char.energyPool.enabled = true;
+    if (config.energyPool.staminaCapacity !== void 0 && char.energyPool.maxStaminaProp) char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
+    if (config.energyPool.staminaRegenRate !== void 0 && char.energyPool.staminaRegenRateProp) char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
+    if (config.energyPool.energyPoolCapacity !== void 0 && char.energyPool.maxEnergyProp) char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
+    if (config.energyPool.currentStamina !== void 0 && char.energyPool.currentStaminaProp) char.energyPool.currentStaminaProp.set(config.energyPool.currentStamina, char.properties);
+    if (config.energyPool.currentEnergy !== void 0 && char.energyPool.currentEnergyProp) char.energyPool.currentEnergyProp.set(config.energyPool.currentEnergy, char.properties);
+    if (config.energyPool.infiniteEnergy !== void 0) char.energyPool.infiniteEnergy = config.energyPool.infiniteEnergy;
+    if (config.energyPool.debugAutoRefillOnEmpty !== void 0) char.energyPool.debugAutoRefillOnEmpty = config.energyPool.debugAutoRefillOnEmpty;
+  }
+  if (config.wallEdgeAssistModule && char.wallEdgeAssistModule) {
+    if (config.wallEdgeAssistModule.hangDistance !== void 0) char.wallEdgeAssistModule.hangDistanceProp.set(config.wallEdgeAssistModule.hangDistance, char.properties);
+    if (config.wallEdgeAssistModule.preventWalkOff !== void 0) char.wallEdgeAssistModule.preventWalkOff = config.wallEdgeAssistModule.preventWalkOff;
+  }
+  if (config.hasLaser === false) {
+    char.laserModule = null;
+  } else if (config.laserModule) {
+    if (!char.laserModule) char.laserModule = new LaserModule();
+    char.laserModule.enabled = true;
+    if (config.laserModule.damageRate !== void 0 && char.laserModule.damageRateProp) char.laserModule.damageRateProp.set(config.laserModule.damageRate, char.properties);
+    if (config.laserModule.thickness !== void 0 && char.laserModule.thicknessProp) char.laserModule.thicknessProp.set(config.laserModule.thickness, char.properties);
+    if (config.laserModule.maxPower !== void 0 && char.laserModule.maxPowerProp) char.laserModule.maxPowerProp.set(config.laserModule.maxPower, char.properties);
+    if (config.laserModule.allowPartialPower !== void 0) char.laserModule.allowPartialPower = config.laserModule.allowPartialPower;
+  }
+  if (config.hasMelee === false) {
+    char.meleeModule = null;
+  } else if (config.meleeModule) {
+    if (!char.meleeModule) char.meleeModule = new MeleeModule();
+    char.meleeModule.enabled = true;
+    if (config.meleeModule.impactForce !== void 0 && char.meleeModule.maxForceProp) char.meleeModule.maxForceProp.set(config.meleeModule.impactForce, char.properties);
+    if (config.meleeModule.maxPower !== void 0 && char.meleeModule.maxPowerProp) char.meleeModule.maxPowerProp.set(config.meleeModule.maxPower, char.properties);
+    if (config.meleeModule.punchFrequency !== void 0 && char.meleeModule.punchFrequencyProp) char.meleeModule.punchFrequencyProp.set(config.meleeModule.punchFrequency, char.properties);
+    if (config.meleeModule.reach !== void 0 && char.meleeModule.reachProp) char.meleeModule.reachProp.set(config.meleeModule.reach, char.properties);
+    if (config.meleeModule.width !== void 0 && char.meleeModule.widthProp) char.meleeModule.widthProp.set(config.meleeModule.width, char.properties);
+    if (config.meleeModule.allowPartialPower !== void 0) char.meleeModule.allowPartialPower = config.meleeModule.allowPartialPower;
+  }
+  if (config.damageAuraModule && char.damageAuraModule) {
+    if (config.damageAuraModule.damageRadius !== void 0) char.damageAuraModule.damageRadiusProp.set(config.damageAuraModule.damageRadius, char.properties);
+    if (config.damageAuraModule.damageRate !== void 0) char.damageAuraModule.damageRateProp.set(config.damageAuraModule.damageRate, char.properties);
+  }
+  if (config.damageSolverModule && char.damageSolverModule) {
+    if (config.damageSolverModule.impactSusceptibility !== void 0) char.damageSolverModule.impactSusceptibilityProp.set(config.damageSolverModule.impactSusceptibility, char.properties);
+    if (config.damageSolverModule.minShockThreshold !== void 0) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
+    if (config.damageSolverModule.selfImpactWeight !== void 0) char.damageSolverModule.selfImpactWeightProp.set(config.damageSolverModule.selfImpactWeight, char.properties);
+  }
+}
 function serializeGameObject(obj) {
   var _a;
   const result = {
@@ -12680,6 +12815,11 @@ class ServerGameSimulation {
         playerNumber: 1,
         name: "Server Player 1"
       });
+      if (config.player) {
+        applyCharacterConfig(player1, config.player);
+        player1.playerId = "player-1";
+        player1.playerNumber = 1;
+      }
       this.characters.set(player1.playerId, player1);
       const dummy = new Character({
         id: "dummy-1",
@@ -13485,6 +13625,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     __publicField(this, "simulation");
     __publicField(this, "clients", /* @__PURE__ */ new Map());
     __publicField(this, "isRunning", false);
+    __publicField(this, "currentWorldConfig", null);
     __publicField(this, "needsMapReload", false);
     __publicField(this, "loopInterval", null);
     __publicField(this, "heartbeatInterval", null);
@@ -13509,6 +13650,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           const raw = fs.readFileSync(p, "utf8");
           const config = JSON.parse(raw);
           console.log(`🌐 [UniversalRoom] Loaded persistent world config (v${config.version}) from ${p}`);
+          this.currentWorldConfig = config;
           this.simulation.initializeFromConfig(config);
           return;
         }
@@ -13523,6 +13665,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
    */
   reloadWorldConfig(config) {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
+    this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
     this.needsMapReload = true;
   }
@@ -13720,6 +13863,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     console.log("🌐 [UniversalRoom] Fresh online map reloaded. Ready for players.");
   }
   registerCharacter(client, localPlayerId, name, _spawnPos) {
+    var _a;
     const existing = client.characters.get(localPlayerId);
     if (existing) {
       if (name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())) {
@@ -13755,6 +13899,16 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       hasCustomName: isExplicitCustom
     });
     character.position.z = spawnZ;
+    if ((_a = this.currentWorldConfig) == null ? void 0 : _a.player) {
+      applyCharacterConfig(character, this.currentWorldConfig.player);
+      character.playerId = serverCharId;
+      character.playerNumber = playerNumber;
+      character.color = color;
+      if (isExplicitCustom) {
+        character.name = charName;
+        character.hasCustomName = true;
+      }
+    }
     const otherEntities = [
       ...this.simulation.allCharacters,
       ...this.simulation.objects
