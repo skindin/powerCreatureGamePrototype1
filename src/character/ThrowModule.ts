@@ -745,10 +745,13 @@ export class ThrowModule {
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
 
-    // Strictly enforce that launch speed never exceeds launchSpeed
+    // In discrete Euler physics, vz includes a +0.5 * g * dtFixed discrete step correction (~0.082 m/s).
+    // Proportional velocity scaling must allow for this discretization margin so that horizontal flight
+    // velocities (vx = dirX * dist / totalTime) are never degraded, avoiding landing short or drifting.
+    const eulerMargin = 0.5 * g * dtFixed + 0.05;
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > launchSpeed && computedSpeed > 0.001) {
-      const scale = launchSpeed / computedSpeed;
+    if (computedSpeed > launchSpeed + eulerMargin && computedSpeed > 0.001) {
+      const scale = (launchSpeed + eulerMargin) / computedSpeed;
       vx *= scale;
       vy *= scale;
       vz *= scale;
@@ -881,9 +884,10 @@ export class ThrowModule {
       if (ep && ep.enabled) {
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1.0;
         const poolEfficiency = Math.max(0.01, ep.getMuscleEfficiency(character.properties));
+        const eulerMargin = 0.5 * arena.gravity * (1 / 60) + 0.05;
         let actualLaunchSpeed = Math.hypot(vx, vy, vz);
-        if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 0.001) {
-          const scale = maxSpeed / actualLaunchSpeed;
+        if (actualLaunchSpeed > maxSpeed + eulerMargin && actualLaunchSpeed > 0.001) {
+          const scale = (maxSpeed + eulerMargin) / actualLaunchSpeed;
           vx *= scale;
           vy *= scale;
           vz *= scale;
@@ -1236,18 +1240,20 @@ export class ThrowModule {
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
-        // Strictly clamp launch velocity and metabolic energy to maxDeliverableMetabolicJoules
+        const eulerMargin = 0.5 * arena.gravity * (1 / 60) + 0.05;
+        // Strictly clamp launch velocity and metabolic energy to maxDeliverableMetabolicJoules,
+        // allowing the small Euler integration margin so horizontal distance is preserved.
         if (metabolicJoules > maxDeliverableMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed = Math.sqrt((2 * Math.max(0, maxMechWork)) / heldMass);
-          if (actualLaunchSpeed > 0.001) {
-            const scale = maxSpeed / actualLaunchSpeed;
+          if (actualLaunchSpeed > maxSpeed + eulerMargin && actualLaunchSpeed > 0.001) {
+            const scale = (maxSpeed + eulerMargin) / actualLaunchSpeed;
             launch.vx *= scale;
             launch.vy *= scale;
             launch.vz *= scale;
+            actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+            mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
           }
-          actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-          mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
           metabolicJoules = Math.min(maxDeliverableMetabolicJoules, Math.max(5, mechWorkJoules / poolEfficiency));
         }
 

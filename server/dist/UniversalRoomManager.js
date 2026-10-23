@@ -6564,9 +6564,10 @@ class ThrowModule {
     const horizontalSpeed = dist / totalTime;
     let vx = dirX * horizontalSpeed;
     let vy = dirY * horizontalSpeed;
+    const eulerMargin = 0.5 * g * dtFixed + 0.05;
     const computedSpeed = Math.hypot(vx, vy, vz);
-    if (computedSpeed > launchSpeed && computedSpeed > 1e-3) {
-      const scale2 = launchSpeed / computedSpeed;
+    if (computedSpeed > launchSpeed + eulerMargin && computedSpeed > 1e-3) {
+      const scale2 = (launchSpeed + eulerMargin) / computedSpeed;
       vx *= scale2;
       vy *= scale2;
       vz *= scale2;
@@ -6671,9 +6672,10 @@ class ThrowModule {
       if (ep && ep.enabled) {
         const heldMass = held.hasMass ? Math.max(0.1, held.mass) : 1;
         const poolEfficiency = Math.max(0.01, ep.getMuscleEfficiency(character.properties));
+        const eulerMargin = 0.5 * arena.gravity * (1 / 60) + 0.05;
         let actualLaunchSpeed = Math.hypot(vx, vy, vz);
-        if (actualLaunchSpeed > maxSpeed && actualLaunchSpeed > 1e-3) {
-          const scale2 = maxSpeed / actualLaunchSpeed;
+        if (actualLaunchSpeed > maxSpeed + eulerMargin && actualLaunchSpeed > 1e-3) {
+          const scale2 = (maxSpeed + eulerMargin) / actualLaunchSpeed;
           vx *= scale2;
           vy *= scale2;
           vz *= scale2;
@@ -6950,17 +6952,18 @@ class ThrowModule {
         let actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+        const eulerMargin = 0.5 * arena.gravity * (1 / 60) + 0.05;
         if (metabolicJoules > maxDeliverableMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
-          if (actualLaunchSpeed > 1e-3) {
-            const scale2 = maxSpeed2 / actualLaunchSpeed;
+          if (actualLaunchSpeed > maxSpeed2 + eulerMargin && actualLaunchSpeed > 1e-3) {
+            const scale2 = (maxSpeed2 + eulerMargin) / actualLaunchSpeed;
             launch.vx *= scale2;
             launch.vy *= scale2;
             launch.vz *= scale2;
+            actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
+            mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
           }
-          actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-          mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
           metabolicJoules = Math.min(maxDeliverableMetabolicJoules, Math.max(5, mechWorkJoules / poolEfficiency));
         }
         if (!pool.canSatisfyFullEnergy(metabolicJoules, 0.08, character.properties)) {

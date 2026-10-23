@@ -1,6 +1,6 @@
 {
-  "version": 58,
-  "lastSaved": "2026-10-23T02:56:48.380Z",
+  "version": 60,
+  "lastSaved": "2026-10-23T07:25:33.594Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -372,7 +372,8 @@
       "maxPower": 2000
     },
     "damageSolverModule": {
-      "selfImpactWeight": 0
+      "selfImpactWeight": 0,
+      "minShockThreshold": 0
     }
   },
   "objects": [
