@@ -144,7 +144,7 @@ export class DeployNotifier {
       const build = data.buildStatus;
 
       // 1. Check if a build has CRASHED / FAILED
-      if (build && (build.isFailed || build.state === "failure" || build.state === "error")) {
+      if (build && build.isFailed) {
         const failedCommit = build.shortSha || build.sha?.substring(0, 7) || "latest";
         if (this.notifiedCrashedCommit !== failedCommit) {
           this.notifiedCrashedCommit = failedCommit;
@@ -154,7 +154,7 @@ export class DeployNotifier {
       }
 
       // 2. Check if a build is IN THE PROCESS OF DEPLOYING (Building on Railway)
-      if (build && (build.isBuilding || build.state === "pending")) {
+      if (build && build.isBuilding) {
         const buildingCommit = build.shortSha || build.sha?.substring(0, 7) || "latest";
         if (this.notifiedBuildingCommit !== buildingCommit) {
           this.notifiedBuildingCommit = buildingCommit;
@@ -164,7 +164,7 @@ export class DeployNotifier {
       }
 
       // Clear building notification if no longer building
-      if (this.notifiedBuildingCommit) {
+      if (this.notifiedBuildingCommit || !build?.isBuilding) {
         this.notifiedBuildingCommit = null;
         const toast = document.getElementById("deploy-toast-notification");
         if (toast && toast.classList.contains("building")) {

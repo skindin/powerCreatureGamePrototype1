@@ -129,16 +129,19 @@ async function getLiveBuildStatus() {
     }
 
     const data = await res.json();
-    const primary = data.statuses && data.statuses.length > 0 ? data.statuses[0] : null;
+    const hasStatuses = Array.isArray(data.statuses) && data.statuses.length > 0;
+    const primary = hasStatuses ? data.statuses[0] : null;
     const sha = data.sha || '';
     const shortSha = sha ? sha.substring(0, 7) : '';
-    const state = data.state || 'unknown';
-    const desc = primary?.description || (state === 'pending' ? 'Building on Railway...' : '');
+    const rawState = data.state || 'unknown';
+    // GitHub returns state: "pending" by default when total_count = 0 / statuses is empty.
+    // We must only treat state as active if actual status checks exist.
+    const state = hasStatuses ? rawState : (rawState === 'pending' ? 'idle' : rawState);
+    const isBuilding = Boolean(hasStatuses && state === 'pending');
+    const isFailed = Boolean(hasStatuses && (state === 'failure' || state === 'error'));
+    const isSuccess = Boolean(hasStatuses && state === 'success');
+    const desc = primary?.description || (isBuilding ? 'Building on Railway...' : '');
     const targetUrl = primary?.target_url || '';
-
-    const isBuilding = state === 'pending';
-    const isFailed = state === 'failure' || state === 'error';
-    const isSuccess = state === 'success';
 
     cachedBuildStatus = {
       state,
