@@ -38,6 +38,7 @@ export class OnlineSessionManager {
   private dom: OnlineSessionDOMElements;
   private defaultCharacter: Character | null = null;
   private spawnAlignedPlayerIds: Set<string> = new Set<string>();
+  private processedDeathRespawnEventIds: Set<string> = new Set<string>();
 
   constructor(client: OnlineRoomClient, dom: OnlineSessionDOMElements) {
     this.client = client;
@@ -104,6 +105,7 @@ export class OnlineSessionManager {
 
   public disconnect(): void {
     this.spawnAlignedPlayerIds.clear();
+    this.processedDeathRespawnEventIds.clear();
     this.client.disconnect();
   }
 
@@ -503,6 +505,19 @@ export class OnlineSessionManager {
     // Process authoritative server death & respawn events
     if (snapshot.deathRespawnEvents && Array.isArray(snapshot.deathRespawnEvents)) {
       for (const ev of snapshot.deathRespawnEvents) {
+        // Immediately queue acknowledgment back to server so it knows client received it
+        this.client.acknowledgeDeathRespawn(ev.eventId);
+
+        // Deduplicate: only execute dieAndRespawn once per event ID!
+        if (this.processedDeathRespawnEventIds.has(ev.eventId)) {
+          continue;
+        }
+        this.processedDeathRespawnEventIds.add(ev.eventId);
+        if (this.processedDeathRespawnEventIds.size > 200) {
+          const first = this.processedDeathRespawnEventIds.values().next().value;
+          if (first) this.processedDeathRespawnEventIds.delete(first);
+        }
+
         // Robust match for local character, serverCharId, playerId, or dummy
         let targetChar = this.gameLoop.allCharacters.find(
           (c) => c.id === ev.targetEntityId ||

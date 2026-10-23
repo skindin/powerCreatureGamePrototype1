@@ -13061,7 +13061,9 @@ class ServerGameSimulation {
     if (sChar.isRespawnLocked && sChar.authoritativeRespawnPos) {
       const respawnPos = sChar.authoritativeRespawnPos;
       const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
-      if (distToRespawn > 1.2) {
+      if (distToRespawn <= 1.5) {
+        sChar.isRespawnLocked = false;
+      } else {
         sChar.position.x = respawnPos.x;
         sChar.position.y = respawnPos.y;
         sChar.position.z = respawnPos.z;
@@ -13070,11 +13072,11 @@ class ServerGameSimulation {
         if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
         return;
       }
-      sChar.isRespawnLocked = false;
     }
     for (const pending of this.pendingDeathRespawnEvents.values()) {
       const isTarget = pending.event.targetEntityId === charId || pending.event.targetEntityId === sChar.id || pending.event.targetEntityId === sChar.playerId || pending.event.targetEntityId === sChar.serverCharId;
-      if (isTarget && !pending.acks.has(charId)) {
+      const hasAcked = pending.acks.has(charId) || pending.acks.has(sChar.id) || sChar.playerId && pending.acks.has(sChar.playerId) || sChar.serverCharId && pending.acks.has(sChar.serverCharId);
+      if (isTarget && !hasAcked) {
         sChar.position.x = pending.event.respawnX;
         sChar.position.y = pending.event.respawnY;
         sChar.position.z = pending.event.respawnZ;
@@ -13323,10 +13325,21 @@ class ServerGameSimulation {
       const pending = this.pendingDeathRespawnEvents.get(id);
       if (pending) {
         pending.acks.add(clientCharId);
-        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
-        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
-        if (allAcked) {
+        const targetChar = this.characters.get(pending.event.targetEntityId) || Array.from(this.characters.values()).find(
+          (c) => c.id === clientCharId || c.playerId === clientCharId || c.serverCharId === clientCharId || c.id === pending.event.targetEntityId || c.playerId === pending.event.targetEntityId || c.serverCharId === pending.event.targetEntityId
+        );
+        if (targetChar) {
+          targetChar.isRespawnLocked = false;
+        }
+        const isTargetAck = clientCharId === pending.event.targetEntityId || targetChar && (clientCharId === targetChar.id || clientCharId === targetChar.playerId || clientCharId === targetChar.serverCharId);
+        if (isTargetAck) {
           this.pendingDeathRespawnEvents.delete(id);
+        } else {
+          const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+          const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+          if (allAcked) {
+            this.pendingDeathRespawnEvents.delete(id);
+          }
         }
       }
     }

@@ -555,8 +555,11 @@ export class ServerGameSimulation {
     if ((sChar as any).isRespawnLocked && (sChar as any).authoritativeRespawnPos) {
       const respawnPos = (sChar as any).authoritativeRespawnPos;
       const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
-      if (distToRespawn > 1.2) {
-        // Keep character firmly locked at respawn coordinates
+      if (distToRespawn <= 1.5) {
+        // Incoming packet is aligned with respawn position: unlock character!
+        (sChar as any).isRespawnLocked = false;
+      } else {
+        // Keep character firmly locked at respawn coordinates if packet predates respawn
         sChar.position.x = respawnPos.x;
         sChar.position.y = respawnPos.y;
         sChar.position.z = respawnPos.z;
@@ -565,8 +568,6 @@ export class ServerGameSimulation {
         if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
         return;
       }
-      // Incoming packet is aligned with respawn position: unlock character!
-      (sChar as any).isRespawnLocked = false;
     }
 
     // Secondary check against active unacknowledged pending death events
@@ -575,7 +576,11 @@ export class ServerGameSimulation {
                        pending.event.targetEntityId === sChar.id ||
                        pending.event.targetEntityId === sChar.playerId ||
                        pending.event.targetEntityId === (sChar as any).serverCharId;
-      if (isTarget && !pending.acks.has(charId)) {
+      const hasAcked = pending.acks.has(charId) ||
+                       pending.acks.has(sChar.id) ||
+                       (sChar.playerId && pending.acks.has(sChar.playerId)) ||
+                       ((sChar as any).serverCharId && pending.acks.has((sChar as any).serverCharId));
+      if (isTarget && !hasAcked) {
         sChar.position.x = pending.event.respawnX;
         sChar.position.y = pending.event.respawnY;
         sChar.position.z = pending.event.respawnZ;
@@ -878,11 +883,37 @@ export class ServerGameSimulation {
       const pending = this.pendingDeathRespawnEvents.get(id);
       if (pending) {
         pending.acks.add(clientCharId);
-        // Clean up once all registered connected players have acknowledged
-        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
-        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
-        if (allAcked) {
+
+        // Find target character and clear respawn lock immediately upon acknowledgment
+        const targetChar = this.characters.get(pending.event.targetEntityId) ||
+          Array.from(this.characters.values()).find(
+            (c) => c.id === clientCharId ||
+                   c.playerId === clientCharId ||
+                   (c as any).serverCharId === clientCharId ||
+                   c.id === pending.event.targetEntityId ||
+                   c.playerId === pending.event.targetEntityId ||
+                   (c as any).serverCharId === pending.event.targetEntityId
+          );
+        if (targetChar) {
+          (targetChar as any).isRespawnLocked = false;
+        }
+
+        const isTargetAck = clientCharId === pending.event.targetEntityId ||
+          (targetChar && (
+            clientCharId === targetChar.id ||
+            clientCharId === targetChar.playerId ||
+            clientCharId === (targetChar as any).serverCharId
+          ));
+
+        if (isTargetAck) {
           this.pendingDeathRespawnEvents.delete(id);
+        } else {
+          // Clean up once all registered connected players have acknowledged
+          const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
+          const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+          if (allAcked) {
+            this.pendingDeathRespawnEvents.delete(id);
+          }
         }
       }
     }
