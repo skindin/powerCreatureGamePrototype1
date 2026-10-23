@@ -5371,7 +5371,8 @@ const _GameObject = class _GameObject {
     }
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
-    const kSelf = this.isUnderKnockback || this.isInFlight || !this.isCharacter ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
+    const isThreat = this.isUnderKnockback || this.isInFlight || !this.isCharacter && impactSpeed > 0.3;
+    const kSelf = isThreat ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
     const effectiveSpeed = impactSpeed * kSelf;
     const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
     if (shockDeceleration > 0.01) {
@@ -9868,8 +9869,9 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const kSelf = entity.isUnderKnockback || entity.isInFlight || !entity.isCharacter ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
-      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 1);
+      const isThreat = entity.isUnderKnockback || entity.isInFlight || !entity.isCharacter && impactSpeed > 0.3;
+      const kSelf = isThreat ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 0);
       const effectiveSpeed = impactSpeed * threatRatio;
       const shock = effectiveSpeed * 60 * absFrac;
       if (shock > 0.01) {
@@ -9907,6 +9909,10 @@ class CollisionResolver {
     var _a, _b;
     const isClosingIn2D = velAlongNormal < 0;
     const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
+    const vAn0 = a.isImmovable ? 0 : a.velocity.x * normX + a.velocity.y * normY;
+    const vBn0 = b.isImmovable ? 0 : b.velocity.x * normX + b.velocity.y * normY;
+    const vzA0 = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
+    const vzB0 = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
     if (!isClosingIn2D && impactSpeed <= 0.05) return;
     a.wakeUp();
     b.wakeUp();
@@ -10029,36 +10035,36 @@ class CollisionResolver {
     const massB = Math.max(0.1, b.mass);
     const massRatioA = massB / (massA + massB);
     const massRatioB = massA / (massA + massB);
-    const vAn = a.isImmovable ? 0 : a.velocity.x * normX + a.velocity.y * normY;
-    const vBn = b.isImmovable ? 0 : b.velocity.x * normX + b.velocity.y * normY;
-    const relNorm = vAn - vBn;
+    const relNorm0 = vAn0 - vBn0;
     let uA = 0;
     let uB = 0;
-    if (relNorm > 1e-4) {
-      if (vAn > 0 && vBn < 0) {
-        uA = vAn;
-        uB = -vBn;
-      } else if (vAn > 0 && vBn >= 0) {
-        uA = relNorm;
+    if (relNorm0 > 1e-4) {
+      if (vAn0 > 0 && vBn0 < 0) {
+        uA = vAn0;
+        uB = -vBn0;
+      } else if (vAn0 > 0 && vBn0 >= 0) {
+        uA = relNorm0;
         uB = 0;
-      } else if (vAn <= 0 && vBn < 0) {
+      } else if (vAn0 <= 0 && vBn0 < 0) {
         uA = 0;
-        uB = relNorm;
+        uB = relNorm0;
       } else {
-        uA = relNorm * 0.5;
-        uB = relNorm * 0.5;
+        uA = relNorm0 * 0.5;
+        uB = relNorm0 * 0.5;
       }
     }
-    const vzA = !a.isImmovable && a.hasVerticalVelocity ? a.verticalVelocity : 0;
-    const vzB = !b.isImmovable && b.hasVerticalVelocity ? b.verticalVelocity : 0;
-    const relVz = vzB - vzA;
-    if (b.position.z >= a.position.z && relVz < -0.05) {
-      uB = Math.hypot(uB, Math.abs(relVz));
-    } else if (a.position.z >= b.position.z && relVz > 0.05) {
-      uA = Math.hypot(uA, Math.abs(relVz));
+    const relVz0 = vzB0 - vzA0;
+    if (b.position.z >= a.position.z && relVz0 < -0.05) {
+      uB = Math.hypot(uB, Math.abs(relVz0));
+    } else if (a.position.z >= b.position.z && relVz0 > 0.05) {
+      uA = Math.hypot(uA, Math.abs(relVz0));
     }
-    const multA = a.isUnderKnockback || a.isInFlight || !a.isCharacter ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
-    const multB = b.isUnderKnockback || b.isInFlight || !b.isCharacter ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
+    const speedA0 = Math.hypot(vAn0, vzA0);
+    const speedB0 = Math.hypot(vBn0, vzB0);
+    const isThreatA = a.isUnderKnockback || a.isInFlight || !a.isCharacter && speedA0 > 0.3;
+    const isThreatB = b.isUnderKnockback || b.isInFlight || !b.isCharacter && speedB0 > 0.3;
+    const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
+    const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
     const threatRatio = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB);
     const effectiveDeltaVa = deltaVa * threatRatio;
     const effectiveDeltaVb = deltaVb * threatRatio;

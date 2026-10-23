@@ -1024,7 +1024,8 @@ export class GameObject {
     // Cushioning from bounciness (elasticity): absorbed shock is reduced by (1 - bounce).
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : (this.isCharacter ? 0.2 : 0);
     const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
-    const kSelf = this.isUnderKnockback || this.isInFlight || !this.isCharacter
+    const isThreat = this.isUnderKnockback || this.isInFlight || (!this.isCharacter && impactSpeed > 0.3);
+    const kSelf = isThreat
       ? 1.0
       : (this.damageSolverModule ? Math.max(0, Math.min(1.0, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0.0);
     const effectiveSpeed = impactSpeed * kSelf;

@@ -404,10 +404,11 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const kSelf = entity.isUnderKnockback || entity.isInFlight || !entity.isCharacter
+      const isThreat = entity.isUnderKnockback || entity.isInFlight || (!entity.isCharacter && impactSpeed > 0.3);
+      const kSelf = isThreat
         ? 1.0
         : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
-      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 1.0);
+      const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 0);
       const effectiveSpeed = impactSpeed * threatRatio;
       const shock = effectiveSpeed * 60 * absFrac;
       if (shock > 0.01) {
@@ -462,6 +463,12 @@ export class CollisionResolver {
   ): void {
     const isClosingIn2D = velAlongNormal < 0;
     const impactSpeed = customImpactSpeed !== undefined ? customImpactSpeed : (isClosingIn2D ? Math.abs(velAlongNormal) : 0);
+
+    // Pre-impulse velocity components along normal (norm points from A toward B)
+    const vAn0 = a.isImmovable ? 0 : (a.velocity.x * normX + a.velocity.y * normY);
+    const vBn0 = b.isImmovable ? 0 : (b.velocity.x * normX + b.velocity.y * normY);
+    const vzA0 = (!a.isImmovable && a.hasVerticalVelocity) ? a.verticalVelocity : 0;
+    const vzB0 = (!b.isImmovable && b.hasVerticalVelocity) ? b.verticalVelocity : 0;
 
     // Only apply impulse if closing towards each other in 2D or 3D
     if (!isClosingIn2D && impactSpeed <= 0.05) return;
@@ -620,48 +627,50 @@ export class CollisionResolver {
     const massRatioB = massA / (massA + massB);
 
     // Symmetrical closing threat breakdown along contact normal:
-    // norm points from A toward B.
-    const vAn = a.isImmovable ? 0 : (a.velocity.x * normX + a.velocity.y * normY);
-    const vBn = b.isImmovable ? 0 : (b.velocity.x * normX + b.velocity.y * normY);
-    const relNorm = vAn - vBn; // Positive when closing in 2D
+    // Uses pre-impulse velocities (vAn0, vBn0) before momentum impulses altered them
+    const relNorm0 = vAn0 - vBn0; // Positive when closing in 2D
     let uA = 0;
     let uB = 0;
-    if (relNorm > 0.0001) {
-      if (vAn > 0 && vBn < 0) {
+    if (relNorm0 > 0.0001) {
+      if (vAn0 > 0 && vBn0 < 0) {
         // Head-on closing: both contribute their forward velocity
-        uA = vAn;
-        uB = -vBn;
-      } else if (vAn > 0 && vBn >= 0) {
+        uA = vAn0;
+        uB = -vBn0;
+      } else if (vAn0 > 0 && vBn0 >= 0) {
         // A is chasing / pushing B
-        uA = relNorm;
+        uA = relNorm0;
         uB = 0;
-      } else if (vAn <= 0 && vBn < 0) {
+      } else if (vAn0 <= 0 && vBn0 < 0) {
         // B is reversing into A
         uA = 0;
-        uB = relNorm;
+        uB = relNorm0;
       } else {
-        uA = relNorm * 0.5;
-        uB = relNorm * 0.5;
+        uA = relNorm0 * 0.5;
+        uB = relNorm0 * 0.5;
       }
     }
 
     // Include vertical closing velocity if closing vertically (e.g. landing on top)
-    const vzA = (!a.isImmovable && a.hasVerticalVelocity) ? a.verticalVelocity : 0;
-    const vzB = (!b.isImmovable && b.hasVerticalVelocity) ? b.verticalVelocity : 0;
-    const relVz = vzB - vzA;
-    if (b.position.z >= a.position.z && relVz < -0.05) {
-      uB = Math.hypot(uB, Math.abs(relVz));
-    } else if (a.position.z >= b.position.z && relVz > 0.05) {
-      uA = Math.hypot(uA, Math.abs(relVz));
+    const relVz0 = vzB0 - vzA0;
+    if (b.position.z >= a.position.z && relVz0 < -0.05) {
+      uB = Math.hypot(uB, Math.abs(relVz0));
+    } else if (a.position.z >= b.position.z && relVz0 > 0.05) {
+      uA = Math.hypot(uA, Math.abs(relVz0));
     }
 
     // Gamification threat multipliers:
-    // Thrown items, airborne projectiles, or bodies under knockback represent full 1.0 physical threats.
+    // Active threats (1.0): bodies in flight, under knockback, or moving dynamic freebodies (> 0.3 m/s).
+    // Stationary obstacles / props: unmoving objects (speed <= 0.3 m/s) deliver 0 active threat.
     // Characters under voluntary locomotion use their selfImpactWeight multiplier (default 0.0 = arcade bump immunity).
-    const multA = a.isUnderKnockback || a.isInFlight || !a.isCharacter
+    const speedA0 = Math.hypot(vAn0, vzA0);
+    const speedB0 = Math.hypot(vBn0, vzB0);
+    const isThreatA = a.isUnderKnockback || a.isInFlight || (!a.isCharacter && speedA0 > 0.3);
+    const isThreatB = b.isUnderKnockback || b.isInFlight || (!b.isCharacter && speedB0 > 0.3);
+
+    const multA = isThreatA
       ? 1.0
       : (a.damageSolverModule ? Math.max(0, Math.min(1.0, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0.0);
-    const multB = b.isUnderKnockback || b.isInFlight || !b.isCharacter
+    const multB = isThreatB
       ? 1.0
       : (b.damageSolverModule ? Math.max(0, Math.min(1.0, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0.0);
 
