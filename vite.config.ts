@@ -499,6 +499,7 @@ function autoTunnelPlugin(): Plugin {
       // 2. Auto-rebuild dist on source file changes in background so dist is always live
       let buildTimeout: any = null;
       server.watcher.on('change', (file) => {
+        if (file.includes('worldConfig')) return;
         if (file.includes('src') || file.includes('index.html')) {
           clearTimeout(buildTimeout);
           buildTimeout = setTimeout(async () => {

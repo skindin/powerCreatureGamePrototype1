@@ -310,6 +310,24 @@ export class ServerGameSimulation {
         role: "dummy",
       });
       this.characters.set(dummy.id, dummy);
+    } else if (config.player) {
+      // Update all existing connected player characters with newly saved player configuration
+      for (const char of this.characters.values()) {
+        if (char.characterModule?.role === "dummy" || char.controllerType === "none") continue;
+        const savedPlayerId = char.playerId;
+        const savedPlayerNum = char.playerNumber;
+        const savedColor = char.color;
+        const savedName = char.name;
+        const hasCustom = char.hasCustomName;
+        applyCharacterConfig(char, config.player);
+        char.playerId = savedPlayerId;
+        char.playerNumber = savedPlayerNum;
+        char.color = savedColor;
+        if (hasCustom) {
+          char.name = savedName;
+          char.hasCustomName = true;
+        }
+      }
     }
 
     // Load prefabs if present
@@ -317,15 +335,17 @@ export class ServerGameSimulation {
       this.prefabManager.loadFromConfig(config.prefabs);
     }
 
-    // Load objects
-    if (config.objects && config.objects.length > 0) {
-      this.objects = config.objects.map(deserializeGameObject);
-    } else {
-      this.objects = createQuarryStones();
+    // Load objects ONLY IF room is currently uninitialized/empty!
+    // If simulation is already running with active players, preserve live freebody positions, velocities and in-flight states!
+    if (this.objects.length === 0) {
+      if (config.objects && config.objects.length > 0) {
+        this.objects = config.objects.map(deserializeGameObject);
+      } else {
+        this.objects = createQuarryStones();
+      }
+      this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
+      this.jitterBuffer.clear();
     }
-
-    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-    this.jitterBuffer.clear();
   }
 
   /**

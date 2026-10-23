@@ -874,17 +874,6 @@ export class ThrowModule {
     );
     if (!launch) return null;
 
-    if (this.consumesEnergy) {
-      const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-      const maxAllowedSpeed = maxSpeed + 0.5 * arena.gravity * (1 / 60) + 0.01;
-      if (actualLaunchSpeed > maxAllowedSpeed && actualLaunchSpeed > 0.001) {
-        const scale = maxAllowedSpeed / actualLaunchSpeed;
-        launch.vx *= scale;
-        launch.vy *= scale;
-        launch.vz *= scale;
-      }
-    }
-
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
     const resolvedSurfaceHeight = targetSurfaceHeight;
     const deltaZ = targetSurfaceHeight - startZ;
@@ -1227,7 +1216,7 @@ export class ThrowModule {
 
         // Clamping by behavior maxPower (allowing for discrete Euler offset):
         const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
-        if (metabolicJoules > maxAllowedMetabolicJoules) {
+        if (!launchVel && metabolicJoules > maxAllowedMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed = Math.sqrt((2 * Math.max(0, maxMechWork)) / heldMass);
           if (actualLaunchSpeed > 0.001) {

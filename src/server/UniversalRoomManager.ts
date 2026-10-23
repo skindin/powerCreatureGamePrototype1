@@ -92,7 +92,6 @@ export class UniversalRoomManager {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
     this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = true;
   }
 
   public static getInstance(): UniversalRoomManager {

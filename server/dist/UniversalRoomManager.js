@@ -6666,16 +6666,6 @@ class ThrowModule {
       aimLockDelta
     );
     if (!launch) return null;
-    if (this.consumesEnergy) {
-      const actualLaunchSpeed = Math.hypot(launch.vx, launch.vy, launch.vz);
-      const maxAllowedSpeed = maxSpeed + 0.5 * arena.gravity * (1 / 60) + 0.01;
-      if (actualLaunchSpeed > maxAllowedSpeed && actualLaunchSpeed > 1e-3) {
-        const scale2 = maxAllowedSpeed / actualLaunchSpeed;
-        launch.vx *= scale2;
-        launch.vy *= scale2;
-        launch.vz *= scale2;
-      }
-    }
     const { vx, vy, vz, totalTime, finalTargetX, finalTargetY, targetSurfaceHeight, tMin, tMax } = launch;
     const resolvedSurfaceHeight = targetSurfaceHeight;
     const deltaZ = targetSurfaceHeight - startZ;
@@ -6942,7 +6932,7 @@ class ThrowModule {
         let mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
         const maxAllowedMetabolicJoules = maxDeliverableMetabolicJoules * 1.05;
-        if (metabolicJoules > maxAllowedMetabolicJoules) {
+        if (!launchVel && metabolicJoules > maxAllowedMetabolicJoules) {
           const maxMechWork = maxDeliverableMetabolicJoules * poolEfficiency;
           const maxSpeed2 = Math.sqrt(2 * Math.max(0, maxMechWork) / heldMass);
           if (actualLaunchSpeed > 1e-3) {
@@ -12777,6 +12767,7 @@ class ServerGameSimulation {
    * Initializes or hot-reloads the authoritative server simulation world from a persistent WorldConfig.
    */
   initializeFromConfig(config) {
+    var _a;
     if (config.arena) {
       if (config.arena.width && config.arena.height) {
         this.arena.width = config.arena.width;
@@ -12834,17 +12825,36 @@ class ServerGameSimulation {
         role: "dummy"
       });
       this.characters.set(dummy.id, dummy);
+    } else if (config.player) {
+      for (const char of this.characters.values()) {
+        if (((_a = char.characterModule) == null ? void 0 : _a.role) === "dummy" || char.controllerType === "none") continue;
+        const savedPlayerId = char.playerId;
+        const savedPlayerNum = char.playerNumber;
+        const savedColor = char.color;
+        const savedName = char.name;
+        const hasCustom = char.hasCustomName;
+        applyCharacterConfig(char, config.player);
+        char.playerId = savedPlayerId;
+        char.playerNumber = savedPlayerNum;
+        char.color = savedColor;
+        if (hasCustom) {
+          char.name = savedName;
+          char.hasCustomName = true;
+        }
+      }
     }
     if (config.prefabs && Array.isArray(config.prefabs)) {
       this.prefabManager.loadFromConfig(config.prefabs);
     }
-    if (config.objects && config.objects.length > 0) {
-      this.objects = config.objects.map(deserializeGameObject);
-    } else {
-      this.objects = createQuarryStones();
+    if (this.objects.length === 0) {
+      if (config.objects && config.objects.length > 0) {
+        this.objects = config.objects.map(deserializeGameObject);
+      } else {
+        this.objects = createQuarryStones();
+      }
+      this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
+      this.jitterBuffer.clear();
     }
-    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-    this.jitterBuffer.clear();
   }
   /**
    * Enqueues an incoming input packet from a player into the server jitter buffer.
@@ -13667,7 +13677,6 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     console.log(`🌐 [UniversalRoom] Hot-reloading world configuration (v${config.version})...`);
     this.currentWorldConfig = config;
     this.simulation.initializeFromConfig(config);
-    this.needsMapReload = true;
   }
   static getInstance() {
     if (!_UniversalRoomManager.instance) {
