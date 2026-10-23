@@ -14,7 +14,8 @@ import { OnlineSessionManager } from "./network/OnlineSessionManager.js";
 import { DeployNotifier } from "./ui/DeployNotifier.js";
 import { EnergyHud } from "./ui/EnergyHud.js";
 import QRCode from "qrcode";
-import { quarryPreset, QUARRY_PLAYER_SPAWN, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
+import { HealthModule } from "./character/HealthModule.js";
 import initialWorldConfig from "./config/worldConfig.json";
 import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
 import { prefabManager } from "./engine/prefab/PrefabManager.js";
@@ -252,16 +253,18 @@ async function bootstrap(): Promise<void> {
     prefabManager.loadFromConfig(worldConfig.prefabs);
   }
 
-  // 2. Initialize Base Character in unit coordinates
+  // 2. Initialize Base Character in unit coordinates (spawn at one of the indicated clearing spawn locations)
+  const initialSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
   const character = new Character({
-    x: QUARRY_PLAYER_SPAWN.x,
-    y: QUARRY_PLAYER_SPAWN.y,
+    x: initialSpawn.x,
+    y: initialSpawn.y,
     color: "#f59e0b", // Amber body
     colliderRadius: 0.44,
     mass: 1.2,
     strength: 1.0,
     name: initialPlayerHandle,
   });
+  character.position.z = initialSpawn.z ?? 0;
   character.prefabId = "prefab_player";
   if (worldConfig.player) {
     applyCharacterConfig(character, worldConfig.player);

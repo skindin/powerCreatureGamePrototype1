@@ -13924,7 +13924,16 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const defaultSpawn = HealthModule.RESPAWN_SPAWNS[(playerNumber - 1) % HealthModule.RESPAWN_SPAWNS.length];
+    const availableSpawns = HealthModule.RESPAWN_SPAWNS.filter((sp) => {
+      for (const char of this.simulation.characters.values()) {
+        if (Math.hypot(char.position.x - sp.x, char.position.y - sp.y) < 2) {
+          return false;
+        }
+      }
+      return true;
+    });
+    const pool = availableSpawns.length > 0 ? availableSpawns : HealthModule.RESPAWN_SPAWNS;
+    const defaultSpawn = pool[Math.floor(Math.random() * pool.length)];
     const spawnX = _spawnPos && typeof _spawnPos.x === "number" && !isNaN(_spawnPos.x) ? _spawnPos.x : defaultSpawn.x;
     const spawnY = _spawnPos && typeof _spawnPos.y === "number" && !isNaN(_spawnPos.y) ? _spawnPos.y : defaultSpawn.y;
     const spawnZ = _spawnPos && typeof _spawnPos.z === "number" && !isNaN(_spawnPos.z) ? _spawnPos.z : defaultSpawn.z ?? 0;
