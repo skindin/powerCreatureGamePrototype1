@@ -4,7 +4,7 @@ import { defineConfig, type Plugin, build } from 'vite';
 import localtunnel from 'localtunnel';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { exec, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -329,12 +329,20 @@ function autoTunnelPlugin(): Plugin {
           console.warn('⚠️ [Vite] Could not SSR load UniversalRoomManager.ts, falling back:', err?.message || err);
         }
         try {
-          const mod = await import('./server/dist/UniversalRoomManager.js');
+          let mod: any;
+          try {
+            mod = await import('./server/dist/UniversalRoomManager.js');
+          } catch {
+            const moduleUrl = pathToFileURL(path.resolve(__dirname, 'server', 'dist', 'UniversalRoomManager.js')).href;
+            mod = await import(moduleUrl);
+          }
           if (mod?.UniversalRoomManager) {
             activeRoomManager = mod.UniversalRoomManager;
             return activeRoomManager;
           }
-        } catch (err: any) {}
+        } catch (err: any) {
+          console.error('❌ [Vite] Could not load server/dist/UniversalRoomManager.js:', err?.message || err);
+        }
         return null;
       };
 
@@ -849,7 +857,7 @@ function autoTunnelPlugin(): Plugin {
 export default defineConfig(({ command }) => ({
   plugins: command === 'serve' ? [autoTunnelPlugin()] : [],
   ssr: {
-    noExternal: ['ws'],
+    external: ['ws'],
   },
   server: {
     host: '0.0.0.0', // Listen on all network addresses (0.0.0.0)
