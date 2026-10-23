@@ -7412,8 +7412,16 @@ __publicField(HealthModule, "RESPAWN_SPAWNS", [
   // Slot 2 (East open clearing)
   { x: 3.5, y: 11, z: 0 },
   // Slot 3 (Southwest open clearing)
-  { x: 17, y: 11, z: 0 }
+  { x: 17, y: 11, z: 0 },
   // Slot 4 (Southeast open clearing)
+  { x: 10, y: 2.2, z: 0 },
+  // Slot 5 (North open clearing)
+  { x: 10, y: 11.8, z: 0 },
+  // Slot 6 (South open clearing)
+  { x: 5.5, y: 7, z: 0 },
+  // Slot 7 (West-central clearing)
+  { x: 14.5, y: 7, z: 0 }
+  // Slot 8 (East-central clearing)
 ]);
 class DamageSolverModule {
   // 60ms ~ 3-4 frames
@@ -13916,9 +13924,10 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim())
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const spawnX = 4.8;
-    const spawnY = 7;
-    const spawnZ = 0;
+    const defaultSpawn = HealthModule.RESPAWN_SPAWNS[(playerNumber - 1) % HealthModule.RESPAWN_SPAWNS.length];
+    const spawnX = _spawnPos && typeof _spawnPos.x === "number" && !isNaN(_spawnPos.x) ? _spawnPos.x : defaultSpawn.x;
+    const spawnY = _spawnPos && typeof _spawnPos.y === "number" && !isNaN(_spawnPos.y) ? _spawnPos.y : defaultSpawn.y;
+    const spawnZ = _spawnPos && typeof _spawnPos.z === "number" && !isNaN(_spawnPos.z) ? _spawnPos.z : defaultSpawn.z ?? 0;
     const character = new Character({
       x: spawnX,
       y: spawnY,

@@ -329,7 +329,7 @@ export class OnlineRoomClient {
     return this.clientId ? `${this.clientId}:${localPlayerId}` : localPlayerId;
   }
 
-  public addPlayer(localPlayerId: string, name?: string): void {
+  public addPlayer(localPlayerId: string, name?: string, spawnPos?: { x: number; y: number; z?: number }): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       const isCustom = Boolean(
@@ -342,6 +342,7 @@ export class OnlineRoomClient {
         type: "add_player",
         localPlayerId,
         name: isCustom ? name!.trim() : undefined,
+        spawnPos,
       }));
     } catch (_) {}
   }

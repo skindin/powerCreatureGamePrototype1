@@ -1,5 +1,6 @@
 import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
+import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "./GameObject.js";
 import { InputManager, calculateClampedForwardAimPos, type GamepadSlotState } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
@@ -96,11 +97,12 @@ export class PlayerManager {
     })();
 
     // Base character that exists in the arena waiting for a device to claim it
+    const initialSpawn = HealthModule.RESPAWN_SPAWNS[0];
     this.baseCharacter = options.character || new Character({
       name: initialHandle,
       color: PLAYER_COLORS[0],
-      x: 4.8,
-      y: 7.0,
+      x: initialSpawn.x,
+      y: initialSpawn.y,
       colliderRadius: 0.44,
       mass: 1.2,
       strength: 1.0,
@@ -316,9 +318,10 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
       char = new Character({
-        x: 4.8,
-        y: 7.0,
+        x: slotSpawn.x,
+        y: slotSpawn.y,
         color,
         colliderRadius: 0.44,
         mass: 1.2,
@@ -327,6 +330,7 @@ export class PlayerManager {
         playerNumber: playerNum,
         name: `Player ${playerNum}`,
       });
+      char.position.z = slotSpawn.z ?? 0;
       this.arena.syncEntitiesWithWalls([char]);
     }
 
@@ -414,9 +418,10 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+      const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
       char = new Character({
-        x: 4.8 + (slotIndex + 1) * 1.2,
-        y: 7.0,
+        x: slotSpawn.x,
+        y: slotSpawn.y,
         color,
         colliderRadius: 0.44,
         mass: 1.2,
@@ -426,6 +431,7 @@ export class PlayerManager {
         name: `Player ${playerNum}`,
         hasCustomName: false,
       });
+      char.position.z = slotSpawn.z ?? 0;
       char.hasCustomName = false;
       this.arena.syncEntitiesWithWalls([char]);
     }

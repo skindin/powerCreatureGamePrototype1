@@ -96,7 +96,8 @@ export class OnlineSessionManager {
       for (const p of this.gameLoop.playerManager.players.values()) {
         this.client.addPlayer(
           p.id,
-          p.character.hasCustomName ? p.character.name : undefined
+          p.character.hasCustomName ? p.character.name : undefined,
+          { x: p.character.position.x, y: p.character.position.y, z: p.character.position.z }
         );
       }
     }
@@ -157,7 +158,11 @@ export class OnlineSessionManager {
           this.client.removePlayer("keyboard");
           this.client.localPlayers.delete("keyboard");
         }
-        this.client.addPlayer(player.id, player.character.hasCustomName ? player.character.name : undefined);
+        this.client.addPlayer(
+          player.id,
+          player.character.hasCustomName ? player.character.name : undefined,
+          { x: player.character.position.x, y: player.character.position.y, z: player.character.position.z }
+        );
       }
     };
 
@@ -178,6 +183,7 @@ export class OnlineSessionManager {
           list.push({
             localPlayerId: p.id,
             name: p.character.hasCustomName ? p.character.name : undefined,
+            spawnPos: { x: p.character.position.x, y: p.character.position.y, z: p.character.position.z },
           });
         }
       }

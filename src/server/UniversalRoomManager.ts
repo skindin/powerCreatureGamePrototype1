@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ServerGameSimulation } from "./ServerGameSimulation.js";
 import { Character } from "../character/Character.js";
+import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
@@ -354,11 +355,13 @@ export class UniversalRoomManager {
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
-    // SERVER-AUTHORITATIVE DEDICATED SPAWN POSITION:
-    // All players start at the dedicated spawn position (4.8, 7.0, 0).
-    const spawnX = 4.8;
-    const spawnY = 7.0;
-    const spawnZ = 0;
+    // SERVER-AUTHORITATIVE SPAWN POSITIONS:
+    // The server assigns starting 2D coordinates (x, y) and vertical elevation (z)
+    // based on assigned player slot in open clearings, or explicit spawn position if provided:
+    const defaultSpawn = HealthModule.RESPAWN_SPAWNS[(playerNumber - 1) % HealthModule.RESPAWN_SPAWNS.length];
+    const spawnX = (_spawnPos && typeof _spawnPos.x === "number" && !isNaN(_spawnPos.x)) ? _spawnPos.x : defaultSpawn.x;
+    const spawnY = (_spawnPos && typeof _spawnPos.y === "number" && !isNaN(_spawnPos.y)) ? _spawnPos.y : defaultSpawn.y;
+    const spawnZ = (_spawnPos && typeof _spawnPos.z === "number" && !isNaN(_spawnPos.z)) ? _spawnPos.z : (defaultSpawn.z ?? 0);
 
     const character = new Character({
       x: spawnX,

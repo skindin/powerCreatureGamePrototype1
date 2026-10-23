@@ -372,6 +372,10 @@ export class HealthModule {
     { x: 17.0, y: 3.5, z: 0 },  // Slot 2 (East open clearing)
     { x: 3.5, y: 11.0, z: 0 },  // Slot 3 (Southwest open clearing)
     { x: 17.0, y: 11.0, z: 0 }, // Slot 4 (Southeast open clearing)
+    { x: 10.0, y: 2.2, z: 0 },  // Slot 5 (North open clearing)
+    { x: 10.0, y: 11.8, z: 0 }, // Slot 6 (South open clearing)
+    { x: 5.5, y: 7.0, z: 0 },   // Slot 7 (West-central clearing)
+    { x: 14.5, y: 7.0, z: 0 },  // Slot 8 (East-central clearing)
   ];
 
   /**
