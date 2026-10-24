@@ -181,7 +181,7 @@ export class EnergyHud {
       if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") {
         return;
       }
-      if (e.key === "u" || e.key === "U") {
+      if ((e.key === "u" || e.key === "U") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         this.toggleCollapse();
       }

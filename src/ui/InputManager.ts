@@ -317,6 +317,44 @@ export class InputManager {
         }
       }
 
+      // Prevent browser features triggered by Ctrl / Meta key combinations (e.g. Save, Print, Find, Zoom, Bookmarks, Select-All)
+      if ((e.ctrlKey || e.metaKey) && e.key !== "Control" && e.key !== "Meta") {
+        const inTextInput = this.isTextInputFocused() || this.isTargetTextInput(e.target);
+        if (inTextInput) {
+          // Inside text inputs, preserve standard clipboard and cursor/text editing shortcuts:
+          // Ctrl+C (copy), Ctrl+V (paste), Ctrl+X (cut), Ctrl+Z (undo), Ctrl+Y / Ctrl+Shift+Z (redo),
+          // Ctrl+A (select all within input), and word navigation / deletion
+          const isTextEditing =
+            e.code === "KeyC" ||
+            e.code === "KeyV" ||
+            e.code === "KeyX" ||
+            e.code === "KeyZ" ||
+            e.code === "KeyY" ||
+            e.code === "KeyA" ||
+            e.code === "ArrowLeft" ||
+            e.code === "ArrowRight" ||
+            e.code === "ArrowUp" ||
+            e.code === "ArrowDown" ||
+            e.code === "Backspace" ||
+            e.code === "Delete" ||
+            e.code === "Home" ||
+            e.code === "End";
+
+          if (!isTextEditing) {
+            e.preventDefault();
+          }
+        } else {
+          // Outside text inputs, allow browser developer inspection tools (Ctrl+Shift+I / J / C)
+          const isDevTools =
+            e.shiftKey &&
+            (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC");
+
+          if (!isDevTools) {
+            e.preventDefault();
+          }
+        }
+      }
+
       // If user is focused on or typing into ANY text box or form input,
       // allow default browser behavior (typing characters, spaces, backspaces)
       // and do NOT hijack input or trigger game actions!

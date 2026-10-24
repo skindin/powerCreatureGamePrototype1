@@ -65,7 +65,7 @@ export class PlayersPanel {
         e.target instanceof HTMLSelectElement ||
         Boolean((e.target as HTMLElement)?.isContentEditable)
       ) return;
-      if (e.code === "KeyP") {
+      if (e.code === "KeyP" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         this.toggle();
       } else if (e.code === "Escape" && this.isOpen) {
