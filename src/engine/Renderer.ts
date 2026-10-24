@@ -496,6 +496,16 @@ export class Renderer {
         }
       }
 
+      // 3d. Ground-Level Melee Punch Strike Effects (Rendered BEFORE ground entities so characters and objects render above the punch visual)
+      for (const char of characters) {
+        if (char.meleeModule) {
+          const isElevated = char.position.z >= arena.wallHeight - 0.05;
+          if (!isElevated) {
+            this.drawMeleeEffect(char, ppu, arena);
+          }
+        }
+      }
+
       // 4. Ground Entities (z < wallHeight)
       // Rendered before wall tops so top of wall renders OVER ground objects!
       for (const entity of groundRenderables) {
@@ -572,6 +582,16 @@ export class Renderer {
         }
       }
 
+      // 6c. Elevated Melee Punch Strike Effects (Rendered AFTER wall tops, but BEFORE elevated entities)
+      for (const char of characters) {
+        if (char.meleeModule) {
+          const isElevated = char.position.z >= arena.wallHeight - 0.05;
+          if (isElevated) {
+            this.drawMeleeEffect(char, ppu, arena);
+          }
+        }
+      }
+
       // 7. Elevated Entities (z >= wallHeight)
       // Standing on the wall roof or flying in the air above walls (renders ON TOP of wall shadows)
       for (const entity of elevatedRenderables) {
@@ -604,13 +624,6 @@ export class Renderer {
         for (const entity of allRenderables) {
           const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
           ShadowPass.drawVerticalConnectorLine(ctx, entity, arena, ppu, effPos, this.viewSettings);
-        }
-      }
-
-      // 9b. Melee Punch Strike Effects
-      for (const char of characters) {
-        if (char.meleeModule) {
-          this.drawMeleeEffect(char, ppu, arena);
         }
       }
 
@@ -1611,11 +1624,17 @@ export class Renderer {
     if (!punchTime || punchTime <= 0) return;
 
     const elapsed = now - punchTime;
-    // Guard against future timestamps, negative elapsed times, or expired animations (> 140ms)
-    if (elapsed < 0 || elapsed > 140) return;
+    const duration = 240;
+    // Guard against future timestamps, negative elapsed times, or expired animations (> 240ms)
+    if (elapsed < 0 || elapsed > duration) return;
 
-    const progress = Math.max(0, Math.min(1.0, elapsed / 140)); // Clamped strictly to [0, 1]
-    const alpha = Math.max(0, Math.min(1.0, 1.0 - Math.pow(progress, 2.0)));
+    // Fast expansion during the first 65ms to full reach, then lingering at full extension
+    const expandProgress = Math.min(1.0, elapsed / 65);
+    // Smooth quadratic fade out: stays bright for the first 60ms, then fades away smoothly over remainder
+    const fadeProgress = Math.max(0, (elapsed - 60) / (duration - 60));
+    const alpha = elapsed <= 60
+      ? 1.0
+      : Math.max(0, Math.min(1.0, 1.0 - Math.pow(fadeProgress, 1.8)));
 
     const reach = Math.max(0.2, char.meleeModule.lastVisualPunchReach || 1.2);
     const width = Math.max(0.2, char.meleeModule.lastVisualPunchWidth || 0.8);
@@ -1633,7 +1652,7 @@ export class Renderer {
     ctx.translate(originX, originY);
     ctx.rotate(Math.atan2(normDirY, normDirX));
 
-    const reachPx = reach * ppu * (0.7 + 0.3 * progress);
+    const reachPx = reach * ppu * (0.65 + 0.35 * expandProgress);
     const halfWidthPx = (width * 0.5) * ppu;
 
     const startX = Math.max(0, 0.10 * ppu);
