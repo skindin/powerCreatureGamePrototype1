@@ -7038,9 +7038,13 @@ class ConsumableModule {
     this.totalEnergyJoulesProp.set(Math.max(10, val));
   }
   get remainingEnergyJoules() {
-    return this.remainingEnergyJoulesProp.literalValue;
+    return this.unlimited ? this.totalEnergyJoules : this.remainingEnergyJoulesProp.literalValue;
   }
   set remainingEnergyJoules(val) {
+    if (this.unlimited) {
+      this.remainingEnergyJoulesProp.set(this.totalEnergyJoules);
+      return;
+    }
     this.remainingEnergyJoulesProp.set(Math.max(0, Math.min(this.totalEnergyJoules, val)));
   }
   get consumeRateWatts() {
@@ -7066,6 +7070,9 @@ class ConsumableModule {
     return Math.max(1, this.totalEnergyJoulesProp.get(registry));
   }
   getRemainingEnergy(registry) {
+    if (this.unlimited) {
+      return this.getTotalEnergy(registry);
+    }
     return Math.max(0, this.remainingEnergyJoulesProp.get(registry));
   }
   getConsumeRate(registry) {
@@ -7184,7 +7191,11 @@ class ConsumableModule {
    * Drops the object from the character's hands and removes it from the world.
    */
   finishConsumption(consumer, consumableObj, objects, _arena) {
-    var _a;
+    var _a, _b;
+    if (this.unlimited) {
+      console.warn(`🍎 [Consumable] finishConsumption blocked on unlimited consumable ${consumableObj.id}`);
+      return;
+    }
     console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${((_a = consumableObj.heldBy) == null ? void 0 : _a.name) || consumer.name}`);
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
@@ -7205,6 +7216,12 @@ class ConsumableModule {
     }
     consumableObj.isHeld = false;
     consumableObj.heldBy = null;
+    const isOnline = Boolean(
+      consumer._isInOnlineMode || typeof window !== "undefined" && (window._isOnlineModeActive || ((_b = window.onlineSessionManager) == null ? void 0 : _b.isConnected))
+    );
+    if (isOnline) {
+      return;
+    }
     if (objects && Array.isArray(objects)) {
       const idx = objects.indexOf(consumableObj);
       if (idx !== -1) {
@@ -7341,7 +7358,8 @@ class Prefab {
         consumeRateWatts: src.consumeRateWattsProp.literalValue,
         healRate: src.healRateProp.literalValue,
         minScaleFloor: src.minScaleFloor,
-        minRadiusFloor: src.minRadiusFloor
+        minRadiusFloor: src.minRadiusFloor,
+        unlimited: src.unlimited
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
@@ -7435,6 +7453,11 @@ class Prefab {
       case "consumable_tag":
         if (ent.consumableModule) {
           ent.consumableModule.tag = String(value);
+        }
+        break;
+      case "consumable_unlimited":
+        if (ent.consumableModule) {
+          ent.consumableModule.unlimited = Boolean(value);
         }
         break;
     }
@@ -8248,7 +8271,8 @@ class PrefabManager {
         consumeRateWatts: src.consumeRateWattsProp.literalValue,
         healRate: src.healRateProp.literalValue,
         minScaleFloor: src.minScaleFloor,
-        minRadiusFloor: src.minRadiusFloor
+        minRadiusFloor: src.minRadiusFloor,
+        unlimited: src.unlimited
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }

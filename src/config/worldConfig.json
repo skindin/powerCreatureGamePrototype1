@@ -957,15 +957,15 @@
       }
     },
     {
-      "id": "obj-4qdj5db",
-      "name": "Apple",
-      "prefabId": "prefab_apple",
+      "id": "super-apple-center",
+      "name": "Super Apple",
+      "prefabId": "prefab_super_apple",
       "position": {
         "x": 10,
         "y": 7,
-        "z": 1
+        "z": 0
       },
-      "color": "#22c55e",
+      "color": "#ff1493",
       "visualShape": "circle",
       "isSleeping": true,
       "hasRigidbody": true,
@@ -979,21 +979,21 @@
       "hasHealthModule": false,
       "hasDamageAuraModule": false,
       "hasDamageSolverModule": false,
-      "mass": 0.35,
-      "colliderRadius": 0.25,
+      "mass": 0.45,
+      "colliderRadius": 0.3,
       "bounceMod": 0.2,
       "verticalBounce": true,
       "staticGroundFrictionMod": 1,
       "dynamicGroundFrictionMod": 1,
       "rigidbodyModule": {
         "enabled": true,
-        "mass": 0.35,
+        "mass": 0.45,
         "collisionMode": "dynamic",
         "hasVerticalVelocity": true
       },
       "colliderModule": {
         "enabled": true,
-        "radius": 0.25
+        "radius": 0.3
       },
       "frictionModule": {
         "enabled": true,
@@ -1007,7 +1007,7 @@
       },
       "verticalPositionModule": {
         "enabled": true,
-        "z": 1
+        "z": 0
       },
       "gravityModule": {
         "enabled": true
@@ -1015,12 +1015,13 @@
       "consumableModule": {
         "enabled": true,
         "tag": "food",
-        "totalEnergyJoules": 4000,
-        "remainingEnergyJoules": 4000,
-        "consumeRateWatts": 1200,
+        "unlimited": true,
+        "totalEnergyJoules": 10000,
+        "remainingEnergyJoules": 10000,
+        "consumeRateWatts": 2000,
         "healRate": 0,
-        "minScaleFloor": 0.35,
-        "minRadiusFloor": 0.12
+        "minScaleFloor": 1,
+        "minRadiusFloor": 0.3
       }
     },
     {
@@ -1294,6 +1295,78 @@
           "healRate": 0,
           "minScaleFloor": 0.35,
           "minRadiusFloor": 0.12
+        }
+      }
+    },
+    {
+      "id": "prefab_super_apple",
+      "name": "Super Apple",
+      "icon": "💖",
+      "archetype": {
+        "id": "archetype_super_apple",
+        "name": "Super Apple",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "color": "#ff1493",
+        "visualShape": "circle",
+        "isSleeping": false,
+        "hasRigidbody": true,
+        "hasCollider": true,
+        "hasFriction": true,
+        "hasBounce": true,
+        "hasVerticalPosition": true,
+        "hasGravity": true,
+        "hasRollModule": false,
+        "hasConsumableModule": true,
+        "hasHealthModule": false,
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": false,
+        "mass": 0.45,
+        "colliderRadius": 0.3,
+        "bounceMod": 0.2,
+        "verticalBounce": true,
+        "staticGroundFrictionMod": 1,
+        "dynamicGroundFrictionMod": 1,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.45,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.3
+        },
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.2,
+          "verticalBounce": true
+        },
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "gravityModule": {
+          "enabled": true
+        },
+        "consumableModule": {
+          "enabled": true,
+          "tag": "food",
+          "unlimited": true,
+          "totalEnergyJoules": 10000,
+          "remainingEnergyJoules": 10000,
+          "consumeRateWatts": 2000,
+          "healRate": 0,
+          "minScaleFloor": 1,
+          "minRadiusFloor": 0.3
         }
       }
     },

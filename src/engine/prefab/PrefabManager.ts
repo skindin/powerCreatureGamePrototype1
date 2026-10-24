@@ -188,6 +188,7 @@ export class PrefabManager {
         healRate: src.healRateProp.literalValue,
         minScaleFloor: src.minScaleFloor,
         minRadiusFloor: src.minRadiusFloor,
+        unlimited: src.unlimited,
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }

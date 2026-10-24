@@ -82,10 +82,14 @@ export class ConsumableModule {
   }
 
   public get remainingEnergyJoules(): number {
-    return this.remainingEnergyJoulesProp.literalValue;
+    return this.unlimited ? this.totalEnergyJoules : this.remainingEnergyJoulesProp.literalValue;
   }
 
   public set remainingEnergyJoules(val: number) {
+    if (this.unlimited) {
+      this.remainingEnergyJoulesProp.set(this.totalEnergyJoules);
+      return;
+    }
     this.remainingEnergyJoulesProp.set(Math.max(0, Math.min(this.totalEnergyJoules, val)));
   }
 
@@ -119,6 +123,9 @@ export class ConsumableModule {
   }
 
   public getRemainingEnergy(registry?: ObjectPropertiesRegistry): number {
+    if (this.unlimited) {
+      return this.getTotalEnergy(registry);
+    }
     return Math.max(0, this.remainingEnergyJoulesProp.get(registry));
   }
 
@@ -281,6 +288,11 @@ export class ConsumableModule {
     objects?: GameObject[],
     _arena?: Arena
   ): void {
+    if (this.unlimited) {
+      console.warn(`🍎 [Consumable] finishConsumption blocked on unlimited consumable ${consumableObj.id}`);
+      return;
+    }
+
     console.log(`🍎 [Consumable] finishConsumption called for ${consumableObj.id} heldBy=${consumableObj.heldBy?.name || consumer.name}`);
     this.isConsumed = true;
     this.remainingEnergyJoulesProp.set(0, consumableObj.properties);
@@ -300,7 +312,17 @@ export class ConsumableModule {
     consumableObj.isHeld = false;
     consumableObj.heldBy = null;
 
-    // Immediately remove from objects array and arena entities so it is cleanly destroyed!
+    // CLIENTS SHOULD NEVER PREEMPTIVELY DELETE OBJECTS IN MULTIPLAYER!
+    // In online mode, the authoritative server dictates object deletions via objectDeletionEvents.
+    const isOnline = Boolean(
+      (consumer as any)._isInOnlineMode ||
+      (typeof window !== "undefined" && ((window as any)._isOnlineModeActive || (window as any).onlineSessionManager?.isConnected))
+    );
+    if (isOnline) {
+      return;
+    }
+
+    // Singleplayer / local cleanup only:
     if (objects && Array.isArray(objects)) {
       const idx = objects.indexOf(consumableObj);
       if (idx !== -1) {

@@ -5083,6 +5083,10 @@ export class DevPanel {
                   </select>
                   <button class="prop-save-btn btn-save-prefab-tag" data-prefab-id="${prefab.id}" title="Save Tag to project" style="padding: 2px 6px;">💾</button>
                 </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="font-size: 0.74rem; color: #f472b6; cursor: pointer;">♾️ Unlimited Energy:</label>
+                  <input type="checkbox" class="prefab-unlimited-chk" data-prefab-id="${prefab.id}" ${arc.consumableModule?.unlimited ? 'checked' : ''} style="cursor: pointer; accent-color: #ec4899; width: 15px; height: 15px;" />
+                </div>
                 <div id="scrub-container-prefab-energy-${prefab.id}"></div>
                 <div id="scrub-container-prefab-rate-${prefab.id}"></div>
                 <div id="scrub-container-prefab-heal-${prefab.id}"></div>
@@ -5185,6 +5189,18 @@ export class DevPanel {
           },
           onSave: (val: number) => this.savePrefabProperty(prefab, "consumable_healRate", val, "Heal Rate"),
         });
+        const unlimPrefabChk = listEl.querySelector(`.prefab-unlimited-chk[data-prefab-id="${prefab.id}"]`) as HTMLInputElement | null;
+        if (unlimPrefabChk) {
+          unlimPrefabChk.addEventListener("change", () => {
+            if (arc.consumableModule) {
+              arc.consumableModule.unlimited = unlimPrefabChk.checked;
+              prefab.setProperty("consumable_unlimited", unlimPrefabChk.checked, this.objects);
+              if (this.selectedEntity && this.selectedEntity.prefabId === prefab.id && !this.selectedEntity.overriddenProperties.has("consumable_unlimited")) {
+                this.renderEntityModules();
+              }
+            }
+          });
+        }
       }
     }
 

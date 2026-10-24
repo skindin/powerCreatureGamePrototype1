@@ -48,6 +48,7 @@ export class Prefab {
         healRate: src.healRateProp.literalValue,
         minScaleFloor: src.minScaleFloor,
         minRadiusFloor: src.minRadiusFloor,
+        unlimited: src.unlimited,
       });
       cloneConsumable.initialColliderRadius = src.initialColliderRadius;
     }
@@ -155,6 +156,11 @@ export class Prefab {
       case "consumable_tag":
         if (ent.consumableModule) {
           ent.consumableModule.tag = String(value);
+        }
+        break;
+      case "consumable_unlimited":
+        if (ent.consumableModule) {
+          ent.consumableModule.unlimited = Boolean(value);
         }
         break;
     }

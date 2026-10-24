@@ -655,12 +655,11 @@ export class EntityPass {
     const remainingEnergy = cMod.getRemainingEnergy(obj.properties);
     const ratio = Math.max(0, Math.min(1, remainingEnergy / Math.max(1, totalEnergy)));
 
+    // For unlimited items, they have infinite energy and never deplete — do NOT show a draining pie bar!
+    if (cMod.unlimited) return;
+
     // Only display if actively eating OR if partially eaten (remaining < total - 1.0)
-    if (cMod.unlimited) {
-      if (!isEating) return;
-    } else if (!isEating && ratio >= 0.999) {
-      return;
-    }
+    if (!isEating && ratio >= 0.999) return;
 
     // Radius positioned cleanly outside the food sprite and stem/leaf
     const stemExtra = (obj.foodModule || cMod.tag === "food") ? Math.max(4, renderRadius * 0.45) : 0;
