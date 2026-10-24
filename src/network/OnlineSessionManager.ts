@@ -813,11 +813,16 @@ export class OnlineSessionManager {
             if (c.currentEnergyJoules !== undefined && localChar.energyPool) {
               const curEnergy = localChar.energyPool.getCurrentEnergy(localChar.properties);
               const isActivelyEating = Boolean(localChar.isUsingItem && localChar.canConsumeHeldObject());
-              // If actively eating locally, the server's snapshots are delayed by network RTT.
-              // Never roll back local energy to a lower trailing value while eating,
-              // and only softly reconcile forward if server is substantially ahead (> 200 Joules).
               if (isActivelyEating) {
-                if (c.currentEnergyJoules - curEnergy > 200.0) {
+                (localChar as any)._lastEatTime = performance.now();
+              }
+              const timeSinceEating = performance.now() - ((localChar as any)._lastEatTime || 0);
+              const isRecentlyEating = isActivelyEating || timeSinceEating < 1500;
+
+              // If actively eating locally or within settling window, server telemetry trails by network RTT.
+              // Never roll back local predicted energy to a lower trailing server value during this window.
+              if (isRecentlyEating) {
+                if (c.currentEnergyJoules > curEnergy) {
                   localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
                 }
               } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {

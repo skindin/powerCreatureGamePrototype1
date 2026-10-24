@@ -9817,6 +9817,58 @@ class ServerGameSimulation {
     return active;
   }
   /**
+   * Applies exactly one tick of held-item use (eating) for a character.
+   * Invariant: for player characters this is called once per real client input packet,
+   * so the server credits exactly the same energy the client predicted.
+   */
+  applyItemUse(char, isUsing, dt) {
+    if (!isUsing || !char.consumeModule || !char.consumeModule.canConsume(char.heldObject)) return;
+    const heldObj = char.heldObject;
+    const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+    if (result.isDepleted) {
+      this.triggerObjectDeletion(heldObj.id);
+    }
+  }
+  /**
+   * Settles a consumable the client reports as fully eaten.
+   * The client finishes eating up to (RTT/2 + jitter delay) before the server processes those
+   * same input ticks, so any energy still left in the server's copy is energy the client already
+   * ate. Credit it to the holder before deleting, otherwise that energy is silently lost.
+   */
+  settleClientConsumedObject(serverCharId, objectId) {
+    var _a;
+    const sChar = this.characters.get(serverCharId);
+    const obj = this.objects.find((o) => o.id === objectId) || (((_a = sChar == null ? void 0 : sChar.heldObject) == null ? void 0 : _a.id) === objectId ? sChar.heldObject : null);
+    const holder = obj && obj.heldBy instanceof Character ? obj.heldBy : sChar;
+    const isHolder = Boolean(holder && (holder === sChar || holder.id === serverCharId || holder.playerId === serverCharId || holder.serverCharId === serverCharId));
+    if (obj && holder && isHolder && obj.consumableModule) {
+      const cm = obj.consumableModule;
+      const remaining = cm.getRemainingEnergy(obj.properties);
+      if (remaining > 1e-3) {
+        if (holder.energyPool && holder.energyPool.enabled) {
+          const pool = holder.energyPool;
+          const cur = pool.getCurrentEnergy(holder.properties);
+          const max = pool.getMaxEnergy(holder.properties);
+          pool.currentEnergyProp.set(Math.min(max, cur + remaining), holder.properties);
+        }
+        const healRate = cm.getHealRate(obj.properties);
+        if (healRate > 0 && holder.healthModule && holder.healthModule.enabled) {
+          const secondsLeft = remaining / cm.getConsumeRate(obj.properties);
+          holder.healthModule.heal(healRate * secondsLeft, holder.properties, {
+            id: "consumable_nutrition",
+            name: cm.tag ? `Consumable (${cm.tag})` : "Consumable",
+            type: "continuous",
+            rate: healRate,
+            color: "#22c55e",
+            isHeal: true
+          });
+        }
+        cm.remainingEnergyJoulesProp.set(0, obj.properties);
+      }
+    }
+    this.triggerObjectDeletion(objectId);
+  }
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -9824,8 +9876,10 @@ class ServerGameSimulation {
     this.currentTick++;
     this.arena.entities = [...this.allCharacters, ...this.objects];
     const grabRequests = [];
+    const inputDrivenChars = /* @__PURE__ */ new Set();
     for (const [pId, char] of this.characters) {
-      const { packet: pkt, drainedPackets } = this.jitterBuffer.consume(pId, this.currentTick);
+      const { packet: pkt, drainedPackets, isStarved } = this.jitterBuffer.consume(pId, this.currentTick);
+      inputDrivenChars.add(char);
       for (const catchupPkt of drainedPackets) {
         char.updateCharacter(
           dt,
@@ -9846,6 +9900,7 @@ class ServerGameSimulation {
           char.heldObject.position.y = heldPos.y;
           char.heldObject.position.z = heldPos.z;
         }
+        this.applyItemUse(char, Boolean(catchupPkt.isUsingItem), dt);
       }
       if (pkt) {
         if (pkt.isUsingItem !== void 0) {
@@ -9971,6 +10026,9 @@ class ServerGameSimulation {
           char.heldObject.position.y = heldPos.y;
           char.heldObject.position.z = heldPos.z;
         }
+        if (!isStarved) {
+          this.applyItemUse(char, char.isUsingItem, dt);
+        }
       } else {
         if (!char.heldObject || !char.canConsumeHeldObject()) {
           char.isUsingItem = false;
@@ -10007,12 +10065,8 @@ class ServerGameSimulation {
       }
     }
     for (const char of this.allCharacters) {
-      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-        const heldObj = char.heldObject;
-        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-        if (result.isDepleted) {
-          this.triggerObjectDeletion(heldObj.id);
-        }
+      if (!inputDrivenChars.has(char)) {
+        this.applyItemUse(char, char.isUsingItem, dt);
       }
     }
     const allEntities = [...this.allCharacters, ...this.objects];
@@ -10707,7 +10761,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           this.simulation.queueInput(pkt);
           if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
             for (const objId of data.consumedObjectIds) {
-              this.simulation.triggerObjectDeletion(objId);
+              this.simulation.settleClientConsumedObject(serverCharId, objId);
             }
           }
           if (Array.isArray(data.ackContestedEventIds) && data.ackContestedEventIds.length > 0) {

@@ -753,10 +753,10 @@ export class UniversalRoomManager {
 
           this.simulation.queueInput(pkt);
 
-          // Process consumed object deletions from client
+          // Process consumed object deletions from client (credit any energy the server hasn't processed yet)
           if (Array.isArray(data.consumedObjectIds) && data.consumedObjectIds.length > 0) {
             for (const objId of data.consumedObjectIds) {
-              this.simulation.triggerObjectDeletion(objId);
+              this.simulation.settleClientConsumedObject(serverCharId, objId);
             }
           }
 

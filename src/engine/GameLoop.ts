@@ -738,11 +738,16 @@ export class GameLoop {
           const currentRemaining = localObj.consumableModule.getRemainingEnergy(localObj.properties);
           const holderChar = localObj.heldBy instanceof Character ? localObj.heldBy : null;
           const isHolderEating = Boolean(holderChar && holderChar.isUsingItem && holderChar.canConsumeHeldObject());
-          // If actively eating locally, the server's snapshot trails by network latency.
-          // Never roll back the apple to a higher (un-eaten) remaining energy while eating,
-          // and only softly reconcile forward if authoritative server is substantially ahead (> 200 Joules).
-          if (isHolderEating) {
-            if (currentRemaining - sObj.remainingEnergyJoules > 200) {
+          if (isHolderEating && holderChar) {
+            (holderChar as any)._lastEatTime = performance.now();
+          }
+          const timeSinceEating = performance.now() - ((holderChar as any)?._lastEatTime || 0);
+          const isRecentlyEating = isHolderEating || timeSinceEating < 1500;
+
+          // If actively eating locally or within settling window, the server's snapshot trails by network latency.
+          // Never roll back the apple to a higher (un-eaten) remaining energy while eating or settling.
+          if (isRecentlyEating) {
+            if (sObj.remainingEnergyJoules < currentRemaining) {
               localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
             }
           } else if (Math.abs(currentRemaining - sObj.remainingEnergyJoules) > 100) {

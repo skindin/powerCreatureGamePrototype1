@@ -1050,6 +1050,64 @@ export class ServerGameSimulation {
   }
 
   /**
+   * Applies exactly one tick of held-item use (eating) for a character.
+   * Invariant: for player characters this is called once per real client input packet,
+   * so the server credits exactly the same energy the client predicted.
+   */
+  private applyItemUse(char: Character, isUsing: boolean, dt: number): void {
+    if (!isUsing || !char.consumeModule || !char.consumeModule.canConsume(char.heldObject)) return;
+    const heldObj = char.heldObject!;
+    const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+    if (result.isDepleted) {
+      this.triggerObjectDeletion(heldObj.id);
+    }
+  }
+
+  /**
+   * Settles a consumable the client reports as fully eaten.
+   * The client finishes eating up to (RTT/2 + jitter delay) before the server processes those
+   * same input ticks, so any energy still left in the server's copy is energy the client already
+   * ate. Credit it to the holder before deleting, otherwise that energy is silently lost.
+   */
+  public settleClientConsumedObject(serverCharId: string, objectId: string): void {
+    const sChar = this.characters.get(serverCharId);
+    const obj = this.objects.find((o) => o.id === objectId) || (sChar?.heldObject?.id === objectId ? sChar.heldObject : null);
+    const holder = (obj && obj.heldBy instanceof Character) ? obj.heldBy : sChar;
+    const isHolder = Boolean(holder && (
+      holder === sChar ||
+      holder.id === serverCharId ||
+      holder.playerId === serverCharId ||
+      (holder as any).serverCharId === serverCharId
+    ));
+    if (obj && holder && isHolder && obj.consumableModule) {
+      const cm = obj.consumableModule;
+      const remaining = cm.getRemainingEnergy(obj.properties);
+      if (remaining > 0.001) {
+        if (holder.energyPool && holder.energyPool.enabled) {
+          const pool = holder.energyPool;
+          const cur = pool.getCurrentEnergy(holder.properties);
+          const max = pool.getMaxEnergy(holder.properties);
+          pool.currentEnergyProp.set(Math.min(max, cur + remaining), holder.properties);
+        }
+        const healRate = cm.getHealRate(obj.properties);
+        if (healRate > 0 && holder.healthModule && holder.healthModule.enabled) {
+          const secondsLeft = remaining / cm.getConsumeRate(obj.properties);
+          holder.healthModule.heal(healRate * secondsLeft, holder.properties, {
+            id: "consumable_nutrition",
+            name: cm.tag ? `Consumable (${cm.tag})` : "Consumable",
+            type: "continuous",
+            rate: healRate,
+            color: "#22c55e",
+            isHeal: true,
+          });
+        }
+        cm.remainingEnergyJoulesProp.set(0, obj.properties);
+      }
+    }
+    this.triggerObjectDeletion(objectId);
+  }
+
+  /**
    * Advances the authoritative simulation by 1 fixed physics tick.
    * Deterministically applies player inputs, freebody updates, and collision resolution.
    */
@@ -1061,10 +1119,12 @@ export class ServerGameSimulation {
 
     // 2. Consume queued inputs per character
     const grabRequests: { char: Character; target: GameObject; pkt: PlayerInputPacket }[] = [];
+    const inputDrivenChars = new Set<Character>();
 
     for (const [pId, char] of this.characters) {
       // Consume input from the server jitter buffer (Phase 5.2)
-      const { packet: pkt, drainedPackets } = this.jitterBuffer.consume(pId, this.currentTick);
+      const { packet: pkt, drainedPackets, isStarved } = this.jitterBuffer.consume(pId, this.currentTick);
+      inputDrivenChars.add(char);
 
       // Fast-forward movement / aim from drained burst packets so state stays synchronized with client stream
       for (const catchupPkt of drainedPackets) {
@@ -1088,6 +1148,8 @@ export class ServerGameSimulation {
           char.heldObject.position.y = heldPos.y;
           char.heldObject.position.z = heldPos.z;
         }
+        // Every real client input is one client tick of eating, even when fast-forwarded
+        this.applyItemUse(char, Boolean((catchupPkt as any).isUsingItem), dt);
       }
 
       if (pkt) {
@@ -1238,6 +1300,10 @@ export class ServerGameSimulation {
           char.heldObject.position.y = heldPos.y;
           char.heldObject.position.z = heldPos.z;
         }
+        // Starvation ticks are synthesized (no client tick happened), so they never eat
+        if (!isStarved) {
+          this.applyItemUse(char, char.isUsingItem, dt);
+        }
       } else {
         // Neutral step for character without input packet this tick
         if (!char.heldObject || !char.canConsumeHeldObject()) {
@@ -1280,14 +1346,10 @@ export class ServerGameSimulation {
       }
     }
 
-    // 4b. Process Consumable consumption for held items
+    // 4b. Consumption for non-player characters (player characters eat per input packet above)
     for (const char of this.allCharacters) {
-      if (char.isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-        const heldObj = char.heldObject!;
-        const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-        if (result.isDepleted) {
-          this.triggerObjectDeletion(heldObj.id);
-        }
+      if (!inputDrivenChars.has(char)) {
+        this.applyItemUse(char, char.isUsingItem, dt);
       }
     }
 
