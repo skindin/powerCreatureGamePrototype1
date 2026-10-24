@@ -749,6 +749,10 @@ export class Character extends GameObject {
       this.isActivelyWalking = false;
     }
 
+    if (this.isActivelyWalking || this.isSprinting || Math.hypot(this.movementInput.x, this.movementInput.y) > 0.01) {
+      this.knockbackUntilTime = 0;
+    }
+
     // 2. Update base physics & collisions
     this.updatePosition(dt, arena);
 

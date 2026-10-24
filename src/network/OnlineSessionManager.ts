@@ -939,13 +939,13 @@ export class OnlineSessionManager {
           localChar.velocity.x = myServerState.vx ?? 0;
           localChar.velocity.y = myServerState.vy ?? 0;
         } else {
-          // Massive external impulse from a tackle/explosion while local was near rest:
+          // If at rest and not commanding movement, adopt significant external impulse from server (e.g. bounce pad)
+          const isLocomoting = localChar.isActivelyWalking || localChar.isSprinting || Math.hypot(localChar.movementInput?.x ?? 0, localChar.movementInput?.y ?? 0) > 0.01;
           const localSpeed = Math.hypot(localChar.velocity.x, localChar.velocity.y);
           const serverSpeed = Math.hypot(myServerState.vx, myServerState.vy);
-          if (serverSpeed > 8.0 && localSpeed < 2.0) {
+          if (!isLocomoting && serverSpeed > 10.0 && localSpeed < 2.0) {
             localChar.velocity.x = myServerState.vx;
             localChar.velocity.y = myServerState.vy;
-            localChar.applyKnockbackWindow(800);
           }
         }
       }

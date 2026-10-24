@@ -1024,7 +1024,14 @@ export class GameObject {
     // Cushioning from bounciness (elasticity): absorbed shock is reduced by (1 - bounce).
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : (this.isCharacter ? 0.2 : 0);
     const absorbedFraction = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
-    const isThreat = this.isUnderKnockback || this.isInFlight;
+    const isVoluntary = this.isCharacter && (
+      Boolean((this as any).isActivelyWalking) ||
+      Boolean((this as any).isSprinting) ||
+      Math.hypot((this as any).movementInput?.x ?? 0, (this as any).movementInput?.y ?? 0) > 0.01
+    );
+    // Wall impact damage strictly requires an involuntary fling (airborne projectile or involuntary knockback).
+    // Voluntary walking or sprinting into a wall never inflicts damage.
+    const isThreat = (!isVoluntary && this.isUnderKnockback) || this.isInFlight;
     const kSelf = isThreat
       ? 1.0
       : (this.damageSolverModule ? Math.max(0, Math.min(1.0, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0.0);

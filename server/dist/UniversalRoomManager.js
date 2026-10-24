@@ -1613,6 +1613,7 @@ const _GameObject = class _GameObject {
    * Applies realistic wall/boundary impact dynamics
    */
   resolveWallImpact(normalX, normalY, restitution) {
+    var _a, _b;
     this.lastThrower = null;
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return;
@@ -1627,7 +1628,8 @@ const _GameObject = class _GameObject {
     }
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
-    const isThreat = this.isUnderKnockback || this.isInFlight;
+    const isVoluntary = this.isCharacter && (Boolean(this.isActivelyWalking) || Boolean(this.isSprinting) || Math.hypot(((_a = this.movementInput) == null ? void 0 : _a.x) ?? 0, ((_b = this.movementInput) == null ? void 0 : _b.y) ?? 0) > 0.01);
+    const isThreat = !isVoluntary && this.isUnderKnockback || this.isInFlight;
     const kSelf = isThreat ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
     const effectiveSpeed = impactSpeed * kSelf;
     const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
@@ -5522,6 +5524,9 @@ class Character extends GameObject {
     } else {
       this.isActivelyWalking = false;
     }
+    if (this.isActivelyWalking || this.isSprinting || Math.hypot(this.movementInput.x, this.movementInput.y) > 0.01) {
+      this.knockbackUntilTime = 0;
+    }
     this.updatePosition(dt, arena);
     if (this.healthModule && this.healthModule.enabled) {
       this.healthModule.update(dt, this, arena);
@@ -6088,6 +6093,7 @@ class CollisionResolver {
    * Resolves entity collision with an arena wall using discrete rollback or continuous sweep.
    */
   static resolveEntityWallCollision(entity, wall, _arena, dt, globalMode = "dynamic") {
+    var _a, _b;
     if (!entity.hasCollider) return false;
     if (entity.position.z > wall.wallHeight) return false;
     const r = entity.colliderRadius;
@@ -6138,7 +6144,8 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const isThreat = entity.isUnderKnockback || entity.isInFlight;
+      const isVoluntary = entity.isCharacter && (Boolean(entity.isActivelyWalking) || Boolean(entity.isSprinting) || Math.hypot(((_a = entity.movementInput) == null ? void 0 : _a.x) ?? 0, ((_b = entity.movementInput) == null ? void 0 : _b.y) ?? 0) > 0.01);
+      const isThreat = !isVoluntary && entity.isUnderKnockback || entity.isInFlight;
       const kSelf = isThreat ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
       const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 0, isThreat, false);
       const effectiveSpeed = impactSpeed * threatRatio;
@@ -6180,7 +6187,7 @@ class CollisionResolver {
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
   static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType, customImpactSpeed, _normZ = 0) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e, _f;
     const isClosingIn2D = velAlongNormal < 0;
     const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
     const vAn0 = a.isImmovable ? 0 : a.velocity.x * normX + a.velocity.y * normY;
@@ -6333,8 +6340,10 @@ class CollisionResolver {
     } else if (a.position.z >= b.position.z && relVz0 > 0.05) {
       uA = Math.hypot(uA, Math.abs(relVz0));
     }
-    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight);
-    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight);
+    const isVoluntaryA = a.isCharacter && (Boolean(a.isActivelyWalking) || Boolean(a.isSprinting) || Math.hypot(((_c = a.movementInput) == null ? void 0 : _c.x) ?? 0, ((_d = a.movementInput) == null ? void 0 : _d.y) ?? 0) > 0.01);
+    const isVoluntaryB = b.isCharacter && (Boolean(b.isActivelyWalking) || Boolean(b.isSprinting) || Math.hypot(((_e = b.movementInput) == null ? void 0 : _e.x) ?? 0, ((_f = b.movementInput) == null ? void 0 : _f.y) ?? 0) > 0.01);
+    const isThreatA = Boolean(!isVoluntaryA && a.isUnderKnockback || a.isInFlight);
+    const isThreatB = Boolean(!isVoluntaryB && b.isUnderKnockback || b.isInFlight);
     const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
     const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
     const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);

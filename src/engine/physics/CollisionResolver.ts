@@ -404,7 +404,12 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const isThreat = entity.isUnderKnockback || entity.isInFlight;
+      const isVoluntary = entity.isCharacter && (
+        Boolean((entity as any).isActivelyWalking) ||
+        Boolean((entity as any).isSprinting) ||
+        Math.hypot((entity as any).movementInput?.x ?? 0, (entity as any).movementInput?.y ?? 0) > 0.01
+      );
+      const isThreat = (!isVoluntary && entity.isUnderKnockback) || entity.isInFlight;
       const kSelf = isThreat
         ? 1.0
         : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
@@ -669,8 +674,18 @@ export class CollisionResolver {
     // Active threats (1.0): bodies in flight (thrown items/projectiles) or under knockback (hurled bodies).
     // Resting obstacles, props, or pushed items: deliver 0 active threat to a character walking/running into them.
     // Characters under voluntary locomotion use their selfImpactWeight multiplier (default 0.0 = arcade bump immunity).
-    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight);
-    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight);
+    const isVoluntaryA = a.isCharacter && (
+      Boolean((a as any).isActivelyWalking) ||
+      Boolean((a as any).isSprinting) ||
+      Math.hypot((a as any).movementInput?.x ?? 0, (a as any).movementInput?.y ?? 0) > 0.01
+    );
+    const isVoluntaryB = b.isCharacter && (
+      Boolean((b as any).isActivelyWalking) ||
+      Boolean((b as any).isSprinting) ||
+      Math.hypot((b as any).movementInput?.x ?? 0, (b as any).movementInput?.y ?? 0) > 0.01
+    );
+    const isThreatA = Boolean((!isVoluntaryA && a.isUnderKnockback) || a.isInFlight);
+    const isThreatB = Boolean((!isVoluntaryB && b.isUnderKnockback) || b.isInFlight);
 
     const multA = isThreatA
       ? 1.0
