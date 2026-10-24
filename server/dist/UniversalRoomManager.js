@@ -907,7 +907,9 @@ const _GameObject = class _GameObject {
     __publicField(this, "position");
     __publicField(this, "color");
     __publicField(this, "isHeld");
-    __publicField(this, "heldBy");
+    __publicField(this, "_heldBy", null);
+    __publicField(this, "lastHolder", null);
+    __publicField(this, "lastDroppedTime", 0);
     __publicField(this, "lastThrower", null);
     __publicField(this, "originalThrower", null);
     __publicField(this, "isInFlight", false);
@@ -1009,6 +1011,18 @@ const _GameObject = class _GameObject {
     if (this.consumableModule) {
       this.consumableModule.initialColliderRadius = options.colliderRadius ?? (this.colliderModule ? this.colliderModule.radius : 0.26);
     }
+  }
+  get heldBy() {
+    return this._heldBy;
+  }
+  set heldBy(val) {
+    if (val) {
+      this.lastHolder = val;
+    } else if (this._heldBy) {
+      this.lastHolder = this._heldBy;
+      this.lastDroppedTime = performance.now();
+    }
+    this._heldBy = val;
   }
   /**
    * Applies an involuntary knockback momentum window to this entity (in milliseconds).
@@ -6362,12 +6376,14 @@ class CollisionResolver {
     const isThreatB = Boolean(!isVoluntaryB && b.isUnderKnockback || b.isInFlight);
     const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
     const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
-    const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
-    const threatRatioB = CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
+    const isRecentlyDroppedByA = b.lastHolder === a && now - b.lastDroppedTime < 2e3 && !b.isInFlight;
+    const isRecentlyDroppedByB = a.lastHolder === b && now - a.lastDroppedTime < 2e3 && !a.isInFlight;
+    const threatRatioA = isRecentlyDroppedByA ? 0 : CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
+    const threatRatioB = isRecentlyDroppedByB ? 0 : CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
     const effectiveDeltaVa = deltaVa * threatRatioA;
     const effectiveDeltaVb = deltaVb * threatRatioB;
-    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const shockA = isRecentlyDroppedByA ? 0 : Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = isRecentlyDroppedByB ? 0 : Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
@@ -8821,6 +8837,7 @@ class ServerTelemetryBroadcaster {
         isGrounded: obj.isRestingOnSurface || obj.position.z <= 5e-3,
         isHeld: obj.isHeld || Boolean(holder),
         heldBy: holder ? holder.playerId || (holder === primaryChar ? "player" : holder.id) : obj.heldBy ? obj.heldBy.playerId || obj.heldBy.id : null,
+        isInFlight: Boolean(obj.isInFlight),
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : void 0,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : void 0,

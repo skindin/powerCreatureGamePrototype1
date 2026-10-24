@@ -35,7 +35,24 @@ export class GameObject {
   public position: Vector3D;
   public color: string;
   public isHeld: boolean;
-  public heldBy: GameObject | null;
+  private _heldBy: GameObject | null = null;
+  public lastHolder: GameObject | null = null;
+  public lastDroppedTime: number = 0;
+
+  public get heldBy(): GameObject | null {
+    return this._heldBy;
+  }
+
+  public set heldBy(val: GameObject | null) {
+    if (val) {
+      this.lastHolder = val;
+    } else if (this._heldBy) {
+      this.lastHolder = this._heldBy;
+      this.lastDroppedTime = performance.now();
+    }
+    this._heldBy = val;
+  }
+
   public lastThrower: GameObject | null = null;
   public originalThrower: GameObject | null = null;
   public isInFlight: boolean = false;

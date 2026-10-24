@@ -694,14 +694,19 @@ export class CollisionResolver {
       ? 1.0
       : (b.damageSolverModule ? Math.max(0, Math.min(1.0, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0.0);
 
-    const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
-    const threatRatioB = CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
+    // Self-drop immunity: Characters never take collision impact shock or knockback from an object
+    // they themselves dropped / released within the last 2 seconds (unless thrown back at them by someone else).
+    const isRecentlyDroppedByA = (b.lastHolder === a) && (now - b.lastDroppedTime < 2000) && !b.isInFlight;
+    const isRecentlyDroppedByB = (a.lastHolder === b) && (now - a.lastDroppedTime < 2000) && !a.isInFlight;
+
+    const threatRatioA = isRecentlyDroppedByA ? 0 : CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
+    const threatRatioB = isRecentlyDroppedByB ? 0 : CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
 
     const effectiveDeltaVa = deltaVa * threatRatioA;
     const effectiveDeltaVb = deltaVb * threatRatioB;
 
-    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const shockA = isRecentlyDroppedByA ? 0 : (Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2));
+    const shockB = isRecentlyDroppedByB ? 0 : (Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2));
 
     if (shockA > 0.01) {
       a.dispatchImpact({

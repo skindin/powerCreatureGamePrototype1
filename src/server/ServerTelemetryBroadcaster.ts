@@ -85,6 +85,7 @@ export class ServerTelemetryBroadcaster {
         isGrounded: obj.isRestingOnSurface || obj.position.z <= 0.005,
         isHeld: obj.isHeld || Boolean(holder),
         heldBy: holder ? (holder.playerId || (holder === primaryChar ? "player" : holder.id)) : (obj.heldBy ? ((obj.heldBy as Character).playerId || obj.heldBy.id) : null),
+        isInFlight: Boolean(obj.isInFlight),
         isAboveWalls: obj.isAboveWalls,
         angX: obj.rollModule ? Number(obj.rollModule.angularVelocity.x.toFixed(3)) : undefined,
         angY: obj.rollModule ? Number(obj.rollModule.angularVelocity.y.toFixed(3)) : undefined,

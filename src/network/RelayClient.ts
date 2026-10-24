@@ -25,6 +25,7 @@ export interface GhostEntityState {
   shape?: "circle" | "box";
   isHeld?: boolean;
   heldBy?: string | null;
+  isInFlight?: boolean;
   isAboveWalls?: boolean;
   isClimbing?: boolean;
   facingAngle?: number;
