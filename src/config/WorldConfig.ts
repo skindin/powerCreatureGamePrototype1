@@ -90,6 +90,7 @@ export interface SerializedGameObjectConfig {
     healRate: number;
     minScaleFloor?: number;
     minRadiusFloor?: number;
+    unlimited?: boolean;
   } | null;
 
   // Health & Vitality
@@ -716,6 +717,7 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       healRate: obj.consumableModule.getHealRate(obj.properties),
       minScaleFloor: obj.consumableModule.minScaleFloor,
       minRadiusFloor: obj.consumableModule.minRadiusFloor,
+      unlimited: obj.consumableModule.unlimited,
     };
   }
 
@@ -870,6 +872,7 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
       healRate: config.consumableModule.healRate,
       minScaleFloor: config.consumableModule.minScaleFloor,
       minRadiusFloor: config.consumableModule.minRadiusFloor,
+      unlimited: config.consumableModule.unlimited,
     });
   }
 

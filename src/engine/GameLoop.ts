@@ -658,6 +658,9 @@ export class GameLoop {
           if (sObj.consumableTag !== undefined && localObj.consumableModule) {
             localObj.consumableModule.tag = sObj.consumableTag;
           }
+          if (sObj.unlimited !== undefined && localObj.consumableModule) {
+            localObj.consumableModule.unlimited = sObj.unlimited;
+          }
           if (sObj.totalEnergyJoules !== undefined && localObj.consumableModule) {
             localObj.consumableModule.totalEnergyJoulesProp.set(sObj.totalEnergyJoules, localObj.properties);
           }
@@ -687,6 +690,7 @@ export class GameLoop {
                   tag: sObj.consumableTag,
                   totalEnergyJoules: sObj.totalEnergyJoules ?? 4000,
                   remainingEnergyJoules: sObj.remainingEnergyJoules ?? sObj.totalEnergyJoules ?? 4000,
+                  unlimited: sObj.unlimited,
                 })
               : undefined,
             damageAuraModule: (sObj.damageAuraRadius !== undefined || sObj.damageAuraRate !== undefined)
@@ -732,9 +736,13 @@ export class GameLoop {
         )
       );
 
+      if (localObj.consumableModule && sObj.unlimited !== undefined) {
+        localObj.consumableModule.unlimited = sObj.unlimited;
+      }
+
       // Consumable status synchronization:
       // If the object is consumable (e.g. apple), sync remaining energy and physical scale:
-      if (localObj.consumableModule && sObj.remainingEnergyJoules !== undefined) {
+      if (localObj.consumableModule && sObj.remainingEnergyJoules !== undefined && !localObj.consumableModule.unlimited) {
         if (!localObj.consumableModule.initialColliderRadius || localObj.consumableModule.initialColliderRadius <= 0) {
           localObj.consumableModule.initialColliderRadius = localObj.colliderRadius;
         }

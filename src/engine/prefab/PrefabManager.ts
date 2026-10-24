@@ -47,6 +47,39 @@ export class PrefabManager {
 
     this.prefabs.set(applePrefab.id, applePrefab);
 
+    // 💖 King of the Hill "Super Apple" prefab: unlimited hot pink apple yielding 2,000 J/sec
+    const superAppleArchetype = new GameObject({
+      id: "archetype_super_apple",
+      name: "Super Apple",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#ff1493",
+      visualShape: "circle",
+      mass: 0.45,
+      colliderRadius: 0.30,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        unlimited: true,
+        totalEnergyJoules: 10000,
+        remainingEnergyJoules: 10000,
+        consumeRateWatts: 2000,
+        healRate: 0,
+        minScaleFloor: 1.0,
+        minRadiusFloor: 0.30,
+      }),
+    });
+
+    const superApplePrefab = new Prefab({
+      id: "prefab_super_apple",
+      name: "Super Apple",
+      icon: "💖",
+      archetype: superAppleArchetype,
+    });
+
+    this.prefabs.set(superApplePrefab.id, superApplePrefab);
+
     // 🪨 Default "Stone" prefab: dense, rigid rock with low bounce that inflicts high impact damage when thrown
     const stoneArchetype = new GameObject({
       id: "archetype_stone",

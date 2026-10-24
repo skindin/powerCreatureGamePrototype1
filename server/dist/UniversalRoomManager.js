@@ -7018,6 +7018,8 @@ class ConsumableModule {
     __publicField(this, "initialColliderRadius", 0.26);
     /** Flag indicating whether the item has been completely consumed */
     __publicField(this, "isConsumed", false);
+    /** If true, this consumable has infinite energy, never depletes, never shrinks, and cannot be destroyed */
+    __publicField(this, "unlimited", false);
     this.tag = ((options == null ? void 0 : options.tag) ?? "food").trim().toLowerCase() || "food";
     const total = (options == null ? void 0 : options.totalEnergyJoules) ?? 4e3;
     this.totalEnergyJoulesProp = new DynamicProperty(total);
@@ -7027,6 +7029,7 @@ class ConsumableModule {
     if ((options == null ? void 0 : options.minScaleFloor) !== void 0) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);
     if ((options == null ? void 0 : options.minRadiusFloor) !== void 0) this.minRadiusFloor = Math.max(0.08, options.minRadiusFloor);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if ((options == null ? void 0 : options.unlimited) !== void 0) this.unlimited = options.unlimited;
   }
   get totalEnergyJoules() {
     return this.totalEnergyJoulesProp.literalValue;
@@ -7080,6 +7083,7 @@ class ConsumableModule {
    * ensuring that even low-energy crumbs remain easily visible and grabbable.
    */
   getScale(registry) {
+    if (this.unlimited) return 1;
     const total = this.getTotalEnergy(registry);
     const remaining = this.getRemainingEnergy(registry);
     if (remaining <= 1e-3) return 0;
@@ -7097,6 +7101,33 @@ class ConsumableModule {
       return { watts: 0, joules: 0, isDepleted: this.isConsumed };
     }
     const registry = consumableObj.properties;
+    if (this.unlimited) {
+      const rateWatts2 = this.getConsumeRate(registry);
+      const demandJoules2 = rateWatts2 * dt;
+      if (consumer.energyPool && consumer.energyPool.enabled) {
+        const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
+        const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
+        const updatedEnergy = Math.min(maxEnergy, curEnergy + demandJoules2);
+        consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
+      }
+      const healHpPerSec2 = this.getHealRate(registry);
+      if (healHpPerSec2 > 0 && consumer.healthModule && consumer.healthModule.enabled) {
+        const healAmt = healHpPerSec2 * dt;
+        consumer.healthModule.heal(healAmt, consumer.properties, {
+          id: "consumable_nutrition",
+          name: this.tag ? `Consumable (${this.tag})` : "Consumable",
+          type: "continuous",
+          rate: healHpPerSec2,
+          color: "#ec4899",
+          isHeal: true
+        });
+      }
+      return {
+        watts: rateWatts2,
+        joules: demandJoules2,
+        isDepleted: false
+      };
+    }
     const remaining = this.getRemainingEnergy(registry);
     if (remaining <= 1e-3) {
       this.finishConsumption(consumer, consumableObj, objects, arena);
@@ -7530,6 +7561,29 @@ const QUARRY_APPLE_SPAWN_POINTS = [
 const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
 function createQuarryStones() {
   return [
+    // --- King of the Hill: Central Super Apple ---
+    new GameObject({
+      id: "super-apple-center",
+      name: "Super Apple",
+      prefabId: "prefab_super_apple",
+      position: { x: 10, y: 7, z: 0 },
+      mass: 0.45,
+      colliderRadius: 0.3,
+      color: "#ff1493",
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        unlimited: true,
+        totalEnergyJoules: 1e4,
+        remainingEnergyJoules: 1e4,
+        consumeRateWatts: 2e3,
+        healRate: 0,
+        minScaleFloor: 1,
+        minRadiusFloor: 0.3
+      })
+    }),
     // --- Ground Level Throwing Stones ---
     new GameObject({
       id: "stone-ground-1",
@@ -7856,7 +7910,8 @@ function serializeGameObject(obj) {
       consumeRateWatts: obj.consumableModule.getConsumeRate(obj.properties),
       healRate: obj.consumableModule.getHealRate(obj.properties),
       minScaleFloor: obj.consumableModule.minScaleFloor,
-      minRadiusFloor: obj.consumableModule.minRadiusFloor
+      minRadiusFloor: obj.consumableModule.minRadiusFloor,
+      unlimited: obj.consumableModule.unlimited
     };
   }
   if (obj.healthModule) {
@@ -7986,7 +8041,8 @@ function deserializeGameObject(config) {
       consumeRateWatts: config.consumableModule.consumeRateWatts,
       healRate: config.consumableModule.healRate,
       minScaleFloor: config.consumableModule.minScaleFloor,
-      minRadiusFloor: config.consumableModule.minRadiusFloor
+      minRadiusFloor: config.consumableModule.minRadiusFloor,
+      unlimited: config.consumableModule.unlimited
     });
   }
   if (config.hasHealthModule === false) {
@@ -8070,6 +8126,35 @@ class PrefabManager {
       archetype: appleArchetype
     });
     this.prefabs.set(applePrefab.id, applePrefab);
+    const superAppleArchetype = new GameObject({
+      id: "archetype_super_apple",
+      name: "Super Apple",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#ff1493",
+      visualShape: "circle",
+      mass: 0.45,
+      colliderRadius: 0.3,
+      bounceMod: 0.2,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        unlimited: true,
+        totalEnergyJoules: 1e4,
+        remainingEnergyJoules: 1e4,
+        consumeRateWatts: 2e3,
+        healRate: 0,
+        minScaleFloor: 1,
+        minRadiusFloor: 0.3
+      })
+    });
+    const superApplePrefab = new Prefab({
+      id: "prefab_super_apple",
+      name: "Super Apple",
+      icon: "💖",
+      archetype: superAppleArchetype
+    });
+    this.prefabs.set(superApplePrefab.id, superApplePrefab);
     const stoneArchetype = new GameObject({
       id: "archetype_stone",
       name: "Stone",
@@ -8891,6 +8976,9 @@ class ServerTelemetryBroadcaster {
           if (obj.isHeld || Math.abs(objRem - objTotal) > 0.1 || archConsumable && Math.abs(objRem - archTotal) > 0.1) {
             baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
           }
+          if (obj.consumableModule.unlimited !== (archConsumable ? archConsumable.unlimited : false)) {
+            baseState.unlimited = obj.consumableModule.unlimited;
+          }
         }
         if (obj.healthModule && obj.healthModule.enabled) {
           const curHp = obj.healthModule.getCurrentHp(obj.properties);
@@ -9399,7 +9487,7 @@ class ServerGameSimulation {
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0) {
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0 && !sObj.consumableModule.unlimited) {
         const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
         const clientRemaining = cObj.remainingEnergyJoules;
         if (sObj.isHeld) {
@@ -9899,10 +9987,11 @@ class ServerGameSimulation {
    * so the server credits exactly the same energy the client predicted.
    */
   applyItemUse(char, isUsing, dt) {
+    var _a;
     if (!isUsing || !char.consumeModule || !char.consumeModule.canConsume(char.heldObject)) return;
     const heldObj = char.heldObject;
     const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-    if (result.isDepleted) {
+    if (result.isDepleted && !((_a = heldObj.consumableModule) == null ? void 0 : _a.unlimited)) {
       this.triggerObjectDeletion(heldObj.id);
     }
   }
@@ -9919,6 +10008,7 @@ class ServerGameSimulation {
     const holder = obj && obj.heldBy instanceof Character ? obj.heldBy : sChar;
     const isHolder = Boolean(holder && (holder === sChar || holder.id === serverCharId || holder.playerId === serverCharId || holder.serverCharId === serverCharId));
     if (obj && holder && isHolder && obj.consumableModule) {
+      if (obj.consumableModule.unlimited) return;
       const cm = obj.consumableModule;
       const remaining = cm.getRemainingEnergy(obj.properties);
       if (remaining > 1e-3) {

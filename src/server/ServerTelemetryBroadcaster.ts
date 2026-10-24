@@ -139,6 +139,10 @@ export class ServerTelemetryBroadcaster {
           if (obj.isHeld || Math.abs(objRem - objTotal) > 0.1 || (archConsumable && Math.abs(objRem - archTotal) > 0.1)) {
             baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
           }
+
+          if (obj.consumableModule.unlimited !== (archConsumable ? archConsumable.unlimited : false)) {
+            baseState.unlimited = obj.consumableModule.unlimited;
+          }
         }
 
         if (obj.healthModule && obj.healthModule.enabled) {

@@ -14,6 +14,7 @@ export interface ConsumableModuleOptions {
   minScaleFloor?: number;
   minRadiusFloor?: number;
   enabled?: boolean;
+  unlimited?: boolean;
 }
 
 /**
@@ -55,6 +56,9 @@ export class ConsumableModule {
   /** Flag indicating whether the item has been completely consumed */
   public isConsumed: boolean = false;
 
+  /** If true, this consumable has infinite energy, never depletes, never shrinks, and cannot be destroyed */
+  public unlimited: boolean = false;
+
   constructor(options?: ConsumableModuleOptions) {
     this.tag = (options?.tag ?? "food").trim().toLowerCase() || "food";
     const total = options?.totalEnergyJoules ?? 4000.0;
@@ -66,6 +70,7 @@ export class ConsumableModule {
     if (options?.minScaleFloor !== undefined) this.minScaleFloor = Math.max(0.2, options.minScaleFloor);
     if (options?.minRadiusFloor !== undefined) this.minRadiusFloor = Math.max(0.08, options.minRadiusFloor);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
+    if (options?.unlimited !== undefined) this.unlimited = options.unlimited;
   }
 
   public get totalEnergyJoules(): number {
@@ -135,6 +140,7 @@ export class ConsumableModule {
    * ensuring that even low-energy crumbs remain easily visible and grabbable.
    */
   public getScale(registry?: ObjectPropertiesRegistry): number {
+    if (this.unlimited) return 1.0;
     const total = this.getTotalEnergy(registry);
     const remaining = this.getRemainingEnergy(registry);
     if (remaining <= 0.001) return 0;
@@ -160,6 +166,40 @@ export class ConsumableModule {
     }
 
     const registry = consumableObj.properties;
+
+    if (this.unlimited) {
+      const rateWatts = this.getConsumeRate(registry);
+      const demandJoules = rateWatts * dt;
+
+      // 1. Add directly to consumer's EnergyPool
+      if (consumer.energyPool && consumer.energyPool.enabled) {
+        const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
+        const maxEnergy = consumer.energyPool.getMaxEnergy(consumer.properties);
+        const updatedEnergy = Math.min(maxEnergy, curEnergy + demandJoules);
+        consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
+      }
+
+      // 2. Optional bonus health healing while consuming
+      const healHpPerSec = this.getHealRate(registry);
+      if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
+        const healAmt = healHpPerSec * dt;
+        consumer.healthModule.heal(healAmt, consumer.properties, {
+          id: "consumable_nutrition",
+          name: this.tag ? `Consumable (${this.tag})` : "Consumable",
+          type: "continuous",
+          rate: healHpPerSec,
+          color: "#ec4899",
+          isHeal: true,
+        });
+      }
+
+      return {
+        watts: rateWatts,
+        joules: demandJoules,
+        isDepleted: false,
+      };
+    }
+
     const remaining = this.getRemainingEnergy(registry);
     if (remaining <= 0.001) {
       this.finishConsumption(consumer, consumableObj, objects, arena);

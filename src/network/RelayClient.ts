@@ -45,6 +45,7 @@ export interface GhostEntityState {
   consumableTag?: string;
   remainingEnergyJoules?: number;
   totalEnergyJoules?: number;
+  unlimited?: boolean;
   // Damage Aura fields
   damageAuraRadius?: number;
   damageAuraRate?: number;

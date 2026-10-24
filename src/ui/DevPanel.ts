@@ -1830,6 +1830,13 @@ export class DevPanel {
 
           <div id="prop-socket-consumable-tag" style="margin-bottom: 6px;"></div>
 
+          <div style="margin: 6px 0; display: flex; align-items: center; justify-content: space-between;">
+            <label for="chk-consumable-unlimited" style="font-size: 0.78rem; font-weight: 600; color: #e2e8f0; cursor: pointer;">
+              ♾️ Unlimited Energy (KotH)
+            </label>
+            <input type="checkbox" id="chk-consumable-unlimited" ${cm.unlimited ? 'checked' : ''} style="cursor: pointer; accent-color: #ec4899; width: 16px; height: 16px;" />
+          </div>
+
           <div style="margin: 6px 0;">
             <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
               <span>Remaining Energy</span>
@@ -3310,6 +3317,20 @@ export class DevPanel {
     // Consumable Module controls (applicable to any entity with ConsumableModule)
     if (e.consumableModule) {
       const cm = e.consumableModule;
+
+      const unlimChk = this.container.querySelector<HTMLInputElement>("#chk-consumable-unlimited");
+      if (unlimChk) {
+        unlimChk.addEventListener("change", () => {
+          cm.unlimited = unlimChk.checked;
+          if (e.prefabId) {
+            e.overriddenProperties.add("consumable_unlimited");
+            this.updatePrefabInfoBadge();
+          }
+          if (!(e instanceof Character)) {
+            this.markDirty("objects", e);
+          }
+        });
+      }
 
       const tagSocketEl = this.container.querySelector("#prop-socket-consumable-tag");
       if (tagSocketEl) {

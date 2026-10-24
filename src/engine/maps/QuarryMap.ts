@@ -1,6 +1,7 @@
 import { Arena, WallMapPreset } from "../Arena.js";
 import { GameObject } from "../GameObject.js";
 import { RollModule } from "../RollModule.js";
+import { ConsumableModule } from "../ConsumableModule.js";
 
 /**
  * 🪨 The Stone Quarry Map Preset
@@ -73,6 +74,30 @@ export const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7.0 };
  */
 export function createQuarryStones(): GameObject[] {
   return [
+    // --- King of the Hill: Central Super Apple ---
+    new GameObject({
+      id: "super-apple-center",
+      name: "Super Apple",
+      prefabId: "prefab_super_apple",
+      position: { x: 10.0, y: 7.0, z: 0 },
+      mass: 0.45,
+      colliderRadius: 0.30,
+      color: "#ff1493",
+      bounceMod: 0.20,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      consumableModule: new ConsumableModule({
+        tag: "food",
+        unlimited: true,
+        totalEnergyJoules: 10000,
+        remainingEnergyJoules: 10000,
+        consumeRateWatts: 2000,
+        healRate: 0,
+        minScaleFloor: 1.0,
+        minRadiusFloor: 0.30,
+      }),
+    }),
+
     // --- Ground Level Throwing Stones ---
     new GameObject({
       id: "stone-ground-1",

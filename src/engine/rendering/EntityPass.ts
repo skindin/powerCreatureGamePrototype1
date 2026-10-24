@@ -196,33 +196,50 @@ export class EntityPass {
         ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
         ctx.stroke();
       }
-
-      // Food Stem & Leaf details
-      if (obj.foodModule) {
-        const stemH = Math.max(4, renderRadius * 0.45);
-        ctx.strokeStyle = "#854d0e";
-        ctx.lineWidth = Math.max(1.5, renderRadius * 0.14);
-        ctx.beginPath();
-        ctx.moveTo(x, y - renderRadius + 1);
-        ctx.quadraticCurveTo(x + 2, y - renderRadius - stemH * 0.5, x + 3, y - renderRadius - stemH);
-        ctx.stroke();
-
-        ctx.fillStyle = "#22c55e";
-        ctx.beginPath();
-        ctx.ellipse(x + 4.5, y - renderRadius - stemH * 0.65, Math.max(2.5, renderRadius * 0.25), Math.max(1.5, renderRadius * 0.14), Math.PI / 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Active eating nutrient pulse particles when being consumed
-    if (isHeld && allCharacters.some((c) => c.heldObject === obj && c.isUsingItem)) {
-      const pulseT = (performance.now() % 600) / 600;
-      ctx.strokeStyle = `rgba(34, 197, 94, ${0.75 * (1 - pulseT)})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, renderRadius + pulseT * 10, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+ 
+       // King of the Hill / Unlimited Consumable: radiant pulsating aura halo
+       if (obj.consumableModule?.unlimited) {
+         const pulse = (Math.sin(performance.now() * 0.006) + 1) * 0.5;
+         ctx.save();
+         ctx.strokeStyle = `rgba(255, 20, 147, ${0.45 + pulse * 0.45})`;
+         ctx.lineWidth = 3.0;
+         ctx.shadowColor = "#ff1493";
+         ctx.shadowBlur = 10 + pulse * 6;
+         ctx.beginPath();
+         ctx.arc(x, y, renderRadius + 4 + pulse * 2, 0, Math.PI * 2);
+         ctx.stroke();
+         ctx.restore();
+       }
+ 
+       // Food Stem & Leaf details
+       if (obj.foodModule || obj.consumableModule?.tag === "food") {
+         const stemH = Math.max(4, renderRadius * 0.45);
+         ctx.strokeStyle = "#854d0e";
+         ctx.lineWidth = Math.max(1.5, renderRadius * 0.14);
+         ctx.beginPath();
+         ctx.moveTo(x, y - renderRadius + 1);
+         ctx.quadraticCurveTo(x + 2, y - renderRadius - stemH * 0.5, x + 3, y - renderRadius - stemH);
+         ctx.stroke();
+ 
+         ctx.fillStyle = obj.consumableModule?.unlimited ? "#f43f5e" : "#22c55e";
+         ctx.beginPath();
+         ctx.ellipse(x + 4.5, y - renderRadius - stemH * 0.65, Math.max(2.5, renderRadius * 0.25), Math.max(1.5, renderRadius * 0.14), Math.PI / 4, 0, Math.PI * 2);
+         ctx.fill();
+       }
+     }
+ 
+     // Active eating nutrient pulse particles when being consumed
+     if (isHeld && allCharacters.some((c) => c.heldObject === obj && c.isUsingItem)) {
+       const pulseT = (performance.now() % 600) / 600;
+       const pulseColor = obj.consumableModule?.unlimited
+         ? `rgba(255, 20, 147, ${0.85 * (1 - pulseT)})`
+         : `rgba(34, 197, 94, ${0.75 * (1 - pulseT)})`;
+       ctx.strokeStyle = pulseColor;
+       ctx.lineWidth = 2.5;
+       ctx.beginPath();
+       ctx.arc(x, y, renderRadius + pulseT * 12, 0, Math.PI * 2);
+       ctx.stroke();
+     }
 
     this.drawRollIndicator(ctx, obj, x, y, renderRadius);
     ctx.restore();
@@ -639,10 +656,14 @@ export class EntityPass {
     const ratio = Math.max(0, Math.min(1, remainingEnergy / Math.max(1, totalEnergy)));
 
     // Only display if actively eating OR if partially eaten (remaining < total - 1.0)
-    if (!isEating && ratio >= 0.999) return;
+    if (cMod.unlimited) {
+      if (!isEating) return;
+    } else if (!isEating && ratio >= 0.999) {
+      return;
+    }
 
     // Radius positioned cleanly outside the food sprite and stem/leaf
-    const stemExtra = obj.foodModule ? Math.max(4, renderRadius * 0.45) : 0;
+    const stemExtra = (obj.foodModule || cMod.tag === "food") ? Math.max(4, renderRadius * 0.45) : 0;
     const ringRadius = Math.max(renderRadius + stemExtra + 3, renderRadius + 5);
 
     ctx.save();
@@ -654,15 +675,17 @@ export class EntityPass {
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // 2. Active green progress ring showing remaining portion to eat
-    if (ratio > 0.005) {
+    // 2. Active progress ring showing portion or infinite eating
+    const activeColor = cMod.unlimited ? "#ff1493" : (isEating ? "#22c55e" : "rgba(34, 197, 94, 0.65)");
+    const ringRatio = cMod.unlimited ? 1.0 : ratio;
+    if (ringRatio > 0.005) {
       ctx.beginPath();
-      ctx.arc(x, y, ringRadius, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2, false);
-      ctx.strokeStyle = isEating ? "#22c55e" : "rgba(34, 197, 94, 0.65)";
+      ctx.arc(x, y, ringRadius, -Math.PI / 2, -Math.PI / 2 + ringRatio * Math.PI * 2, false);
+      ctx.strokeStyle = activeColor;
       ctx.lineWidth = 2.5;
       ctx.lineCap = "round";
       if (isEating) {
-        ctx.shadowColor = "#22c55e";
+        ctx.shadowColor = activeColor;
         ctx.shadowBlur = 4;
       }
       ctx.stroke();

@@ -478,7 +478,7 @@ export class ServerGameSimulation {
       }
 
       // Synchronize consumable remaining energy from client stream (adopt client's consumed energy progression)
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined) {
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined && !sObj.consumableModule.unlimited) {
         const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
         const clientRemaining = cObj.remainingEnergyJoules;
         if (sObj.isHeld) {
@@ -1091,7 +1091,7 @@ export class ServerGameSimulation {
     if (!isUsing || !char.consumeModule || !char.consumeModule.canConsume(char.heldObject)) return;
     const heldObj = char.heldObject!;
     const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-    if (result.isDepleted) {
+    if (result.isDepleted && !heldObj.consumableModule?.unlimited) {
       this.triggerObjectDeletion(heldObj.id);
     }
   }
@@ -1113,6 +1113,7 @@ export class ServerGameSimulation {
       (holder as any).serverCharId === serverCharId
     ));
     if (obj && holder && isHolder && obj.consumableModule) {
+      if (obj.consumableModule.unlimited) return;
       const cm = obj.consumableModule;
       const remaining = cm.getRemainingEnergy(obj.properties);
       if (remaining > 0.001) {
