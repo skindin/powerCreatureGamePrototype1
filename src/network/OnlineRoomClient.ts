@@ -51,6 +51,16 @@ export class OnlineRoomClient {
   public onPlayerLeft?: (charId: string) => void;
   public onSnapshotReceived?: (snapshot: GhostSnapshot) => void;
   public onContestedGrabEvents?: (events: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[]) => void;
+  public onGrabResult?: (result: {
+    type: string;
+    eventId: string;
+    tick: number;
+    targetObjectId: string;
+    winnerPlayerId: string;
+    loserPlayerId?: string;
+    loserPlayerIds?: string[];
+    success: boolean;
+  }) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;
   public getLocalPlayers?: () => Array<{ localPlayerId: string; name?: string; spawnPos?: { x: number; y: number; z?: number } }>;
@@ -101,6 +111,22 @@ export class OnlineRoomClient {
           action,
           serverCharId,
           localPlayerId: rawPlayerId,
+        }));
+      } catch (_) {}
+    }
+  }
+
+  public sendGrabRequest(localPlayerId: string, targetObjectId: string): void {
+    const rawPlayerId = localPlayerId || "keyboard";
+    const serverCharId = this.getServerCharId(rawPlayerId);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({
+          type: "grab_request",
+          localPlayerId: rawPlayerId,
+          serverCharId,
+          targetObjectId,
+          timestamp: Date.now(),
         }));
       } catch (_) {}
     }
@@ -231,6 +257,11 @@ export class OnlineRoomClient {
             const rtt = Math.round(performance.now() - msg.clientTimestamp);
             this.pingMs = Math.max(1, rtt);
             this.notifyStats();
+            return;
+          }
+
+          if (msg.type === "grab_result") {
+            this.onGrabResult?.(msg);
             return;
           }
 

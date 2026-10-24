@@ -73,6 +73,7 @@ export class OnlineSessionManager {
     this.spawnAlignedPlayerIds.clear();
     this.client.localPlayers.clear();
     if (this.gameLoop?.playerManager) {
+      this.gameLoop.playerManager.isOnlineMode = true;
       for (const p of this.gameLoop.playerManager.players.values()) {
         this.client.localPlayers.set(p.id, {
           localPlayerId: p.id,
@@ -106,6 +107,9 @@ export class OnlineSessionManager {
   public disconnect(): void {
     this.spawnAlignedPlayerIds.clear();
     this.processedDeathRespawnEventIds.clear();
+    if (this.gameLoop?.playerManager) {
+      this.gameLoop.playerManager.isOnlineMode = false;
+    }
     this.client.disconnect();
   }
 
@@ -173,6 +177,12 @@ export class OnlineSessionManager {
         this.client.removePlayer(playerId);
       }
     };
+
+    this.gameLoop.playerManager.onPriorityGrabRequested = (localPlayerId, _charId, targetObjectId) => {
+      if (this.gameLoop?.activeMode === "online" && this.client.status === "connected") {
+        this.client.sendGrabRequest(localPlayerId, targetObjectId);
+      }
+    };
   }
 
   private bindClientCallbacks(): void {
@@ -231,6 +241,12 @@ export class OnlineSessionManager {
       }
     };
 
+    this.client.onGrabResult = (result) => {
+      if (this.gameLoop && this.gameLoop.activeMode === "online") {
+        this.handleGrabResult(result);
+      }
+    };
+
     this.client.onSnapshotReceived = (snapshot: GhostSnapshot) => {
       if (this.gameLoop && this.gameLoop.activeMode === "online") {
         this.handleSnapshotReceived(snapshot);
@@ -280,6 +296,84 @@ export class OnlineSessionManager {
             targetObj.heldBy = localChar;
           }
         }
+      }
+    }
+  }
+
+  private handleGrabResult(data: {
+    eventId: string;
+    targetObjectId: string;
+    winnerPlayerId: string;
+    loserPlayerId?: string;
+    loserPlayerIds?: string[];
+    success: boolean;
+  }): void {
+    if (!this.gameLoop) return;
+    const targetObj = this.gameLoop.objects.find((o) => o.id === data.targetObjectId);
+    if (!targetObj) return;
+
+    // Check if winner is one of our local characters
+    let localWinnerChar: Character | null = null;
+    for (const p of this.gameLoop.players.values()) {
+      const localChar = p.character;
+      const isWinner =
+        data.winnerPlayerId === p.id ||
+        data.winnerPlayerId === localChar.playerId ||
+        data.winnerPlayerId === localChar.serverCharId ||
+        (this.client.clientId !== null && (data.winnerPlayerId === this.client.clientId || data.winnerPlayerId === `${this.client.clientId}:${p.id}`));
+      if (isWinner) {
+        localWinnerChar = localChar;
+        break;
+      }
+    }
+    if (!localWinnerChar && this.gameLoop.players.size === 0) {
+      const baseChar = this.gameLoop.playerManager.baseCharacter;
+      if (
+        data.winnerPlayerId === "keyboard" ||
+        data.winnerPlayerId === baseChar.playerId ||
+        data.winnerPlayerId === baseChar.serverCharId ||
+        (this.client.clientId !== null && data.winnerPlayerId === this.client.clientId)
+      ) {
+        localWinnerChar = baseChar;
+      }
+    }
+
+    if (localWinnerChar) {
+      // Local client won the grab contest!
+      localWinnerChar.pickupModule?.pickup(localWinnerChar, targetObj);
+      localWinnerChar.heldObject = targetObj;
+      targetObj.isHeld = true;
+      targetObj.heldBy = localWinnerChar;
+      const relPos = localWinnerChar.calculateHeldObjectPosition(this.gameLoop.arena);
+      targetObj.position.x = relPos.x;
+      targetObj.position.y = relPos.y;
+      targetObj.position.z = relPos.z;
+    } else {
+      // Remote player won or local client lost
+      for (const p of this.gameLoop.players.values()) {
+        if (p.character.heldObject === targetObj) {
+          p.character.heldObject = null;
+        }
+      }
+      if (this.gameLoop.playerManager.baseCharacter.heldObject === targetObj) {
+        this.gameLoop.playerManager.baseCharacter.heldObject = null;
+      }
+
+      // Attach to remote winning character if found
+      const remWinner = this.gameLoop.allCharacters.find(
+        (c) => c.playerId === data.winnerPlayerId ||
+               c.serverCharId === data.winnerPlayerId ||
+               c.id === data.winnerPlayerId ||
+               (data.winnerPlayerId.includes(":") && c.playerId === data.winnerPlayerId.split(":")[1])
+      );
+      if (remWinner) {
+        remWinner.heldObject = targetObj;
+        targetObj.isHeld = true;
+        targetObj.heldBy = remWinner;
+        const relPos = remWinner.calculateHeldObjectPosition(this.gameLoop.arena);
+        targetObj.position.x = relPos.x;
+        targetObj.position.y = relPos.y;
+        targetObj.position.z = relPos.z;
       }
     }
   }
@@ -660,10 +754,25 @@ export class OnlineSessionManager {
             if (c.heldObjectId) {
               const targetObj = this.gameLoop.objects.find((o) => o.id === c.heldObjectId);
               if (targetObj) {
+                // If local character was mistakenly holding this object, release it immediately!
+                for (const p of this.gameLoop.players.values()) {
+                  if (p.character.heldObject === targetObj) {
+                    p.character.heldObject = null;
+                  }
+                }
+                if (this.gameLoop.playerManager.baseCharacter.heldObject === targetObj) {
+                  this.gameLoop.playerManager.baseCharacter.heldObject = null;
+                }
                 remChar.heldObject = targetObj;
                 targetObj.isHeld = true;
                 targetObj.heldBy = remChar;
               }
+            } else if (remChar.heldObject) {
+              if (remChar.heldObject.heldBy === remChar) {
+                remChar.heldObject.isHeld = false;
+                remChar.heldObject.heldBy = null;
+              }
+              remChar.heldObject = null;
             }
           }
         } else {

@@ -90,7 +90,16 @@ export class GameLoop {
   public interpolator = new RemoteEntityInterpolator();
   public splitClientSimsEnabled = false;
   public isMultiplayerMode = false;
-  public activeMode: "local" | "boomerang" | "online" = "local";
+  private _activeMode: "local" | "boomerang" | "online" = "local";
+  public get activeMode(): "local" | "boomerang" | "online" {
+    return this._activeMode;
+  }
+  public set activeMode(val: "local" | "boomerang" | "online") {
+    this._activeMode = val;
+    if (this.playerManager) {
+      this.playerManager.isOnlineMode = (val === "online");
+    }
+  }
   public onPlayerRenamed?: (playerId: string, newName: string) => void;
   public lastAppliedObjectSeq = -1;
   public deletedConsumableIds = new Set<string>();

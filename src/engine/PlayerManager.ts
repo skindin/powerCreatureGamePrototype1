@@ -61,6 +61,8 @@ export class PlayerManager {
   public onPlayerJoined?: (player: PlayerEntry) => void;
   public onPlayerRemoved?: (playerId: string) => void;
   public onObjectDepleted?: (objectId: string) => void;
+  public isOnlineMode: boolean = false;
+  public onPriorityGrabRequested?: (localPlayerId: string, charId: string, targetObjectId: string) => void;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -1176,42 +1178,67 @@ export class PlayerManager {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
             if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
-              let itemToHold: GameObject = targetObj;
-              if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
-                // Spawner entity stays put at its location!
-                // Dispense an identical clone without spawner behavior to go into character's hands.
-                const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
-                if (clone) {
-                  itemToHold = clone;
-                }
-              }
-              const pickedUp = char.pickupModule.pickup(char, itemToHold);
-              if (!pickedUp && itemToHold !== targetObj) {
-                // Insufficient lift energy or failed pickup: clean up orphaned clone
-                const idx = objects.indexOf(itemToHold);
-                if (idx !== -1) objects.splice(idx, 1);
-              } else if (pickedUp) {
+              if (this.isOnlineMode) {
+                // Online Mode: Do NOT assume pickup was successful! Send priority message to server.
                 const gState = this.getGrabSuppressionState(char.id);
-                const isButtonHeld = this.inputManager.isMouseDown ||
-                  this.inputManager.justPickedUp ||
-                  (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-                if (isButtonHeld) {
-                  gState.useItemSuppressed = true;
+                if (isKeyboardPlayer) {
+                  gState.mouseGrabSuppressed = true;
+                  gState.keyEGrabSuppressed = true;
+                } else {
+                  gState.rtGrabSuppressed = true;
+                  gState.bGrabSuppressed = true;
                 }
-                this.lastHeldObjectIds.set(char.id, itemToHold.id);
-                char.isUsingItem = false;
-                char.eatRateWatts = 0;
+                const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                this.onPriorityGrabRequested?.(playerId, char.id, targetObj.id);
                 if (!isReplay) {
-                  const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
                   const action: ReliableActionCommand = {
                     actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
                     type: "pickup",
                     tick: pkt.tick ?? 0,
                     timestamp: performance.now(),
                     playerId: actPlayerId,
-                    targetObjectId: itemToHold.id,
+                    targetObjectId: targetObj.id,
                   };
                   this.onReliableActionDispatched?.(action);
+                }
+              } else {
+                let itemToHold: GameObject = targetObj;
+                if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
+                  // Spawner entity stays put at its location!
+                  // Dispense an identical clone without spawner behavior to go into character's hands.
+                  const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
+                  if (clone) {
+                    itemToHold = clone;
+                  }
+                }
+                const pickedUp = char.pickupModule.pickup(char, itemToHold);
+                if (!pickedUp && itemToHold !== targetObj) {
+                  // Insufficient lift energy or failed pickup: clean up orphaned clone
+                  const idx = objects.indexOf(itemToHold);
+                  if (idx !== -1) objects.splice(idx, 1);
+                } else if (pickedUp) {
+                  const gState = this.getGrabSuppressionState(char.id);
+                  const isButtonHeld = this.inputManager.isMouseDown ||
+                    this.inputManager.justPickedUp ||
+                    (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
+                  if (isButtonHeld) {
+                    gState.useItemSuppressed = true;
+                  }
+                  this.lastHeldObjectIds.set(char.id, itemToHold.id);
+                  char.isUsingItem = false;
+                  char.eatRateWatts = 0;
+                  if (!isReplay) {
+                    const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                    const action: ReliableActionCommand = {
+                      actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
+                      type: "pickup",
+                      tick: pkt.tick ?? 0,
+                      timestamp: performance.now(),
+                      playerId: actPlayerId,
+                      targetObjectId: itemToHold.id,
+                    };
+                    this.onReliableActionDispatched?.(action);
+                  }
                 }
               }
             }
@@ -1220,14 +1247,65 @@ export class PlayerManager {
           // Fallback for legacy calls without grabTargetObjectId
           const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
           const target = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
-          if (target && target.spawnerModule && target.spawnerModule.enabled) {
-            const clone = target.spawnerModule.triggerClone(target, this.arena, objects);
-            if (clone) {
-              const pickedUp = char.pickupModule.pickup(char, clone);
-              if (!pickedUp) {
-                const idx = objects.indexOf(clone);
-                if (idx !== -1) objects.splice(idx, 1);
+          if (target) {
+            if (this.isOnlineMode) {
+              const gState = this.getGrabSuppressionState(char.id);
+              if (isKeyboardPlayer) {
+                gState.mouseGrabSuppressed = true;
+                gState.keyEGrabSuppressed = true;
               } else {
+                gState.rtGrabSuppressed = true;
+                gState.bGrabSuppressed = true;
+              }
+              const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+              this.onPriorityGrabRequested?.(playerId, char.id, target.id);
+              if (!isReplay) {
+                const action: ReliableActionCommand = {
+                  actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
+                  type: "pickup",
+                  tick: pkt.tick ?? 0,
+                  timestamp: performance.now(),
+                  playerId: actPlayerId,
+                  targetObjectId: target.id,
+                };
+                this.onReliableActionDispatched?.(action);
+              }
+            } else if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, this.arena, objects);
+              if (clone) {
+                const pickedUp = char.pickupModule.pickup(char, clone);
+                if (!pickedUp) {
+                  const idx = objects.indexOf(clone);
+                  if (idx !== -1) objects.splice(idx, 1);
+                } else {
+                  const gState = this.getGrabSuppressionState(char.id);
+                  const isButtonHeld = this.inputManager.isMouseDown ||
+                    this.inputManager.justPickedUp ||
+                    (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
+                  if (isButtonHeld) {
+                    gState.useItemSuppressed = true;
+                  }
+                  this.lastHeldObjectIds.set(char.id, clone.id);
+                  char.isUsingItem = false;
+                  char.eatRateWatts = 0;
+                  if (!isReplay) {
+                    const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                    const action: ReliableActionCommand = {
+                      actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
+                      type: "pickup",
+                      tick: pkt.tick ?? 0,
+                      timestamp: performance.now(),
+                      playerId: actPlayerId,
+                      targetObjectId: clone.id,
+                    };
+                    this.onReliableActionDispatched?.(action);
+                  }
+                }
+              }
+            } else {
+              const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+              const held = char.heldObject as GameObject | null;
+              if (pickedUp && held) {
                 const gState = this.getGrabSuppressionState(char.id);
                 const isButtonHeld = this.inputManager.isMouseDown ||
                   this.inputManager.justPickedUp ||
@@ -1235,7 +1313,7 @@ export class PlayerManager {
                 if (isButtonHeld) {
                   gState.useItemSuppressed = true;
                 }
-                this.lastHeldObjectIds.set(char.id, clone.id);
+                this.lastHeldObjectIds.set(char.id, held.id);
                 char.isUsingItem = false;
                 char.eatRateWatts = 0;
                 if (!isReplay) {
@@ -1246,37 +1324,10 @@ export class PlayerManager {
                     tick: pkt.tick ?? 0,
                     timestamp: performance.now(),
                     playerId: actPlayerId,
-                    targetObjectId: clone.id,
+                    targetObjectId: held.id,
                   };
                   this.onReliableActionDispatched?.(action);
                 }
-              }
-            }
-          } else {
-            const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
-            const held = char.heldObject as GameObject | null;
-            if (pickedUp && held) {
-              const gState = this.getGrabSuppressionState(char.id);
-              const isButtonHeld = this.inputManager.isMouseDown ||
-                this.inputManager.justPickedUp ||
-                (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-              if (isButtonHeld) {
-                gState.useItemSuppressed = true;
-              }
-              this.lastHeldObjectIds.set(char.id, held.id);
-              char.isUsingItem = false;
-              char.eatRateWatts = 0;
-              if (!isReplay) {
-                const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-                const action: ReliableActionCommand = {
-                  actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                  type: "pickup",
-                  tick: pkt.tick ?? 0,
-                  timestamp: performance.now(),
-                  playerId: actPlayerId,
-                  targetObjectId: held.id,
-                };
-                this.onReliableActionDispatched?.(action);
               }
             }
           }

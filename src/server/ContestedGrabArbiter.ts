@@ -58,12 +58,18 @@ export class ContestedGrabArbiter {
       if (requests.length === 1) {
         // Uncontested grab
         const req = requests[0];
+        if (req.target.isHeld && req.target.heldBy && req.target.heldBy !== req.char) {
+          continue;
+        }
         let itemToHold = req.target;
         if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
           const clone = req.target.spawnerModule.triggerClone(req.target, arena, objects);
           if (clone) itemToHold = clone;
         }
         req.char.pickupModule?.pickup(req.char, itemToHold);
+        itemToHold.isHeld = true;
+        itemToHold.heldBy = req.char;
+        req.char.heldObject = itemToHold;
         continue;
       }
 
@@ -134,6 +140,9 @@ export class ContestedGrabArbiter {
         if (clone) itemToHold = clone;
       }
       winner.char.pickupModule?.pickup(winner.char, itemToHold);
+      itemToHold.isHeld = true;
+      itemToHold.heldBy = winner.char;
+      winner.char.heldObject = itemToHold;
     }
 
     return results;

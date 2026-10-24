@@ -60,6 +60,9 @@ export class UniversalRoomManager {
       broadcastRateHz: 60,
       deltaCompression: false,
     });
+    this.simulation.onGrabResult = (result) => {
+      this.broadcastMessage(result);
+    };
     this.loadInitialWorldConfig();
   }
 
@@ -234,6 +237,79 @@ export class UniversalRoomManager {
         }
       }
     }
+  }
+
+  public broadcastMessage(msg: any): void {
+    const payload = typeof msg === "string" ? msg : JSON.stringify(msg);
+    for (const client of this.clients.values()) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        try {
+          client.ws.send(payload);
+        } catch (_) {}
+      }
+    }
+  }
+
+  public handleAuthoritativeGrab(serverCharId: string, targetObjectId: string): void {
+    let sChar = this.simulation.characters.get(serverCharId);
+    if (!sChar) {
+      sChar = this.simulation.allCharacters.find(
+        (c) => c.playerId === serverCharId || c.playerId.endsWith(`:${serverCharId}`) || c.id === serverCharId
+      );
+    }
+    if (!sChar || (sChar.healthModule && sChar.healthModule.getCurrentHp(sChar.properties) <= 0.001)) return;
+    if (sChar.heldObject) return;
+
+    const target = this.simulation.objects.find((o) => o.id === targetObjectId);
+    if (!target) return;
+
+    const maxReach = sChar.pickupModule ? sChar.pickupModule.pickupReach * 1.5 : 2.5;
+    const charZ = Math.max(sChar.position.z, sChar.supportingSurfaceHeight ?? 0);
+    const targetZ = Math.max(target.position.z, target.supportingSurfaceHeight ?? 0);
+    const dist3D = Math.hypot(
+      target.position.x - sChar.position.x,
+      target.position.y - sChar.position.y,
+      targetZ - charZ
+    );
+    if (dist3D > maxReach) return;
+
+    if (target.isHeld && target.heldBy && target.heldBy !== sChar) {
+      // Another client grabbed it first! Notify requester they lost the contest
+      const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
+      const winnerPlayerId = holderChar ? (holderChar.playerId || holderChar.id) : "";
+      const resultMsg = {
+        type: "grab_result",
+        eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        tick: this.simulation.currentTick,
+        targetObjectId: target.id,
+        winnerPlayerId,
+        loserPlayerId: sChar.playerId || serverCharId,
+        success: false,
+      };
+      this.broadcastMessage(resultMsg);
+      return;
+    }
+
+    // Uncontested or first arrival: winner!
+    let itemToHold = target;
+    if (target.spawnerModule && target.spawnerModule.enabled) {
+      const clone = target.spawnerModule.triggerClone(target, this.simulation.arena, this.simulation.objects);
+      if (clone) itemToHold = clone;
+    }
+    sChar.pickupModule?.pickup(sChar, itemToHold);
+    itemToHold.isHeld = true;
+    itemToHold.heldBy = sChar;
+    sChar.heldObject = itemToHold;
+
+    const resultMsg = {
+      type: "grab_result",
+      eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      tick: this.simulation.currentTick,
+      targetObjectId: itemToHold.id,
+      winnerPlayerId: sChar.playerId || serverCharId,
+      success: true,
+    };
+    this.broadcastMessage(resultMsg);
   }
 
   public allocatePlayerNumber(): number {
@@ -749,6 +825,14 @@ export class UniversalRoomManager {
           if (Array.isArray(data.objects) && data.objects.length > 0) {
             this.simulation.syncObjectsFromPacket(data.objects, serverCharId);
           }
+          return;
+        }
+
+        if (data.type === "grab_request" && data.targetObjectId) {
+          const localPlayerId = data.localPlayerId || "keyboard";
+          const charEntry = client.characters.get(localPlayerId);
+          const serverCharId = charEntry ? charEntry.serverCharId : (data.serverCharId || clientId);
+          this.handleAuthoritativeGrab(serverCharId, data.targetObjectId);
           return;
         }
 

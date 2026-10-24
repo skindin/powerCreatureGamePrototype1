@@ -81,6 +81,9 @@ export class ServerGameSimulation {
   // Track deleted object IDs so client telemetry packets cannot resurrect deleted items (e.g. eaten food)
   public deletedObjectIds: Set<string> = new Set();
 
+  // Authoritative grab result priority broadcast callback
+  public onGrabResult?: (result: any) => void;
+
   constructor(config?: ServerSimConfig) {
     const width = config?.arenaWidth ?? 20;
     const height = config?.arenaHeight ?? 14;
@@ -487,6 +490,10 @@ export class ServerGameSimulation {
           ? (this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId))
           : null;
         if (sChar) {
+          // If the object is ALREADY held by another character on the server, reject client packet attempting to steal it!
+          if (sObj.isHeld && sObj.heldBy && sObj.heldBy !== sChar) {
+            continue;
+          }
           sObj.isHeld = true;
           sObj.heldBy = sChar;
           sChar.heldObject = sObj;
@@ -760,6 +767,33 @@ export class ServerGameSimulation {
               if (clone) itemToHold = clone;
             }
             char.pickupModule.pickup(char, itemToHold);
+            itemToHold.isHeld = true;
+            itemToHold.heldBy = char;
+            char.heldObject = itemToHold;
+
+            if (this.onGrabResult) {
+              this.onGrabResult({
+                type: "grab_result",
+                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                tick: this.currentTick,
+                targetObjectId: itemToHold.id,
+                winnerPlayerId: char.playerId || char.id,
+                success: true,
+              });
+            }
+          } else if (target && target.isHeld && target.heldBy !== char) {
+            const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
+            if (this.onGrabResult) {
+              this.onGrabResult({
+                type: "grab_result",
+                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                tick: this.currentTick,
+                targetObjectId: target.id,
+                winnerPlayerId: holderChar ? (holderChar.playerId || holderChar.id) : "",
+                loserPlayerId: char.playerId || char.id,
+                success: false,
+              });
+            }
           }
         }
       } else if (act.type === "drop") {
@@ -848,6 +882,17 @@ export class ServerGameSimulation {
         createdTick: this.currentTick,
         acks: new Set<string>(),
       });
+      if (this.onGrabResult) {
+        this.onGrabResult({
+          type: "grab_result",
+          eventId: res.eventId,
+          tick: res.tick,
+          targetObjectId: res.targetObjectId,
+          winnerPlayerId: res.winnerPlayerId,
+          loserPlayerIds: res.loserPlayerIds,
+          success: true,
+        });
+      }
     }
   }
 
@@ -1131,7 +1176,7 @@ export class ServerGameSimulation {
             // Explicit intent from client: only grab the exact requested object
             if (pkt.grabTargetObjectId !== null) {
               const explicitTarget = others.find((o) => o.id === pkt.grabTargetObjectId);
-              if (explicitTarget) {
+              if (explicitTarget && (!explicitTarget.isHeld || explicitTarget.heldBy === char)) {
                 const maxReach = char.pickupModule.pickupReach * 1.35;
                 const charZ = Math.max(char.position.z, char.supportingSurfaceHeight ?? 0);
                 const targetZ = Math.max(explicitTarget.position.z, explicitTarget.supportingSurfaceHeight ?? 0);
@@ -1152,7 +1197,7 @@ export class ServerGameSimulation {
             target = char.pickupModule.findTargetObject(char, grabAimX, grabAimY, others, this.arena.wallHeight);
           }
 
-          if (target) {
+          if (target && (!target.isHeld || target.heldBy === char)) {
             grabRequests.push({ char, target, pkt });
           }
         }
