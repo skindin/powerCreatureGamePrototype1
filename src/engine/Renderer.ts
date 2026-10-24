@@ -1704,29 +1704,6 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Inner high-energy core (half-capsule slightly narrower and inset, fading seamlessly)
-    const coreHalfWidth = halfWidthPx * 0.55;
-    const coreStartX = startX + (frontTipX - startX) * 0.10;
-    const coreArcCenterX = Math.max(coreStartX, arcCenterX);
-    const coreFrontTipX = coreArcCenterX + coreHalfWidth;
-
-    const coreGrad = ctx.createLinearGradient(coreStartX, 0, coreFrontTipX, 0);
-    coreGrad.addColorStop(0.0, "rgba(255, 255, 255, 0.0)");
-    coreGrad.addColorStop(0.25, "rgba(255, 255, 255, 0.45)");
-    coreGrad.addColorStop(0.70, "rgba(255, 255, 255, 0.75)");
-    coreGrad.addColorStop(1.0, "rgba(255, 255, 255, 0.90)");
-
-    ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
-    ctx.shadowBlur = Math.max(2, 4 * (ppu / 32));
-    ctx.fillStyle = coreGrad;
-    ctx.beginPath();
-    ctx.moveTo(coreStartX, -coreHalfWidth);
-    ctx.lineTo(coreArcCenterX, -coreHalfWidth);
-    ctx.arc(coreArcCenterX, 0, coreHalfWidth, -Math.PI * 0.5, Math.PI * 0.5, false);
-    ctx.lineTo(coreStartX, coreHalfWidth);
-    ctx.closePath();
-    ctx.fill();
-
     ctx.restore();
   }
 }
