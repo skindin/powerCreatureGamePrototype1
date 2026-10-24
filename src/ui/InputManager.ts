@@ -637,33 +637,13 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
-        const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight") || this.isCtrlHeld;
-        if (isCtrl) {
+        const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
+        if (isAlt) {
+          // Alt + RMB enters Laser Aiming Mode
+          this.isKeyboardMeleeRequested = false;
+        } else {
+          // Plain RMB is Melee Punch
           this.isKeyboardMeleeRequested = true;
-          return;
-        }
-        const canLock = this.canLockAim ? this.canLockAim() : false;
-        if (canLock && !this.lockedAimPos) {
-          // 1. Record where mouse was
-          this.recordedMousePos = { x: this.mousePos.x, y: this.mousePos.y };
-          this.lockedAimPos = { x: this.mousePos.x, y: this.mousePos.y };
-          this.aimLockRawDelta = 0;
-          this.aimLockRawDx = 0;
-          this.aimLockRawDy = 0;
-          this.arcModulationDeltaY = 0;
-          this.arcModulationCursor = null;
-          this.arcDetentSide = null;
-          this.lastClientX = e.clientX;
-          this.lastClientY = e.clientY;
-          // 2. Hide it
-          this.hideCursor();
-          // 3. Lock it
-          this.requestPointerLock();
-          // 4. Stop moving game cursor to mouse and keep it snapped to recorded mouse pos
-          this.mousePos.x = this.recordedMousePos.x;
-          this.mousePos.y = this.recordedMousePos.y;
-          this.actualMousePos.x = this.recordedMousePos.x;
-          this.actualMousePos.y = this.recordedMousePos.y;
         }
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
@@ -747,13 +727,23 @@ export class InputManager {
     });
 
     window.addEventListener("wheel", (e) => {
-      const isCtrl = e.ctrlKey || this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight");
-      if (isCtrl) {
-        e.preventDefault();
+      e.preventDefault();
+      const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
+      const isLaserMode = isAlt && this.isRightMouseDown;
+
+      if (isLaserMode) {
+        // Alt + RMB: adjust laser power
         const isShift = e.shiftKey || this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
         const dir = e.deltaY < 0 ? 1 : -1;
         const step = isShift ? dir * (this.laserScrollSensitivity * 3.0) : dir * this.laserScrollSensitivity;
         this.onLaserWheelAdjust?.(step);
+      } else {
+        // Change throw trajectory height:
+        // Scroll UP (negative deltaY) = higher/steeper arc
+        // Scroll DOWN (positive deltaY) = flatter/lower arc
+        const sign = Math.sign(e.deltaY);
+        const notchDelta = (sign !== 0 ? sign : (e.deltaY < 0 ? -1 : 1)) * 15;
+        this.arcModulationDeltaY += notchDelta;
       }
     }, { passive: false });
 

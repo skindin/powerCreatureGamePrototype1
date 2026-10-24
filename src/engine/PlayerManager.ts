@@ -628,8 +628,15 @@ export class PlayerManager {
         }
       }
 
-      const isCtrlDown = !isEditMode && (input.isKeyPressed("ControlLeft") || input.isKeyPressed("ControlRight") || input.isCtrlHeld);
-      if (isCtrlDown) {
+      // Keyboard Combat Mode:
+      // - RMB = Melee Punch
+      // - Alt + RMB = Laser Aiming Mode
+      // - Alt + RMB + LMB = Fire Laser
+      const isAltDown = Boolean(input.isAltHeld || input.isKeyPressed("AltLeft") || input.isKeyPressed("AltRight"));
+      const isLaserMode = !isEditMode && (isAltDown && input.isRightMouseDown);
+      const isMeleeRequested = !isEditMode && ((!isAltDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested);
+
+      if (isLaserMode || isMeleeRequested) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
         const aimDy = input.actualMousePos.y - kChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -645,8 +652,8 @@ export class PlayerManager {
         grabState.useItemSuppressed = true;
       }
       const canUseItem = input.isMouseDown && !grabState.useItemSuppressed && !input.justPickedUp;
-      // Using primary ability requires NOT holding Alt (or holding LMB after starting primary ability until released)
-      const isUsingItem = isHoldingConsumable && canUseItem && !input.isAltHeld && !input.isThrowingPress && !input.isKeyboardSuspended;
+      // Using primary ability requires NOT holding Alt and NOT in laser mode or melee
+      const isUsingItem = isHoldingConsumable && canUseItem && !isAltDown && !input.isThrowingPress && !input.isKeyboardSuspended && !isLaserMode && !isMeleeRequested;
 
       // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
       // unhide and clear the lock:
@@ -676,33 +683,25 @@ export class PlayerManager {
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: isCtrlDown ? false : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
-        grabTargetObjectId: isCtrlDown ? null : grabTargetObjectId,
+        isGrabHeld: (isLaserMode || isMeleeRequested) ? false : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
+        grabTargetObjectId: (isLaserMode || isMeleeRequested) ? null : grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
-        isThrow: isCtrlDown ? false : (input.isKeyboardThrowRequested ?? false),
-        isUsingItem: isCtrlDown ? false : isUsingItem,
-        isLaserAiming: isCtrlDown,
-        isLaserFiring: isCtrlDown && input.isMouseDown,
+        isThrow: (isLaserMode || isMeleeRequested) ? false : (input.isKeyboardThrowRequested ?? false),
+        isUsingItem: (isLaserMode || isMeleeRequested) ? false : isUsingItem,
+        isLaserAiming: isLaserMode,
+        isLaserFiring: isLaserMode && input.isMouseDown,
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
-        isMeleeRequested: (isCtrlDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested,
-        meleeAimDirX: (isCtrlDown && input.isRightMouseDown)
-          ? ((input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1))
-          : Math.cos(kChar.facingAngle ?? 0),
-        meleeAimDirY: (isCtrlDown && input.isRightMouseDown)
-          ? ((input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1))
-          : Math.sin(kChar.facingAngle ?? 0),
-        meleeAimX: kChar ? kChar.position.x + Math.cos(kChar.facingAngle ?? 0) : input.actualMousePos.x,
-        meleeAimY: kChar ? kChar.position.y + Math.sin(kChar.facingAngle ?? 0) : input.actualMousePos.y,
-        aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-          ? input.recordedMousePos.x
-          : input.actualMousePos.x,
-        aimY: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
-          ? input.recordedMousePos.y
-          : input.actualMousePos.y,
+        isMeleeRequested: isMeleeRequested,
+        meleeAimDirX: (input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
+        meleeAimDirY: (input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
+        meleeAimX: input.actualMousePos.x,
+        meleeAimY: input.actualMousePos.y,
+        aimX: input.actualMousePos.x,
+        aimY: input.actualMousePos.y,
         isAiming: isMouseAiming,
-        isLockHeld: Boolean(input.isRightMouseDown && input.lockedAimPos),
-        lockedAimPos: input.lockedAimPos ? { ...input.lockedAimPos } : null,
+        isLockHeld: false,
+        lockedAimPos: null,
         aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
         ...(kLaunchVel ? {
@@ -1705,11 +1704,11 @@ export class PlayerManager {
    */
   public updateArcModulation(char: Character, slot?: GamepadSlotState): void {
     const input = this.inputManager;
-    const isLocked = slot
+    const isModulationActive = slot
       ? Boolean(slot.isLockHeld && slot.lockedAimPos)
-      : Boolean(input.isRightMouseDown && input.lockedAimPos);
+      : this.isKeyboardAimingTrajectory();
 
-    if (!isLocked || !char.heldObject || !char.throwModule) {
+    if (!isModulationActive || !char.heldObject || !char.throwModule) {
       return;
     }
 

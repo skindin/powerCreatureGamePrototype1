@@ -271,8 +271,8 @@ export class TrajectoryRenderer {
       }
     };
 
-    // Render ghost preview arcs for the flattest and steepest reachable curves only when holding right-click
-    const isLockHeld = Boolean(traj.lockedTargetPos);
+    // Render ghost preview arcs for the flattest and steepest reachable curves when locked or user has adjusted arc ratio
+    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio);
     let isSnapped = false;
     if (isLockHeld) {
       if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
