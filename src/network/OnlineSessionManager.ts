@@ -709,6 +709,11 @@ export class OnlineSessionManager {
                 if (c.vx !== undefined) dummy.velocity.x += (c.vx - dummy.velocity.x) * blend;
                 if (c.vy !== undefined) dummy.velocity.y += (c.vy - dummy.velocity.y) * blend;
               }
+              if (c.isUnderKnockback && c.vx !== undefined && c.vy !== undefined) {
+                dummy.velocity.x = c.vx;
+                dummy.velocity.y = c.vy;
+                dummy.applyKnockbackWindow(350);
+              }
               if (c.facingAngle !== undefined) {
                 dummy.facingAngle = c.facingAngle;
               }
@@ -799,12 +804,21 @@ export class OnlineSessionManager {
                 // If authoritative damage was taken and server reports knockback impulse:
                 if (c.currentHp < curHp && c.vx !== undefined && c.vy !== undefined) {
                   const serverSpeed = Math.hypot(c.vx, c.vy);
-                  if (serverSpeed > 1.5) {
+                  if (serverSpeed > 1.0) {
                     localChar.velocity.x = c.vx;
                     localChar.velocity.y = c.vy;
-                    localChar.applyKnockbackWindow(800);
+                    localChar.applyKnockbackWindow(350);
                   }
                 }
+              }
+            }
+            // If server reports authoritative knockback or impulse on local character:
+            if (c.isUnderKnockback && c.vx !== undefined && c.vy !== undefined) {
+              const serverSpeed = Math.hypot(c.vx, c.vy);
+              if (serverSpeed > 1.0) {
+                localChar.velocity.x = c.vx;
+                localChar.velocity.y = c.vy;
+                localChar.applyKnockbackWindow(350);
               }
             }
             if (c.maxHp !== undefined && localChar.healthModule) {

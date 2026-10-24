@@ -601,7 +601,7 @@ export class ServerGameSimulation {
     }
 
     const now = performance.now();
-    const hasRecentImpact = sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400);
+    const hasRecentImpact = sChar.isUnderKnockback || (sChar.lastCollisionTime > 0 && (now - sChar.lastCollisionTime < 400));
 
     const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
 
@@ -1264,9 +1264,11 @@ export class ServerGameSimulation {
         // Melee inputs
         if (char.meleeModule) {
           char.isMeleeRequested = Boolean((pkt as any).isMeleeRequested);
-          char.meleeAimDir = (pkt as any).meleeAimX !== undefined
-            ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
-            : null;
+          char.meleeAimDir = (pkt as any).meleeAimDirX !== undefined && (pkt as any).meleeAimDirY !== undefined
+            ? { x: (pkt as any).meleeAimDirX, y: (pkt as any).meleeAimDirY }
+            : ((pkt as any).meleeAimX !== undefined
+              ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
+              : null);
           char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
         }
 

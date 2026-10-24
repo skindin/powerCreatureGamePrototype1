@@ -230,6 +230,7 @@ export class ServerTelemetryBroadcaster {
         lastVisualPunchTime: c.meleeModule ? c.meleeModule.lastVisualPunchTime : undefined,
         visualPunchDirX: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.x.toFixed(3)) : undefined,
         visualPunchDirY: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.y.toFixed(3)) : undefined,
+        isUnderKnockback: Boolean(c.isUnderKnockback),
         isLaserAiming: Boolean(c.isLaserAiming),
         isLaserFiring: Boolean(c.isLaserFiring),
         laserAimX: c.laserAimTarget ? Number(c.laserAimTarget.x.toFixed(3)) : undefined,

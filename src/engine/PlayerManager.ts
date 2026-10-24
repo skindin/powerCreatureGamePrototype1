@@ -686,6 +686,12 @@ export class PlayerManager {
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
         isMeleeRequested: (isCtrlDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested,
+        meleeAimDirX: (isCtrlDown && input.isRightMouseDown)
+          ? ((input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1))
+          : Math.cos(kChar.facingAngle ?? 0),
+        meleeAimDirY: (isCtrlDown && input.isRightMouseDown)
+          ? ((input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1))
+          : Math.sin(kChar.facingAngle ?? 0),
         meleeAimX: kChar ? kChar.position.x + Math.cos(kChar.facingAngle ?? 0) : input.actualMousePos.x,
         meleeAimY: kChar ? kChar.position.y + Math.sin(kChar.facingAngle ?? 0) : input.actualMousePos.y,
         aimX: (input.lockedAimPos || input.isAwaitingUnlock) && input.recordedMousePos
@@ -812,6 +818,8 @@ export class PlayerManager {
         laserAimY: slot.aimPos.y,
         laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
         isMeleeRequested: Boolean(slot.isMeleeRequested),
+        meleeAimDirX: Math.cos(cChar.facingAngle ?? 0),
+        meleeAimDirY: Math.sin(cChar.facingAngle ?? 0),
         meleeAimX: cChar.position.x + Math.cos(cChar.facingAngle ?? 0),
         meleeAimY: cChar.position.y + Math.sin(cChar.facingAngle ?? 0),
         aimX,
@@ -1003,9 +1011,11 @@ export class PlayerManager {
       // Set Melee inputs on character before physical capability update
       if (char.meleeModule) {
         char.isMeleeRequested = Boolean((pkt as any).isMeleeRequested);
-        char.meleeAimDir = (pkt as any).meleeAimX !== undefined
-          ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
-          : null;
+        char.meleeAimDir = (pkt as any).meleeAimDirX !== undefined && (pkt as any).meleeAimDirY !== undefined
+          ? { x: (pkt as any).meleeAimDirX, y: (pkt as any).meleeAimDirY }
+          : ((pkt as any).meleeAimX !== undefined
+            ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
+            : null);
         char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
         char.onPunchExecuted = (_res, dirX, dirY) => {
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";

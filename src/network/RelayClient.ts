@@ -58,6 +58,7 @@ export interface GhostEntityState {
   lastVisualPunchTime?: number;
   visualPunchDirX?: number;
   visualPunchDirY?: number;
+  isUnderKnockback?: boolean;
   // Laser Blast ability sync fields
   isLaserAiming?: boolean;
   isLaserFiring?: boolean;

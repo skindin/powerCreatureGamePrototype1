@@ -245,11 +245,16 @@ export class MeleeModule {
         forwardProj <= (reach + objRadius) &&
         Math.abs(lateralProj) <= (halfWidth + objRadius)
       ) {
-        // Vertical altitude check: ensure punch reaches the target's height
-        const attackerZ = attacker.position.z;
-        const targetZ = obj.position.z;
-        const targetHeight = (obj as any).height ?? (obj.colliderRadius * 2);
-        if (targetZ + targetHeight >= attackerZ - 0.2 && targetZ <= attackerZ + 1.5) {
+      // Vertical altitude check: ensure punch reaches the target's height
+      const attackerZ = attacker.position.z;
+      const targetZ = obj.position.z;
+      const attackerHeight = (attacker as any).height ?? (attacker.colliderRadius * 2);
+      const targetHeight = (obj as any).height ?? (obj.colliderRadius * 2);
+      const attackerMinZ = attackerZ - 0.3;
+      const attackerMaxZ = attackerZ + attackerHeight + 0.3;
+      const targetMinZ = targetZ;
+      const targetMaxZ = targetZ + targetHeight;
+        if (targetMaxZ >= attackerMinZ && targetMinZ <= attackerMaxZ) {
           hitTargets.push(obj);
         }
       }
@@ -273,6 +278,15 @@ export class MeleeModule {
 
         // Target knockback: Delta v = J / mass
         const targetDv = impulsePerTarget / targetMass;
+
+        // Arrest any opposing inward velocity along the punch direction so incoming targets
+        // are properly stopped and flung backwards rather than absorbing the knockback into their approach
+        const currentInwardVel = target.velocity.x * uX + target.velocity.y * uY;
+        if (currentInwardVel < 0) {
+          target.velocity.x -= uX * currentInwardVel;
+          target.velocity.y -= uY * currentInwardVel;
+        }
+
         if (target.rigidbodyModule && target.rigidbodyModule.enabled) {
           target.velocity.x += uX * targetDv;
           target.velocity.y += uY * targetDv;
@@ -281,6 +295,15 @@ export class MeleeModule {
           target.velocity.x = (target.velocity.x ?? 0) + uX * targetDv;
           target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
         }
+
+        // Wake up sleeping bodies (freebodies/props)
+        if (typeof (target as any).wakeUp === "function") {
+          (target as any).wakeUp();
+        }
+
+        // Mark collision timestamp and contact normal so server & reconciliation preserve impulse
+        target.lastCollisionTime = now;
+        target.lastContactNormal = { x: -uX, y: -uY };
 
         // Apply HP damage via target's DamageSolverModule (consistent with 60Hz collision shock)
         const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : (target.isCharacter ? 0.2 : 0);
@@ -295,8 +318,8 @@ export class MeleeModule {
           normalY: -uY,
         });
 
-        // Set knockback momentum window so subsequent wall impacts deal wall-splat collision damage
-        target.applyKnockbackWindow(800);
+        // Set knockback momentum window (350ms ensures clean knockback travel before voluntary locomotion resumes)
+        target.applyKnockbackWindow(350);
 
         // Accumulate recoil impulse on attacker
         const recoilDv = impulsePerTarget / attackerMass;

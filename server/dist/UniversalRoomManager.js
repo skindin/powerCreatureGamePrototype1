@@ -4918,8 +4918,13 @@ class MeleeModule {
       if (forwardProj >= -objRadius * 0.5 && forwardProj <= reach + objRadius && Math.abs(lateralProj) <= halfWidth + objRadius) {
         const attackerZ = attacker.position.z;
         const targetZ = obj.position.z;
+        const attackerHeight = attacker.height ?? attacker.colliderRadius * 2;
         const targetHeight = obj.height ?? obj.colliderRadius * 2;
-        if (targetZ + targetHeight >= attackerZ - 0.2 && targetZ <= attackerZ + 1.5) {
+        const attackerMinZ = attackerZ - 0.3;
+        const attackerMaxZ = attackerZ + attackerHeight + 0.3;
+        const targetMinZ = targetZ;
+        const targetMaxZ = targetZ + targetHeight;
+        if (targetMaxZ >= attackerMinZ && targetMinZ <= attackerMaxZ) {
           hitTargets.push(obj);
         }
       }
@@ -4934,6 +4939,11 @@ class MeleeModule {
       for (const target of hitTargets) {
         const targetMass = Math.max(0.2, target.mass);
         const targetDv = impulsePerTarget / targetMass;
+        const currentInwardVel = target.velocity.x * uX + target.velocity.y * uY;
+        if (currentInwardVel < 0) {
+          target.velocity.x -= uX * currentInwardVel;
+          target.velocity.y -= uY * currentInwardVel;
+        }
         if (target.rigidbodyModule && target.rigidbodyModule.enabled) {
           target.velocity.x += uX * targetDv;
           target.velocity.y += uY * targetDv;
@@ -4941,6 +4951,11 @@ class MeleeModule {
           target.velocity.x = (target.velocity.x ?? 0) + uX * targetDv;
           target.velocity.y = (target.velocity.y ?? 0) + uY * targetDv;
         }
+        if (typeof target.wakeUp === "function") {
+          target.wakeUp();
+        }
+        target.lastCollisionTime = now;
+        target.lastContactNormal = { x: -uX, y: -uY };
         const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : target.isCharacter ? 0.2 : 0;
         const absFrac = Math.max(0.1, 1 - Math.min(1, targetBounce * targetBounce));
         const shock = targetDv * 60 * absFrac;
@@ -4951,7 +4966,7 @@ class MeleeModule {
           normalX: -uX,
           normalY: -uY
         });
-        target.applyKnockbackWindow(800);
+        target.applyKnockbackWindow(350);
         const recoilDv = impulsePerTarget / attackerMass;
         recoilVx -= uX * recoilDv;
         recoilVy -= uY * recoilDv;
@@ -5520,12 +5535,13 @@ class Character extends GameObject {
       this.jump(arena, movementInput);
     }
     if (canWalk) {
-      this.walkingModule.update(this, movementInput, dt, arena);
+      if (!this.isUnderKnockback) {
+        this.walkingModule.update(this, movementInput, dt, arena);
+      } else {
+        this.isActivelyWalking = false;
+      }
     } else {
       this.isActivelyWalking = false;
-    }
-    if (this.isActivelyWalking || this.isSprinting || Math.hypot(this.movementInput.x, this.movementInput.y) > 0.01) {
-      this.knockbackUntilTime = 0;
     }
     this.updatePosition(dt, arena);
     if (this.healthModule && this.healthModule.enabled) {
@@ -8931,6 +8947,7 @@ class ServerTelemetryBroadcaster {
         lastVisualPunchTime: c.meleeModule ? c.meleeModule.lastVisualPunchTime : void 0,
         visualPunchDirX: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.x.toFixed(3)) : void 0,
         visualPunchDirY: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.y.toFixed(3)) : void 0,
+        isUnderKnockback: Boolean(c.isUnderKnockback),
         isLaserAiming: Boolean(c.isLaserAiming),
         isLaserFiring: Boolean(c.isLaserFiring),
         laserAimX: c.laserAimTarget ? Number(c.laserAimTarget.x.toFixed(3)) : void 0,
@@ -9446,7 +9463,7 @@ class ServerGameSimulation {
       }
     }
     const now = performance.now();
-    const hasRecentImpact = sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
+    const hasRecentImpact = sChar.isUnderKnockback || sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
     const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
     if (hasRecentImpact) {
       if (isClientMoving) {
@@ -9996,7 +10013,7 @@ class ServerGameSimulation {
         }
         if (char.meleeModule) {
           char.isMeleeRequested = Boolean(pkt.isMeleeRequested);
-          char.meleeAimDir = pkt.meleeAimX !== void 0 ? { x: pkt.meleeAimX - char.position.x, y: pkt.meleeAimY - char.position.y } : null;
+          char.meleeAimDir = pkt.meleeAimDirX !== void 0 && pkt.meleeAimDirY !== void 0 ? { x: pkt.meleeAimDirX, y: pkt.meleeAimDirY } : pkt.meleeAimX !== void 0 ? { x: pkt.meleeAimX - char.position.x, y: pkt.meleeAimY - char.position.y } : null;
           char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
         }
         char.updateCharacter(
