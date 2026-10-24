@@ -803,13 +803,22 @@ export class GameLoop {
         sObj.heldBy && localClientId && (sObj.heldBy === localClientId || sObj.heldBy.startsWith(`${localClientId}:`))
       );
       const isMyLocalId = Array.from(this.players.values()).some((p) => sObj.heldBy === p.id || sObj.heldBy === p.character.playerId);
-      const wasHeldByMe = isHeldByMyClient || isMyLocalId || Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character);
+      const wasHeldByMe = isHeldByMyClient || isMyLocalId ||
+        localObj.lastThrower === this.character ||
+        localObj.lastThrower === this.primaryCharacter ||
+        localObj.originalThrower === this.character ||
+        localObj.originalThrower === this.primaryCharacter ||
+        Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character || localObj.originalThrower === p.character);
 
       // Identify if any remote character is currently holding this object locally
       const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c || p.character.playerId === c.playerId || p.id === c.playerId);
       const remoteHolder = this.allCharacters.find(
         (c) => (!isLocalChar(c)) && (c.heldObject === localObj || localObj.heldBy === c)
       );
+
+      const groundZ = localObj.supportingSurfaceHeight ?? 0;
+      const isLocalAirborne = !localObj.isRestingOnSurface && localObj.position.z > groundZ + 0.05;
+      const isServerAirborne = !sObj.isGrounded && sObj.z > groundZ + 0.05;
 
       if (sObj.isHeld && sObj.heldBy) {
         // Find remote character holding it
@@ -830,31 +839,34 @@ export class GameLoop {
           localObj.isInFlight = false;
           continue;
         }
-      } else if (remoteHolder || (localObj.isHeld && localObj.heldBy && !isLocalChar(localObj.heldBy as Character))) {
-        // Was held by a remote player locally, but server says it is now released/thrown!
-        const prevHolder = (localObj.heldBy as Character) || remoteHolder;
-        if (prevHolder && prevHolder.heldObject === localObj) {
-          prevHolder.heldObject = null;
-        }
-        localObj.isHeld = false;
-        localObj.heldBy = null;
+      } else {
+        const isServerLaunched = !sObj.isHeld && (isServerAirborne || (sObj.vz !== undefined && sObj.vz > 0.5) || Math.hypot(sObj.vx, sObj.vy) > 1.2);
+        if (remoteHolder || (localObj.isHeld && localObj.heldBy && !isLocalChar(localObj.heldBy as Character)) || (isServerLaunched && !localObj.isInFlight && !wasHeldByMe)) {
+          // Was held by a remote player locally, or just launched remotely on the server!
+          const prevHolder = (localObj.heldBy as Character) || remoteHolder;
+          if (prevHolder && prevHolder.heldObject === localObj) {
+            prevHolder.heldObject = null;
+          }
+          localObj.isHeld = false;
+          localObj.heldBy = null;
 
-        // INSTANT THROW HAND-OFF (Zero Hesitation):
-        // Immediately snap to authoritative launch trajectory without slow 30% blending!
-        localObj.position.x = sObj.x;
-        localObj.position.y = sObj.y;
-        localObj.position.z = sObj.z;
-        localObj.velocity.x = sObj.vx;
-        localObj.velocity.y = sObj.vy;
-        localObj.verticalVelocity = sObj.vz ?? 0;
-        localObj.isInFlight = !sObj.isGrounded;
-        localObj.wakeUp();
-        if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
-          localObj.rollModule.angularVelocity.x = sObj.angX;
-          localObj.rollModule.angularVelocity.y = sObj.angY;
-          localObj.rollModule.angularVelocity.z = sObj.angZ;
+          // INSTANT THROW HAND-OFF (Zero Hesitation):
+          // Immediately snap to authoritative launch trajectory without slow blending!
+          localObj.position.x = sObj.x;
+          localObj.position.y = sObj.y;
+          localObj.position.z = sObj.z;
+          localObj.velocity.x = sObj.vx;
+          localObj.velocity.y = sObj.vy;
+          localObj.verticalVelocity = sObj.vz ?? 0;
+          localObj.isInFlight = !sObj.isGrounded;
+          localObj.wakeUp();
+          if (localObj.rollModule && sObj.angX !== undefined && sObj.angY !== undefined && sObj.angZ !== undefined) {
+            localObj.rollModule.angularVelocity.x = sObj.angX;
+            localObj.rollModule.angularVelocity.y = sObj.angY;
+            localObj.rollModule.angularVelocity.z = sObj.angZ;
+          }
+          continue;
         }
-        continue;
       }
 
       // 4. Client-Side Prediction for Thrown / Dropped / Released Objects by LOCAL player:
@@ -869,9 +881,6 @@ export class GameLoop {
       // 5. Ballistic In-Flight & Landing Prediction for Dynamic Freebody Objects:
       // While an object is in ballistic flight or settling upon ground impact,
       // prevent delayed trailing server snapshots from pulling the object backward or back up into the air.
-      const groundZ = localObj.supportingSurfaceHeight ?? 0;
-      const isLocalAirborne = !localObj.isRestingOnSurface && localObj.position.z > groundZ + 0.05;
-      const isServerAirborne = !sObj.isGrounded && sObj.z > groundZ + 0.05;
       const horizDist = Math.hypot(sObj.x - localObj.position.x, sObj.y - localObj.position.y);
       const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
 
@@ -899,24 +908,26 @@ export class GameLoop {
 
       // 5b. In-Flight State: Object is in ballistic flight on client or server
       if ((localObj.isInFlight || isLocalAirborne) && !sObj.isSleeping) {
-        if (horizDist < 1.8) {
-          // If local has already landed on the surface, hold it on the ground;
-          // NEVER pull a landed object backward or back up into the air toward a trailing in-flight server ghost!
-          if (!isLocalAirborne && isServerAirborne) {
-            localObj.position.z = groundZ;
-            localObj.verticalVelocity = Math.min(0, localObj.verticalVelocity);
-            continue;
-          }
-          // Both in flight or local in flight: predict forward smoothly without dragging backward
-          if (isLocalAirborne) {
+        // If local has already landed on the surface, hold it on the ground;
+        // NEVER pull a landed object backward or back up into the air toward a trailing in-flight server ghost!
+        if (!isLocalAirborne && isServerAirborne && (wasHeldByMe || localObj.isInFlight)) {
+          localObj.position.z = groundZ;
+          localObj.verticalVelocity = Math.min(0, localObj.verticalVelocity);
+          continue;
+        }
+        // When both or local are in flight:
+        // Local client simulates forward deterministically ahead of the trailing server snapshot.
+        // Allow a wide latency envelope (up to 4.5 units) so latency never causes sawtooth flight jitter!
+        if (localObj.isInFlight || isLocalAirborne) {
+          if (horizDist < 4.5) {
             continue;
           }
         }
       }
 
       // 5c. Ground Landing Transition: Local has landed, but server ghost is still trailing in the air
-      if (!isLocalAirborne && isServerAirborne && !sObj.isSleeping) {
-        if (horizDist < 1.8) {
+      if (!isLocalAirborne && isServerAirborne && !sObj.isSleeping && (wasHeldByMe || localObj.isInFlight)) {
+        if (horizDist < 3.0) {
           localObj.position.z = groundZ;
           localObj.verticalVelocity = Math.min(0, localObj.verticalVelocity);
           continue;
@@ -927,7 +938,7 @@ export class GameLoop {
       if (!isLocalAirborne && !isServerAirborne && !sObj.isSleeping && localSpeed > 0.1) {
         // Server ghost is trailing behind along the rollout path within the latency envelope.
         // Prevent rubberbanding backward by letting local ground rollout continue smoothly.
-        if (horizDist < 1.5) {
+        if (horizDist < 2.5) {
           continue;
         }
       }
@@ -939,8 +950,8 @@ export class GameLoop {
       const dist = Math.hypot(dx, dy, dz);
       if (dist > maxDrift) maxDrift = dist;
 
-      // 7. Hard Teleport on Massive Divergence (> 3.0 units)
-      if (dist > 3.0) {
+      // 7. Hard Teleport on Massive Divergence (> 4.5 units)
+      if (dist > 4.5) {
         localObj.position.x = sObj.x;
         localObj.position.y = sObj.y;
         localObj.position.z = sObj.z;
@@ -957,6 +968,11 @@ export class GameLoop {
 
       // 8. Deadzone & micro-flutter filter:
       if (dist < 0.02) {
+        continue;
+      }
+
+      // If object is currently in airborne flight, do NOT blend backward toward trailing server ghost!
+      if (localObj.isInFlight || isLocalAirborne) {
         continue;
       }
 

@@ -777,21 +777,7 @@ export class ServerGameSimulation {
                 eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                 tick: this.currentTick,
                 targetObjectId: itemToHold.id,
-                winnerPlayerId: char.playerId || char.id,
-                success: true,
-              });
-            }
-          } else if (target && target.isHeld && target.heldBy !== char) {
-            const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
-            if (this.onGrabResult) {
-              this.onGrabResult({
-                type: "grab_result",
-                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                tick: this.currentTick,
-                targetObjectId: target.id,
-                winnerPlayerId: holderChar ? (holderChar.playerId || holderChar.id) : "",
-                loserPlayerId: char.playerId || char.id,
-                success: false,
+                playerId: char.playerId || char.id,
               });
             }
           }
@@ -888,9 +874,7 @@ export class ServerGameSimulation {
           eventId: res.eventId,
           tick: res.tick,
           targetObjectId: res.targetObjectId,
-          winnerPlayerId: res.winnerPlayerId,
-          loserPlayerIds: res.loserPlayerIds,
-          success: true,
+          playerId: res.winnerPlayerId,
         });
       }
     }

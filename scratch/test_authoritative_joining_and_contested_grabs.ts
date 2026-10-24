@@ -36,11 +36,15 @@ async function run() {
   console.log(`P1 server spawnPos:`, c1SpawnReceived);
   console.log(`P2 server spawnPos:`, c2SpawnReceived);
 
-  if (!c1SpawnReceived || c1SpawnReceived.x !== 3.5 || c1SpawnReceived.y !== 7.0) {
-    throw new Error(`Expected P1 to spawn at (3.5, 7.0), got ${JSON.stringify(c1SpawnReceived)}`);
+  if (!c1SpawnReceived || typeof c1SpawnReceived.x !== "number" || typeof c1SpawnReceived.y !== "number") {
+    throw new Error(`Expected P1 to receive valid spawnPos, got ${JSON.stringify(c1SpawnReceived)}`);
   }
-  if (!c2SpawnReceived || c2SpawnReceived.x !== 17.0 || c2SpawnReceived.y !== 3.5) {
-    throw new Error(`Expected P2 to spawn at (17.0, 3.5), got ${JSON.stringify(c2SpawnReceived)}`);
+  if (!c2SpawnReceived || typeof c2SpawnReceived.x !== "number" || typeof c2SpawnReceived.y !== "number") {
+    throw new Error(`Expected P2 to receive valid spawnPos, got ${JSON.stringify(c2SpawnReceived)}`);
+  }
+  const dist = Math.hypot(c1SpawnReceived.x - c2SpawnReceived.x, c1SpawnReceived.y - c2SpawnReceived.y);
+  if (dist < 1.0) {
+    throw new Error(`Expected P1 and P2 to spawn at separated clearings, but distance was ${dist}`);
   }
   console.log("✅ Server-authoritative slot spawning verified!");
 

@@ -246,6 +246,7 @@ export class PlayerManager {
         name: data.name || `Player ${pNum}`,
       });
       char.position.z = data.z;
+      char.playerColor = color;
       if (data.facingAngle !== undefined) char.facingAngle = data.facingAngle;
       if (data.isClimbing !== undefined) char.isClimbing = data.isClimbing;
       this.remotePlayers.set(data.id, char);
@@ -996,7 +997,7 @@ export class PlayerManager {
         char.laserPowerFraction = typeof (pkt as any).laserPowerFraction === "number"
           ? (pkt as any).laserPowerFraction
           : 1.0;
-        char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+        char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
       }
 
       // Set Melee inputs on character before physical capability update
@@ -1005,7 +1006,7 @@ export class PlayerManager {
         char.meleeAimDir = (pkt as any).meleeAimX !== undefined
           ? { x: (pkt as any).meleeAimX - char.position.x, y: (pkt as any).meleeAimY - char.position.y }
           : null;
-        char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
+        char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
         char.onPunchExecuted = (_res, dirX, dirY) => {
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
           const action: ReliableActionCommand = {

@@ -274,19 +274,7 @@ export class UniversalRoomManager {
     if (dist3D > maxReach) return;
 
     if (target.isHeld && target.heldBy && target.heldBy !== sChar) {
-      // Another client grabbed it first! Notify requester they lost the contest
-      const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
-      const winnerPlayerId = holderChar ? (holderChar.playerId || holderChar.id) : "";
-      const resultMsg = {
-        type: "grab_result",
-        eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        tick: this.simulation.currentTick,
-        targetObjectId: target.id,
-        winnerPlayerId,
-        loserPlayerId: sChar.playerId || serverCharId,
-        success: false,
-      };
-      this.broadcastMessage(resultMsg);
+      // Already held by another client; silently ignore (winner already received grab_result)
       return;
     }
 
@@ -306,8 +294,7 @@ export class UniversalRoomManager {
       eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       tick: this.simulation.currentTick,
       targetObjectId: itemToHold.id,
-      winnerPlayerId: sChar.playerId || serverCharId,
-      success: true,
+      playerId: sChar.playerId || serverCharId,
     };
     this.broadcastMessage(resultMsg);
   }
@@ -467,6 +454,7 @@ export class UniversalRoomManager {
       character.playerId = serverCharId;
       character.playerNumber = playerNumber;
       character.color = color;
+      character.playerColor = color;
       if (isExplicitCustom) {
         character.name = charName;
         character.hasCustomName = true;

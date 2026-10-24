@@ -81,9 +81,11 @@ async function bootstrap(): Promise<void> {
     const wrapper = canvas.parentElement as HTMLElement;
     if (!wrapper) return;
     const s = getComputedStyle(wrapper);
-    const availW = wrapper.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
-    const availH = wrapper.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
-    const scale = Math.min(availW / arena.width, availH / arena.height);
+    const padX = (parseFloat(s.paddingLeft) || 0) + (parseFloat(s.paddingRight) || 0);
+    const padY = (parseFloat(s.paddingTop) || 0) + (parseFloat(s.paddingBottom) || 0);
+    const availW = Math.max(100, wrapper.clientWidth - padX);
+    const availH = Math.max(70, wrapper.clientHeight - padY);
+    const scale = Math.max(0.1, Math.min(availW / arena.width, availH / arena.height));
     canvas.style.width  = `${Math.floor(arena.width  * scale)}px`;
     canvas.style.height = `${Math.floor(arena.height * scale)}px`;
   };

@@ -53,13 +53,14 @@ export class OnlineRoomClient {
   public onContestedGrabEvents?: (events: import("../server/ContestedGrabArbiter.js").ContestedGrabResult[]) => void;
   public onGrabResult?: (result: {
     type: string;
-    eventId: string;
-    tick: number;
     targetObjectId: string;
-    winnerPlayerId: string;
+    playerId?: string;
+    winnerPlayerId?: string;
+    eventId?: string;
+    tick?: number;
     loserPlayerId?: string;
     loserPlayerIds?: string[];
-    success: boolean;
+    success?: boolean;
   }) => void;
   public onWorldSnapshotReceived?: (worldSnapshot: any) => void;
   public onClockSync?: (sync: any) => void;

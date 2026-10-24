@@ -301,26 +301,32 @@ export class OnlineSessionManager {
   }
 
   private handleGrabResult(data: {
-    eventId: string;
+    type?: string;
     targetObjectId: string;
-    winnerPlayerId: string;
+    playerId?: string;
+    winnerPlayerId?: string;
+    eventId?: string;
+    tick?: number;
     loserPlayerId?: string;
     loserPlayerIds?: string[];
-    success: boolean;
+    success?: boolean;
   }): void {
     if (!this.gameLoop) return;
     const targetObj = this.gameLoop.objects.find((o) => o.id === data.targetObjectId);
     if (!targetObj) return;
+
+    const winnerId = data.playerId || data.winnerPlayerId;
+    if (!winnerId) return;
 
     // Check if winner is one of our local characters
     let localWinnerChar: Character | null = null;
     for (const p of this.gameLoop.players.values()) {
       const localChar = p.character;
       const isWinner =
-        data.winnerPlayerId === p.id ||
-        data.winnerPlayerId === localChar.playerId ||
-        data.winnerPlayerId === localChar.serverCharId ||
-        (this.client.clientId !== null && (data.winnerPlayerId === this.client.clientId || data.winnerPlayerId === `${this.client.clientId}:${p.id}`));
+        winnerId === p.id ||
+        winnerId === localChar.playerId ||
+        winnerId === localChar.serverCharId ||
+        (this.client.clientId !== null && (winnerId === this.client.clientId || winnerId === `${this.client.clientId}:${p.id}`));
       if (isWinner) {
         localWinnerChar = localChar;
         break;
@@ -329,10 +335,10 @@ export class OnlineSessionManager {
     if (!localWinnerChar && this.gameLoop.players.size === 0) {
       const baseChar = this.gameLoop.playerManager.baseCharacter;
       if (
-        data.winnerPlayerId === "keyboard" ||
-        data.winnerPlayerId === baseChar.playerId ||
-        data.winnerPlayerId === baseChar.serverCharId ||
-        (this.client.clientId !== null && data.winnerPlayerId === this.client.clientId)
+        winnerId === "keyboard" ||
+        winnerId === baseChar.playerId ||
+        winnerId === baseChar.serverCharId ||
+        (this.client.clientId !== null && winnerId === this.client.clientId)
       ) {
         localWinnerChar = baseChar;
       }
@@ -361,10 +367,10 @@ export class OnlineSessionManager {
 
       // Attach to remote winning character if found
       const remWinner = this.gameLoop.allCharacters.find(
-        (c) => c.playerId === data.winnerPlayerId ||
-               c.serverCharId === data.winnerPlayerId ||
-               c.id === data.winnerPlayerId ||
-               (data.winnerPlayerId.includes(":") && c.playerId === data.winnerPlayerId.split(":")[1])
+        (c) => c.playerId === winnerId ||
+               c.serverCharId === winnerId ||
+               c.id === winnerId ||
+               (winnerId.includes(":") && c.playerId === winnerId.split(":")[1])
       );
       if (remWinner) {
         remWinner.heldObject = targetObj;
@@ -767,13 +773,10 @@ export class OnlineSessionManager {
                 targetObj.isHeld = true;
                 targetObj.heldBy = remChar;
               }
-            } else if (remChar.heldObject) {
-              if (remChar.heldObject.heldBy === remChar) {
-                remChar.heldObject.isHeld = false;
-                remChar.heldObject.heldBy = null;
-              }
-              remChar.heldObject = null;
             }
+            // Note: If c.heldObjectId is absent, do NOT prematurely null remChar.heldObject here!
+            // GameLoop.syncAuthoritativeObjects() needs to detect that remChar was holding it so
+            // it can execute the instantaneous throw hand-off and apply ballistic launch physics.
           }
         } else {
           // Local client character! Ensure authoritative server-assigned color, number, name and HP are preserved

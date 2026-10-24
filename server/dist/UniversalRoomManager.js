@@ -9569,21 +9569,7 @@ class ServerGameSimulation {
                 eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                 tick: this.currentTick,
                 targetObjectId: itemToHold.id,
-                winnerPlayerId: char.playerId || char.id,
-                success: true
-              });
-            }
-          } else if (target && target.isHeld && target.heldBy !== char) {
-            const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
-            if (this.onGrabResult) {
-              this.onGrabResult({
-                type: "grab_result",
-                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                tick: this.currentTick,
-                targetObjectId: target.id,
-                winnerPlayerId: holderChar ? holderChar.playerId || holderChar.id : "",
-                loserPlayerId: char.playerId || char.id,
-                success: false
+                playerId: char.playerId || char.id
               });
             }
           }
@@ -9675,9 +9661,7 @@ class ServerGameSimulation {
           eventId: res.eventId,
           tick: res.tick,
           targetObjectId: res.targetObjectId,
-          winnerPlayerId: res.winnerPlayerId,
-          loserPlayerIds: res.loserPlayerIds,
-          success: true
+          playerId: res.winnerPlayerId
         });
       }
     }
@@ -10311,18 +10295,6 @@ const _UniversalRoomManager = class _UniversalRoomManager {
     );
     if (dist3D > maxReach) return;
     if (target.isHeld && target.heldBy && target.heldBy !== sChar) {
-      const holderChar = target.heldBy instanceof Character ? target.heldBy : null;
-      const winnerPlayerId = holderChar ? holderChar.playerId || holderChar.id : "";
-      const resultMsg2 = {
-        type: "grab_result",
-        eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        tick: this.simulation.currentTick,
-        targetObjectId: target.id,
-        winnerPlayerId,
-        loserPlayerId: sChar.playerId || serverCharId,
-        success: false
-      };
-      this.broadcastMessage(resultMsg2);
       return;
     }
     let itemToHold = target;
@@ -10339,8 +10311,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       tick: this.simulation.currentTick,
       targetObjectId: itemToHold.id,
-      winnerPlayerId: sChar.playerId || serverCharId,
-      success: true
+      playerId: sChar.playerId || serverCharId
     };
     this.broadcastMessage(resultMsg);
   }
@@ -10471,6 +10442,7 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       character.playerId = serverCharId;
       character.playerNumber = playerNumber;
       character.color = color;
+      character.playerColor = color;
       if (isExplicitCustom) {
         character.name = charName;
         character.hasCustomName = true;
