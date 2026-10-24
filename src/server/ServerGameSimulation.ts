@@ -474,7 +474,9 @@ export class ServerGameSimulation {
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
 
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined) {
+      // Do NOT overwrite server-authoritative consumable energy from client packets
+      // while the object is held/consumed on the server (prevents client-server double-drain loop)
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined && !sObj.isHeld) {
         sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
       }
 
@@ -1047,13 +1049,7 @@ export class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
-        if ((catchupPkt as any).isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-          const heldObj = char.heldObject;
-          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-          if (result.isDepleted) {
-            this.triggerObjectDeletion(heldObj.id);
-          }
-        }
+
         if (catchupPkt.facingAngle !== undefined) {
           char.facingAngle = catchupPkt.facingAngle;
         }

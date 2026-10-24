@@ -9338,7 +9338,7 @@ class ServerGameSimulation {
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0) {
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0 && !sObj.isHeld) {
         sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
       }
       if (cObj.isHeld) {
@@ -9795,13 +9795,6 @@ class ServerGameSimulation {
           this.arena.entities,
           catchupPkt.isLockHeld
         );
-        if (catchupPkt.isUsingItem && char.heldObject && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
-          const heldObj = char.heldObject;
-          const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-          if (result.isDepleted) {
-            this.triggerObjectDeletion(heldObj.id);
-          }
-        }
         if (catchupPkt.facingAngle !== void 0) {
           char.facingAngle = catchupPkt.facingAngle;
         }
