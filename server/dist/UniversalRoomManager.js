@@ -5549,11 +5549,7 @@ class Character extends GameObject {
       this.jump(arena, movementInput);
     }
     if (canWalk) {
-      if (!this.isUnderKnockback) {
-        this.walkingModule.update(this, movementInput, dt, arena);
-      } else {
-        this.isActivelyWalking = false;
-      }
+      this.walkingModule.update(this, movementInput, dt, arena);
     } else {
       this.isActivelyWalking = false;
     }

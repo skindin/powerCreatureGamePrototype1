@@ -743,13 +743,8 @@ export class Character extends GameObject {
 
     // 1. Process modular walking
     // Requires: walkingModule enabled and Friction enabled.
-    // Suppressed while under involuntary knockback so external impulses are preserved.
     if (canWalk) {
-      if (!this.isUnderKnockback) {
-        this.walkingModule!.update(this, movementInput, dt, arena);
-      } else {
-        this.isActivelyWalking = false;
-      }
+      this.walkingModule!.update(this, movementInput, dt, arena);
     } else {
       this.isActivelyWalking = false;
     }
