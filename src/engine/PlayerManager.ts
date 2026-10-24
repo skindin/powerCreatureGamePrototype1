@@ -629,12 +629,12 @@ export class PlayerManager {
       }
 
       // Keyboard Combat Mode:
-      // - RMB = Melee Punch
+      // - RMB = Melee Punch (single punch per button press)
       // - Alt + RMB = Laser Aiming Mode
       // - Alt + RMB + LMB = Fire Laser
       const isAltDown = Boolean(input.isAltHeld || input.isKeyPressed("AltLeft") || input.isKeyPressed("AltRight"));
       const isLaserMode = !isEditMode && (isAltDown && input.isRightMouseDown);
-      const isMeleeRequested = !isEditMode && ((!isAltDown && input.isRightMouseDown) || input.isKeyboardMeleeRequested);
+      const isMeleeRequested = !isEditMode && !isAltDown && input.isKeyboardMeleeRequested;
 
       if (isLaserMode || isMeleeRequested) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
@@ -791,8 +791,11 @@ export class PlayerManager {
       const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
-      if (!slot.rtHeld) {
+      if (!slot.rtHeld && !slot.rtGrabbed) {
         gpGrabState.useItemSuppressed = false;
+      }
+      if (slot.rtGrabbed) {
+        gpGrabState.useItemSuppressed = true;
       }
       const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed && !slot.isAltHeld;
       const isUsingItem = isCharHoldingConsumable && canGamepadUseItem;
@@ -841,6 +844,7 @@ export class PlayerManager {
       slot.isDropRequested = false;
       slot.isThrowRequested = false;
       slot.isJumpRequested = false;
+      slot.isMeleeRequested = false;
     }
 
     return map;

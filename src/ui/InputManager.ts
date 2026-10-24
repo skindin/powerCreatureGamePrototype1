@@ -1514,11 +1514,13 @@ export class InputManager {
         }
       }
 
-      // Button 2 (X on Xbox / Square on PS) or Button 11 (R3): Melee Attack in facing direction
+      // Button 2 (X on Xbox / Square on PS) or Button 11 (R3): Melee Attack in facing direction (single punch per button press)
       const xCurrent = isButtonPressed(2) || isButtonPressed(11);
-      slot.isMeleeRequested = xCurrent;
+      const isPrevMelee = isPrevPressed(2) || isPrevPressed(11);
+      const meleeJustPressed = xCurrent && !isPrevMelee;
+      slot.isMeleeRequested = meleeJustPressed;
 
-      if (xCurrent) {
+      if (meleeJustPressed) {
         // Attack points in character's facing direction
         const mDirX = Math.cos(char.facingAngle ?? 0);
         const mDirY = Math.sin(char.facingAngle ?? 0);
@@ -1541,7 +1543,7 @@ export class InputManager {
         const rtCurrent = isButtonPressed(7);
         const rtJustReleased = !rtCurrent && isPrevPressed(7);
 
-        if (rtJustReleased) {
+        if (rtJustReleased || !rtCurrent) {
           slot.rtGrabbed = false;
           slot.rtHeld = false;
         }
@@ -1568,8 +1570,8 @@ export class InputManager {
 
           const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
           if (isHoldingFood && !slot.isAltHeld) {
-            // Food primary action without LT: RT held down continuously eats
-            slot.isUsingItem = rtCurrent;
+            // Food primary action without LT: Player MUST release RT after grabbing before repressing RT to eat!
+            slot.isUsingItem = rtCurrent && !slot.rtGrabbed;
           } else {
             slot.isUsingItem = false;
             // When holding LT (Alt) or holding non-food: RT throws!
