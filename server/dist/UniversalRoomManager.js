@@ -723,7 +723,6 @@ class MotionIntegrator {
           }
           if (entity.isInFlight) {
             entity.isInFlight = false;
-            entity.originalThrower = null;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (!entity.isCharacter && entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
@@ -767,7 +766,6 @@ class MotionIntegrator {
           entity.position.z = surfaceHeight;
           if (entity.isInFlight) {
             entity.isInFlight = false;
-            entity.originalThrower = null;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
