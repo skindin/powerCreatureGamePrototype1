@@ -310,13 +310,28 @@ export class MeleeModule {
         const absFrac = Math.max(0.1, 1.0 - Math.min(1.0, targetBounce * targetBounce));
         const shock = targetDv * 60 * absFrac;
 
-        target.dispatchImpact({
+        const damageDealt = target.dispatchImpact({
           absorbedShock: shock,
           impactSpeed: targetDv,
           otherEntity: attacker,
           normalX: -uX,
           normalY: -uY,
         });
+
+        // Ensure collision attack damage is registered even if target lacks damageSolverModule
+        if (damageDealt <= 0.001 && target.healthModule && target.healthModule.enabled) {
+          if (!target.damageSolverModule || !target.damageSolverModule.enabled) {
+            const fallbackDamage = Math.max(5.0, targetDv * 2.0);
+            target.healthModule.takeDamage(fallbackDamage, target.properties, {
+              id: "collision_damage",
+              name: "Collision",
+              type: "instant",
+              amount: fallbackDamage,
+              color: "#f87171",
+              isHeal: false,
+            });
+          }
+        }
 
         // Set knockback momentum window (350ms ensures clean knockback travel before voluntary locomotion resumes)
         target.applyKnockbackWindow(350);

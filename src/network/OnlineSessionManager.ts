@@ -680,7 +680,20 @@ export class OnlineSessionManager {
             || this.gameLoop.allCharacters.find((ac) => ac.id === c.id || ac.id === "dummy-1");
           if (dummy) {
             if (c.currentHp !== undefined && dummy.healthModule) {
-              dummy.healthModule.currentHpProp.set(c.currentHp, dummy.properties);
+              const curHp = dummy.healthModule.getCurrentHp(dummy.properties);
+              const damage = curHp - c.currentHp;
+              if (damage > 0.001) {
+                dummy.healthModule.takeDamage(damage, dummy.properties, {
+                  id: "collision_damage",
+                  name: "Collision",
+                  type: "instant",
+                  amount: damage,
+                  color: "#f87171",
+                  isHeal: false,
+                });
+              } else {
+                dummy.healthModule.currentHpProp.set(c.currentHp, dummy.properties);
+              }
             }
             if (c.maxHp !== undefined && dummy.healthModule) {
               dummy.healthModule.maxHpProp.set(c.maxHp, dummy.properties);
@@ -733,7 +746,20 @@ export class OnlineSessionManager {
               remChar.isUsingItem = Boolean(c.isUsingItem);
             }
             if (c.currentHp !== undefined && remChar.healthModule) {
-              remChar.healthModule.currentHpProp.set(c.currentHp, remChar.properties);
+              const curHp = remChar.healthModule.getCurrentHp(remChar.properties);
+              const damage = curHp - c.currentHp;
+              if (damage > 0.001) {
+                remChar.healthModule.takeDamage(damage, remChar.properties, {
+                  id: "collision_damage",
+                  name: "Collision",
+                  type: "instant",
+                  amount: damage,
+                  color: "#f87171",
+                  isHeal: false,
+                });
+              } else {
+                remChar.healthModule.currentHpProp.set(c.currentHp, remChar.properties);
+              }
             }
             if (c.maxHp !== undefined && remChar.healthModule) {
               remChar.healthModule.maxHpProp.set(c.maxHp, remChar.properties);
@@ -796,7 +822,19 @@ export class OnlineSessionManager {
               const curHp = localChar.healthModule.getCurrentHp(localChar.properties);
               if (c.currentHp < curHp || Math.abs(curHp - c.currentHp) > 15.0) {
                 const wasDeadOrZero = curHp <= 0.0001;
-                localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+                const damageTaken = curHp - c.currentHp;
+                if (damageTaken > 0.001) {
+                  localChar.healthModule.takeDamage(damageTaken, localChar.properties, {
+                    id: "collision_damage",
+                    name: "Collision",
+                    type: "instant",
+                    amount: damageTaken,
+                    color: "#f87171",
+                    isHeal: false,
+                  });
+                } else {
+                  localChar.healthModule.currentHpProp.set(c.currentHp, localChar.properties);
+                }
                 // If server restored HP from 0 (respawn occurred), reset energy and stamina
                 if (wasDeadOrZero && c.currentHp > 10.0) {
                   localChar.resetDynamicValues();

@@ -186,12 +186,12 @@ export class HealthModule {
         isHeal: source.isHeal ?? false,
         order: this._nextModifierOrder++,
         rateOrAmount: amount,
-        duration: 0.55,
+        duration: 0.75,
         lastReportedTick: this._currentTick,
       });
     } else {
       existing.rateOrAmount = amount;
-      existing.duration = 0.55;
+      existing.duration = 0.75;
       existing.lastReportedTick = this._currentTick;
     }
   }
@@ -214,9 +214,9 @@ export class HealthModule {
       });
     } else {
       this.registerInstantModifier({
-        id: source?.id ?? "damage",
-        name: source?.name ?? "Damage",
-        color: source?.color ?? "#f97316",
+        id: source?.id ?? "collision_damage",
+        name: source?.name ?? "Collision",
+        color: source?.color ?? "#f87171",
         type: "instant",
         isHeal: false,
       }, source?.amount ?? amount);

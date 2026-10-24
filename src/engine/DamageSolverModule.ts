@@ -136,8 +136,8 @@ export class DamageSolverModule {
     if (finalDamage > 0.001) {
       this.lastImpactTime = now;
       healthModule.takeDamage(finalDamage, registry, {
-        id: "impact_damage",
-        name: "Impact",
+        id: "collision_damage",
+        name: "Collision",
         type: "instant",
         amount: finalDamage,
         color: "#f87171",

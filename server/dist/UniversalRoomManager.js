@@ -3518,12 +3518,12 @@ class HealthModule {
         isHeal: source.isHeal ?? false,
         order: this._nextModifierOrder++,
         rateOrAmount: amount,
-        duration: 0.55,
+        duration: 0.75,
         lastReportedTick: this._currentTick
       });
     } else {
       existing.rateOrAmount = amount;
-      existing.duration = 0.55;
+      existing.duration = 0.75;
       existing.lastReportedTick = this._currentTick;
     }
   }
@@ -3543,9 +3543,9 @@ class HealthModule {
       });
     } else {
       this.registerInstantModifier({
-        id: (source == null ? void 0 : source.id) ?? "damage",
-        name: (source == null ? void 0 : source.name) ?? "Damage",
-        color: (source == null ? void 0 : source.color) ?? "#f97316",
+        id: (source == null ? void 0 : source.id) ?? "collision_damage",
+        name: (source == null ? void 0 : source.name) ?? "Collision",
+        color: (source == null ? void 0 : source.color) ?? "#f87171",
         type: "instant",
         isHeal: false
       }, (source == null ? void 0 : source.amount) ?? amount);
@@ -3775,8 +3775,8 @@ class DamageSolverModule {
     if (finalDamage > 1e-3) {
       this.lastImpactTime = now;
       healthModule.takeDamage(finalDamage, registry, {
-        id: "impact_damage",
-        name: "Impact",
+        id: "collision_damage",
+        name: "Collision",
         type: "instant",
         amount: finalDamage,
         color: "#f87171",
@@ -4973,13 +4973,26 @@ class MeleeModule {
         const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : target.isCharacter ? 0.2 : 0;
         const absFrac = Math.max(0.1, 1 - Math.min(1, targetBounce * targetBounce));
         const shock = targetDv * 60 * absFrac;
-        target.dispatchImpact({
+        const damageDealt = target.dispatchImpact({
           absorbedShock: shock,
           impactSpeed: targetDv,
           otherEntity: attacker,
           normalX: -uX,
           normalY: -uY
         });
+        if (damageDealt <= 1e-3 && target.healthModule && target.healthModule.enabled) {
+          if (!target.damageSolverModule || !target.damageSolverModule.enabled) {
+            const fallbackDamage = Math.max(5, targetDv * 2);
+            target.healthModule.takeDamage(fallbackDamage, target.properties, {
+              id: "collision_damage",
+              name: "Collision",
+              type: "instant",
+              amount: fallbackDamage,
+              color: "#f87171",
+              isHeal: false
+            });
+          }
+        }
         target.applyKnockbackWindow(350);
         const recoilDv = impulsePerTarget / attackerMass;
         recoilVx -= uX * recoilDv;
