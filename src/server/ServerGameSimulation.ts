@@ -477,10 +477,43 @@ export class ServerGameSimulation {
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
 
-      // Do NOT overwrite server-authoritative consumable energy from client packets
-      // while the object is held/consumed on the server (prevents client-server double-drain loop)
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined && !sObj.isHeld) {
-        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
+      // Synchronize consumable remaining energy from client stream (adopt client's consumed energy progression)
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== undefined) {
+        const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
+        const clientRemaining = cObj.remainingEnergyJoules;
+        if (sObj.isHeld) {
+          if (clientRemaining < curServerRemaining) {
+            const energyEaten = curServerRemaining - clientRemaining;
+            const holder = (sObj.heldBy instanceof Character) ? sObj.heldBy : null;
+            if (holder && holder.energyPool && holder.energyPool.enabled) {
+              const curPool = holder.energyPool.getCurrentEnergy(holder.properties);
+              const maxPool = holder.energyPool.getMaxEnergy(holder.properties);
+              holder.energyPool.currentEnergyProp.set(Math.min(maxPool, curPool + energyEaten), holder.properties);
+            }
+            const healRate = sObj.consumableModule.getHealRate(sObj.properties);
+            const consumeRate = sObj.consumableModule.getConsumeRate(sObj.properties);
+            if (healRate > 0 && consumeRate > 0 && holder && holder.healthModule && holder.healthModule.enabled) {
+              const secondsEaten = energyEaten / consumeRate;
+              holder.healthModule.heal(healRate * secondsEaten, holder.properties, {
+                id: "consumable_nutrition",
+                name: sObj.consumableModule.tag ? `Consumable (${sObj.consumableModule.tag})` : "Consumable",
+                type: "continuous",
+                rate: healRate,
+                color: "#22c55e",
+                isHeal: true,
+              });
+            }
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+            const currentScale = sObj.consumableModule.getScale(sObj.properties);
+            const initialRadius = sObj.consumableModule.initialColliderRadius || sObj.colliderRadius;
+            sObj.colliderRadius = Math.max(sObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+            if (sObj.colliderModule) sObj.colliderModule.radius = sObj.colliderRadius;
+          } else if (Math.abs(clientRemaining - curServerRemaining) > 100) {
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+          }
+        } else {
+          sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+        }
       }
 
       // 1. Synchronize Held State

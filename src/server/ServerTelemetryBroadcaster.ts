@@ -136,7 +136,7 @@ export class ServerTelemetryBroadcaster {
           }
 
           const objRem = obj.consumableModule.getRemainingEnergy(obj.properties);
-          if (Math.abs(objRem - objTotal) > 0.1 || (archConsumable && Math.abs(objRem - archTotal) > 0.1)) {
+          if (obj.isHeld || Math.abs(objRem - objTotal) > 0.1 || (archConsumable && Math.abs(objRem - archTotal) > 0.1)) {
             baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
           }
         }

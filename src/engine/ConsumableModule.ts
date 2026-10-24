@@ -73,7 +73,7 @@ export class ConsumableModule {
   }
 
   public set totalEnergyJoules(val: number) {
-    this.totalEnergyJoulesProp.literalValue = Math.max(10.0, val);
+    this.totalEnergyJoulesProp.set(Math.max(10.0, val));
   }
 
   public get remainingEnergyJoules(): number {
@@ -81,7 +81,7 @@ export class ConsumableModule {
   }
 
   public set remainingEnergyJoules(val: number) {
-    this.remainingEnergyJoulesProp.literalValue = Math.max(0, Math.min(this.totalEnergyJoules, val));
+    this.remainingEnergyJoulesProp.set(Math.max(0, Math.min(this.totalEnergyJoules, val)));
   }
 
   public get consumeRateWatts(): number {
@@ -89,7 +89,7 @@ export class ConsumableModule {
   }
 
   public set consumeRateWatts(val: number) {
-    this.consumeRateWattsProp.literalValue = Math.max(10.0, val);
+    this.consumeRateWattsProp.set(Math.max(10.0, val));
   }
 
   // Legacy alias for eatRateWatts

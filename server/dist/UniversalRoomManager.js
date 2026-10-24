@@ -7032,19 +7032,19 @@ class ConsumableModule {
     return this.totalEnergyJoulesProp.literalValue;
   }
   set totalEnergyJoules(val) {
-    this.totalEnergyJoulesProp.literalValue = Math.max(10, val);
+    this.totalEnergyJoulesProp.set(Math.max(10, val));
   }
   get remainingEnergyJoules() {
     return this.remainingEnergyJoulesProp.literalValue;
   }
   set remainingEnergyJoules(val) {
-    this.remainingEnergyJoulesProp.literalValue = Math.max(0, Math.min(this.totalEnergyJoules, val));
+    this.remainingEnergyJoulesProp.set(Math.max(0, Math.min(this.totalEnergyJoules, val)));
   }
   get consumeRateWatts() {
     return this.consumeRateWattsProp.literalValue;
   }
   set consumeRateWatts(val) {
-    this.consumeRateWattsProp.literalValue = Math.max(10, val);
+    this.consumeRateWattsProp.set(Math.max(10, val));
   }
   // Legacy alias for eatRateWatts
   get eatRateWatts() {
@@ -8888,7 +8888,7 @@ class ServerTelemetryBroadcaster {
             baseState.totalEnergyJoules = Number(objTotal.toFixed(1));
           }
           const objRem = obj.consumableModule.getRemainingEnergy(obj.properties);
-          if (Math.abs(objRem - objTotal) > 0.1 || archConsumable && Math.abs(objRem - archTotal) > 0.1) {
+          if (obj.isHeld || Math.abs(objRem - objTotal) > 0.1 || archConsumable && Math.abs(objRem - archTotal) > 0.1) {
             baseState.remainingEnergyJoules = Number(objRem.toFixed(1));
           }
         }
@@ -9399,8 +9399,42 @@ class ServerGameSimulation {
         this.objects.push(sObj);
         this.arena.entities = [...this.allCharacters, ...this.objects];
       }
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0 && !sObj.isHeld) {
-        sObj.consumableModule.remainingEnergyJoulesProp.set(cObj.remainingEnergyJoules, sObj.properties);
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0) {
+        const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
+        const clientRemaining = cObj.remainingEnergyJoules;
+        if (sObj.isHeld) {
+          if (clientRemaining < curServerRemaining) {
+            const energyEaten = curServerRemaining - clientRemaining;
+            const holder = sObj.heldBy instanceof Character ? sObj.heldBy : null;
+            if (holder && holder.energyPool && holder.energyPool.enabled) {
+              const curPool = holder.energyPool.getCurrentEnergy(holder.properties);
+              const maxPool = holder.energyPool.getMaxEnergy(holder.properties);
+              holder.energyPool.currentEnergyProp.set(Math.min(maxPool, curPool + energyEaten), holder.properties);
+            }
+            const healRate = sObj.consumableModule.getHealRate(sObj.properties);
+            const consumeRate = sObj.consumableModule.getConsumeRate(sObj.properties);
+            if (healRate > 0 && consumeRate > 0 && holder && holder.healthModule && holder.healthModule.enabled) {
+              const secondsEaten = energyEaten / consumeRate;
+              holder.healthModule.heal(healRate * secondsEaten, holder.properties, {
+                id: "consumable_nutrition",
+                name: sObj.consumableModule.tag ? `Consumable (${sObj.consumableModule.tag})` : "Consumable",
+                type: "continuous",
+                rate: healRate,
+                color: "#22c55e",
+                isHeal: true
+              });
+            }
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+            const currentScale = sObj.consumableModule.getScale(sObj.properties);
+            const initialRadius = sObj.consumableModule.initialColliderRadius || sObj.colliderRadius;
+            sObj.colliderRadius = Math.max(sObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+            if (sObj.colliderModule) sObj.colliderModule.radius = sObj.colliderRadius;
+          } else if (Math.abs(clientRemaining - curServerRemaining) > 100) {
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+          }
+        } else {
+          sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+        }
       }
       if (cObj.isHeld) {
         const holderId = cObj.heldBy || senderClientId;

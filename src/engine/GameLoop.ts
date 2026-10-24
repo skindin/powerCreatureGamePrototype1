@@ -659,10 +659,15 @@ export class GameLoop {
             localObj.consumableModule.tag = sObj.consumableTag;
           }
           if (sObj.totalEnergyJoules !== undefined && localObj.consumableModule) {
-            localObj.consumableModule.totalEnergyJoulesProp.literalValue = sObj.totalEnergyJoules;
+            localObj.consumableModule.totalEnergyJoulesProp.set(sObj.totalEnergyJoules, localObj.properties);
           }
           if (sObj.remainingEnergyJoules !== undefined && localObj.consumableModule) {
-            localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+            localObj.consumableModule.remainingEnergyJoulesProp.set(sObj.remainingEnergyJoules, localObj.properties);
+            const currentScale = localObj.consumableModule.getScale(localObj.properties);
+            const initialRadius = localObj.consumableModule.initialColliderRadius || localObj.colliderRadius;
+            const targetRadius = Math.max(localObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+            localObj.colliderRadius = targetRadius;
+            if (localObj.colliderModule) localObj.colliderModule.radius = targetRadius;
           }
         } else {
           // Authoritative server spawn: instantiate the object locally on the client!
@@ -748,10 +753,20 @@ export class GameLoop {
           // Never roll back the apple to a higher (un-eaten) remaining energy while eating or settling.
           if (isRecentlyEating) {
             if (sObj.remainingEnergyJoules < currentRemaining) {
-              localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+              localObj.consumableModule.remainingEnergyJoulesProp.set(sObj.remainingEnergyJoules, localObj.properties);
+              const currentScale = localObj.consumableModule.getScale(localObj.properties);
+              const initialRadius = localObj.consumableModule.initialColliderRadius || localObj.colliderRadius;
+              const targetRadius = Math.max(localObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+              localObj.colliderRadius = targetRadius;
+              if (localObj.colliderModule) localObj.colliderModule.radius = targetRadius;
             }
           } else if (Math.abs(currentRemaining - sObj.remainingEnergyJoules) > 100) {
-            localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+            localObj.consumableModule.remainingEnergyJoulesProp.set(sObj.remainingEnergyJoules, localObj.properties);
+            const currentScale = localObj.consumableModule.getScale(localObj.properties);
+            const initialRadius = localObj.consumableModule.initialColliderRadius || localObj.colliderRadius;
+            const targetRadius = Math.max(localObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+            localObj.colliderRadius = targetRadius;
+            if (localObj.colliderModule) localObj.colliderModule.radius = targetRadius;
           }
           // If server reports remaining energy <= 0.001, finish/destroy it immediately!
           if (sObj.remainingEnergyJoules <= 0.001) {
@@ -761,13 +776,14 @@ export class GameLoop {
         } else {
           // If server reports remaining energy <= 0.001, finish/destroy it immediately!
           if (sObj.remainingEnergyJoules <= 0.001) {
-            localObj.consumableModule.finishConsumption(this.primaryCharacter!, localObj, this.objects, this.arena);
+            const eater = (localObj.heldBy instanceof Character) ? localObj.heldBy : this.primaryCharacter!;
+            localObj.consumableModule.finishConsumption(eater, localObj, this.objects, this.arena);
             continue;
           }
           // Remote observer: display the apple's authoritative eat progress and shrink in real time!
-          localObj.consumableModule.remainingEnergyJoulesProp.literalValue = sObj.remainingEnergyJoules;
+          localObj.consumableModule.remainingEnergyJoulesProp.set(sObj.remainingEnergyJoules, localObj.properties);
           const currentScale = localObj.consumableModule.getScale(localObj.properties);
-          const initialRadius = localObj.consumableModule.initialColliderRadius;
+          const initialRadius = localObj.consumableModule.initialColliderRadius || localObj.colliderRadius;
           const targetRadius = Math.max(localObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
           localObj.colliderRadius = targetRadius;
           if (localObj.colliderModule) {

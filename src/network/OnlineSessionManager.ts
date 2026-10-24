@@ -875,10 +875,10 @@ export class OnlineSessionManager {
               // Never roll back local predicted energy to a lower trailing server value during this window.
               if (isRecentlyEating) {
                 if (c.currentEnergyJoules > curEnergy) {
-                  localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
+                  localChar.energyPool.currentEnergyProp.set(c.currentEnergyJoules, localChar.properties);
                 }
               } else if (Math.abs(curEnergy - c.currentEnergyJoules) > 200.0) {
-                localChar.energyPool.currentEnergyProp.literalValue = c.currentEnergyJoules;
+                localChar.energyPool.currentEnergyProp.set(c.currentEnergyJoules, localChar.properties);
               }
             }
             if (c.isExhausted !== undefined && localChar.energyPool) {
