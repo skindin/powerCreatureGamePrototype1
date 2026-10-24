@@ -1628,13 +1628,8 @@ export class Renderer {
     // Guard against future timestamps, negative elapsed times, or expired animations (> 240ms)
     if (elapsed < 0 || elapsed > duration) return;
 
-    // Fast expansion during the first 65ms to full reach, then lingering at full extension
-    const expandProgress = Math.min(1.0, elapsed / 65);
-    // Smooth quadratic fade out: stays bright for the first 60ms, then fades away smoothly over remainder
-    const fadeProgress = Math.max(0, (elapsed - 60) / (duration - 60));
-    const alpha = elapsed <= 60
-      ? 1.0
-      : Math.max(0, Math.min(1.0, 1.0 - Math.pow(fadeProgress, 1.8)));
+    const progress = Math.max(0, Math.min(1.0, elapsed / duration)); // Clamped strictly to [0, 1]
+    const alpha = Math.max(0, Math.min(1.0, 1.0 - Math.pow(progress, 2.0)));
 
     const reach = Math.max(0.2, char.meleeModule.lastVisualPunchReach || 1.2);
     const width = Math.max(0.2, char.meleeModule.lastVisualPunchWidth || 0.8);
@@ -1652,7 +1647,7 @@ export class Renderer {
     ctx.translate(originX, originY);
     ctx.rotate(Math.atan2(normDirY, normDirX));
 
-    const reachPx = reach * ppu * (0.65 + 0.35 * expandProgress);
+    const reachPx = reach * ppu * (0.7 + 0.3 * progress);
     const halfWidthPx = (width * 0.5) * ppu;
 
     const startX = Math.max(0, 0.10 * ppu);
