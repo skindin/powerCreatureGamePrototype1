@@ -1615,7 +1615,7 @@ export class Renderer {
     if (elapsed < 0 || elapsed > 140) return;
 
     const progress = Math.max(0, Math.min(1.0, elapsed / 140)); // Clamped strictly to [0, 1]
-    const alpha = Math.max(0, Math.min(1.0, (1 - progress) * 0.8));
+    const alpha = Math.max(0, Math.min(1.0, 1.0 - Math.pow(progress, 2.0)));
 
     const reach = Math.max(0.2, char.meleeModule.lastVisualPunchReach || 1.2);
     const width = Math.max(0.2, char.meleeModule.lastVisualPunchWidth || 0.8);
@@ -1636,7 +1636,7 @@ export class Renderer {
     const reachPx = reach * ppu * (0.7 + 0.3 * progress);
     const halfWidthPx = (width * 0.5) * ppu;
 
-    const startX = Math.max(0, 0.15 * ppu);
+    const startX = Math.max(0, 0.10 * ppu);
     // Semicircle center is located so that its outer tip reaches reachPx
     const arcCenterX = Math.max(startX, reachPx - halfWidthPx);
     const frontTipX = arcCenterX + halfWidthPx;
@@ -1666,12 +1666,19 @@ export class Renderer {
       return colorStr;
     };
 
-    // Half-capsule gradient fading from low opacity at the back (startX) to high opacity at the front (frontTipX)
+    // Half-capsule gradient: reaches zero opacity at the back (startX) so no sharp flat edges show,
+    // then rapidly ramps up so it is vividly high opacity across close-range and medium-range targets
     const grad = ctx.createLinearGradient(startX, 0, frontTipX, 0);
     grad.addColorStop(0.0, parseRgba(baseColor, 0.0));
-    grad.addColorStop(0.3, parseRgba(baseColor, 0.18));
-    grad.addColorStop(0.7, parseRgba(baseColor, 0.60));
-    grad.addColorStop(1.0, parseRgba(baseColor, 0.95));
+    grad.addColorStop(0.08, parseRgba(baseColor, 0.50));
+    grad.addColorStop(0.20, parseRgba(baseColor, 0.90));
+    grad.addColorStop(0.50, parseRgba(baseColor, 0.96));
+    grad.addColorStop(0.85, parseRgba(baseColor, 0.98));
+    grad.addColorStop(1.0, parseRgba(baseColor, 1.0));
+
+    // Feathered outer aura prevents any harsh razor edges along the perimeter
+    ctx.shadowColor = parseRgba(baseColor, alpha * 0.7);
+    ctx.shadowBlur = Math.max(3, 8 * (ppu / 32));
 
     ctx.fillStyle = grad;
     ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha));
@@ -1680,6 +1687,29 @@ export class Renderer {
     ctx.lineTo(arcCenterX, -halfWidthPx);
     ctx.arc(arcCenterX, 0, halfWidthPx, -Math.PI * 0.5, Math.PI * 0.5, false);
     ctx.lineTo(startX, halfWidthPx);
+    ctx.closePath();
+    ctx.fill();
+
+    // Inner high-energy core (half-capsule slightly narrower and inset, fading seamlessly)
+    const coreHalfWidth = halfWidthPx * 0.55;
+    const coreStartX = startX + (frontTipX - startX) * 0.10;
+    const coreArcCenterX = Math.max(coreStartX, arcCenterX);
+    const coreFrontTipX = coreArcCenterX + coreHalfWidth;
+
+    const coreGrad = ctx.createLinearGradient(coreStartX, 0, coreFrontTipX, 0);
+    coreGrad.addColorStop(0.0, "rgba(255, 255, 255, 0.0)");
+    coreGrad.addColorStop(0.25, "rgba(255, 255, 255, 0.45)");
+    coreGrad.addColorStop(0.70, "rgba(255, 255, 255, 0.75)");
+    coreGrad.addColorStop(1.0, "rgba(255, 255, 255, 0.90)");
+
+    ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+    ctx.shadowBlur = Math.max(2, 4 * (ppu / 32));
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.moveTo(coreStartX, -coreHalfWidth);
+    ctx.lineTo(coreArcCenterX, -coreHalfWidth);
+    ctx.arc(coreArcCenterX, 0, coreHalfWidth, -Math.PI * 0.5, Math.PI * 0.5, false);
+    ctx.lineTo(coreStartX, coreHalfWidth);
     ctx.closePath();
     ctx.fill();
 
