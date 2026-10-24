@@ -308,6 +308,37 @@ export class InputManager {
       }
     });
 
+    // Intercept accidental tab close (e.g. Ctrl+W or closing tab) while game is active
+    window.addEventListener("beforeunload", (e) => {
+      // Browsers intentionally disallow silent preventDefault() on Ctrl+W in windowed tabs for security.
+      // Setting returnValue / preventDefault triggers the browser's native confirmation dialog:
+      // "Leave site? Changes you made may not be saved."
+      // This stops Ctrl+W from immediately closing the tab during play.
+      e.preventDefault();
+      e.returnValue = "";
+    });
+
+    // In Chromium browsers (Chrome, Edge), the Keyboard Lock API allows capturing
+    // browser-reserved keys like Ctrl+W while in fullscreen mode without any prompt.
+    if (typeof document !== "undefined" && typeof navigator !== "undefined" && "keyboard" in navigator) {
+      const keyboard = (navigator as any).keyboard;
+      if (typeof keyboard?.lock === "function") {
+        document.addEventListener("fullscreenchange", async () => {
+          if (document.fullscreenElement) {
+            try {
+              await keyboard.lock(["KeyW", "KeyN", "KeyT", "KeyS", "KeyP", "KeyD"]);
+            } catch (err) {
+              console.warn("Keyboard lock failed:", err);
+            }
+          } else {
+            try {
+              keyboard.unlock();
+            } catch {}
+          }
+        });
+      }
+    }
+
     window.addEventListener("keydown", (e) => {
       // If Alt is pressed or held, prevent browser menu activation, menu bar focus, and browser shortcuts
       if (e.altKey || e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {

@@ -327,6 +327,7 @@ public partial class Form1 : Form
             webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+            webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
 
             // In online mode, make DevTools inaccessible (both header button and F12 inspect window)
             webView.CoreWebView2.WebMessageReceived += (s, e) =>
@@ -764,6 +765,11 @@ public partial class Form1 : Form
         {
             webView?.CoreWebView2?.OpenDevToolsWindow();
             e.Handled = true;
+        }
+        else if (e.Control && e.KeyCode == Keys.W)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
         }
     }
 
