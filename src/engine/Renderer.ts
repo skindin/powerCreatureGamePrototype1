@@ -1639,10 +1639,42 @@ export class Renderer {
     const startX = Math.max(0, 0.15 * ppu);
     // Semicircle center is located so that its outer tip reaches reachPx
     const arcCenterX = Math.max(startX, reachPx - halfWidthPx);
+    const frontTipX = arcCenterX + halfWidthPx;
 
-    // Subtle forward glow fill
-    ctx.fillStyle = char.playerColor || "#ef4444";
-    ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha * 0.18));
+    const baseColor = char.playerColor || char.color || "#ef4444";
+    const parseRgba = (colorStr: string, a: number): string => {
+      if (colorStr.startsWith("#")) {
+        const h = colorStr.slice(1);
+        let r = 239, g = 68, b = 68;
+        if (h.length === 3 || h.length === 4) {
+          r = parseInt(h[0] + h[0], 16);
+          g = parseInt(h[1] + h[1], 16);
+          b = parseInt(h[2] + h[2], 16);
+        } else if (h.length >= 6) {
+          r = parseInt(h.substring(0, 2), 16);
+          g = parseInt(h.substring(2, 4), 16);
+          b = parseInt(h.substring(4, 6), 16);
+        }
+        return `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+      }
+      if (colorStr.startsWith("rgb")) {
+        const digits = colorStr.match(/[\d.]+/g);
+        if (digits && digits.length >= 3) {
+          return `rgba(${digits[0]}, ${digits[1]}, ${digits[2]}, ${a.toFixed(3)})`;
+        }
+      }
+      return colorStr;
+    };
+
+    // Half-capsule gradient fading from low opacity at the back (startX) to high opacity at the front (frontTipX)
+    const grad = ctx.createLinearGradient(startX, 0, frontTipX, 0);
+    grad.addColorStop(0.0, parseRgba(baseColor, 0.0));
+    grad.addColorStop(0.3, parseRgba(baseColor, 0.18));
+    grad.addColorStop(0.7, parseRgba(baseColor, 0.60));
+    grad.addColorStop(1.0, parseRgba(baseColor, 0.95));
+
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha));
     ctx.beginPath();
     ctx.moveTo(startX, -halfWidthPx);
     ctx.lineTo(arcCenterX, -halfWidthPx);
@@ -1650,19 +1682,6 @@ export class Renderer {
     ctx.lineTo(startX, halfWidthPx);
     ctx.closePath();
     ctx.fill();
-
-    // Crisp forward-facing half-pill outline (strictly clamped line width)
-    ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha * 0.90));
-    ctx.strokeStyle = char.playerColor || "#ffffff";
-    ctx.lineWidth = Math.max(1.5, Math.min(6.0, 3.0 * (1 - progress * 0.5)));
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(startX, -halfWidthPx);
-    ctx.lineTo(arcCenterX, -halfWidthPx);
-    ctx.arc(arcCenterX, 0, halfWidthPx, -Math.PI * 0.5, Math.PI * 0.5, false);
-    ctx.lineTo(startX, halfWidthPx);
-    ctx.stroke();
 
     ctx.restore();
   }
