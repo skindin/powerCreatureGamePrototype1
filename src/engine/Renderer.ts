@@ -1607,15 +1607,22 @@ export class Renderer {
    */
   public drawMeleeEffect(char: Character, ppu: number, arena: Arena, now = performance.now()): void {
     if (!char.meleeModule) return;
-    const elapsed = now - char.meleeModule.lastVisualPunchTime;
-    if (elapsed > 140) return; // Flash effect for 140ms
+    const punchTime = char.meleeModule.lastVisualPunchTime;
+    if (!punchTime || punchTime <= 0) return;
 
-    const progress = elapsed / 140; // 0 to 1
-    const alpha = (1 - progress) * 0.8;
+    const elapsed = now - punchTime;
+    // Guard against future timestamps, negative elapsed times, or expired animations (> 140ms)
+    if (elapsed < 0 || elapsed > 140) return;
 
-    const reach = char.meleeModule.lastVisualPunchReach;
-    const width = char.meleeModule.lastVisualPunchWidth;
-    const dir = char.meleeModule.lastVisualPunchDir;
+    const progress = Math.max(0, Math.min(1.0, elapsed / 140)); // Clamped strictly to [0, 1]
+    const alpha = Math.max(0, Math.min(1.0, (1 - progress) * 0.8));
+
+    const reach = Math.max(0.2, char.meleeModule.lastVisualPunchReach || 1.2);
+    const width = Math.max(0.2, char.meleeModule.lastVisualPunchWidth || 0.8);
+    const dir = char.meleeModule.lastVisualPunchDir || { x: 1, y: 0 };
+    const dirMag = Math.hypot(dir.x, dir.y);
+    const normDirX = dirMag > 0.001 ? dir.x / dirMag : 1;
+    const normDirY = dirMag > 0.001 ? dir.y / dirMag : 0;
 
     // Visual altitude projection
     const originX = char.position.x * ppu;
@@ -1624,7 +1631,7 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(originX, originY);
-    ctx.rotate(Math.atan2(dir.y, dir.x));
+    ctx.rotate(Math.atan2(normDirY, normDirX));
 
     const reachPx = reach * ppu * (0.7 + 0.3 * progress);
     const halfWidthPx = (width * 0.5) * ppu;
@@ -1635,7 +1642,7 @@ export class Renderer {
 
     // Subtle forward glow fill
     ctx.fillStyle = char.playerColor || "#ef4444";
-    ctx.globalAlpha = alpha * 0.18;
+    ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha * 0.18));
     ctx.beginPath();
     ctx.moveTo(startX, -halfWidthPx);
     ctx.lineTo(arcCenterX, -halfWidthPx);
@@ -1644,10 +1651,10 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Crisp forward-facing half-pill outline (parallel edges smoothly connecting with a semicircle)
-    ctx.globalAlpha = alpha * 0.90;
+    // Crisp forward-facing half-pill outline (strictly clamped line width)
+    ctx.globalAlpha = Math.max(0, Math.min(1.0, alpha * 0.90));
     ctx.strokeStyle = char.playerColor || "#ffffff";
-    ctx.lineWidth = Math.max(1.5, 3.0 * (1 - progress * 0.5));
+    ctx.lineWidth = Math.max(1.5, Math.min(6.0, 3.0 * (1 - progress * 0.5)));
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();

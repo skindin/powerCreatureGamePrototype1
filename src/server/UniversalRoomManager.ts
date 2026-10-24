@@ -792,8 +792,10 @@ export class UniversalRoomManager {
                 sChar.isUsingItem = Boolean(data.character.isUsingItem);
               }
               if (data.character.lastVisualPunchTime !== undefined && sChar.meleeModule) {
-                if (data.character.lastVisualPunchTime > sChar.meleeModule.lastVisualPunchTime) {
-                  sChar.meleeModule.lastVisualPunchTime = data.character.lastVisualPunchTime;
+                const prevPunch = (sChar as any)._lastTelemetryPunchTime ?? 0;
+                if (data.character.lastVisualPunchTime !== prevPunch && data.character.lastVisualPunchTime > 0) {
+                  (sChar as any)._lastTelemetryPunchTime = data.character.lastVisualPunchTime;
+                  sChar.meleeModule.lastVisualPunchTime = this.simulation.currentTick;
                   if (data.character.visualPunchDirX !== undefined && data.character.visualPunchDirY !== undefined) {
                     sChar.meleeModule.lastVisualPunchDir = { x: data.character.visualPunchDirX, y: data.character.visualPunchDirY };
                   }

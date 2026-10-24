@@ -747,10 +747,12 @@ export class OnlineSessionManager {
                 remChar.laserPowerFraction = c.laserPowerFraction;
               }
             }
-            // Sync Melee visual strike on remote character
+            // Sync Melee visual strike on remote character using local clock
             if (remChar.meleeModule && c.lastVisualPunchTime !== undefined) {
-              if (c.lastVisualPunchTime > remChar.meleeModule.lastVisualPunchTime) {
-                remChar.meleeModule.lastVisualPunchTime = c.lastVisualPunchTime;
+              const prevPunchSeq = (remChar as any)._lastReceivedPunchSeq ?? 0;
+              if (c.lastVisualPunchTime !== prevPunchSeq && c.lastVisualPunchTime > 0) {
+                (remChar as any)._lastReceivedPunchSeq = c.lastVisualPunchTime;
+                remChar.meleeModule.lastVisualPunchTime = performance.now();
                 if (c.visualPunchDirX !== undefined && c.visualPunchDirY !== undefined) {
                   remChar.meleeModule.lastVisualPunchDir = { x: c.visualPunchDirX, y: c.visualPunchDirY };
                 }
