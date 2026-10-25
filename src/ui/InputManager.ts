@@ -205,6 +205,7 @@ export class InputManager {
       this.isKeyboardActive &&
       !this.isKeyboardSuspended &&
       !this.isThrowingPress &&
+      !this.isAltHeld &&
       (this.isMouseDown || this.isEKeyDepressed || this.keysPressed.has("KeyE"))
     );
   }
@@ -637,14 +638,7 @@ export class InputManager {
 
       if (e.button === 2) {
         this.isRightMouseDown = true;
-        const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
-        if (isAlt) {
-          // Alt + RMB enters Laser Aiming Mode
-          this.isKeyboardMeleeRequested = false;
-        } else {
-          // Plain RMB is Melee Punch
-          this.isKeyboardMeleeRequested = true;
-        }
+        this.isKeyboardMeleeRequested = false;
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
         }
@@ -652,6 +646,16 @@ export class InputManager {
       }
       if (e.button !== 0) return; // Only primary left click
       this.isMouseDown = true;
+
+      const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
+      if (isAlt) {
+        if (!this.isRightMouseDown) {
+          // Alt + Left Click (without RMB held) = Melee Punch (single punch per click)!
+          this.isKeyboardMeleeRequested = true;
+        }
+        // When Alt is held, Left Click is reserved for either Melee Punch or Laser Fire; do not run normal grab/throw
+        return;
+      }
 
       if (this.onMouseDown) {
         this.onMouseDown(this.mousePos.x, this.mousePos.y, e);
@@ -720,6 +724,7 @@ export class InputManager {
       this.isMouseDown = false;
       this.justPickedUp = false;
       this.isThrowingPress = false;
+      this.isKeyboardMeleeRequested = false;
       if (this.isKeyboardSuspended) return;
       if (this.onMouseUp) {
         this.onMouseUp(this.mousePos.x, this.mousePos.y);
@@ -1849,20 +1854,29 @@ export class InputManager {
       const activeChar = getActiveKeyboardChar();
       if (!activeChar) return;
 
+      const isAlt = e?.altKey || this.isKeyPressed("AltLeft") || this.isKeyPressed("AltRight") || this.isAltHeld;
+      if (isAlt) {
+        // Holding Alt is reserved for combat:
+        // - Alt + Left Click = Punch (handled on mousedown)
+        // - Alt + Right Click = Laser Aim
+        // - Alt + Right Click + Left Click = Laser Fire
+        return;
+      }
+
       // Play Mode:
       // 1. If holding an object:
       if (activeChar.heldObject) {
         this.justPickedUp = false;
-        // If holding an item with an inherent primary ability (e.g. food consumable):
-        // Default ability is triggered by Left Mouse.
-        // Holding Alt switches to the alternative ability (Throw) until released.
+        // If holding an item with an inherent alternate primary ability (e.g. food consumable):
+        // Default ability (e.g. eat) is triggered by Left Mouse alone.
+        // Holding Right Mouse Button enters throwing mode, and Left Mouse throws!
         const hasPrimaryAbility = activeChar.hasPrimaryItemAbility?.() ?? Boolean(activeChar.heldObject.consumableModule?.enabled);
-        if (hasPrimaryAbility && !this.isAltHeld) {
+        if (hasPrimaryAbility && !this.isRightMouseDown) {
           // Primary ability is triggered continuously while LMB is down in capturePlayerInputs
           return;
         }
 
-        // Execute Throw if Alt is held OR if the object has no other primary ability:
+        // Execute Throw if RMB is held OR if the object has no other primary ability:
         if (activeChar.throwModule) {
           this.isKeyboardThrowRequested = true;
           this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released

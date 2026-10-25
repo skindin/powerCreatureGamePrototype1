@@ -153,8 +153,12 @@ export class PlayerManager {
     if (!kChar || !kChar.heldObject) {
       return false;
     }
+    const isAltDown = Boolean(this.inputManager.isAltHeld || this.inputManager.isKeyPressed("AltLeft") || this.inputManager.isKeyPressed("AltRight"));
+    if (isAltDown) {
+      return false;
+    }
     if (kChar.isPrimaryAbilityNonDirectional()) {
-      return Boolean(this.inputManager.isAltHeld || this.inputManager.isThrowingPress);
+      return Boolean(this.inputManager.isRightMouseDown || this.inputManager.isThrowingPress);
     }
     return true;
   }
@@ -528,16 +532,17 @@ export class PlayerManager {
       const hasPrimaryAbility = kChar.hasPrimaryItemAbility();
       const isPrimaryNonDirectional = kChar.isPrimaryAbilityNonDirectional();
 
-      // If holding an object with an inherent ability, Alt swaps to Throw.
+      // If holding an object with an inherent ability, holding RMB swaps to Throw.
       // If object has no other ability, default ability is Throw.
       // Ability swap stays in effect until the swapped ability is released.
-      const isThrowActive = isHolding && (!hasPrimaryAbility || input.isAltHeld || (input.isThrowingPress && input.isMouseDown));
+      const isAltDown = Boolean(input.isAltHeld || input.isKeyPressed("AltLeft") || input.isKeyPressed("AltRight"));
+      const isThrowActive = isHolding && (!hasPrimaryAbility || (!isAltDown && input.isRightMouseDown) || (input.isThrowingPress && input.isMouseDown));
 
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
       // 2. Mouse button is down, or
       // 3. Holding an object whose active ability is directional (e.g. Throw or a directional ability).
-      // If the primary ability does not involve direction and Alt is not held, do NOT aim or anticipate throw.
+      // If the primary ability does not involve direction and RMB is not held, do NOT aim or anticipate throw.
       const isMouseAiming = !isEditMode && (
         (isHolding && isThrowActive) ||
         (isHolding && !isPrimaryNonDirectional) ||
@@ -629,12 +634,12 @@ export class PlayerManager {
       }
 
       // Keyboard Combat Mode:
-      // - RMB = Melee Punch (single punch per button press)
+      // - Holding RMB = Throwing Mode for non-directional items (e.g. food); LMB throws while RMB held
+      // - Alt + Left Click = Melee Punch (single punch per click)
       // - Alt + RMB = Laser Aiming Mode
-      // - Alt + RMB + LMB = Fire Laser
-      const isAltDown = Boolean(input.isAltHeld || input.isKeyPressed("AltLeft") || input.isKeyPressed("AltRight"));
+      // - Alt + RMB + LMB = Activate/Fire Laser
       const isLaserMode = !isEditMode && (isAltDown && input.isRightMouseDown);
-      const isMeleeRequested = !isEditMode && !isAltDown && input.isKeyboardMeleeRequested;
+      const isMeleeRequested = !isEditMode && isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested;
 
       if (isLaserMode || isMeleeRequested) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
@@ -652,8 +657,9 @@ export class PlayerManager {
         grabState.useItemSuppressed = true;
       }
       const canUseItem = input.isMouseDown && !grabState.useItemSuppressed && !input.justPickedUp;
-      // Using primary ability requires NOT holding Alt and NOT in laser mode or melee
-      const isUsingItem = isHoldingConsumable && canUseItem && !isAltDown && !input.isThrowingPress && !input.isKeyboardSuspended && !isLaserMode && !isMeleeRequested;
+      // Using primary ability (e.g. eat food) requires NOT holding Alt, NOT in laser mode or melee,
+      // and NOT holding RMB (since holding RMB is throwing mode!)
+      const isUsingItem = isHoldingConsumable && canUseItem && !isAltDown && !input.isRightMouseDown && !input.isThrowingPress && !input.isKeyboardSuspended && !isLaserMode && !isMeleeRequested;
 
       // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
       // unhide and clear the lock:
