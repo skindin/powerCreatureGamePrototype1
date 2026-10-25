@@ -832,18 +832,22 @@ export class GameLoop {
         sObj.heldBy && localClientId && (sObj.heldBy === localClientId || sObj.heldBy.startsWith(`${localClientId}:`))
       );
       const isMyLocalId = Array.from(this.players.values()).some((p) => sObj.heldBy === p.id || sObj.heldBy === p.character.playerId);
+      const isRecentlyDroppedByMe = Boolean(
+        localObj.lastDroppedTime > 0 &&
+        (performance.now() - localObj.lastDroppedTime < 400) &&
+        (
+          localObj.lastHolder === this.character ||
+          localObj.lastHolder === this.primaryCharacter ||
+          Array.from(this.players.values()).some((p) => localObj.lastHolder === p.character)
+        )
+      );
       const wasHeldByMe = isHeldByMyClient || isMyLocalId ||
         localObj.lastThrower === this.character ||
         localObj.lastThrower === this.primaryCharacter ||
         localObj.originalThrower === this.character ||
         localObj.originalThrower === this.primaryCharacter ||
-        localObj.lastHolder === this.character ||
-        localObj.lastHolder === this.primaryCharacter ||
-        Array.from(this.players.values()).some((p) =>
-          localObj.lastThrower === p.character ||
-          localObj.originalThrower === p.character ||
-          localObj.lastHolder === p.character
-        );
+        isRecentlyDroppedByMe ||
+        Array.from(this.players.values()).some((p) => localObj.lastThrower === p.character || localObj.originalThrower === p.character);
 
       // Identify if any remote character is currently holding this object locally
       const isLocalChar = (c: Character) => Array.from(this.players.values()).some((p) => p.character === c || p.character.playerId === c.playerId || p.id === c.playerId);
@@ -875,14 +879,7 @@ export class GameLoop {
           continue;
         }
       } else {
-        const isAuthoritativeInFlight = sObj.isInFlight !== undefined ? sObj.isInFlight : false;
-        const isServerLaunched = !sObj.isHeld && (
-          isAuthoritativeInFlight ||
-          (sObj.isInFlight === undefined && isServerAirborne && (
-            (sObj.vz !== undefined && sObj.vz > 0.5) ||
-            Math.hypot(sObj.vx, sObj.vy) > 1.8
-          ))
-        );
+        const isServerLaunched = !sObj.isHeld && (isServerAirborne || (sObj.vz !== undefined && sObj.vz > 0.5) || Math.hypot(sObj.vx, sObj.vy) > 1.2);
         if (remoteHolder || (localObj.isHeld && localObj.heldBy && !isLocalChar(localObj.heldBy as Character)) || (isServerLaunched && !localObj.isInFlight && !wasHeldByMe)) {
           // Was held by a remote player locally, or just launched remotely on the server!
           const prevHolder = (localObj.heldBy as Character) || remoteHolder;
@@ -926,7 +923,7 @@ export class GameLoop {
       const horizDist = Math.hypot(sObj.x - localObj.position.x, sObj.y - localObj.position.y);
       const localSpeed = Math.hypot(localObj.velocity.x, localObj.velocity.y);
 
-      if (sObj.isGrounded || sObj.isInFlight === false) {
+      if (sObj.isGrounded) {
         localObj.isInFlight = false;
         localObj.originalThrower = null;
       }

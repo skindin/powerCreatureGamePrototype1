@@ -6385,14 +6385,12 @@ class CollisionResolver {
     const isThreatB = Boolean(!isVoluntaryB && b.isUnderKnockback || b.isInFlight);
     const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
     const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
-    const isRecentlyDroppedByA = b.lastHolder === a && now - b.lastDroppedTime < 2e3 && !b.isInFlight;
-    const isRecentlyDroppedByB = a.lastHolder === b && now - a.lastDroppedTime < 2e3 && !a.isInFlight;
-    const threatRatioA = isRecentlyDroppedByA ? 0 : CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
-    const threatRatioB = isRecentlyDroppedByB ? 0 : CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
+    const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
+    const threatRatioB = CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
     const effectiveDeltaVa = deltaVa * threatRatioA;
     const effectiveDeltaVb = deltaVb * threatRatioB;
-    const shockA = isRecentlyDroppedByA ? 0 : Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = isRecentlyDroppedByB ? 0 : Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
