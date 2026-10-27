@@ -366,37 +366,29 @@ export class WalkingModule {
           );
 
           let requestedWatts = 0;
-          if (achievableInputSpeed <= baseWalkTargetSpeed) {
-            // If the wall reduces achievable speed to <= base walk speed and walking is free, NO energy is consumed!
-            if (this.walkConsumesEnergy && achievableInputSpeed > 0.001) {
-              const CrWalk = 0.28;
-              const resForceWalk = totalMass * g * CrWalk;
-              requestedWatts = (resForceWalk * achievableInputSpeed) / 0.25;
-            } else {
-              requestedWatts = 0;
-            }
+          const speedRatio = sprintTargetSpeed > 0.001
+            ? Math.min(1.0, Math.max(0, achievableInputSpeed / sprintTargetSpeed))
+            : 0;
+
+          if (speedRatio <= 0.001) {
+            // Completely blocked flush into a wall or corner: NO energy consumed
+            requestedWatts = 0;
           } else {
-            // Moving faster than base walk speed: scale energy based on achievable speed beyond base walk
-            if (!this.walkConsumesEnergy) {
-              const speedExcessFraction = (achievableInputSpeed - baseWalkTargetSpeed) / Math.max(0.01, sprintTargetSpeed - baseWalkTargetSpeed);
-              requestedWatts = fullSprintWatts * Math.min(1.0, Math.max(0, speedExcessFraction));
-            } else {
-              requestedWatts = (resForceSprint * achievableInputSpeed) / 0.25;
-            }
+            // Power scales directly with actual sliding speed: at 45°, 70.7% speed costs 70.7% power (~108 W)
+            requestedWatts = fullSprintWatts * speedRatio;
           }
 
           if (requestedWatts > sprintCap) {
             requestedWatts = this.sprintAllowPartialPower ? sprintCap : 0;
           }
 
-          // If requestedWatts is 0 (blocked by wall, or <= walk speed when walk is free), consume 0 watts
+          // If requestedWatts is 0 (blocked by wall), consume 0 watts
           if (requestedWatts <= 0.0001) {
             pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
-            effectiveTargetSpeed = Math.max(0, achievableInputSpeed) * (1.0 + loadFactor);
+            effectiveTargetSpeed = sprintTargetSpeed * (1.0 + loadFactor);
             effectiveWalkForce = maxWalkForce;
           } else {
-            const baseSpeedWatts = (resForceSprint * baseWalkTargetSpeed) / 0.25;
-            const minSprintWatts = this.sprintAllowPartialPower ? Math.min(requestedWatts, baseSpeedWatts + 0.001) : (requestedWatts - 0.001);
+            const minSprintWatts = this.sprintAllowPartialPower ? 1.0 : (requestedWatts - 0.001);
 
             // Check if pool can support sprinting in isolation:
             const canSprintEitherWay = pool.canSupportPowerInIsolation(
@@ -453,7 +445,7 @@ export class WalkingModule {
                   effectiveWalkForce = maxWalkForce;
                   effectiveTargetSpeed = maxWalkSpeed;
                 } else {
-                  effectiveTargetSpeed = Math.max(baseWalkTargetSpeed, achievableInputSpeed) * (1.0 + loadFactor);
+                  effectiveTargetSpeed = sprintTargetSpeed * (1.0 + loadFactor);
                   effectiveWalkForce = maxWalkForce * 1.5;
                 }
               }

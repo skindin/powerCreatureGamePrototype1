@@ -2005,32 +2005,21 @@ class WalkingModule {
             arena
           );
           let requestedWatts = 0;
-          if (achievableInputSpeed <= baseWalkTargetSpeed) {
-            if (this.walkConsumesEnergy && achievableInputSpeed > 1e-3) {
-              const CrWalk = 0.28;
-              const resForceWalk = totalMass * g * CrWalk;
-              requestedWatts = resForceWalk * achievableInputSpeed / 0.25;
-            } else {
-              requestedWatts = 0;
-            }
+          const speedRatio = sprintTargetSpeed > 1e-3 ? Math.min(1, Math.max(0, achievableInputSpeed / sprintTargetSpeed)) : 0;
+          if (speedRatio <= 1e-3) {
+            requestedWatts = 0;
           } else {
-            if (!this.walkConsumesEnergy) {
-              const speedExcessFraction = (achievableInputSpeed - baseWalkTargetSpeed) / Math.max(0.01, sprintTargetSpeed - baseWalkTargetSpeed);
-              requestedWatts = fullSprintWatts * Math.min(1, Math.max(0, speedExcessFraction));
-            } else {
-              requestedWatts = resForceSprint * achievableInputSpeed / 0.25;
-            }
+            requestedWatts = fullSprintWatts * speedRatio;
           }
           if (requestedWatts > sprintCap) {
             requestedWatts = this.sprintAllowPartialPower ? sprintCap : 0;
           }
           if (requestedWatts <= 1e-4) {
             pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
-            effectiveTargetSpeed = Math.max(0, achievableInputSpeed) * (1 + loadFactor);
+            effectiveTargetSpeed = sprintTargetSpeed * (1 + loadFactor);
             effectiveWalkForce = maxWalkForce;
           } else {
-            const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
-            const minSprintWatts = this.sprintAllowPartialPower ? Math.min(requestedWatts, baseSpeedWatts + 1e-3) : requestedWatts - 1e-3;
+            const minSprintWatts = this.sprintAllowPartialPower ? 1 : requestedWatts - 1e-3;
             const canSprintEitherWay = pool.canSupportPowerInIsolation(
               requestedWatts,
               minSprintWatts,
@@ -2077,7 +2066,7 @@ class WalkingModule {
                   effectiveWalkForce = maxWalkForce;
                   effectiveTargetSpeed = maxWalkSpeed;
                 } else {
-                  effectiveTargetSpeed = Math.max(baseWalkTargetSpeed, achievableInputSpeed) * (1 + loadFactor);
+                  effectiveTargetSpeed = sprintTargetSpeed * (1 + loadFactor);
                   effectiveWalkForce = maxWalkForce * 1.5;
                 }
               }
