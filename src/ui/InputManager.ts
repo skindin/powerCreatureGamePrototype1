@@ -443,14 +443,10 @@ export class InputManager {
       this.keysPressed.add(e.code);
       this.updateMovementVector();
 
-      // Shift toggles sprinting on / off (pressing Shift untoggles sprinting)
-      if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !e.repeat) {
-        this.isKeyboardSprintActive = !this.isKeyboardSprintActive;
-        if (this.isKeyboardSprintActive) {
-          this.onToggleSprint?.(true);
-        } else {
-          this.onStopKeyboardSprint?.();
-        }
+      // Shift hold-to-sprint: holding Shift while walking sprints; releasing Shift walks
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        this.isKeyboardSprintActive = true;
+        this.onToggleSprint?.(true);
       }
 
       if (e.code === "KeyQ") {
@@ -500,8 +496,18 @@ export class InputManager {
         }
       }
 
-      // Automatically turn off sprint when all movement keys are released!
-      if (!this.hasAnyMovementKeyPressed()) {
+      // Release Shift stops sprint
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        const isShiftHeld = this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
+        if (!isShiftHeld) {
+          this.isKeyboardSprintActive = false;
+          this.onStopKeyboardSprint?.();
+        }
+      }
+
+      // If no movement keys are pressed and Shift is not held, ensure sprint is stopped
+      const isShiftStillHeld = this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
+      if (!this.hasAnyMovementKeyPressed() && !isShiftStillHeld) {
         this.isKeyboardSprintActive = false;
         this.onStopKeyboardSprint?.();
       }
@@ -890,6 +896,13 @@ export class InputManager {
     );
   }
 
+  /**
+   * Helper to check if Shift (Left or Right) is currently pressed.
+   */
+  public isShiftHeld(): boolean {
+    return this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight");
+  }
+
   private updateMovementVector(): void {
     if (!this.isKeyboardActive || this.isTextInputFocused()) {
       this.movementVector.x = 0;
@@ -913,6 +926,10 @@ export class InputManager {
       this.movementVector.x = 0;
       this.movementVector.y = 0;
     }
+
+    // Keep hold-to-sprint state in sync with Shift keys
+    const isShiftHeld = !this.isKeyboardSuspended && !this.isTextInputFocused() && (this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight"));
+    this.isKeyboardSprintActive = isShiftHeld;
   }
 
   /**
@@ -1019,7 +1036,6 @@ export class InputManager {
       //   Even indices (18, 20, 22...) = M2 / M4 (Left side paddles)
       //   Button 16 is also M1 if present.
       let extendedLeftPaddle = false;
-      let extendedPrevLeftPaddle = false;
       let extendedRightPaddle = false;
       let extendedPrevRightPaddle = false;
 
@@ -1033,7 +1049,6 @@ export class InputManager {
         if (isButtonPressed(16)) extendedRightPaddle = true;
         if (isPrevPressed(16)) extendedPrevRightPaddle = true;
         if (isButtonPressed(17)) extendedLeftPaddle = true;
-        if (isPrevPressed(17)) extendedPrevLeftPaddle = true;
       } else if (numButtons > 18) {
         for (let bIdx = 16; bIdx < numButtons; bIdx++) {
           if (bIdx === 16) {
@@ -1049,7 +1064,6 @@ export class InputManager {
           } else {
             // 18, 20, 22... = M2 / M4 (Left side paddles -> Sprint)
             if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
-            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
           }
         }
       }
@@ -1059,9 +1073,6 @@ export class InputManager {
       // NOTE: Button 4 (Left Bumper / LB) is no longer sprint; LB is exclusively Laser Mode!
       const leftPaddleButtonIndices = [10];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
-      const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
-      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
-      const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
       // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles (buttons 16+).
@@ -1414,44 +1425,16 @@ export class InputManager {
         char.jump(arena, slot.movementVector);
       }
 
-      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint
-      // Supports BOTH Hold-to-Sprint AND Tap-to-Sprint seamlessly!
+      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint (Hold-to-Sprint)
       const isStickMoving = lMag > deadzone;
 
-      if (leftPaddleJustPressed) {
-        slot.leftPaddlePressTime = performance.now();
-        // If already sprinting and moving, tapping it again toggles sprint off. Otherwise activate sprint!
-        if (char.isSprinting && isStickMoving) {
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        } else {
-          slot.sprintArmed = true;
-          char.setSprinting(true);
-        }
-      } else if (leftPaddleCurrent) {
-        // Actively holding paddle down guarantees sprinting
+      // Hold-to-Sprint: actively holding the sprint button/paddle sprints; releasing it walks
+      if (leftPaddleCurrent) {
         slot.sprintArmed = true;
         char.setSprinting(true);
-      } else if (leftPaddleJustReleased) {
-        const pressDuration = performance.now() - (slot.leftPaddlePressTime ?? 0);
-        if (pressDuration > 220) {
-          // Dedicated hold-to-sprint: releasing the paddle immediately returns to normal walk speed
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        }
-        // If it was a quick tap (< 220ms), slot.sprintArmed remains true so player continues sprinting while moving stick!
-      }
-
-      if (isStickMoving) {
-        if (slot.sprintArmed || leftPaddleCurrent) {
-          char.setSprinting(true);
-        }
       } else {
-        // Left stick is in neutral deadzone: disarm sprint when motion stops (unless paddle is actively held)
-        if (slot.wasMoving && !leftPaddleCurrent) {
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        }
+        slot.sprintArmed = false;
+        char.setSprinting(false);
       }
       slot.wasMoving = isStickMoving;
 

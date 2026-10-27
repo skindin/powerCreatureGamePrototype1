@@ -352,7 +352,9 @@ export class PlayerManager {
     };
     char.onSprintChange = (sprinting: boolean) => {
       if (!sprinting) {
-        this.inputManager.isKeyboardSprintActive = false;
+        if (!this.inputManager.isShiftHeld()) {
+          this.inputManager.isKeyboardSprintActive = false;
+        }
       }
     };
     this.players.set("keyboard", entry);

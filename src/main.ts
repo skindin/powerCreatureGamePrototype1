@@ -349,7 +349,9 @@ async function bootstrap(): Promise<void> {
   };
   character.onSprintChange = (sprinting: boolean) => {
     if (!sprinting) {
-      inputManager.isKeyboardSprintActive = false;
+      if (!inputManager.isShiftHeld()) {
+        inputManager.isKeyboardSprintActive = false;
+      }
     }
   };
 
