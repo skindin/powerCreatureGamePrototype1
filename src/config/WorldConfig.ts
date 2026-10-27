@@ -196,6 +196,7 @@ export interface SerializedCharacterConfig {
     maxHp?: number;
     currentHp?: number;
     naturalHealRate?: number;
+    joulesPerHp?: number;
     hpPerJoule?: number;
     maxPower?: number;
     consumesEnergy?: boolean;
@@ -397,7 +398,8 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       maxHp: char.healthModule.getMaxHp(char.properties),
       currentHp: char.healthModule.getCurrentHp(char.properties),
       naturalHealRate: char.healthModule.getMaxHealRate(char.properties),
-      hpPerJoule: char.healthModule.hpPerJouleProp ? char.healthModule.hpPerJouleProp.get(char.properties) : undefined,
+      joulesPerHp: char.healthModule.joulesPerHpProp ? char.healthModule.joulesPerHpProp.get(char.properties) : undefined,
+      hpPerJoule: char.healthModule.joulesPerHpProp ? char.healthModule.joulesPerHpProp.get(char.properties) : undefined,
       maxPower: char.healthModule.maxPowerProp ? char.healthModule.maxPowerProp.get(char.properties) : undefined,
       consumesEnergy: char.healthModule.consumesEnergy,
       allowPartialPower: char.healthModule.allowPartialPower,
@@ -555,7 +557,13 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     if (config.healthModule.maxHp !== undefined) char.healthModule.maxHp = config.healthModule.maxHp;
     if (config.healthModule.currentHp !== undefined) char.healthModule.currentHp = config.healthModule.currentHp;
     if (config.healthModule.naturalHealRate !== undefined) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
-    if (config.healthModule.hpPerJoule !== undefined && char.healthModule.hpPerJouleProp) char.healthModule.hpPerJouleProp.set(config.healthModule.hpPerJoule, char.properties);
+    if (config.healthModule.joulesPerHp !== undefined && char.healthModule.joulesPerHpProp) {
+      char.healthModule.joulesPerHpProp.set(config.healthModule.joulesPerHp, char.properties);
+    } else if (config.healthModule.hpPerJoule !== undefined && char.healthModule.joulesPerHpProp) {
+      const val = config.healthModule.hpPerJoule;
+      const converted = val < 1.0 ? 1.0 / Math.max(0.0001, val) : val;
+      char.healthModule.joulesPerHpProp.set(converted, char.properties);
+    }
     if (config.healthModule.maxPower !== undefined && char.healthModule.maxPowerProp) char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
     if (config.healthModule.consumesEnergy !== undefined) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
     if (config.healthModule.allowPartialPower !== undefined) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;

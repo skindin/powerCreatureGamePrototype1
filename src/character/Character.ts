@@ -418,7 +418,8 @@ export class Character extends GameObject {
     this.climbingModule = null; // Climbing module removed from default character (addable via DevPanel)
     this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
     this.energyPool = new EnergyPool();
-    this.properties.add("hpPerJoule", this.healthModule.hpPerJoule);
+    this.properties.add("joulesPerHp", this.healthModule.joulesPerHp);
+    this.properties.add("hpPerJoule", this.healthModule.joulesPerHp);
     this.properties.add("muscleEfficiency", this.energyPool.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
@@ -702,8 +703,8 @@ export class Character extends GameObject {
       if (curHp > 0 && curHp < maxHp - 0.001) {
         const healRate = this.healthModule.getMaxHealRate(this.properties);
         if (healRate > 0) {
-          const hpPerJoule = this.healthModule.getHpPerJoule(this.properties);
-          const rawHealthWatts = healRate / Math.max(0.0001, hpPerJoule);
+          const joulesPerHp = this.healthModule.getJoulesPerHp(this.properties);
+          const rawHealthWatts = healRate * Math.max(0.0001, joulesPerHp);
           const maxPower = this.healthModule.maxPowerProp.get(this.properties);
           let healthWatts = rawHealthWatts;
           if (healthWatts > maxPower) {

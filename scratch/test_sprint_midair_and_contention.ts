@@ -64,10 +64,10 @@ function runTests() {
     const moveInput = { x: 1, y: 0 };
 
     // Configure health module to demand 500W with allowPartialPower = false
-    // 500W * 0.04 HP/J = 20 HP/s
+    // 500W: 20 HP/s * 25 J/HP = 500 W
     char.healthModule!.allowPartialPower = false;
     char.healthModule!.maxHealRateProp.set(20.0, char.properties);
-    char.healthModule!.hpPerJouleProp.set(0.04, char.properties); // 20 / 0.04 = 500 W
+    char.healthModule!.joulesPerHpProp.set(25.0, char.properties); // 20 * 25 = 500 W
     char.healthModule!.currentHpProp.set(50.0, char.properties);
 
     // Tick with 100% bus capacity consumed by full-power health healing
@@ -105,10 +105,10 @@ function runTests() {
     const moveInput = { x: 1, y: 0 };
 
     // Health demands 390W with allowPartialPower = false
-    // 390W * 0.04 HP/J = 15.6 HP/s
+    // 390W: 15.6 HP/s * 25 J/HP = 390 W
     char.healthModule!.allowPartialPower = false;
     char.healthModule!.maxHealRateProp.set(15.6, char.properties);
-    char.healthModule!.hpPerJouleProp.set(0.04, char.properties);
+    char.healthModule!.joulesPerHpProp.set(25.0, char.properties);
     char.healthModule!.currentHpProp.set(50.0, char.properties);
 
     // 500W max - 390W = 110W remaining for sprint.

@@ -31,6 +31,7 @@ export interface HealthModuleOptions {
   currentHp?: number;
   baseMaxHealRate?: number;
   maxHealRate?: number;
+  joulesPerHp?: number;
   hpPerJoule?: number;
   consumesEnergy?: boolean;
   enabled?: boolean;
@@ -58,8 +59,16 @@ export class HealthModule {
   /** Effective max heal rate (HP / second) */
   public maxHealRateProp: DynamicProperty;
 
-  /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
-  public hpPerJouleProp: DynamicProperty;
+  /** Biological healing metabolic cost: how many Joules of energy each 1 HP costs */
+  public joulesPerHpProp: DynamicProperty;
+
+  /** Alias for backwards compatibility */
+  public get hpPerJouleProp(): DynamicProperty {
+    return this.joulesPerHpProp;
+  }
+  public set hpPerJouleProp(prop: DynamicProperty) {
+    this.joulesPerHpProp = prop;
+  }
 
   /** Toggle indicating whether healing draws energy from EnergyPool */
   public consumesEnergy: boolean = false;
@@ -81,8 +90,14 @@ export class HealthModule {
     this.baseMaxHealRate = options?.baseMaxHealRate ?? 5.0;
     this.maxHealRateProp = new DynamicProperty(options?.maxHealRate ?? this.baseMaxHealRate);
 
-    // Default 0.04 HP/Joule (equals 25 Joules per 1 HP, 125W at 5 HP/s)
-    this.hpPerJouleProp = new DynamicProperty(options?.hpPerJoule ?? 0.04);
+    // Default 25 Joules per 1 HP (at 5 HP/s = 125 W)
+    let initialJoulesPerHp = 25.0;
+    if (options?.joulesPerHp !== undefined) {
+      initialJoulesPerHp = options.joulesPerHp;
+    } else if (options?.hpPerJoule !== undefined) {
+      initialJoulesPerHp = options.hpPerJoule < 1.0 ? 1.0 / Math.max(0.0001, options.hpPerJoule) : options.hpPerJoule;
+    }
+    this.joulesPerHpProp = new DynamicProperty(initialJoulesPerHp);
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 300.0);
 
     if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
@@ -126,16 +141,28 @@ export class HealthModule {
     this.maxHealRateProp.literalValue = Math.max(0, val);
   }
 
+  public get joulesPerHp(): number {
+    return this.joulesPerHpProp.literalValue;
+  }
+
+  public set joulesPerHp(val: number) {
+    this.joulesPerHpProp.literalValue = Math.max(0.0001, val);
+  }
+
+  public getJoulesPerHp(registry?: ObjectPropertiesRegistry): number {
+    return Math.max(0.0001, this.joulesPerHpProp.get(registry));
+  }
+
   public get hpPerJoule(): number {
-    return this.hpPerJouleProp.literalValue;
+    return this.joulesPerHpProp.literalValue;
   }
 
   public set hpPerJoule(val: number) {
-    this.hpPerJouleProp.literalValue = Math.max(0.0001, val);
+    this.joulesPerHpProp.literalValue = Math.max(0.0001, val);
   }
 
   public getHpPerJoule(registry?: ObjectPropertiesRegistry): number {
-    return Math.max(0.0001, this.hpPerJouleProp.get(registry));
+    return this.getJoulesPerHp(registry);
   }
 
   public getMaxHp(registry?: ObjectPropertiesRegistry): number {
@@ -281,9 +308,9 @@ export class HealthModule {
         if (this.consumesEnergy) {
           const pool = character.energyPool;
           if (pool) {
-            // Bio-regeneration power: Power = healRate / (HP/Joule)
-            const hpPerJoule = this.getHpPerJoule(registry);
-            const rawPowerWatts = healRate / Math.max(0.0001, hpPerJoule);
+            // Bio-regeneration power: Power = healRate * (Joules / HP)
+            const joulesPerHp = this.getJoulesPerHp(registry);
+            const rawPowerWatts = healRate * Math.max(0.0001, joulesPerHp);
             const maxPower = this.maxPowerProp.get(registry);
             let powerWatts = rawPowerWatts;
             if (powerWatts > maxPower) {

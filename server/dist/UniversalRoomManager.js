@@ -3495,8 +3495,8 @@ class HealthModule {
     __publicField(this, "baseMaxHealRate");
     /** Effective max heal rate (HP / second) */
     __publicField(this, "maxHealRateProp");
-    /** Biological healing conversion efficiency: how much HP is restored per Joule of metabolic energy */
-    __publicField(this, "hpPerJouleProp");
+    /** Biological healing metabolic cost: how many Joules of energy each 1 HP costs */
+    __publicField(this, "joulesPerHpProp");
     /** Toggle indicating whether healing draws energy from EnergyPool */
     __publicField(this, "consumesEnergy", false);
     /** Whether healing is allowed to run when pool power cannot provide 100% full wattage */
@@ -3511,11 +3511,24 @@ class HealthModule {
     this.currentHpProp = new DynamicProperty((options == null ? void 0 : options.currentHp) ?? initialMaxHp);
     this.baseMaxHealRate = (options == null ? void 0 : options.baseMaxHealRate) ?? 5;
     this.maxHealRateProp = new DynamicProperty((options == null ? void 0 : options.maxHealRate) ?? this.baseMaxHealRate);
-    this.hpPerJouleProp = new DynamicProperty((options == null ? void 0 : options.hpPerJoule) ?? 0.04);
+    let initialJoulesPerHp = 25;
+    if ((options == null ? void 0 : options.joulesPerHp) !== void 0) {
+      initialJoulesPerHp = options.joulesPerHp;
+    } else if ((options == null ? void 0 : options.hpPerJoule) !== void 0) {
+      initialJoulesPerHp = options.hpPerJoule < 1 ? 1 / Math.max(1e-4, options.hpPerJoule) : options.hpPerJoule;
+    }
+    this.joulesPerHpProp = new DynamicProperty(initialJoulesPerHp);
     this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 300);
     if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+  }
+  /** Alias for backwards compatibility */
+  get hpPerJouleProp() {
+    return this.joulesPerHpProp;
+  }
+  set hpPerJouleProp(prop) {
+    this.joulesPerHpProp = prop;
   }
   get maxPower() {
     return this.maxPowerProp.literalValue;
@@ -3544,14 +3557,23 @@ class HealthModule {
   set maxHealRate(val) {
     this.maxHealRateProp.literalValue = Math.max(0, val);
   }
+  get joulesPerHp() {
+    return this.joulesPerHpProp.literalValue;
+  }
+  set joulesPerHp(val) {
+    this.joulesPerHpProp.literalValue = Math.max(1e-4, val);
+  }
+  getJoulesPerHp(registry) {
+    return Math.max(1e-4, this.joulesPerHpProp.get(registry));
+  }
   get hpPerJoule() {
-    return this.hpPerJouleProp.literalValue;
+    return this.joulesPerHpProp.literalValue;
   }
   set hpPerJoule(val) {
-    this.hpPerJouleProp.literalValue = Math.max(1e-4, val);
+    this.joulesPerHpProp.literalValue = Math.max(1e-4, val);
   }
   getHpPerJoule(registry) {
-    return Math.max(1e-4, this.hpPerJouleProp.get(registry));
+    return this.getJoulesPerHp(registry);
   }
   getMaxHp(registry) {
     return this.maxHpProp.get(registry);
@@ -3680,8 +3702,8 @@ class HealthModule {
         if (this.consumesEnergy) {
           const pool = character.energyPool;
           if (pool) {
-            const hpPerJoule = this.getHpPerJoule(registry);
-            const rawPowerWatts = healRate / Math.max(1e-4, hpPerJoule);
+            const joulesPerHp = this.getJoulesPerHp(registry);
+            const rawPowerWatts = healRate * Math.max(1e-4, joulesPerHp);
             const maxPower = this.maxPowerProp.get(registry);
             let powerWatts = rawPowerWatts;
             if (powerWatts > maxPower) {
@@ -5229,7 +5251,8 @@ class Character extends GameObject {
     this.climbingModule = null;
     this.healthModule = new HealthModule({ consumesEnergy: true, allowPartialPower: true });
     this.energyPool = new EnergyPool();
-    this.properties.add("hpPerJoule", this.healthModule.hpPerJoule);
+    this.properties.add("joulesPerHp", this.healthModule.joulesPerHp);
+    this.properties.add("hpPerJoule", this.healthModule.joulesPerHp);
     this.properties.add("muscleEfficiency", this.energyPool.muscleEfficiency);
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
@@ -5626,8 +5649,8 @@ class Character extends GameObject {
       if (curHp > 0 && curHp < maxHp - 1e-3) {
         const healRate = this.healthModule.getMaxHealRate(this.properties);
         if (healRate > 0) {
-          const hpPerJoule = this.healthModule.getHpPerJoule(this.properties);
-          const rawHealthWatts = healRate / Math.max(1e-4, hpPerJoule);
+          const joulesPerHp = this.healthModule.getJoulesPerHp(this.properties);
+          const rawHealthWatts = healRate * Math.max(1e-4, joulesPerHp);
           const maxPower = this.healthModule.maxPowerProp.get(this.properties);
           let healthWatts = rawHealthWatts;
           if (healthWatts > maxPower) {
@@ -7906,7 +7929,13 @@ function applyCharacterConfig(char, config) {
     if (config.healthModule.maxHp !== void 0) char.healthModule.maxHp = config.healthModule.maxHp;
     if (config.healthModule.currentHp !== void 0) char.healthModule.currentHp = config.healthModule.currentHp;
     if (config.healthModule.naturalHealRate !== void 0) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
-    if (config.healthModule.hpPerJoule !== void 0 && char.healthModule.hpPerJouleProp) char.healthModule.hpPerJouleProp.set(config.healthModule.hpPerJoule, char.properties);
+    if (config.healthModule.joulesPerHp !== void 0 && char.healthModule.joulesPerHpProp) {
+      char.healthModule.joulesPerHpProp.set(config.healthModule.joulesPerHp, char.properties);
+    } else if (config.healthModule.hpPerJoule !== void 0 && char.healthModule.joulesPerHpProp) {
+      const val = config.healthModule.hpPerJoule;
+      const converted = val < 1 ? 1 / Math.max(1e-4, val) : val;
+      char.healthModule.joulesPerHpProp.set(converted, char.properties);
+    }
     if (config.healthModule.maxPower !== void 0 && char.healthModule.maxPowerProp) char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
     if (config.healthModule.consumesEnergy !== void 0) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
     if (config.healthModule.allowPartialPower !== void 0) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;

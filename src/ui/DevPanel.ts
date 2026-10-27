@@ -1656,7 +1656,7 @@ export class DevPanel {
           <div id="prop-socket-health-cur"></div>
           <div id="prop-socket-health-max"></div>
           <div id="prop-socket-health-healrate"></div>
-          <div id="prop-socket-health-hpperjoule"></div>
+          <div id="prop-socket-health-joulesperhp"></div>
           <div id="prop-socket-health-power-cap"></div>
 
           ${renderToggleRow("check-health-energy", "Healing Consumes Energy", Boolean(hm.consumesEnergy), "Save Healing Consumes Energy to project")}
@@ -3097,20 +3097,20 @@ export class DevPanel {
         hpHealSocketEl.appendChild(hrCtrl.element);
       }
 
-      const hpPerJouleSocketEl = this.container.querySelector("#prop-socket-health-hpperjoule");
-      if (hpPerJouleSocketEl) {
+      const joulesPerHpSocketEl = this.container.querySelector("#prop-socket-health-joulesperhp") || this.container.querySelector("#prop-socket-health-hpperjoule");
+      if (joulesPerHpSocketEl) {
         const jCtrl = new PropertyControl({
-          property: hm.hpPerJouleProp,
+          property: hm.joulesPerHpProp,
           owner: e,
-          label: "Healing Efficiency (HP/Joule)",
-          step: 0.005,
+          label: "Energy Cost per HP (Joules/HP)",
+          step: 1.0,
           onUserChange: () => {
             if (!(e instanceof Character)) {
               this.markDirty("objects", e);
             }
           },
         });
-        hpPerJouleSocketEl.appendChild(jCtrl.element);
+        joulesPerHpSocketEl.appendChild(jCtrl.element);
       }
       const hpPowerCapSocketEl = this.container.querySelector("#prop-socket-health-power-cap");
       if (hpPowerCapSocketEl) {
@@ -5653,6 +5653,7 @@ export class DevPanel {
         if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
         if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
         if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
+        if (prop === char.healthModule.joulesPerHpProp) return "healthModule.joulesPerHp";
       }
       // Energy Pool
       if (char.energyPool) {
@@ -5738,6 +5739,7 @@ export class DevPanel {
       if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
       if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
       if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
+      if (l.includes("energy cost per hp") || l.includes("joules/hp") || l.includes("joule per hp") || l.includes("hp per joule")) return "healthModule.joulesPerHp";
       if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
       if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
       if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
@@ -5831,6 +5833,10 @@ export class DevPanel {
       healthMaxPower: "healthModule.maxPower",
       healthConsumesEnergy: "healthModule.consumesEnergy",
       healthAllowPartialPower: "healthModule.allowPartialPower",
+      joulesPerHp: "healthModule.joulesPerHp",
+      "Energy Cost per HP (Joules/HP)": "healthModule.joulesPerHp",
+      hpPerJoule: "healthModule.joulesPerHp",
+      "Healing Efficiency (HP/Joule)": "healthModule.joulesPerHp",
       laserMaxPower: "laserModule.maxPower",
       laserPowerCapacity: "laserModule.maxPower",
       laserMaxRange: "laserModule.maxRange",
