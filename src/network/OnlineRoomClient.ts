@@ -43,6 +43,7 @@ export class OnlineRoomClient {
   public latestGhostSnapshot: GhostSnapshot | null = null;
   public localPlayers = new Map<string, { localPlayerId: string; serverCharId: string; playerNumber: number; color: string; name: string; spawnPos?: { x: number; y: number; z?: number } }>();
   public lastServerMessageTime: number = 0;
+  public lastSentLaserFiringByPlayer = new Map<string, boolean>();
 
   public onStatsChange?: (stats: OnlineRoomStats) => void;
   public onJoined?: (info: { clientId: string; playerNumber: number; name: string; color: string }) => void;
@@ -441,6 +442,28 @@ export class OnlineRoomClient {
       const isSpawnAligned = Boolean(localReg && localReg.spawnPos);
       const isAwaitingRespawn = Boolean(character?.isAwaitingRespawn);
 
+      const isLaserFiringNow = Boolean(character?.laserModule ? (character.laserModule.enabled && character.laserModule.isFiring) : character?.isLaserFiring);
+
+      // Priority message on laser start/stop transitions so remote clients never miss a firing edge
+      const prevLaserFiring = this.lastSentLaserFiringByPlayer.get(localPlayerId) ?? false;
+      if (isLaserFiringNow !== prevLaserFiring) {
+        this.lastSentLaserFiringByPlayer.set(localPlayerId, isLaserFiringNow);
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          try {
+            this.ws.send(JSON.stringify({
+              type: "laser_fire_state",
+              localPlayerId,
+              serverCharId,
+              isFiring: isLaserFiringNow,
+              laserAimX: character?.laserAimTarget ? Number(character.laserAimTarget.x.toFixed(3)) : undefined,
+              laserAimY: character?.laserAimTarget ? Number(character.laserAimTarget.y.toFixed(3)) : undefined,
+              laserPowerFraction: typeof character?.laserPowerFraction === "number" ? Number(character.laserPowerFraction.toFixed(2)) : undefined,
+              timestamp: Date.now(),
+            }));
+          } catch (_) {}
+        }
+      }
+
       const charTelemetry = (character && isSpawnAligned && !isAwaitingRespawn) ? {
         id: serverCharId,
         name: isCustomCharacter
@@ -463,7 +486,7 @@ export class OnlineRoomClient {
         isHolding: (!character.hasDiedAwaitingNewPickup && !(character as any).isAwaitingRespawn) && Boolean(character.heldObject),
         isUsingItem: Boolean(character.isUsingItem),
         isLaserAiming: Boolean(character.isLaserAiming),
-        isLaserFiring: Boolean(character.laserModule ? (character.laserModule.enabled && character.laserModule.isFiring) : character.isLaserFiring),
+        isLaserFiring: isLaserFiringNow,
         laserAimX: character.laserAimTarget ? Number(character.laserAimTarget.x.toFixed(3)) : undefined,
         laserAimY: character.laserAimTarget ? Number(character.laserAimTarget.y.toFixed(3)) : undefined,
         laserPowerFraction: typeof character.laserPowerFraction === "number" ? Number(character.laserPowerFraction.toFixed(2)) : undefined,

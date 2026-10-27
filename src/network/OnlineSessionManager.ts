@@ -767,9 +767,19 @@ export class OnlineSessionManager {
             // Sync Laser state on remote character
             if (remChar.laserModule) {
               remChar.isLaserAiming = false; // Aiming line is client-private; remote clients must not render it
-              remChar.isLaserFiring = Boolean(c.isLaserFiring);
-              remChar.laserModule.isAiming = false;
-              remChar.laserModule.isFiring = Boolean(c.isLaserFiring);
+              if (c.isLaserFiring) {
+                remChar.isLaserFiring = true;
+                remChar.laserModule.isFiring = true;
+                (remChar as any).laserMissedTicks = 0;
+              } else {
+                // Absorb 1-2 frame snapshot jitter: require 3 consecutive non-firing snapshots (~50ms) to turn off
+                const missed = ((remChar as any).laserMissedTicks ?? 0) + 1;
+                (remChar as any).laserMissedTicks = missed;
+                if (missed >= 3 || !remChar.isLaserFiring) {
+                  remChar.isLaserFiring = false;
+                  remChar.laserModule.isFiring = false;
+                }
+              }
               if (c.laserAimX !== undefined && c.laserAimY !== undefined) {
                 remChar.laserAimTarget = { x: c.laserAimX, y: c.laserAimY };
                 // NOTE: Do not clamp currentEndpoint to cursor position! LaserRenderer will raycast to wall or offscreen.

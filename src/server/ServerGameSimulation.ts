@@ -1294,9 +1294,10 @@ export class ServerGameSimulation {
         if (char.laserModule) {
           char.isLaserAiming = Boolean((pkt as any).isLaserAiming);
           char.isLaserFiring = Boolean((pkt as any).isLaserFiring);
-          char.laserAimTarget = (pkt as any).laserAimX !== undefined
-            ? { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY }
-            : null;
+          (char as any).laserStarvedTicks = 0;
+          if ((pkt as any).laserAimX !== undefined && (pkt as any).laserAimY !== undefined) {
+            char.laserAimTarget = { x: (pkt as any).laserAimX, y: (pkt as any).laserAimY };
+          }
           char.laserPowerFraction = typeof (pkt as any).laserPowerFraction === "number"
             ? (pkt as any).laserPowerFraction
             : 1.0;
@@ -1354,9 +1355,14 @@ export class ServerGameSimulation {
           char.isUsingItem = false;
         }
         if (char.laserModule) {
-          char.isLaserAiming = false;
-          char.isLaserFiring = false;
-          char.laserAimTarget = null;
+          // Do not abruptly cancel firing on a single starved packet tick; allow up to 8 ticks (~133ms) of packet jitter grace
+          const starved = ((char as any).laserStarvedTicks ?? 0) + 1;
+          (char as any).laserStarvedTicks = starved;
+          if (starved > 8 || !char.isLaserFiring) {
+            char.isLaserAiming = false;
+            char.isLaserFiring = false;
+            char.laserAimTarget = null;
+          }
         }
         if (char.meleeModule) {
           char.isMeleeRequested = false;

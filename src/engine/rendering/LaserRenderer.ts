@@ -29,12 +29,13 @@ export class LaserRenderer {
     const laser = character.laserModule;
     if (!laser || !laser.enabled) return;
     if (!laser.isAiming && !laser.isFiring) return;
-    // Start position fallback (character weapon/chest origin)
-    const startPoint = laser.startPoint ?? {
+    // Start position pinned directly to live character position
+    const startPoint = {
       x: character.position.x,
       y: character.position.y,
       z: character.position.z ?? 0,
     };
+    laser.startPoint = startPoint;
 
     // Extend active firing laser past cursor position until it hits a wall or leaves the screen
     if (laser.isFiring && character.laserAimTarget) {

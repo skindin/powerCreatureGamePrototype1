@@ -10224,7 +10224,10 @@ class ServerGameSimulation {
         if (char.laserModule) {
           char.isLaserAiming = Boolean(pkt.isLaserAiming);
           char.isLaserFiring = Boolean(pkt.isLaserFiring);
-          char.laserAimTarget = pkt.laserAimX !== void 0 ? { x: pkt.laserAimX, y: pkt.laserAimY } : null;
+          char.laserStarvedTicks = 0;
+          if (pkt.laserAimX !== void 0 && pkt.laserAimY !== void 0) {
+            char.laserAimTarget = { x: pkt.laserAimX, y: pkt.laserAimY };
+          }
           char.laserPowerFraction = typeof pkt.laserPowerFraction === "number" ? pkt.laserPowerFraction : 1;
           char.laserCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
         }
@@ -10268,9 +10271,13 @@ class ServerGameSimulation {
           char.isUsingItem = false;
         }
         if (char.laserModule) {
-          char.isLaserAiming = false;
-          char.isLaserFiring = false;
-          char.laserAimTarget = null;
+          const starved = (char.laserStarvedTicks ?? 0) + 1;
+          char.laserStarvedTicks = starved;
+          if (starved > 8 || !char.isLaserFiring) {
+            char.isLaserAiming = false;
+            char.isLaserFiring = false;
+            char.laserAimTarget = null;
+          }
         }
         if (char.meleeModule) {
           char.isMeleeRequested = false;
@@ -11043,6 +11050,25 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           if (Array.isArray(data.objects) && data.objects.length > 0) {
             this.simulation.syncObjectsFromPacket(data.objects, serverCharId);
+          }
+          return;
+        }
+        if (data.type === "laser_fire_state") {
+          const localPlayerId = data.localPlayerId || "keyboard";
+          const charEntry = client.characters.get(localPlayerId);
+          const serverCharId = charEntry ? charEntry.serverCharId : data.serverCharId || clientId;
+          const sChar = this.simulation.characters.get(serverCharId);
+          if (sChar && sChar.laserModule) {
+            const isFiring = Boolean(data.isFiring);
+            sChar.isLaserFiring = isFiring;
+            sChar.laserModule.isFiring = isFiring;
+            sChar.laserStarvedTicks = isFiring ? 0 : 999;
+            if (data.laserAimX !== void 0 && data.laserAimY !== void 0) {
+              sChar.laserAimTarget = { x: data.laserAimX, y: data.laserAimY };
+            }
+            if (data.laserPowerFraction !== void 0) {
+              sChar.laserPowerFraction = data.laserPowerFraction;
+            }
           }
           return;
         }

@@ -818,6 +818,26 @@ export class UniversalRoomManager {
           return;
         }
 
+        if (data.type === "laser_fire_state") {
+          const localPlayerId = data.localPlayerId || "keyboard";
+          const charEntry = client.characters.get(localPlayerId);
+          const serverCharId = charEntry ? charEntry.serverCharId : (data.serverCharId || clientId);
+          const sChar = this.simulation.characters.get(serverCharId);
+          if (sChar && sChar.laserModule) {
+            const isFiring = Boolean(data.isFiring);
+            sChar.isLaserFiring = isFiring;
+            sChar.laserModule.isFiring = isFiring;
+            (sChar as any).laserStarvedTicks = isFiring ? 0 : 999;
+            if (data.laserAimX !== undefined && data.laserAimY !== undefined) {
+              sChar.laserAimTarget = { x: data.laserAimX, y: data.laserAimY };
+            }
+            if (data.laserPowerFraction !== undefined) {
+              sChar.laserPowerFraction = data.laserPowerFraction;
+            }
+          }
+          return;
+        }
+
         if (data.type === "grab_request" && data.targetObjectId) {
           const localPlayerId = data.localPlayerId || "keyboard";
           const charEntry = client.characters.get(localPlayerId);
