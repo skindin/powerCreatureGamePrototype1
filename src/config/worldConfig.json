@@ -1,6 +1,6 @@
 {
-  "version": 60,
-  "lastSaved": "2026-10-23T07:25:33.594Z",
+  "version": 67,
+  "lastSaved": "2026-10-27T08:42:45.731Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -354,7 +354,9 @@
     "hasHealth": true,
     "healthModule": {
       "maxHp": 100,
-      "naturalHealRate": 5
+      "naturalHealRate": 2,
+      "joulesPerHp": 80,
+      "maxPower": 500
     },
     "hasEnergyPool": true,
     "energyPool": {
