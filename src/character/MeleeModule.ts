@@ -176,13 +176,8 @@ export class MeleeModule {
     const mechanicalWorkJoules = maxForce * reach;
     const rawDemandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
     const maxPower = this.maxPowerProp.get(registry);
-    let demandedJoules = rawDemandedJoules;
-    if (demandedJoules > maxPower) {
-      if (!this.allowPartialPower) {
-        return null;
-      }
-      demandedJoules = maxPower;
-    }
+    // Demanded burst Joules is budgeted up to the ability's maxPower capacity:
+    const demandedJoules = Math.min(rawDemandedJoules, Math.max(0, maxPower));
 
     const pool = attacker.energyPool;
     let actualForce = maxForce;

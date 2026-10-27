@@ -1,6 +1,6 @@
 {
-  "version": 68,
-  "lastSaved": "2026-10-27T08:48:59.266Z",
+  "version": 73,
+  "lastSaved": "2026-10-27T20:48:06.616Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -367,7 +367,8 @@
     "hasMelee": true,
     "meleeModule": {
       "impactForce": 350,
-      "maxPower": 500
+      "maxPower": 1500,
+      "allowPartialPower": false
     },
     "hasLaser": true,
     "laserModule": {

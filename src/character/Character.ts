@@ -502,13 +502,8 @@ export class Character extends GameObject {
     const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
     const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
     const jumpCap = this.jumpMaxPowerProp ? this.jumpMaxPowerProp.get(this.properties) : 1200;
-    let metabolicJoules = rawMetabolicJoules;
-    if (metabolicJoules > jumpCap) {
-      if (!this.jumpAllowPartialPower) {
-        return false;
-      }
-      metabolicJoules = jumpCap;
-    }
+    // Demanded burst Joules is budgeted up to the ability's jumpCap:
+    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(0, jumpCap));
 
     let energyFraction = 1.0;
     if (this.jumpConsumesEnergy) {
