@@ -1889,6 +1889,58 @@ class WalkingModule {
    * - When not standing on something (airborne), max speed is not clamped to effective walking speed,
    *   preserving high velocity capacity from launches and jumps while allowing steering and floating friction braking.
    */
+  calculateAchievableInputVelocity(character, desiredVx, desiredVy, arena) {
+    let vx = desiredVx;
+    let vy = desiredVy;
+    const r = character.colliderRadius;
+    const skin = 0.06;
+    const contactDist = r + skin;
+    const charZ = character.position.z ?? 0;
+    const charX = character.position.x;
+    const charY = character.position.y;
+    if (charX <= contactDist && vx < 0) {
+      vx = 0;
+    } else if (charX >= arena.width - contactDist && vx > 0) {
+      vx = 0;
+    }
+    if (charY <= contactDist && vy < 0) {
+      vy = 0;
+    } else if (charY >= arena.height - contactDist && vy > 0) {
+      vy = 0;
+    }
+    if (arena.walls && arena.walls.length > 0) {
+      for (const wall of arena.walls) {
+        if (charZ > wall.wallHeight) continue;
+        const cx = Math.max(wall.x, Math.min(charX, wall.x + wall.width));
+        const cy = Math.max(wall.y, Math.min(charY, wall.y + wall.height));
+        const dx = charX - cx;
+        const dy = charY - cy;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < contactDist * contactDist) {
+          const dist = Math.sqrt(distSq);
+          let nx = 0;
+          let ny = 0;
+          if (dist > 1e-4) {
+            nx = dx / dist;
+            ny = dy / dist;
+          } else {
+            const vMag = Math.hypot(vx, vy);
+            if (vMag > 1e-4) {
+              nx = -vx / vMag;
+              ny = -vy / vMag;
+            }
+          }
+          const dot = vx * nx + vy * ny;
+          if (dot < 0) {
+            vx -= dot * nx;
+            vy -= dot * ny;
+          }
+        }
+      }
+    }
+    const speed = Math.hypot(vx, vy);
+    return { vx, vy, speed };
+  }
   update(character, inputVector, dt, arena) {
     var _a;
     const isAirborne = !character.isRestingOnSurface;
@@ -1937,73 +1989,97 @@ class WalkingModule {
     const sprintTargetSpeed = maxSprintSpeed / (1 + loadFactor);
     const g = 9.81;
     if (isMoving) {
+      const dirX = inputVector.x / inputMag;
+      const dirY = inputVector.y / inputMag;
       if (sprintingNow && this.sprintConsumesEnergy) {
         const pool = character.energyPool;
         if (pool) {
           const CrSprint = 0.4;
           const resForceSprint = totalMass * g * CrSprint;
-          const rawSprintWatts = resForceSprint * sprintTargetSpeed / 0.25;
+          const fullSprintWatts = resForceSprint * sprintTargetSpeed / 0.25;
           const sprintCap = this.maxSprintPowerProp.get(character.properties);
-          let requestedWatts = rawSprintWatts;
-          if (requestedWatts > sprintCap) {
-            if (!this.sprintAllowPartialPower) {
-              requestedWatts = 0;
+          const { speed: achievableInputSpeed } = this.calculateAchievableInputVelocity(
+            character,
+            dirX * sprintTargetSpeed,
+            dirY * sprintTargetSpeed,
+            arena
+          );
+          let requestedWatts = 0;
+          if (achievableInputSpeed <= baseWalkTargetSpeed) {
+            if (this.walkConsumesEnergy && achievableInputSpeed > 1e-3) {
+              const CrWalk = 0.28;
+              const resForceWalk = totalMass * g * CrWalk;
+              requestedWatts = resForceWalk * achievableInputSpeed / 0.25;
             } else {
-              requestedWatts = sprintCap;
+              requestedWatts = 0;
+            }
+          } else {
+            if (!this.walkConsumesEnergy) {
+              const speedExcessFraction = (achievableInputSpeed - baseWalkTargetSpeed) / Math.max(0.01, sprintTargetSpeed - baseWalkTargetSpeed);
+              requestedWatts = fullSprintWatts * Math.min(1, Math.max(0, speedExcessFraction));
+            } else {
+              requestedWatts = resForceSprint * achievableInputSpeed / 0.25;
             }
           }
-          const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
-          const minSprintWatts = this.sprintAllowPartialPower ? baseSpeedWatts + 1e-3 : requestedWatts - 1e-3;
-          const canSprintEitherWay = requestedWatts > 0 && pool.canSupportPowerInIsolation(
-            requestedWatts,
-            minSprintWatts,
-            dt,
-            character.properties
-          );
-          if (!canSprintEitherWay) {
-            character.setSprinting(false);
-            sprintingNow = false;
-            effectiveWalkForce = maxWalkForce;
-            effectiveTargetSpeed = maxWalkSpeed;
+          if (requestedWatts > sprintCap) {
+            requestedWatts = this.sprintAllowPartialPower ? sprintCap : 0;
+          }
+          if (requestedWatts <= 1e-4) {
             pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+            effectiveTargetSpeed = Math.max(0, achievableInputSpeed) * (1 + loadFactor);
+            effectiveWalkForce = maxWalkForce;
           } else {
-            const peekedWatts = pool.peekPower(requestedWatts, dt, character.properties, false, this.sprintAllowPartialPower, "locomotion");
-            if (peekedWatts < minSprintWatts) {
+            const baseSpeedWatts = resForceSprint * baseWalkTargetSpeed / 0.25;
+            const minSprintWatts = this.sprintAllowPartialPower ? Math.min(requestedWatts, baseSpeedWatts + 1e-3) : requestedWatts - 1e-3;
+            const canSprintEitherWay = pool.canSupportPowerInIsolation(
+              requestedWatts,
+              minSprintWatts,
+              dt,
+              character.properties
+            );
+            if (!canSprintEitherWay) {
+              character.setSprinting(false);
               sprintingNow = false;
               effectiveWalkForce = maxWalkForce;
               effectiveTargetSpeed = maxWalkSpeed;
               pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
-              if (this.walkConsumesEnergy) {
-                const CrWalk = 0.28;
-                const resForceWalk = totalMass * g * CrWalk;
-                const rawWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
-                const walkCap = this.maxWalkPowerProp.get(character.properties);
-                let walkRequested = rawWalkWatts;
-                if (walkRequested > walkCap) {
-                  walkRequested = this.walkAllowPartialPower ? walkCap : 0;
-                }
-                const walkGranted = pool.requestPower(walkRequested, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
-                const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 0;
-                if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
-                  effectiveWalkForce = 0;
-                  effectiveTargetSpeed = 0;
-                  character.isActivelyWalking = false;
-                } else {
-                  effectiveWalkForce *= fraction;
-                  effectiveTargetSpeed *= fraction;
-                }
-              }
             } else {
-              const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.sprintAllowPartialPower);
-              if (grantedWatts < minSprintWatts) {
+              const peekedWatts = pool.peekPower(requestedWatts, dt, character.properties, false, this.sprintAllowPartialPower, "locomotion");
+              if (peekedWatts < minSprintWatts) {
                 sprintingNow = false;
                 effectiveWalkForce = maxWalkForce;
                 effectiveTargetSpeed = maxWalkSpeed;
+                pool.registerDemand("locomotion", 0, this.sprintAllowPartialPower);
+                if (this.walkConsumesEnergy) {
+                  const CrWalk = 0.28;
+                  const resForceWalk = totalMass * g * CrWalk;
+                  const rawWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
+                  const walkCap = this.maxWalkPowerProp.get(character.properties);
+                  let walkRequested = rawWalkWatts;
+                  if (walkRequested > walkCap) {
+                    walkRequested = this.walkAllowPartialPower ? walkCap : 0;
+                  }
+                  const walkGranted = pool.requestPower(walkRequested, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+                  const fraction = walkRequested > 0 ? Math.min(1, walkGranted / walkRequested) : 0;
+                  if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+                    effectiveWalkForce = 0;
+                    effectiveTargetSpeed = 0;
+                    character.isActivelyWalking = false;
+                  } else {
+                    effectiveWalkForce *= fraction;
+                    effectiveTargetSpeed *= fraction;
+                  }
+                }
               } else {
-                const achievableSpeed = Math.min(sprintTargetSpeed, Math.max(baseWalkTargetSpeed, grantedWatts * 0.25 / resForceSprint));
-                effectiveTargetSpeed = achievableSpeed * (1 + loadFactor);
-                const speedRatio = sprintTargetSpeed > baseWalkTargetSpeed ? (achievableSpeed - baseWalkTargetSpeed) / (sprintTargetSpeed - baseWalkTargetSpeed) : 1;
-                effectiveWalkForce = maxWalkForce * (1 + 0.5 * Math.max(0, Math.min(1, speedRatio)));
+                const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.sprintAllowPartialPower);
+                if (grantedWatts < minSprintWatts) {
+                  sprintingNow = false;
+                  effectiveWalkForce = maxWalkForce;
+                  effectiveTargetSpeed = maxWalkSpeed;
+                } else {
+                  effectiveTargetSpeed = Math.max(baseWalkTargetSpeed, achievableInputSpeed) * (1 + loadFactor);
+                  effectiveWalkForce = maxWalkForce * 1.5;
+                }
               }
             }
           }
@@ -2011,23 +2087,36 @@ class WalkingModule {
       } else if (!sprintingNow && this.walkConsumesEnergy) {
         const pool = character.energyPool;
         if (pool) {
-          const Cr = 0.28;
-          const resForce = totalMass * g * Cr;
-          const rawWatts = resForce * baseWalkTargetSpeed / 0.25;
-          const walkCap = this.maxWalkPowerProp.get(character.properties);
-          let requestedWatts = rawWatts;
-          if (requestedWatts > walkCap) {
-            requestedWatts = this.walkAllowPartialPower ? walkCap : 0;
-          }
-          const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
-          const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 0;
-          if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+          const { speed: achievableWalkSpeed } = this.calculateAchievableInputVelocity(
+            character,
+            dirX * baseWalkTargetSpeed,
+            dirY * baseWalkTargetSpeed,
+            arena
+          );
+          if (achievableWalkSpeed <= 1e-3) {
+            pool.registerDemand("locomotion", 0, this.walkAllowPartialPower);
             effectiveWalkForce = 0;
             effectiveTargetSpeed = 0;
             character.isActivelyWalking = false;
           } else {
-            effectiveWalkForce *= fraction;
-            effectiveTargetSpeed *= fraction;
+            const Cr = 0.28;
+            const resForce = totalMass * g * Cr;
+            const rawWatts = resForce * achievableWalkSpeed / 0.25;
+            const walkCap = this.maxWalkPowerProp.get(character.properties);
+            let requestedWatts = rawWatts;
+            if (requestedWatts > walkCap) {
+              requestedWatts = this.walkAllowPartialPower ? walkCap : 0;
+            }
+            const grantedWatts = pool.requestPower(requestedWatts, dt, character.properties, false, "locomotion", this.walkAllowPartialPower);
+            const fraction = requestedWatts > 0 ? Math.min(1, grantedWatts / requestedWatts) : 0;
+            if (fraction <= 0 || !this.walkAllowPartialPower && fraction < 1) {
+              effectiveWalkForce = 0;
+              effectiveTargetSpeed = 0;
+              character.isActivelyWalking = false;
+            } else {
+              effectiveWalkForce *= fraction;
+              effectiveTargetSpeed *= fraction;
+            }
           }
         }
       }
