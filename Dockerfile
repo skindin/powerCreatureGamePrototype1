@@ -19,6 +19,7 @@ COPY --from=builder /app/server/dist ./server/dist
 COPY server.js ./
 COPY server ./server
 COPY data ./data
+COPY --from=builder /app/src/config ./src/config
 
 EXPOSE 3000
 CMD ["node", "server.js"]

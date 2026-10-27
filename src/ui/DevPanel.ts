@@ -5744,7 +5744,8 @@ export class DevPanel {
       if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
       if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
       if (l.includes("max power out")) return "energyPool.maxPowerOutput";
-      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.assistRadius";
+      if (l.includes("muscle") || l.includes("metabolic eff")) return "energyPool.muscleEfficiency";
+      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.hangDistance";
       if (l.includes("mass")) return "mass";
       if (l.includes("strength")) return "strength";
       if (l.includes("collider radius")) return "colliderRadius";
@@ -5856,7 +5857,11 @@ export class DevPanel {
       energyPoolCapacity: "energyPool.energyPoolCapacity",
       "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
       maxPowerOutput: "energyPool.maxPowerOutput",
-      assistRadius: "wallEdgeAssistModule.assistRadius",
+      muscleEfficiency: "energyPool.muscleEfficiency",
+      "Muscle Metabolic Efficiency (Ratio)": "energyPool.muscleEfficiency",
+      assistRadius: "wallEdgeAssistModule.hangDistance",
+      hangDistance: "wallEdgeAssistModule.hangDistance",
+      "Edge Assist Radius (u)": "wallEdgeAssistModule.hangDistance",
     };
 
     if (aliasMap[norm]) {

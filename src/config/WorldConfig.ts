@@ -10,6 +10,7 @@ import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { LaserModule } from "../character/LaserModule.js";
 import { MeleeModule } from "../character/MeleeModule.js";
+import { ClimbingModule } from "../character/ClimbingModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { quarryPreset, createQuarryStones } from "../engine/maps/QuarryMap.js";
@@ -230,12 +231,14 @@ export interface SerializedCharacterConfig {
     maxPowerOutput?: number;
     currentStamina?: number;
     currentEnergy?: number;
+    muscleEfficiency?: number;
     infiniteEnergy?: boolean;
     debugAutoRefillOnEmpty?: boolean;
   };
 
   wallEdgeAssistModule?: {
     hangDistance?: number;
+    assistRadius?: number;
     preventWalkOff?: boolean;
   };
 
@@ -443,6 +446,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       energyPoolCapacity: char.energyPool.maxEnergyProp?.get(char.properties) ?? 10000,
       currentStamina: char.energyPool.currentStaminaProp?.get(char.properties),
       currentEnergy: char.energyPool.currentEnergyProp?.get(char.properties),
+      muscleEfficiency: char.energyPool.muscleEfficiencyProp?.get(char.properties) ?? 0.25,
       infiniteEnergy: char.energyPool.infiniteEnergy,
       debugAutoRefillOnEmpty: char.energyPool.debugAutoRefillOnEmpty,
     };
@@ -481,37 +485,75 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   if (config.mass !== undefined) {
     char.mass = config.mass;
     if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);
+    char.properties?.set("mass", config.mass);
   }
   if (config.colliderRadius !== undefined) {
     char.colliderRadius = config.colliderRadius;
     if (char.colliderModule) char.colliderModule.radiusProp.set(config.colliderRadius, char.properties);
+    char.properties?.set("colliderRadius", config.colliderRadius);
+  }
+  if (config.strength !== undefined) {
+    char.strength = config.strength;
+    if (char.strengthProp) char.strengthProp.set(config.strength, char.properties);
+    char.properties?.set("strength", config.strength);
   }
 
   if (config.hasWalking === false) {
     char.walkingModule = null;
   } else if (config.walkingModule && char.walkingModule) {
     char.walkingModule.enabled = true;
-    if (config.walkingModule.maxWalkForce !== undefined) char.walkingModule.maxWalkForceProp.set(config.walkingModule.maxWalkForce, char.properties);
-    if (config.walkingModule.maxWalkSpeed !== undefined) char.walkingModule.maxWalkSpeedProp.set(config.walkingModule.maxWalkSpeed, char.properties);
-    if (config.walkingModule.sprintSpeed !== undefined) char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
+    if (config.walkingModule.maxWalkForce !== undefined) {
+      char.walkingModule.maxWalkForceProp.set(config.walkingModule.maxWalkForce, char.properties);
+      char.properties?.set("maxWalkForce", config.walkingModule.maxWalkForce);
+    }
+    if (config.walkingModule.maxWalkSpeed !== undefined) {
+      char.walkingModule.maxWalkSpeedProp.set(config.walkingModule.maxWalkSpeed, char.properties);
+      char.properties?.set("maxWalkSpeed", config.walkingModule.maxWalkSpeed);
+    }
+    if (config.walkingModule.sprintSpeed !== undefined) {
+      char.walkingModule.maxSprintSpeedProp.set(config.walkingModule.sprintSpeed, char.properties);
+      char.properties?.set("sprintSpeed", config.walkingModule.sprintSpeed);
+    }
     if (config.walkingModule.canSprint !== undefined) char.walkingModule.canSprint = config.walkingModule.canSprint;
     if (config.walkingModule.walkInAir !== undefined) char.walkingModule.walkInAir = config.walkingModule.walkInAir;
     if (config.walkingModule.walkConsumesEnergy !== undefined) char.walkingModule.walkConsumesEnergy = config.walkingModule.walkConsumesEnergy;
     if (config.walkingModule.walkAllowPartialPower !== undefined) char.walkingModule.walkAllowPartialPower = config.walkingModule.walkAllowPartialPower;
     if (config.walkingModule.sprintConsumesEnergy !== undefined) char.walkingModule.sprintConsumesEnergy = config.walkingModule.sprintConsumesEnergy;
     if (config.walkingModule.sprintAllowPartialPower !== undefined) char.walkingModule.sprintAllowPartialPower = config.walkingModule.sprintAllowPartialPower;
-    if (config.walkingModule.maxWalkPower !== undefined && char.walkingModule.maxWalkPowerProp) char.walkingModule.maxWalkPowerProp.set(config.walkingModule.maxWalkPower, char.properties);
-    if (config.walkingModule.maxSprintPower !== undefined && char.walkingModule.maxSprintPowerProp) char.walkingModule.maxSprintPowerProp.set(config.walkingModule.maxSprintPower, char.properties);
-    if (config.walkingModule.airFriction !== undefined && char.walkingModule.airFrictionProp) char.walkingModule.airFrictionProp.set(config.walkingModule.airFriction, char.properties);
+
+    const walkPower = config.walkingModule.maxWalkPower ?? (config.walkingModule as any).walkPowerCapacity;
+    if (walkPower !== undefined && char.walkingModule.maxWalkPowerProp) {
+      char.walkingModule.maxWalkPowerProp.set(walkPower, char.properties);
+      char.properties?.set("walkPowerCapacity", walkPower);
+    }
+    const sprintPower = config.walkingModule.maxSprintPower ?? (config.walkingModule as any).sprintPowerCapacity;
+    if (sprintPower !== undefined && char.walkingModule.maxSprintPowerProp) {
+      char.walkingModule.maxSprintPowerProp.set(sprintPower, char.properties);
+      char.properties?.set("sprintPowerCapacity", sprintPower);
+    }
+    if (config.walkingModule.airFriction !== undefined && char.walkingModule.airFrictionProp) {
+      char.walkingModule.airFrictionProp.set(config.walkingModule.airFriction, char.properties);
+      char.properties?.set("airFriction", config.walkingModule.airFriction);
+    }
   }
 
   if (config.hasJump === false) {
     char.jumpModule = null;
   } else if (config.jumpModule && char.jumpModule) {
     char.jumpModule.enabled = true;
-    if (config.jumpModule.jumpImpulse !== undefined) char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
-    if (config.jumpModule.maxInitialSpeed !== undefined) char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
-    if (config.jumpModule.jumpPowerCapacity !== undefined && char.jumpPowerCapacityProp) char.jumpPowerCapacityProp.set(config.jumpModule.jumpPowerCapacity, char.properties);
+    if (config.jumpModule.jumpImpulse !== undefined) {
+      char.jumpModule.jumpStrengthProp.set(config.jumpModule.jumpImpulse, char.properties);
+      char.properties?.set("jumpImpulse", config.jumpModule.jumpImpulse);
+    }
+    if (config.jumpModule.maxInitialSpeed !== undefined) {
+      char.jumpModule.maxInitialSpeedProp.set(config.jumpModule.maxInitialSpeed, char.properties);
+      char.properties?.set("maxInitialSpeed", config.jumpModule.maxInitialSpeed);
+    }
+    const jumpPower = config.jumpModule.jumpPowerCapacity ?? (config.jumpModule as any).maxPower;
+    if (jumpPower !== undefined && char.jumpPowerCapacityProp) {
+      char.jumpPowerCapacityProp.set(jumpPower, char.properties);
+      char.properties?.set("jumpPowerCapacity", jumpPower);
+    }
     if (config.jumpModule.jumpConsumesEnergy !== undefined) char.jumpConsumesEnergy = config.jumpModule.jumpConsumesEnergy;
     if (config.jumpModule.jumpAllowPartialPower !== undefined) char.jumpAllowPartialPower = config.jumpModule.jumpAllowPartialPower;
   }
@@ -520,11 +562,23 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.throwModule = null;
   } else if (config.throwModule && char.throwModule) {
     char.throwModule.enabled = true;
-    if (config.throwModule.throwForce !== undefined) char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
-    if (config.throwModule.maxPower !== undefined) char.throwModule.maxPowerProp.set(config.throwModule.maxPower, char.properties);
-    if (config.throwModule.throwPowerCapacity !== undefined) char.throwModule.maxPowerProp.set(config.throwModule.throwPowerCapacity, char.properties);
-    if (config.throwModule.maxThrowSpeed !== undefined) char.throwModule.maxThrowSpeedProp.set(config.throwModule.maxThrowSpeed, char.properties);
-    if (config.throwModule.maxThrowHeight !== undefined) char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
+    if (config.throwModule.throwForce !== undefined) {
+      char.throwModule.baseThrowForceProp.set(config.throwModule.throwForce, char.properties);
+      char.properties?.set("throwForce", config.throwModule.throwForce);
+    }
+    const throwPower = config.throwModule.throwPowerCapacity ?? config.throwModule.maxPower;
+    if (throwPower !== undefined) {
+      char.throwModule.maxPowerProp.set(throwPower, char.properties);
+      char.properties?.set("throwPowerCapacity", throwPower);
+    }
+    if (config.throwModule.maxThrowSpeed !== undefined) {
+      char.throwModule.maxThrowSpeedProp.set(config.throwModule.maxThrowSpeed, char.properties);
+      char.properties?.set("maxThrowSpeed", config.throwModule.maxThrowSpeed);
+    }
+    if (config.throwModule.maxThrowHeight !== undefined) {
+      char.throwModule.maxThrowHeightProp.set(config.throwModule.maxThrowHeight, char.properties);
+      char.properties?.set("maxThrowHeight", config.throwModule.maxThrowHeight);
+    }
     if (config.throwModule.consumesEnergy !== undefined) char.throwModule.consumesEnergy = config.throwModule.consumesEnergy;
   }
 
@@ -532,20 +586,45 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.pickupModule = null;
   } else if (config.pickupModule && char.pickupModule) {
     char.pickupModule.enabled = true;
-    if (config.pickupModule.pickupReach !== undefined && char.pickupModule.pickupReachProp) char.pickupModule.pickupReachProp.set(config.pickupModule.pickupReach, char.properties);
-    if (config.pickupModule.maxPower !== undefined && char.pickupModule.maxPowerProp) char.pickupModule.maxPowerProp.set(config.pickupModule.maxPower, char.properties);
+    if (config.pickupModule.pickupReach !== undefined && char.pickupModule.pickupReachProp) {
+      char.pickupModule.pickupReachProp.set(config.pickupModule.pickupReach, char.properties);
+      char.properties?.set("pickupReach", config.pickupModule.pickupReach);
+    }
+    const pickupPower = config.pickupModule.maxPower ?? (config.pickupModule as any).pickupPowerCapacity;
+    if (pickupPower !== undefined && char.pickupModule.maxPowerProp) {
+      char.pickupModule.maxPowerProp.set(pickupPower, char.properties);
+      char.properties?.set("pickupPowerCapacity", pickupPower);
+    }
     if (config.pickupModule.consumesEnergy !== undefined) char.pickupModule.consumesEnergy = config.pickupModule.consumesEnergy;
     if (config.pickupModule.allowPartialPower !== undefined) char.pickupModule.allowPartialPower = config.pickupModule.allowPartialPower;
   }
 
   if (config.hasClimbing === false) {
     char.climbingModule = null;
-  } else if (config.climbingModule && char.climbingModule) {
+  } else if (config.climbingModule) {
+    if (!char.climbingModule) {
+      char.climbingModule = new ClimbingModule();
+    }
     char.climbingModule.enabled = true;
-    if (config.climbingModule.climbSpeed !== undefined && char.climbingModule.maxClimbSpeedProp) char.climbingModule.maxClimbSpeedProp.set(config.climbingModule.climbSpeed, char.properties);
-    if (config.climbingModule.maxAdhesion !== undefined && char.climbingModule.maxAdhesionProp) char.climbingModule.maxAdhesionProp.set(config.climbingModule.maxAdhesion, char.properties);
-    if (config.climbingModule.maxPower !== undefined && char.climbingModule.maxPowerProp) char.climbingModule.maxPowerProp.set(config.climbingModule.maxPower, char.properties);
+    const climbSpeed = config.climbingModule.climbSpeed ?? (config.climbingModule as any).maxClimbSpeed;
+    if (climbSpeed !== undefined && char.climbingModule.maxClimbSpeedProp) {
+      char.climbingModule.maxClimbSpeedProp.set(climbSpeed, char.properties);
+      char.properties?.set("climbSpeed", climbSpeed);
+    }
+    const adhesion = config.climbingModule.maxAdhesion ?? (config.climbingModule as any).wallAdhesionRange;
+    if (adhesion !== undefined && char.climbingModule.maxAdhesionProp) {
+      char.climbingModule.maxAdhesionProp.set(adhesion, char.properties);
+      char.properties?.set("wallAdhesionRange", adhesion);
+    }
+    const climbPower = config.climbingModule.maxPower ?? (config.climbingModule as any).climbPowerCapacity;
+    if (climbPower !== undefined && char.climbingModule.maxPowerProp) {
+      char.climbingModule.maxPowerProp.set(climbPower, char.properties);
+      char.properties?.set("climbPowerCapacity", climbPower);
+    }
     if (config.climbingModule.horizontalClimb !== undefined) char.climbingModule.horizontalClimb = config.climbingModule.horizontalClimb;
+    if ((config.climbingModule as any).horizontalClimbMultiplier !== undefined && (char.climbingModule as any).horizontalClimbMultiplierProp) {
+      (char.climbingModule as any).horizontalClimbMultiplierProp.set((config.climbingModule as any).horizontalClimbMultiplier, char.properties);
+    }
     if (config.climbingModule.consumesEnergy !== undefined) char.climbingModule.consumesEnergy = config.climbingModule.consumesEnergy;
     if (config.climbingModule.allowPartialPower !== undefined) char.climbingModule.allowPartialPower = config.climbingModule.allowPartialPower;
   }
@@ -554,17 +633,30 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.healthModule = null;
   } else if (config.healthModule && char.healthModule) {
     char.healthModule.enabled = true;
-    if (config.healthModule.maxHp !== undefined) char.healthModule.maxHp = config.healthModule.maxHp;
+    if (config.healthModule.maxHp !== undefined) {
+      char.healthModule.maxHp = config.healthModule.maxHp;
+      char.properties?.set("maxHp", config.healthModule.maxHp);
+    }
     if (config.healthModule.currentHp !== undefined) char.healthModule.currentHp = config.healthModule.currentHp;
-    if (config.healthModule.naturalHealRate !== undefined) char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+    if (config.healthModule.naturalHealRate !== undefined) {
+      char.healthModule.maxHealRate = config.healthModule.naturalHealRate;
+      char.properties?.set("naturalHealRate", config.healthModule.naturalHealRate);
+    }
     if (config.healthModule.joulesPerHp !== undefined && char.healthModule.joulesPerHpProp) {
       char.healthModule.joulesPerHpProp.set(config.healthModule.joulesPerHp, char.properties);
+      char.properties?.set("joulesPerHp", config.healthModule.joulesPerHp);
+      char.properties?.set("hpPerJoule", config.healthModule.joulesPerHp);
     } else if (config.healthModule.hpPerJoule !== undefined && char.healthModule.joulesPerHpProp) {
       const val = config.healthModule.hpPerJoule;
       const converted = val < 1.0 ? 1.0 / Math.max(0.0001, val) : val;
       char.healthModule.joulesPerHpProp.set(converted, char.properties);
+      char.properties?.set("joulesPerHp", converted);
+      char.properties?.set("hpPerJoule", converted);
     }
-    if (config.healthModule.maxPower !== undefined && char.healthModule.maxPowerProp) char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
+    if (config.healthModule.maxPower !== undefined && char.healthModule.maxPowerProp) {
+      char.healthModule.maxPowerProp.set(config.healthModule.maxPower, char.properties);
+      char.properties?.set("healthMaxPower", config.healthModule.maxPower);
+    }
     if (config.healthModule.consumesEnergy !== undefined) char.healthModule.consumesEnergy = config.healthModule.consumesEnergy;
     if (config.healthModule.allowPartialPower !== undefined) char.healthModule.allowPartialPower = config.healthModule.allowPartialPower;
   }
@@ -573,9 +665,22 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.energyPool = null;
   } else if (config.energyPool && char.energyPool) {
     char.energyPool.enabled = true;
-    if (config.energyPool.staminaCapacity !== undefined && char.energyPool.maxStaminaProp) char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
-    if (config.energyPool.staminaRegenRate !== undefined && char.energyPool.staminaRegenRateProp) char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
-    if (config.energyPool.energyPoolCapacity !== undefined && char.energyPool.maxEnergyProp) char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
+    if (config.energyPool.staminaCapacity !== undefined && char.energyPool.maxStaminaProp) {
+      char.energyPool.maxStaminaProp.set(config.energyPool.staminaCapacity, char.properties);
+      char.properties?.set("staminaCapacity", config.energyPool.staminaCapacity);
+    }
+    if (config.energyPool.staminaRegenRate !== undefined && char.energyPool.staminaRegenRateProp) {
+      char.energyPool.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
+      char.properties?.set("staminaRegenRate", config.energyPool.staminaRegenRate);
+    }
+    if (config.energyPool.energyPoolCapacity !== undefined && char.energyPool.maxEnergyProp) {
+      char.energyPool.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);
+      char.properties?.set("energyPoolCapacity", config.energyPool.energyPoolCapacity);
+    }
+    if (config.energyPool.muscleEfficiency !== undefined && char.energyPool.muscleEfficiencyProp) {
+      char.energyPool.muscleEfficiencyProp.set(config.energyPool.muscleEfficiency, char.properties);
+      char.properties?.set("muscleEfficiency", config.energyPool.muscleEfficiency);
+    }
     if (config.energyPool.currentStamina !== undefined && char.energyPool.currentStaminaProp) char.energyPool.currentStaminaProp.set(config.energyPool.currentStamina, char.properties);
     if (config.energyPool.currentEnergy !== undefined && char.energyPool.currentEnergyProp) char.energyPool.currentEnergyProp.set(config.energyPool.currentEnergy, char.properties);
     if (config.energyPool.infiniteEnergy !== undefined) char.energyPool.infiniteEnergy = config.energyPool.infiniteEnergy;
@@ -583,7 +688,12 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   }
 
   if (config.wallEdgeAssistModule && char.wallEdgeAssistModule) {
-    if (config.wallEdgeAssistModule.hangDistance !== undefined) char.wallEdgeAssistModule.hangDistanceProp.set(config.wallEdgeAssistModule.hangDistance, char.properties);
+    const hang = config.wallEdgeAssistModule.hangDistance ?? config.wallEdgeAssistModule.assistRadius;
+    if (hang !== undefined && char.wallEdgeAssistModule.hangDistanceProp) {
+      char.wallEdgeAssistModule.hangDistanceProp.set(hang, char.properties);
+      char.properties?.set("hangDistance", hang);
+      char.properties?.set("assistRadius", hang);
+    }
     if (config.wallEdgeAssistModule.preventWalkOff !== undefined) char.wallEdgeAssistModule.preventWalkOff = config.wallEdgeAssistModule.preventWalkOff;
   }
 
@@ -592,9 +702,19 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   } else if (config.laserModule) {
     if (!char.laserModule) char.laserModule = new LaserModule();
     char.laserModule.enabled = true;
-    if (config.laserModule.damageRate !== undefined && char.laserModule.damageRateProp) char.laserModule.damageRateProp.set(config.laserModule.damageRate, char.properties);
-    if (config.laserModule.thickness !== undefined && char.laserModule.thicknessProp) char.laserModule.thicknessProp.set(config.laserModule.thickness, char.properties);
-    if (config.laserModule.maxPower !== undefined && char.laserModule.maxPowerProp) char.laserModule.maxPowerProp.set(config.laserModule.maxPower, char.properties);
+    if (config.laserModule.damageRate !== undefined && char.laserModule.damageRateProp) {
+      char.laserModule.damageRateProp.set(config.laserModule.damageRate, char.properties);
+      char.properties?.set("laserDamageRate", config.laserModule.damageRate);
+    }
+    if (config.laserModule.thickness !== undefined && char.laserModule.thicknessProp) {
+      char.laserModule.thicknessProp.set(config.laserModule.thickness, char.properties);
+      char.properties?.set("laserThickness", config.laserModule.thickness);
+    }
+    const laserPower = config.laserModule.maxPower ?? (config.laserModule as any).powerRating;
+    if (laserPower !== undefined && char.laserModule.maxPowerProp) {
+      char.laserModule.maxPowerProp.set(laserPower, char.properties);
+      char.properties?.set("laserMaxPower", laserPower);
+    }
     if (config.laserModule.allowPartialPower !== undefined) char.laserModule.allowPartialPower = config.laserModule.allowPartialPower;
   }
 
@@ -603,11 +723,26 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   } else if (config.meleeModule) {
     if (!char.meleeModule) char.meleeModule = new MeleeModule();
     char.meleeModule.enabled = true;
-    if (config.meleeModule.impactForce !== undefined && char.meleeModule.maxForceProp) char.meleeModule.maxForceProp.set(config.meleeModule.impactForce, char.properties);
-    if (config.meleeModule.maxPower !== undefined && char.meleeModule.maxPowerProp) char.meleeModule.maxPowerProp.set(config.meleeModule.maxPower, char.properties);
-    if (config.meleeModule.punchFrequency !== undefined && char.meleeModule.punchFrequencyProp) char.meleeModule.punchFrequencyProp.set(config.meleeModule.punchFrequency, char.properties);
-    if (config.meleeModule.reach !== undefined && char.meleeModule.reachProp) char.meleeModule.reachProp.set(config.meleeModule.reach, char.properties);
-    if (config.meleeModule.width !== undefined && char.meleeModule.widthProp) char.meleeModule.widthProp.set(config.meleeModule.width, char.properties);
+    if (config.meleeModule.impactForce !== undefined && char.meleeModule.maxForceProp) {
+      char.meleeModule.maxForceProp.set(config.meleeModule.impactForce, char.properties);
+      char.properties?.set("meleeMaxForce", config.meleeModule.impactForce);
+    }
+    if (config.meleeModule.maxPower !== undefined && char.meleeModule.maxPowerProp) {
+      char.meleeModule.maxPowerProp.set(config.meleeModule.maxPower, char.properties);
+      char.properties?.set("meleeMaxPower", config.meleeModule.maxPower);
+    }
+    if (config.meleeModule.punchFrequency !== undefined && char.meleeModule.punchFrequencyProp) {
+      char.meleeModule.punchFrequencyProp.set(config.meleeModule.punchFrequency, char.properties);
+      char.properties?.set("meleeFrequency", config.meleeModule.punchFrequency);
+    }
+    if (config.meleeModule.reach !== undefined && char.meleeModule.reachProp) {
+      char.meleeModule.reachProp.set(config.meleeModule.reach, char.properties);
+      char.properties?.set("meleeReach", config.meleeModule.reach);
+    }
+    if (config.meleeModule.width !== undefined && char.meleeModule.widthProp) {
+      char.meleeModule.widthProp.set(config.meleeModule.width, char.properties);
+      char.properties?.set("meleeWidth", config.meleeModule.width);
+    }
     if (config.meleeModule.allowPartialPower !== undefined) char.meleeModule.allowPartialPower = config.meleeModule.allowPartialPower;
   }
 

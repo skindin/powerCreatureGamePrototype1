@@ -13,6 +13,7 @@ import { GameObject } from "../engine/GameObject.js";
 import { PLAYER_COLORS } from "../engine/PlayerManager.js";
 import type { PlayerInputPacket, ReliableActionCommand } from "../engine/physics/StateHistoryBuffer.js";
 import { WorldConfig, applyCharacterConfig } from "../config/WorldConfig.js";
+import initialWorldConfig from "../config/worldConfig.json";
 
 export interface ClientCharacterEntry {
   localPlayerId: string;
@@ -67,6 +68,11 @@ export class UniversalRoomManager {
   }
 
   private loadInitialWorldConfig(): void {
+    // 1. Establish bundled worldConfig as the guaranteed baseline
+    if (initialWorldConfig) {
+      this.currentWorldConfig = initialWorldConfig as any as WorldConfig;
+    }
+
     try {
       const candidates = [
         path.resolve(process.cwd(), "src/config/worldConfig.json"),
@@ -84,9 +90,15 @@ export class UniversalRoomManager {
         }
       }
     } catch (err) {
-      console.warn("⚠️ [UniversalRoom] Could not load worldConfig.json, using default scenario:", err);
+      console.warn("⚠️ [UniversalRoom] Could not load worldConfig.json from disk, using bundled baseline:", err);
     }
-    this.simulation.initializeDefaultScenario();
+
+    if (this.currentWorldConfig) {
+      console.log(`🌐 [UniversalRoom] Initializing from bundled world config (v${this.currentWorldConfig.version})`);
+      this.simulation.initializeFromConfig(this.currentWorldConfig);
+    } else {
+      this.simulation.initializeDefaultScenario();
+    }
   }
 
   /**
@@ -371,7 +383,11 @@ export class UniversalRoomManager {
    */
   public reloadMap(): void {
     console.log("🌐 [UniversalRoom] Player connecting. Reloading fresh online map...");
-    this.simulation.initializeDefaultScenario();
+    if (this.currentWorldConfig) {
+      this.simulation.initializeFromConfig(this.currentWorldConfig);
+    } else {
+      this.simulation.initializeDefaultScenario();
+    }
     // Remove placeholder player-1 so only real connecting players occupy slots
     if (this.simulation.characters.has("player-1")) {
       const p1 = this.simulation.characters.get("player-1");
