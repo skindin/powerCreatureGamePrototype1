@@ -463,7 +463,7 @@ export class OnlineRoomClient {
         isHolding: (!character.hasDiedAwaitingNewPickup && !(character as any).isAwaitingRespawn) && Boolean(character.heldObject),
         isUsingItem: Boolean(character.isUsingItem),
         isLaserAiming: Boolean(character.isLaserAiming),
-        isLaserFiring: Boolean(character.isLaserFiring),
+        isLaserFiring: Boolean(character.laserModule ? (character.laserModule.enabled && character.laserModule.isFiring) : character.isLaserFiring),
         laserAimX: character.laserAimTarget ? Number(character.laserAimTarget.x.toFixed(3)) : undefined,
         laserAimY: character.laserAimTarget ? Number(character.laserAimTarget.y.toFixed(3)) : undefined,
         laserPowerFraction: typeof character.laserPowerFraction === "number" ? Number(character.laserPowerFraction.toFixed(2)) : undefined,

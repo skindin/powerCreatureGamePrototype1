@@ -4755,6 +4755,7 @@ class LaserModule {
       if (demandedWatts > 0 && grantedWatts <= 1e-3) {
         this.actualDamageRate = 0;
         this.isFiring = false;
+        character.isLaserFiring = false;
         this.hitEntities = [];
         return;
       }
@@ -5608,6 +5609,7 @@ class Character extends GameObject {
         0,
         this.laserPowerFraction
       );
+      this.isLaserFiring = this.laserModule.isFiring;
     }
     if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
       const candidates = this.meleeCandidateEntities ?? arena.entities;
@@ -9122,7 +9124,7 @@ class ServerTelemetryBroadcaster {
         visualPunchDirY: c.meleeModule ? Number(c.meleeModule.lastVisualPunchDir.y.toFixed(3)) : void 0,
         isUnderKnockback: Boolean(c.isUnderKnockback),
         isLaserAiming: Boolean(c.isLaserAiming),
-        isLaserFiring: Boolean(c.isLaserFiring),
+        isLaserFiring: Boolean(c.laserModule ? c.laserModule.enabled && c.laserModule.isFiring : c.isLaserFiring),
         laserAimX: c.laserAimTarget ? Number(c.laserAimTarget.x.toFixed(3)) : void 0,
         laserAimY: c.laserAimTarget ? Number(c.laserAimTarget.y.toFixed(3)) : void 0,
         laserPowerFraction: typeof c.laserPowerFraction === "number" ? Number(c.laserPowerFraction.toFixed(2)) : void 0

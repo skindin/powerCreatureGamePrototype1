@@ -358,6 +358,7 @@ export class LaserModule {
       if (demandedWatts > 0 && grantedWatts <= 0.001) {
         this.actualDamageRate = 0;
         this.isFiring = false;
+        character.isLaserFiring = false;
         this.hitEntities = [];
         return;
       }

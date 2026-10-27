@@ -785,6 +785,7 @@ export class Character extends GameObject {
         0,
         this.laserPowerFraction
       );
+      this.isLaserFiring = this.laserModule.isFiring;
     }
 
     // 2b3. Process Melee Attack ability in character facing direction
