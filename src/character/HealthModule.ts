@@ -356,7 +356,21 @@ export class HealthModule {
       // and broadcasts DeathRespawnEvent so the character does not glitch between different positions.
       const isOnline = (character as any)._isInOnlineMode === true;
       if (isOnline) {
+        // Drop carried objects at death location immediately before respawn!
+        if (character.heldObject) {
+          const dropPos = arena ? character.calculateHeldObjectPosition(arena) : { ...character.position };
+          character.heldObject.position.x = dropPos.x;
+          character.heldObject.position.y = dropPos.y;
+          character.heldObject.position.z = dropPos.z;
+          character.heldObject.velocity.x = 0;
+          character.heldObject.velocity.y = 0;
+          character.heldObject.verticalVelocity = 0;
+          character.heldObject.isHeld = false;
+          character.heldObject.heldBy = null;
+          character.heldObject = null;
+        }
         (character as any).isAwaitingRespawn = true;
+        character.hasDiedAwaitingNewPickup = true;
       } else {
         this.dieAndRespawn(character, arena);
       }

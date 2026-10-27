@@ -3667,7 +3667,20 @@ class HealthModule {
     if (this.getCurrentHp(registry) <= 1e-4) {
       const isOnline = character._isInOnlineMode === true;
       if (isOnline) {
+        if (character.heldObject) {
+          const dropPos = arena ? character.calculateHeldObjectPosition(arena) : { ...character.position };
+          character.heldObject.position.x = dropPos.x;
+          character.heldObject.position.y = dropPos.y;
+          character.heldObject.position.z = dropPos.z;
+          character.heldObject.velocity.x = 0;
+          character.heldObject.velocity.y = 0;
+          character.heldObject.verticalVelocity = 0;
+          character.heldObject.isHeld = false;
+          character.heldObject.heldBy = null;
+          character.heldObject = null;
+        }
         character.isAwaitingRespawn = true;
+        character.hasDiedAwaitingNewPickup = true;
       } else {
         this.dieAndRespawn(character, arena);
       }
@@ -5047,7 +5060,8 @@ class Character extends GameObject {
     __publicField(this, "savedArcRatio");
     // Preserved trajectory ratio between min and max arcs (never reset per character)
     __publicField(this, "hasUserSetArcRatio", false);
-    __publicField(this, "heldObject");
+    __publicField(this, "hasDiedAwaitingNewPickup", false);
+    __publicField(this, "_heldObject", null);
     __publicField(this, "isCharacter", true);
     __publicField(this, "isActivelyWalking", false);
     __publicField(this, "isClimbInputHeld", false);
@@ -5171,6 +5185,15 @@ class Character extends GameObject {
   }
   set strength(val) {
     this.strengthProp.set(Math.max(0.1, val), this.properties);
+  }
+  get heldObject() {
+    return this._heldObject;
+  }
+  set heldObject(obj) {
+    this._heldObject = obj;
+    if (obj) {
+      this.hasDiedAwaitingNewPickup = false;
+    }
   }
   setSprinting(sprint) {
     var _a;
@@ -5792,10 +5815,24 @@ class Character extends GameObject {
   dieAndRespawn(_arena, explicitPos) {
     var _a;
     if (this.heldObject) {
+      if (_arena) {
+        const dropPos = this.calculateHeldObjectPosition(_arena);
+        this.heldObject.position.x = dropPos.x;
+        this.heldObject.position.y = dropPos.y;
+        this.heldObject.position.z = dropPos.z;
+      } else {
+        this.heldObject.position.x = this.position.x;
+        this.heldObject.position.y = this.position.y;
+        this.heldObject.position.z = this.position.z;
+      }
+      this.heldObject.velocity.x = 0;
+      this.heldObject.velocity.y = 0;
+      this.heldObject.verticalVelocity = 0;
       this.heldObject.isHeld = false;
       this.heldObject.heldBy = null;
       this.heldObject = null;
     }
+    this.hasDiedAwaitingNewPickup = true;
     this.isClimbing = false;
     this.standingWall = null;
     if (this.wallEdgeAssistModule) {
@@ -9550,6 +9587,9 @@ class ServerGameSimulation {
         const holderId = cObj.heldBy || senderClientId;
         const sChar = holderId ? this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId) : null;
         if (sChar) {
+          if (sChar.hasDiedAwaitingNewPickup) {
+            continue;
+          }
           if (sObj.isHeld && sObj.heldBy && sObj.heldBy !== sChar) {
             continue;
           }
@@ -9693,15 +9733,18 @@ class ServerGameSimulation {
       sChar.isUsingItem = Boolean(clientChar.isUsingItem);
     }
     if (clientChar.heldObjectId) {
-      const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
-        const relPos = sChar.calculateHeldObjectPosition(this.arena);
-        sObj.position.x = relPos.x;
-        sObj.position.y = relPos.y;
-        sObj.position.z = relPos.z;
-        sObj.velocity.x = sChar.velocity.x;
-        sObj.velocity.y = sChar.velocity.y;
-        sObj.verticalVelocity = 0;
+      if (sChar.hasDiedAwaitingNewPickup) ;
+      else {
+        const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
+        if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
+          const relPos = sChar.calculateHeldObjectPosition(this.arena);
+          sObj.position.x = relPos.x;
+          sObj.position.y = relPos.y;
+          sObj.position.z = relPos.z;
+          sObj.velocity.x = sChar.velocity.x;
+          sObj.velocity.y = sChar.velocity.y;
+          sObj.verticalVelocity = 0;
+        }
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;

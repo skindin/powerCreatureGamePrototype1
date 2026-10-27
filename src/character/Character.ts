@@ -50,7 +50,17 @@ export class Character extends GameObject {
   public lastThrowAimAngle?: number; // Preserved direction angle from character to cursor when throw mode was active
   public savedArcRatio?: number; // Preserved trajectory ratio between min and max arcs (never reset per character)
   public hasUserSetArcRatio: boolean = false;
-  public heldObject: GameObject | null;
+  public hasDiedAwaitingNewPickup: boolean = false;
+  private _heldObject: GameObject | null = null;
+  public get heldObject(): GameObject | null {
+    return this._heldObject;
+  }
+  public set heldObject(obj: GameObject | null) {
+    this._heldObject = obj;
+    if (obj) {
+      this.hasDiedAwaitingNewPickup = false;
+    }
+  }
 
   public override isCharacter = true;
   public isActivelyWalking = false;
@@ -1035,12 +1045,26 @@ export class Character extends GameObject {
    * and delegates each module with dynamic properties to reset to initial values.
    */
   public dieAndRespawn(_arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
-    // 1. Drop carried objects
+    // 1. Drop carried objects at death position BEFORE moving character to respawn coordinates
     if (this.heldObject) {
+      if (_arena) {
+        const dropPos = this.calculateHeldObjectPosition(_arena);
+        this.heldObject.position.x = dropPos.x;
+        this.heldObject.position.y = dropPos.y;
+        this.heldObject.position.z = dropPos.z;
+      } else {
+        this.heldObject.position.x = this.position.x;
+        this.heldObject.position.y = this.position.y;
+        this.heldObject.position.z = this.position.z;
+      }
+      this.heldObject.velocity.x = 0;
+      this.heldObject.velocity.y = 0;
+      this.heldObject.verticalVelocity = 0;
       this.heldObject.isHeld = false;
       this.heldObject.heldBy = null;
       this.heldObject = null;
     }
+    this.hasDiedAwaitingNewPickup = true;
 
     // 2. Clear climbing and wall mounts
     this.isClimbing = false;

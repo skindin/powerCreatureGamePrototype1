@@ -36,6 +36,22 @@ export class LaserRenderer {
       z: character.position.z ?? 0,
     };
 
+    // Extend active firing laser past cursor position until it hits a wall or leaves the screen
+    if (laser.isFiring && character.laserAimTarget) {
+      const hoverScale = (viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both")
+        ? (arena.visualAltitudeScale ?? 0.5)
+        : 0;
+      const rayResult = laser.calculateLaserRay(
+        character,
+        character.laserAimTarget.x,
+        character.laserAimTarget.y,
+        arena,
+        hoverScale
+      );
+      laser.currentEndpoint = rayResult.endpoint;
+      laser.hitWall = rayResult.hitWall;
+    }
+
     // End position fallback (adapting to target elevation)
     const endPoint = laser.currentEndpoint ?? (character.laserAimTarget ? {
       x: character.laserAimTarget.x,

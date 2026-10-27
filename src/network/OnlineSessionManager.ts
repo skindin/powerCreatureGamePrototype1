@@ -766,13 +766,13 @@ export class OnlineSessionManager {
             }
             // Sync Laser state on remote character
             if (remChar.laserModule) {
-              remChar.isLaserAiming = Boolean(c.isLaserAiming);
+              remChar.isLaserAiming = false; // Aiming line is client-private; remote clients must not render it
               remChar.isLaserFiring = Boolean(c.isLaserFiring);
-              remChar.laserModule.isAiming = Boolean(c.isLaserAiming);
+              remChar.laserModule.isAiming = false;
               remChar.laserModule.isFiring = Boolean(c.isLaserFiring);
               if (c.laserAimX !== undefined && c.laserAimY !== undefined) {
                 remChar.laserAimTarget = { x: c.laserAimX, y: c.laserAimY };
-                remChar.laserModule.currentEndpoint = { x: c.laserAimX, y: c.laserAimY, z: remChar.position.z };
+                // NOTE: Do not clamp currentEndpoint to cursor position! LaserRenderer will raycast to wall or offscreen.
               }
               if (c.laserPowerFraction !== undefined) {
                 remChar.laserPowerFraction = c.laserPowerFraction;

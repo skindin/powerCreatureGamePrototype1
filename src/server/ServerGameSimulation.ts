@@ -523,6 +523,10 @@ export class ServerGameSimulation {
           ? (this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId))
           : null;
         if (sChar) {
+          // If the character recently died and has not legitimately picked up a new item after dying, reject client packet attempting to hold/move it!
+          if (sChar.hasDiedAwaitingNewPickup) {
+            continue;
+          }
           // If the object is ALREADY held by another character on the server, reject client packet attempting to steal it!
           if (sObj.isHeld && sObj.heldBy && sObj.heldBy !== sChar) {
             continue;
@@ -727,16 +731,20 @@ export class ServerGameSimulation {
     // An object is only kept held if the server's authoritative state already has it held by this character,
     // or if the client explicitly releases/drops an object it was holding.
     if (clientChar.heldObjectId) {
-      const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-      if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
-        // Keep synced with hands
-        const relPos = sChar.calculateHeldObjectPosition(this.arena);
-        sObj.position.x = relPos.x;
-        sObj.position.y = relPos.y;
-        sObj.position.z = relPos.z;
-        sObj.velocity.x = sChar.velocity.x;
-        sObj.velocity.y = sChar.velocity.y;
-        sObj.verticalVelocity = 0;
+      if (sChar.hasDiedAwaitingNewPickup) {
+        // Character died and has not yet picked up a new item; ignore stale heldObjectId packet
+      } else {
+        const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
+        if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
+          // Keep synced with hands
+          const relPos = sChar.calculateHeldObjectPosition(this.arena);
+          sObj.position.x = relPos.x;
+          sObj.position.y = relPos.y;
+          sObj.position.z = relPos.z;
+          sObj.velocity.x = sChar.velocity.x;
+          sObj.velocity.y = sChar.velocity.y;
+          sObj.verticalVelocity = 0;
+        }
       }
     } else if (sChar.heldObject && clientChar.isHolding === false) {
       const sObj = sChar.heldObject;

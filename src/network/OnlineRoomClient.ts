@@ -459,8 +459,8 @@ export class OnlineRoomClient {
         isClimbing: character.isClimbing,
         isAboveWalls: character.isAboveWalls,
         facingAngle: Number(character.facingAngle.toFixed(4)),
-        heldObjectId: character.heldObject ? character.heldObject.id : null,
-        isHolding: Boolean(character.heldObject),
+        heldObjectId: (!character.hasDiedAwaitingNewPickup && !(character as any).isAwaitingRespawn && character.heldObject) ? character.heldObject.id : null,
+        isHolding: (!character.hasDiedAwaitingNewPickup && !(character as any).isAwaitingRespawn) && Boolean(character.heldObject),
         isUsingItem: Boolean(character.isUsingItem),
         isLaserAiming: Boolean(character.isLaserAiming),
         isLaserFiring: Boolean(character.isLaserFiring),
@@ -473,8 +473,9 @@ export class OnlineRoomClient {
       } : undefined;
 
       // Only stream telemetry for objects that this specific local character has authority over (held in hands)
-      // Never stream objects that are consumed or depleted!
-      const myHeldObjects = (isSpawnAligned && Array.isArray(actualObjects) && actualObjects.length > 0)
+      // Never stream objects that are consumed or depleted, or if character has died and not picked up a new item!
+      const canStreamHeld = isSpawnAligned && !character?.hasDiedAwaitingNewPickup && !(character as any)?.isAwaitingRespawn;
+      const myHeldObjects = (canStreamHeld && Array.isArray(actualObjects) && actualObjects.length > 0)
         ? actualObjects.filter((obj) => obj.isHeld && (obj.heldBy === character || character?.heldObject === obj) && !(obj.consumableModule && obj.consumableModule.isConsumed))
         : [];
 
