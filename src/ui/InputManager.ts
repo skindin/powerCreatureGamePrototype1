@@ -729,6 +729,24 @@ export class InputManager {
     });
 
     window.addEventListener("wheel", (e) => {
+      const isPointerLocked = (typeof document !== "undefined" && document.pointerLockElement === this.canvas);
+      const isOverCanvas = (e.target === this.canvas || (e.target instanceof Node && this.canvas.contains(e.target)));
+
+      // If not pointer locked and not directly over the canvas, allow normal UI / browser scrolling
+      if (!isPointerLocked && !isOverCanvas) {
+        return;
+      }
+
+      // Never prevent default or intercept scrolling if the event is over the dev sidebar or UI panels
+      if (
+        e.target instanceof Element &&
+        e.target.closest(
+          "#dev-sidebar, .dev-scrollable, .modal-backdrop, #players-modal, #settings-modal, #feedback-modal, #feedback-panel, .top-bar, .quick-action-sidebar, .dev-panel-header"
+        )
+      ) {
+        return;
+      }
+
       e.preventDefault();
       const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
       const isLaserMode = isAlt && this.isRightMouseDown;
