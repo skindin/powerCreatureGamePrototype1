@@ -1036,6 +1036,7 @@ export class InputManager {
       //   Even indices (18, 20, 22...) = M2 / M4 (Left side paddles)
       //   Button 16 is also M1 if present.
       let extendedLeftPaddle = false;
+      let extendedPrevLeftPaddle = false;
       let extendedRightPaddle = false;
       let extendedPrevRightPaddle = false;
 
@@ -1049,6 +1050,7 @@ export class InputManager {
         if (isButtonPressed(16)) extendedRightPaddle = true;
         if (isPrevPressed(16)) extendedPrevRightPaddle = true;
         if (isButtonPressed(17)) extendedLeftPaddle = true;
+        if (isPrevPressed(17)) extendedPrevLeftPaddle = true;
       } else if (numButtons > 18) {
         for (let bIdx = 16; bIdx < numButtons; bIdx++) {
           if (bIdx === 16) {
@@ -1064,6 +1066,7 @@ export class InputManager {
           } else {
             // 18, 20, 22... = M2 / M4 (Left side paddles -> Sprint)
             if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
+            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
           }
         }
       }
@@ -1073,6 +1076,9 @@ export class InputManager {
       // NOTE: Button 4 (Left Bumper / LB) is no longer sprint; LB is exclusively Laser Mode!
       const leftPaddleButtonIndices = [10];
       const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
+      const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
+      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
+      const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
       // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles (buttons 16+).
@@ -1425,16 +1431,44 @@ export class InputManager {
         char.jump(arena, slot.movementVector);
       }
 
-      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint (Hold-to-Sprint)
+      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint
+      // Controller uses toggle sprint: tap to toggle on/off, and disarms when stick stops moving
       const isStickMoving = lMag > deadzone;
 
-      // Hold-to-Sprint: actively holding the sprint button/paddle sprints; releasing it walks
-      if (leftPaddleCurrent) {
+      if (leftPaddleJustPressed) {
+        slot.leftPaddlePressTime = performance.now();
+        // If already sprinting and moving, tapping it again toggles sprint off. Otherwise activate sprint!
+        if (char.isSprinting && isStickMoving) {
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        } else {
+          slot.sprintArmed = true;
+          char.setSprinting(true);
+        }
+      } else if (leftPaddleCurrent) {
+        // Actively holding paddle down guarantees sprinting
         slot.sprintArmed = true;
         char.setSprinting(true);
+      } else if (leftPaddleJustReleased) {
+        const pressDuration = performance.now() - (slot.leftPaddlePressTime ?? 0);
+        if (pressDuration > 220) {
+          // Releasing paddle after a long hold returns to normal walk speed
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
+        // If it was a quick tap (< 220ms), slot.sprintArmed remains true (toggle sprint) while moving stick!
+      }
+
+      if (isStickMoving) {
+        if (slot.sprintArmed || leftPaddleCurrent) {
+          char.setSprinting(true);
+        }
       } else {
-        slot.sprintArmed = false;
-        char.setSprinting(false);
+        // Left stick is in neutral deadzone: disarm sprint when motion stops (unless paddle is actively held)
+        if (slot.wasMoving && !leftPaddleCurrent) {
+          slot.sprintArmed = false;
+          char.setSprinting(false);
+        }
       }
       slot.wasMoving = isStickMoving;
 
