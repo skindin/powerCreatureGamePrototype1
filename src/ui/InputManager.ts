@@ -200,9 +200,53 @@ export class InputManager {
   public lastClientY: number | null = null;
   public isKeyboardMeleeRequested: boolean = false;
 
+  public isCombatModifierActive(e?: MouseEvent | KeyboardEvent | WheelEvent): boolean {
+    const isEventAlt = Boolean(e?.altKey);
+    const isEventCtrl = Boolean(e?.ctrlKey);
+    return (
+      isEventAlt ||
+      isEventCtrl ||
+      this.isAltHeld ||
+      this.keysPressed.has("AltLeft") ||
+      this.keysPressed.has("AltRight") ||
+      this.keysPressed.has("ControlLeft") ||
+      this.keysPressed.has("ControlRight") ||
+      this.keysPressed.has("KeyF")
+    );
+  }
+
+  public syncModifierStates(e: MouseEvent | KeyboardEvent | WheelEvent): void {
+    if (typeof (e as any).getModifierState !== "function") return;
+    const isAltActive = (e as any).getModifierState("Alt");
+    if (!isAltActive) {
+      if (this.isAltHeld || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight")) {
+        this.isAltHeld = false;
+        this.keysPressed.delete("AltLeft");
+        this.keysPressed.delete("AltRight");
+      }
+    }
+    const isShiftActive = (e as any).getModifierState("Shift");
+    if (!isShiftActive) {
+      if (this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight") || this.isKeyboardSprintActive) {
+        this.keysPressed.delete("ShiftLeft");
+        this.keysPressed.delete("ShiftRight");
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
+        this.updateMovementVector();
+      }
+    }
+    const isCtrlActive = (e as any).getModifierState("Control");
+    if (!isCtrlActive) {
+      if (this.keysPressed.has("ControlLeft") || this.keysPressed.has("ControlRight")) {
+        this.keysPressed.delete("ControlLeft");
+        this.keysPressed.delete("ControlRight");
+      }
+    }
+  }
+
   public get isGrabHeld(): boolean {
-    const isAlt = this.isAltHeld || this.isKeyPressed("AltLeft") || this.isKeyPressed("AltRight");
-    const canMouseGrab = !isAlt && this.isMouseDown;
+    const isCombat = this.isCombatModifierActive();
+    const canMouseGrab = !isCombat && this.isMouseDown;
     const canKeyGrab = this.isEKeyDepressed || this.keysPressed.has("KeyE");
     return (
       this.isKeyboardActive &&
@@ -333,10 +377,19 @@ export class InputManager {
       }
     }
 
-    window.addEventListener("keydown", (e) => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      this.syncModifierStates(e);
+
       // If Alt is pressed or held, prevent browser menu activation, menu bar focus, and browser shortcuts
       if (e.altKey || e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
         this.isAltHeld = true;
+        if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
+          e.preventDefault();
+        }
+      }
+
+      // Prevent Shift + Alt from triggering Windows language / input switch modal
+      if ((e.shiftKey || e.code.startsWith("Shift")) && (e.altKey || e.code.startsWith("Alt"))) {
         if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
           e.preventDefault();
         }
@@ -457,9 +510,10 @@ export class InputManager {
 
         this.onKeyboardPickup?.();
       }
-    });
+    };
 
-    window.addEventListener("keyup", (e) => {
+    const onKeyUp = (e: KeyboardEvent) => {
+      this.syncModifierStates(e);
       if (this.isTextInputFocused() || this.isTargetTextInput(e.target)) {
         this.keysPressed.delete(e.code);
         return;
@@ -482,8 +536,10 @@ export class InputManager {
         this.isEKeyDepressed = false;
       }
 
-      if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
-        this.isAltHeld = false;
+      if (e.altKey || e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt" || (e.shiftKey && (e.code.startsWith("Alt") || e.altKey))) {
+        if (e.code === "AltLeft" || e.code === "AltRight" || e.key === "Alt") {
+          this.isAltHeld = false;
+        }
         if (!this.isTextInputFocused() && !this.isTargetTextInput(e.target)) {
           e.preventDefault();
         }
@@ -504,7 +560,11 @@ export class InputManager {
         this.isKeyboardSprintActive = false;
         this.onStopKeyboardSprint?.();
       }
-    });
+    };
+
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+    document.addEventListener("keyup", onKeyUp, { capture: true });
 
     window.addEventListener("blur", () => {
       this.isKeyboardSuspended = true;
@@ -523,7 +583,31 @@ export class InputManager {
       this.updateMovementVector();
     });
 
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        this.isRightMouseDown = false;
+        this.isAwaitingUnlock = false;
+        this.unhideCursor();
+        this.lockedAimPos = null;
+        this.exitPointerLock();
+        this.updateCanvasCursorClass();
+        this.isQKeyDepressed = false;
+        this.isEKeyDepressed = false;
+        this.isAltHeld = false;
+        this.keysPressed.clear();
+        this.isKeyboardSprintActive = false;
+        this.onStopKeyboardSprint?.();
+        this.updateMovementVector();
+      }
+    });
+
+    window.addEventListener("focus", () => {
+      this.isKeyboardSuspended = false;
+      this.updateCanvasCursorClass();
+    });
+
     window.addEventListener("mousemove", (e) => {
+      this.syncModifierStates(e);
       if (this.isKeyboardSuspended) {
         return;
       }
@@ -615,6 +699,7 @@ export class InputManager {
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
+      this.syncModifierStates(e);
       this.activeInputDevice = "keyboard";
       this.lastMouseMoveTime = performance.now();
 
@@ -646,13 +731,13 @@ export class InputManager {
       if (e.button !== 0) return; // Only primary left click
       this.isMouseDown = true;
 
-      const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
-      if (isAlt) {
+      const isCombat = this.isCombatModifierActive(e);
+      if (isCombat) {
         if (!this.isRightMouseDown) {
-          // Alt + Left Click (without RMB held) = Melee Punch (single punch per click)!
+          // Combat Modifier + Left Click (without RMB held) = Melee Punch (single punch per click)!
           this.isKeyboardMeleeRequested = true;
         }
-        // When Alt is held, Left Click is reserved for either Melee Punch or Laser Fire; do not run normal grab/throw
+        // When Combat Modifier is held, Left Click is reserved for either Melee Punch or Laser Fire; do not run normal grab/throw
         return;
       }
 
@@ -683,6 +768,7 @@ export class InputManager {
     });
 
     window.addEventListener("mouseup", (e) => {
+      this.syncModifierStates(e);
       if (e.button === 2) {
         this.isRightMouseDown = false;
         this.isKeyboardMeleeRequested = false;
@@ -731,6 +817,7 @@ export class InputManager {
     });
 
     window.addEventListener("wheel", (e) => {
+      this.syncModifierStates(e);
       const isPointerLocked = (typeof document !== "undefined" && document.pointerLockElement === this.canvas);
       const isOverCanvas = (e.target === this.canvas || (e.target instanceof Node && this.canvas.contains(e.target)));
 
@@ -750,8 +837,8 @@ export class InputManager {
       }
 
       e.preventDefault();
-      const isAlt = e.altKey || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight") || this.isAltHeld;
-      const isLaserMode = isAlt && this.isRightMouseDown;
+      const isCombat = this.isCombatModifierActive(e);
+      const isLaserMode = isCombat && this.isRightMouseDown;
 
       if (isLaserMode) {
         // Alt + RMB: adjust laser power
@@ -1882,12 +1969,12 @@ export class InputManager {
       const activeChar = getActiveKeyboardChar();
       if (!activeChar) return;
 
-      const isAlt = e?.altKey || this.isKeyPressed("AltLeft") || this.isKeyPressed("AltRight") || this.isAltHeld;
-      if (isAlt) {
-        // Holding Alt is reserved for combat:
-        // - Alt + Left Click = Punch (handled on mousedown)
-        // - Alt + Right Click = Laser Aim
-        // - Alt + Right Click + Left Click = Laser Fire
+      const isCombat = this.isCombatModifierActive(e);
+      if (isCombat) {
+        // Holding Combat Modifier (Alt / Ctrl / F) is reserved for combat:
+        // - Combat Modifier + Left Click = Punch (handled on mousedown)
+        // - Combat Modifier + Right Click = Laser Aim
+        // - Combat Modifier + Right Click + Left Click = Laser Fire
         return;
       }
 

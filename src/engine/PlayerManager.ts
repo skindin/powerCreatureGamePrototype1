@@ -153,7 +153,16 @@ export class PlayerManager {
     if (!kChar || !kChar.heldObject) {
       return false;
     }
-    const isAltDown = Boolean(this.inputManager.isAltHeld || this.inputManager.isKeyPressed("AltLeft") || this.inputManager.isKeyPressed("AltRight"));
+    const isAltDown = Boolean(
+      this.inputManager.isCombatModifierActive ? this.inputManager.isCombatModifierActive() : (
+        this.inputManager.isAltHeld ||
+        this.inputManager.isKeyPressed("AltLeft") ||
+        this.inputManager.isKeyPressed("AltRight") ||
+        this.inputManager.isKeyPressed("ControlLeft") ||
+        this.inputManager.isKeyPressed("ControlRight") ||
+        this.inputManager.isKeyPressed("KeyF")
+      )
+    );
     if (isAltDown) {
       return false;
     }
@@ -537,7 +546,16 @@ export class PlayerManager {
       // If holding an object with an inherent ability, holding RMB swaps to Throw.
       // If object has no other ability, default ability is Throw.
       // Ability swap stays in effect until the swapped ability is released.
-      const isAltDown = Boolean(input.isAltHeld || input.isKeyPressed("AltLeft") || input.isKeyPressed("AltRight"));
+      const isAltDown = Boolean(
+        input.isCombatModifierActive ? input.isCombatModifierActive() : (
+          input.isAltHeld ||
+          input.isKeyPressed("AltLeft") ||
+          input.isKeyPressed("AltRight") ||
+          input.isKeyPressed("ControlLeft") ||
+          input.isKeyPressed("ControlRight") ||
+          input.isKeyPressed("KeyF")
+        )
+      );
       const isThrowActive = isHolding && (!hasPrimaryAbility || (!isAltDown && input.isRightMouseDown) || (input.isThrowingPress && input.isMouseDown));
 
       // Mouse aiming & trajectory are active when:
