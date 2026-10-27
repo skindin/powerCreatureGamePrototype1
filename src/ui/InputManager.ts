@@ -201,12 +201,14 @@ export class InputManager {
   public isKeyboardMeleeRequested: boolean = false;
 
   public get isGrabHeld(): boolean {
+    const isAlt = this.isAltHeld || this.isKeyPressed("AltLeft") || this.isKeyPressed("AltRight");
+    const canMouseGrab = !isAlt && this.isMouseDown;
+    const canKeyGrab = this.isEKeyDepressed || this.keysPressed.has("KeyE");
     return (
       this.isKeyboardActive &&
       !this.isKeyboardSuspended &&
       !this.isThrowingPress &&
-      !this.isAltHeld &&
-      (this.isMouseDown || this.isEKeyDepressed || this.keysPressed.has("KeyE"))
+      (canMouseGrab || canKeyGrab)
     );
   }
 

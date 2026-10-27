@@ -548,7 +548,7 @@ export class PlayerManager {
       const isMouseAiming = !isEditMode && (
         (isHolding && isThrowActive) ||
         (isHolding && !isPrimaryNonDirectional) ||
-        (!isHolding && input.isMouseDown)
+        (!isHolding && !isAltDown && input.isMouseDown)
       );
 
       const grabState = this.getGrabSuppressionState(kChar.id);
@@ -572,7 +572,7 @@ export class PlayerManager {
         }
       }
 
-      const canMouseGrab = input.isMouseDown && !grabState.mouseGrabSuppressed;
+      const canMouseGrab = !isAltDown && input.isMouseDown && !grabState.mouseGrabSuppressed;
       const canKeyEGrab = isEKeyDown && !grabState.keyEGrabSuppressed;
       const isKeyboardSeekingGrab = (
         input.isKeyboardActive &&
@@ -691,8 +691,8 @@ export class PlayerManager {
         moveY: input.movementVector.y,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: (isLaserMode || isMeleeRequested) ? false : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
-        grabTargetObjectId: (isLaserMode || isMeleeRequested) ? null : grabTargetObjectId,
+        isGrabHeld: (isLaserMode || isMeleeRequested || isAltDown) ? (isAltDown ? canKeyEGrab : false) : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
+        grabTargetObjectId: (isLaserMode || isMeleeRequested || (isAltDown && !canKeyEGrab)) ? null : grabTargetObjectId,
         isDrop: input.isKeyboardDropRequested ?? false,
         isThrow: (isLaserMode || isMeleeRequested) ? false : (input.isKeyboardThrowRequested ?? false),
         isUsingItem: (isLaserMode || isMeleeRequested) ? false : isUsingItem,
