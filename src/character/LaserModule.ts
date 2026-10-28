@@ -356,6 +356,15 @@ export class LaserModule {
 
       // If no power granted (or pool exhausted), laser cuts off and deals 0 damage
       if (demandedWatts > 0 && grantedWatts <= 0.001) {
+        if (character.energyPool) {
+          character.energyPool.notifyInsufficientEnergy({
+            abilityId: "laser_blast",
+            demandedAmount: demandedWatts,
+            isBurst: false,
+            unit: "W/s",
+            registry,
+          });
+        }
         this.actualDamageRate = 0;
         this.isFiring = false;
         character.isLaserFiring = false;

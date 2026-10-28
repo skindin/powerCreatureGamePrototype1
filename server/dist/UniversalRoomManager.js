@@ -4008,6 +4008,8 @@ class EnergyPool {
      * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
      */
     __publicField(this, "debugAutoRefillOnEmpty", false);
+    // Retains most recent insufficient energy/stamina denial for HUD alert flash
+    __publicField(this, "lastInsufficientAlert", null);
     // Registered ability power demands
     __publicField(this, "_demands", /* @__PURE__ */ new Map());
     __publicField(this, "_totalDemand", 0);
@@ -4141,6 +4143,77 @@ class EnergyPool {
     this._demands.clear();
     this._totalDemand = 0;
   }
+  notifyInsufficientEnergy(options) {
+    const isBurst = options.isBurst ?? true;
+    const demandedAmount = Math.max(0.1, options.demandedAmount);
+    const registry = options.registry;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (this.lastInsufficientAlert && this.lastInsufficientAlert.abilityId === options.abilityId && now < this.lastInsufficientAlert.timestamp + 350) {
+      this.lastInsufficientAlert.expiresAt = Math.max(this.lastInsufficientAlert.expiresAt, now + 1400);
+      return this.lastInsufficientAlert;
+    }
+    const curStamina = this.getCurrentStamina(registry);
+    const curEnergy = this.getCurrentEnergy(registry);
+    const isExhausted = this.isExhausted;
+    let limitingResource = "stamina";
+    let reason = options.customReason || "Insufficient Stamina";
+    if (!options.customReason) {
+      if (isExhausted) {
+        limitingResource = "stamina";
+        reason = "Exhausted (Stamina Depleted)";
+      } else if (isBurst) {
+        const staminaLack = curStamina < demandedAmount;
+        const energyLack = curEnergy < demandedAmount;
+        if (staminaLack && energyLack) {
+          limitingResource = "both";
+          reason = "Low Stamina + Energy";
+        } else if (staminaLack) {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        } else if (energyLack) {
+          limitingResource = "energy";
+          reason = "Insufficient Energy";
+        } else {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        }
+      } else {
+        const staminaLack = curStamina <= 1e-3;
+        const energyLack = curEnergy <= 1e-3;
+        if (staminaLack && energyLack) {
+          limitingResource = "both";
+          reason = "Out of Stamina + Energy";
+        } else if (staminaLack) {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        } else if (energyLack) {
+          limitingResource = "energy";
+          reason = "Insufficient Energy";
+        } else {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        }
+      }
+    } else {
+      limitingResource = isExhausted || curStamina <= 1e-3 ? "stamina" : curEnergy <= 1e-3 ? "energy" : "stamina";
+    }
+    const meta = ABILITY_METADATA[options.abilityId];
+    const abilityName = (meta == null ? void 0 : meta.name) ?? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1);
+    const unit = options.unit ?? (isBurst ? "J" : "W");
+    const alert = {
+      abilityId: options.abilityId,
+      abilityName,
+      cost: Math.round(demandedAmount),
+      unit,
+      isBurst,
+      limitingResource,
+      reason,
+      timestamp: now,
+      expiresAt: now + 1600
+    };
+    this.lastInsufficientAlert = alert;
+    return alert;
+  }
   // --- Affordability Gatekeeping ---
   /**
    * Unified gatekeeper checking whether stamina and energy pool can satisfy an energy or power demand.
@@ -4263,7 +4336,10 @@ class EnergyPool {
     }
     if (targetWatts <= 1e-4) {
       this.isExhausted = true;
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
     const energyNeededJoules = targetWatts * dt;
@@ -4274,7 +4350,10 @@ class EnergyPool {
     }
     const grantedJoules = this.consumePartial(energyNeededJoules, registry);
     if (grantedJoules <= 1e-4) {
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
     const grantedWatts = grantedJoules / dt;
@@ -4335,6 +4414,7 @@ class EnergyPool {
       return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
     }
     if (!this.enabled || this.isExhausted && !this.infiniteEnergy) {
+      if (this.enabled) this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     if (this.infiniteEnergy) {
@@ -4350,9 +4430,11 @@ class EnergyPool {
     const availableJoules = Math.min(poolEnergy, curStamina);
     if (curStamina <= 1e-4) {
       this.isExhausted = true;
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     if (availableJoules <= 1e-3) {
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     let grantedJoules = 0;
@@ -4364,6 +4446,7 @@ class EnergyPool {
       grantedJoules = availableJoules;
       fraction = availableJoules / demandedJoules;
     } else {
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     this.consumePartial(grantedJoules, registry);
@@ -4872,6 +4955,15 @@ class LaserModule {
       }
       this.actualPowerWatts = grantedWatts;
       if (demandedWatts > 0 && grantedWatts <= 1e-3) {
+        if (character.energyPool) {
+          character.energyPool.notifyInsufficientEnergy({
+            abilityId: "laser_blast",
+            demandedAmount: demandedWatts,
+            isBurst: false,
+            unit: "W/s",
+            registry
+          });
+        }
         this.actualDamageRate = 0;
         this.isFiring = false;
         character.isLaserFiring = false;
@@ -5022,6 +5114,12 @@ class MeleeModule {
     let energySpent = 0;
     if (pool) {
       if (pool.isExhausted) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "melee",
+          demandedAmount: demandedJoules,
+          isBurst: true,
+          registry
+        });
         return null;
       }
       const burstRes = pool.requestInstantBurst({
@@ -5519,9 +5617,21 @@ class Character extends GameObject {
     if (this.jumpConsumesEnergy) {
       if (pool) {
         if (pool.isExhausted) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: this.properties
+          });
           return false;
         }
         if (!this.jumpAllowPartialPower && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, this.properties)) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: this.properties
+          });
           return false;
         }
         const burstRes = pool.requestInstantBurst({
@@ -5627,6 +5737,17 @@ class Character extends GameObject {
       if (this.energyPool && (this.energyPool.isExhausted || this.energyPool.getCurrentStamina(this.properties) <= 1e-4)) {
         sprintingNow = false;
         this.setSprinting(false);
+        const Cr = 0.4;
+        const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1;
+        const targetSpeed = this.walkingModule.maxSprintSpeedProp.get(this.properties);
+        const rawSprintWatts = totalMass * 9.81 * Cr * targetSpeed / 0.25;
+        this.energyPool.notifyInsufficientEnergy({
+          abilityId: "sprint",
+          demandedAmount: rawSprintWatts,
+          isBurst: false,
+          unit: "W/s",
+          registry: this.properties
+        });
       }
     }
     const locomotionConsumesEnergy = sprintingNow ? (_c = this.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = this.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
@@ -10932,11 +11053,11 @@ const PLAYER_COLORS = [
   "#3b82f6"
   // P6: Blue
 ];
-const version = 73;
-const lastSaved = "2026-10-27T20:48:06.616Z";
+const version = 77;
+const lastSaved = "2026-10-28T00:40:16.517Z";
 const arena = { "width": 20, "height": 14, "wallHeight": 1, "presetId": "standard", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
 const globalPhysics = { "gravity": 30, "collisionDamageScale": 0.1, "collisionMode": "dynamic" };
-const player = { "name": "Player 1", "prefabId": "prefab_player", "color": "#f59e0b", "mass": 1.2, "colliderRadius": 0.44, "hasWalking": true, "walkingModule": { "walkInAir": true, "canSprint": true, "maxWalkForce": 35, "maxWalkSpeed": 5.2, "sprintSpeed": 8.06, "walkPowerCapacity": 400, "sprintPowerCapacity": 1200, "airFriction": 1 }, "hasJump": true, "jumpModule": { "jumpImpulse": 16.5, "maxInitialSpeed": 8.8, "jumpPowerCapacity": 1200 }, "hasThrow": true, "throwModule": { "throwPowerCapacity": 1200, "maxPower": 1200, "maxThrowSpeed": 69 }, "hasHealth": true, "healthModule": { "maxHp": 100, "naturalHealRate": 2, "joulesPerHp": 80, "maxPower": 500 }, "hasEnergyPool": true, "energyPool": { "staminaCapacity": 5e3, "staminaRegenRate": 500, "energyPoolCapacity": 1e4 }, "hasMelee": true, "meleeModule": { "impactForce": 350, "maxPower": 1500, "allowPartialPower": false }, "hasLaser": true, "laserModule": { "maxPower": 2e3 }, "damageSolverModule": { "selfImpactWeight": 0, "minShockThreshold": 0 } };
+const player = { "name": "Player 1", "prefabId": "prefab_player", "color": "#f59e0b", "mass": 1.2, "colliderRadius": 0.44, "hasWalking": true, "walkingModule": { "walkInAir": true, "canSprint": true, "maxWalkForce": 35, "maxWalkSpeed": 5.2, "sprintSpeed": 8.06, "walkPowerCapacity": 400, "sprintPowerCapacity": 1200, "airFriction": 1 }, "hasJump": true, "jumpModule": { "jumpImpulse": 16.5, "maxInitialSpeed": 8.8, "jumpPowerCapacity": 1200 }, "hasThrow": true, "throwModule": { "throwPowerCapacity": 1200, "maxPower": 1200, "maxThrowSpeed": 69 }, "hasHealth": true, "healthModule": { "maxHp": 100, "naturalHealRate": 2, "joulesPerHp": 80, "maxPower": 500 }, "hasEnergyPool": true, "energyPool": { "staminaCapacity": 5e3, "staminaRegenRate": 500, "energyPoolCapacity": 1e4 }, "hasMelee": true, "meleeModule": { "impactForce": 350, "maxPower": 500, "allowPartialPower": true }, "hasLaser": true, "laserModule": { "maxPower": 2e3 }, "damageSolverModule": { "selfImpactWeight": 0, "minShockThreshold": 0 } };
 const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":2.2,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":10,"y":7,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":3.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":16.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":11.8,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}]');
 const prefabs = [{ "id": "prefab_apple", "name": "Apple", "icon": "🍏", "archetype": { "id": "archetype_apple", "name": "Apple", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#22c55e", "visualShape": "circle", "isSleeping": false, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": false, "hasConsumableModule": true, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "mass": 0.35, "colliderRadius": 0.25, "bounceMod": 0.2, "verticalBounce": true, "staticGroundFrictionMod": 1, "dynamicGroundFrictionMod": 1, "rigidbodyModule": { "enabled": true, "mass": 0.35, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.25 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.2, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "consumableModule": { "enabled": true, "tag": "food", "totalEnergyJoules": 4e3, "remainingEnergyJoules": 4e3, "consumeRateWatts": 1200, "healRate": 0, "minScaleFloor": 0.35, "minRadiusFloor": 0.12 } } }, { "id": "prefab_super_apple", "name": "Super Apple", "icon": "💖", "archetype": { "id": "archetype_super_apple", "name": "Super Apple", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#ff1493", "visualShape": "circle", "isSleeping": false, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": false, "hasConsumableModule": true, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "mass": 0.45, "colliderRadius": 0.3, "bounceMod": 0.2, "verticalBounce": true, "staticGroundFrictionMod": 1, "dynamicGroundFrictionMod": 1, "rigidbodyModule": { "enabled": true, "mass": 0.45, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.3 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.2, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "consumableModule": { "enabled": true, "tag": "food", "unlimited": true, "totalEnergyJoules": 1e4, "remainingEnergyJoules": 1e4, "consumeRateWatts": 2e3, "healRate": 0, "minScaleFloor": 1, "minRadiusFloor": 0.3 } } }, { "id": "prefab_stone", "name": "Stone", "icon": "🪨", "archetype": { "id": "archetype_stone", "name": "Stone", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#78716c", "visualShape": "circle", "mass": 0.85, "colliderRadius": 0.22, "bounceMod": 0.15, "verticalBounce": true, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": true, "hasConsumableModule": false, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "rigidbodyModule": { "enabled": true, "mass": 0.85, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.22 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.15, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "rollModule": { "enabled": true, "rollResistance": 0.45, "bumpyRollEnabled": true, "bumpiness": 0.28, "seed": 100 } } }];
 const initialWorldConfig = {

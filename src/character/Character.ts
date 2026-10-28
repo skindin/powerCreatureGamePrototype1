@@ -509,9 +509,21 @@ export class Character extends GameObject {
     if (this.jumpConsumesEnergy) {
       if (pool) {
         if (pool.isExhausted) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: this.properties,
+          });
           return false;
         }
         if (!this.jumpAllowPartialPower && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, this.properties)) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: this.properties,
+          });
           return false;
         }
         const burstRes = pool.requestInstantBurst({
@@ -661,6 +673,17 @@ export class Character extends GameObject {
       if (this.energyPool && (this.energyPool.isExhausted || this.energyPool.getCurrentStamina(this.properties) <= 0.0001)) {
         sprintingNow = false;
         this.setSprinting(false);
+        const Cr = 0.40;
+        const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1.0;
+        const targetSpeed = this.walkingModule.maxSprintSpeedProp.get(this.properties);
+        const rawSprintWatts = (totalMass * 9.81 * Cr * targetSpeed) / 0.25;
+        this.energyPool.notifyInsufficientEnergy({
+          abilityId: "sprint",
+          demandedAmount: rawSprintWatts,
+          isBurst: false,
+          unit: "W/s",
+          registry: this.properties,
+        });
       }
     }
     const locomotionConsumesEnergy = sprintingNow

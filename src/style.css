@@ -5229,3 +5229,96 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
 
 
 
+
+/* =========================================================================
+   INSUFFICIENT ENERGY & STAMINA DENIAL ALERTS & FLASH
+   ========================================================================= */
+.hud-tag-denied {
+  background: rgba(220, 38, 38, 0.45) !important;
+  border: 1.5px solid #ef4444 !important;
+  color: #fca5a5 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.7) !important;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: hud-denied-tag-pulse 0.4s ease-in-out infinite alternate;
+}
+
+.hud-tag-denied .hud-tag-icon {
+  font-size: 0.72rem;
+}
+
+.hud-tag-denied .hud-tag-name {
+  color: #ffffff !important;
+  font-weight: 900;
+}
+
+.hud-tag-denied .hud-tag-rate {
+  color: #fecaca !important;
+  font-weight: 800;
+  font-size: 0.68rem;
+}
+
+.hud-tag-denied .hud-tag-reason {
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.64rem;
+  background: rgba(185, 28, 28, 0.75);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(254, 202, 202, 0.4);
+}
+
+@keyframes hud-denied-tag-pulse {
+  from {
+    border-color: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    transform: scale(1);
+  }
+  to {
+    border-color: #f87171;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.95);
+    transform: scale(1.03);
+  }
+}
+
+/* Denied Flash Overlays for Stamina and Energy Track Lanes */
+.hud-flash-overlay {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 28;
+}
+
+.hud-flash-stamina {
+  top: 0;
+  height: 6px;
+  border-radius: 2px 2px 0 0;
+}
+
+.hud-flash-energy {
+  top: 7px;
+  height: 21px;
+  border-radius: 0 0 2px 2px;
+}
+
+.hud-flash-active {
+  opacity: 1 !important;
+  animation: hud-flash-pulse 0.25s ease-in-out infinite alternate !important;
+}
+
+@keyframes hud-flash-pulse {
+  0% {
+    background: rgba(239, 68, 68, 0.75);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.95), inset 0 0 10px rgba(255, 255, 255, 0.85);
+  }
+  100% {
+    background: rgba(185, 28, 28, 0.45);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.4);
+  }
+}

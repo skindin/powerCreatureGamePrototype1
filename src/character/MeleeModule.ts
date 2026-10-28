@@ -185,6 +185,12 @@ export class MeleeModule {
 
     if (pool) {
       if (pool.isExhausted) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "melee",
+          demandedAmount: demandedJoules,
+          isBurst: true,
+          registry,
+        });
         return null; // Denied when exhausted
       }
 

@@ -8,6 +8,18 @@ export interface DemandRecord {
   lastRequestedTick: number;
 }
 
+export interface InsufficientEnergyAlert {
+  abilityId: string;
+  abilityName: string;
+  cost: number;
+  unit: string;
+  isBurst: boolean;
+  limitingResource: "stamina" | "energy" | "both";
+  reason: string;
+  timestamp: number;
+  expiresAt: number;
+}
+
 export interface ActivePowerAllocation {
   id: string;
   name: string;
@@ -94,6 +106,9 @@ export class EnergyPool {
    * When enabled, automatically refills currentEnergy back to maxEnergy immediately upon hitting 0.
    */
   public debugAutoRefillOnEmpty: boolean = false;
+  // Retains most recent insufficient energy/stamina denial for HUD alert flash
+  public lastInsufficientAlert: InsufficientEnergyAlert | null = null;
+
 
   // Registered ability power demands
   private _demands: Map<string, DemandRecord> = new Map();
@@ -285,6 +300,97 @@ export class EnergyPool {
     this._demands.clear();
     this._totalDemand = 0;
   }
+  public notifyInsufficientEnergy(options: {
+    abilityId: string;
+    demandedAmount: number;
+    isBurst?: boolean;
+    unit?: string;
+    registry?: ObjectPropertiesRegistry;
+    customReason?: string;
+  }): InsufficientEnergyAlert {
+    const isBurst = options.isBurst ?? true;
+    const demandedAmount = Math.max(0.1, options.demandedAmount);
+    const registry = options.registry;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    // Debounce duplicate alerts for the same ability within 350ms
+    if (
+      this.lastInsufficientAlert &&
+      this.lastInsufficientAlert.abilityId === options.abilityId &&
+      now < this.lastInsufficientAlert.timestamp + 350
+    ) {
+      this.lastInsufficientAlert.expiresAt = Math.max(this.lastInsufficientAlert.expiresAt, now + 1400);
+      return this.lastInsufficientAlert;
+    }
+
+    const curStamina = this.getCurrentStamina(registry);
+    const curEnergy = this.getCurrentEnergy(registry);
+    const isExhausted = this.isExhausted;
+
+    let limitingResource: "stamina" | "energy" | "both" = "stamina";
+    let reason = options.customReason || "Insufficient Stamina";
+
+    if (!options.customReason) {
+      if (isExhausted) {
+        limitingResource = "stamina";
+        reason = "Exhausted (Stamina Depleted)";
+      } else if (isBurst) {
+        const staminaLack = curStamina < demandedAmount;
+        const energyLack = curEnergy < demandedAmount;
+        if (staminaLack && energyLack) {
+          limitingResource = "both";
+          reason = "Low Stamina + Energy";
+        } else if (staminaLack) {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        } else if (energyLack) {
+          limitingResource = "energy";
+          reason = "Insufficient Energy";
+        } else {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        }
+      } else {
+        const staminaLack = curStamina <= 0.001;
+        const energyLack = curEnergy <= 0.001;
+        if (staminaLack && energyLack) {
+          limitingResource = "both";
+          reason = "Out of Stamina + Energy";
+        } else if (staminaLack) {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        } else if (energyLack) {
+          limitingResource = "energy";
+          reason = "Insufficient Energy";
+        } else {
+          limitingResource = "stamina";
+          reason = "Insufficient Stamina";
+        }
+      }
+    } else {
+      limitingResource = isExhausted || curStamina <= 0.001 ? "stamina" : (curEnergy <= 0.001 ? "energy" : "stamina");
+    }
+
+    const meta = ABILITY_METADATA[options.abilityId];
+    const abilityName = meta?.name ?? (options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1));
+    const unit = options.unit ?? (isBurst ? "J" : "W");
+
+    const alert: InsufficientEnergyAlert = {
+      abilityId: options.abilityId,
+      abilityName,
+      cost: Math.round(demandedAmount),
+      unit,
+      isBurst,
+      limitingResource,
+      reason,
+      timestamp: now,
+      expiresAt: now + 1600,
+    };
+
+    this.lastInsufficientAlert = alert;
+    return alert;
+  }
+
 
   // --- Affordability Gatekeeping ---
 
@@ -477,7 +583,10 @@ export class EnergyPool {
 
     if (targetWatts <= 0.0001) {
       this.isExhausted = true;
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
 
@@ -491,7 +600,10 @@ export class EnergyPool {
 
     const grantedJoules = this.consumePartial(energyNeededJoules, registry);
     if (grantedJoules <= 0.0001) {
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
 
@@ -565,6 +677,7 @@ export class EnergyPool {
       return { granted: true, grantedJoules: 0, fraction: 1, peakWatts: 0 };
     }
     if (!this.enabled || (this.isExhausted && !this.infiniteEnergy)) {
+      if (this.enabled) this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
 
@@ -583,9 +696,11 @@ export class EnergyPool {
 
     if (curStamina <= 0.0001) {
       this.isExhausted = true;
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
     if (availableJoules <= 0.001) {
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
 
@@ -599,6 +714,7 @@ export class EnergyPool {
       grantedJoules = availableJoules;
       fraction = availableJoules / demandedJoules;
     } else {
+      this.notifyInsufficientEnergy({ abilityId, demandedAmount: demandedJoules, isBurst: true, registry });
       return { granted: false, grantedJoules: 0, fraction: 0, peakWatts: 0 };
     }
 

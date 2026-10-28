@@ -45,6 +45,8 @@ export class EnergyHud {
   private powerBlocksContainerEl: HTMLElement | null = null;
   private energyFillEl: HTMLElement | null = null;
   private lowerStaminaFillEl: HTMLElement | null = null;
+  private flashStaminaEl: HTMLElement | null = null;
+  private flashEnergyEl: HTMLElement | null = null;
   private laserStaminaFillEl: HTMLElement | null = null;
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
@@ -123,6 +125,10 @@ export class EnergyHud {
                 <span class="hud-bar-icon hud-icon-energy">⚡</span>
               </div>
               <div class="energy-hud-track energy-hud-track-main energy-hud-track-reservoir" id="energy-hud-track-reservoir">
+                <!-- Flash Overlays for Denied Actions (Stamina top 6px, Energy bottom 21px) -->
+                <div id="flash-hud-stamina" class="hud-flash-overlay hud-flash-stamina"></div>
+                <div id="flash-hud-energy" class="hud-flash-overlay hud-flash-energy"></div>
+
                 <!-- Row 1: Main Bus Stamina (Emerald, Joules) -->
                 <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (J)"></div>
 
@@ -165,6 +171,8 @@ export class EnergyHud {
     this.powerBlocksContainerEl = hudWrapper.querySelector("#hud-power-blocks-container");
     this.energyFillEl = hudWrapper.querySelector("#bar-hud-energy-fill");
     this.lowerStaminaFillEl = hudWrapper.querySelector("#bar-hud-lower-stamina");
+    this.flashStaminaEl = hudWrapper.querySelector("#flash-hud-stamina");
+    this.flashEnergyEl = hudWrapper.querySelector("#flash-hud-energy");
     this.laserStaminaFillEl = hudWrapper.querySelector("#bar-hud-laser-stamina");
     this.staminaCapTickEl = hudWrapper.querySelector("#tick-hud-max-stamina");
     this.exhaustionTickEl = hudWrapper.querySelector("#tick-hud-exhaustion-recovery");
@@ -526,9 +534,23 @@ export class EnergyHud {
       }
     }
 
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const alert = _char.energyPool?.lastInsufficientAlert;
+    const isAlertActive = Boolean(alert && alert.expiresAt > now);
+    const flashEnergy = isAlertActive && (alert?.limitingResource === "energy" || alert?.limitingResource === "both");
+
     // Base energy fill and white baseline line track visualEnergyPct smoothly
     if (this.energyFillEl) {
       this.energyFillEl.style.width = `${visualEnergyPct.toFixed(2)}%`;
+      if (flashEnergy) {
+        this.energyFillEl.style.borderRight = "1.5px solid #ffffff";
+        this.energyFillEl.style.background = "linear-gradient(90deg, #b91c1c, #ef4444, #f87171)";
+        this.energyFillEl.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.9)";
+      } else {
+        this.energyFillEl.style.borderRight = "1.5px solid #fde68a";
+        this.energyFillEl.style.background = "linear-gradient(90deg, #b45309, #d97706, #fbbf24)";
+        this.energyFillEl.style.boxShadow = "0 0 6px rgba(245, 158, 11, 0.4)";
+      }
     }
     if (this.energyBaselineLineEl) {
       if (visualEnergyPct <= 0.001) {
@@ -543,7 +565,20 @@ export class EnergyHud {
 
     if (sortedBlocks.length === 0) {
       this.powerBlocksContainerEl.innerHTML = "";
-      this.powerTagsEl.innerHTML = "";
+      let emptyTagsHtml = "";
+      if (isAlertActive && alert) {
+        const costSign = alert.isBurst ? "" : "/s";
+        const costStr = `-${alert.cost} ${alert.unit}${costSign}`;
+        emptyTagsHtml = `
+          <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${costStr} (${alert.reason})">
+            <span class="hud-tag-icon">⚠️</span>
+            <span class="hud-tag-name">${alert.abilityName}</span>
+            <span class="hud-tag-rate">${costStr}</span>
+            <span class="hud-tag-reason">${alert.reason}</span>
+          </div>
+        `;
+      }
+      this.powerTagsEl.innerHTML = emptyTagsHtml;
       return;
     }
 
@@ -614,6 +649,19 @@ export class EnergyHud {
           <span class="hud-tag-rate">${sign}${energyAmount}${rateSuffix}</span>
         </div>
       `;
+    }
+
+    if (isAlertActive && alert) {
+      const costSign = alert.isBurst ? "" : "/s";
+      const costStr = `-${alert.cost} ${alert.unit}${costSign}`;
+      tagsHtml = `
+        <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${costStr} (${alert.reason})">
+          <span class="hud-tag-icon">⚠️</span>
+          <span class="hud-tag-name">${alert.abilityName}</span>
+          <span class="hud-tag-rate">${costStr}</span>
+          <span class="hud-tag-reason">${alert.reason}</span>
+        </div>
+      ` + tagsHtml;
     }
 
     this.powerBlocksContainerEl.innerHTML = blocksHtml;
@@ -696,10 +744,34 @@ export class EnergyHud {
     // =========================================================================
     this.renderPowerBlocks(char, maxEnergy, curEnergy, dt, infiniteEnergy, this.visualEnergyPct);
 
+    const alert = pool?.lastInsufficientAlert;
+    const isAlertActive = Boolean(alert && alert.expiresAt > now);
+    const flashStamina = isAlertActive && (alert?.limitingResource === "stamina" || alert?.limitingResource === "both");
+    const flashEnergy = isAlertActive && (alert?.limitingResource === "energy" || alert?.limitingResource === "both");
+
+    if (this.flashStaminaEl) {
+      if (flashStamina) {
+        this.flashStaminaEl.classList.add("hud-flash-active");
+      } else {
+        this.flashStaminaEl.classList.remove("hud-flash-active");
+      }
+    }
+    if (this.flashEnergyEl) {
+      if (flashEnergy) {
+        this.flashEnergyEl.classList.add("hud-flash-active");
+      } else {
+        this.flashEnergyEl.classList.remove("hud-flash-active");
+      }
+    }
+
     // Current Stamina Fill (Solid Emerald on Row 1) - tracks visualMainStaminaPct smoothly across full row
     if (this.lowerStaminaFillEl) {
       this.lowerStaminaFillEl.style.width = `${this.visualMainStaminaPct.toFixed(2)}%`;
-      if (isExhausted) {
+      if (flashStamina) {
+        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #ffffff";
+        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #b91c1c, #ef4444, #f87171)";
+        this.lowerStaminaFillEl.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.9)";
+      } else if (isExhausted) {
         this.lowerStaminaFillEl.style.borderRight = "1.5px solid #fca5a5";
         this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #991b1b, #dc2626, #ef4444)";
         this.lowerStaminaFillEl.style.boxShadow = "0 0 6px rgba(239, 68, 68, 0.6)";
