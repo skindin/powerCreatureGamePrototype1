@@ -5,23 +5,26 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "tsc && vite build && vite build --ssr src/server/UniversalRoomManager.ts --outDir server/dist",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build && vite build --ssr src/server/UniversalRoomManager.ts --outDir server/dist",
     "build:server": "vite build --ssr src/server/UniversalRoomManager.ts --outDir server/dist",
     "preview": "vite preview",
     "start": "node server.js",
     "share": "node share.js"
   },
   "dependencies": {
-    "@types/qrcode": "^1.5.6",
-    "@types/ws": "^8.5.10",
     "localtunnel": "^2.0.2",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
-    "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "ws": "^8.18.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.7.2"
   }
 }
