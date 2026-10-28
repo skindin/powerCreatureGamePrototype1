@@ -1,0 +1,314 @@
+import type { Character } from "../../character/Character.js";
+import type { Vector2D } from "../../engine/GameObject.js";
+import type { ControlExecutionContext } from "./ControlSchemaTypes.js";
+
+export interface ActionDefinition {
+  id: string; // e.g. "releaseThrow"
+  label: string; // e.g. "Release Throw"
+  description: string;
+  recommendedMode?: "press" | "hold" | "release";
+  execute: (ctx: ControlExecutionContext, args?: Record<string, any>) => void;
+  stop?: (ctx: ControlExecutionContext) => void;
+}
+
+export interface ModuleActionCategory {
+  id: string; // e.g. "laser"
+  label: string; // e.g. "⚡ Laser Module"
+  icon: string;
+  requiredModule?: string; // e.g. "laserModule"
+  isAttached: (char: Character) => boolean;
+  actions: ActionDefinition[];
+}
+
+export class ControlActionCatalog {
+  public static readonly categories: ModuleActionCategory[] = [
+    // 1. Locomotion
+    {
+      id: "locomotion",
+      label: "Locomotion & Mobility",
+      icon: "🏃",
+      requiredModule: "walkingModule",
+      isAttached: (char: Character) => Boolean(char.walkingModule && char.walkingModule.enabled),
+      actions: [
+        {
+          id: "jump",
+          label: "Jump (Impulse)",
+          description: "Performs a vertical physical takeoff jump",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.jumpModule) {
+              ctx.character.jump();
+            }
+          },
+        },
+        {
+          id: "toggleSprint",
+          label: "Toggle Sprint",
+          description: "Toggles sprinting locomotion state",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.setSprinting(!ctx.character.isSprinting);
+          },
+        },
+        {
+          id: "holdSprint",
+          label: "Hold Sprint",
+          description: "Sprints while trigger is held down",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            ctx.character.setSprinting(true);
+          },
+          stop: (ctx) => {
+            ctx.character.setSprinting(false);
+          },
+        },
+      ],
+    },
+
+    // 2. Climbing
+    {
+      id: "climbing",
+      label: "Wall Climbing",
+      icon: "🧗",
+      requiredModule: "climbingModule",
+      isAttached: (char: Character) => Boolean(char.climbingModule && char.climbingModule.enabled),
+      actions: [
+        {
+          id: "mountOrClimb",
+          label: "Mount / Hold Wall",
+          description: "Mounts and climbs wall when touching a climbable edge",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.climbingModule && !ctx.character.isClimbing) {
+              ctx.character.isClimbing = true;
+            }
+          },
+          stop: (ctx) => {
+            if (ctx.character.climbingModule) {
+              ctx.character.isClimbing = false;
+            }
+          },
+        },
+      ],
+    },
+
+    // 3. Throw & Pickup
+    {
+      id: "throwPickup",
+      label: "Throw & Pickup",
+      icon: "🎯",
+      requiredModule: "throwModule",
+      isAttached: (char: Character) => Boolean((char.throwModule && char.throwModule.enabled) || (char.pickupModule && char.pickupModule.enabled)),
+      actions: [
+        {
+          id: "releaseThrow",
+          label: "Release Throw",
+          description: "Throws held item along trajectory to aim position",
+          recommendedMode: "release",
+          execute: (ctx) => {
+            if (ctx.character.heldObject && ctx.character.throwModule && ctx.arena) {
+              const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+              ctx.character.throwModule.throwHeldObject(ctx.character, aim.x, aim.y, ctx.arena);
+            }
+          },
+        },
+        {
+          id: "pickupReach",
+          label: "Pick Up Object",
+          description: "Picks up the target object currently within reach",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (!ctx.character.heldObject && ctx.targetInReach && ctx.character.pickupModule) {
+              ctx.character.pickupModule.pickup(ctx.character, ctx.targetInReach);
+            }
+          },
+        },
+        {
+          id: "dropItem",
+          label: "Drop Held Object",
+          description: "Gently drops the held object onto the ground",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.heldObject) {
+              ctx.character.unhold();
+            }
+          },
+        },
+      ],
+    },
+
+    // 4. Laser Module
+    {
+      id: "laser",
+      label: "Laser Beam",
+      icon: "⚡",
+      requiredModule: "laserModule",
+      isAttached: (char: Character) => Boolean(char.laserModule && char.laserModule.enabled),
+      actions: [
+        {
+          id: "fireLaser",
+          label: "Fire Laser (Held)",
+          description: "Fires continuous directed laser beam towards aim cursor",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.laserModule) {
+              ctx.character.isLaserAiming = true;
+              ctx.character.isLaserFiring = true;
+              ctx.character.laserModule.isAiming = true;
+              ctx.character.laserModule.isFiring = true;
+            }
+          },
+          stop: (ctx) => {
+            if (ctx.character.laserModule) {
+              ctx.character.isLaserFiring = false;
+              ctx.character.isLaserAiming = false;
+              ctx.character.laserModule.isFiring = false;
+              ctx.character.laserModule.isAiming = false;
+            }
+          },
+        },
+        {
+          id: "aimLaser",
+          label: "Aim Laser Reticle",
+          description: "Shows laser aiming guide without firing energy",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.laserModule) {
+              ctx.character.isLaserAiming = true;
+              ctx.character.laserModule.isAiming = true;
+            }
+          },
+          stop: (ctx) => {
+            if (ctx.character.laserModule) {
+              ctx.character.isLaserAiming = false;
+              ctx.character.laserModule.isAiming = false;
+            }
+          },
+        },
+      ],
+    },
+
+    // 5. Melee Module
+    {
+      id: "melee",
+      label: "Melee Punch",
+      icon: "🥊",
+      requiredModule: "meleeModule",
+      isAttached: (char: Character) => Boolean(char.meleeModule && char.meleeModule.enabled),
+      actions: [
+        {
+          id: "punch",
+          label: "Directional Punch",
+          description: "Executes a fast physical punch in the facing or aim direction",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.meleeModule) {
+              const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+              const dir: Vector2D = aim
+                ? { x: aim.x - ctx.character.position.x, y: aim.y - ctx.character.position.y }
+                : { x: Math.cos(ctx.facingAngle), y: Math.sin(ctx.facingAngle) };
+              const len = Math.hypot(dir.x, dir.y);
+              const normDir = len > 0.001 ? { x: dir.x / len, y: dir.y / len } : { x: 1, y: 0 };
+              ctx.character.isMeleeRequested = true;
+              ctx.character.meleeAimDir = normDir;
+            }
+          },
+        },
+      ],
+    },
+
+    // 6. Consumable
+    {
+      id: "consume",
+      label: "Consumable / Eating",
+      icon: "🍎",
+      requiredModule: "consumeModule",
+      isAttached: (char: Character) => Boolean(char.consumeModule && char.consumeModule.enabled),
+      actions: [
+        {
+          id: "eatHeldItem",
+          label: "Eat / Drink Held Item",
+          description: "Consumes bites from edible held item to restore HP and energy",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.consumeModule && ctx.character.heldObject) {
+              ctx.character.isUsingItem = true;
+            }
+          },
+          stop: (ctx) => {
+            ctx.character.isUsingItem = false;
+          },
+        },
+      ],
+    },
+
+    // 7. Control Staging & Reticle Modes
+    {
+      id: "staging",
+      label: "Control Staging & Modes",
+      icon: "🔄",
+      isAttached: () => true, // Always available
+      actions: [
+        {
+          id: "stageLaser",
+          label: "Stage Mode: Laser",
+          description: "Sets staged primary action to Laser",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "laser";
+          },
+        },
+        {
+          id: "stageThrow",
+          label: "Stage Mode: Throw / Grab",
+          description: "Sets staged primary action to Throw or Grab",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "throw";
+          },
+        },
+        {
+          id: "stageMelee",
+          label: "Stage Mode: Melee",
+          description: "Sets staged primary action to Melee Punch",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "melee";
+          },
+        },
+        {
+          id: "clearStage",
+          label: "Clear Staged Mode",
+          description: "Clears staged action back to default auto-context",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = null;
+          },
+        },
+      ],
+    },
+  ];
+
+  public static findAction(moduleId: string, intent: string): ActionDefinition | undefined {
+    const cat = this.categories.find((c) => c.id === moduleId);
+    return cat?.actions.find((a) => a.id === intent);
+  }
+
+  public static getCategorizedForCharacter(char: Character): {
+    attached: ModuleActionCategory[];
+    unattached: ModuleActionCategory[];
+  } {
+    const attached: ModuleActionCategory[] = [];
+    const unattached: ModuleActionCategory[] = [];
+
+    for (const cat of this.categories) {
+      if (cat.isAttached(char)) {
+        attached.push(cat);
+      } else {
+        unattached.push(cat);
+      }
+    }
+
+    return { attached, unattached };
+  }
+}

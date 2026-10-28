@@ -7,6 +7,7 @@ import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
+import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -658,8 +659,74 @@ export class PlayerManager {
       // - Alt + Left Click = Melee Punch (single punch per click)
       // - Alt + RMB = Laser Aiming Mode
       // - Alt + RMB + LMB = Activate/Fire Laser
-      const isLaserMode = !isEditMode && (isAltDown && input.isRightMouseDown);
-      const isMeleeRequested = !isEditMode && isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested;
+      // Keyboard Combat Mode & Custom Schema Integration:
+      const kSchema = ControlsInspector.getActiveSchema(kChar);
+      const isHunterMode = Boolean(kSchema && kSchema.keyboardMouse.locomotion.mode === "forwardFacingDrive");
+
+      if (isHunterMode) {
+        if (input.isKeyPressed("KeyQ")) {
+          kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
+        }
+        if (input.isKeyPressed("KeyE")) {
+          kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+        }
+        if (input.isKeyPressed("KeyF")) {
+          kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
+        }
+      }
+
+      const isStagedLaser = kChar.stagedAction === "laser";
+      const isStagedMelee = kChar.stagedAction === "melee";
+
+      let effectiveMoveX = input.movementVector.x;
+      let effectiveMoveY = input.movementVector.y;
+
+      if (isHunterMode) {
+        const aimDx = input.actualMousePos.x - kChar.position.x;
+        const aimDy = input.actualMousePos.y - kChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+
+        const fwdTrigger = kSchema.keyboardMouse.locomotion.forwardTrigger;
+        const isFwdDown = fwdTrigger?.device === "mouse"
+          ? (fwdTrigger.code === "MouseRight" ? input.isRightMouseDown : input.isMouseDown)
+          : (fwdTrigger ? input.isKeyPressed(fwdTrigger.code) : input.isRightMouseDown);
+
+        const fwdX = Math.cos(kChar.facingAngle ?? 0);
+        const fwdY = Math.sin(kChar.facingAngle ?? 0);
+        const leftX = -fwdY;
+        const leftY = fwdX;
+
+        let mx = 0;
+        let my = 0;
+        if (isFwdDown) {
+          mx += fwdX;
+          my += fwdY;
+        }
+        if (kSchema.keyboardMouse.locomotion.reverseKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.reverseKey)) {
+          mx -= fwdX * 0.75;
+          my -= fwdY * 0.75;
+        }
+        if (kSchema.keyboardMouse.locomotion.strafeLeftKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.strafeLeftKey)) {
+          mx += leftX * 0.85;
+          my += leftY * 0.85;
+        }
+        if (kSchema.keyboardMouse.locomotion.strafeRightKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.strafeRightKey)) {
+          mx -= leftX * 0.85;
+          my -= leftY * 0.85;
+        }
+        const mag = Math.hypot(mx, my);
+        if (mag > 1.0) {
+          mx /= mag;
+          my /= mag;
+        }
+        effectiveMoveX = mx;
+        effectiveMoveY = my;
+      }
+
+      const isLaserMode = !isEditMode && ((isAltDown && input.isRightMouseDown) || isStagedLaser);
+      const isMeleeRequested = !isEditMode && ((isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested) || (isStagedMelee && input.isMouseDown));
 
       if (isLaserMode || isMeleeRequested) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
@@ -705,8 +772,8 @@ export class PlayerManager {
 
       map.set("keyboard", {
         playerId: "keyboard",
-        moveX: input.movementVector.x,
-        moveY: input.movementVector.y,
+        moveX: effectiveMoveX,
+        moveY: effectiveMoveY,
         isSprinting: input.isKeyboardSprintActive,
         isJumpHeld: input.isKeyboardJumpHeld,
         isGrabHeld: (isLaserMode || isMeleeRequested || isAltDown) ? (isAltDown ? canKeyEGrab : false) : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
@@ -826,13 +893,33 @@ export class PlayerManager {
       const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed && !slot.isAltHeld;
       const isUsingItem = isCharHoldingConsumable && canGamepadUseItem;
 
+      const gpSchema = ControlsInspector.getActiveSchema(cChar);
+      let gpEffectiveMoveX = slot.movementVector.x;
+      let gpEffectiveMoveY = slot.movementVector.y;
+
+      const isOverrideLt = gpSchema?.gamepad.leftStick.dynamicOverride?.triggerCondition === "whenLtHeld" && Boolean(slot.isAltHeld);
+      const isOverrideAim = gpSchema?.gamepad.leftStick.dynamicOverride?.triggerCondition === "whenAiming" && (Boolean(slot.isLaserAiming) || (isCharHolding && isThrowActive));
+
+      if (isOverrideLt || isOverrideAim) {
+        gpEffectiveMoveX = 0;
+        gpEffectiveMoveY = 0;
+        const speed = gpSchema?.gamepad.leftStick.cursorSteerSpeed ?? 14.0;
+        const clampRadius = gpSchema?.gamepad.leftStick.cursorClampRadius ?? 7.5;
+        const dt = 1 / 60;
+        aimX = Math.max(cChar.position.x - clampRadius, Math.min(cChar.position.x + clampRadius, aimX + slot.movementVector.x * speed * dt));
+        aimY = Math.max(cChar.position.y - clampRadius, Math.min(cChar.position.y + clampRadius, aimY + slot.movementVector.y * speed * dt));
+        slot.aimPos.x = aimX;
+        slot.aimPos.y = aimY;
+        slot.hasMovedAimStick = true;
+      }
+
       const isGamepadAiming = (isCharHolding && isThrowActive) || (!isCharHolding && Boolean(slot.aimMovedWhileInRange));
 
       map.set(entry.id, {
         playerId: entry.id,
         playerName: cChar.name,
-        moveX: slot.movementVector.x,
-        moveY: slot.movementVector.y,
+        moveX: gpEffectiveMoveX,
+        moveY: gpEffectiveMoveY,
         isSprinting: cChar.isSprinting ?? false,
         isJumpHeld: slot.isClimbHeld ?? false,
         isGrabHeld: isCharHoldingConsumable ? canBGrab : isGamepadSeekingGrab,

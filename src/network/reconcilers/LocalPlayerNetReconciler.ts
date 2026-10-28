@@ -43,14 +43,14 @@ export class LocalPlayerNetReconciler {
       // Robust match for local character, serverCharId, playerId, or dummy
       let targetChar = gameLoop.allCharacters.find(
         (c) => c.id === ev.targetEntityId ||
-               c.serverCharId === ev.targetEntityId ||
-               c.playerId === ev.targetEntityId ||
-               (c.isDummy && ev.targetEntityId === "dummy-1")
+          c.serverCharId === ev.targetEntityId ||
+          c.playerId === ev.targetEntityId ||
+          (c.isDummy && ev.targetEntityId === "dummy-1")
       ) || Array.from(gameLoop.players.values()).find(
         (p) => p.character.serverCharId === ev.targetEntityId ||
-               p.id === ev.targetEntityId ||
-               p.character.id === ev.targetEntityId ||
-               p.character.playerId === ev.targetEntityId
+          p.id === ev.targetEntityId ||
+          p.character.id === ev.targetEntityId ||
+          p.character.playerId === ev.targetEntityId
       )?.character;
 
       if (!targetChar && gameLoop.primaryCharacter) {

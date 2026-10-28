@@ -197,6 +197,11 @@ export class Character extends GameObject {
   public onPunchExecuted?: (hitResult: MeleeHitResult, dirX: number, dirY: number) => void;
 
   /**
+   * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
+   */
+  public stagedAction: string | null = null;
+
+  /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging laser, etc.).
    * Delegated to 1-to-1 capability slices in src/character/capabilities/.
    */

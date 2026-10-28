@@ -5858,6 +5858,10 @@ class Character extends GameObject {
     __publicField(this, "meleeAimDir", null);
     __publicField(this, "meleeCandidateEntities");
     __publicField(this, "onPunchExecuted");
+    /**
+     * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
+     */
+    __publicField(this, "stagedAction", null);
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
