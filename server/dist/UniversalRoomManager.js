@@ -5496,39 +5496,6 @@ class HealthRegenCapability {
     }
   }
 }
-class ControlModeArbiter {
-  /**
-   * Evaluates the current exclusive primary action control mode for a character.
-   * Modify ONLY this method when adding or reordering modal primary-action abilities.
-   */
-  static resolvePrimaryMode(character, eatActionLatchedUntilRelease = false) {
-    const isLaserActive = Boolean(
-      character.isLaserAiming || character.isLaserFiring || character.laserModule && character.laserModule.enabled && (character.laserModule.isAiming || character.laserModule.isFiring)
-    );
-    if (isLaserActive) {
-      return "LASER";
-    }
-    const isEating = Boolean(character.isConsumingItem);
-    if (isEating || eatActionLatchedUntilRelease) {
-      return "CONSUME";
-    }
-    if (character.heldObject !== null) {
-      return "THROW";
-    }
-    return "PICKUP";
-  }
-  /**
-   * Returns true if the character is currently permitted to charge a throw or
-   * display the ballistic throw trajectory preview.
-   */
-  static canAimOrChargeThrow(character, eatActionLatchedUntilRelease = false) {
-    const isLaserActive = Boolean(
-      character.isLaserAiming || character.isLaserFiring || character.laserModule && character.laserModule.enabled && (character.laserModule.isAiming || character.laserModule.isFiring)
-    );
-    const isEating = Boolean(character.isConsumingItem);
-    return character.heldObject !== null && !isEating && !eatActionLatchedUntilRelease && !isLaserActive;
-  }
-}
 class ThrowCapability {
   static getAnticipatedModifier(char) {
     if (char.activeTrajectory && char.heldObject && char.throwModule && char.throwModule.enabled && char.throwModule.consumesEnergy) {
@@ -5582,7 +5549,7 @@ class ThrowCapability {
   static updateTrajectoryPreview(char, isAimingInput, aimTargetPos, canAimThrow, isLaserModeActive, arena2, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
-    if (!isLaserModeActive && ControlModeArbiter.canAimOrChargeThrow(char) && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
+    if (!isLaserModeActive && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
       if (char.hasUserSetArcRatio && char.savedArcRatio !== void 0) {
         char.throwModule.hasUserSetArcRatio = true;
         char.throwModule.savedArcRatio = char.savedArcRatio;

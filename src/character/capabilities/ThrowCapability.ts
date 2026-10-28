@@ -1,7 +1,6 @@
 import type { Character, AnticipatedModifier } from "../Character.js";
 import type { Arena } from "../../engine/Arena.js";
 import type { GameObject, Vector2D } from "../../engine/GameObject.js";
-import { ControlModeArbiter } from "../../input/ControlModeArbiter.js";
 
 /**
  * Isolated 1-to-1 capability slice for Object Holding & Ballistic Throwing.
@@ -87,7 +86,6 @@ export class ThrowCapability {
 
     if (
       !isLaserModeActive &&
-      ControlModeArbiter.canAimOrChargeThrow(char) &&
       char.heldObject &&
       canAimThrow &&
       char.throwModule &&

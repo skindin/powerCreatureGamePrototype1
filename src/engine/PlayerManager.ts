@@ -972,20 +972,6 @@ export class PlayerManager {
           char.eatRateWatts = 0;
           input.arcModulationCursor = null;
           input.arcModulationDeltaY = 0;
-        } else if (char.throwModule.consumesEnergy && char.energyPool) {
-          const heldMass = thrownObj.hasMass ? Math.max(0.1, thrownObj.mass) : 1.0;
-          const launchSpeed = clientLaunchVel
-            ? Math.hypot(clientLaunchVel.vx, clientLaunchVel.vy, clientLaunchVel.vz)
-            : 10.0;
-          const mechWorkJoules = 0.5 * heldMass * (launchSpeed * launchSpeed);
-          const poolEfficiency = Math.max(0.01, char.energyPool.getMuscleEfficiency(char.properties));
-          const metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
-          char.energyPool.notifyInsufficientEnergy({
-            abilityId: "throw",
-            demandedAmount: metabolicJoules,
-            isBurst: true,
-            registry: char.properties,
-          });
 
           // Once the throw completes and character is empty-handed, reset aim stick movement flags & lock state
           if (entry && entry.slotIndex !== undefined) {
@@ -1026,6 +1012,20 @@ export class PlayerManager {
           if (!isReplay) {
             this.onReliableActionDispatched?.(action);
           }
+        } else if (char.throwModule.consumesEnergy && char.energyPool) {
+          const heldMass = thrownObj.hasMass ? Math.max(0.1, thrownObj.mass) : 1.0;
+          const launchSpeed = clientLaunchVel
+            ? Math.hypot(clientLaunchVel.vx, clientLaunchVel.vy, clientLaunchVel.vz)
+            : 10.0;
+          const mechWorkJoules = 0.5 * heldMass * (launchSpeed * launchSpeed);
+          const poolEfficiency = Math.max(0.01, char.energyPool.getMuscleEfficiency(char.properties));
+          const metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+          char.energyPool.notifyInsufficientEnergy({
+            abilityId: "throw",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: char.properties,
+          });
         }
       }
 
