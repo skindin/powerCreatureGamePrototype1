@@ -11,6 +11,7 @@ export interface HealthModifierSource {
   rate?: number;
   amount?: number;
   isHeal?: boolean;
+  fromServer?: boolean;
 }
 
 export interface ActiveHealthModifier {
@@ -41,6 +42,16 @@ export class HealthModule {
   public id = "health";
   public name = "Health & Vitality";
   public enabled = true;
+
+  /**
+   * When true (on remote player ghosts and online combat dummies), HP changes are
+   * driven strictly by authoritative server snapshots so local predicted impacts or
+   * local regen ticks never fight with trailing server snapshots and cause health bar jitter.
+   */
+  public isServerAuthoritativeOnly = false;
+
+  /** Timestamp (performance.now()) when this entity last took damage locally */
+  public lastDamageTime = 0;
 
   /** Active health modifiers (continuous DOT/HOT and instant bursts) */
   private _activeModifiers: Map<string, ActiveHealthModifier> = new Map();
@@ -225,6 +236,9 @@ export class HealthModule {
 
   public takeDamage(amount: number, registry?: ObjectPropertiesRegistry, source?: HealthModifierSource): void {
     if (!this.enabled || amount <= 0) return;
+    if (this.isServerAuthoritativeOnly && !source?.fromServer) return;
+
+    this.lastDamageTime = performance.now();
     const cur = this.getCurrentHp(registry);
     const updated = Math.max(0, cur - amount);
     this.currentHpProp.set(updated, registry);
@@ -252,6 +266,8 @@ export class HealthModule {
 
   public heal(amount: number, registry?: ObjectPropertiesRegistry, source?: HealthModifierSource): void {
     if (!this.enabled || amount <= 0) return;
+    if (this.isServerAuthoritativeOnly && !source?.fromServer) return;
+
     const cur = this.getCurrentHp(registry);
     const max = this.getMaxHp(registry);
     const updated = Math.min(max, cur + amount);
@@ -295,6 +311,11 @@ export class HealthModule {
   public update(dt: number, character: Character, arena?: Arena): void {
     if (!this.enabled) return;
 
+    const isOnline = (character as any)._isInOnlineMode === true;
+    if (!isOnline && !character.isRemotePlayer) {
+      this.isServerAuthoritativeOnly = false;
+    }
+
     const registry = character.properties;
     const current = this.getCurrentHp(registry);
     const max = this.getMaxHp(registry);
@@ -305,7 +326,7 @@ export class HealthModule {
       const healRate = this.getMaxHealRate(registry);
       if (healRate > 0) {
         let effectiveHealRate = healRate;
-        if (this.consumesEnergy) {
+        if (this.consumesEnergy && !this.isServerAuthoritativeOnly) {
           const pool = character.energyPool;
           if (pool) {
             // Bio-regeneration power: Power = healRate * (Joules / HP)
@@ -333,15 +354,17 @@ export class HealthModule {
         }
         if (effectiveHealRate > 0) {
           activeHealRate = effectiveHealRate;
-          const nextHp = Math.min(max, current + effectiveHealRate * dt);
-          if (nextHp >= max - 0.001) {
-            this.currentHpProp.set(max, registry);
-          } else {
-            this.currentHpProp.set(nextHp, registry);
+          if (!this.isServerAuthoritativeOnly) {
+            const nextHp = Math.min(max, current + effectiveHealRate * dt);
+            if (nextHp >= max - 0.001) {
+              this.currentHpProp.set(max, registry);
+            } else {
+              this.currentHpProp.set(nextHp, registry);
+            }
           }
         }
       }
-    } else if (current >= max - 0.001 && current !== max) {
+    } else if (!this.isServerAuthoritativeOnly && current >= max - 0.001 && current !== max) {
       this.currentHpProp.set(max, registry);
     }
 
@@ -381,7 +404,6 @@ export class HealthModule {
     if (this.getCurrentHp(registry) <= 0.0001) {
       // In online multiplayer mode, death/respawn is authoritative: the server picks the respawn location
       // and broadcasts DeathRespawnEvent so the character does not glitch between different positions.
-      const isOnline = (character as any)._isInOnlineMode === true;
       if (isOnline) {
         // Drop carried objects at death location immediately before respawn!
         if (character.heldObject) {

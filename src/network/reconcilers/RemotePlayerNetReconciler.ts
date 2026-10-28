@@ -23,9 +23,10 @@ export class RemotePlayerNetReconciler {
     if (!dummy) return;
 
     if (c.currentHp !== undefined && dummy.healthModule) {
+      dummy.healthModule.isServerAuthoritativeOnly = true;
       const curHp = dummy.healthModule.getCurrentHp(dummy.properties);
       const damage = curHp - c.currentHp;
-      if (damage > 0.001) {
+      if (damage > 0.05) {
         dummy.healthModule.takeDamage(damage, dummy.properties, {
           id: "collision_damage",
           name: "Collision",
@@ -33,6 +34,7 @@ export class RemotePlayerNetReconciler {
           amount: damage,
           color: "#f87171",
           isHeal: false,
+          fromServer: true,
         });
       } else {
         dummy.healthModule.currentHpProp.set(c.currentHp, dummy.properties);
@@ -94,9 +96,10 @@ export class RemotePlayerNetReconciler {
       remChar.isUsingItem = Boolean(c.isUsingItem);
     }
     if (c.currentHp !== undefined && remChar.healthModule) {
+      remChar.healthModule.isServerAuthoritativeOnly = true;
       const curHp = remChar.healthModule.getCurrentHp(remChar.properties);
       const damage = curHp - c.currentHp;
-      if (damage > 0.001) {
+      if (damage > 0.05) {
         remChar.healthModule.takeDamage(damage, remChar.properties, {
           id: "collision_damage",
           name: "Collision",
@@ -104,6 +107,7 @@ export class RemotePlayerNetReconciler {
           amount: damage,
           color: "#f87171",
           isHeal: false,
+          fromServer: true,
         });
       } else {
         remChar.healthModule.currentHpProp.set(c.currentHp, remChar.properties);

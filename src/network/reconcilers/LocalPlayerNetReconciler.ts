@@ -105,7 +105,9 @@ export class LocalPlayerNetReconciler {
     // Local client trusts its own predicted health, energy, and stamina, but softly reconciles if server diverges or applies damage
     if (c.currentHp !== undefined && localChar.healthModule) {
       const curHp = localChar.healthModule.getCurrentHp(localChar.properties);
-      if (c.currentHp < curHp || Math.abs(curHp - c.currentHp) > 15.0) {
+      const timeSinceLocalDamage = performance.now() - (localChar.healthModule.lastDamageTime || 0);
+      const isRecentlyDamagedLocally = timeSinceLocalDamage < 600 && curHp > 0.0001;
+      if (c.currentHp < curHp || (!isRecentlyDamagedLocally && Math.abs(curHp - c.currentHp) > 15.0)) {
         const wasDeadOrZero = curHp <= 0.0001;
         const damageTaken = curHp - c.currentHp;
         if (damageTaken > 0.001) {

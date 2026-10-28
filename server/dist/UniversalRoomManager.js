@@ -3500,6 +3500,14 @@ class HealthModule {
     __publicField(this, "id", "health");
     __publicField(this, "name", "Health & Vitality");
     __publicField(this, "enabled", true);
+    /**
+     * When true (on remote player ghosts and online combat dummies), HP changes are
+     * driven strictly by authoritative server snapshots so local predicted impacts or
+     * local regen ticks never fight with trailing server snapshots and cause health bar jitter.
+     */
+    __publicField(this, "isServerAuthoritativeOnly", false);
+    /** Timestamp (performance.now()) when this entity last took damage locally */
+    __publicField(this, "lastDamageTime", 0);
     /** Active health modifiers (continuous DOT/HOT and instant bursts) */
     __publicField(this, "_activeModifiers", /* @__PURE__ */ new Map());
     __publicField(this, "_nextModifierOrder", 1);
@@ -3648,6 +3656,8 @@ class HealthModule {
   }
   takeDamage(amount, registry, source) {
     if (!this.enabled || amount <= 0) return;
+    if (this.isServerAuthoritativeOnly && !(source == null ? void 0 : source.fromServer)) return;
+    this.lastDamageTime = performance.now();
     const cur = this.getCurrentHp(registry);
     const updated = Math.max(0, cur - amount);
     this.currentHpProp.set(updated, registry);
@@ -3672,6 +3682,7 @@ class HealthModule {
   }
   heal(amount, registry, source) {
     if (!this.enabled || amount <= 0) return;
+    if (this.isServerAuthoritativeOnly && !(source == null ? void 0 : source.fromServer)) return;
     const cur = this.getCurrentHp(registry);
     const max = this.getMaxHp(registry);
     const updated = Math.min(max, cur + amount);
@@ -3710,6 +3721,10 @@ class HealthModule {
    */
   update(dt, character, arena2) {
     if (!this.enabled) return;
+    const isOnline = character._isInOnlineMode === true;
+    if (!isOnline && !character.isRemotePlayer) {
+      this.isServerAuthoritativeOnly = false;
+    }
     const registry = character.properties;
     const current = this.getCurrentHp(registry);
     const max = this.getMaxHp(registry);
@@ -3718,7 +3733,7 @@ class HealthModule {
       const healRate = this.getMaxHealRate(registry);
       if (healRate > 0) {
         let effectiveHealRate = healRate;
-        if (this.consumesEnergy) {
+        if (this.consumesEnergy && !this.isServerAuthoritativeOnly) {
           const pool = character.energyPool;
           if (pool) {
             const joulesPerHp = this.getJoulesPerHp(registry);
@@ -3745,15 +3760,17 @@ class HealthModule {
         }
         if (effectiveHealRate > 0) {
           activeHealRate = effectiveHealRate;
-          const nextHp = Math.min(max, current + effectiveHealRate * dt);
-          if (nextHp >= max - 1e-3) {
-            this.currentHpProp.set(max, registry);
-          } else {
-            this.currentHpProp.set(nextHp, registry);
+          if (!this.isServerAuthoritativeOnly) {
+            const nextHp = Math.min(max, current + effectiveHealRate * dt);
+            if (nextHp >= max - 1e-3) {
+              this.currentHpProp.set(max, registry);
+            } else {
+              this.currentHpProp.set(nextHp, registry);
+            }
           }
         }
       }
-    } else if (current >= max - 1e-3 && current !== max) {
+    } else if (!this.isServerAuthoritativeOnly && current >= max - 1e-3 && current !== max) {
       this.currentHpProp.set(max, registry);
     }
     if (activeHealRate > 1e-3) {
@@ -3784,7 +3801,6 @@ class HealthModule {
     }
     this._currentTick++;
     if (this.getCurrentHp(registry) <= 1e-4) {
-      const isOnline = character._isInOnlineMode === true;
       if (isOnline) {
         if (character.heldObject) {
           const dropPos = arena2 ? character.calculateHeldObjectPosition(arena2) : { ...character.position };
