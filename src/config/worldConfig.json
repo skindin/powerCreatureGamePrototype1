@@ -1,6 +1,6 @@
 {
-  "version": 78,
-  "lastSaved": "2026-10-28T01:54:59.011Z",
+  "version": 79,
+  "lastSaved": "2026-10-28T02:14:02.758Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1445,8 +1445,8 @@
       "name": "Apple Spawner",
       "enabled": true,
       "prefabId": "prefab_apple",
-      "intervalMinutes": 0.25,
-      "maxCount": 5,
+      "intervalMinutes": 0.1,
+      "maxCount": 10,
       "designatedSpawnPoints": [
         {
           "x": 10,
