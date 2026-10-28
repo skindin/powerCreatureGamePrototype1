@@ -11,9 +11,11 @@ import {
   serializeGameObject,
   deserializeGameObject,
   serializePrefab,
+  serializeCharacter,
 } from "../../config/WorldConfig.js";
 import { PlayerDeltaBuilder } from "./PlayerDeltaBuilder.js";
 import type { DevPanel } from "../DevPanel.js";
+import type { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
 
 /**
  * Isolated DevPanel persistence service for saving individual properties,
@@ -295,6 +297,79 @@ export class DevConfigPersistence {
     }
     panel.updateDirtyBadge();
     panel.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
+  }
+
+    public static async saveControlSchema(
+    panel: DevPanel | null,
+    char: Character,
+    schema: ControlSchema
+  ): Promise<void> {
+    if ((panel as any)?.isOnlineLocked) {
+      panel?.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    // 1. Assign to live character instance immediately
+    char.controlSchema = JSON.parse(JSON.stringify(schema));
+
+    const sections: ("prefabs" | "player" | "objects")[] = [];
+    const clientVersion = (panel as any)?.currentConfigVersion ?? 1;
+    const delta: WorldConfigDelta = {
+      clientVersion,
+      sections,
+    };
+
+    // 2. Update linked prefab archetype if exists
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
+    if (prefab) {
+      prefab.controlSchema = JSON.parse(JSON.stringify(schema));
+      if (prefab.archetype instanceof Character) {
+        (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(schema));
+      }
+      sections.push("prefabs");
+      delta.prefabsDelta = {
+        upsert: [serializePrefab(prefab)],
+      };
+    }
+
+    // 3. If this character is the player character (or prefab_player)
+    const isPlayer = char.prefabId === "prefab_player" || char.playerId === "keyboard" || (panel as any)?.character === char;
+    if (isPlayer) {
+      sections.push("player");
+      delta.player = serializeCharacter(char);
+    }
+
+    // 4. If this character is in the scene objects array
+    const objects = ((panel as any)?.objects as GameObject[]) || [];
+    const inObjects = objects.find((o) => o.id === char.id);
+    if (inObjects) {
+      sections.push("objects");
+      delta.objectsDelta = {
+        upsert: [serializeGameObject(char)],
+      };
+    }
+
+    if (sections.length === 0) {
+      sections.push("player");
+      delta.player = serializeCharacter(char);
+    }
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned status ${resp.status}`);
+    }
+
+    const res = await resp.json();
+    if (panel) {
+      (panel as any).currentConfigVersion = res.version ?? (clientVersion + 1);
+      panel.updateDirtyBadge?.();
+      panel.showSaveToast(`💾 Saved & persisted controls for ${char.name || "Character"}${prefab ? ` to ${prefab.name} Prefab` : ""}!`);
+    }
   }
 
   public static async saveProjectConfig(panel: DevPanel): Promise<void> {

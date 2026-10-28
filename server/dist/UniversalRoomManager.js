@@ -8505,6 +8505,9 @@ function createQuarryStones() {
 }
 function applyCharacterConfig(char, config) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P;
+  if (config.controlSchema) {
+    char.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
+  }
   if (config.name) char.name = config.name;
   if (config.color) char.color = config.color;
   if (config.mass !== void 0) {
@@ -9028,6 +9031,9 @@ function deserializeGameObject(config) {
   const obj = new GameObject(options);
   if (config.isSleeping !== void 0) {
     obj.isSleeping = config.isSleeping;
+  }
+  if (config.controlSchema && obj instanceof Character) {
+    obj.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
   }
   return obj;
 }

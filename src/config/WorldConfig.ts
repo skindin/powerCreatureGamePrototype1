@@ -128,6 +128,7 @@ export interface SerializedGameObjectConfig {
   verticalBounce?: boolean;
   staticGroundFrictionMod?: number;
   dynamicGroundFrictionMod?: number;
+  controlSchema?: ControlSchema;
 }
 
 export interface SerializedCharacterConfig {
@@ -257,6 +258,7 @@ export interface SerializedCharacterConfig {
     minShockThreshold?: number;
     selfImpactWeight?: number;
   } | null;
+  controlSchema?: ControlSchema;
 }
 
 export interface SerializedPrefabConfig {
@@ -329,6 +331,10 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     mass: char.rigidbodyModule ? char.rigidbodyModule.massProp.get(char.properties) : char.mass,
     colliderRadius: char.colliderModule ? char.colliderModule.radiusProp.get(char.properties) : char.colliderRadius,
   };
+
+  if (char.controlSchema) {
+    result.controlSchema = JSON.parse(JSON.stringify(char.controlSchema));
+  }
 
   if (char.strengthProp) {
     result.strength = char.strengthProp.get(char.properties);
@@ -494,6 +500,9 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
  * Applies saved character configuration onto an active Character instance.
  */
 export function applyCharacterConfig(char: Character, config: SerializedCharacterConfig): void {
+  if (config.controlSchema) {
+    char.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
+  }
   if (config.name) char.name = config.name;
   if (config.color) char.color = config.color;
   if (config.mass !== undefined) {
@@ -1074,6 +1083,9 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
   const obj = new GameObject(options);
   if (config.isSleeping !== undefined) {
     obj.isSleeping = config.isSleeping;
+  }
+  if (config.controlSchema && (obj as any) instanceof Character) {
+    (obj as any).controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
   }
   return obj;
 }

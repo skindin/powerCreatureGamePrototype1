@@ -15,6 +15,7 @@ import {
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
 import { prefabManager } from "../../../engine/prefab/PrefabManager.js";
+import { DevConfigPersistence } from "../DevConfigPersistence.js";
 
 /**
  * ControlsInspector provides a dedicated separate program window (and fallback modal dialog)
@@ -344,35 +345,36 @@ export class ControlsInspector {
     this.listeningForwardTrigger = false;
   }
 
-  private static saveAndCommit(): void {
+  private static async saveAndCommit(): Promise<void> {
     if (!this.modalChar || !this.workingSchema) return;
 
-    // 1. Commit schema to active character
-    this.modalChar.controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
+    const char = this.modalChar;
+    const schema = this.workingSchema;
+    const root = this.getRootContainer();
+    const saveBtn = root?.querySelector("#btn-modal-save-close") as HTMLButtonElement | null;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "⏳ Saving to Project...";
+    }
 
-    // 2. Commit schema to linked prefab archetype if applicable
-    if (this.modalChar.prefabId) {
-      const prefab = prefabManager.get(this.modalChar.prefabId);
-      if (prefab) {
-        prefab.controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
-        if (prefab.archetype instanceof Character) {
-          (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
-        }
+    try {
+      await DevConfigPersistence.saveControlSchema(this.modalPanel, char, schema);
+      const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
+      const targetDesc = prefab ? `${char.name || "Character"} & ${prefab.name} Prefab` : (char.name || "Character");
+      this.showToast(`✓ Saved & persisted controls for ${targetDesc} to worldConfig.json!`);
+    } catch (err: any) {
+      console.error("Failed to save controls:", err);
+      this.showToast(`❌ Save failed: ${err.message || err}`, true);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "💾 Save & Apply";
       }
+      this.renderActiveView();
     }
-
-    // 3. Auto-save project config to persist schema in worldConfig.json
-    if (this.modalPanel) {
-      (this.modalPanel as any).saveCurrentConfig?.();
-    }
-
-    // 4. Show confirmation toast
-    this.showToast(`Saved Control Schema for ${this.modalChar.name || "Character"}`);
-
-    this.renderActiveView();
   }
 
-  private static showToast(message: string): void {
+  private static showToast(message: string, isError = false): void {
     const targets: Document[] = [document];
     if (this.popoutWindow && !this.popoutWindow.closed) {
       targets.push(this.popoutWindow.document);
@@ -388,7 +390,7 @@ export class ControlsInspector {
         position: fixed;
         bottom: 24px;
         right: 24px;
-        background: rgba(16, 185, 129, 0.95);
+        background: ${isError ? "rgba(239, 68, 68, 0.95)" : "rgba(16, 185, 129, 0.95)"};
         color: #ffffff;
         padding: 10px 18px;
         border-radius: 8px;
@@ -401,7 +403,7 @@ export class ControlsInspector {
         gap: 8px;
         pointer-events: none;
       `;
-      toast.innerHTML = `<span>✓</span> <span>${message}</span>`;
+      toast.innerHTML = `<span>${isError ? "⚠️" : "✓"}</span> <span>${message}</span>`;
       doc.body.appendChild(toast);
       setTimeout(() => {
         toast.style.opacity = "0";
@@ -469,18 +471,18 @@ export class ControlsInspector {
         <div style="padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.76rem; color: #c084fc; font-weight: 600;">Linked Prefab:</span>
-              <span style="font-size: 0.78rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Custom Standalone Entity)"}</span>
+              <span style="font-size: 0.76rem; color: #c084fc; font-weight: 600;">Linked Archetype:</span>
+              <span style="font-size: 0.78rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Standalone Character)"}</span>
+              ${prefab ? `<span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">Auto-Persists to Prefab on Save</span>` : ""}
             </div>
             <div style="display: flex; gap: 6px;">
               ${
                 prefab
                   ? `
-                <button id="btn-save-controls-to-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);" title="Save current schema directly into this character's prefab archetype">💾 Commit to Prefab</button>
-                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Revert controls to prefab archetype values">↺ Reset to Prefab</button>
+                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Discard unsaved changes and reload clean controls from prefab archetype">↺ Reset to Prefab Defaults</button>
               `
                   : `
-                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Make Reusable Prefab</button>
+                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Save as New Prefab</button>
               `
               }
             </div>
@@ -575,7 +577,7 @@ export class ControlsInspector {
           </div>
           <div style="display: flex; gap: 8px;">
             <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem;">Close</button>
-            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 18px; font-size: 0.78rem; font-weight: 700; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12);">
+            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 18px; font-size: 0.78rem; font-weight: 700; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12);" title="Saves live controls, updates the linked prefab archetype, and permanently persists to worldConfig.json on disk">
               💾 Save & Apply
             </button>
           </div>
@@ -776,7 +778,6 @@ export class ControlsInspector {
 
     const char = this.modalChar;
     const schema = this.workingSchema;
-    const panel = this.modalPanel!;
     const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
 
     // Close button (X)
@@ -794,33 +795,22 @@ export class ControlsInspector {
       this.saveAndCommit();
     });
 
-    // Prefab Sync Buttons
-    root.querySelector("#btn-save-controls-to-prefab")?.addEventListener("click", () => {
-      if (prefab) {
-        prefab.controlSchema = JSON.parse(JSON.stringify(schema));
-        if (prefab.archetype instanceof Character) {
-          (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(schema));
-        }
-        (panel as any).saveCurrentConfig?.();
-        this.showToast(`Saved to Prefab: ${prefab.name}`);
-        this.renderActiveView();
-      }
-    });
-
+    // Prefab Sync & Revert Buttons
     root.querySelector("#btn-revert-controls-from-prefab")?.addEventListener("click", () => {
       if (prefab?.controlSchema) {
         this.workingSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.showToast(`Reset to default ${prefab.name} controls`);
         this.renderActiveView();
       }
     });
 
-    root.querySelector("#btn-make-char-prefab")?.addEventListener("click", () => {
+    root.querySelector("#btn-make-char-prefab")?.addEventListener("click", async () => {
       const p = prefabManager.createFromEntity(char);
       p.controlSchema = JSON.parse(JSON.stringify(schema));
       char.controlSchema = JSON.parse(JSON.stringify(schema));
       char.prefabId = p.id;
-      (panel as any).saveCurrentConfig?.();
-      this.showToast(`Created Prefab: ${p.name}`);
+      await DevConfigPersistence.saveControlSchema(this.modalPanel, char, schema);
+      this.showToast(`Created Prefab: ${p.name} and saved to project!`);
       this.renderActiveView();
     });
 
