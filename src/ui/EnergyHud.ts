@@ -567,14 +567,13 @@ export class EnergyHud {
       this.powerBlocksContainerEl.innerHTML = "";
       let emptyTagsHtml = "";
       if (isAlertActive && alert) {
-        const costSign = alert.isBurst ? "" : "/s";
-        const costStr = `-${alert.cost} ${alert.unit}${costSign}`;
+        const rateSuffix = alert.isBurst ? "" : "/s";
+        const amountStr = `-${alert.cost}${rateSuffix}`;
         emptyTagsHtml = `
-          <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${costStr} (${alert.reason})">
+          <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${amountStr} (${alert.reason})">
             <span class="hud-tag-icon">⚠️</span>
             <span class="hud-tag-name">${alert.abilityName}</span>
-            <span class="hud-tag-rate">${costStr}</span>
-            <span class="hud-tag-reason">${alert.reason}</span>
+            <span class="hud-tag-rate">${amountStr}</span>
           </div>
         `;
       }
@@ -652,14 +651,13 @@ export class EnergyHud {
     }
 
     if (isAlertActive && alert) {
-      const costSign = alert.isBurst ? "" : "/s";
-      const costStr = `-${alert.cost} ${alert.unit}${costSign}`;
+      const rateSuffix = alert.isBurst ? "" : "/s";
+      const amountStr = `-${alert.cost}${rateSuffix}`;
       tagsHtml = `
-        <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${costStr} (${alert.reason})">
+        <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${amountStr} (${alert.reason})">
           <span class="hud-tag-icon">⚠️</span>
           <span class="hud-tag-name">${alert.abilityName}</span>
-          <span class="hud-tag-rate">${costStr}</span>
-          <span class="hud-tag-reason">${alert.reason}</span>
+          <span class="hud-tag-rate">${amountStr}</span>
         </div>
       ` + tagsHtml;
     }
