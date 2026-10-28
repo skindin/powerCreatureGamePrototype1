@@ -7243,183 +7243,100 @@ class SnapshotManager {
     };
   }
 }
-function lcgRandom(seed) {
-  let s = seed >>> 0 || 12345;
-  return () => {
-    s = Math.imul(1664525, s) + 1013904223 >>> 0;
-    return s / 4294967296;
-  };
-}
-class RollModule {
-  constructor(options = {}) {
+class SceneSpawner {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
     __publicField(this, "enabled", true);
-    /** Dynamic angular velocity in 3 dimensions (rad/s around X, Y, Z axes) */
-    __publicField(this, "angularVelocity", { x: 0, y: 0, z: 0 });
-    /** 3D rotation quaternion tracking orientation in world space */
-    __publicField(this, "orientation", { x: 0, y: 0, z: 0, w: 1 });
-    /**
-     * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
-     * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
-     */
-    __publicField(this, "rollResistanceProp");
-    /**
-     * Toggleable bumpy rolling feature: simulates irregular rock roughness and airborne hops.
-     * Independent from baseline roll resistance.
-     */
-    __publicField(this, "bumpyRollEnabled", true);
-    /**
-     * Bumpiness magnitude property (0.0 = perfectly smooth circle, 0.3 = natural rock, 1.0 = heavy rugged stone).
-     * Dictates how deeply flatter facets are carved inward below the collider envelope.
-     */
-    __publicField(this, "bumpinessProp");
-    /** Seed used to deterministically generate this object's static 3D surface roughness */
-    __publicField(this, "seed");
-    /** Last measured ground contact radius (used to calculate vertical rate of change dr/dt) */
-    __publicField(this, "lastContactRadius", 0);
-    /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
-    __publicField(this, "visualPhase", 0);
-    __publicField(this, "_coeff");
-    var _a, _b, _c;
-    this.enabled = options.enabled ?? true;
-    this.angularVelocity = {
-      x: ((_a = options.angularVelocity) == null ? void 0 : _a.x) ?? 0,
-      y: ((_b = options.angularVelocity) == null ? void 0 : _b.y) ?? 0,
-      z: ((_c = options.angularVelocity) == null ? void 0 : _c.z) ?? 0
-    };
-    this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
-    this.bumpyRollEnabled = options.bumpyRollEnabled ?? true;
-    this.bumpinessProp = new DynamicProperty(options.bumpiness ?? 0.22);
-    this.seed = options.seed ?? Math.floor(Math.random() * 1e5);
-    const rng = lcgRandom(this.seed);
-    this._coeff = {
-      a1: rng() * 2 - 1,
-      a2: rng() * 2 - 1,
-      a3: rng() * 2 - 1,
-      b1: rng() * 2 - 1,
-      b2: rng() * 2 - 1,
-      b3: rng() * 2 - 1,
-      c1: rng() * 2 - 1,
-      c2: rng() * 2 - 1,
-      c3: rng() * 2 - 1
-    };
-  }
-  get rollResistance() {
-    return this.rollResistanceProp.literalValue;
-  }
-  set rollResistance(val) {
-    this.rollResistanceProp.literalValue = val;
-  }
-  getRollResistance(registry) {
-    return this.rollResistanceProp.get(registry);
-  }
-  get bumpiness() {
-    return this.bumpinessProp.literalValue;
-  }
-  set bumpiness(val) {
-    this.bumpinessProp.literalValue = Math.max(0, Math.min(1, val));
-  }
-  getBumpiness(registry) {
-    return Math.max(0, Math.min(1, this.bumpinessProp.get(registry)));
+    __publicField(this, "prefabId");
+    /** Interval in minutes between spawn attempts (e.g. 0.20 min = 12s, 1.0 min = 60s) */
+    __publicField(this, "intervalMinutes", 0.2);
+    /** Maximum number of active live instances of this prefab allowed in the scene */
+    __publicField(this, "maxCount", 5);
+    /** Elapsed time in seconds towards next spawn */
+    __publicField(this, "timerSeconds", 0);
+    /** Optional explicit candidate spawn locations distributed throughout the map */
+    __publicField(this, "designatedSpawnPoints", []);
+    this.id = options.id;
+    this.name = options.name || "Scene Spawner";
+    if (options.enabled !== void 0) this.enabled = options.enabled;
+    this.prefabId = options.prefabId;
+    if (options.intervalMinutes !== void 0) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
+    if (options.maxCount !== void 0) this.maxCount = Math.max(1, options.maxCount);
+    if (options.designatedSpawnPoints) this.designatedSpawnPoints = [...options.designatedSpawnPoints];
   }
   /**
-   * Total magnitude of 3D angular velocity (|ω| in rad/s)
+   * Returns current count of active live instances of this prefab in the scene.
    */
-  get angularSpeed() {
-    return Math.hypot(this.angularVelocity.x, this.angularVelocity.y, this.angularVelocity.z);
+  getActiveCount(objects2) {
+    return objects2.filter((o) => o.prefabId === this.prefabId).length;
   }
   /**
-   * Evaluates the 3D spherical harmonic roughness in local body space.
-   * Returns a normalized value in [0, 1] where 1.0 = peak bump (nominal radius), 0.0 = deepest flat.
+   * Advances timer and spawns an instance when interval expires, unless maxCount is reached.
    */
-  getRoughnessOffset(x, y, z) {
-    const c = this._coeff;
-    const h1 = c.a1 * x * x + c.a2 * y * y + c.a3 * z * z;
-    const h2 = c.b1 * x * y + c.b2 * y * z + c.b3 * z * x;
-    const h3 = c.c1 * (x * x * x - 3 * x * y * y) + c.c2 * (y * y * y - 3 * y * z * z) + c.c3 * (z * z * z - 3 * z * x * x);
-    const raw = 0.5 + 0.25 * h1 + 0.15 * h2 + 0.1 * h3;
-    return Math.max(0, Math.min(1, raw));
+  update(dt, arena2, objects2, prefabManager2) {
+    if (!this.enabled || !arena2) return null;
+    const activeCount = this.getActiveCount(objects2);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    this.timerSeconds += dt;
+    const targetIntervalSec = this.intervalMinutes * 60;
+    if (this.timerSeconds >= targetIntervalSec) {
+      this.timerSeconds = 0;
+      return this.spawnNow(arena2, objects2, prefabManager2);
+    }
+    return null;
   }
   /**
-   * Calculates the ground contact radius at the bottom touchpoint.
-   * Guarantees the radius is ALWAYS <= nominalRadius so the rock never extends above/beyond
-   * the circular collider and never visually floats above the floor.
+   * Immediately spawns an instance of the assigned prefab at a valid random open ground spot.
    */
-  getContactRadius(nominalRadius, registry) {
-    if (!this.bumpyRollEnabled) return nominalRadius;
-    const bumpiness = this.getBumpiness(registry);
-    if (bumpiness <= 1e-3) return nominalRadius;
-    const q = this.orientation;
-    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
-    const vx = 0, vy = 0, vz = -1;
-    const ix = qw * vx + qy * vz - qz * vy;
-    const iy = qw * vy + qz * vx - qx * vz;
-    const iz = qw * vz + qx * vy - qy * vx;
-    const iw = -qx * vx - qy * vy - qz * vz;
-    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
-    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
-    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
-    const rough = this.getRoughnessOffset(ux, uy, uz);
-    return nominalRadius * (1 - bumpiness * (1 - rough));
+  spawnNow(arena2, objects2, prefabManager2) {
+    if (!arena2) return null;
+    const activeCount = this.getActiveCount(objects2);
+    if (activeCount >= this.maxCount) {
+      return null;
+    }
+    let pos;
+    if (this.designatedSpawnPoints.length > 0) {
+      const openPoints = this.designatedSpawnPoints.filter((pt) => {
+        const isWall = arena2.hasWall(Math.floor(pt.x), Math.floor(pt.y));
+        if (isWall) return false;
+        const occupied = objects2.some((o) => Math.hypot(o.position.x - pt.x, o.position.y - pt.y) < 0.8);
+        return !occupied;
+      });
+      if (openPoints.length > 0) {
+        const choice = openPoints[Math.floor(Math.random() * openPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      } else {
+        const choice = this.designatedSpawnPoints[Math.floor(Math.random() * this.designatedSpawnPoints.length)];
+        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+      }
+    } else {
+      pos = this.findRandomGroundPosition(arena2);
+    }
+    const instance = prefabManager2.spawn(this.prefabId, pos, arena2, objects2);
+    return instance;
   }
   /**
-   * Evaluates the radius at an arbitrary direction in world space, rotated by current orientation.
-   * Useful for visual rendering passes.
+   * Finds a random open ground coordinate in the arena away from perimeter and solid walls.
    */
-  getRadiusAtWorldDirection(worldDir, nominalRadius, registry) {
-    if (!this.bumpyRollEnabled) return nominalRadius;
-    const bumpiness = this.getBumpiness(registry);
-    if (bumpiness <= 1e-3) return nominalRadius;
-    const q = this.orientation;
-    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
-    const vx = worldDir.x, vy = worldDir.y, vz = worldDir.z;
-    const ix = qw * vx + qy * vz - qz * vy;
-    const iy = qw * vy + qz * vx - qx * vz;
-    const iz = qw * vz + qx * vy - qy * vx;
-    const iw = -qx * vx - qy * vy - qz * vz;
-    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
-    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
-    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
-    const rough = this.getRoughnessOffset(ux, uy, uz);
-    return nominalRadius * (1 - bumpiness * (1 - rough));
-  }
-  /**
-   * Advance 3D orientation quaternion based on angular velocity.
-   */
-  updateOrientation(dt) {
-    const wx = this.angularVelocity.x;
-    const wy = this.angularVelocity.y;
-    const wz = this.angularVelocity.z;
-    const speed = Math.hypot(wx, wy, wz);
-    if (speed > 1e-4 && dt > 0) {
-      const halfAngle = speed * dt * 0.5;
-      const sinHalf = Math.sin(halfAngle);
-      const dqx = wx / speed * sinHalf;
-      const dqy = wy / speed * sinHalf;
-      const dqz = wz / speed * sinHalf;
-      const dqw = Math.cos(halfAngle);
-      const q = this.orientation;
-      const nx = dqw * q.x + dqx * q.w + dqy * q.z - dqz * q.y;
-      const ny = dqw * q.y - dqx * q.z + dqy * q.w + dqz * q.x;
-      const nz = dqw * q.z + dqx * q.y - dqy * q.x + dqz * q.w;
-      const nw = dqw * q.w - dqx * q.x - dqy * q.y - dqz * q.z;
-      const mag = Math.hypot(nx, ny, nz, nw);
-      if (mag > 1e-5) {
-        this.orientation.x = nx / mag;
-        this.orientation.y = ny / mag;
-        this.orientation.z = nz / mag;
-        this.orientation.w = nw / mag;
+  findRandomGroundPosition(arena2) {
+    const margin = 1.5;
+    const minX = margin;
+    const maxX = Math.max(margin + 1, arena2.width - margin);
+    const minY = margin;
+    const maxY = Math.max(margin + 1, arena2.height - margin);
+    for (let i = 0; i < 25; i++) {
+      const rx = minX + Math.random() * (maxX - minX);
+      const ry = minY + Math.random() * (maxY - minY);
+      const tileX = Math.floor(rx);
+      const tileY = Math.floor(ry);
+      if (!arena2.hasWall(tileX, tileY)) {
+        return { x: rx, y: ry, z: 0 };
       }
     }
-  }
-  /**
-   * Advance the visual rotation phase based on current angular velocity
-   */
-  updateVisualPhase(dt) {
-    const speed = this.angularSpeed;
-    if (speed > 1e-3) {
-      this.visualPhase = (this.visualPhase + speed * dt) % (Math.PI * 2);
-    }
-    this.updateOrientation(dt);
+    return { x: arena2.width / 2, y: arena2.height / 2, z: 0 };
   }
 }
 class ConsumableModule {
@@ -7663,100 +7580,183 @@ class ConsumableModule {
     }
   }
 }
-class SceneSpawner {
-  constructor(options) {
-    __publicField(this, "id");
-    __publicField(this, "name");
+function lcgRandom(seed) {
+  let s = seed >>> 0 || 12345;
+  return () => {
+    s = Math.imul(1664525, s) + 1013904223 >>> 0;
+    return s / 4294967296;
+  };
+}
+class RollModule {
+  constructor(options = {}) {
     __publicField(this, "enabled", true);
-    __publicField(this, "prefabId");
-    /** Interval in minutes between spawn attempts (e.g. 0.20 min = 12s, 1.0 min = 60s) */
-    __publicField(this, "intervalMinutes", 0.2);
-    /** Maximum number of active live instances of this prefab allowed in the scene */
-    __publicField(this, "maxCount", 5);
-    /** Elapsed time in seconds towards next spawn */
-    __publicField(this, "timerSeconds", 0);
-    /** Optional explicit candidate spawn locations distributed throughout the map */
-    __publicField(this, "designatedSpawnPoints", []);
-    this.id = options.id;
-    this.name = options.name || "Scene Spawner";
-    if (options.enabled !== void 0) this.enabled = options.enabled;
-    this.prefabId = options.prefabId;
-    if (options.intervalMinutes !== void 0) this.intervalMinutes = Math.max(0.01, options.intervalMinutes);
-    if (options.maxCount !== void 0) this.maxCount = Math.max(1, options.maxCount);
-    if (options.designatedSpawnPoints) this.designatedSpawnPoints = [...options.designatedSpawnPoints];
+    /** Dynamic angular velocity in 3 dimensions (rad/s around X, Y, Z axes) */
+    __publicField(this, "angularVelocity", { x: 0, y: 0, z: 0 });
+    /** 3D rotation quaternion tracking orientation in world space */
+    __publicField(this, "orientation", { x: 0, y: 0, z: 0, w: 1 });
+    /**
+     * Roll resistance property: deceleration force (in u/s²) that opposes rolling.
+     * If rollResistance === 0, the object has zero rolling resistance and will roll until it hits a wall!
+     */
+    __publicField(this, "rollResistanceProp");
+    /**
+     * Toggleable bumpy rolling feature: simulates irregular rock roughness and airborne hops.
+     * Independent from baseline roll resistance.
+     */
+    __publicField(this, "bumpyRollEnabled", true);
+    /**
+     * Bumpiness magnitude property (0.0 = perfectly smooth circle, 0.3 = natural rock, 1.0 = heavy rugged stone).
+     * Dictates how deeply flatter facets are carved inward below the collider envelope.
+     */
+    __publicField(this, "bumpinessProp");
+    /** Seed used to deterministically generate this object's static 3D surface roughness */
+    __publicField(this, "seed");
+    /** Last measured ground contact radius (used to calculate vertical rate of change dr/dt) */
+    __publicField(this, "lastContactRadius", 0);
+    /** Animated phase accumulator (radians) used for rendering the rotating dotted oval */
+    __publicField(this, "visualPhase", 0);
+    __publicField(this, "_coeff");
+    var _a, _b, _c;
+    this.enabled = options.enabled ?? true;
+    this.angularVelocity = {
+      x: ((_a = options.angularVelocity) == null ? void 0 : _a.x) ?? 0,
+      y: ((_b = options.angularVelocity) == null ? void 0 : _b.y) ?? 0,
+      z: ((_c = options.angularVelocity) == null ? void 0 : _c.z) ?? 0
+    };
+    this.rollResistanceProp = new DynamicProperty(options.rollResistance ?? 0.4);
+    this.bumpyRollEnabled = options.bumpyRollEnabled ?? true;
+    this.bumpinessProp = new DynamicProperty(options.bumpiness ?? 0.22);
+    this.seed = options.seed ?? Math.floor(Math.random() * 1e5);
+    const rng = lcgRandom(this.seed);
+    this._coeff = {
+      a1: rng() * 2 - 1,
+      a2: rng() * 2 - 1,
+      a3: rng() * 2 - 1,
+      b1: rng() * 2 - 1,
+      b2: rng() * 2 - 1,
+      b3: rng() * 2 - 1,
+      c1: rng() * 2 - 1,
+      c2: rng() * 2 - 1,
+      c3: rng() * 2 - 1
+    };
+  }
+  get rollResistance() {
+    return this.rollResistanceProp.literalValue;
+  }
+  set rollResistance(val) {
+    this.rollResistanceProp.literalValue = val;
+  }
+  getRollResistance(registry) {
+    return this.rollResistanceProp.get(registry);
+  }
+  get bumpiness() {
+    return this.bumpinessProp.literalValue;
+  }
+  set bumpiness(val) {
+    this.bumpinessProp.literalValue = Math.max(0, Math.min(1, val));
+  }
+  getBumpiness(registry) {
+    return Math.max(0, Math.min(1, this.bumpinessProp.get(registry)));
   }
   /**
-   * Returns current count of active live instances of this prefab in the scene.
+   * Total magnitude of 3D angular velocity (|ω| in rad/s)
    */
-  getActiveCount(objects2) {
-    return objects2.filter((o) => o.prefabId === this.prefabId).length;
+  get angularSpeed() {
+    return Math.hypot(this.angularVelocity.x, this.angularVelocity.y, this.angularVelocity.z);
   }
   /**
-   * Advances timer and spawns an instance when interval expires, unless maxCount is reached.
+   * Evaluates the 3D spherical harmonic roughness in local body space.
+   * Returns a normalized value in [0, 1] where 1.0 = peak bump (nominal radius), 0.0 = deepest flat.
    */
-  update(dt, arena2, objects2, prefabManager2) {
-    if (!this.enabled || !arena2) return null;
-    const activeCount = this.getActiveCount(objects2);
-    if (activeCount >= this.maxCount) {
-      return null;
-    }
-    this.timerSeconds += dt;
-    const targetIntervalSec = this.intervalMinutes * 60;
-    if (this.timerSeconds >= targetIntervalSec) {
-      this.timerSeconds = 0;
-      return this.spawnNow(arena2, objects2, prefabManager2);
-    }
-    return null;
+  getRoughnessOffset(x, y, z) {
+    const c = this._coeff;
+    const h1 = c.a1 * x * x + c.a2 * y * y + c.a3 * z * z;
+    const h2 = c.b1 * x * y + c.b2 * y * z + c.b3 * z * x;
+    const h3 = c.c1 * (x * x * x - 3 * x * y * y) + c.c2 * (y * y * y - 3 * y * z * z) + c.c3 * (z * z * z - 3 * z * x * x);
+    const raw = 0.5 + 0.25 * h1 + 0.15 * h2 + 0.1 * h3;
+    return Math.max(0, Math.min(1, raw));
   }
   /**
-   * Immediately spawns an instance of the assigned prefab at a valid random open ground spot.
+   * Calculates the ground contact radius at the bottom touchpoint.
+   * Guarantees the radius is ALWAYS <= nominalRadius so the rock never extends above/beyond
+   * the circular collider and never visually floats above the floor.
    */
-  spawnNow(arena2, objects2, prefabManager2) {
-    if (!arena2) return null;
-    const activeCount = this.getActiveCount(objects2);
-    if (activeCount >= this.maxCount) {
-      return null;
-    }
-    let pos;
-    if (this.designatedSpawnPoints.length > 0) {
-      const openPoints = this.designatedSpawnPoints.filter((pt) => {
-        const isWall = arena2.hasWall(Math.floor(pt.x), Math.floor(pt.y));
-        if (isWall) return false;
-        const occupied = objects2.some((o) => Math.hypot(o.position.x - pt.x, o.position.y - pt.y) < 0.8);
-        return !occupied;
-      });
-      if (openPoints.length > 0) {
-        const choice = openPoints[Math.floor(Math.random() * openPoints.length)];
-        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
-      } else {
-        const choice = this.designatedSpawnPoints[Math.floor(Math.random() * this.designatedSpawnPoints.length)];
-        pos = { x: choice.x, y: choice.y, z: choice.z ?? 0 };
+  getContactRadius(nominalRadius, registry) {
+    if (!this.bumpyRollEnabled) return nominalRadius;
+    const bumpiness = this.getBumpiness(registry);
+    if (bumpiness <= 1e-3) return nominalRadius;
+    const q = this.orientation;
+    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
+    const vx = 0, vy = 0, vz = -1;
+    const ix = qw * vx + qy * vz - qz * vy;
+    const iy = qw * vy + qz * vx - qx * vz;
+    const iz = qw * vz + qx * vy - qy * vx;
+    const iw = -qx * vx - qy * vy - qz * vz;
+    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+    const rough = this.getRoughnessOffset(ux, uy, uz);
+    return nominalRadius * (1 - bumpiness * (1 - rough));
+  }
+  /**
+   * Evaluates the radius at an arbitrary direction in world space, rotated by current orientation.
+   * Useful for visual rendering passes.
+   */
+  getRadiusAtWorldDirection(worldDir, nominalRadius, registry) {
+    if (!this.bumpyRollEnabled) return nominalRadius;
+    const bumpiness = this.getBumpiness(registry);
+    if (bumpiness <= 1e-3) return nominalRadius;
+    const q = this.orientation;
+    const qx = -q.x, qy = -q.y, qz = -q.z, qw = q.w;
+    const vx = worldDir.x, vy = worldDir.y, vz = worldDir.z;
+    const ix = qw * vx + qy * vz - qz * vy;
+    const iy = qw * vy + qz * vx - qx * vz;
+    const iz = qw * vz + qx * vy - qy * vx;
+    const iw = -qx * vx - qy * vy - qz * vz;
+    const ux = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    const uy = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    const uz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+    const rough = this.getRoughnessOffset(ux, uy, uz);
+    return nominalRadius * (1 - bumpiness * (1 - rough));
+  }
+  /**
+   * Advance 3D orientation quaternion based on angular velocity.
+   */
+  updateOrientation(dt) {
+    const wx = this.angularVelocity.x;
+    const wy = this.angularVelocity.y;
+    const wz = this.angularVelocity.z;
+    const speed = Math.hypot(wx, wy, wz);
+    if (speed > 1e-4 && dt > 0) {
+      const halfAngle = speed * dt * 0.5;
+      const sinHalf = Math.sin(halfAngle);
+      const dqx = wx / speed * sinHalf;
+      const dqy = wy / speed * sinHalf;
+      const dqz = wz / speed * sinHalf;
+      const dqw = Math.cos(halfAngle);
+      const q = this.orientation;
+      const nx = dqw * q.x + dqx * q.w + dqy * q.z - dqz * q.y;
+      const ny = dqw * q.y - dqx * q.z + dqy * q.w + dqz * q.x;
+      const nz = dqw * q.z + dqx * q.y - dqy * q.x + dqz * q.w;
+      const nw = dqw * q.w - dqx * q.x - dqy * q.y - dqz * q.z;
+      const mag = Math.hypot(nx, ny, nz, nw);
+      if (mag > 1e-5) {
+        this.orientation.x = nx / mag;
+        this.orientation.y = ny / mag;
+        this.orientation.z = nz / mag;
+        this.orientation.w = nw / mag;
       }
-    } else {
-      pos = this.findRandomGroundPosition(arena2);
     }
-    const instance = prefabManager2.spawn(this.prefabId, pos, arena2, objects2);
-    return instance;
   }
   /**
-   * Finds a random open ground coordinate in the arena away from perimeter and solid walls.
+   * Advance the visual rotation phase based on current angular velocity
    */
-  findRandomGroundPosition(arena2) {
-    const margin = 1.5;
-    const minX = margin;
-    const maxX = Math.max(margin + 1, arena2.width - margin);
-    const minY = margin;
-    const maxY = Math.max(margin + 1, arena2.height - margin);
-    for (let i = 0; i < 25; i++) {
-      const rx = minX + Math.random() * (maxX - minX);
-      const ry = minY + Math.random() * (maxY - minY);
-      const tileX = Math.floor(rx);
-      const tileY = Math.floor(ry);
-      if (!arena2.hasWall(tileX, tileY)) {
-        return { x: rx, y: ry, z: 0 };
-      }
+  updateVisualPhase(dt) {
+    const speed = this.angularSpeed;
+    if (speed > 1e-3) {
+      this.visualPhase = (this.visualPhase + speed * dt) % (Math.PI * 2);
     }
-    return { x: arena2.width / 2, y: arena2.height / 2, z: 0 };
+    this.updateOrientation(dt);
   }
 }
 class Prefab {
@@ -9669,106 +9669,6 @@ class AuthoritativeSnapshotManager {
     this.lastBroadcastTick = 0;
   }
 }
-class ContestedGrabArbiter {
-  /**
-   * Resolves a list of grab requests on a given tick, granting the target object
-   * to the winning character and logging the outcome to an audit history array.
-   */
-  static arbitrate(grabRequests, currentTick, auditLog, arena2, objects2) {
-    var _a, _b;
-    const results = [];
-    if (!grabRequests || grabRequests.length === 0) return results;
-    const targetGroups = /* @__PURE__ */ new Map();
-    for (const req of grabRequests) {
-      const objId = req.target.id;
-      let group = targetGroups.get(objId);
-      if (!group) {
-        group = [];
-        targetGroups.set(objId, group);
-      }
-      group.push(req);
-    }
-    for (const [objId, requests] of targetGroups) {
-      if (requests.length === 1) {
-        const req = requests[0];
-        if (req.target.isHeld && req.target.heldBy && req.target.heldBy !== req.char) {
-          continue;
-        }
-        let itemToHold2 = req.target;
-        if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
-          const clone = req.target.spawnerModule.triggerClone(req.target, arena2, objects2);
-          if (clone) itemToHold2 = clone;
-        }
-        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, itemToHold2);
-        itemToHold2.isHeld = true;
-        itemToHold2.heldBy = req.char;
-        req.char.heldObject = itemToHold2;
-        continue;
-      }
-      requests.sort((a, b) => {
-        if (Math.abs(b.char.strength - a.char.strength) > 1e-3) {
-          return b.char.strength - a.char.strength;
-        }
-        const distA = Math.hypot(
-          a.target.position.x - a.char.position.x,
-          a.target.position.y - a.char.position.y,
-          a.target.position.z - a.char.position.z
-        );
-        const distB = Math.hypot(
-          b.target.position.x - b.char.position.x,
-          b.target.position.y - b.char.position.y,
-          b.target.position.z - b.char.position.z
-        );
-        if (Math.abs(distA - distB) > 1e-3) {
-          return distA - distB;
-        }
-        return a.char.playerId.localeCompare(b.char.playerId);
-      });
-      const winner = requests[0];
-      const losers = requests.slice(1);
-      let reason = "id_priority";
-      if (Math.abs(winner.char.strength - losers[0].char.strength) > 1e-3) {
-        reason = "strength";
-      } else {
-        const distWin = Math.hypot(
-          winner.target.position.x - winner.char.position.x,
-          winner.target.position.y - winner.char.position.y,
-          winner.target.position.z - winner.char.position.z
-        );
-        const distLose = Math.hypot(
-          losers[0].target.position.x - losers[0].char.position.x,
-          losers[0].target.position.y - losers[0].char.position.y,
-          losers[0].target.position.z - losers[0].char.position.z
-        );
-        if (Math.abs(distWin - distLose) > 1e-3) {
-          reason = "proximity";
-        }
-      }
-      const outcome = {
-        eventId: `grab-${objId}-${currentTick}-${winner.char.playerId}`,
-        tick: currentTick,
-        targetObjectId: objId,
-        winnerPlayerId: winner.char.playerId,
-        loserPlayerIds: losers.map((l) => l.char.playerId),
-        reason
-      };
-      results.push(outcome);
-      if (auditLog) {
-        auditLog.push(outcome);
-      }
-      let itemToHold = winner.target;
-      if (winner.target.spawnerModule && winner.target.spawnerModule.enabled) {
-        const clone = winner.target.spawnerModule.triggerClone(winner.target, arena2, objects2);
-        if (clone) itemToHold = clone;
-      }
-      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, itemToHold);
-      itemToHold.isHeld = true;
-      itemToHold.heldBy = winner.char;
-      winner.char.heldObject = itemToHold;
-    }
-    return results;
-  }
-}
 class ServerTelemetryBroadcaster {
   /**
    * Builds an uncompressed GhostSnapshot suitable for canvas rendering or client interpolation.
@@ -9999,6 +9899,938 @@ class ServerTelemetryBroadcaster {
     );
   }
 }
+class ServerWorldInitializer {
+  /**
+   * Initializes or syncs the server simulation world from the client arena and entities.
+   */
+  static initializeFromWorld(sim, clientArena, clientCharacters, clientObjects) {
+    sim.arena.width = clientArena.width;
+    sim.arena.height = clientArena.height;
+    sim.arena.tileSize = clientArena.tileSize;
+    sim.arena.setStandardWallHeight(clientArena.wallHeight);
+    sim.arena.tileGrid = clientArena.tileGrid.map((row) => [...row]);
+    sim.arena.rebuildWalls();
+    sim.characters.clear();
+    for (const c of clientCharacters) {
+      const serverChar = new Character({
+        x: c.position.x,
+        y: c.position.y,
+        color: c.playerColor || c.color || "#f59e0b",
+        colliderRadius: c.colliderRadius,
+        mass: c.baseMass || 1.2,
+        strength: c.strength,
+        playerId: c.playerId || "keyboard",
+        playerNumber: c.playerNumber || 1,
+        name: c.name || "Server Character"
+      });
+      serverChar.position.z = c.position.z;
+      serverChar.velocity.x = c.velocity.x;
+      serverChar.velocity.y = c.velocity.y;
+      serverChar.verticalVelocity = c.verticalVelocity;
+      serverChar.facingAngle = c.facingAngle;
+      serverChar.isClimbing = c.isClimbing;
+      serverChar.isSprinting = c.isSprinting;
+      sim.characters.set(serverChar.playerId, serverChar);
+    }
+    sim.objects = clientObjects.map((o) => {
+      const serverObj = new GameObject({
+        id: o.id,
+        name: o.name,
+        position: { x: o.position.x, y: o.position.y, z: o.position.z },
+        velocity: { x: o.velocity.x, y: o.velocity.y },
+        verticalVelocity: o.verticalVelocity,
+        mass: o.mass,
+        colliderRadius: o.colliderRadius,
+        color: o.color,
+        bounceMod: o.bounceMod,
+        staticGroundFrictionMod: o.staticGroundFrictionMod,
+        dynamicGroundFrictionMod: o.dynamicGroundFrictionMod,
+        visualShape: o.visualShape,
+        rollModule: o.rollModule ? new RollModule({
+          rollResistance: o.rollModule.rollResistance,
+          angularVelocity: { ...o.rollModule.angularVelocity },
+          bumpyRollEnabled: o.rollModule.bumpyRollEnabled,
+          bumpiness: o.rollModule.bumpiness,
+          seed: o.rollModule.seed
+        }) : void 0,
+        consumableModule: o.consumableModule ? new ConsumableModule({
+          tag: o.consumableModule.tag,
+          totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
+          remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
+          consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
+          healRate: o.consumableModule.getHealRate(o.properties),
+          minScaleFloor: o.consumableModule.minScaleFloor,
+          minRadiusFloor: o.consumableModule.minRadiusFloor,
+          enabled: o.consumableModule.enabled
+        }) : void 0
+      });
+      serverObj.isSleeping = o.isSleeping;
+      return serverObj;
+    });
+    for (const clientChar of clientCharacters) {
+      if (clientChar.heldObject) {
+        const sChar = sim.characters.get(clientChar.playerId || "keyboard");
+        const sObj = sim.objects.find((o) => o.id === clientChar.heldObject.id);
+        if (sChar && sObj) {
+          sChar.heldObject = sObj;
+          sObj.isHeld = true;
+          sObj.heldBy = sChar;
+        }
+      }
+    }
+    sim.arena.syncEntitiesWithWalls([...sim.allCharacters, ...sim.objects]);
+    sim.jitterBuffer.clear();
+  }
+  /**
+   * Initializes default standard arena and freebodies if starting standalone without client.
+   */
+  static initializeDefaultScenario(sim) {
+    sim.arena.loadWallPreset(quarryPreset.id);
+    const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
+    const player1 = new Character({
+      x: p1Spawn.x,
+      y: p1Spawn.y,
+      color: "#f59e0b",
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1,
+      playerId: "player-1",
+      playerNumber: 1,
+      name: "Server Player 1"
+    });
+    player1.position.z = p1Spawn.z ?? 0;
+    sim.characters.set(player1.playerId, player1);
+    const dummy = new Character({
+      id: "dummy-1",
+      x: QUARRY_DUMMY_SPAWN.x,
+      y: QUARRY_DUMMY_SPAWN.y,
+      color: "#64748b",
+      colliderRadius: 0.44,
+      mass: 1.5,
+      strength: 0,
+      name: "Sparring Dummy",
+      controllerType: "none",
+      role: "dummy"
+    });
+    sim.characters.set(dummy.id, dummy);
+    sim.objects = createQuarryStones();
+    sim.arena.syncEntitiesWithWalls([...sim.allCharacters, ...sim.objects]);
+    sim.jitterBuffer.clear();
+  }
+  /**
+   * Initializes or hot-reloads the authoritative server simulation world from a persistent WorldConfig.
+   */
+  static initializeFromConfig(sim, config) {
+    var _a;
+    if (config.arena) {
+      if (config.arena.width && config.arena.height) {
+        sim.arena.width = config.arena.width;
+        sim.arena.height = config.arena.height;
+      }
+      if (config.arena.wallHeight !== void 0) {
+        sim.arena.setStandardWallHeight(config.arena.wallHeight);
+      }
+      if (config.arena.tileGrid) {
+        sim.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+        sim.arena.rebuildWalls();
+      } else if (config.arena.presetId) {
+        sim.arena.loadWallPreset(config.arena.presetId);
+      }
+    }
+    if (config.globalPhysics) {
+      if (config.globalPhysics.gravity !== void 0) {
+        sim.arena.gravity = config.globalPhysics.gravity;
+      }
+      if (config.globalPhysics.collisionDamageScale !== void 0) {
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+      }
+      if (config.globalPhysics.collisionMode) {
+        sim.collisionMode = config.globalPhysics.collisionMode;
+      }
+    }
+    if (sim.characters.size === 0) {
+      const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
+      const player1 = new Character({
+        x: p1Spawn.x,
+        y: p1Spawn.y,
+        color: "#f59e0b",
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1,
+        playerId: "player-1",
+        playerNumber: 1,
+        name: "Server Player 1"
+      });
+      player1.position.z = p1Spawn.z ?? 0;
+      if (config.player) {
+        applyCharacterConfig(player1, config.player);
+        player1.playerId = "player-1";
+        player1.playerNumber = 1;
+      }
+      sim.characters.set(player1.playerId, player1);
+      const dummy = new Character({
+        id: "dummy-1",
+        x: QUARRY_DUMMY_SPAWN.x,
+        y: QUARRY_DUMMY_SPAWN.y,
+        color: "#64748b",
+        colliderRadius: 0.44,
+        mass: 1.5,
+        strength: 0,
+        name: "Sparring Dummy",
+        controllerType: "none",
+        role: "dummy"
+      });
+      sim.characters.set(dummy.id, dummy);
+    } else if (config.player) {
+      for (const char of sim.characters.values()) {
+        if (((_a = char.characterModule) == null ? void 0 : _a.role) === "dummy" || char.controllerType === "none") continue;
+        const savedPlayerId = char.playerId;
+        const savedPlayerNum = char.playerNumber;
+        const savedColor = char.color;
+        const savedName = char.name;
+        const hasCustom = char.hasCustomName;
+        applyCharacterConfig(char, config.player);
+        char.playerId = savedPlayerId;
+        char.playerNumber = savedPlayerNum;
+        char.color = savedColor;
+        if (hasCustom) {
+          char.name = savedName;
+          char.hasCustomName = true;
+        }
+      }
+    }
+    if (config.prefabs && Array.isArray(config.prefabs)) {
+      sim.prefabManager.loadFromConfig(config.prefabs);
+    }
+    if (config.spawners && Array.isArray(config.spawners)) {
+      sim.sceneSpawnerManager.loadFromConfig(config.spawners);
+    }
+    if (sim.objects.length === 0) {
+      if (config.objects && config.objects.length > 0) {
+        sim.objects = config.objects.map(deserializeGameObject);
+      } else {
+        sim.objects = createQuarryStones();
+      }
+      sim.arena.syncEntitiesWithWalls([...sim.allCharacters, ...sim.objects]);
+      sim.jitterBuffer.clear();
+    }
+  }
+}
+class ContestedGrabArbiter {
+  /**
+   * Resolves a list of grab requests on a given tick, granting the target object
+   * to the winning character and logging the outcome to an audit history array.
+   */
+  static arbitrate(grabRequests, currentTick, auditLog, arena2, objects2) {
+    var _a, _b;
+    const results = [];
+    if (!grabRequests || grabRequests.length === 0) return results;
+    const targetGroups = /* @__PURE__ */ new Map();
+    for (const req of grabRequests) {
+      const objId = req.target.id;
+      let group = targetGroups.get(objId);
+      if (!group) {
+        group = [];
+        targetGroups.set(objId, group);
+      }
+      group.push(req);
+    }
+    for (const [objId, requests] of targetGroups) {
+      if (requests.length === 1) {
+        const req = requests[0];
+        if (req.target.isHeld && req.target.heldBy && req.target.heldBy !== req.char) {
+          continue;
+        }
+        let itemToHold2 = req.target;
+        if (req.target.spawnerModule && req.target.spawnerModule.enabled) {
+          const clone = req.target.spawnerModule.triggerClone(req.target, arena2, objects2);
+          if (clone) itemToHold2 = clone;
+        }
+        (_a = req.char.pickupModule) == null ? void 0 : _a.pickup(req.char, itemToHold2);
+        itemToHold2.isHeld = true;
+        itemToHold2.heldBy = req.char;
+        req.char.heldObject = itemToHold2;
+        continue;
+      }
+      requests.sort((a, b) => {
+        if (Math.abs(b.char.strength - a.char.strength) > 1e-3) {
+          return b.char.strength - a.char.strength;
+        }
+        const distA = Math.hypot(
+          a.target.position.x - a.char.position.x,
+          a.target.position.y - a.char.position.y,
+          a.target.position.z - a.char.position.z
+        );
+        const distB = Math.hypot(
+          b.target.position.x - b.char.position.x,
+          b.target.position.y - b.char.position.y,
+          b.target.position.z - b.char.position.z
+        );
+        if (Math.abs(distA - distB) > 1e-3) {
+          return distA - distB;
+        }
+        return a.char.playerId.localeCompare(b.char.playerId);
+      });
+      const winner = requests[0];
+      const losers = requests.slice(1);
+      let reason = "id_priority";
+      if (Math.abs(winner.char.strength - losers[0].char.strength) > 1e-3) {
+        reason = "strength";
+      } else {
+        const distWin = Math.hypot(
+          winner.target.position.x - winner.char.position.x,
+          winner.target.position.y - winner.char.position.y,
+          winner.target.position.z - winner.char.position.z
+        );
+        const distLose = Math.hypot(
+          losers[0].target.position.x - losers[0].char.position.x,
+          losers[0].target.position.y - losers[0].char.position.y,
+          losers[0].target.position.z - losers[0].char.position.z
+        );
+        if (Math.abs(distWin - distLose) > 1e-3) {
+          reason = "proximity";
+        }
+      }
+      const outcome = {
+        eventId: `grab-${objId}-${currentTick}-${winner.char.playerId}`,
+        tick: currentTick,
+        targetObjectId: objId,
+        winnerPlayerId: winner.char.playerId,
+        loserPlayerIds: losers.map((l) => l.char.playerId),
+        reason
+      };
+      results.push(outcome);
+      if (auditLog) {
+        auditLog.push(outcome);
+      }
+      let itemToHold = winner.target;
+      if (winner.target.spawnerModule && winner.target.spawnerModule.enabled) {
+        const clone = winner.target.spawnerModule.triggerClone(winner.target, arena2, objects2);
+        if (clone) itemToHold = clone;
+      }
+      (_b = winner.char.pickupModule) == null ? void 0 : _b.pickup(winner.char, itemToHold);
+      itemToHold.isHeld = true;
+      itemToHold.heldBy = winner.char;
+      winner.char.heldObject = itemToHold;
+    }
+    return results;
+  }
+}
+class ServerEventQueueManager {
+  /**
+   * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
+   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
+   */
+  static arbitrateContestedGrabs(sim, grabRequests) {
+    const results = ContestedGrabArbiter.arbitrate(grabRequests, sim.currentTick, sim.contestedGrabEvents, sim.arena, sim.objects);
+    for (const res of results) {
+      sim.pendingContestedEvents.set(res.eventId, {
+        event: res,
+        createdTick: sim.currentTick,
+        acks: /* @__PURE__ */ new Set()
+      });
+      if (sim.onGrabResult) {
+        sim.onGrabResult({
+          type: "grab_result",
+          eventId: res.eventId,
+          tick: res.tick,
+          targetObjectId: res.targetObjectId,
+          playerId: res.winnerPlayerId
+        });
+      }
+    }
+  }
+  /**
+   * Acknowledges that a client character has received and processed contested grab events.
+   */
+  static acknowledgeContestedEvents(sim, clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = sim.pendingContestedEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
+        const allAcked = needed.every((pId) => pending.acks.has(pId));
+        if (allAcked) {
+          sim.pendingContestedEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged contested grab events for broadcast.
+   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
+   */
+  static getActiveContestedEvents(sim) {
+    const active = [];
+    const nowTick = sim.currentTick;
+    for (const [id, record] of sim.pendingContestedEvents.entries()) {
+      if (nowTick - record.createdTick > 180) {
+        sim.pendingContestedEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
+   * Acknowledges that a client character has received and processed death & respawn events.
+   */
+  static acknowledgeDeathRespawnEvents(sim, clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = sim.pendingDeathRespawnEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const targetChar = sim.characters.get(pending.event.targetEntityId) || Array.from(sim.characters.values()).find(
+          (c) => c.id === clientCharId || c.playerId === clientCharId || c.serverCharId === clientCharId || c.id === pending.event.targetEntityId || c.playerId === pending.event.targetEntityId || c.serverCharId === pending.event.targetEntityId
+        );
+        if (targetChar) {
+          targetChar.isRespawnLocked = false;
+        }
+        const isTargetAck = clientCharId === pending.event.targetEntityId || targetChar && (clientCharId === targetChar.id || clientCharId === targetChar.playerId || clientCharId === targetChar.serverCharId);
+        if (isTargetAck) {
+          sim.pendingDeathRespawnEvents.delete(id);
+        } else {
+          const allClientChars = Array.from(sim.characters.keys()).filter((k) => k !== "dummy-1");
+          const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+          if (allAcked) {
+            sim.pendingDeathRespawnEvents.delete(id);
+          }
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged death respawn events for continuous broadcast.
+   */
+  static getActiveDeathRespawnEvents(sim) {
+    const active = [];
+    const nowTick = sim.currentTick;
+    for (const [id, record] of sim.pendingDeathRespawnEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        sim.pendingDeathRespawnEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+  /**
+   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
+   */
+  static triggerObjectDeletion(sim, objectId) {
+    sim.deletedObjectIds.add(objectId);
+    const idx = sim.objects.findIndex((o) => o.id === objectId);
+    if (idx !== -1) {
+      const obj = sim.objects[idx];
+      if (obj.heldBy && obj.heldBy.heldObject === obj) {
+        obj.heldBy.heldObject = null;
+      }
+      obj.isHeld = false;
+      obj.heldBy = null;
+      sim.objects.splice(idx, 1);
+    }
+    if (Array.isArray(sim.arena.entities)) {
+      const eIdx = sim.arena.entities.findIndex((e) => e.id === objectId);
+      if (eIdx !== -1) {
+        sim.arena.entities.splice(eIdx, 1);
+      }
+    }
+    const eventId = `del_${objectId}_${sim.currentTick}`;
+    const event = {
+      eventId,
+      objectId,
+      tick: sim.currentTick
+    };
+    sim.pendingObjectDeletionEvents.set(eventId, {
+      event,
+      createdTick: sim.currentTick,
+      acks: /* @__PURE__ */ new Set()
+    });
+  }
+  /**
+   * Acknowledges that a client character has received and processed object deletion events.
+   */
+  static acknowledgeObjectDeletionEvents(sim, clientCharId, eventIds) {
+    if (!eventIds || !Array.isArray(eventIds)) return;
+    for (const id of eventIds) {
+      const pending = sim.pendingObjectDeletionEvents.get(id);
+      if (pending) {
+        pending.acks.add(clientCharId);
+        const allClientChars = Array.from(sim.characters.keys()).filter((k) => k !== "dummy-1");
+        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
+        if (allAcked) {
+          sim.pendingObjectDeletionEvents.delete(id);
+        }
+      }
+    }
+  }
+  /**
+   * Returns all active unacknowledged object deletion events for continuous broadcast.
+   */
+  static getActiveObjectDeletionEvents(sim) {
+    const active = [];
+    const nowTick = sim.currentTick;
+    for (const [id, record] of sim.pendingObjectDeletionEvents.entries()) {
+      if (nowTick - record.createdTick > 300) {
+        sim.pendingObjectDeletionEvents.delete(id);
+      } else {
+        active.push(record.event);
+      }
+    }
+    return active;
+  }
+}
+class ServerReliableActionProcessor {
+  /**
+   * Authoritatively processes high-priority reliable action commands (pickup, drop, throw, punch).
+   */
+  static processReliableActions(sim, actions, processedActionIds, recentAckedActionIds) {
+    const newlyAcked = [];
+    for (const act of actions) {
+      newlyAcked.push(act.actionId);
+      if (!recentAckedActionIds.includes(act.actionId)) {
+        recentAckedActionIds.push(act.actionId);
+        if (recentAckedActionIds.length > 100) {
+          recentAckedActionIds.shift();
+        }
+      }
+      if (processedActionIds.has(act.actionId)) {
+        continue;
+      }
+      processedActionIds.add(act.actionId);
+      if (processedActionIds.size > 2e3) {
+        const first = processedActionIds.values().next().value;
+        if (first) processedActionIds.delete(first);
+      }
+      let char = sim.characters.get(act.playerId || "keyboard");
+      if (!char && act.playerId) {
+        char = sim.allCharacters.find(
+          (c) => c.playerId === act.playerId || c.playerId.endsWith(`:${act.playerId}`) || c.id === act.playerId
+        );
+      }
+      if (!char) {
+        char = sim.allCharacters[0];
+      }
+      if (!char) continue;
+      if (act.type === "pickup") {
+        if (!char.heldObject && char.pickupModule && act.targetObjectId) {
+          const target = sim.objects.find((o) => o.id === act.targetObjectId);
+          if (target && (!target.isHeld || target.heldBy === char)) {
+            let itemToHold = target;
+            if (target.spawnerModule && target.spawnerModule.enabled) {
+              const clone = target.spawnerModule.triggerClone(target, sim.arena, sim.objects);
+              if (clone) itemToHold = clone;
+            }
+            char.pickupModule.pickup(char, itemToHold);
+            itemToHold.isHeld = true;
+            itemToHold.heldBy = char;
+            char.heldObject = itemToHold;
+            if (sim.onGrabResult) {
+              sim.onGrabResult({
+                type: "grab_result",
+                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                tick: sim.currentTick,
+                targetObjectId: itemToHold.id,
+                playerId: char.playerId || char.id
+              });
+            }
+          }
+        }
+      } else if (act.type === "drop") {
+        if (char.heldObject && char.pickupModule) {
+          char.pickupModule.drop(char);
+        }
+      } else if (act.type === "throw") {
+        const throwTarget = char.heldObject || (act.targetObjectId ? sim.objects.find((o) => o.id === act.targetObjectId && (!o.isHeld || o.heldBy === char)) : null);
+        if (throwTarget && char.throwModule) {
+          if (!char.heldObject) {
+            char.heldObject = throwTarget;
+            throwTarget.isHeld = true;
+            throwTarget.heldBy = char;
+          }
+          const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
+          const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
+          const launchVel = act.launchVx !== void 0 ? {
+            vx: act.launchVx,
+            vy: act.launchVy,
+            vz: act.launchVz ?? 0
+          } : void 0;
+          const launchPos = act.launchStartX !== void 0 ? {
+            x: act.launchStartX,
+            y: act.launchStartY,
+            z: act.launchStartZ ?? 0
+          } : void 0;
+          if (char.energyPool && launchVel) {
+            const pool = char.energyPool;
+            const heldMass = throwTarget.hasMass ? Math.max(0.1, throwTarget.mass) : 1;
+            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
+            const neededJoules = 0.5 * heldMass * launchSpeed * launchSpeed / poolEfficiency + 100;
+            pool.isExhausted = false;
+            const curStam = pool.getCurrentStamina(char.properties);
+            if (curStam < neededJoules) {
+              pool.currentStaminaProp.set(neededJoules, char.properties);
+            }
+            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
+              pool.currentEnergyProp.set(neededJoules, char.properties);
+            }
+            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
+              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
+            }
+          }
+          const thrown = char.throwModule.throwHeldObject(
+            char,
+            aimX,
+            aimY,
+            sim.arena,
+            void 0,
+            void 0,
+            act.isLockHeld ?? false,
+            launchVel,
+            launchPos
+          );
+          if (thrown) {
+            char._lastServerThrowTime = performance.now();
+            char._pendingThrowUntilMs = 0;
+          }
+        }
+      } else if (act.type === "punch") {
+        if (char.meleeModule && char.meleeModule.enabled) {
+          const aimX = act.aimX !== void 0 ? act.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
+          const aimY = act.aimY !== void 0 ? act.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
+          const dirX = aimX - char.position.x;
+          const dirY = aimY - char.position.y;
+          const mag = Math.hypot(dirX, dirY);
+          const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(char.facingAngle);
+          const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(char.facingAngle);
+          char.facingAngle = Math.atan2(normDirY, normDirX);
+          const candidates = [...sim.allCharacters.filter((c) => c !== char), ...sim.objects];
+          char.melee(sim.arena, candidates, normDirX, normDirY);
+        }
+      }
+    }
+    return newlyAcked;
+  }
+}
+class ServerCharacterSync {
+  /**
+   * Synchronizes all authoritative server characters from client telemetry packets.
+   */
+  static syncCharactersFromPacket(sim, clientChars) {
+    if (!Array.isArray(clientChars) || clientChars.length === 0) return;
+    for (const c of clientChars) {
+      ServerCharacterSync.syncCharacterFromPacket(sim, c);
+    }
+  }
+  /**
+   * Synchronizes the authoritative server character from client telemetry packets.
+   * Updates velocity and coordinates directly so the server player ghost stays locked to the client.
+   */
+  static syncCharacterFromPacket(sim, clientChar) {
+    if (!clientChar) return;
+    const charId = clientChar.id || "keyboard";
+    const sChar = sim.characters.get(charId);
+    if (!sChar) {
+      return;
+    }
+    if (sChar.isRespawnLocked && sChar.authoritativeRespawnPos) {
+      const respawnPos = sChar.authoritativeRespawnPos;
+      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
+      if (distToRespawn <= 1.5) {
+        sChar.isRespawnLocked = false;
+      } else {
+        sChar.position.x = respawnPos.x;
+        sChar.position.y = respawnPos.y;
+        sChar.position.z = respawnPos.z;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+    }
+    for (const pending of sim.pendingDeathRespawnEvents.values()) {
+      const isTarget = pending.event.targetEntityId === charId || pending.event.targetEntityId === sChar.id || pending.event.targetEntityId === sChar.playerId || pending.event.targetEntityId === sChar.serverCharId;
+      const hasAcked = pending.acks.has(charId) || pending.acks.has(sChar.id) || sChar.playerId && pending.acks.has(sChar.playerId) || sChar.serverCharId && pending.acks.has(sChar.serverCharId);
+      if (isTarget && !hasAcked) {
+        sChar.position.x = pending.event.respawnX;
+        sChar.position.y = pending.event.respawnY;
+        sChar.position.z = pending.event.respawnZ;
+        sChar.velocity.x = 0;
+        sChar.velocity.y = 0;
+        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
+        return;
+      }
+    }
+    const now = performance.now();
+    const hasRecentImpact = sChar.isUnderKnockback || sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
+    const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
+    if (hasRecentImpact) {
+      if (isClientMoving) {
+        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
+        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
+      }
+    } else {
+      sChar.velocity.x = clientChar.vx;
+      sChar.velocity.y = clientChar.vy;
+    }
+    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
+      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
+      const isServerGrounded = sChar.isRestingOnSurface || Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8;
+      if (isServerGrounded && !sChar.isClimbing && !sChar.isHeld && !hasRecentImpact && clientChar.vz > 1) {
+        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : void 0;
+        sChar.jump(sim.arena, moveInput);
+      }
+      if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
+        sChar.verticalVelocity = clientChar.vz;
+      }
+    }
+    const dx = clientChar.x - sChar.position.x;
+    const dy = clientChar.y - sChar.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 2.5) {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    } else if (hasRecentImpact) {
+      if (isClientMoving) {
+        sChar.position.x += dx * 0.25;
+        sChar.position.y += dy * 0.25;
+      }
+      sChar.position.z = clientChar.z;
+    } else {
+      sChar.position.x = clientChar.x;
+      sChar.position.y = clientChar.y;
+      sChar.position.z = clientChar.z;
+    }
+    if (clientChar.surfaceZ !== void 0) {
+      sChar.supportingSurfaceHeight = clientChar.surfaceZ;
+    }
+    if (clientChar.isGrounded) {
+      const surfaceZ = clientChar.surfaceZ ?? 0;
+      if (sChar.position.z <= surfaceZ + 0.1) {
+        sChar.position.z = surfaceZ;
+        sChar.verticalVelocity = 0;
+      }
+    }
+    if (clientChar.isClimbing !== void 0) {
+      sChar.isClimbing = clientChar.isClimbing;
+    }
+    if (clientChar.facingAngle !== void 0) {
+      sChar.facingAngle = clientChar.facingAngle;
+    }
+    if (clientChar.isUsingItem !== void 0) {
+      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
+    }
+    if (clientChar.heldObjectId) {
+      if (sChar.hasDiedAwaitingNewPickup) ;
+      else {
+        const sObj = sim.objects.find((o) => o.id === clientChar.heldObjectId);
+        if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
+          const relPos = sChar.calculateHeldObjectPosition(sim.arena);
+          sObj.position.x = relPos.x;
+          sObj.position.y = relPos.y;
+          sObj.position.z = relPos.z;
+          sObj.velocity.x = sChar.velocity.x;
+          sObj.velocity.y = sChar.velocity.y;
+          sObj.verticalVelocity = 0;
+        }
+      }
+    } else if (sChar.heldObject && clientChar.isHolding === false) {
+      const hasPendingThrow = (sChar._pendingThrowUntilMs ?? 0) > now || now - (sChar._lastServerThrowTime ?? 0) < 250;
+      if (hasPendingThrow) {
+        return;
+      }
+      const sObj = sChar.heldObject;
+      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
+        sim.triggerObjectDeletion(sObj.id);
+      } else {
+        sObj.isHeld = false;
+        sObj.heldBy = null;
+        sChar.heldObject = null;
+      }
+    }
+  }
+}
+class ServerObjectSync {
+  /**
+   * Synchronizes server simulation objects from incoming client telemetry packets.
+   */
+  static syncObjectsFromPacket(sim, clientObjects, senderClientId) {
+    if (!clientObjects || clientObjects.length === 0) return;
+    const now = performance.now();
+    for (const cObj of clientObjects) {
+      if (sim.deletedObjectIds.has(cObj.id)) {
+        continue;
+      }
+      if (cObj.remainingEnergyJoules !== void 0 && cObj.remainingEnergyJoules <= 1e-3) {
+        sim.triggerObjectDeletion(cObj.id);
+        continue;
+      }
+      let sObj = sim.objects.find((o) => o.id === cObj.id);
+      if (!sObj) {
+        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : void 0);
+        const prefab = pId ? sim.prefabManager.get(pId) : void 0;
+        if (prefab) {
+          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, sim.arena);
+          sObj.id = cObj.id;
+          sObj.velocity.x = cObj.vx;
+          sObj.velocity.y = cObj.vy;
+          sObj.verticalVelocity = cObj.vz ?? 0;
+          if (cObj.name !== void 0) sObj.name = cObj.name;
+          if (cObj.color !== void 0) sObj.color = cObj.color;
+          if (cObj.shape !== void 0) sObj.visualShape = cObj.shape;
+          if (cObj.radius !== void 0) {
+            sObj.colliderRadius = cObj.radius;
+            if (sObj.consumableModule) {
+              sObj.consumableModule.initialColliderRadius = cObj.radius;
+            }
+          }
+          if (cObj.mass !== void 0) sObj.mass = cObj.mass;
+          if (cObj.bounceMod !== void 0) sObj.bounceMod = cObj.bounceMod;
+        } else {
+          sObj = new GameObject({
+            id: cObj.id,
+            name: cObj.name || "Object",
+            position: { x: cObj.x, y: cObj.y, z: cObj.z },
+            mass: cObj.mass ?? 1,
+            bounceMod: cObj.bounceMod ?? 0,
+            color: cObj.color || "#38bdf8",
+            colliderRadius: cObj.radius || 0.35,
+            visualShape: cObj.shape || "circle",
+            consumableModule: cObj.consumableTag ? new ConsumableModule({
+              tag: cObj.consumableTag,
+              totalEnergyJoules: cObj.totalEnergyJoules ?? 4e3,
+              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 4e3
+            }) : void 0
+          });
+        }
+        sim.objects.push(sObj);
+        sim.arena.entities = [...sim.allCharacters, ...sim.objects];
+      }
+      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0 && !sObj.consumableModule.unlimited) {
+        const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
+        const clientRemaining = cObj.remainingEnergyJoules;
+        if (sObj.isHeld) {
+          if (clientRemaining < curServerRemaining) {
+            const energyEaten = curServerRemaining - clientRemaining;
+            const holder = sObj.heldBy instanceof Character ? sObj.heldBy : null;
+            if (holder && holder.energyPool && holder.energyPool.enabled) {
+              const curPool = holder.energyPool.getCurrentEnergy(holder.properties);
+              const maxPool = holder.energyPool.getMaxEnergy(holder.properties);
+              holder.energyPool.currentEnergyProp.set(Math.min(maxPool, curPool + energyEaten), holder.properties);
+            }
+            const healRate = sObj.consumableModule.getHealRate(sObj.properties);
+            const consumeRate = sObj.consumableModule.getConsumeRate(sObj.properties);
+            if (healRate > 0 && consumeRate > 0 && holder && holder.healthModule && holder.healthModule.enabled) {
+              const secondsEaten = energyEaten / consumeRate;
+              holder.healthModule.heal(healRate * secondsEaten, holder.properties, {
+                id: "consumable_nutrition",
+                name: sObj.consumableModule.tag ? `Consumable (${sObj.consumableModule.tag})` : "Consumable",
+                type: "continuous",
+                rate: healRate,
+                color: "#22c55e",
+                isHeal: true
+              });
+            }
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+            const currentScale = sObj.consumableModule.getScale(sObj.properties);
+            const initialRadius = sObj.consumableModule.initialColliderRadius || sObj.colliderRadius;
+            sObj.colliderRadius = Math.max(sObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
+            if (sObj.colliderModule) sObj.colliderModule.radius = sObj.colliderRadius;
+          } else if (Math.abs(clientRemaining - curServerRemaining) > 100) {
+            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+          }
+        } else {
+          sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
+        }
+      }
+      if (cObj.isHeld) {
+        const holderId = cObj.heldBy || senderClientId;
+        const sChar = holderId ? sim.characters.get(holderId) || sim.allCharacters.find((c) => c.playerId === holderId || c.id === holderId) : null;
+        if (sChar) {
+          if (sChar.hasDiedAwaitingNewPickup) {
+            continue;
+          }
+          if (sObj.isHeld && sObj.heldBy && sObj.heldBy !== sChar) {
+            continue;
+          }
+          sObj.isHeld = true;
+          sObj.heldBy = sChar;
+          sChar.heldObject = sObj;
+          const relPos = sChar.calculateHeldObjectPosition(sim.arena);
+          sObj.position.x = relPos.x;
+          sObj.position.y = relPos.y;
+          sObj.position.z = relPos.z;
+          sObj.velocity.x = sChar.velocity.x;
+          sObj.velocity.y = sChar.velocity.y;
+          sObj.verticalVelocity = 0;
+        }
+        continue;
+      } else if (sObj.isHeld) {
+        const holderChar = sObj.heldBy instanceof Character ? sObj.heldBy : null;
+        const holderId = holderChar ? holderChar.playerId || holderChar.id : null;
+        if (senderClientId && holderId && holderId !== senderClientId) {
+          continue;
+        }
+        if (holderChar) {
+          const hasPendingThrow = (holderChar._pendingThrowUntilMs ?? 0) > now || now - (holderChar._lastServerThrowTime ?? 0) < 250;
+          if (hasPendingThrow) {
+            continue;
+          }
+        }
+        sObj.isHeld = false;
+        if (sObj.heldBy && sObj.heldBy instanceof Character) {
+          sObj.heldBy.heldObject = null;
+        }
+        sObj.heldBy = null;
+        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 1e-3)) {
+          sim.triggerObjectDeletion(sObj.id);
+          continue;
+        }
+      }
+      continue;
+    }
+  }
+  /**
+   * Settles a consumable the client reports as fully eaten.
+   */
+  static settleClientConsumedObject(sim, serverCharId, objectId) {
+    var _a;
+    const sChar = sim.characters.get(serverCharId);
+    const obj = sim.objects.find((o) => o.id === objectId) || (((_a = sChar == null ? void 0 : sChar.heldObject) == null ? void 0 : _a.id) === objectId ? sChar.heldObject : null);
+    const holder = obj && obj.heldBy instanceof Character ? obj.heldBy : sChar;
+    const isHolder = Boolean(holder && (holder === sChar || holder.id === serverCharId || holder.playerId === serverCharId || holder.serverCharId === serverCharId));
+    if (obj && holder && isHolder && obj.consumableModule) {
+      if (obj.consumableModule.unlimited) return;
+      const cm = obj.consumableModule;
+      const remaining = cm.getRemainingEnergy(obj.properties);
+      if (remaining > 1e-3) {
+        if (holder.energyPool && holder.energyPool.enabled) {
+          const pool = holder.energyPool;
+          const cur = pool.getCurrentEnergy(holder.properties);
+          const max = pool.getMaxEnergy(holder.properties);
+          pool.currentEnergyProp.set(Math.min(max, cur + remaining), holder.properties);
+        }
+        const healRate = cm.getHealRate(obj.properties);
+        if (healRate > 0 && holder.healthModule && holder.healthModule.enabled) {
+          const secondsLeft = remaining / cm.getConsumeRate(obj.properties);
+          holder.healthModule.heal(healRate * secondsLeft, holder.properties, {
+            id: "consumable_nutrition",
+            name: cm.tag ? `Consumable (${cm.tag})` : "Consumable",
+            type: "continuous",
+            rate: healRate,
+            color: "#22c55e",
+            isHeal: true
+          });
+        }
+        cm.remainingEnergyJoulesProp.set(0, obj.properties);
+      }
+    }
+    sim.triggerObjectDeletion(objectId);
+  }
+}
 class ServerGameSimulation {
   constructor(config) {
     __publicField(this, "arena");
@@ -10056,224 +10888,18 @@ class ServerGameSimulation {
   get allCharacters() {
     return Array.from(this.characters.values());
   }
-  /**
-   * Initializes or syncs the server simulation world from the client arena and entities.
-   */
   initializeFromWorld(clientArena, clientCharacters, clientObjects) {
-    this.arena.width = clientArena.width;
-    this.arena.height = clientArena.height;
-    this.arena.tileSize = clientArena.tileSize;
-    this.arena.setStandardWallHeight(clientArena.wallHeight);
-    this.arena.tileGrid = clientArena.tileGrid.map((row) => [...row]);
-    this.arena.rebuildWalls();
-    this.characters.clear();
-    for (const c of clientCharacters) {
-      const serverChar = new Character({
-        x: c.position.x,
-        y: c.position.y,
-        color: c.playerColor || c.color || "#f59e0b",
-        colliderRadius: c.colliderRadius,
-        mass: c.baseMass || 1.2,
-        strength: c.strength,
-        playerId: c.playerId || "keyboard",
-        playerNumber: c.playerNumber || 1,
-        name: c.name || "Server Character"
-      });
-      serverChar.position.z = c.position.z;
-      serverChar.velocity.x = c.velocity.x;
-      serverChar.velocity.y = c.velocity.y;
-      serverChar.verticalVelocity = c.verticalVelocity;
-      serverChar.facingAngle = c.facingAngle;
-      serverChar.isClimbing = c.isClimbing;
-      serverChar.isSprinting = c.isSprinting;
-      this.characters.set(serverChar.playerId, serverChar);
-    }
-    this.objects = clientObjects.map((o) => {
-      const serverObj = new GameObject({
-        id: o.id,
-        name: o.name,
-        position: { x: o.position.x, y: o.position.y, z: o.position.z },
-        velocity: { x: o.velocity.x, y: o.velocity.y },
-        verticalVelocity: o.verticalVelocity,
-        mass: o.mass,
-        colliderRadius: o.colliderRadius,
-        color: o.color,
-        bounceMod: o.bounceMod,
-        staticGroundFrictionMod: o.staticGroundFrictionMod,
-        dynamicGroundFrictionMod: o.dynamicGroundFrictionMod,
-        visualShape: o.visualShape,
-        rollModule: o.rollModule ? new RollModule({
-          rollResistance: o.rollModule.rollResistance,
-          angularVelocity: { ...o.rollModule.angularVelocity },
-          bumpyRollEnabled: o.rollModule.bumpyRollEnabled,
-          bumpiness: o.rollModule.bumpiness,
-          seed: o.rollModule.seed
-        }) : void 0,
-        consumableModule: o.consumableModule ? new ConsumableModule({
-          tag: o.consumableModule.tag,
-          totalEnergyJoules: o.consumableModule.getTotalEnergy(o.properties),
-          remainingEnergyJoules: o.consumableModule.getRemainingEnergy(o.properties),
-          consumeRateWatts: o.consumableModule.getConsumeRate(o.properties),
-          healRate: o.consumableModule.getHealRate(o.properties),
-          minScaleFloor: o.consumableModule.minScaleFloor,
-          minRadiusFloor: o.consumableModule.minRadiusFloor,
-          enabled: o.consumableModule.enabled
-        }) : void 0
-      });
-      serverObj.isSleeping = o.isSleeping;
-      return serverObj;
-    });
-    for (const clientChar of clientCharacters) {
-      if (clientChar.heldObject) {
-        const sChar = this.characters.get(clientChar.playerId || "keyboard");
-        const sObj = this.objects.find((o) => o.id === clientChar.heldObject.id);
-        if (sChar && sObj) {
-          sChar.heldObject = sObj;
-          sObj.isHeld = true;
-          sObj.heldBy = sChar;
-        }
-      }
-    }
-    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-    this.jitterBuffer.clear();
+    ServerWorldInitializer.initializeFromWorld(this, clientArena, clientCharacters, clientObjects);
   }
-  /**
-   * Initializes default standard arena and freebodies if starting standalone without client.
-   */
   initializeDefaultScenario() {
-    this.arena.loadWallPreset(quarryPreset.id);
-    const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
-    const player1 = new Character({
-      x: p1Spawn.x,
-      y: p1Spawn.y,
-      color: "#f59e0b",
-      colliderRadius: 0.44,
-      mass: 1.2,
-      strength: 1,
-      playerId: "player-1",
-      playerNumber: 1,
-      name: "Server Player 1"
-    });
-    player1.position.z = p1Spawn.z ?? 0;
-    this.characters.set(player1.playerId, player1);
-    const dummy = new Character({
-      id: "dummy-1",
-      x: QUARRY_DUMMY_SPAWN.x,
-      y: QUARRY_DUMMY_SPAWN.y,
-      color: "#64748b",
-      colliderRadius: 0.44,
-      mass: 1.5,
-      strength: 0,
-      name: "Sparring Dummy",
-      controllerType: "none",
-      role: "dummy"
-    });
-    this.characters.set(dummy.id, dummy);
-    this.objects = createQuarryStones();
-    this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-    this.jitterBuffer.clear();
+    ServerWorldInitializer.initializeDefaultScenario(this);
   }
-  /**
-   * Initializes or hot-reloads the authoritative server simulation world from a persistent WorldConfig.
-   */
   initializeFromConfig(config) {
-    var _a;
-    if (config.arena) {
-      if (config.arena.width && config.arena.height) {
-        this.arena.width = config.arena.width;
-        this.arena.height = config.arena.height;
-      }
-      if (config.arena.wallHeight !== void 0) {
-        this.arena.setStandardWallHeight(config.arena.wallHeight);
-      }
-      if (config.arena.tileGrid) {
-        this.arena.tileGrid = config.arena.tileGrid.map((row) => [...row]);
-        this.arena.rebuildWalls();
-      } else if (config.arena.presetId) {
-        this.arena.loadWallPreset(config.arena.presetId);
-      }
-    }
-    if (config.globalPhysics) {
-      if (config.globalPhysics.gravity !== void 0) {
-        this.arena.gravity = config.globalPhysics.gravity;
-      }
-      if (config.globalPhysics.collisionDamageScale !== void 0) {
-        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
-      }
-      if (config.globalPhysics.collisionMode) {
-        this.collisionMode = config.globalPhysics.collisionMode;
-      }
-    }
-    if (this.characters.size === 0) {
-      const p1Spawn = HealthModule.RESPAWN_SPAWNS[0];
-      const player1 = new Character({
-        x: p1Spawn.x,
-        y: p1Spawn.y,
-        color: "#f59e0b",
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1,
-        playerId: "player-1",
-        playerNumber: 1,
-        name: "Server Player 1"
-      });
-      player1.position.z = p1Spawn.z ?? 0;
-      if (config.player) {
-        applyCharacterConfig(player1, config.player);
-        player1.playerId = "player-1";
-        player1.playerNumber = 1;
-      }
-      this.characters.set(player1.playerId, player1);
-      const dummy = new Character({
-        id: "dummy-1",
-        x: QUARRY_DUMMY_SPAWN.x,
-        y: QUARRY_DUMMY_SPAWN.y,
-        color: "#64748b",
-        colliderRadius: 0.44,
-        mass: 1.5,
-        strength: 0,
-        name: "Sparring Dummy",
-        controllerType: "none",
-        role: "dummy"
-      });
-      this.characters.set(dummy.id, dummy);
-    } else if (config.player) {
-      for (const char of this.characters.values()) {
-        if (((_a = char.characterModule) == null ? void 0 : _a.role) === "dummy" || char.controllerType === "none") continue;
-        const savedPlayerId = char.playerId;
-        const savedPlayerNum = char.playerNumber;
-        const savedColor = char.color;
-        const savedName = char.name;
-        const hasCustom = char.hasCustomName;
-        applyCharacterConfig(char, config.player);
-        char.playerId = savedPlayerId;
-        char.playerNumber = savedPlayerNum;
-        char.color = savedColor;
-        if (hasCustom) {
-          char.name = savedName;
-          char.hasCustomName = true;
-        }
-      }
-    }
-    if (config.prefabs && Array.isArray(config.prefabs)) {
-      this.prefabManager.loadFromConfig(config.prefabs);
-    }
-    if (config.spawners && Array.isArray(config.spawners)) {
-      this.sceneSpawnerManager.loadFromConfig(config.spawners);
-    }
-    if (this.objects.length === 0) {
-      if (config.objects && config.objects.length > 0) {
-        this.objects = config.objects.map(deserializeGameObject);
-      } else {
-        this.objects = createQuarryStones();
-      }
-      this.arena.syncEntitiesWithWalls([...this.allCharacters, ...this.objects]);
-      this.jitterBuffer.clear();
-    }
+    ServerWorldInitializer.initializeFromConfig(this, config);
   }
   /**
    * Enqueues an incoming input packet from a player into the server jitter buffer.
-   * Also tracks client acknowledged server ticks (Phase 7.3).
+   * Also tracks client acknowledged server ticks (Phase 7.3) and pending throw guard window.
    */
   queueInput(packet) {
     if (packet.lastReceivedServerTick !== void 0) {
@@ -10282,26 +10908,21 @@ class ServerGameSimulation {
         this.clientAckedTicks.set(packet.playerId, packet.lastReceivedServerTick);
       }
     }
-    if (packet.playerId && !this.characters.has(packet.playerId)) {
+    const sChar = packet.playerId ? this.characters.get(packet.playerId) : void 0;
+    if (packet.playerId && !sChar) {
       return false;
+    }
+    if (sChar && packet.isThrow) {
+      sChar._pendingThrowUntilMs = performance.now() + 250;
     }
     return this.jitterBuffer.push(packet);
   }
-  /**
-   * Retrieves the highest server tick confirmed acknowledged by a client (Phase 7.3).
-   */
   getClientAckedTick(playerId) {
     return this.clientAckedTicks.get(playerId) ?? 0;
   }
-  /**
-   * Retrieves telemetry stats for a player's jitter buffer.
-   */
   getJitterStats(playerId) {
     return this.jitterBuffer.getStats(playerId);
   }
-  /**
-   * Retrieves telemetry stats for all active jitter buffers.
-   */
   getAllJitterStats() {
     return this.jitterBuffer.getAllStats();
   }
@@ -10318,572 +10939,55 @@ class ServerGameSimulation {
       this.latestClockSync.set("keyboard", syncPacket);
     }
   }
-  /**
-   * Retrieves the latest ClockSyncPacket for a player.
-   */
   getLatestClockSync(playerId) {
     return this.latestClockSync.get(playerId) ?? null;
   }
-  /**
-   * Synchronizes server simulation objects from incoming client telemetry packets.
-   * Synchronizes positions AND velocities, 3D roll angular velocity, and held/resting states
-   * so the server runs physics independently with accurate momentum and coordinates.
-   */
   syncObjectsFromPacket(clientObjects, senderClientId) {
-    if (!clientObjects || clientObjects.length === 0) return;
-    for (const cObj of clientObjects) {
-      if (this.deletedObjectIds.has(cObj.id)) {
-        continue;
-      }
-      if (cObj.remainingEnergyJoules !== void 0 && cObj.remainingEnergyJoules <= 1e-3) {
-        this.triggerObjectDeletion(cObj.id);
-        continue;
-      }
-      let sObj = this.objects.find((o) => o.id === cObj.id);
-      if (!sObj) {
-        const pId = cObj.prefabId || (cObj.name === "Apple" || cObj.id.startsWith("apple-") ? "prefab_apple" : void 0);
-        const prefab = pId ? this.prefabManager.get(pId) : void 0;
-        if (prefab) {
-          sObj = prefab.instantiate({ x: cObj.x, y: cObj.y, z: cObj.z }, this.arena);
-          sObj.id = cObj.id;
-          sObj.velocity.x = cObj.vx;
-          sObj.velocity.y = cObj.vy;
-          sObj.verticalVelocity = cObj.vz ?? 0;
-          if (cObj.name !== void 0) sObj.name = cObj.name;
-          if (cObj.color !== void 0) sObj.color = cObj.color;
-          if (cObj.shape !== void 0) sObj.visualShape = cObj.shape;
-          if (cObj.radius !== void 0) {
-            sObj.colliderRadius = cObj.radius;
-            if (sObj.consumableModule) {
-              sObj.consumableModule.initialColliderRadius = cObj.radius;
-            }
-          }
-          if (cObj.mass !== void 0) sObj.mass = cObj.mass;
-          if (cObj.bounceMod !== void 0) sObj.bounceMod = cObj.bounceMod;
-        } else {
-          sObj = new GameObject({
-            id: cObj.id,
-            name: cObj.name || "Object",
-            position: { x: cObj.x, y: cObj.y, z: cObj.z },
-            mass: cObj.mass ?? 1,
-            bounceMod: cObj.bounceMod ?? 0,
-            color: cObj.color || "#38bdf8",
-            colliderRadius: cObj.radius || 0.35,
-            visualShape: cObj.shape || "circle",
-            consumableModule: cObj.consumableTag ? new ConsumableModule({
-              tag: cObj.consumableTag,
-              totalEnergyJoules: cObj.totalEnergyJoules ?? 4e3,
-              remainingEnergyJoules: cObj.remainingEnergyJoules ?? cObj.totalEnergyJoules ?? 4e3
-            }) : void 0
-          });
-        }
-        this.objects.push(sObj);
-        this.arena.entities = [...this.allCharacters, ...this.objects];
-      }
-      if (sObj.consumableModule && cObj.remainingEnergyJoules !== void 0 && !sObj.consumableModule.unlimited) {
-        const curServerRemaining = sObj.consumableModule.getRemainingEnergy(sObj.properties);
-        const clientRemaining = cObj.remainingEnergyJoules;
-        if (sObj.isHeld) {
-          if (clientRemaining < curServerRemaining) {
-            const energyEaten = curServerRemaining - clientRemaining;
-            const holder = sObj.heldBy instanceof Character ? sObj.heldBy : null;
-            if (holder && holder.energyPool && holder.energyPool.enabled) {
-              const curPool = holder.energyPool.getCurrentEnergy(holder.properties);
-              const maxPool = holder.energyPool.getMaxEnergy(holder.properties);
-              holder.energyPool.currentEnergyProp.set(Math.min(maxPool, curPool + energyEaten), holder.properties);
-            }
-            const healRate = sObj.consumableModule.getHealRate(sObj.properties);
-            const consumeRate = sObj.consumableModule.getConsumeRate(sObj.properties);
-            if (healRate > 0 && consumeRate > 0 && holder && holder.healthModule && holder.healthModule.enabled) {
-              const secondsEaten = energyEaten / consumeRate;
-              holder.healthModule.heal(healRate * secondsEaten, holder.properties, {
-                id: "consumable_nutrition",
-                name: sObj.consumableModule.tag ? `Consumable (${sObj.consumableModule.tag})` : "Consumable",
-                type: "continuous",
-                rate: healRate,
-                color: "#22c55e",
-                isHeal: true
-              });
-            }
-            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
-            const currentScale = sObj.consumableModule.getScale(sObj.properties);
-            const initialRadius = sObj.consumableModule.initialColliderRadius || sObj.colliderRadius;
-            sObj.colliderRadius = Math.max(sObj.consumableModule.minRadiusFloor, initialRadius * currentScale);
-            if (sObj.colliderModule) sObj.colliderModule.radius = sObj.colliderRadius;
-          } else if (Math.abs(clientRemaining - curServerRemaining) > 100) {
-            sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
-          }
-        } else {
-          sObj.consumableModule.remainingEnergyJoulesProp.set(clientRemaining, sObj.properties);
-        }
-      }
-      if (cObj.isHeld) {
-        const holderId = cObj.heldBy || senderClientId;
-        const sChar = holderId ? this.characters.get(holderId) || this.allCharacters.find((c) => c.playerId === holderId || c.id === holderId) : null;
-        if (sChar) {
-          if (sChar.hasDiedAwaitingNewPickup) {
-            continue;
-          }
-          if (sObj.isHeld && sObj.heldBy && sObj.heldBy !== sChar) {
-            continue;
-          }
-          sObj.isHeld = true;
-          sObj.heldBy = sChar;
-          sChar.heldObject = sObj;
-          const relPos = sChar.calculateHeldObjectPosition(this.arena);
-          sObj.position.x = relPos.x;
-          sObj.position.y = relPos.y;
-          sObj.position.z = relPos.z;
-          sObj.velocity.x = sChar.velocity.x;
-          sObj.velocity.y = sChar.velocity.y;
-          sObj.verticalVelocity = 0;
-        }
-        continue;
-      } else if (sObj.isHeld) {
-        const holderId = sObj.heldBy instanceof Character ? sObj.heldBy.playerId || sObj.heldBy.id : null;
-        if (senderClientId && holderId && holderId !== senderClientId) {
-          continue;
-        }
-        sObj.isHeld = false;
-        if (sObj.heldBy && sObj.heldBy instanceof Character) {
-          sObj.heldBy.heldObject = null;
-        }
-        sObj.heldBy = null;
-        if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 1e-3)) {
-          this.triggerObjectDeletion(sObj.id);
-          continue;
-        }
-      }
-      continue;
-    }
+    ServerObjectSync.syncObjectsFromPacket(this, clientObjects, senderClientId);
   }
-  /**
-   * Synchronizes all authoritative server characters from client telemetry packets.
-   */
   syncCharactersFromPacket(clientChars) {
-    if (!Array.isArray(clientChars) || clientChars.length === 0) return;
-    for (const c of clientChars) {
-      this.syncCharacterFromPacket(c);
-    }
+    ServerCharacterSync.syncCharactersFromPacket(this, clientChars);
   }
-  /**
-   * Synchronizes the authoritative server character from client telemetry packets.
-   * Updates velocity and coordinates directly so the server player ghost stays locked to the client.
-   * If a character is not yet registered on the server, dynamically instantiates it.
-   */
   syncCharacterFromPacket(clientChar) {
-    if (!clientChar) return;
-    const charId = clientChar.id || "keyboard";
-    const sChar = this.characters.get(charId);
-    if (!sChar) {
-      return;
-    }
-    if (sChar.isRespawnLocked && sChar.authoritativeRespawnPos) {
-      const respawnPos = sChar.authoritativeRespawnPos;
-      const distToRespawn = Math.hypot(clientChar.x - respawnPos.x, clientChar.y - respawnPos.y);
-      if (distToRespawn <= 1.5) {
-        sChar.isRespawnLocked = false;
-      } else {
-        sChar.position.x = respawnPos.x;
-        sChar.position.y = respawnPos.y;
-        sChar.position.z = respawnPos.z;
-        sChar.velocity.x = 0;
-        sChar.velocity.y = 0;
-        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
-        return;
-      }
-    }
-    for (const pending of this.pendingDeathRespawnEvents.values()) {
-      const isTarget = pending.event.targetEntityId === charId || pending.event.targetEntityId === sChar.id || pending.event.targetEntityId === sChar.playerId || pending.event.targetEntityId === sChar.serverCharId;
-      const hasAcked = pending.acks.has(charId) || pending.acks.has(sChar.id) || sChar.playerId && pending.acks.has(sChar.playerId) || sChar.serverCharId && pending.acks.has(sChar.serverCharId);
-      if (isTarget && !hasAcked) {
-        sChar.position.x = pending.event.respawnX;
-        sChar.position.y = pending.event.respawnY;
-        sChar.position.z = pending.event.respawnZ;
-        sChar.velocity.x = 0;
-        sChar.velocity.y = 0;
-        if (sChar.hasVerticalVelocity) sChar.verticalVelocity = 0;
-        return;
-      }
-    }
-    const now = performance.now();
-    const hasRecentImpact = sChar.isUnderKnockback || sChar.lastCollisionTime > 0 && now - sChar.lastCollisionTime < 400;
-    const isClientMoving = Math.hypot(clientChar.vx, clientChar.vy) > 0.1;
-    if (hasRecentImpact) {
-      if (isClientMoving) {
-        sChar.velocity.x += (clientChar.vx - sChar.velocity.x) * 0.3;
-        sChar.velocity.y += (clientChar.vy - sChar.velocity.y) * 0.3;
-      }
-    } else {
-      sChar.velocity.x = clientChar.vx;
-      sChar.velocity.y = clientChar.vy;
-    }
-    if (sChar.hasVerticalVelocity && clientChar.vz !== void 0) {
-      const surfaceZ = sChar.supportingSurfaceHeight ?? 0;
-      const isServerGrounded = sChar.isRestingOnSurface || Math.abs(sChar.position.z - surfaceZ) <= 0.08 && Math.abs(sChar.verticalVelocity) <= 0.8;
-      if (isServerGrounded && !sChar.isClimbing && !sChar.isHeld && !hasRecentImpact && clientChar.vz > 1) {
-        const moveInput = isClientMoving ? { x: clientChar.vx, y: clientChar.vy } : void 0;
-        sChar.jump(this.arena, moveInput);
-      }
-      if (!hasRecentImpact || clientChar.vz > sChar.verticalVelocity) {
-        sChar.verticalVelocity = clientChar.vz;
-      }
-    }
-    const dx = clientChar.x - sChar.position.x;
-    const dy = clientChar.y - sChar.position.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 2.5) {
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
-    } else if (hasRecentImpact) {
-      if (isClientMoving) {
-        sChar.position.x += dx * 0.25;
-        sChar.position.y += dy * 0.25;
-      }
-      sChar.position.z = clientChar.z;
-    } else {
-      sChar.position.x = clientChar.x;
-      sChar.position.y = clientChar.y;
-      sChar.position.z = clientChar.z;
-    }
-    if (clientChar.surfaceZ !== void 0) {
-      sChar.supportingSurfaceHeight = clientChar.surfaceZ;
-    }
-    if (clientChar.isGrounded) {
-      const surfaceZ = clientChar.surfaceZ ?? 0;
-      if (sChar.position.z <= surfaceZ + 0.1) {
-        sChar.position.z = surfaceZ;
-        sChar.verticalVelocity = 0;
-      }
-    }
-    if (clientChar.isClimbing !== void 0) {
-      sChar.isClimbing = clientChar.isClimbing;
-    }
-    if (clientChar.facingAngle !== void 0) {
-      sChar.facingAngle = clientChar.facingAngle;
-    }
-    if (clientChar.isUsingItem !== void 0) {
-      sChar.isUsingItem = Boolean(clientChar.isUsingItem);
-    }
-    if (clientChar.heldObjectId) {
-      if (sChar.hasDiedAwaitingNewPickup) ;
-      else {
-        const sObj = this.objects.find((o) => o.id === clientChar.heldObjectId);
-        if (sObj && sObj.heldBy === sChar && sChar.heldObject === sObj) {
-          const relPos = sChar.calculateHeldObjectPosition(this.arena);
-          sObj.position.x = relPos.x;
-          sObj.position.y = relPos.y;
-          sObj.position.z = relPos.z;
-          sObj.velocity.x = sChar.velocity.x;
-          sObj.velocity.y = sChar.velocity.y;
-          sObj.verticalVelocity = 0;
-        }
-      }
-    } else if (sChar.heldObject && clientChar.isHolding === false) {
-      const sObj = sChar.heldObject;
-      if (sObj.consumableModule && (sObj.consumableModule.isConsumed || sObj.consumableModule.getRemainingEnergy(sObj.properties) <= 0.05)) {
-        this.triggerObjectDeletion(sObj.id);
-      } else {
-        sObj.isHeld = false;
-        sObj.heldBy = null;
-        sChar.heldObject = null;
-      }
-    }
+    ServerCharacterSync.syncCharacterFromPacket(this, clientChar);
   }
-  /**
-   * Authoritatively processes high-priority reliable action commands (pickup, drop, throw).
-   * Idempotent: Deduplicates actions so retransmissions are acknowledged without re-executing.
-   */
   processReliableActions(actions) {
-    const newlyAcked = [];
-    for (const act of actions) {
-      newlyAcked.push(act.actionId);
-      if (!this.recentAckedActionIds.includes(act.actionId)) {
-        this.recentAckedActionIds.push(act.actionId);
-        if (this.recentAckedActionIds.length > 100) {
-          this.recentAckedActionIds.shift();
-        }
-      }
-      if (this.processedActionIds.has(act.actionId)) {
-        continue;
-      }
-      this.processedActionIds.add(act.actionId);
-      if (this.processedActionIds.size > 2e3) {
-        const first = this.processedActionIds.values().next().value;
-        if (first) this.processedActionIds.delete(first);
-      }
-      let char = this.characters.get(act.playerId || "keyboard");
-      if (!char && act.playerId) {
-        char = this.allCharacters.find(
-          (c) => c.playerId === act.playerId || c.playerId.endsWith(`:${act.playerId}`) || c.id === act.playerId
-        );
-      }
-      if (!char) {
-        char = this.allCharacters[0];
-      }
-      if (!char) continue;
-      if (act.type === "pickup") {
-        if (!char.heldObject && char.pickupModule && act.targetObjectId) {
-          const target = this.objects.find((o) => o.id === act.targetObjectId);
-          if (target && (!target.isHeld || target.heldBy === char)) {
-            let itemToHold = target;
-            if (target.spawnerModule && target.spawnerModule.enabled) {
-              const clone = target.spawnerModule.triggerClone(target, this.arena, this.objects);
-              if (clone) itemToHold = clone;
-            }
-            char.pickupModule.pickup(char, itemToHold);
-            itemToHold.isHeld = true;
-            itemToHold.heldBy = char;
-            char.heldObject = itemToHold;
-            if (this.onGrabResult) {
-              this.onGrabResult({
-                type: "grab_result",
-                eventId: `grab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                tick: this.currentTick,
-                targetObjectId: itemToHold.id,
-                playerId: char.playerId || char.id
-              });
-            }
-          }
-        }
-      } else if (act.type === "drop") {
-        if (char.heldObject && char.pickupModule) {
-          char.pickupModule.drop(char);
-        }
-      } else if (act.type === "throw") {
-        const throwTarget = char.heldObject;
-        if (throwTarget && char.throwModule) {
-          const aimX = act.aimX ?? char.position.x + Math.cos(char.facingAngle) * 3;
-          const aimY = act.aimY ?? char.position.y + Math.sin(char.facingAngle) * 3;
-          const launchVel = act.launchVx !== void 0 ? {
-            vx: act.launchVx,
-            vy: act.launchVy,
-            vz: act.launchVz ?? 0
-          } : void 0;
-          const launchPos = act.launchStartX !== void 0 ? {
-            x: act.launchStartX,
-            y: act.launchStartY,
-            z: act.launchStartZ ?? 0
-          } : void 0;
-          if (char.energyPool && launchVel) {
-            const pool = char.energyPool;
-            const heldMass = throwTarget.hasMass ? Math.max(0.1, throwTarget.mass) : 1;
-            const launchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
-            const poolEfficiency = Math.max(0.01, pool.getMuscleEfficiency(char.properties));
-            const neededJoules = 0.5 * heldMass * launchSpeed * launchSpeed / poolEfficiency + 100;
-            pool.isExhausted = false;
-            const curStam = pool.getCurrentStamina(char.properties);
-            if (curStam < neededJoules) {
-              pool.currentStaminaProp.set(neededJoules, char.properties);
-            }
-            if (!pool.infiniteEnergy && pool.getCurrentEnergy(char.properties) < neededJoules) {
-              pool.currentEnergyProp.set(neededJoules, char.properties);
-            }
-            if (char.throwModule && char.throwModule.maxPowerProp.get(char.properties) < neededJoules) {
-              char.throwModule.maxPowerProp.set(neededJoules, char.properties);
-            }
-          }
-          char.throwModule.throwHeldObject(
-            char,
-            aimX,
-            aimY,
-            this.arena,
-            void 0,
-            void 0,
-            act.isLockHeld ?? false,
-            launchVel,
-            launchPos
-          );
-        }
-      } else if (act.type === "punch") {
-        if (char.meleeModule && char.meleeModule.enabled) {
-          const aimX = act.aimX !== void 0 ? act.aimX : char.position.x + Math.cos(char.facingAngle) * 3;
-          const aimY = act.aimY !== void 0 ? act.aimY : char.position.y + Math.sin(char.facingAngle) * 3;
-          const dirX = aimX - char.position.x;
-          const dirY = aimY - char.position.y;
-          const mag = Math.hypot(dirX, dirY);
-          const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(char.facingAngle);
-          const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(char.facingAngle);
-          char.facingAngle = Math.atan2(normDirY, normDirX);
-          const candidates = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
-          char.melee(this.arena, candidates, normDirX, normDirY);
-        }
-      }
-    }
-    return newlyAcked;
+    return ServerReliableActionProcessor.processReliableActions(
+      this,
+      actions,
+      this.processedActionIds,
+      this.recentAckedActionIds
+    );
   }
   getRecentAckedActionIds() {
     return [...this.recentAckedActionIds];
   }
-  /**
-   * Resolves contested grabs when multiple characters attempt to grab the same object on this tick (Phase 4.3).
-   * Keeps active unacknowledged events in pendingContestedEvents until all involved clients acknowledge them.
-   */
   arbitrateContestedGrabs(grabRequests) {
-    const results = ContestedGrabArbiter.arbitrate(grabRequests, this.currentTick, this.contestedGrabEvents, this.arena, this.objects);
-    for (const res of results) {
-      this.pendingContestedEvents.set(res.eventId, {
-        event: res,
-        createdTick: this.currentTick,
-        acks: /* @__PURE__ */ new Set()
-      });
-      if (this.onGrabResult) {
-        this.onGrabResult({
-          type: "grab_result",
-          eventId: res.eventId,
-          tick: res.tick,
-          targetObjectId: res.targetObjectId,
-          playerId: res.winnerPlayerId
-        });
-      }
-    }
+    ServerEventQueueManager.arbitrateContestedGrabs(this, grabRequests);
   }
-  /**
-   * Acknowledges that a client character has received and processed contested grab events.
-   */
   acknowledgeContestedEvents(clientCharId, eventIds) {
-    if (!eventIds || !Array.isArray(eventIds)) return;
-    for (const id of eventIds) {
-      const pending = this.pendingContestedEvents.get(id);
-      if (pending) {
-        pending.acks.add(clientCharId);
-        const needed = [pending.event.winnerPlayerId, ...pending.event.loserPlayerIds];
-        const allAcked = needed.every((pId) => pending.acks.has(pId));
-        if (allAcked) {
-          this.pendingContestedEvents.delete(id);
-        }
-      }
-    }
+    ServerEventQueueManager.acknowledgeContestedEvents(this, clientCharId, eventIds);
   }
-  /**
-   * Returns all active unacknowledged contested grab events for broadcast.
-   * Evicts expired events older than 180 ticks (3 seconds) to prevent infinite accumulation.
-   */
   getActiveContestedEvents() {
-    const active = [];
-    const nowTick = this.currentTick;
-    for (const [id, record] of this.pendingContestedEvents.entries()) {
-      if (nowTick - record.createdTick > 180) {
-        this.pendingContestedEvents.delete(id);
-      } else {
-        active.push(record.event);
-      }
-    }
-    return active;
+    return ServerEventQueueManager.getActiveContestedEvents(this);
   }
-  /**
-   * Acknowledges that a client character has received and processed death & respawn events.
-   */
   acknowledgeDeathRespawnEvents(clientCharId, eventIds) {
-    if (!eventIds || !Array.isArray(eventIds)) return;
-    for (const id of eventIds) {
-      const pending = this.pendingDeathRespawnEvents.get(id);
-      if (pending) {
-        pending.acks.add(clientCharId);
-        const targetChar = this.characters.get(pending.event.targetEntityId) || Array.from(this.characters.values()).find(
-          (c) => c.id === clientCharId || c.playerId === clientCharId || c.serverCharId === clientCharId || c.id === pending.event.targetEntityId || c.playerId === pending.event.targetEntityId || c.serverCharId === pending.event.targetEntityId
-        );
-        if (targetChar) {
-          targetChar.isRespawnLocked = false;
-        }
-        const isTargetAck = clientCharId === pending.event.targetEntityId || targetChar && (clientCharId === targetChar.id || clientCharId === targetChar.playerId || clientCharId === targetChar.serverCharId);
-        if (isTargetAck) {
-          this.pendingDeathRespawnEvents.delete(id);
-        } else {
-          const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
-          const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
-          if (allAcked) {
-            this.pendingDeathRespawnEvents.delete(id);
-          }
-        }
-      }
-    }
+    ServerEventQueueManager.acknowledgeDeathRespawnEvents(this, clientCharId, eventIds);
   }
-  /**
-   * Returns all active unacknowledged death respawn events for continuous broadcast.
-   */
   getActiveDeathRespawnEvents() {
-    const active = [];
-    const nowTick = this.currentTick;
-    for (const [id, record] of this.pendingDeathRespawnEvents.entries()) {
-      if (nowTick - record.createdTick > 300) {
-        this.pendingDeathRespawnEvents.delete(id);
-      } else {
-        active.push(record.event);
-      }
-    }
-    return active;
+    return ServerEventQueueManager.getActiveDeathRespawnEvents(this);
   }
-  /**
-   * Triggers an authoritative object deletion event broadcasted reliably until acknowledged.
-   */
   triggerObjectDeletion(objectId) {
-    this.deletedObjectIds.add(objectId);
-    const idx = this.objects.findIndex((o) => o.id === objectId);
-    if (idx !== -1) {
-      const obj = this.objects[idx];
-      if (obj.heldBy && obj.heldBy.heldObject === obj) {
-        obj.heldBy.heldObject = null;
-      }
-      obj.isHeld = false;
-      obj.heldBy = null;
-      this.objects.splice(idx, 1);
-    }
-    if (Array.isArray(this.arena.entities)) {
-      const eIdx = this.arena.entities.findIndex((e) => e.id === objectId);
-      if (eIdx !== -1) {
-        this.arena.entities.splice(eIdx, 1);
-      }
-    }
-    const eventId = `del_${objectId}_${this.currentTick}`;
-    const event = {
-      eventId,
-      objectId,
-      tick: this.currentTick
-    };
-    this.pendingObjectDeletionEvents.set(eventId, {
-      event,
-      createdTick: this.currentTick,
-      acks: /* @__PURE__ */ new Set()
-    });
+    ServerEventQueueManager.triggerObjectDeletion(this, objectId);
   }
-  /**
-   * Acknowledges that a client character has received and processed object deletion events.
-   */
   acknowledgeObjectDeletionEvents(clientCharId, eventIds) {
-    if (!eventIds || !Array.isArray(eventIds)) return;
-    for (const id of eventIds) {
-      const pending = this.pendingObjectDeletionEvents.get(id);
-      if (pending) {
-        pending.acks.add(clientCharId);
-        const allClientChars = Array.from(this.characters.keys()).filter((k) => k !== "dummy-1");
-        const allAcked = allClientChars.length === 0 || allClientChars.every((cId) => pending.acks.has(cId));
-        if (allAcked) {
-          this.pendingObjectDeletionEvents.delete(id);
-        }
-      }
-    }
+    ServerEventQueueManager.acknowledgeObjectDeletionEvents(this, clientCharId, eventIds);
   }
-  /**
-   * Returns all active unacknowledged object deletion events for continuous broadcast.
-   */
   getActiveObjectDeletionEvents() {
-    const active = [];
-    const nowTick = this.currentTick;
-    for (const [id, record] of this.pendingObjectDeletionEvents.entries()) {
-      if (nowTick - record.createdTick > 300) {
-        this.pendingObjectDeletionEvents.delete(id);
-      } else {
-        active.push(record.event);
-      }
-    }
-    return active;
+    return ServerEventQueueManager.getActiveObjectDeletionEvents(this);
   }
   /**
    * Applies exactly one tick of held-item use (eating) for a character.
-   * Invariant: for player characters this is called once per real client input packet,
-   * so the server credits exactly the same energy the client predicted.
    */
   applyItemUse(char, isUsing, dt) {
     var _a;
@@ -10894,45 +10998,8 @@ class ServerGameSimulation {
       this.triggerObjectDeletion(heldObj.id);
     }
   }
-  /**
-   * Settles a consumable the client reports as fully eaten.
-   * The client finishes eating up to (RTT/2 + jitter delay) before the server processes those
-   * same input ticks, so any energy still left in the server's copy is energy the client already
-   * ate. Credit it to the holder before deleting, otherwise that energy is silently lost.
-   */
   settleClientConsumedObject(serverCharId, objectId) {
-    var _a;
-    const sChar = this.characters.get(serverCharId);
-    const obj = this.objects.find((o) => o.id === objectId) || (((_a = sChar == null ? void 0 : sChar.heldObject) == null ? void 0 : _a.id) === objectId ? sChar.heldObject : null);
-    const holder = obj && obj.heldBy instanceof Character ? obj.heldBy : sChar;
-    const isHolder = Boolean(holder && (holder === sChar || holder.id === serverCharId || holder.playerId === serverCharId || holder.serverCharId === serverCharId));
-    if (obj && holder && isHolder && obj.consumableModule) {
-      if (obj.consumableModule.unlimited) return;
-      const cm = obj.consumableModule;
-      const remaining = cm.getRemainingEnergy(obj.properties);
-      if (remaining > 1e-3) {
-        if (holder.energyPool && holder.energyPool.enabled) {
-          const pool = holder.energyPool;
-          const cur = pool.getCurrentEnergy(holder.properties);
-          const max = pool.getMaxEnergy(holder.properties);
-          pool.currentEnergyProp.set(Math.min(max, cur + remaining), holder.properties);
-        }
-        const healRate = cm.getHealRate(obj.properties);
-        if (healRate > 0 && holder.healthModule && holder.healthModule.enabled) {
-          const secondsLeft = remaining / cm.getConsumeRate(obj.properties);
-          holder.healthModule.heal(healRate * secondsLeft, holder.properties, {
-            id: "consumable_nutrition",
-            name: cm.tag ? `Consumable (${cm.tag})` : "Consumable",
-            type: "continuous",
-            rate: healRate,
-            color: "#22c55e",
-            isHeal: true
-          });
-        }
-        cm.remainingEnergyJoulesProp.set(0, obj.properties);
-      }
-    }
-    this.triggerObjectDeletion(objectId);
+    ServerObjectSync.settleClientConsumedObject(this, serverCharId, objectId);
   }
   /**
    * Advances the authoritative simulation by 1 fixed physics tick.
@@ -11012,7 +11079,7 @@ class ServerGameSimulation {
               char.throwModule.maxPowerProp.set(neededJoules, char.properties);
             }
           }
-          char.throwModule.throwHeldObject(
+          const thrown = char.throwModule.throwHeldObject(
             char,
             aimX,
             aimY,
@@ -11023,6 +11090,10 @@ class ServerGameSimulation {
             launchVel,
             launchPos
           );
+          if (thrown) {
+            char._lastServerThrowTime = performance.now();
+            char._pendingThrowUntilMs = 0;
+          }
         }
         if (pkt.isGrabHeld && !char.heldObject && char.pickupModule) {
           const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects];
@@ -11183,16 +11254,9 @@ class ServerGameSimulation {
     }
     return SnapshotManager.capture(this.currentTick, this.allCharacters, this.objects, false);
   }
-  /**
-   * Generates a quantized, delta-compressed AuthoritativeWorldSnapshot for network broadcast (Phase 7).
-   */
   getAuthoritativeWorldSnapshot(forceKeyframe = false) {
     return ServerTelemetryBroadcaster.createAuthoritativeWorldSnapshot(this, forceKeyframe);
   }
-  /**
-   * Produces a GhostSnapshot suitable for rendering or network broadcast.
-   * Directly reflects the true physical state of the authoritative simulation.
-   */
   getGhostSnapshot(rttMs = 0, forPlayerId) {
     return ServerTelemetryBroadcaster.createGhostSnapshot(
       this.currentTick,

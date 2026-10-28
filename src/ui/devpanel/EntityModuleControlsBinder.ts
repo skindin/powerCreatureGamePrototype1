@@ -51,3 +51,4 @@ export class EntityModuleControlsBinder {
     HealthAndDamageInspector.bindControls(panel, e, char, bindToggleSave);
   }
 }
+

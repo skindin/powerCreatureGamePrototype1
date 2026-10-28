@@ -22,7 +22,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 
 ### Tier 1: 🔒 Sealed & Read-Only Files ("Complete" Modules)
 > **CRITICAL AGENT CONSTRAINT**:  
-> The following 12 files have been audited, fully verified, and deemed feature-complete.  
+> The following 17 files have been audited, fully verified, and deemed feature-complete.  
 > Agents **MUST NOT** edit, rewrite, refactor, or delete these files unless you explicitly ask the USER for permission first and receive their direct approval.
 > - **Avoid asking for permission for Tier 1 files unless truly necessary.** If you encounter an issue that legitimately requires editing a Tier 1 file, you **MUST ask for permission before touching it**. State: **"This is a Tier 1 (Sealed) file: [filename]"**, and concisely explain the reason in plain English.
 >
@@ -38,6 +38,11 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 > 10. `src/character/WallEdgeAssistModule.ts` — Geometric math helper preventing creature sticking on corner wall vertices.
 > 11. `src/engine/physics/StateHistoryBuffer.ts` — Zero-allocation circular ring buffer for historical physical snapshots.
 > 12. `src/engine/physics/IslandManager.ts` — Connected graph discovery of dormant sleeping bodies and active physical islands.
+> 13. `src/server/ServerJitterBuffer.ts` — Per-player priority queue sorted by tick, burst drain, starvation synthesis, and adaptive clock-sync calculation.
+> 14. `src/server/ContestedGrabArbiter.ts` — Deterministic contested grab tie-breaking (`pickupReach`, 3D Euclidean distance, lowest tick, lexical playerId).
+> 15. `src/server/AuthoritativeSnapshotManager.ts` — Fixed-point quantization, delta compression against client ACKed ticks, and periodic keyframes.
+> 16. `src/engine/physics/RemoteEntityInterpolator.ts` — Cubic Hermite spline & linear snapshot interpolation, buffered timeline playback, and bounded dead-reckoning.
+> 17. `src/engine/physics/PredictionReconciliation.ts` — Historical rollback comparison, deadzone checks, island-scoped forward replay, and exponential visual error decay.
 >
 > **Enforcement Mechanics**: Marked with OS read-only `attrib +r` and Git pre-commit hook `.githooks/pre-commit`.
 
@@ -49,8 +54,12 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 > - `src/character/PickupModule.ts` (3D grab reach detection and item attachments)
 > - `src/character/ThrowModule.ts` (Parabolic trajectory math, auto-lock target discovery, recoil momentum)
 > - `src/engine/physics/Snapshot.ts` (Deterministic state serialization & restore)
-> - `src/engine/physics/RemoteEntityInterpolator.ts` (Hermite/linear snapshot interpolation & jitter buffers)
-> - `src/engine/physics/PredictionReconciliation.ts` (Historical rollback reconciliation & divergence checks)
+> - `src/network/OnlineRoomClient.ts` (WebSocket transport, reliable action retransmission queue, and ACK management)
+> - `src/server/ServerTelemetryBroadcaster.ts` (Server-to-client snapshot construction and private-per-recipient energy/stamina filtering)
+> - `src/network/ClientActionDispatcher.ts` (Centralized builder & dispatcher for client `ReliableActionCommand` packets: pickup, drop, throw, punch)
+> - `src/network/reconcilers/ObjectBallisticsReconciler.ts` (Client-side thrown object flight protection, remote throw handoff, and landing/rollout reconciliation)
+> - `src/server/sync/ServerReliableActionProcessor.ts` (Server-side idempotent execution of reliable actions and throw energy floor guarantees)
+> - `src/server/sync/ServerCharacterSync.ts` (Server-side character velocity/position/jump/held-item sync and pending-throw authority guard)
 >
 > **Permission Protocol**:
 > 1. Any agent noticing that a change is needed in a **Tier 2 file MUST ask the USER for permission before modifying it**.
@@ -67,12 +76,12 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - `src/character/`: Character entity and capability modules (Walking, Climbing, Pickup, Throw, Jump, Consume).
   - `src/engine/`: Game loop, arena grid, freebody objects, player manager, and rendering.
   - `src/engine/physics/`: Deterministic collision resolver, snapshots, history ring buffer, islands.
-  - `src/network/`: WebSocket room client, session manager, and relay simulator.
-  - `src/server/`: Authoritative 60Hz physics world simulation, jitter buffer, contested grab arbiter.
+  - `src/network/`: WebSocket room client, session manager, action dispatcher, and domain reconcilers (`src/network/reconcilers/`).
+  - `src/server/`: Authoritative 60Hz physics world simulation, jitter buffer, contested grab arbiter, and server sync modules (`src/server/sync/`).
   - `src/ui/`: DevPanel inspector, HUD, and InputManager.
 - **Git & Remote Tracking**:
   - Remote: `https://github.com/skindin/powerCreatureGamePrototype1.git`
-  - Active Branch: `feat/dynamic-property-references` (MANDATORY: always push to `origin feat/dynamic-property-references`).
+  - Active Branch: `clean-physics-baseline` (MANDATORY: always push to `origin <branch>`).
 
 ---
 
@@ -87,7 +96,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
   - `Exhaustion Gatekeeping`: Exhausted bus strictly denies all power/burst requests (`canAfford`, `requestInstantBurst`, `requestPower`) until stamina recovers past 20% threshold.
 - **Consumable & Prefab Systems**: Held items transfer energy/health with cube-root volumetric shrinking; `PrefabManager` & `SceneSpawnerManager` manage archetypes and periodic world spawns.
 - **HUD & Status Displays**: Dual-column gauges (Health/Modifiers on left, Energy/Stamina on right) with lowercase `/s` rates and signed ability tags.
-- **Multiplayer Replication**: Authoritative 60Hz server world (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client prediction, soft reconciliation, and private energy telemetry.
+- **Multiplayer Replication**: Authoritative 60Hz server world (`UniversalRoomManager.ts`, `ServerGameSimulation.ts`) with client prediction, soft reconciliation, background-tab tick driver, and private energy telemetry.
 - **Input & Device Assignment**: First active device (gamepad or keyboard/touch) claims `baseCharacter`; hot-swappable controller detection.
 - **Throwing & Trajectory System**: Ballistic trajectory solver with visual altitude offset (`Y_phys = Y_screen + Z × scale`), ground footprint clearance tests, and elevated wall landing resolution.
 
@@ -121,7 +130,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 ## 4. 1-File Edit Routing Table (Subsystem Isolation Map)
 
 > **CRITICAL ISOLATION RULE**:  
-> Host containers (`src/character/Character.ts` and `src/ui/DevPanel.ts`) are thin orchestrators. To prevent cross-subsystem regressions, **DO NOT** inline ability math, energy demand formulas, or module inspector bindings into `Character.ts` or `DevPanel.ts`. Always inspect and edit the single isolated slice below:
+> Host containers (`src/character/Character.ts`, `src/ui/DevPanel.ts`, `src/network/OnlineSessionManager.ts`, and `src/server/ServerGameSimulation.ts`) are thin orchestrators. To prevent cross-subsystem regressions, **DO NOT** inline ability math, energy demand formulas, module inspector bindings, or domain network reconciliation into host orchestrators. Always inspect and edit the single isolated slice below:
 
 ### A. Character Gameplay Capabilities (`src/character/capabilities/`)
 | Subsystem / Mechanic | Primary Isolated File to Edit | Underlying Module |
@@ -153,3 +162,15 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 | **Scene Spawners Panel & Live Telemetry** | `src/ui/devpanel/SpawnersPanelSection.ts` |
 | **Property Path Resolution & Player Delta Builder** | `src/ui/devpanel/PlayerDeltaBuilder.ts` |
 | **Config Persistence, Auto-Save & Git Sync** | `src/ui/devpanel/DevConfigPersistence.ts` |
+
+### C. Multiplayer Networking & Server Slices (`src/network/` & `src/server/`)
+| Network / Multiplayer Feature | Primary Client File | Primary Server File |
+| :--- | :--- | :--- |
+| **Reliable Actions** (`pickup`, `drop`, `throw`, `punch` packets & execution) | `src/network/ClientActionDispatcher.ts` (Tier 2) | `src/server/sync/ServerReliableActionProcessor.ts` (Tier 2) |
+| **Thrown Object Flight, Handoff & Ballistic Sync** | `src/network/reconcilers/ObjectBallisticsReconciler.ts` (Tier 2) | `src/server/sync/ServerObjectSync.ts` |
+| **Local Player Push, HP, Energy & Respawn Reconciliation** | `src/network/reconcilers/LocalPlayerNetReconciler.ts` | `src/server/sync/ServerCharacterSync.ts` (Tier 2) |
+| **Remote Player Ghosts, Laser/Melee Visuals & Pruning** | `src/network/reconcilers/RemotePlayerNetReconciler.ts` | `src/server/ServerTelemetryBroadcaster.ts` (Tier 2) |
+| **Consumable Eating Shrink & Depletion Deletion Sync** | `src/network/reconcilers/ConsumableNetReconciler.ts` | `src/server/sync/ServerObjectSync.ts` |
+| **Reliable Event Queues & ACKs** (Grab Contests, Death, Deletions) | `src/network/OnlineSessionManager.ts` | `src/server/sync/ServerEventQueueManager.ts` |
+| **Online Ping Badge, Status Pill & Player Roster Chips** | `src/network/OnlineHudController.ts` | `src/server/UniversalRoomManager.ts` |
+| **Server World Init, Quarry Preset & Config Hot-Reload** | `src/ui/devpanel/DevConfigPersistence.ts` | `src/server/sync/ServerWorldInitializer.ts` |

@@ -6,6 +6,7 @@ import { InputManager, calculateClampedForwardAimPos, type GamepadSlotState } fr
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
+import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -54,7 +55,6 @@ export class PlayerManager {
   public dummyCharacters: Character[] = [];
   public onPlayersChanged?: () => void;
   public onReliableActionDispatched?: (action: ReliableActionCommand) => void;
-  private actionSeq: number = 0;
   private lastHeldObjectIds: Map<string, string | null> = new Map();
   private grabSuppressedStates: Map<string, GrabSuppressionState> = new Map();
   public baseCharacter: Character;
@@ -920,18 +920,14 @@ export class PlayerManager {
             slot.lastThrowAimAngle = undefined;
           }
         }
-        if (!isReplay) {
-          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          const action: ReliableActionCommand = {
-            actionId: `act-${actPlayerId}-drop-${++this.actionSeq}-${Date.now()}`,
-            type: "drop",
-            tick: pkt.tick ?? 0,
-            timestamp: performance.now(),
-            playerId: actPlayerId,
-            targetObjectId: droppedObj.id,
-          };
-          this.onReliableActionDispatched?.(action);
-        }
+        const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+        ClientActionDispatcher.dispatchDrop(
+          this.onReliableActionDispatched,
+          isReplay,
+          actPlayerId,
+          pkt.tick ?? 0,
+          droppedObj.id
+        );
       }
 
       // Dedicated Throw (RT / Left Click)
@@ -988,30 +984,18 @@ export class PlayerManager {
           }
 
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          const action: ReliableActionCommand = {
-            actionId: `act-${actPlayerId}-throw-${++this.actionSeq}-${Date.now()}`,
-            type: "throw",
-            tick: pkt.tick ?? 0,
-            timestamp: performance.now(),
-            playerId: actPlayerId,
-            targetObjectId: thrownObj.id,
-            aimX: throwAimX,
-            aimY: throwAimY,
-            isLockHeld: pkt.isLockHeld,
-            ...(clientLaunchVel ? {
-              launchVx: clientLaunchVel.vx,
-              launchVy: clientLaunchVel.vy,
-              launchVz: clientLaunchVel.vz,
-            } : {}),
-            ...(clientLaunchPos ? {
-              launchStartX: clientLaunchPos.x,
-              launchStartY: clientLaunchPos.y,
-              launchStartZ: clientLaunchPos.z,
-            } : {})
-          } as any;
-          if (!isReplay) {
-            this.onReliableActionDispatched?.(action);
-          }
+          ClientActionDispatcher.dispatchThrow(
+            this.onReliableActionDispatched,
+            isReplay,
+            actPlayerId,
+            pkt.tick ?? 0,
+            thrownObj.id,
+            throwAimX,
+            throwAimY,
+            Boolean(pkt.isLockHeld),
+            clientLaunchVel,
+            clientLaunchPos
+          );
         } else if (char.throwModule.consumesEnergy && char.energyPool) {
           const heldMass = thrownObj.hasMass ? Math.max(0.1, thrownObj.mass) : 1.0;
           const launchSpeed = clientLaunchVel
@@ -1062,18 +1046,14 @@ export class PlayerManager {
         char.meleeCandidateEntities = [...this.allCharacters.filter((c) => c !== char), ...(objects || [])];
         char.onPunchExecuted = (_res, dirX, dirY) => {
           const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          const action: ReliableActionCommand = {
-            actionId: `act-${actPlayerId}-punch-${++this.actionSeq}-${Date.now()}`,
-            type: "punch" as any,
-            tick: pkt.tick ?? 0,
-            timestamp: performance.now(),
-            playerId: actPlayerId,
-            aimX: char.position.x + dirX * 3,
-            aimY: char.position.y + dirY * 3,
-          };
-          if (!isReplay) {
-            this.onReliableActionDispatched?.(action);
-          }
+          ClientActionDispatcher.dispatchPunch(
+            this.onReliableActionDispatched,
+            isReplay,
+            actPlayerId,
+            pkt.tick ?? 0,
+            char.position.x + dirX * 3,
+            char.position.y + dirY * 3
+          );
         };
       }
 
@@ -1149,18 +1129,14 @@ export class PlayerManager {
               }
             }
           }
-          if (!isReplay) {
-            const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-            const action: ReliableActionCommand = {
-              actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-              type: "pickup",
-              tick: pkt.tick ?? 0,
-              timestamp: performance.now(),
-              playerId: actPlayerId,
-              targetObjectId: char.heldObject ? char.heldObject.id : currentHeldId,
-            };
-            this.onReliableActionDispatched?.(action);
-          }
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          ClientActionDispatcher.dispatchPickup(
+            this.onReliableActionDispatched,
+            isReplay,
+            actPlayerId,
+            pkt.tick ?? 0,
+            char.heldObject ? char.heldObject.id : currentHeldId
+          );
         }
       }
 
@@ -1244,17 +1220,13 @@ export class PlayerManager {
                 }
                 const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
                 this.onPriorityGrabRequested?.(playerId, char.id, targetObj.id);
-                if (!isReplay) {
-                  const action: ReliableActionCommand = {
-                    actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                    type: "pickup",
-                    tick: pkt.tick ?? 0,
-                    timestamp: performance.now(),
-                    playerId: actPlayerId,
-                    targetObjectId: targetObj.id,
-                  };
-                  this.onReliableActionDispatched?.(action);
-                }
+                ClientActionDispatcher.dispatchPickup(
+                  this.onReliableActionDispatched,
+                  isReplay,
+                  actPlayerId,
+                  pkt.tick ?? 0,
+                  targetObj.id
+                );
               } else {
                 let itemToHold: GameObject = targetObj;
                 if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
@@ -1281,18 +1253,14 @@ export class PlayerManager {
                   this.lastHeldObjectIds.set(char.id, itemToHold.id);
                   char.isUsingItem = false;
                   char.eatRateWatts = 0;
-                  if (!isReplay) {
-                    const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-                    const action: ReliableActionCommand = {
-                      actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                      type: "pickup",
-                      tick: pkt.tick ?? 0,
-                      timestamp: performance.now(),
-                      playerId: actPlayerId,
-                      targetObjectId: itemToHold.id,
-                    };
-                    this.onReliableActionDispatched?.(action);
-                  }
+                  const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                  ClientActionDispatcher.dispatchPickup(
+                    this.onReliableActionDispatched,
+                    isReplay,
+                    actPlayerId,
+                    pkt.tick ?? 0,
+                    itemToHold.id
+                  );
                 }
               }
             }
@@ -1313,17 +1281,13 @@ export class PlayerManager {
               }
               const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
               this.onPriorityGrabRequested?.(playerId, char.id, target.id);
-              if (!isReplay) {
-                const action: ReliableActionCommand = {
-                  actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                  type: "pickup",
-                  tick: pkt.tick ?? 0,
-                  timestamp: performance.now(),
-                  playerId: actPlayerId,
-                  targetObjectId: target.id,
-                };
-                this.onReliableActionDispatched?.(action);
-              }
+              ClientActionDispatcher.dispatchPickup(
+                this.onReliableActionDispatched,
+                isReplay,
+                actPlayerId,
+                pkt.tick ?? 0,
+                target.id
+              );
             } else if (target.spawnerModule && target.spawnerModule.enabled) {
               const clone = target.spawnerModule.triggerClone(target, this.arena, objects);
               if (clone) {
@@ -1342,18 +1306,14 @@ export class PlayerManager {
                   this.lastHeldObjectIds.set(char.id, clone.id);
                   char.isUsingItem = false;
                   char.eatRateWatts = 0;
-                  if (!isReplay) {
-                    const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-                    const action: ReliableActionCommand = {
-                      actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                      type: "pickup",
-                      tick: pkt.tick ?? 0,
-                      timestamp: performance.now(),
-                      playerId: actPlayerId,
-                      targetObjectId: clone.id,
-                    };
-                    this.onReliableActionDispatched?.(action);
-                  }
+                  const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                  ClientActionDispatcher.dispatchPickup(
+                    this.onReliableActionDispatched,
+                    isReplay,
+                    actPlayerId,
+                    pkt.tick ?? 0,
+                    clone.id
+                  );
                 }
               }
             } else {
@@ -1370,18 +1330,14 @@ export class PlayerManager {
                 this.lastHeldObjectIds.set(char.id, held.id);
                 char.isUsingItem = false;
                 char.eatRateWatts = 0;
-                if (!isReplay) {
-                  const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-                  const action: ReliableActionCommand = {
-                    actionId: `act-${actPlayerId}-pickup-${++this.actionSeq}-${Date.now()}`,
-                    type: "pickup",
-                    tick: pkt.tick ?? 0,
-                    timestamp: performance.now(),
-                    playerId: actPlayerId,
-                    targetObjectId: held.id,
-                  };
-                  this.onReliableActionDispatched?.(action);
-                }
+                const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+                ClientActionDispatcher.dispatchPickup(
+                  this.onReliableActionDispatched,
+                  isReplay,
+                  actPlayerId,
+                  pkt.tick ?? 0,
+                  held.id
+                );
               }
             }
           }
