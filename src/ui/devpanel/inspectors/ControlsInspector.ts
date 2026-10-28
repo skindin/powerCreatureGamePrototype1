@@ -33,6 +33,7 @@ export class ControlsInspector {
   private static jsonErrorMessage: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
+  private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
   private static recorderCleanup: (() => void) | null = null;
   private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
@@ -162,6 +163,7 @@ export class ControlsInspector {
     this.jsonErrorMessage = null;
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
+    this.listeningLocoKey = null;
 
     // If popout window is already open, focus it and update content
     if (this.popoutWindow && !this.popoutWindow.closed) {
@@ -343,6 +345,7 @@ export class ControlsInspector {
     this.workingSchema = null;
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
+    this.listeningLocoKey = null;
   }
 
   private static async saveAndCommit(): Promise<void> {
@@ -598,6 +601,22 @@ export class ControlsInspector {
       const fwdCode = cfg.locomotion.forwardTrigger?.code || "MouseRight";
       const isListeningFwd = this.listeningForwardTrigger;
 
+      const renderLocoKeyRow = (label: string, keyName: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey") => {
+        const val = cfg.locomotion[keyName];
+        const isListening = this.listeningLocoKey === keyName;
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.4); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.06);">
+            <span style="font-size: 0.74rem; color: #94a3b8; font-weight: 500;">${label}:</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button data-loco-key="${keyName}" class="btn-bind-loco-key btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : (val ? "color: #38bdf8;" : "color: #64748b; font-style: italic;")}">
+                ${isListening ? "🔴 Press key..." : (val ? `⌨️ ${val}` : "(Unbound)")}
+              </button>
+              ${val ? `<button data-clear-loco-key="${keyName}" class="btn-clear-loco-key btn-icon" style="padding: 2px 6px; font-size: 0.70rem; color: #f87171; background: rgba(239, 68, 68, 0.1);" title="Unbind key">✕</button>` : ""}
+            </div>
+          </div>
+        `;
+      };
+
       return `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -617,11 +636,26 @@ export class ControlsInspector {
                 ${isListeningFwd ? "🔴 Press key/mouse..." : `⌨️ ${fwdCode}`}
               </button>
             </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+              ${renderLocoKeyRow("Reverse (Optional)", "reverseKey")}
+              ${renderLocoKeyRow("Strafe Left (Optional)", "strafeLeftKey")}
+              ${renderLocoKeyRow("Strafe Right (Optional)", "strafeRightKey")}
+            </div>
             <span style="font-size: 0.70rem; color: #64748b; line-height: 1.3;">
-              Creature constantly faces mouse cursor. Holding ${fwdCode} drives forward. A/D strafes, S reverses.
+              Creature faces mouse cursor. Drive trigger moves forward. Reverse and strafe keys are optional — click ✕ to unbind them and free A, S, D for abilities.
             </span>
           `
-              : ""
+              : `
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${renderLocoKeyRow("Move Forward / Up", "moveForwardKey")}
+              ${renderLocoKeyRow("Move Backward / Down", "reverseKey")}
+              ${renderLocoKeyRow("Strafe Left", "strafeLeftKey")}
+              ${renderLocoKeyRow("Strafe Right", "strafeRightKey")}
+            </div>
+            <span style="font-size: 0.70rem; color: #64748b; line-height: 1.3;">
+              Direct directional movement. Unbound keys will produce zero movement.
+            </span>
+          `
           }
 
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -857,6 +891,24 @@ export class ControlsInspector {
         this.startForwardTriggerListening();
       });
     }
+
+    // 4b. Locomotion Key Bind & Clear Buttons
+    root.querySelectorAll(".btn-bind-loco-key").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const keyName = (btn as HTMLElement).dataset.locoKey as any;
+        if (keyName) this.startLocoKeyListening(keyName);
+      });
+    });
+
+    root.querySelectorAll(".btn-clear-loco-key").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const keyName = (btn as HTMLElement).dataset.clearLocoKey as any;
+        if (keyName && schema.keyboardMouse.locomotion) {
+          delete schema.keyboardMouse.locomotion[keyName as keyof typeof schema.keyboardMouse.locomotion];
+          this.renderActiveView();
+        }
+      });
+    });
 
     // 5. Aim Mode Selector
     const selectAim = root.querySelector("#select-aim-mode") as HTMLSelectElement;
@@ -1186,6 +1238,46 @@ export class ControlsInspector {
       this.popoutWindow.addEventListener("keydown", onKeyDown, true);
       this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
       this.popoutWindow.addEventListener("contextmenu", onContextMenu, true);
+    }
+  }
+
+  private static startLocoKeyListening(keyName: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey"): void {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningLocoKey = keyName;
+    this.renderActiveView();
+
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningLocoKey = null;
+        this.renderActiveView();
+        return;
+      }
+
+      schema.keyboardMouse.locomotion[keyName] = e.code;
+      cleanup();
+      this.listeningLocoKey = null;
+      this.renderActiveView();
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+      }
+      this.recorderCleanup = null;
+    };
+
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
     }
   }
 

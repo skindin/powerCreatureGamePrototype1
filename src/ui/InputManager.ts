@@ -447,16 +447,12 @@ export class InputManager {
         return;
       }
 
-      // Space key: Claim Keyboard Player 1 if not yet active, and trigger jump
+      // Space key: Claim Keyboard Player 1 if not yet active
       if (e.code === "Space") {
         this.isKeyboardSuspended = false;
         this.updateCanvasCursorClass();
         if (!this.isKeyboardActive) {
           this.onKeyboardJoin?.();
-        }
-        if (!e.repeat) {
-          this.isKeyboardJumpRequested = true;
-          this.onKeyboardJump?.();
         }
       }
 
@@ -497,27 +493,6 @@ export class InputManager {
       this.keysPressed.add(e.code);
       this.updateMovementVector();
 
-      // Shift hold-to-sprint: holding Shift while walking sprints; releasing Shift walks
-      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
-        this.isKeyboardSprintActive = true;
-        this.onToggleSprint?.(true);
-      }
-
-      if (e.code === "KeyQ") {
-        // Q key drops currently held item
-        if (e.repeat || this.isQKeyDepressed) return;
-        this.isQKeyDepressed = true;
-
-        this.onKeyboardDrop?.();
-      }
-
-      if (e.code === "KeyE") {
-        // E key picks up ground item or swaps held item with targeted ground item
-        if (e.repeat || this.isEKeyDepressed) return;
-        this.isEKeyDepressed = true;
-
-        this.onKeyboardPickup?.();
-      }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -1021,32 +996,9 @@ export class InputManager {
   }
 
   private updateMovementVector(): void {
-    if (!this.isKeyboardActive || this.isTextInputFocused()) {
-      this.movementVector.x = 0;
-      this.movementVector.y = 0;
-      return;
-    }
-
-    let dx = 0;
-    let dy = 0;
-
-    if (this.keysPressed.has("KeyW") || this.keysPressed.has("ArrowUp")) dy -= 1;
-    if (this.keysPressed.has("KeyS") || this.keysPressed.has("ArrowDown")) dy += 1;
-    if (this.keysPressed.has("KeyA") || this.keysPressed.has("ArrowLeft")) dx -= 1;
-    if (this.keysPressed.has("KeyD") || this.keysPressed.has("ArrowRight")) dx += 1;
-
-    const mag = Math.hypot(dx, dy);
-    if (mag > 0) {
-      this.movementVector.x = dx / mag;
-      this.movementVector.y = dy / mag;
-    } else {
-      this.movementVector.x = 0;
-      this.movementVector.y = 0;
-    }
-
-    // Keep hold-to-sprint state in sync with Shift keys
-    const isShiftHeld = !this.isKeyboardSuspended && !this.isTextInputFocused() && (this.keysPressed.has("ShiftLeft") || this.keysPressed.has("ShiftRight"));
-    this.isKeyboardSprintActive = isShiftHeld;
+    // Keyboard movement is strictly schema-driven via PlayerManager (no hardcoded keys)
+    this.movementVector.x = 0;
+    this.movementVector.y = 0;
   }
 
   /**
@@ -1810,40 +1762,9 @@ export class InputManager {
       // Intentionally empty: selection is now Ctrl + Left Click so Right Click does not accidentally change selection
     };
 
-    this.onKeyboardDrop = () => {
-      if (!this.isKeyboardActive) return;
-      const activeChar = getActiveKeyboardChar();
-      if (!activeChar || !activeChar.pickupModule) return;
-      if (activeChar.heldObject) {
-        this.isKeyboardDropRequested = true;
-        activeChar.pickupModule.drop(activeChar);
-      }
-    };
-
-    this.onKeyboardPickup = () => {
-      if (!this.isKeyboardActive) return;
-      const activeChar = getActiveKeyboardChar();
-      if (!activeChar || !activeChar.pickupModule) return;
-      const grabbableTargets = getAllCharacters
-        ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
-        : objects;
-      const aimX = this.actualMousePos.x;
-      const aimY = this.actualMousePos.y;
-      const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
-      if (target && target.spawnerModule && target.spawnerModule.enabled) {
-        const clone = target.spawnerModule.triggerClone(target, arena, objects);
-        if (clone) {
-          const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
-          if (!pickedUp) {
-            const idx = objects.indexOf(clone);
-            if (idx !== -1) objects.splice(idx, 1);
-          }
-        }
-      } else {
-        activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY);
-      }
-    };
-
-    this.onDropAttempt = this.onKeyboardPickup;
+    // Actions (pickup, drop, throw, punch, jump) are strictly evaluated via ControlSchema in PlayerManager
+    this.onKeyboardDrop = undefined;
+    this.onKeyboardPickup = undefined;
+    this.onDropAttempt = undefined;
   }
 }

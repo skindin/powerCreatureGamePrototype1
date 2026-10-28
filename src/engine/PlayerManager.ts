@@ -128,13 +128,6 @@ export class PlayerManager {
       this.spawnKeyboardPlayer();
     };
 
-    this.inputManager.onKeyboardJump = () => {
-      const kChar = this.players.get("keyboard")?.character ?? this.primaryCharacter;
-      if (kChar) {
-        kChar.jump(this.arena, this.inputManager.movementVector);
-      }
-    };
-
     this.inputManager.onGamepadJoin = (slotIndex: number) => {
       const slot = this.inputManager.gamepadSlots.get(slotIndex);
       this.spawnGamepadPlayer(slotIndex, slot?.id);
@@ -620,7 +613,7 @@ export class PlayerManager {
 
         const isFwd = locoCfg.forwardTrigger
           ? ControlSchemaArbiter.isTriggerActive(locoCfg.forwardTrigger, execCtx, keyStates, mouseStates)
-          : input.isRightMouseDown;
+          : false;
 
         const fwdAngle = kChar.facingAngle ?? 0;
         const fwdX = Math.cos(fwdAngle);
@@ -645,16 +638,16 @@ export class PlayerManager {
           moveY -= leftY * 0.85;
         }
       } else {
-        // Direct 8-Way Vector
-        const upKey = locoCfg.moveForwardKey || "KeyW";
-        const downKey = locoCfg.reverseKey || "KeyS";
-        const leftKey = locoCfg.strafeLeftKey || "KeyA";
-        const rightKey = locoCfg.strafeRightKey || "KeyD";
+        // Direct 8-Way Vector — strictly schema-driven (no unconfigured key fallbacks)
+        const upKey = locoCfg.moveForwardKey;
+        const downKey = locoCfg.reverseKey;
+        const leftKey = locoCfg.strafeLeftKey;
+        const rightKey = locoCfg.strafeRightKey;
 
-        if (keyStates.isDown(upKey) || keyStates.isDown("ArrowUp")) moveY -= 1;
-        if (keyStates.isDown(downKey) || keyStates.isDown("ArrowDown")) moveY += 1;
-        if (keyStates.isDown(leftKey) || keyStates.isDown("ArrowLeft")) moveX -= 1;
-        if (keyStates.isDown(rightKey) || keyStates.isDown("ArrowRight")) moveX += 1;
+        if (upKey && keyStates.isDown(upKey)) moveY -= 1;
+        if (downKey && keyStates.isDown(downKey)) moveY += 1;
+        if (leftKey && keyStates.isDown(leftKey)) moveX -= 1;
+        if (rightKey && keyStates.isDown(rightKey)) moveX += 1;
       }
 
       const moveMag = Math.hypot(moveX, moveY);

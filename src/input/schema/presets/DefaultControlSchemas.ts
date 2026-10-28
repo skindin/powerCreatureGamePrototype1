@@ -295,9 +295,6 @@ export const HunterControlSchema: ControlSchema = {
     locomotion: {
       mode: "forwardFacingDrive",
       forwardTrigger: { device: "mouse", code: "MouseRight", mode: "hold" },
-      strafeLeftKey: "KeyA",
-      strafeRightKey: "KeyD",
-      reverseKey: "KeyS",
     },
     rules: [
       // Left-hand Staging
