@@ -116,3 +116,40 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
 6. **No-LaTeX Policy**: Antigravity UI does NOT parse LaTeX math formatting (`$...$` or `$$...$$`). Always use code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode characters (`ω`, `θ`, `Δ`, `×`, `²`, `√`).
 
+---
+
+## 4. 1-File Edit Routing Table (Subsystem Isolation Map)
+
+> **CRITICAL ISOLATION RULE**:  
+> Host containers (`src/character/Character.ts` and `src/ui/DevPanel.ts`) are thin orchestrators. To prevent cross-subsystem regressions, **DO NOT** inline ability math, energy demand formulas, or module inspector bindings into `Character.ts` or `DevPanel.ts`. Always inspect and edit the single isolated slice below:
+
+### A. Character Gameplay Capabilities (`src/character/capabilities/`)
+| Subsystem / Mechanic | Primary Isolated File to Edit | Underlying Module |
+| :--- | :--- | :--- |
+| **Walking & Sprinting** (metabolic demand, exhaustion cancel, locomotion tick) | `src/character/capabilities/LocomotionCapability.ts` | `WalkingModule.ts` (Tier 2) |
+| **Wall Climbing** (isometric hold watts, vertical ascent watts, climb tick) | `src/character/capabilities/ClimbingCapability.ts` | `ClimbingModule.ts` (Tier 2) |
+| **Jumping & Dismount Hop** (jump burst energy, rationing, takeoff scaling) | `src/character/capabilities/JumpCapability.ts` | `JumpModule.ts` (Tier 1) |
+| **Throwing & Held Object Clearance** (throw HUD preview, trajectory, wall clearance) | `src/character/capabilities/ThrowCapability.ts` | `ThrowModule.ts` (Tier 2) |
+| **Laser Beam** (laser HUD anticipated modifier, aiming/firing tick actuation) | `src/character/capabilities/LaserCapability.ts` | `src/character/LaserModule.ts` |
+| **Melee Punch** (directional punch execution, cooldowns, tick actuation) | `src/character/capabilities/MeleeCapability.ts` | `src/character/MeleeModule.ts` |
+| **Passive Health Regen** (metabolic heal wattage demand & HP recovery tick) | `src/character/capabilities/HealthRegenCapability.ts` | `src/character/HealthModule.ts` |
+| **Eating / Consumables** (bite energy/HP transfer, volumetric shrinking) | `src/character/ConsumeModule.ts` | `src/engine/ConsumableModule.ts` |
+| **Modal Action Priority** (`LASER` > `CONSUME` > `THROW` > `PICKUP` arbitration) | `src/input/ControlModeArbiter.ts` | `src/ui/InputManager.ts` |
+| **3D Wall / Elevation Raycasting** (shared ray-wall intersection helpers) | `src/engine/physics/ElevationRaycaster.ts` | `Arena.ts` (Tier 1) |
+
+### B. DevPanel & Inspector Slices (`src/ui/devpanel/`)
+| UI / Inspector Feature | Primary Isolated File to Edit |
+| :--- | :--- |
+| **Entity Behavior Cards HTML & Add Catalog** | `src/ui/devpanel/EntityModuleCardsHtml.ts` |
+| **Add / Remove / Toggle Entity Behavior Modules** | `src/ui/devpanel/EntityModuleLifecycle.ts` |
+| **Physics & Core Module Controls** (Rigidbody, Collider, Mass, Friction, Bounce, Roll, Gravity) | `src/ui/devpanel/inspectors/PhysicsModulesInspector.ts` |
+| **Locomotion Module Controls** (Walking, Sprint, Strength, Jump, WallEdgeAssist, Climbing) | `src/ui/devpanel/inspectors/LocomotionModulesInspector.ts` |
+| **Interaction Module Controls** (Pickup, Throw, Consume, Consumable) | `src/ui/devpanel/inspectors/InteractionModulesInspector.ts` |
+| **Health, Damage Aura & Damage Solver Controls** | `src/ui/devpanel/inspectors/HealthAndDamageInspector.ts` |
+| **Laser Module Inspector Controls** | `src/ui/devpanel/inspectors/LaserInspector.ts` |
+| **Melee Module Inspector Controls** | `src/ui/devpanel/inspectors/MeleeInspector.ts` |
+| **Energy Pool & Stamina Inspector Controls** | `src/ui/devpanel/inspectors/EnergyPoolInspector.ts` |
+| **Scene Prefabs Panel & Archetype Controls** | `src/ui/devpanel/PrefabsPanelSection.ts` |
+| **Scene Spawners Panel & Live Telemetry** | `src/ui/devpanel/SpawnersPanelSection.ts` |
+| **Property Path Resolution & Player Delta Builder** | `src/ui/devpanel/PlayerDeltaBuilder.ts` |
+| **Config Persistence, Auto-Save & Git Sync** | `src/ui/devpanel/DevConfigPersistence.ts` |

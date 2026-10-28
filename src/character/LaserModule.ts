@@ -3,7 +3,7 @@ import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicPrope
 import type { Character } from "./Character.js";
 import type { Arena, Wall } from "../engine/Arena.js";
 import type { GameObject } from "../engine/GameObject.js";
-import { ThrowModule } from "./ThrowModule.js";
+import { ElevationRaycaster } from "../engine/physics/ElevationRaycaster.js";
 
 export interface LaserModuleOptions {
   damageRate?: number;
@@ -158,7 +158,7 @@ export class LaserModule {
 
     // Adapt endpoint elevation to whatever surface is under the mouse cursor:
     const scale = hoverScale > 0 ? hoverScale : (arena.visualAltitudeScale ?? 0.5);
-    const wallOver = ThrowModule.findWallOverlappingCollider(targetScreenX, targetScreenY, 0.2, arena, scale);
+    const wallOver = ElevationRaycaster.findWallOverlappingCollider(targetScreenX, targetScreenY, 0.2, arena, scale);
     const targetSurfaceHeight = wallOver
       ? wallOver.targetSurfaceHeight
       : arena.getSupportingSurfaceHeight(targetScreenX, targetScreenY, 0);
@@ -194,7 +194,7 @@ export class LaserModule {
     let isBlocked = false;
 
     for (const wall of arena.walls) {
-      const enterInfo = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
+      const enterInfo = ElevationRaycaster.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
       if (enterInfo && enterInfo.enterDist > 0.05 && enterInfo.enterDist < closestWallDist) {
         // Check if beam height at this wall enter distance is blocked by wall height
         const beamZ = startZ + slopeZ * enterInfo.enterDist;

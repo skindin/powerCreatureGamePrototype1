@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit hook to prevent modifications to frozen/sealed files
+# Pre-commit hook to prevent modifications to frozen/sealed files and enforce capability isolation
 
 FROZEN_FILES="
 src/engine/FrictionModule.ts
@@ -28,6 +28,26 @@ for file in $STAGED_FILES; do
       exit 1
     fi
   done
+
+  # Enforce Cross-Capability Isolation in src/character/capabilities/
+  case "$file" in
+    src/character/capabilities/*.ts)
+      if grep -Eq 'from "\./.*Capability(\.js)?"' "$file"; then
+        echo "❌ COMMIT BLOCKED BY CAPABILITY ISOLATION HOOK:"
+        echo "   File $file imports a sibling capability module."
+        echo "   Each capability in src/character/capabilities/ must remain 1-to-1 isolated."
+        exit 1
+      fi
+      ;;
+    src/character/LaserModule.ts|src/character/MeleeModule.ts)
+      if grep -Eq 'ThrowModule|WalkingModule|ClimbingModule|JumpModule' "$file"; then
+        echo "❌ COMMIT BLOCKED BY CAPABILITY ISOLATION HOOK:"
+        echo "   File $file imports another character capability module."
+        echo "   Use shared helpers in src/engine/physics/ (e.g. ElevationRaycaster.ts) instead."
+        exit 1
+      fi
+      ;;
+  esac
 done
 
 exit 0
