@@ -82,6 +82,7 @@ export class DevPanel {
     arena: false,
     globalPhysics: false,
     player: false,
+    spawners: false,
     modifiedObjects: new Map<string, GameObject>(),
     deletedObjectIds: new Set<string>(),
   };
@@ -501,8 +502,8 @@ export class DevPanel {
           </div>
           <div style="display: flex; gap: 4px; align-items: center;">
             <button id="btn-revert-from-project" class="btn-secondary-action" style="padding: 3px 6px; font-size: 0.70rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3);" title="Reload arena and physics from project config">↺ Reload</button>
-            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save Arena walls and global physics to src/config/worldConfig.json">
-              💾 Save Arena & Physics
+            <button id="btn-save-project-config" class="btn-primary-action" style="padding: 3px 8px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Save Arena walls, global physics, and spawner settings to src/config/worldConfig.json">
+              💾 Save Physics, Arena & Spawners
             </button>
           </div>
         </div>
@@ -3938,6 +3939,8 @@ export class DevPanel {
         intervalMinutes: 0.25,
         maxCount: 5,
       });
+      this.dirtyState.spawners = true;
+      this.updateDirtyBadge();
       this.renderSceneSpawners();
     });
 
@@ -5409,6 +5412,8 @@ export class DevPanel {
         suffix: " min",
         onChange: (val: number) => {
           spawner.intervalMinutes = Math.max(0.01, val);
+          this.dirtyState.spawners = true;
+          this.updateDirtyBadge();
         },
       });
 
@@ -5423,6 +5428,8 @@ export class DevPanel {
         suffix: " items",
         onChange: (val: number) => {
           spawner.maxCount = Math.max(1, Math.round(val));
+          this.dirtyState.spawners = true;
+          this.updateDirtyBadge();
         },
       });
     }
@@ -5432,7 +5439,11 @@ export class DevPanel {
       input.addEventListener("change", (e) => {
         const sid = (input as HTMLElement).dataset.spawnerId!;
         const s = sceneSpawnerManager.get(sid);
-        if (s) s.name = (e.target as HTMLInputElement).value;
+        if (s) {
+          s.name = (e.target as HTMLInputElement).value;
+          this.dirtyState.spawners = true;
+          this.updateDirtyBadge();
+        }
       });
     });
 
@@ -5440,7 +5451,11 @@ export class DevPanel {
       toggle.addEventListener("change", (e) => {
         const sid = (toggle as HTMLElement).dataset.spawnerId!;
         const s = sceneSpawnerManager.get(sid);
-        if (s) s.enabled = (e.target as HTMLInputElement).checked;
+        if (s) {
+          s.enabled = (e.target as HTMLInputElement).checked;
+          this.dirtyState.spawners = true;
+          this.updateDirtyBadge();
+        }
       });
     });
 
@@ -5448,7 +5463,11 @@ export class DevPanel {
       select.addEventListener("change", (e) => {
         const sid = (select as HTMLElement).dataset.spawnerId!;
         const s = sceneSpawnerManager.get(sid);
-        if (s) s.prefabId = (e.target as HTMLSelectElement).value;
+        if (s) {
+          s.prefabId = (e.target as HTMLSelectElement).value;
+          this.dirtyState.spawners = true;
+          this.updateDirtyBadge();
+        }
       });
     });
 
@@ -5471,6 +5490,8 @@ export class DevPanel {
       btn.addEventListener("click", () => {
         const sid = (btn as HTMLElement).dataset.spawnerId!;
         sceneSpawnerManager.delete(sid);
+        this.dirtyState.spawners = true;
+        this.updateDirtyBadge();
         this.renderSceneSpawners();
       });
     });
@@ -5527,6 +5548,7 @@ export class DevPanel {
     let count = 0;
     if (this.dirtyState.arena) count++;
     if (this.dirtyState.globalPhysics) count++;
+    if (this.dirtyState.spawners) count++;
 
     const badge = this.container.querySelector("#dev-save-badge") as HTMLElement | null;
     if (badge) {
@@ -6136,18 +6158,28 @@ export class DevPanel {
       return;
     }
 
-    const sections: ("arena" | "globalPhysics")[] = [];
+    const sections: ("arena" | "globalPhysics" | "spawners")[] = [];
     if (this.dirtyState.globalPhysics) sections.push("globalPhysics");
     if (this.dirtyState.arena) sections.push("arena");
+    if (this.dirtyState.spawners) sections.push("spawners");
 
-    // If neither was marked dirty, save both explicitly
+    // If none was marked dirty, save all explicitly
     if (sections.length === 0) {
-      sections.push("arena", "globalPhysics");
+      sections.push("arena", "globalPhysics", "spawners");
     }
 
     const delta: WorldConfigDelta = {
       clientVersion: this.currentConfigVersion,
       sections,
+      spawners: sceneSpawnerManager.getAll().map((s) => ({
+        id: s.id,
+        name: s.name,
+        enabled: s.enabled,
+        prefabId: s.prefabId,
+        intervalMinutes: s.intervalMinutes,
+        maxCount: s.maxCount,
+        designatedSpawnPoints: s.designatedSpawnPoints ? [...s.designatedSpawnPoints] : [],
+      })),
     };
 
     if (sections.includes("globalPhysics")) {
@@ -6194,26 +6226,27 @@ export class DevPanel {
 
       this.dirtyState.globalPhysics = false;
       this.dirtyState.arena = false;
+      this.dirtyState.spawners = false;
       this.updateDirtyBadge();
 
       if (btn) {
-        btn.textContent = "✓ Saved Arena & Physics!";
+        btn.textContent = "✓ Saved Physics, Arena & Spawners!";
         setTimeout(() => {
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "💾 Save Arena & Physics";
+            btn.textContent = "💾 Save Physics, Arena & Spawners";
           }
         }, 1500);
       }
 
-      this.showSaveToast(`💾 Saved Arena & Physics to project! (v${this.currentConfigVersion})`);
+      this.showSaveToast(`💾 Saved Physics, Arena & Spawners to project! (v${this.currentConfigVersion})`);
     } catch (err: any) {
       console.error("Failed to save project config:", err);
       this.showSaveToast(`❌ Failed to save: ${err.message || String(err)}`, true);
       alert("Failed to save project configuration:\n" + (err.message || String(err)));
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "💾 Save Arena & Physics";
+        btn.textContent = "💾 Save Physics, Arena & Spawners";
       }
     }
   }
@@ -6290,9 +6323,15 @@ export class DevPanel {
         this.renderScenePrefabs();
       }
 
+      if (config.spawners && Array.isArray(config.spawners)) {
+        sceneSpawnerManager.loadFromConfig(config.spawners);
+        this.renderSceneSpawners();
+      }
+
       this.currentConfigVersion = config.version;
       this.dirtyState.arena = false;
       this.dirtyState.globalPhysics = false;
+      this.dirtyState.spawners = false;
       this.dirtyState.modifiedObjects.clear();
       this.dirtyState.deletedObjectIds.clear();
 

@@ -53,6 +53,15 @@ export class SceneSpawnerManager {
     return deleted;
   }
 
+  public loadFromConfig(spawnersData: SceneSpawnerOptions[]): void {
+    this.spawners.clear();
+    for (const data of spawnersData) {
+      const spawner = new SceneSpawner(data);
+      this.spawners.set(spawner.id, spawner);
+    }
+    this.notifyChanged();
+  }
+
   public update(dt: number, arena: Arena, objects: GameObject[]): void {
     for (const spawner of this.spawners.values()) {
       if (spawner.enabled) {

@@ -19,6 +19,7 @@ import { HealthModule } from "./character/HealthModule.js";
 import initialWorldConfig from "./config/worldConfig.json";
 import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
 import { prefabManager } from "./engine/prefab/PrefabManager.js";
+import { sceneSpawnerManager } from "./engine/spawner/SceneSpawnerManager.js";
 
 // Prevent Vite from triggering full browser reloads when worldConfig.json is updated on disk
 if ((import.meta as any).hot) {
@@ -253,6 +254,11 @@ async function bootstrap(): Promise<void> {
   // 1b. Load Scene Prefabs from worldConfig if present
   if (worldConfig.prefabs && Array.isArray(worldConfig.prefabs)) {
     prefabManager.loadFromConfig(worldConfig.prefabs);
+  }
+
+  // 1c. Load Scene Spawners from worldConfig if present
+  if (worldConfig.spawners && Array.isArray(worldConfig.spawners)) {
+    sceneSpawnerManager.loadFromConfig(worldConfig.spawners);
   }
 
   // 2. Initialize Base Character in unit coordinates (spawn at one of the indicated clearing spawn locations)

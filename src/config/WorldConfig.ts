@@ -265,6 +265,16 @@ export interface SerializedPrefabConfig {
   archetype: SerializedGameObjectConfig;
 }
 
+export interface SerializedSpawnerConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  prefabId: string;
+  intervalMinutes: number;
+  maxCount: number;
+  designatedSpawnPoints?: { x: number; y: number; z?: number }[];
+}
+
 export interface WorldConfig {
   version: number;
   lastSaved: string;
@@ -283,11 +293,12 @@ export interface WorldConfig {
   player?: SerializedCharacterConfig;
   objects: SerializedGameObjectConfig[];
   prefabs?: SerializedPrefabConfig[];
+  spawners?: SerializedSpawnerConfig[];
 }
 
 export interface WorldConfigDelta {
   clientVersion: number;
-  sections: ("arena" | "globalPhysics" | "player" | "objects" | "prefabs")[];
+  sections: ("arena" | "globalPhysics" | "player" | "objects" | "prefabs" | "spawners")[];
   arena?: Partial<WorldConfig["arena"]>;
   globalPhysics?: Partial<WorldConfig["globalPhysics"]>;
   player?: SerializedCharacterConfig;
@@ -301,6 +312,7 @@ export interface WorldConfigDelta {
     deletedIds?: string[];
     replaceAll?: SerializedPrefabConfig[];
   };
+  spawners?: SerializedSpawnerConfig[];
 }
 
 /**

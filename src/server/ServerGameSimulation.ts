@@ -343,6 +343,11 @@ export class ServerGameSimulation {
       this.prefabManager.loadFromConfig(config.prefabs);
     }
 
+    // Load spawners if present
+    if (config.spawners && Array.isArray(config.spawners)) {
+      this.sceneSpawnerManager.loadFromConfig(config.spawners);
+    }
+
     // Load objects ONLY IF room is currently uninitialized/empty!
     // If simulation is already running with active players, preserve live freebody positions, velocities and in-flight states!
     if (this.objects.length === 0) {

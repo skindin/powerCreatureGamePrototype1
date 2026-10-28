@@ -1,6 +1,6 @@
 {
-  "version": 77,
-  "lastSaved": "2026-10-28T00:40:16.517Z",
+  "version": 78,
+  "lastSaved": "2026-10-28T01:54:59.011Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1437,6 +1437,43 @@
           "seed": 100
         }
       }
+    }
+  ],
+  "spawners": [
+    {
+      "id": "spawner_apple_default",
+      "name": "Apple Spawner",
+      "enabled": true,
+      "prefabId": "prefab_apple",
+      "intervalMinutes": 0.25,
+      "maxCount": 5,
+      "designatedSpawnPoints": [
+        {
+          "x": 10,
+          "y": 2.2,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 11.8,
+          "z": 0
+        },
+        {
+          "x": 3.5,
+          "y": 7,
+          "z": 0
+        },
+        {
+          "x": 16.5,
+          "y": 7,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 7,
+          "z": 0
+        }
+      ]
     }
   ]
 }
