@@ -198,14 +198,57 @@ export class GameLoop {
     this.playerManager.removePlayer(playerId);
   }
 
+  private backgroundTimerId: ReturnType<typeof setInterval> | null = null;
+
   public start(): void {
     if (this.isRunning) return;
+    if (this.backgroundTimerId !== null) clearInterval(this.backgroundTimerId);
+    this.backgroundTimerId = setInterval(() => this.stepIfBackgrounded(performance.now()), 16);
     this.isRunning = true;
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.tick(t));
   }
 
+  public stepIfBackgrounded(nowMs: number = performance.now()): void {
+    if (!this.isRunning || this.isPhysicsPaused) return;
+    const elapsedMs = nowMs - this.lastTime;
+    const isHidden = typeof document !== "undefined" && document.hidden;
+    if (!isHidden && elapsedMs < 24) return;
+
+    let deltaSeconds = elapsedMs / 1000;
+    this.lastTime = nowMs;
+    if (deltaSeconds <= 0) return;
+    if (deltaSeconds > 0.2) {
+      deltaSeconds = 0.2;
+    }
+
+    if (Math.abs(this.timeDilation - this.targetTimeDilation) > 0.0001) {
+      this.timeDilation += (this.targetTimeDilation - this.timeDilation) * this.timeDilationLerpRate;
+    } else {
+      this.timeDilation = this.targetTimeDilation;
+    }
+
+    this.accumulator += deltaSeconds * this.timeDilation;
+    while (this.accumulator >= this.fixedDt) {
+      this.updatePhysics(this.fixedDt);
+      if (this.onPhysicsTick) {
+        this.onPhysicsTick(this.fixedDt, nowMs);
+      }
+      this.accumulator -= this.fixedDt;
+    }
+
+    if (!isHidden) {
+      this.renderFrame(deltaSeconds);
+      this.devPanel.updateInspector();
+      this.energyHud?.update(deltaSeconds);
+    }
+  }
+
   public stop(): void {
+    if (this.backgroundTimerId !== null) {
+      clearInterval(this.backgroundTimerId);
+      this.backgroundTimerId = null;
+    }
     this.isRunning = false;
   }
 

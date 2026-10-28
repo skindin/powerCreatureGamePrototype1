@@ -6452,6 +6452,9 @@ class CollisionResolver {
         b.position.y += normY * overlap;
       }
     }
+    const nowContact = performance.now();
+    a.lastCollisionTime = nowContact;
+    b.lastCollisionTime = nowContact;
     const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
@@ -6720,6 +6723,9 @@ class CollisionResolver {
         a.velocity.y -= normalImpulse * invMassA * normY;
         b.velocity.x += normalImpulse * invMassB * normX;
         b.velocity.y += normalImpulse * invMassB * normY;
+        const nowContact = performance.now();
+        a.lastCollisionTime = nowContact;
+        b.lastCollisionTime = nowContact;
         const isCharCharContact = a.isCharacter && b.isCharacter;
         const tangX = -normY;
         const tangY = normX;

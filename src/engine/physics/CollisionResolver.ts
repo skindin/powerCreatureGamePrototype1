@@ -193,6 +193,9 @@ export class CollisionResolver {
 
     // Combined restitution: Character-on-character contact is purely inelastic (restitution = 0)
     // to prevent artificial elastic bouncing or slingshotting during walking/pushing
+    const nowContact = performance.now();
+    a.lastCollisionTime = nowContact;
+    b.lastCollisionTime = nowContact;
     const isCharCharContact = a.isCharacter && b.isCharacter;
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
@@ -560,7 +563,10 @@ export class CollisionResolver {
         b.velocity.y += normalImpulse * invMassB * normY;
 
         // Tangential relative velocity (perpendicular to normal)
-        const isCharCharContact = a.isCharacter && b.isCharacter;
+        const nowContact = performance.now();
+    a.lastCollisionTime = nowContact;
+    b.lastCollisionTime = nowContact;
+    const isCharCharContact = a.isCharacter && b.isCharacter;
         const tangX = -normY;
         const tangY = normX;
         const relVx = b.velocity.x - a.velocity.x;

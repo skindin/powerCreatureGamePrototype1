@@ -991,15 +991,28 @@ export class OnlineSessionManager {
     for (const { char: localChar, serverId: localServerId } of allLocalChars) {
       const myServerState = ghostChars.find((gc) => gc.id === localServerId);
       if (myServerState) {
-        // Local character position is dictated authoritatively by local simulation.
-        // We do NOT pull or blend the local player's position toward the delayed server ghost,
-        // which completely eliminates position fighting, rubberbanding, and movement slowdowns.
-        // Only adopt extreme server teleports (> 6.0u) if needed (e.g. map reset / out of bounds).
+        const nowMs = performance.now();
+        const isLocomoting =
+          localChar.isActivelyWalking ||
+          localChar.isSprinting ||
+          Math.hypot(localChar.movementInput?.x ?? 0, localChar.movementInput?.y ?? 0) > 0.01;
+        if (isLocomoting) {
+          (localChar as any)._lastVoluntaryMoveTime = nowMs;
+        }
+        const isRecentlyLocomoting =
+          isLocomoting || (nowMs - ((localChar as any)._lastVoluntaryMoveTime ?? 0) < 220);
+        const isBackgrounded =
+          (typeof document !== "undefined" && document.hidden) ||
+          (nowMs - ((this.gameLoop as any).lastTime ?? nowMs) >= 35);
+        const hasRecentCollision =
+          Boolean(myServerState.isUnderKnockback) ||
+          (localChar.lastCollisionTime > 0 && (nowMs - localChar.lastCollisionTime < 450));
+
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist > 6.0) {
+        if (dist > 6.0 || (!isRecentlyLocomoting && (dist > 1.5 || isBackgrounded))) {
           localChar.position.x = myServerState.x;
           localChar.position.y = myServerState.y;
           if (myServerState.z !== undefined) {
@@ -1007,15 +1020,22 @@ export class OnlineSessionManager {
           }
           localChar.velocity.x = myServerState.vx ?? 0;
           localChar.velocity.y = myServerState.vy ?? 0;
-        } else {
-          // If at rest and not commanding movement, adopt significant external impulse from server (e.g. bounce pad)
-          const isLocomoting = localChar.isActivelyWalking || localChar.isSprinting || Math.hypot(localChar.movementInput?.x ?? 0, localChar.movementInput?.y ?? 0) > 0.01;
-          const localSpeed = Math.hypot(localChar.velocity.x, localChar.velocity.y);
-          const serverSpeed = Math.hypot(myServerState.vx, myServerState.vy);
-          if (!isLocomoting && serverSpeed > 10.0 && localSpeed < 2.0) {
-            localChar.velocity.x = myServerState.vx;
-            localChar.velocity.y = myServerState.vy;
+        } else if (!isRecentlyLocomoting && dist > 0.005) {
+          // Player is idle (not commanding movement): any server position change is an authoritative
+          // external push/collision. Converge immediately so idle/background clients never desync when pushed.
+          const blend = 0.6;
+          localChar.position.x += dx * blend;
+          localChar.position.y += dy * blend;
+          if (myServerState.z !== undefined && Math.abs(myServerState.z - localChar.position.z) > 0.01) {
+            localChar.position.z += (myServerState.z - localChar.position.z) * blend;
           }
+          localChar.velocity.x = myServerState.vx ?? 0;
+          localChar.velocity.y = myServerState.vy ?? 0;
+        } else if (isRecentlyLocomoting && hasRecentCollision && dist > 0.04) {
+          // Actively colliding while moving: blend toward authoritative server contact point
+          const blend = 0.35;
+          localChar.position.x += dx * blend;
+          localChar.position.y += dy * blend;
         }
       }
     }
@@ -1063,6 +1083,9 @@ export class OnlineSessionManager {
     if (Array.isArray(snapshot.objects)) {
       this.gameLoop.syncAuthoritativeObjects(snapshot.objects, this.client.clientId || undefined, snapshot.seq);
     }
+
+    // 5. Ensure physics & telemetry continue stepping at 60Hz via WebSocket I/O even if window is unfocused or minimized
+    this.gameLoop.stepIfBackgrounded(performance.now());
   }
 
   private updateRosterUI(characters: any[]): void {
