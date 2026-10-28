@@ -10,6 +10,8 @@ export interface GamepadSlotState {
   id: string;
   isActive: boolean;
   movementVector: Vector2D;
+  aimStickVector?: Vector2D;
+  buttons?: boolean[];
   aimPos: Vector2D;
   isClimbHeld: boolean;
   prevButtons: boolean[];
@@ -116,6 +118,10 @@ export class InputManager {
   public isAltHeld = false;
   public lastKeyboardThrowAimAngle?: number;
 
+  public getActiveKeys(): Set<string> {
+    return this.keysPressed;
+  }
+
   public isKeyPressed(code: string): boolean {
     return this.keysPressed.has(code);
   }
@@ -131,6 +137,7 @@ export class InputManager {
   public lastMouseMoveTime = 0;
   public isCursorVisible = false;
   public isMouseDown = false;
+  public isMiddleMouseDown = false;
   public isRightMouseDown = false;
   public hoverWallTile: { col: number; row: number } | null = null;
   public movementVector: Vector2D = { x: 0, y: 0 };
@@ -464,6 +471,7 @@ export class InputManager {
         this.isAltHeld = false;
         this.isMouseDown = false;
         this.isRightMouseDown = false;
+      this.isMiddleMouseDown = false;
         this.updateMovementVector();
         this.exitPointerLock();
         return;
@@ -569,6 +577,7 @@ export class InputManager {
     window.addEventListener("blur", () => {
       this.isKeyboardSuspended = true;
       this.isRightMouseDown = false;
+      this.isMiddleMouseDown = false;
       this.isAwaitingUnlock = false;
       this.unhideCursor();
       this.lockedAimPos = null;
@@ -586,6 +595,7 @@ export class InputManager {
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         this.isRightMouseDown = false;
+      this.isMiddleMouseDown = false;
         this.isAwaitingUnlock = false;
         this.unhideCursor();
         this.lockedAimPos = null;
@@ -720,12 +730,20 @@ export class InputManager {
         return;
       }
 
+      if (e.button === 1) {
+        this.isMiddleMouseDown = true;
+        return;
+      }
       if (e.button === 2) {
         this.isRightMouseDown = true;
         this.isKeyboardMeleeRequested = false;
         if (this.onRightMouseDown) {
           this.onRightMouseDown(this.mousePos.x, this.mousePos.y);
         }
+        return;
+      }
+      if (e.button === 1) {
+        this.isMiddleMouseDown = false;
         return;
       }
       if (e.button !== 0) return; // Only primary left click
@@ -771,6 +789,7 @@ export class InputManager {
       this.syncModifierStates(e);
       if (e.button === 2) {
         this.isRightMouseDown = false;
+      this.isMiddleMouseDown = false;
         this.isKeyboardMeleeRequested = false;
         const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
@@ -1133,9 +1152,7 @@ export class InputManager {
       //   Odd indices (17, 19, 21...) = M1 / M3 (Right side paddles)
       //   Even indices (18, 20, 22...) = M2 / M4 (Left side paddles)
       //   Button 16 is also M1 if present.
-      let extendedLeftPaddle = false;
-      let extendedPrevLeftPaddle = false;
-      let extendedRightPaddle = false;
+                  let extendedRightPaddle = false;
       let extendedPrevRightPaddle = false;
 
       const numButtons = gp.buttons.length;
@@ -1147,9 +1164,7 @@ export class InputManager {
         // Button 16 = M1 (Right Paddle / Jump), Button 17 = M2 (Left Paddle / Sprint)
         if (isButtonPressed(16)) extendedRightPaddle = true;
         if (isPrevPressed(16)) extendedPrevRightPaddle = true;
-        if (isButtonPressed(17)) extendedLeftPaddle = true;
-        if (isPrevPressed(17)) extendedPrevLeftPaddle = true;
-      } else if (numButtons > 18) {
+                      } else if (numButtons > 18) {
         for (let bIdx = 16; bIdx < numButtons; bIdx++) {
           if (bIdx === 16) {
             // Button 16 on 19+ pads can be M1
@@ -1163,20 +1178,9 @@ export class InputManager {
             if (isPrevPressed(bIdx)) extendedPrevRightPaddle = true;
           } else {
             // 18, 20, 22... = M2 / M4 (Left side paddles -> Sprint)
-            if (isButtonPressed(bIdx)) extendedLeftPaddle = true;
-            if (isPrevPressed(bIdx)) extendedPrevLeftPaddle = true;
-          }
+                                  }
         }
       }
-
-      // Left Under-Paddle (M2) / Sprint buttons:
-      // Left Joystick Click (L3 / Button 10), plus extended M2 back paddles (buttons 17+)
-      // NOTE: Button 4 (Left Bumper / LB) is no longer sprint; LB is exclusively Laser Mode!
-      const leftPaddleButtonIndices = [10];
-      const leftPaddleCurrent = isAnyButtonPressed(leftPaddleButtonIndices) || extendedLeftPaddle;
-      const leftPaddlePrev = isAnyButtonPrevPressed(leftPaddleButtonIndices) || extendedPrevLeftPaddle;
-      const leftPaddleJustPressed = leftPaddleCurrent && !leftPaddlePrev;
-      const leftPaddleJustReleased = !leftPaddleCurrent && leftPaddlePrev;
 
       // Right Under-Paddle (M1) / Jump & Climb buttons:
       // Button 0 (A on Xbox / Cross on PS), plus extended M1 back paddles (buttons 16+).
@@ -1201,6 +1205,9 @@ export class InputManager {
       const ly = gp.axes[1] ?? 0;
       const rx = gp.axes[2] ?? 0;
       const ry = gp.axes[3] ?? 0;
+      slot.prevButtons = slot.buttons ? [...slot.buttons] : [];
+      slot.buttons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+      slot.aimStickVector = { x: rx, y: ry };
       const lMag = Math.hypot(lx, ly);
       const rMag = Math.hypot(rx, ry);
 
@@ -1522,192 +1529,8 @@ export class InputManager {
         slot.aimOffset.y = clampedY - char.position.y;
       }
 
-      // Button 0 (A on Xbox / Cross on PS) or Right Under-Paddle (Button 18/20/11/3): Jump (and Climbing / Dismounting if climb module attached)
-      slot.isClimbHeld = rightPaddleCurrent || Boolean(slot.isJumpRequested);
-      if (rightPaddleJustPressed) {
-        slot.isJumpRequested = true;
-        char.jump(arena, slot.movementVector);
-      }
-
-      // Button 4 (LB / L1), Button 10 (L3), or Left Under-Paddle: Sprint
-      // Controller uses toggle sprint: tap to toggle on/off, and disarms when stick stops moving
-      const isStickMoving = lMag > deadzone;
-
-      if (leftPaddleJustPressed) {
-        slot.leftPaddlePressTime = performance.now();
-        // If already sprinting and moving, tapping it again toggles sprint off. Otherwise activate sprint!
-        if (char.isSprinting && isStickMoving) {
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        } else {
-          slot.sprintArmed = true;
-          char.setSprinting(true);
-        }
-      } else if (leftPaddleCurrent) {
-        // Actively holding paddle down guarantees sprinting
-        slot.sprintArmed = true;
-        char.setSprinting(true);
-      } else if (leftPaddleJustReleased) {
-        const pressDuration = performance.now() - (slot.leftPaddlePressTime ?? 0);
-        if (pressDuration > 220) {
-          // Releasing paddle after a long hold returns to normal walk speed
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        }
-        // If it was a quick tap (< 220ms), slot.sprintArmed remains true (toggle sprint) while moving stick!
-      }
-
-      if (isStickMoving) {
-        if (slot.sprintArmed || leftPaddleCurrent) {
-          char.setSprinting(true);
-        }
-      } else {
-        // Left stick is in neutral deadzone: disarm sprint when motion stops (unless paddle is actively held)
-        if (slot.wasMoving && !leftPaddleCurrent) {
-          slot.sprintArmed = false;
-          char.setSprinting(false);
-        }
-      }
-      slot.wasMoving = isStickMoving;
-
-      const isCursorVis = (slot.isCursorVisible ?? false) || Boolean(slot.isLaserAiming);
-      const aimX = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.x : undefined;
-      const aimY = (isCursorVis || isHolding || slot.aimMovedWhileInRange) ? slot.aimPos.y : undefined;
-
-      const onGrabSuccess = () => {
-        slot.hasMovedAimStick = false;
-        slot.aimMovedWhileInRange = false;
-        slot.lastThrowAimAngle = undefined;
-        char.lastThrowAimAngle = undefined;
-        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-        const inputAngle = moveMag > 0.05
-          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (char.facingAngle ?? 0);
-        slot.lastMovementInputAngle = inputAngle;
-        char.lastMovementInputAngle = inputAngle;
-        char.facingAngle = inputAngle;
-        const forwardDist = 3.0;
-        slot.aimPos.x = char.position.x + Math.cos(inputAngle) * forwardDist;
-        slot.aimPos.y = char.position.y + Math.sin(inputAngle) * forwardDist;
-        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-        slot.aimOffset.x = Math.cos(inputAngle) * forwardDist;
-        slot.aimOffset.y = Math.sin(inputAngle) * forwardDist;
-      };
-
-      // Button 1 (B on Xbox / Circle on PS): Pickup & Swap
-      const bCurrent = isButtonPressed(1);
-      const bJustReleased = !bCurrent && isPrevPressed(1);
-      if (bJustReleased) {
-        slot.bHeld = false;
-      }
-      if (bCurrent) {
-        if (!char.heldObject && char.pickupModule) {
-          if (!isPrevPressed(1) || slot.bHeld) {
-            char.pickupModule.pickupAndSwap(
-              char,
-              grabbableTargets,
-              arena.wallHeight,
-              aimX,
-              aimY
-            );
-            if (char.heldObject) {
-              slot.bHeld = false;
-              onGrabSuccess();
-            } else {
-              slot.bHeld = true;
-            }
-          }
-        } else if (char.heldObject) {
-          slot.bHeld = false;
-          if (!isPrevPressed(1) && char.pickupModule) {
-            const swapped = char.pickupModule.pickupAndSwap(
-              char,
-              grabbableTargets,
-              arena.wallHeight,
-              aimX,
-              aimY
-            );
-            if (swapped) {
-              onGrabSuccess();
-            }
-          }
-        }
-      }
-
-      // Button 2 (X on Xbox / Square on PS) or Button 11 (R3): Melee Attack in facing direction (single punch per button press)
-      const xCurrent = isButtonPressed(2) || isButtonPressed(11);
-      const isPrevMelee = isPrevPressed(2) || isPrevPressed(11);
-      const meleeJustPressed = xCurrent && !isPrevMelee;
-      slot.isMeleeRequested = meleeJustPressed;
-
-      if (meleeJustPressed) {
-        // Attack points in character's facing direction
-        const mDirX = Math.cos(char.facingAngle ?? 0);
-        const mDirY = Math.sin(char.facingAngle ?? 0);
-        slot.meleeAimDir = { x: mDirX, y: mDirY };
-      } else {
-        slot.meleeAimDir = null;
-      }
-
-      // Button 3 (Y on Xbox / Triangle on PS): Dedicated Drop item
-      const yCurrent = isButtonPressed(3);
-      if (yCurrent && !isPrevPressed(3) && char.pickupModule) {
-        if (char.heldObject) {
-          slot.isDropRequested = true;
-          char.pickupModule.drop(char);
-        }
-      }
-
-      // Button 7 (RT / R2): Grab & Throw (suppressed in Laser Mode, where pulling RT fires the laser with analog power)
-      if (!slot.isLaserAiming) {
-        const rtCurrent = isButtonPressed(7);
-        const rtJustReleased = !rtCurrent && isPrevPressed(7);
-
-        if (rtJustReleased || !rtCurrent) {
-          slot.rtGrabbed = false;
-          slot.rtHeld = false;
-        }
-
-        if (!char.heldObject) {
-          if (rtCurrent && char.pickupModule && (!isPrevPressed(7) || slot.rtHeld)) {
-            char.pickupModule.pickupAndSwap(
-              char,
-              grabbableTargets,
-              arena.wallHeight,
-              aimX,
-              aimY
-            );
-            if (char.heldObject) {
-              slot.rtGrabbed = true;
-              slot.rtHeld = false;
-              onGrabSuccess();
-            } else {
-              slot.rtHeld = true;
-            }
-          }
-        } else {
-          slot.rtHeld = false;
-
-          const isHoldingFood = Boolean(char.heldObject?.consumableModule?.enabled);
-          if (isHoldingFood && !slot.isAltHeld) {
-            // Food primary action without LT: Player MUST release RT after grabbing before repressing RT to eat!
-            slot.isUsingItem = rtCurrent && !slot.rtGrabbed;
-          } else {
-            slot.isUsingItem = false;
-            // When holding LT (Alt) or holding non-food: RT throws!
-            if (!isPrevPressed(7) && rtCurrent && !slot.rtGrabbed && char.throwModule) {
-              slot.isThrowRequested = true;
-            }
-          }
-        }
-      } else {
-        slot.rtGrabbed = false;
-        slot.rtHeld = false;
-        slot.isUsingItem = false;
-      }
-
-      // Record buttons for edge detection
-      slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+      // In Play Mode, gamepad actions (jump, sprint, grab, throw, melee, eat) are evaluated via the character's active ControlSchema in PlayerManager.
+      slot.prevButtons = slot.buttons ? [...slot.buttons] : [];
     }
 
     if (this.gamepadConnected !== anyConnected) {
@@ -1978,50 +1801,8 @@ export class InputManager {
         return;
       }
 
-      // Play Mode:
-      // 1. If holding an object:
-      if (activeChar.heldObject) {
-        this.justPickedUp = false;
-        // If holding an item with an inherent alternate primary ability (e.g. food consumable):
-        // Default ability (e.g. eat) is triggered by Left Mouse alone.
-        // Holding Right Mouse Button enters throwing mode, and Left Mouse throws!
-        const hasPrimaryAbility = activeChar.hasPrimaryItemAbility?.() ?? Boolean(activeChar.heldObject.consumableModule?.enabled);
-        if (hasPrimaryAbility && !this.isRightMouseDown) {
-          // Primary ability is triggered continuously while LMB is down in capturePlayerInputs
-          return;
-        }
-
-        // Execute Throw if RMB is held OR if the object has no other primary ability:
-        if (activeChar.throwModule) {
-          this.isKeyboardThrowRequested = true;
-          this.isThrowingPress = true; // This click was used to throw; cannot immediately grab until released
-          return;
-        }
-      }
-
-      // 2. If NOT holding an object: attempt pickup
-      if (!activeChar.heldObject && activeChar.pickupModule) {
-        const grabbableTargets = getAllCharacters
-          ? [...getAllCharacters().filter((c) => c !== activeChar), ...objects]
-          : objects;
-        const aimX = clickX;
-        const aimY = clickY;
-        const target = activeChar.pickupModule.findTargetObject(activeChar, aimX, aimY, grabbableTargets, arena.wallHeight);
-        if (target && target.spawnerModule && target.spawnerModule.enabled) {
-          const clone = target.spawnerModule.triggerClone(target, arena, objects);
-          if (clone) {
-            const pickedUp = activeChar.pickupModule.pickup(activeChar, clone);
-            if (!pickedUp) {
-              const idx = objects.indexOf(clone);
-              if (idx !== -1) objects.splice(idx, 1);
-            } else {
-              this.justPickedUp = true;
-            }
-          }
-        } else if (activeChar.pickupModule.pickupAndSwap(activeChar, grabbableTargets, arena.wallHeight, aimX, aimY)) {
-          this.justPickedUp = true;
-        }
-      }
+      // Play Mode: Direct actions (pickup, throw, eat) are evaluated via active ControlSchema in PlayerManager.
+      // InputManager only tracks isMouseDown state for the schema arbiter.
     };
 
     // Right click is reserved for item throw lock (and wall erasing in edit mode)

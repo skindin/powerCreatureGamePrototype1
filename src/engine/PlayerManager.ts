@@ -65,6 +65,9 @@ export class PlayerManager {
   public onObjectDepleted?: (objectId: string) => void;
   public isOnlineMode: boolean = false;
   public onPriorityGrabRequested?: (localPlayerId: string, charId: string, targetObjectId: string) => void;
+  private prevKeysPressed: Set<string> = new Set();
+  private prevMouseButtons: Set<number> = new Set();
+  private prevGamepadButtons: Map<number, Set<number>> = new Map();
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -155,7 +158,9 @@ export class PlayerManager {
     if (!kChar || !kChar.heldObject) {
       return false;
     }
-    const isAltDown = Boolean(
+    if (kChar.isLaserAiming || kChar.isEatingFood) return false;
+    return Boolean(kChar.isAimingTrajectory || (!kChar.isPrimaryAbilityNonDirectional()));
+    /* const _isAltDown = Boolean(
       this.inputManager.isCombatModifierActive ? this.inputManager.isCombatModifierActive() : (
         this.inputManager.isAltHeld ||
         this.inputManager.isKeyPressed("AltLeft") ||
@@ -171,7 +176,7 @@ export class PlayerManager {
     if (kChar.isPrimaryAbilityNonDirectional()) {
       return Boolean(this.inputManager.isRightMouseDown || this.inputManager.isThrowingPress);
     }
-    return true;
+    return true; */
   }
 
   public get allCharacters(): Character[] {
@@ -536,311 +541,237 @@ export class PlayerManager {
     const map = new Map<string, PlayerInputPacket>();
     const input = this.inputManager;
 
-    // 1. Keyboard
+    // Shared edge-detection accessors for keyboard and mouse
+    const keyStates = {
+      isDown: (code: string) => input.isKeyPressed(code),
+      justPressed: (code: string) => input.isKeyPressed(code) && !this.prevKeysPressed.has(code),
+      justReleased: (code: string) => !input.isKeyPressed(code) && this.prevKeysPressed.has(code),
+    };
+
+    const isMouseBtnDown = (btn: number) => {
+      if (btn === 0) return input.isMouseDown;
+      if (btn === 1) return Boolean(input.isMiddleMouseDown);
+      if (btn === 2) return input.isRightMouseDown;
+      return false;
+    };
+    const mouseStates = {
+      isDown: isMouseBtnDown,
+      justPressed: (btn: number) => isMouseBtnDown(btn) && !this.prevMouseButtons.has(btn),
+      justReleased: (btn: number) => !isMouseBtnDown(btn) && this.prevMouseButtons.has(btn),
+      worldPos: input.actualMousePos,
+    };
+
+    // 1. Keyboard & Mouse Input Capture (Fully Schema-Driven via kSchema)
     const kEntry = this.players.get("keyboard");
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
+      const kSchema = ControlsInspector.getActiveSchema(kChar);
       const isHolding = kChar.heldObject !== null;
-      const hasPrimaryAbility = kChar.hasPrimaryItemAbility();
-      const isPrimaryNonDirectional = kChar.isPrimaryAbilityNonDirectional();
+      const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
 
-      // If holding an object with an inherent ability, holding RMB swaps to Throw.
-      // If object has no other ability, default ability is Throw.
-      // Ability swap stays in effect until the swapped ability is released.
-      const isAltDown = Boolean(
-        input.isCombatModifierActive ? input.isCombatModifierActive() : (
-          input.isAltHeld ||
-          input.isKeyPressed("AltLeft") ||
-          input.isKeyPressed("AltRight") ||
-          input.isKeyPressed("ControlLeft") ||
-          input.isKeyPressed("ControlRight") ||
-          input.isKeyPressed("KeyF")
-        )
-      );
-      const isThrowActive = isHolding && (!hasPrimaryAbility || (!isAltDown && input.isRightMouseDown) || (input.isThrowingPress && input.isMouseDown) || kChar.isAimingTrajectory);
-
-      // Mouse aiming & trajectory are active when:
-      // 1. In edit mode, or
-      // 2. Mouse button is down, or
-      // 3. Holding an object whose active ability is directional (e.g. Throw or a directional ability).
-      // If the primary ability does not involve direction and RMB is not held, do NOT aim or anticipate throw.
-      const isMouseAiming = !isEditMode && (
-        (isHolding && isThrowActive) ||
-        (isHolding && !isPrimaryNonDirectional) ||
-        (!isHolding && !isAltDown && input.isMouseDown)
-      );
-
-      const grabState = this.getGrabSuppressionState(kChar.id);
-      const isEKeyDown = input.isEKeyDepressed || input.isKeyPressed("KeyE");
-
-      if (isHolding) {
-        // Holding an object: any button held down while holding cannot initiate subsequent grabs until released
-        if (input.isMouseDown) {
-          grabState.mouseGrabSuppressed = true;
-        }
-        if (isEKeyDown) {
-          grabState.keyEGrabSuppressed = true;
-        }
-      } else {
-        // Empty-handed: releasing the button resets suppression, allowing new grab attempts
-        if (!input.isMouseDown) {
-          grabState.mouseGrabSuppressed = false;
-        }
-        if (!isEKeyDown) {
-          grabState.keyEGrabSuppressed = false;
-        }
-      }
-
-      const canMouseGrab = !isAltDown && input.isMouseDown && !grabState.mouseGrabSuppressed;
-      const canKeyEGrab = isEKeyDown && !grabState.keyEGrabSuppressed;
-      const isKeyboardSeekingGrab = (
-        input.isKeyboardActive &&
-        !input.isKeyboardSuspended &&
-        !input.isThrowingPress &&
-        (canMouseGrab || canKeyEGrab)
-      );
-      
-      // Determine explicit target object in reach if grab is active
+      // Target discovery in reach for pickup
       let grabTargetObjectId: string | null = null;
-      if (isKeyboardSeekingGrab && !kChar.heldObject && kChar.pickupModule) {
-        const aimTarget = isMouseAiming ? input.actualMousePos : null;
-        const aimX = aimTarget ? aimTarget.x : kChar.position.x;
-        const aimY = aimTarget ? aimTarget.y : kChar.position.y;
+      let grabTargetObject: GameObject | null = null;
+      if (!isHolding && kChar.pickupModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
         const target = kChar.pickupModule.findTargetObject(
           kChar,
-          aimX,
-          aimY,
+          input.actualMousePos.x,
+          input.actualMousePos.y,
           candidateEntities,
           this.arena.wallHeight
         );
         if (target) {
           grabTargetObjectId = target.id;
+          grabTargetObject = target;
         }
       }
 
-      // Ensure facingAngle is explicit:
-      // If holding an object:
-      // - If auto-locked onto a target, face locked target
-      // - If aiming throw or directional ability, face cursor
-      // - If primary ability does not involve direction and not aiming throw (Alt not held), do NOT face cursor; face movement direction
-      if (kChar.heldObject) {
-        if (input.lockedAimPos) {
-          const aimDx = input.lockedAimPos.x - kChar.position.x;
-          const aimDy = input.lockedAimPos.y - kChar.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            kChar.facingAngle = Math.atan2(aimDy, aimDx);
-          }
-        } else if (isThrowActive || !isPrimaryNonDirectional) {
-          const aimDx = input.actualMousePos.x - kChar.position.x;
-          const aimDy = input.actualMousePos.y - kChar.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            const angle = Math.atan2(aimDy, aimDx);
-            kChar.facingAngle = angle;
-            kChar.lastThrowAimAngle = angle;
-            this.inputManager.lastKeyboardThrowAimAngle = angle;
-          }
-        } else {
-          // Non-directional primary ability (e.g. food): face movement direction
-          const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
-          if (moveMag > 0.05) {
-            kChar.facingAngle = Math.atan2(input.movementVector.y, input.movementVector.x);
-          }
-        }
-      } else {
-        const moveMag = Math.hypot(input.movementVector.x, input.movementVector.y);
-        if (moveMag > 0.05) {
-          kChar.facingAngle = Math.atan2(input.movementVector.y, input.movementVector.x);
-        }
-      }
+      const execCtx: any = {
+        character: kChar,
+        arena: this.arena,
+        dt: 1 / 60,
+        isGrounded: Boolean(kChar.isRestingOnSurface),
+        isClimbing: Boolean(kChar.isClimbing),
+        isHoldingItem: isHolding,
+        heldItemIsEdible: isHoldingConsumable,
+        targetInReach: grabTargetObject,
+        stagedAction: kChar.stagedAction,
+        facingAngle: kChar.facingAngle ?? 0,
+        mouseAimPos: input.actualMousePos,
+        reticleAimPos: input.actualMousePos,
+        isKeyDown: (code: string) => input.isKeyPressed(code),
+        isMouseButtonDown: isMouseBtnDown,
+        isGamepadButtonDown: () => false,
+        getGamepadAxis: () => ({ x: 0, y: 0 }),
+      };
 
-      // Keyboard Combat Mode:
-      // - Holding RMB = Throwing Mode for non-directional items (e.g. food); LMB throws while RMB held
-      // - Alt + Left Click = Melee Punch (single punch per click)
-      // - Alt + RMB = Laser Aiming Mode
-      // - Alt + RMB + LMB = Activate/Fire Laser
-      // Keyboard Combat Mode & Custom Schema Integration:
-      const kSchema = ControlsInspector.getActiveSchema(kChar);
-      const isHunterMode = Boolean(kSchema && kSchema.keyboardMouse.locomotion.mode === "forwardFacingDrive");
-
-      if (isHunterMode) {
-        if (input.isKeyPressed("KeyQ")) {
-          kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
-        }
-        if (input.isKeyPressed("KeyE")) {
-          kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
-        }
-        if (input.isKeyPressed("KeyF")) {
-          kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
-        }
-      }
-
-      const isStagedLaser = kChar.stagedAction === "laser";
-      const isStagedMelee = kChar.stagedAction === "melee";
-
-      let effectiveMoveX = input.movementVector.x;
-      let effectiveMoveY = input.movementVector.y;
-
-      if (isHunterMode) {
+      // 1. Locomotion Movement Vector
+      let moveX = 0;
+      let moveY = 0;
+      const locoCfg = kSchema.keyboardMouse.locomotion;
+      if (locoCfg.mode === "forwardFacingDrive") {
         const aimDx = input.actualMousePos.x - kChar.position.x;
         const aimDy = input.actualMousePos.y - kChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
           kChar.facingAngle = Math.atan2(aimDy, aimDx);
         }
 
-        const fwdTrigger = kSchema.keyboardMouse.locomotion.forwardTrigger;
-        const isFwdDown = fwdTrigger?.device === "mouse"
-          ? (fwdTrigger.code === "MouseRight" ? input.isRightMouseDown : input.isMouseDown)
-          : (fwdTrigger ? input.isKeyPressed(fwdTrigger.code) : input.isRightMouseDown);
+        const isFwd = locoCfg.forwardTrigger
+          ? ControlSchemaArbiter.isTriggerActive(locoCfg.forwardTrigger, execCtx, keyStates, mouseStates)
+          : input.isRightMouseDown;
 
-        const fwdX = Math.cos(kChar.facingAngle ?? 0);
-        const fwdY = Math.sin(kChar.facingAngle ?? 0);
+        const fwdAngle = kChar.facingAngle ?? 0;
+        const fwdX = Math.cos(fwdAngle);
+        const fwdY = Math.sin(fwdAngle);
         const leftX = -fwdY;
         const leftY = fwdX;
 
-        let mx = 0;
-        let my = 0;
-        if (isFwdDown) {
-          mx += fwdX;
-          my += fwdY;
+        if (isFwd) {
+          moveX += fwdX;
+          moveY += fwdY;
         }
-        if (kSchema.keyboardMouse.locomotion.reverseKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.reverseKey)) {
-          mx -= fwdX * 0.75;
-          my -= fwdY * 0.75;
+        if (locoCfg.reverseKey && keyStates.isDown(locoCfg.reverseKey)) {
+          moveX -= fwdX * 0.75;
+          moveY -= fwdY * 0.75;
         }
-        if (kSchema.keyboardMouse.locomotion.strafeLeftKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.strafeLeftKey)) {
-          mx += leftX * 0.85;
-          my += leftY * 0.85;
+        if (locoCfg.strafeLeftKey && keyStates.isDown(locoCfg.strafeLeftKey)) {
+          moveX += leftX * 0.85;
+          moveY += leftY * 0.85;
         }
-        if (kSchema.keyboardMouse.locomotion.strafeRightKey && input.isKeyPressed(kSchema.keyboardMouse.locomotion.strafeRightKey)) {
-          mx -= leftX * 0.85;
-          my -= leftY * 0.85;
+        if (locoCfg.strafeRightKey && keyStates.isDown(locoCfg.strafeRightKey)) {
+          moveX -= leftX * 0.85;
+          moveY -= leftY * 0.85;
         }
-        const mag = Math.hypot(mx, my);
-        if (mag > 1.0) {
-          mx /= mag;
-          my /= mag;
-        }
-        effectiveMoveX = mx;
-        effectiveMoveY = my;
+      } else {
+        // Direct 8-Way Vector
+        const upKey = locoCfg.moveForwardKey || "KeyW";
+        const downKey = locoCfg.reverseKey || "KeyS";
+        const leftKey = locoCfg.strafeLeftKey || "KeyA";
+        const rightKey = locoCfg.strafeRightKey || "KeyD";
+
+        if (keyStates.isDown(upKey) || keyStates.isDown("ArrowUp")) moveY -= 1;
+        if (keyStates.isDown(downKey) || keyStates.isDown("ArrowDown")) moveY += 1;
+        if (keyStates.isDown(leftKey) || keyStates.isDown("ArrowLeft")) moveX -= 1;
+        if (keyStates.isDown(rightKey) || keyStates.isDown("ArrowRight")) moveX += 1;
       }
 
-      let isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
+      const moveMag = Math.hypot(moveX, moveY);
+      if (moveMag > 1.0) {
+        moveX /= moveMag;
+        moveY /= moveMag;
+      }
 
-      // Custom schema rule evaluations:
-      let schemaLaserAim = false;
-      let schemaLaserFire = false;
-      let schemaMelee = false;
-      let schemaThrowAim = false;
+      // 2. Aiming Paradigm & Facing Angle
+      const aimCfg = kSchema.keyboardMouse.aiming;
+      if (aimCfg.mode === "faceMouseCursor") {
+        const aimDx = input.actualMousePos.x - kChar.position.x;
+        const aimDy = input.actualMousePos.y - kChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          kChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else if (aimCfg.mode === "faceMovement") {
+        if (moveMag > 0.05) {
+          kChar.facingAngle = Math.atan2(moveY, moveX);
+        }
+      }
 
-      if (kSchema) {
-        const keyStates = {
-          isDown: (code: string) => input.isKeyPressed(code),
-          justPressed: (code: string) => input.isKeyPressed(code),
-          justReleased: (_code: string) => false,
-        };
-        const mouseStates = {
-          isDown: (btn: number) => (btn === 0 ? input.isMouseDown : btn === 2 ? input.isRightMouseDown : false),
-          justPressed: (btn: number) => (btn === 0 ? input.isMouseDown : btn === 2 ? input.isRightMouseDown : false),
-          justReleased: (_btn: number) => false,
-        };
-        const execCtx: any = {
-          character: kChar,
-          isHoldingItem: isHolding,
-          heldItemIsEdible: isHoldingConsumable,
-          targetInReach: grabTargetObjectId !== null,
-          isGrounded: Boolean(kChar.isRestingOnSurface),
-          isClimbing: Boolean(kChar.isClimbing),
-          stagedAction: kChar.stagedAction,
-          isKeyDown: (code: string) => input.isKeyPressed(code),
-        };
+      // 3. Schema Action Rules Evaluation (Sorted by priority descending)
+      let isSprinting = false;
+      let isJumpHeld = false;
+      let isGrabHeld = false;
+      let isDrop = false;
+      let isThrow = false;
+      let isUsingItem = false;
+      let isLaserAiming = false;
+      let isLaserFiring = false;
+      let isMeleeRequested = false;
+      let isAimingTrajectory = false;
 
-        for (const rule of kSchema.keyboardMouse.rules) {
-          if (rule.enabled === false) continue;
-          if (ControlSchemaArbiter.evaluateCondition(rule.condition, execCtx)) {
-            if (ControlSchemaArbiter.isTriggerActive(rule.trigger, execCtx, keyStates, mouseStates)) {
-              ControlsInspector.notifyRuleFired(rule.id);
-              if (rule.action.moduleId === "laser" && rule.action.intent === "aimLaser") {
-                schemaLaserAim = true;
+      const sortedRules = [...kSchema.keyboardMouse.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      for (const rule of sortedRules) {
+        if (rule.enabled === false) continue;
+        if (ControlSchemaArbiter.evaluateCondition(rule.condition, execCtx)) {
+          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, execCtx, keyStates, mouseStates)) {
+            ControlsInspector.notifyRuleFired(rule.id);
+            const mid = rule.action.moduleId;
+            const intent = rule.action.intent;
+
+            if (mid === "locomotion") {
+              if (intent === "jump") isJumpHeld = true;
+              else if (intent === "holdSprint") isSprinting = true;
+              else if (intent === "toggleSprint") {
+                if (rule.trigger.mode === "press" && (keyStates.justPressed(rule.trigger.code) || mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : 2))) {
+                  kChar.setSprinting(!kChar.isSprinting);
+                }
+                isSprinting = Boolean(kChar.isSprinting);
               }
-              if (rule.action.moduleId === "laser" && rule.action.intent === "fireLaser") {
-                schemaLaserFire = true;
-                schemaLaserAim = true;
+            } else if (mid === "throwPickup") {
+              if (intent === "pickupReach") isGrabHeld = true;
+              else if (intent === "aimThrow") isAimingTrajectory = true;
+              else if (intent === "releaseThrow") isThrow = true;
+              else if (intent === "dropItem") isDrop = true;
+            } else if (mid === "laser") {
+              if (intent === "aimLaser") isLaserAiming = true;
+              else if (intent === "fireLaser") {
+                isLaserFiring = true;
+                isLaserAiming = true;
               }
-              if (rule.action.moduleId === "melee" && rule.action.intent === "punch") {
-                schemaMelee = true;
-              }
-              if (rule.action.moduleId === "throwPickup" && rule.action.intent === "aimThrow") {
-                schemaThrowAim = true;
+            } else if (mid === "melee") {
+              if (intent === "punch") isMeleeRequested = true;
+            } else if (mid === "consume") {
+              if (intent === "eatHeldItem") isUsingItem = true;
+            } else if (mid === "staging") {
+              if (rule.trigger.mode === "press" && keyStates.justPressed(rule.trigger.code)) {
+                if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
+                else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+                else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
               }
             }
           }
         }
-        kChar.isAimingTrajectory = schemaThrowAim;
       }
 
-      const isLaserMode = !isEditMode && ((isAltDown && input.isRightMouseDown) || isStagedLaser || schemaLaserAim);
-      const isMeleeRequested = !isEditMode && ((isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested) || (isStagedMelee && input.isMouseDown) || schemaMelee);
+      kChar.isAimingTrajectory = isAimingTrajectory;
+      kChar.isLaserAiming = isLaserAiming;
+      kChar.isLaserFiring = isLaserFiring;
+      kChar.isMeleeRequested = isMeleeRequested;
+      kChar.isUsingItem = isUsingItem;
 
-      if (isLaserMode || isMeleeRequested) {
+      // When aiming or holding with directional intent, face aim cursor
+      if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
         const aimDy = input.actualMousePos.y - kChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
           kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          if (isAimingTrajectory) {
+            kChar.lastThrowAimAngle = kChar.facingAngle;
+          }
         }
       }
 
-      isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
-      if (!input.isMouseDown) {
-        grabState.useItemSuppressed = false;
-      }
-      if (input.justPickedUp) {
-        grabState.useItemSuppressed = true;
-      }
-      const canUseItem = input.isMouseDown && !grabState.useItemSuppressed && !input.justPickedUp;
-      // Using primary ability (e.g. eat food) requires NOT holding Alt, NOT in laser mode or melee,
-      // and NOT holding RMB (since holding RMB is throwing mode!)
-      const isUsingItem = isHoldingConsumable && canUseItem && !isAltDown && !input.isRightMouseDown && !input.isThrowingPress && !input.isKeyboardSuspended && !isLaserMode && !isMeleeRequested;
+      const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory || Boolean(isHolding && !kChar.isPrimaryAbilityNonDirectional()));
 
-      // If cursor was locked, but character is no longer holding an object (e.g. object thrown, dropped, or consumed),
-      // unhide and clear the lock:
-      if (input.lockedAimPos && !kChar.heldObject) {
-        if (input.recordedMousePos) {
-          input.mousePos.x = input.recordedMousePos.x;
-          input.mousePos.y = input.recordedMousePos.y;
-          input.actualMousePos.x = input.recordedMousePos.x;
-          input.actualMousePos.y = input.recordedMousePos.y;
-        }
-        input.lockedAimPos = null;
-        input.arcModulationCursor = null;
-        input.arcModulationDeltaY = 0;
-        input.arcDetentSide = null;
-        input.aimLockRawDelta = 0;
-        input.aimLockRawDx = 0;
-        input.aimLockRawDy = 0;
-        input.exitPointerLock();
-      }
-
-      const kLaunchVel = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
-      const kLaunchPos = input.isKeyboardThrowRequested && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
+      const kLaunchVel = isThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
+      const kLaunchPos = isThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
 
       map.set("keyboard", {
         playerId: "keyboard",
-        moveX: effectiveMoveX,
-        moveY: effectiveMoveY,
-        isSprinting: input.isKeyboardSprintActive,
-        isJumpHeld: input.isKeyboardJumpHeld,
-        isGrabHeld: (isLaserMode || isMeleeRequested || isAltDown) ? (isAltDown ? canKeyEGrab : false) : (isHoldingConsumable ? canKeyEGrab : isKeyboardSeekingGrab),
-        grabTargetObjectId: (isLaserMode || isMeleeRequested || (isAltDown && !canKeyEGrab)) ? null : grabTargetObjectId,
-        isDrop: input.isKeyboardDropRequested ?? false,
-        isThrow: (isLaserMode || isMeleeRequested) ? false : (input.isKeyboardThrowRequested ?? false),
-        isUsingItem: (isLaserMode || isMeleeRequested) ? false : isUsingItem,
-        isLaserAiming: isLaserMode,
-        isLaserFiring: isLaserMode && (input.isMouseDown || schemaLaserFire),
+        moveX,
+        moveY,
+        isSprinting: isSprinting || Boolean(kChar.isSprinting),
+        isJumpHeld,
+        isGrabHeld,
+        grabTargetObjectId: isGrabHeld ? grabTargetObjectId : null,
+        isDrop,
+        isThrow,
+        isUsingItem,
+        isLaserAiming,
+        isLaserFiring,
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
-        isMeleeRequested: isMeleeRequested,
+        isMeleeRequested,
         meleeAimDirX: (input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
         meleeAimDirY: (input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
         meleeAimX: input.actualMousePos.x,
@@ -850,55 +781,37 @@ export class PlayerManager {
         isAiming: isMouseAiming,
         isLockHeld: false,
         lockedAimPos: null,
-        aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
         ...(kLaunchVel ? {
           launchVx: kLaunchVel.vx,
           launchVy: kLaunchVel.vy,
-          launchVz: kLaunchVel.vz,
+          launchVz: kLaunchVel.vz
         } : {}),
         ...(kLaunchPos ? {
           launchStartX: kLaunchPos.x,
           launchStartY: kLaunchPos.y,
-          launchStartZ: kLaunchPos.z,
-        } : {}),
+          launchStartZ: kLaunchPos.z
+        } : {})
       } as any);
-      input.aimLockRawDelta = 0; // Consume delta
-      input.aimLockRawDx = 0;
-      input.aimLockRawDy = 0;
-      input.isKeyboardDropRequested = false;
-      input.isKeyboardThrowRequested = false;
-      input.isKeyboardJumpRequested = false;
-      input.isKeyboardMeleeRequested = false;
     }
 
-    // 2. Gamepads
+    // 2. Gamepad Input Capture (Fully Schema-Driven via gpSchema)
     for (const entry of this.players.values()) {
       if (entry.isKeyboard || entry.slotIndex === undefined) continue;
       const slot = input.gamepadSlots.get(entry.slotIndex);
       if (!slot || !slot.connected) continue;
 
       const cChar = entry.character;
+      const gpSchema = ControlsInspector.getActiveSchema(cChar);
+      const isCharHolding = cChar.heldObject !== null;
+      const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
+
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
-      const isCharHolding = cChar.heldObject !== null;
-      const gpGrabState = this.getGrabSuppressionState(cChar.id);
-
-      if (isCharHolding) {
-        if (slot.rtHeld) gpGrabState.rtGrabSuppressed = true;
-        if (slot.bHeld) gpGrabState.bGrabSuppressed = true;
-      } else {
-        if (!slot.rtHeld) gpGrabState.rtGrabSuppressed = false;
-        if (!slot.bHeld) gpGrabState.bGrabSuppressed = false;
-      }
-
-      const canRtGrab = (slot.rtHeld ?? false) && !gpGrabState.rtGrabSuppressed;
-      const canBGrab = (slot.bHeld ?? false) && !gpGrabState.bGrabSuppressed;
-      const isGamepadSeekingGrab = canRtGrab || canBGrab;
-
       let grabTargetObjectId: string | null = null;
-      if (isGamepadSeekingGrab && !cChar.heldObject && cChar.pickupModule) {
+      let grabTargetObject: GameObject | null = null;
+      if (!cChar.heldObject && cChar.pickupModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
         const target = cChar.pickupModule.findTargetObject(
           cChar,
@@ -909,57 +822,72 @@ export class PlayerManager {
         );
         if (target) {
           grabTargetObjectId = target.id;
+          grabTargetObject = target;
         }
       }
 
-      const hasPrimaryAbility = cChar.hasPrimaryItemAbility();
-      const isThrowActive = isCharHolding && (!hasPrimaryAbility || Boolean(slot.isAltHeld));
+      // Gamepad button edge detection accessors
+      const slotIdx = entry.slotIndex;
+      let prevGpSet = this.prevGamepadButtons.get(slotIdx);
+      if (!prevGpSet) {
+        prevGpSet = new Set<number>();
+        this.prevGamepadButtons.set(slotIdx, prevGpSet);
+      }
 
-      // Ensure facingAngle is explicit: face locked target object if locked, face aim when holding in throw mode or laser mode (only if aim stick moved), movement direction when walking
-      const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-      const isAimFacingActive = Boolean(slot.isLaserAiming) || (isCharHolding && isThrowActive);
-      if (slot.lockedAimPos) {
-        const aimDx = slot.lockedAimPos.x - cChar.position.x;
-        const aimDy = slot.lockedAimPos.y - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+      const gpStates = {
+        slotIndex: slotIdx,
+        isDown: (btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
+        justPressed: (btn: number) => Boolean(slot.buttons && slot.buttons[btn] && !prevGpSet.has(btn)),
+        justReleased: (btn: number) => Boolean((!slot.buttons || !slot.buttons[btn]) && prevGpSet.has(btn)),
+        leftStick: slot.movementVector,
+        rightStick: slot.aimStickVector || { x: 0, y: 0 },
+      };
+
+      const gpExecCtx: any = {
+        character: cChar,
+        arena: this.arena,
+        dt: 1 / 60,
+        isGrounded: Boolean(cChar.isRestingOnSurface),
+        isClimbing: Boolean(cChar.isClimbing),
+        isHoldingItem: isCharHolding,
+        heldItemIsEdible: isCharHoldingConsumable,
+        targetInReach: grabTargetObject,
+        stagedAction: cChar.stagedAction,
+        facingAngle: cChar.facingAngle ?? 0,
+        mouseAimPos: { x: aimX, y: aimY },
+        reticleAimPos: { x: aimX, y: aimY },
+        isKeyDown: () => false,
+        isMouseButtonDown: () => false,
+        isGamepadButtonDown: (_s: number, btn: number) => gpStates.isDown(btn),
+        getGamepadAxis: (_s: number, axis: "LeftStick" | "RightStick") =>
+          axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
+      };
+
+      // 1. Stick Mode Evaluation (Dynamic Override)
+      let gpMoveX = slot.movementVector.x;
+      let gpMoveY = slot.movementVector.y;
+
+      let isOverridden = false;
+      if (gpSchema.gamepad.leftStick.dynamicOverride) {
+        const cond = gpSchema.gamepad.leftStick.dynamicOverride.triggerCondition;
+        if (cond === "whenLtHeld" && gpStates.isDown(6)) {
+          isOverridden = true;
+        } else if (cond === "whenHoldingItem" && isCharHolding) {
+          isOverridden = true;
+        } else if (cond === "whenAiming" && (cChar.stagedAction === "laser" || isCharHolding || cChar.isLaserAiming)) {
+          isOverridden = true;
         }
-      } else if (isAimFacingActive && slot.hasMovedAimStick) {
-        const aimDx = aimX - cChar.position.x;
-        const aimDy = aimY - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
-        }
-      } else if (moveMag > 0.05) {
-        cChar.facingAngle = Math.atan2(slot.movementVector.y, slot.movementVector.x);
       }
-      // If none of the above: DO NOT CHANGE cChar.facingAngle!
 
-      const activeLaunchVel = slot.isThrowRequested && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
-      const activeLaunchPos = slot.isThrowRequested && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
+      const activeLeftMode = (isOverridden && gpSchema.gamepad.leftStick.dynamicOverride)
+        ? gpSchema.gamepad.leftStick.dynamicOverride.overrideMode
+        : gpSchema.gamepad.leftStick.primaryMode;
 
-      const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
-      if (!slot.rtHeld && !slot.rtGrabbed) {
-        gpGrabState.useItemSuppressed = false;
-      }
-      if (slot.rtGrabbed) {
-        gpGrabState.useItemSuppressed = true;
-      }
-      const canGamepadUseItem = (slot.isUsingItem ?? false) && !gpGrabState.useItemSuppressed && !slot.isAltHeld;
-      const isUsingItem = isCharHoldingConsumable && canGamepadUseItem;
-
-      const gpSchema = ControlsInspector.getActiveSchema(cChar);
-      let gpEffectiveMoveX = slot.movementVector.x;
-      let gpEffectiveMoveY = slot.movementVector.y;
-
-      const isOverrideLt = gpSchema?.gamepad.leftStick.dynamicOverride?.triggerCondition === "whenLtHeld" && Boolean(slot.isAltHeld);
-      const isOverrideAim = gpSchema?.gamepad.leftStick.dynamicOverride?.triggerCondition === "whenAiming" && (Boolean(slot.isLaserAiming) || (isCharHolding && isThrowActive));
-
-      if (isOverrideLt || isOverrideAim) {
-        gpEffectiveMoveX = 0;
-        gpEffectiveMoveY = 0;
-        const speed = gpSchema?.gamepad.leftStick.cursorSteerSpeed ?? 14.0;
-        const clampRadius = gpSchema?.gamepad.leftStick.cursorClampRadius ?? 7.5;
+      if (activeLeftMode === "cursorSteer") {
+        gpMoveX = 0;
+        gpMoveY = 0;
+        const speed = gpSchema.gamepad.leftStick.cursorSteerSpeed ?? 14.0;
+        const clampRadius = gpSchema.gamepad.leftStick.cursorClampRadius ?? 7.5;
         const dt = 1 / 60;
         aimX = Math.max(cChar.position.x - clampRadius, Math.min(cChar.position.x + clampRadius, aimX + slot.movementVector.x * speed * dt));
         aimY = Math.max(cChar.position.y - clampRadius, Math.min(cChar.position.y + clampRadius, aimY + slot.movementVector.y * speed * dt));
@@ -968,33 +896,110 @@ export class PlayerManager {
         slot.hasMovedAimStick = true;
       }
 
-      const isGamepadAiming = (isCharHolding && isThrowActive) || (!isCharHolding && Boolean(slot.aimMovedWhileInRange));
+      // 2. Schema Rules Evaluation for Gamepad
+      let isJumpHeld = false;
+      let isSprinting = false;
+      let isGrabHeld = false;
+      let isDrop = false;
+      let isThrow = false;
+      let isUsingItem = false;
+      let isLaserAiming = false;
+      let isLaserFiring = false;
+      let isMeleeRequested = false;
+      let isAimingTrajectory = false;
+
+      const sortedGpRules = [...gpSchema.gamepad.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      for (const rule of sortedGpRules) {
+        if (rule.enabled === false) continue;
+        if (ControlSchemaArbiter.evaluateCondition(rule.condition, gpExecCtx)) {
+          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, gpExecCtx, keyStates, mouseStates, gpStates)) {
+            ControlsInspector.notifyRuleFired(rule.id);
+            const mid = rule.action.moduleId;
+            const intent = rule.action.intent;
+
+            if (mid === "locomotion") {
+              if (intent === "jump") isJumpHeld = true;
+              else if (intent === "holdSprint") isSprinting = true;
+              else if (intent === "toggleSprint") {
+                const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
+                if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
+                  cChar.setSprinting(!cChar.isSprinting);
+                }
+                isSprinting = Boolean(cChar.isSprinting);
+              }
+            } else if (mid === "throwPickup") {
+              if (intent === "pickupReach") isGrabHeld = true;
+              else if (intent === "aimThrow") isAimingTrajectory = true;
+              else if (intent === "releaseThrow") isThrow = true;
+              else if (intent === "dropItem") isDrop = true;
+            } else if (mid === "laser") {
+              if (intent === "aimLaser") isLaserAiming = true;
+              else if (intent === "fireLaser") {
+                isLaserFiring = true;
+                isLaserAiming = true;
+              }
+            } else if (mid === "melee") {
+              if (intent === "punch") isMeleeRequested = true;
+            } else if (mid === "consume") {
+              if (intent === "eatHeldItem") isUsingItem = true;
+            } else if (mid === "staging") {
+              const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
+              if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
+                if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
+                else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
+                else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
+              }
+            }
+          }
+        }
+      }
+
+      cChar.isAimingTrajectory = isAimingTrajectory;
+      cChar.isLaserAiming = isLaserAiming;
+      cChar.isLaserFiring = isLaserFiring;
+      cChar.isMeleeRequested = isMeleeRequested;
+      cChar.isUsingItem = isUsingItem;
+
+      // When aiming, face aim target
+      if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
+        const aimDx = aimX - cChar.position.x;
+        const aimDy = aimY - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+          if (isAimingTrajectory) {
+            cChar.lastThrowAimAngle = cChar.facingAngle;
+          }
+        }
+      }
+
+      const isGamepadAiming = isLaserAiming || isAimingTrajectory || Boolean(slot.isCursorVisible) || Boolean(isCharHolding && !cChar.isPrimaryAbilityNonDirectional());
+
+      const activeLaunchVel = isThrow && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
+      const activeLaunchPos = isThrow && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
       map.set(entry.id, {
         playerId: entry.id,
-        playerName: cChar.name,
-        moveX: gpEffectiveMoveX,
-        moveY: gpEffectiveMoveY,
-        isSprinting: cChar.isSprinting ?? false,
-        isJumpHeld: slot.isClimbHeld ?? false,
-        isGrabHeld: isCharHoldingConsumable ? canBGrab : isGamepadSeekingGrab,
-        grabTargetObjectId,
-        isDrop: slot.isDropRequested ?? false,
-        isThrow: slot.isThrowRequested ?? false,
+        moveX: gpMoveX,
+        moveY: gpMoveY,
+        isSprinting: isSprinting || Boolean(cChar.isSprinting),
+        isJumpHeld,
+        isGrabHeld,
+        grabTargetObjectId: isGrabHeld ? grabTargetObjectId : null,
+        isDrop,
+        isThrow,
         isUsingItem,
-        isLaserAiming: Boolean(slot.isLaserAiming),
-        isLaserFiring: Boolean(slot.isLaserFiring),
-        laserAimX: slot.aimPos.x,
-        laserAimY: slot.aimPos.y,
-        laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
-        isMeleeRequested: Boolean(slot.isMeleeRequested),
-        meleeAimDirX: Math.cos(cChar.facingAngle ?? 0),
-        meleeAimDirY: Math.sin(cChar.facingAngle ?? 0),
-        meleeAimX: cChar.position.x + Math.cos(cChar.facingAngle ?? 0),
-        meleeAimY: cChar.position.y + Math.sin(cChar.facingAngle ?? 0),
+        isLaserAiming,
+        isLaserFiring,
+        laserAimX: aimX,
+        laserAimY: aimY,
+        isMeleeRequested,
+        meleeAimDirX: (aimX - cChar.position.x) / (Math.hypot(aimX - cChar.position.x, aimY - cChar.position.y) || 1),
+        meleeAimDirY: (aimY - cChar.position.y) / (Math.hypot(aimX - cChar.position.x, aimY - cChar.position.y) || 1),
+        meleeAimX: aimX,
+        meleeAimY: aimY,
         aimX,
         aimY,
-        isAiming: isGamepadAiming || Boolean(slot.isLaserAiming),
+        isAiming: isGamepadAiming,
         isLockHeld: slot.isLockHeld ?? false,
         lockedAimPos: slot.lockedAimPos ? { ...slot.lockedAimPos } : null,
         facingAngle: cChar.facingAngle,
@@ -1015,12 +1020,25 @@ export class PlayerManager {
       slot.isMeleeRequested = false;
     }
 
+    // Update historical button buffers for edge detection (justPressed / justReleased)
+    this.prevKeysPressed = new Set(input.getActiveKeys());
+    this.prevMouseButtons = new Set<number>();
+    if (input.isMouseDown) this.prevMouseButtons.add(0);
+    if (input.isMiddleMouseDown) this.prevMouseButtons.add(1);
+    if (input.isRightMouseDown) this.prevMouseButtons.add(2);
+
+    for (const [slotIdx, slot] of input.gamepadSlots) {
+      if (!slot.connected || !slot.buttons) continue;
+      const set = new Set<number>();
+      for (let i = 0; i < slot.buttons.length; i++) {
+        if (slot.buttons[i]) set.add(i);
+      }
+      this.prevGamepadButtons.set(slotIdx, set);
+    }
+
     return map;
   }
 
-  /**
-   * Applies player input packets to characters deterministically.
-   */
   public applyPlayerInputs(
     inputs: Map<string, PlayerInputPacket>,
     dt: number,
