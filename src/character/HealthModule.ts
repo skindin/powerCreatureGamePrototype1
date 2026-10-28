@@ -312,7 +312,7 @@ export class HealthModule {
     if (!this.enabled) return;
 
     const isOnline = (character as any)._isInOnlineMode === true;
-    if (!isOnline && !character.isRemotePlayer) {
+    if (!isOnline && !(character as any).isRemotePlayer) {
       this.isServerAuthoritativeOnly = false;
     }
 
