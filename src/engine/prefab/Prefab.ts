@@ -2,12 +2,17 @@ import { GameObject, Vector3D } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
 import { Arena } from "../Arena.js";
+import { Character } from "../../character/Character.js";
+import { LaserModule } from "../../character/LaserModule.js";
+import { MeleeModule } from "../../character/MeleeModule.js";
+import type { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
 
 export interface PrefabOptions {
   id: string;
   name: string;
   icon?: string;
   archetype: GameObject;
+  controlSchema?: ControlSchema;
 }
 
 /**
@@ -23,12 +28,14 @@ export class Prefab {
   public name: string;
   public icon: string;
   public archetype: GameObject;
+  public controlSchema?: ControlSchema;
 
   constructor(options: PrefabOptions) {
     this.id = options.id;
     this.name = options.name;
     this.icon = options.icon ?? "📦";
     this.archetype = options.archetype;
+    this.controlSchema = options.controlSchema;
   }
 
   /**
@@ -88,6 +95,38 @@ export class Prefab {
 
     instance.prefabId = this.id;
     instance.overriddenProperties = new Set<string>();
+
+    if (this.archetype instanceof Character && instance instanceof Character) {
+      const srcChar = this.archetype as Character;
+      const targetChar = instance as Character;
+
+      targetChar.strength = srcChar.strength;
+      if (srcChar.laserModule) {
+        targetChar.laserModule = new LaserModule({
+          damageRate: srcChar.laserModule.damageRateProp.literalValue,
+          maxDamageRate: srcChar.laserModule.maxDamageRateProp.literalValue,
+          thickness: srcChar.laserModule.thicknessProp.literalValue,
+          maxPower: srcChar.laserModule.maxPowerProp.literalValue,
+        });
+      }
+      if (srcChar.meleeModule) {
+        targetChar.meleeModule = new MeleeModule({
+          maxForce: srcChar.meleeModule.maxForceProp.literalValue,
+          reach: srcChar.meleeModule.reachProp.literalValue,
+          punchFrequency: srcChar.meleeModule.punchFrequencyProp.literalValue,
+        });
+      }
+      if (!srcChar.walkingModule) targetChar.walkingModule = null;
+      if (!srcChar.pickupModule) targetChar.pickupModule = null;
+      if (!srcChar.throwModule) targetChar.throwModule = null;
+      if (!srcChar.jumpModule) targetChar.jumpModule = null;
+      if (!srcChar.climbingModule) targetChar.climbingModule = null;
+
+      const schemaToApply = this.controlSchema || srcChar.controlSchema;
+      if (schemaToApply) {
+        targetChar.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+      }
+    }
 
     if (arena && typeof (arena as any).syncEntitiesWithWalls === "function") {
       (arena as any).syncEntitiesWithWalls([instance]);

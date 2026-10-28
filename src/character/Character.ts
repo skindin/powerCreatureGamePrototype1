@@ -22,6 +22,7 @@ import { HealthRegenCapability } from "./capabilities/HealthRegenCapability.js";
 import { ThrowCapability } from "./capabilities/ThrowCapability.js";
 import { LaserCapability } from "./capabilities/LaserCapability.js";
 import { MeleeCapability } from "./capabilities/MeleeCapability.js";
+import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
 export type { CharacterRole };
@@ -200,6 +201,11 @@ export class Character extends GameObject {
    * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
    */
   public stagedAction: string | null = null;
+
+  /**
+   * Character-specific control schema loaded from its archetype or Prefab.
+   */
+  public controlSchema?: ControlSchema;
 
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging laser, etc.).

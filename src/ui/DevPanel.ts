@@ -452,7 +452,7 @@ export class DevPanel {
       this.characterSpecificControlsEl.style.display = isChar ? "flex" : "none";
     }
     if (this.objectSpecificControlsEl) {
-      this.objectSpecificControlsEl.style.display = (!isChar && this.selectedEntity) ? "flex" : "none";
+      this.objectSpecificControlsEl.style.display = Boolean(this.selectedEntity) ? "flex" : "none";
     }
 
     this.renderEntityModules();

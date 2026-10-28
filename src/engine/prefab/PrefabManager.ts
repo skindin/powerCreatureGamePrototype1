@@ -5,6 +5,11 @@ import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
 import { SerializedPrefabConfig, deserializeGameObject, serializePrefab } from "../../config/WorldConfig.js";
+import {
+  DefaultControlSchema,
+  HunterControlSchema,
+  GamepadHybridSchema,
+} from "../../input/schema/presets/DefaultControlSchemas.js";
 
 export class PrefabManager {
   private prefabs: Map<string, Prefab> = new Map();
@@ -125,7 +130,49 @@ export class PrefabManager {
       archetype: playerArchetype,
     });
 
+    playerArchetype.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    playerPrefab.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     this.prefabs.set(playerPrefab.id, playerPrefab);
+
+    // Default "Hunter" character prefab (Mouse-Facing Drive + Left-Hand Staging)
+    const hunterArchetype = new Character({
+      id: "archetype_hunter",
+      name: "Hunter",
+      color: "#06b6d4",
+      colliderRadius: 0.44,
+      mass: 1.1,
+      strength: 1.2,
+    });
+    hunterArchetype.controlSchema = JSON.parse(JSON.stringify(HunterControlSchema));
+
+    const hunterPrefab = new Prefab({
+      id: "prefab_hunter",
+      name: "Hunter",
+      icon: "🏹",
+      archetype: hunterArchetype,
+      controlSchema: JSON.parse(JSON.stringify(HunterControlSchema)),
+    });
+    this.prefabs.set(hunterPrefab.id, hunterPrefab);
+
+    // Default "Fighter" character prefab (Gamepad Hybrid - Reticle Steer)
+    const fighterArchetype = new Character({
+      id: "archetype_fighter",
+      name: "Fighter",
+      color: "#f43f5e",
+      colliderRadius: 0.48,
+      mass: 1.4,
+      strength: 1.5,
+    });
+    fighterArchetype.controlSchema = JSON.parse(JSON.stringify(GamepadHybridSchema));
+
+    const fighterPrefab = new Prefab({
+      id: "prefab_fighter",
+      name: "Fighter",
+      icon: "🥊",
+      archetype: fighterArchetype,
+      controlSchema: JSON.parse(JSON.stringify(GamepadHybridSchema)),
+    });
+    this.prefabs.set(fighterPrefab.id, fighterPrefab);
   }
 
   public getAll(): Prefab[] {
@@ -149,12 +196,14 @@ export class PrefabManager {
         existing.name = cfg.name;
         if (cfg.icon) existing.icon = cfg.icon;
         existing.archetype = archetype;
+        existing.controlSchema = cfg.controlSchema;
       } else {
         const prefab = new Prefab({
           id: cfg.id,
           name: cfg.name,
           icon: cfg.icon,
           archetype,
+          controlSchema: cfg.controlSchema,
         });
         this.prefabs.set(cfg.id, prefab);
       }
@@ -225,6 +274,7 @@ export class PrefabManager {
       name: prefabName,
       icon,
       archetype,
+      controlSchema: (entity instanceof Character && (entity as Character).controlSchema) ? JSON.parse(JSON.stringify((entity as Character).controlSchema)) : undefined,
     });
 
     this.prefabs.set(id, prefab);

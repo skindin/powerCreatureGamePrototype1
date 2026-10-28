@@ -1,4 +1,3 @@
-import { Character } from "../../character/Character.js";
 import { prefabManager } from "../../engine/prefab/PrefabManager.js";
 import { consumableTagRegistry } from "../../engine/properties/ConsumableTagRegistry.js";
 import type { DevPanel } from "../DevPanel.js";
@@ -14,7 +13,7 @@ export class PrefabsPanelSection {
     if (!badgeEl) return;
 
     const e = panel.selectedEntity;
-    if (!e || e instanceof Character || !e.prefabId) {
+    if (!e || !e.prefabId) {
       badgeEl.style.display = "none";
       badgeEl.innerHTML = "";
       return;

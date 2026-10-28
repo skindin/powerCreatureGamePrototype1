@@ -5862,6 +5862,10 @@ class Character extends GameObject {
      * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
      */
     __publicField(this, "stagedAction", null);
+    /**
+     * Character-specific control schema loaded from its archetype or Prefab.
+     */
+    __publicField(this, "controlSchema");
     __publicField(this, "isUsingItem", false);
     __publicField(this, "eatRateWatts", 0);
     this.controllerType = options.controllerType ?? (determinedRole === "dummy" ? "none" : "local");
@@ -7796,10 +7800,12 @@ class Prefab {
     __publicField(this, "name");
     __publicField(this, "icon");
     __publicField(this, "archetype");
+    __publicField(this, "controlSchema");
     this.id = options.id;
     this.name = options.name;
     this.icon = options.icon ?? "📦";
     this.archetype = options.archetype;
+    this.controlSchema = options.controlSchema;
   }
   /**
    * Instantiates a new live GameObject from this prefab.
@@ -7851,6 +7857,35 @@ class Prefab {
     });
     instance.prefabId = this.id;
     instance.overriddenProperties = /* @__PURE__ */ new Set();
+    if (this.archetype instanceof Character && instance instanceof Character) {
+      const srcChar = this.archetype;
+      const targetChar = instance;
+      targetChar.strength = srcChar.strength;
+      if (srcChar.laserModule) {
+        targetChar.laserModule = new LaserModule({
+          damageRate: srcChar.laserModule.damageRateProp.literalValue,
+          maxDamageRate: srcChar.laserModule.maxDamageRateProp.literalValue,
+          thickness: srcChar.laserModule.thicknessProp.literalValue,
+          maxPower: srcChar.laserModule.maxPowerProp.literalValue
+        });
+      }
+      if (srcChar.meleeModule) {
+        targetChar.meleeModule = new MeleeModule({
+          maxForce: srcChar.meleeModule.maxForceProp.literalValue,
+          reach: srcChar.meleeModule.reachProp.literalValue,
+          punchFrequency: srcChar.meleeModule.punchFrequencyProp.literalValue
+        });
+      }
+      if (!srcChar.walkingModule) targetChar.walkingModule = null;
+      if (!srcChar.pickupModule) targetChar.pickupModule = null;
+      if (!srcChar.throwModule) targetChar.throwModule = null;
+      if (!srcChar.jumpModule) targetChar.jumpModule = null;
+      if (!srcChar.climbingModule) targetChar.climbingModule = null;
+      const schemaToApply = this.controlSchema || srcChar.controlSchema;
+      if (schemaToApply) {
+        targetChar.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+      }
+    }
     if (arena2 && typeof arena2.syncEntitiesWithWalls === "function") {
       arena2.syncEntitiesWithWalls([instance]);
     }
@@ -8996,13 +9031,343 @@ function deserializeGameObject(config) {
   return obj;
 }
 function serializePrefab(prefab) {
+  const schema = prefab.controlSchema || (prefab.archetype instanceof Character ? prefab.archetype.controlSchema : void 0);
   return {
     id: prefab.id,
     name: prefab.name,
     icon: prefab.icon,
-    archetype: serializeGameObject(prefab.archetype)
+    archetype: serializeGameObject(prefab.archetype),
+    ...schema ? { controlSchema: schema } : {}
   };
 }
+const DefaultControlSchema = {
+  id: "default",
+  name: "Default (Action Context)",
+  description: "Standard twin-stick and WASD setup with smart contextual action triggers.",
+  activeDevice: "keyboardMouse",
+  keyboardMouse: {
+    aiming: { mode: "faceMouseCursor" },
+    locomotion: {
+      mode: "directVector",
+      moveForwardKey: "KeyW",
+      strafeLeftKey: "KeyA",
+      reverseKey: "KeyS",
+      strafeRightKey: "KeyD"
+    },
+    rules: [
+      // Primary Left Click: Evaluated top to bottom
+      {
+        id: "kbm-laser-fire",
+        name: "Fire Laser",
+        enabled: true,
+        priority: 100,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "hold" },
+        condition: { type: "stagedActionIs", param: "laser" },
+        action: { moduleId: "laser", intent: "fireLaser" }
+      },
+      {
+        id: "kbm-throw-release",
+        name: "Throw Held Item",
+        enabled: true,
+        priority: 90,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "release" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "releaseThrow" }
+      },
+      {
+        id: "kbm-pickup-click",
+        name: "Pick Up Object",
+        enabled: true,
+        priority: 80,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
+        condition: { type: "targetInReach" },
+        action: { moduleId: "throwPickup", intent: "pickupReach" }
+      },
+      {
+        id: "kbm-eat-held",
+        name: "Eat Held Item",
+        enabled: true,
+        priority: 70,
+        trigger: { device: "keyboard", code: "KeyC", mode: "hold" },
+        condition: { type: "holdingEdible" },
+        action: { moduleId: "consume", intent: "eatHeldItem" }
+      },
+      {
+        id: "kbm-jump",
+        name: "Jump",
+        enabled: true,
+        priority: 60,
+        trigger: { device: "keyboard", code: "Space", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "jump" }
+      },
+      {
+        id: "kbm-sprint",
+        name: "Sprint",
+        enabled: true,
+        priority: 50,
+        trigger: { device: "keyboard", code: "ShiftLeft", mode: "hold" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "holdSprint" }
+      },
+      {
+        id: "kbm-drop",
+        name: "Drop Item",
+        enabled: true,
+        priority: 40,
+        trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "dropItem" }
+      }
+    ]
+  },
+  gamepad: {
+    leftStick: {
+      primaryMode: "directLocomotion",
+      dynamicOverride: {
+        triggerCondition: "whenLtHeld",
+        overrideMode: "cursorSteer"
+      },
+      cursorSteerSpeed: 14,
+      cursorClampRadius: 7.5
+    },
+    rightStick: { mode: "twinStickAim" },
+    rules: [
+      {
+        id: "pad-laser-fire",
+        name: "Fire Laser (RT)",
+        enabled: true,
+        priority: 100,
+        trigger: { device: "gamepad", code: "GamepadRT", mode: "hold" },
+        condition: { type: "stagedActionIs", param: "laser" },
+        action: { moduleId: "laser", intent: "fireLaser" }
+      },
+      {
+        id: "pad-throw-release",
+        name: "Throw Held Item (RT)",
+        enabled: true,
+        priority: 90,
+        trigger: { device: "gamepad", code: "GamepadRT", mode: "release" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "releaseThrow" }
+      },
+      {
+        id: "pad-pickup-rt",
+        name: "Pick Up Object (RT)",
+        enabled: true,
+        priority: 80,
+        trigger: { device: "gamepad", code: "GamepadRT", mode: "press" },
+        condition: { type: "targetInReach" },
+        action: { moduleId: "throwPickup", intent: "pickupReach" }
+      },
+      {
+        id: "pad-jump",
+        name: "Jump (A)",
+        enabled: true,
+        priority: 70,
+        trigger: { device: "gamepad", code: "GamepadA", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "jump" }
+      },
+      {
+        id: "pad-sprint-toggle",
+        name: "Toggle Sprint (LS)",
+        enabled: true,
+        priority: 60,
+        trigger: { device: "gamepad", code: "GamepadLS", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "toggleSprint" }
+      },
+      {
+        id: "pad-drop",
+        name: "Drop Item (B)",
+        enabled: true,
+        priority: 50,
+        trigger: { device: "gamepad", code: "GamepadB", mode: "press" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "dropItem" }
+      }
+    ]
+  },
+  touch: {
+    widgets: [
+      {
+        id: "touch-move-stick",
+        type: "joystick",
+        label: "Move",
+        anchor: "bottomLeft",
+        offset: { x: 90, y: 90 },
+        radius: 65,
+        centering: "floating",
+        snapBackOnRelease: true,
+        rings: [
+          { id: "deadzone", minDeflection: 0, maxDeflection: 0.15, signalId: "idle" },
+          { id: "walk", minDeflection: 0.15, maxDeflection: 0.65, signalId: "walk" },
+          { id: "sprint", minDeflection: 0.65, maxDeflection: 1, signalId: "sprint" }
+        ]
+      },
+      {
+        id: "touch-aim-stick",
+        type: "joystick",
+        label: "Aim",
+        anchor: "bottomRight",
+        offset: { x: -90, y: 90 },
+        radius: 65,
+        centering: "floating",
+        snapBackOnRelease: true,
+        rings: []
+      },
+      {
+        id: "touch-jump-btn",
+        type: "actionButton",
+        label: "JUMP",
+        anchor: "bottomRight",
+        offset: { x: -80, y: 190 },
+        radius: 35,
+        centering: "fixed",
+        snapBackOnRelease: true,
+        rings: [],
+        tapAction: "jump"
+      }
+    ],
+    rules: []
+  }
+};
+const HunterControlSchema = {
+  id: "hunter-mouse-drive",
+  name: "Hunter (Mouse-Facing Forward Drive)",
+  description: "Character faces the mouse. Right-click drives forward. Left hand stages abilities, left-click executes.",
+  activeDevice: "keyboardMouse",
+  keyboardMouse: {
+    aiming: { mode: "faceMouseCursor" },
+    locomotion: {
+      mode: "forwardFacingDrive",
+      forwardTrigger: { device: "mouse", code: "MouseRight", mode: "hold" },
+      strafeLeftKey: "KeyA",
+      strafeRightKey: "KeyD",
+      reverseKey: "KeyS"
+    },
+    rules: [
+      // Left-hand Staging
+      {
+        id: "hunter-stage-laser",
+        name: "Stage Laser (Q)",
+        enabled: true,
+        priority: 100,
+        trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "staging", intent: "stageLaser" }
+      },
+      {
+        id: "hunter-stage-throw",
+        name: "Stage Throw/Grab (E)",
+        enabled: true,
+        priority: 100,
+        trigger: { device: "keyboard", code: "KeyE", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "staging", intent: "stageThrow" }
+      },
+      {
+        id: "hunter-stage-melee",
+        name: "Stage Melee Punch (F)",
+        enabled: true,
+        priority: 100,
+        trigger: { device: "keyboard", code: "KeyF", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "staging", intent: "stageMelee" }
+      },
+      {
+        id: "hunter-eat-held",
+        name: "Eat Held Item (C)",
+        enabled: true,
+        priority: 95,
+        trigger: { device: "keyboard", code: "KeyC", mode: "hold" },
+        condition: { type: "holdingEdible" },
+        action: { moduleId: "consume", intent: "eatHeldItem" }
+      },
+      {
+        id: "hunter-jump",
+        name: "Jump (Space)",
+        enabled: true,
+        priority: 90,
+        trigger: { device: "keyboard", code: "Space", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "jump" }
+      },
+      {
+        id: "hunter-sprint",
+        name: "Sprint (Shift)",
+        enabled: true,
+        priority: 85,
+        trigger: { device: "keyboard", code: "ShiftLeft", mode: "hold" },
+        condition: { type: "always" },
+        action: { moduleId: "locomotion", intent: "holdSprint" }
+      },
+      // Mouse Left Click Execution based on Staged state or context
+      {
+        id: "hunter-exec-laser",
+        name: "Fire Laser (Staged)",
+        enabled: true,
+        priority: 80,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "hold" },
+        condition: { type: "stagedActionIs", param: "laser" },
+        action: { moduleId: "laser", intent: "fireLaser" }
+      },
+      {
+        id: "hunter-exec-melee",
+        name: "Punch (Staged)",
+        enabled: true,
+        priority: 75,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
+        condition: { type: "stagedActionIs", param: "melee" },
+        action: { moduleId: "melee", intent: "punch" }
+      },
+      {
+        id: "hunter-exec-throw",
+        name: "Throw Held Object",
+        enabled: true,
+        priority: 70,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "release" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "releaseThrow" }
+      },
+      {
+        id: "hunter-exec-pickup",
+        name: "Pick Up Object",
+        enabled: true,
+        priority: 60,
+        trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
+        condition: { type: "targetInReach" },
+        action: { moduleId: "throwPickup", intent: "pickupReach" }
+      }
+    ]
+  },
+  gamepad: DefaultControlSchema.gamepad,
+  touch: DefaultControlSchema.touch
+};
+const GamepadHybridSchema = {
+  id: "gamepad-hybrid-cursor",
+  name: "Gamepad Hybrid (Left-Stick Cursor Steer)",
+  description: "Left stick walks normally. Holding LT (or aiming) dynamically switches left stick to steer an aiming reticle.",
+  activeDevice: "gamepad",
+  keyboardMouse: DefaultControlSchema.keyboardMouse,
+  gamepad: {
+    leftStick: {
+      primaryMode: "directLocomotion",
+      dynamicOverride: {
+        triggerCondition: "whenLtHeld",
+        overrideMode: "cursorSteer"
+      },
+      cursorSteerSpeed: 14,
+      cursorClampRadius: 7.5
+    },
+    rightStick: { mode: "twinStickAim" },
+    rules: [
+      ...DefaultControlSchema.gamepad.rules
+    ]
+  },
+  touch: DefaultControlSchema.touch
+};
 class PrefabManager {
   constructor() {
     __publicField(this, "prefabs", /* @__PURE__ */ new Map());
@@ -9105,7 +9470,43 @@ class PrefabManager {
       icon: "🧙",
       archetype: playerArchetype
     });
+    playerArchetype.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    playerPrefab.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     this.prefabs.set(playerPrefab.id, playerPrefab);
+    const hunterArchetype = new Character({
+      id: "archetype_hunter",
+      name: "Hunter",
+      color: "#06b6d4",
+      colliderRadius: 0.44,
+      mass: 1.1,
+      strength: 1.2
+    });
+    hunterArchetype.controlSchema = JSON.parse(JSON.stringify(HunterControlSchema));
+    const hunterPrefab = new Prefab({
+      id: "prefab_hunter",
+      name: "Hunter",
+      icon: "🏹",
+      archetype: hunterArchetype,
+      controlSchema: JSON.parse(JSON.stringify(HunterControlSchema))
+    });
+    this.prefabs.set(hunterPrefab.id, hunterPrefab);
+    const fighterArchetype = new Character({
+      id: "archetype_fighter",
+      name: "Fighter",
+      color: "#f43f5e",
+      colliderRadius: 0.48,
+      mass: 1.4,
+      strength: 1.5
+    });
+    fighterArchetype.controlSchema = JSON.parse(JSON.stringify(GamepadHybridSchema));
+    const fighterPrefab = new Prefab({
+      id: "prefab_fighter",
+      name: "Fighter",
+      icon: "🥊",
+      archetype: fighterArchetype,
+      controlSchema: JSON.parse(JSON.stringify(GamepadHybridSchema))
+    });
+    this.prefabs.set(fighterPrefab.id, fighterPrefab);
   }
   getAll() {
     return Array.from(this.prefabs.values());
@@ -9126,12 +9527,14 @@ class PrefabManager {
         existing.name = cfg.name;
         if (cfg.icon) existing.icon = cfg.icon;
         existing.archetype = archetype;
+        existing.controlSchema = cfg.controlSchema;
       } else {
         const prefab = new Prefab({
           id: cfg.id,
           name: cfg.name,
           icon: cfg.icon,
-          archetype
+          archetype,
+          controlSchema: cfg.controlSchema
         });
         this.prefabs.set(cfg.id, prefab);
       }
@@ -9192,7 +9595,8 @@ class PrefabManager {
       id,
       name: prefabName,
       icon,
-      archetype
+      archetype,
+      controlSchema: entity instanceof Character && entity.controlSchema ? JSON.parse(JSON.stringify(entity.controlSchema)) : void 0
     });
     this.prefabs.set(id, prefab);
     entity.prefabId = id;

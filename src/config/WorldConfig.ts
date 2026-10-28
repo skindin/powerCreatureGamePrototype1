@@ -14,7 +14,8 @@ import { ClimbingModule } from "../character/ClimbingModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { quarryPreset, createQuarryStones } from "../engine/maps/QuarryMap.js";
-import type { Character } from "../character/Character.js";
+import { Character } from "../character/Character.js";
+import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export interface SerializedGameObjectConfig {
   id: string;
@@ -263,6 +264,7 @@ export interface SerializedPrefabConfig {
   name: string;
   icon?: string;
   archetype: SerializedGameObjectConfig;
+  controlSchema?: ControlSchema;
 }
 
 export interface SerializedSpawnerConfig {
@@ -1192,11 +1194,13 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
 /**
  * Serializes a Prefab archetype into a persistent JSON-safe configuration object.
  */
-export function serializePrefab(prefab: { id: string; name: string; icon?: string; archetype: GameObject }): SerializedPrefabConfig {
+export function serializePrefab(prefab: { id: string; name: string; icon?: string; archetype: GameObject; controlSchema?: ControlSchema }): SerializedPrefabConfig {
+  const schema = prefab.controlSchema || (prefab.archetype instanceof Character ? prefab.archetype.controlSchema : undefined);
   return {
     id: prefab.id,
     name: prefab.name,
     icon: prefab.icon,
     archetype: serializeGameObject(prefab.archetype),
+    ...(schema ? { controlSchema: schema } : {}),
   };
 }

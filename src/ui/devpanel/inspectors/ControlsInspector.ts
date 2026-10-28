@@ -1,4 +1,4 @@
-import type { Character } from "../../../character/Character.js";
+import { Character } from "../../../character/Character.js";
 import type { DevPanel } from "../../DevPanel.js";
 import type {
   ControlSchema,
@@ -14,27 +14,31 @@ import {
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
+import { prefabManager } from "../../../engine/prefab/PrefabManager.js";
 
 export class ControlsInspector {
-  private static activeSchemaMap: Map<string, ControlSchema> = new Map();
   private static activeTab: DeviceChannel = "keyboardMouse";
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static recorderCleanup: (() => void) | null = null;
 
   public static getActiveSchema(char: Character): ControlSchema {
-    let schema = this.activeSchemaMap.get(char.id);
-    if (!schema) {
-      // Default to cloned deep copy of DefaultControlSchema
-      schema = JSON.parse(JSON.stringify(DefaultControlSchema));
-      this.activeSchemaMap.set(char.id, schema!);
+    if (char.controlSchema) {
+      return char.controlSchema;
     }
-    return schema!;
+    if (char.prefabId) {
+      const prefab = prefabManager.get(char.prefabId);
+      if (prefab?.controlSchema) {
+        char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        return char.controlSchema!;
+      }
+    }
+    char.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    return char.controlSchema!;
   }
 
   public static setActiveSchema(char: Character, schema: ControlSchema): void {
-    const cloned = JSON.parse(JSON.stringify(schema));
-    this.activeSchemaMap.set(char.id, cloned);
+    char.controlSchema = JSON.parse(JSON.stringify(schema));
   }
 
   public static notifyRuleFired(ruleId: string): void {
@@ -52,7 +56,7 @@ export class ControlsInspector {
   }
 
   public static updateLiveDiagnostics(char: Character, ctx?: any): void {
-    const schema = this.activeSchemaMap.get(char.id);
+    const schema = this.getActiveSchema(char);
     if (!schema) return;
 
     const rules =
@@ -94,9 +98,27 @@ export class ControlsInspector {
 
   public static renderSection(panel: DevPanel, char: Character, container: HTMLElement): void {
     const schema = this.getActiveSchema(char);
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
+    const prefabName = prefab ? `${prefab.icon} ${prefab.name}` : null;
 
     container.innerHTML = `
       <div class="controls-inspector-root" style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Linked Prefab Banner -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 8px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 0.72rem; color: #c084fc; font-weight: 600;">Linked Prefab:</span>
+            <span style="font-size: 0.74rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Custom Character)"}</span>
+          </div>
+          <div style="display: flex; gap: 4px;">
+            ${prefab ? `
+              <button id="btn-save-controls-to-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);" title="Save current control schema directly into this character's prefab">💾 Save to Prefab</button>
+              <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Revert controls back to prefab archetype values">↺ Revert</button>
+            ` : `
+              <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Make Prefab</button>
+            `}
+          </div>
+        </div>
+
         <!-- Header & Preset Selector -->
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
           <label style="font-size: 0.76rem; font-weight: 600; color: #94a3b8;">Preset Schema:</label>
@@ -331,6 +353,35 @@ export class ControlsInspector {
 
   private static attachEventListeners(panel: DevPanel, char: Character, container: HTMLElement): void {
     const schema = this.getActiveSchema(char);
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
+
+    // Prefab Sync Buttons
+    container.querySelector("#btn-save-controls-to-prefab")?.addEventListener("click", () => {
+      if (prefab) {
+        prefab.controlSchema = JSON.parse(JSON.stringify(schema));
+        if (prefab.archetype instanceof Character) {
+          (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(schema));
+        }
+        (panel as any).saveCurrentConfig?.();
+        this.renderSection(panel, char, container);
+      }
+    });
+
+    container.querySelector("#btn-revert-controls-from-prefab")?.addEventListener("click", () => {
+      if (prefab?.controlSchema) {
+        char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.renderSection(panel, char, container);
+      }
+    });
+
+    container.querySelector("#btn-make-char-prefab")?.addEventListener("click", () => {
+      const p = prefabManager.createFromEntity(char);
+      p.controlSchema = JSON.parse(JSON.stringify(schema));
+      char.controlSchema = JSON.parse(JSON.stringify(schema));
+      char.prefabId = p.id;
+      (panel as any).saveCurrentConfig?.();
+      this.renderSection(panel, char, container);
+    });
 
     // 1. Preset Selector
     const selectPreset = container.querySelector("#select-control-preset") as HTMLSelectElement;
