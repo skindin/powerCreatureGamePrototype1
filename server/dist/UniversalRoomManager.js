@@ -6350,6 +6350,15 @@ class CollisionResolver {
         const b = entities[j];
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
+        if (a.isInFlight && a.lastThrower === b || b.isInFlight && b.lastThrower === a) {
+          const sepDx = b.position.x - a.position.x;
+          const sepDy = b.position.y - a.position.y;
+          const sepRelVx = b.velocity.x - a.velocity.x;
+          const sepRelVy = b.velocity.y - a.velocity.y;
+          if (sepRelVx * sepDx + sepRelVy * sepDy >= -0.05) {
+            continue;
+          }
+        }
         if (a.isSleeping && b.isSleeping) continue;
         const layerA = GameObject.getEntityLayer(a, arena2.wallHeight);
         const layerB = GameObject.getEntityLayer(b, arena2.wallHeight);
@@ -6452,10 +6461,12 @@ class CollisionResolver {
         b.position.y += normY * overlap;
       }
     }
-    const nowContact = performance.now();
-    a.lastCollisionTime = nowContact;
-    b.lastCollisionTime = nowContact;
     const isCharCharContact = a.isCharacter && b.isCharacter;
+    if (isCharCharContact || velAlongNormal < 0 || closingVertSpeed > 0.05) {
+      const nowContact = performance.now();
+      a.lastCollisionTime = nowContact;
+      b.lastCollisionTime = nowContact;
+    }
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);

@@ -964,6 +964,7 @@ export class PlayerManager {
         );
 
         if (thrown) {
+          (char as any)._lastThrowRecoilTime = performance.now();
           char.isUsingItem = false;
           char.eatRateWatts = 0;
           input.arcModulationCursor = null;

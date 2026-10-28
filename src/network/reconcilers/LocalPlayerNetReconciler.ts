@@ -225,14 +225,20 @@ export class LocalPlayerNetReconciler {
         if (isLocomoting) {
           (localChar as any)._lastVoluntaryMoveTime = nowMs;
         }
+        const timeSinceThrow = nowMs - ((localChar as any)._lastThrowRecoilTime ?? 0);
+        const localSpeed = Math.hypot(localChar.velocity.x, localChar.velocity.y);
+        const isRecoilingFromThrow =
+          timeSinceThrow < 750 || (timeSinceThrow < 1500 && localSpeed > 0.15);
         const isRecentlyLocomoting =
-          isLocomoting || (nowMs - ((localChar as any)._lastVoluntaryMoveTime ?? 0) < 220);
+          isLocomoting ||
+          isRecoilingFromThrow ||
+          (nowMs - ((localChar as any)._lastVoluntaryMoveTime ?? 0) < 220);
         const isBackgrounded =
           (typeof document !== "undefined" && document.hidden) ||
           (nowMs - ((gameLoop as any).lastTime ?? nowMs) >= 35);
         const hasRecentCollision =
           Boolean(myServerState.isUnderKnockback) ||
-          (localChar.lastCollisionTime > 0 && (nowMs - localChar.lastCollisionTime < 450));
+          (!isRecoilingFromThrow && localChar.lastCollisionTime > 0 && (nowMs - localChar.lastCollisionTime < 450));
 
         const dx = myServerState.x - localChar.position.x;
         const dy = myServerState.y - localChar.position.y;

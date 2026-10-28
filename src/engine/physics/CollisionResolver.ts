@@ -50,6 +50,17 @@ export class CollisionResolver {
         if (a.isHeld || b.isHeld || a === draggedEntity || b === draggedEntity) continue;
         if (!a.hasCollider || !b.hasCollider) continue;
 
+        // Skip self-collision between a thrower and their own departing in-flight projectile
+        if ((a.isInFlight && a.lastThrower === b) || (b.isInFlight && b.lastThrower === a)) {
+          const sepDx = b.position.x - a.position.x;
+          const sepDy = b.position.y - a.position.y;
+          const sepRelVx = b.velocity.x - a.velocity.x;
+          const sepRelVy = b.velocity.y - a.velocity.y;
+          if (sepRelVx * sepDx + sepRelVy * sepDy >= -0.05) {
+            continue;
+          }
+        }
+
         // Phase 3 Optimization: If both bodies are asleep, they cannot collide with each other
         if (a.isSleeping && b.isSleeping) continue;
 
@@ -193,10 +204,12 @@ export class CollisionResolver {
 
     // Combined restitution: Character-on-character contact is purely inelastic (restitution = 0)
     // to prevent artificial elastic bouncing or slingshotting during walking/pushing
-    const nowContact = performance.now();
-    a.lastCollisionTime = nowContact;
-    b.lastCollisionTime = nowContact;
     const isCharCharContact = a.isCharacter && b.isCharacter;
+    if (isCharCharContact || velAlongNormal < 0 || closingVertSpeed > 0.05) {
+      const nowContact = performance.now();
+      a.lastCollisionTime = nowContact;
+      b.lastCollisionTime = nowContact;
+    }
     const bounceA = a.hasBounce && a.bounceMod !== null ? a.bounceMod : 0;
     const bounceB = b.hasBounce && b.bounceMod !== null ? b.bounceMod : 0;
     const restitution = isCharCharContact ? 0 : Math.max(bounceA, bounceB);
