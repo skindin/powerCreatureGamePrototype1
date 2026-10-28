@@ -366,16 +366,34 @@ export class WalkingModule {
           );
 
           let requestedWatts = 0;
-          const speedRatio = sprintTargetSpeed > 0.001
-            ? Math.min(1.0, Math.max(0, achievableInputSpeed / sprintTargetSpeed))
-            : 0;
-
-          if (speedRatio <= 0.001) {
+          if (achievableInputSpeed <= 0.001) {
             // Completely blocked flush into a wall or corner: NO energy consumed
             requestedWatts = 0;
+          } else if (achievableInputSpeed <= baseWalkTargetSpeed) {
+            // When moving at or below walking speed, only charge energy if walking itself consumes energy
+            if (this.walkConsumesEnergy) {
+              const CrWalk = 0.28;
+              const resForceWalk = totalMass * g * CrWalk;
+              const maxWalkWatts = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+              const walkRatio = baseWalkTargetSpeed > 0.001 ? achievableInputSpeed / baseWalkTargetSpeed : 0;
+              requestedWatts = maxWalkWatts * walkRatio;
+            } else {
+              requestedWatts = 0;
+            }
           } else {
-            // Power scales directly with actual sliding speed: at 45°, 70.7% speed costs 70.7% power (~108 W)
-            requestedWatts = fullSprintWatts * speedRatio;
+            // Moving faster than walk speed: scale additional sprint power above walking baseline
+            const excessSpeed = achievableInputSpeed - baseWalkTargetSpeed;
+            const maxExcessSpeed = Math.max(0.001, sprintTargetSpeed - baseWalkTargetSpeed);
+            const excessRatio = Math.min(1.0, Math.max(0, excessSpeed / maxExcessSpeed));
+
+            if (this.walkConsumesEnergy) {
+              const CrWalk = 0.28;
+              const resForceWalk = totalMass * g * CrWalk;
+              const maxWalkWatts = (resForceWalk * baseWalkTargetSpeed) / 0.25;
+              requestedWatts = maxWalkWatts + (fullSprintWatts - maxWalkWatts) * excessRatio;
+            } else {
+              requestedWatts = fullSprintWatts * excessRatio;
+            }
           }
 
           if (requestedWatts > sprintCap) {

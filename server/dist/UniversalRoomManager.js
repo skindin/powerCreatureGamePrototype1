@@ -2005,11 +2005,30 @@ class WalkingModule {
             arena2
           );
           let requestedWatts = 0;
-          const speedRatio = sprintTargetSpeed > 1e-3 ? Math.min(1, Math.max(0, achievableInputSpeed / sprintTargetSpeed)) : 0;
-          if (speedRatio <= 1e-3) {
+          if (achievableInputSpeed <= 1e-3) {
             requestedWatts = 0;
+          } else if (achievableInputSpeed <= baseWalkTargetSpeed) {
+            if (this.walkConsumesEnergy) {
+              const CrWalk = 0.28;
+              const resForceWalk = totalMass * g * CrWalk;
+              const maxWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
+              const walkRatio = baseWalkTargetSpeed > 1e-3 ? achievableInputSpeed / baseWalkTargetSpeed : 0;
+              requestedWatts = maxWalkWatts * walkRatio;
+            } else {
+              requestedWatts = 0;
+            }
           } else {
-            requestedWatts = fullSprintWatts * speedRatio;
+            const excessSpeed = achievableInputSpeed - baseWalkTargetSpeed;
+            const maxExcessSpeed = Math.max(1e-3, sprintTargetSpeed - baseWalkTargetSpeed);
+            const excessRatio = Math.min(1, Math.max(0, excessSpeed / maxExcessSpeed));
+            if (this.walkConsumesEnergy) {
+              const CrWalk = 0.28;
+              const resForceWalk = totalMass * g * CrWalk;
+              const maxWalkWatts = resForceWalk * baseWalkTargetSpeed / 0.25;
+              requestedWatts = maxWalkWatts + (fullSprintWatts - maxWalkWatts) * excessRatio;
+            } else {
+              requestedWatts = fullSprintWatts * excessRatio;
+            }
           }
           if (requestedWatts > sprintCap) {
             requestedWatts = this.sprintAllowPartialPower ? sprintCap : 0;
