@@ -8,6 +8,7 @@ import { HealthAndDamageInspector } from "./inspectors/HealthAndDamageInspector.
 import { LaserInspector } from "./inspectors/LaserInspector.js";
 import { MeleeInspector } from "./inspectors/MeleeInspector.js";
 import { EnergyPoolInspector } from "./inspectors/EnergyPoolInspector.js";
+import { ControlsInspector } from "./inspectors/ControlsInspector.js";
 
 /**
  * Dispatcher that delegates DevPanel module control binding to isolated,
@@ -46,6 +47,14 @@ export class EntityModuleControlsBinder {
       LaserInspector.bindControls(panel, char, bindToggleSave);
       MeleeInspector.bindControls(panel, char, bindToggleSave);
       EnergyPoolInspector.bindControls(panel, char);
+
+      const btnControls = container.querySelector("#btn-open-character-controls") as HTMLButtonElement | null;
+      if (btnControls) {
+        btnControls.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          ControlsInspector.openModal(panel, char);
+        });
+      }
     }
     InteractionModulesInspector.bindControls(panel, e, char, bindToggleSave);
     HealthAndDamageInspector.bindControls(panel, e, char, bindToggleSave);

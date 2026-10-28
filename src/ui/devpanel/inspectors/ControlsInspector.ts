@@ -16,11 +16,29 @@ import {
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
 import { prefabManager } from "../../../engine/prefab/PrefabManager.js";
 
+/**
+ * ControlsInspector provides a dedicated modal dialog window for inspecting,
+ * customizing, recording, and persisting character-specific and prefab-specific
+ * control schemas.
+ */
 export class ControlsInspector {
+  private static modalChar: Character | null = null;
+  private static modalPanel: DevPanel | null = null;
+  private static modalOverlay: HTMLElement | null = null;
+  private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
+  private static showJsonEditor: boolean = false;
+  private static jsonErrorMessage: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static recorderCleanup: (() => void) | null = null;
+  private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
+
+  // --- Public API ---
+
+  public static isModalOpen(): boolean {
+    return Boolean(this.modalOverlay && document.body.contains(this.modalOverlay));
+  }
 
   public static getActiveSchema(char: Character): ControlSchema {
     if (char.controlSchema) {
@@ -45,7 +63,7 @@ export class ControlsInspector {
     const card = document.getElementById(`rule-card-${ruleId}`);
     if (card) {
       card.style.borderColor = "#38bdf8";
-      card.style.boxShadow = "0 0 8px rgba(56, 189, 248, 0.6)";
+      card.style.boxShadow = "0 0 10px rgba(56, 189, 248, 0.7)";
       setTimeout(() => {
         if (card) {
           card.style.borderColor = "rgba(255, 255, 255, 0.08)";
@@ -56,15 +74,16 @@ export class ControlsInspector {
   }
 
   public static updateLiveDiagnostics(char: Character, ctx?: any): void {
-    const schema = this.getActiveSchema(char);
-    if (!schema) return;
+    if (!this.isModalOpen() || this.modalChar !== char || !this.workingSchema) {
+      return;
+    }
 
     const rules =
       this.activeTab === "keyboardMouse"
-        ? schema.keyboardMouse.rules
+        ? this.workingSchema.keyboardMouse.rules
         : this.activeTab === "gamepad"
-        ? schema.gamepad.rules
-        : schema.touch.rules;
+        ? this.workingSchema.gamepad.rules
+        : this.workingSchema.touch.rules;
 
     const isHolding = Boolean(char.heldObject);
     const isEdible = Boolean(char.canConsumeHeldObject());
@@ -88,7 +107,7 @@ export class ControlsInspector {
 
       if (match) {
         pip.style.background = "#10b981";
-        pip.style.boxShadow = "0 0 6px rgba(16, 185, 129, 0.7)";
+        pip.style.boxShadow = "0 0 6px rgba(16, 185, 129, 0.8)";
       } else {
         pip.style.background = "#475569";
         pip.style.boxShadow = "none";
@@ -96,77 +115,320 @@ export class ControlsInspector {
     }
   }
 
-  public static renderSection(panel: DevPanel, char: Character, container: HTMLElement): void {
-    const schema = this.getActiveSchema(char);
+  // --- Modal Open / Close Lifecycle ---
+
+  public static openModal(panel: DevPanel, char: Character): void {
+    if (this.isModalOpen()) {
+      this.closeModal();
+    }
+
+    this.modalChar = char;
+    this.modalPanel = panel;
+    this.workingSchema = JSON.parse(JSON.stringify(this.getActiveSchema(char)));
+    this.showJsonEditor = false;
+    this.jsonErrorMessage = null;
+    this.listeningRuleId = null;
+    this.listeningForwardTrigger = false;
+
+    // Create modal overlay element
+    let overlay = document.getElementById("controls-modal-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "controls-modal-overlay";
+      document.body.appendChild(overlay);
+    }
+    this.modalOverlay = overlay;
+
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(3, 7, 18, 0.78);
+      backdrop-filter: blur(6px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+      animation: fadeIn 0.15s ease-out;
+    `;
+
+    // Global backdrop click outside handler
+    overlay.onclick = (e) => {
+      if (e.target === overlay) {
+        this.closeModal();
+      }
+    };
+
+    // Global Escape handler
+    this.keydownListener = (e: KeyboardEvent) => {
+      if (e.code === "Escape") {
+        if (this.listeningRuleId || this.listeningForwardTrigger) {
+          // Handled by chord recorder
+          return;
+        }
+        this.closeModal();
+      }
+    };
+    window.addEventListener("keydown", this.keydownListener);
+
+    this.renderModal();
+  }
+
+  public static closeModal(): void {
+    if (this.recorderCleanup) {
+      this.recorderCleanup();
+      this.recorderCleanup = null;
+    }
+    if (this.keydownListener) {
+      window.removeEventListener("keydown", this.keydownListener);
+      this.keydownListener = null;
+    }
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+      this.modalOverlay = null;
+    }
+    const popover = document.getElementById("action-picker-popover");
+    if (popover) popover.remove();
+
+    this.modalChar = null;
+    this.modalPanel = null;
+    this.workingSchema = null;
+    this.listeningRuleId = null;
+    this.listeningForwardTrigger = false;
+  }
+
+  private static saveAndClose(): void {
+    if (!this.modalChar || !this.workingSchema) return;
+
+    // 1. Commit schema to active character
+    this.modalChar.controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
+
+    // 2. Commit schema to character's linked prefab archetype if applicable
+    if (this.modalChar.prefabId) {
+      const prefab = prefabManager.get(this.modalChar.prefabId);
+      if (prefab) {
+        prefab.controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
+        if (prefab.archetype instanceof Character) {
+          (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(this.workingSchema));
+        }
+      }
+    }
+
+    // 3. Auto-save project config to persist schema in worldConfig.json
+    if (this.modalPanel) {
+      (this.modalPanel as any).saveCurrentConfig?.();
+    }
+
+    // 4. Show sleek toast notification
+    this.showToast(`Saved Control Schema for ${this.modalChar.name || "Character"}`);
+
+    // 5. Close modal
+    this.closeModal();
+  }
+
+  private static showToast(message: string): void {
+    const existing = document.getElementById("controls-save-toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.id = "controls-save-toast";
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(16, 185, 129, 0.95);
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 10001;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: fadeIn 0.2s ease-out;
+    `;
+    toast.innerHTML = `<span>✓</span> <span>${message}</span>`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transition = "opacity 0.3s ease-out";
+      setTimeout(() => toast.remove(), 300);
+    }, 2200);
+  }
+
+  // --- Modal Rendering ---
+
+  private static renderModal(): void {
+    if (!this.modalOverlay || !this.modalChar || !this.workingSchema) return;
+
+    const char = this.modalChar;
+    const schema = this.workingSchema;
     const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
     const prefabName = prefab ? `${prefab.icon} ${prefab.name}` : null;
 
-    container.innerHTML = `
-      <div class="controls-inspector-root" style="display: flex; flex-direction: column; gap: 10px;">
-        <!-- Linked Prefab Banner -->
-        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 8px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 0.72rem; color: #c084fc; font-weight: 600;">Linked Prefab:</span>
-            <span style="font-size: 0.74rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Custom Character)"}</span>
+    const activeRulesCount =
+      this.activeTab === "keyboardMouse"
+        ? schema.keyboardMouse.rules.length
+        : this.activeTab === "gamepad"
+        ? schema.gamepad.rules.length
+        : schema.touch.rules.length;
+
+    this.modalOverlay.innerHTML = `
+      <div id="controls-modal-dialog" style="
+        background: #0f172a;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        border-radius: 12px;
+        width: 720px;
+        max-width: 95vw;
+        max-height: 92vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15);
+        overflow: hidden;
+        color: #e2e8f0;
+        font-family: inherit;
+      ">
+        <!-- Title Bar / Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">🎮</span>
+            <div>
+              <div style="font-weight: 700; font-size: 0.92rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                Controls Schema: <span style="color: #38bdf8;">${char.name || "Character"}</span>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem; font-weight: 500;">ID: ${char.id}</span>
+              </div>
+            </div>
           </div>
-          <div style="display: flex; gap: 4px;">
-            ${prefab ? `
-              <button id="btn-save-controls-to-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);" title="Save current control schema directly into this character's prefab">💾 Save to Prefab</button>
-              <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Revert controls back to prefab archetype values">↺ Revert</button>
-            ` : `
-              <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.68rem; padding: 2px 6px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Make Prefab</button>
-            `}
+          <button id="btn-close-controls-modal" style="background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1;" title="Close without saving">✕</button>
+        </div>
+
+        <!-- Subheader: Linked Prefab Bar & Preset Selector -->
+        <div style="padding: 10px 18px; background: rgba(15, 23, 42, 0.6); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 10px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.74rem; color: #c084fc; font-weight: 600;">Linked Prefab:</span>
+              <span style="font-size: 0.76rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Custom Standalone Entity)"}</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              ${
+                prefab
+                  ? `
+                <button id="btn-save-controls-to-prefab" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 8px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);" title="Save current schema directly into this character's prefab archetype">💾 Commit to Prefab</button>
+                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 8px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Revert controls to prefab archetype values">↺ Reset to Prefab</button>
+              `
+                  : `
+                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 8px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Make Reusable Prefab</button>
+              `
+              }
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <label style="font-size: 0.76rem; font-weight: 600; color: #94a3b8; white-space: nowrap;">Preset Template:</label>
+            <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.76rem;">
+              ${BuiltinControlSchemas.map(
+                (p) => `<option value="${p.id}" ${p.id === schema.id ? "selected" : ""}>${p.name}</option>`
+              ).join("")}
+              <option value="custom" ${!BuiltinControlSchemas.some((b) => b.id === schema.id) ? "selected" : ""}>Custom (User Modified)</option>
+            </select>
           </div>
         </div>
 
-        <!-- Header & Preset Selector -->
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-          <label style="font-size: 0.76rem; font-weight: 600; color: #94a3b8;">Preset Schema:</label>
-          <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.74rem;">
-            ${BuiltinControlSchemas.map(
-              (p) => `<option value="${p.id}" ${p.id === schema.id ? "selected" : ""}>${p.name}</option>`
-            ).join("")}
-            <option value="custom" ${!BuiltinControlSchemas.some((b) => b.id === schema.id) ? "selected" : ""}>Custom (User Modified)</option>
-          </select>
-        </div>
-
-        <!-- Device Selector Tabs -->
-        <div style="display: flex; gap: 4px; background: rgba(15, 23, 42, 0.8); padding: 3px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
-          <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.72rem; padding: 4px 6px; ${this.activeTab === "keyboardMouse" ? "background: rgba(6, 182, 212, 0.25); color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);" : ""}">
+        <!-- Device Channel Tabs -->
+        <div style="display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.4);">
+          <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.76rem; padding: 6px 10px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
             ⌨️ Keyboard & Mouse
           </button>
-          <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.72rem; padding: 4px 6px; ${this.activeTab === "gamepad" ? "background: rgba(6, 182, 212, 0.25); color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);" : ""}">
+          <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.76rem; padding: 6px 10px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "gamepad" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
             🎮 Gamepad
           </button>
-          <button id="tab-btn-tch" class="btn-secondary-action" style="flex: 1; font-size: 0.72rem; padding: 4px 6px; ${this.activeTab === "touch" ? "background: rgba(6, 182, 212, 0.25); color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);" : ""}">
-            📱 Touch
+          <button id="tab-btn-tch" class="btn-secondary-action" style="flex: 1; font-size: 0.76rem; padding: 6px 10px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "touch" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
+            📱 Mobile Touch
           </button>
         </div>
 
-        <!-- Paradigms Area -->
-        <div id="controls-paradigms-container" style="background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06);">
-          ${this.renderParadigmsHtml(schema)}
+        <!-- Scrollable Modal Body -->
+        <div style="flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
+          
+          <!-- Paradigms Area -->
+          <div id="controls-paradigms-container" style="background: rgba(15, 23, 42, 0.75); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            ${this.renderParadigmsHtml(schema)}
+          </div>
+
+          <!-- Rules Matrix Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <span style="font-size: 0.78rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+              ⚡ Action Rules (${activeRulesCount})
+              <span style="font-size: 0.68rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
+            </span>
+            <button id="btn-add-control-rule" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 10px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">
+              + Add Rule
+            </button>
+          </div>
+
+          <!-- Rules List Container -->
+          <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 6px;">
+            ${this.renderRulesListHtml(char, schema)}
+          </div>
+
+          <!-- Collapsible Raw JSON Editor Drawer -->
+          <div style="margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <button id="btn-toggle-json-drawer" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 4px 10px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">
+                ${this.showJsonEditor ? "▲ Hide Raw JSON" : "📋 View / Edit Raw JSON"}
+              </button>
+              <span style="font-size: 0.68rem; color: #64748b;">Direct JSON Schema inspection & export</span>
+            </div>
+
+            ${
+              this.showJsonEditor
+                ? `
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px;">
+                ${
+                  this.jsonErrorMessage
+                    ? `<div style="color: #f87171; font-size: 0.70rem; background: rgba(239, 68, 68, 0.15); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3);">⚠️ ${this.jsonErrorMessage}</div>`
+                    : ""
+                }
+                <textarea id="textarea-controls-json" style="width: 100%; height: 180px; font-family: monospace; font-size: 0.70rem; background: #090d16; color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(
+                    schema,
+                    null,
+                    2
+                  )}</textarea>
+                <div style="display: flex; justify-content: flex-end; gap: 6px;">
+                  <button id="btn-copy-json" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 8px; color: #94a3b8;">📋 Copy JSON</button>
+                  <button id="btn-apply-json" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 10px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">Apply JSON Changes</button>
+                </div>
+              </div>
+            `
+                : ""
+            }
+          </div>
         </div>
 
-        <!-- Rules Matrix Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-          <span style="font-size: 0.76rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
-            ⚡ Action Rules (Top-to-Bottom Priority)
-          </span>
-          <button id="btn-add-control-rule" class="btn-secondary-action" style="font-size: 0.70rem; padding: 3px 8px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);">
-            + Add Rule
-          </button>
-        </div>
-
-        <!-- Rules List Container -->
-        <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 6px;">
-          ${this.renderRulesListHtml(char, schema)}
+        <!-- Footer Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <div style="font-size: 0.72rem; color: #94a3b8;">
+            Schema: <strong style="color: #cbd5e1;">${schema.name}</strong>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem;">Cancel</button>
+            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 16px; font-size: 0.78rem; font-weight: 700; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12);">
+              💾 Save & Apply
+            </button>
+          </div>
         </div>
       </div>
     `;
 
-    this.attachEventListeners(panel, char, container);
+    this.attachEventListeners();
   }
+
+  // --- HTML Builders for Sub-Sections ---
 
   private static renderParadigmsHtml(schema: ControlSchema): string {
     if (this.activeTab === "keyboardMouse") {
@@ -178,7 +440,7 @@ export class ControlsInspector {
       return `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.74rem; color: #cbd5e1;">Locomotion Mode:</label>
+            <label style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Locomotion Mode:</label>
             <select id="select-loco-mode" class="dev-select" style="width: 58%; font-size: 0.72rem;">
               <option value="directVector" ${cfg.locomotion.mode === "directVector" ? "selected" : ""}>Direct 8-Way (WASD)</option>
               <option value="forwardFacingDrive" ${isFwd ? "selected" : ""}>Forward-Facing Drive (Move to Mouse)</option>
@@ -188,21 +450,21 @@ export class ControlsInspector {
           ${
             isFwd
               ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(6, 182, 212, 0.08); padding: 5px 8px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.25);">
-              <span style="font-size: 0.72rem; color: #38bdf8;">Forward Button:</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(6, 182, 212, 0.08); padding: 6px 8px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.25);">
+              <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 600;">Forward Drive Trigger:</span>
               <button id="btn-bind-fwd-trigger" class="btn-secondary-action" style="font-size: 0.72rem; padding: 2px 8px; font-weight: 600; ${isListeningFwd ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #e2e8f0;"}">
                 ${isListeningFwd ? "🔴 Press key/mouse..." : `⌨️ ${fwdCode}`}
               </button>
             </div>
-            <span style="font-size: 0.68rem; color: #64748b;">
-              Character faces mouse cursor. Holding ${fwdCode} drives character forward. Strafe: A/D, Reverse: S.
+            <span style="font-size: 0.68rem; color: #64748b; line-height: 1.3;">
+              Character constantly faces mouse cursor. Holding ${fwdCode} drives creature forward. Strafe: A/D, Reverse: S.
             </span>
           `
               : ""
           }
 
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.74rem; color: #cbd5e1;">Aiming Mode:</label>
+            <label style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Aiming Mode:</label>
             <select id="select-aim-mode" class="dev-select" style="width: 58%; font-size: 0.72rem;">
               <option value="faceMouseCursor" ${cfg.aiming.mode === "faceMouseCursor" ? "selected" : ""}>Face Mouse Cursor</option>
               <option value="faceMovement" ${cfg.aiming.mode === "faceMovement" ? "selected" : ""}>Face Movement Direction</option>
@@ -217,7 +479,7 @@ export class ControlsInspector {
       return `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.74rem; color: #cbd5e1;">Left Stick Primary:</label>
+            <label style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Left Stick Primary:</label>
             <select id="select-pad-left-primary" class="dev-select" style="width: 58%; font-size: 0.72rem;">
               <option value="directLocomotion" ${cfg.leftStick.primaryMode === "directLocomotion" ? "selected" : ""}>Direct Locomotion (Walk)</option>
               <option value="cursorSteer" ${cfg.leftStick.primaryMode === "cursorSteer" ? "selected" : ""}>Cursor Reticle Steer</option>
@@ -225,7 +487,7 @@ export class ControlsInspector {
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.74rem; color: #cbd5e1;">Dynamic Override:</label>
+            <label style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Dynamic Override:</label>
             <select id="select-pad-dynamic-override" class="dev-select" style="width: 58%; font-size: 0.72rem;">
               <option value="never" ${cfg.leftStick.dynamicOverride?.triggerCondition === "never" ? "selected" : ""}>Disabled (Always Primary)</option>
               <option value="whenLtHeld" ${cfg.leftStick.dynamicOverride?.triggerCondition === "whenLtHeld" ? "selected" : ""}>When Left Trigger (LT) Held</option>
@@ -235,7 +497,7 @@ export class ControlsInspector {
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.74rem; color: #cbd5e1;">Right Stick:</label>
+            <label style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Right Stick:</label>
             <select id="select-pad-right-mode" class="dev-select" style="width: 58%; font-size: 0.72rem;">
               <option value="twinStickAim" ${cfg.rightStick.mode === "twinStickAim" ? "selected" : ""}>Twin Stick 360 Aim</option>
               <option value="disabled" ${cfg.rightStick.mode === "disabled" ? "selected" : ""}>Disabled</option>
@@ -248,9 +510,9 @@ export class ControlsInspector {
     // Touch
     return `
       <div style="display: flex; flex-direction: column; gap: 6px;">
-        <span style="font-size: 0.72rem; color: #38bdf8;">📱 Mobile Virtual Joysticks & Action Buttons</span>
-        <span style="font-size: 0.68rem; color: #94a3b8;">
-          Multi-joystick support with concentric walk/sprint rings, floating follow-drag centers, and responsive anchors.
+        <span style="font-size: 0.74rem; color: #38bdf8; font-weight: 600;">📱 Mobile Virtual Joysticks & Action Buttons</span>
+        <span style="font-size: 0.68rem; color: #94a3b8; line-height: 1.3;">
+          Supports multi-joystick layouts with concentric walk/sprint rings, dynamic follow-drag centers, tap-to-trigger actions, and responsive screen anchors.
         </span>
       </div>
     `;
@@ -265,7 +527,7 @@ export class ControlsInspector {
         : schema.touch.rules;
 
     if (rules.length === 0) {
-      return `<div style="text-align: center; color: #64748b; font-size: 0.72rem; padding: 12px;">No action rules defined for this device. Click "+ Add Rule".</div>`;
+      return `<div style="text-align: center; color: #64748b; font-size: 0.74rem; padding: 16px; background: rgba(15, 23, 42, 0.4); border-radius: 6px;">No action rules defined for this device. Click "+ Add Rule".</div>`;
     }
 
     return rules
@@ -280,18 +542,18 @@ export class ControlsInspector {
         const isModuleMissing = cat && !cat.isAttached(char);
 
         return `
-        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 4px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 8px; position: relative;">
+        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 4px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; position: relative; transition: all 0.15s ease;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <!-- Status Pip -->
-            <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Condition"></span>
+            <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
 
             <!-- Trigger Button (Press to Bind) -->
-            <button class="btn-bind-trigger btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 2px 6px; font-weight: 600; min-width: 90px; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}">
+            <button class="btn-bind-trigger btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 3px 8px; font-weight: 600; min-width: 100px; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}">
               ${isListening ? "🔴 Listening..." : triggerLabel}
             </button>
 
             <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.68rem; padding: 2px 4px; width: 68px;">
+            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.68rem; padding: 2px 4px; width: 72px;">
               <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
               <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
@@ -312,7 +574,7 @@ export class ControlsInspector {
             </select>
 
             <!-- Delete Rule Button -->
-            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="padding: 2px 5px; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.70rem;" title="Remove Rule">
+            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="padding: 2px 6px; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.70rem;" title="Remove Rule">
               🗑️
             </button>
           </div>
@@ -330,10 +592,7 @@ export class ControlsInspector {
             isModuleMissing
               ? `
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.12); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3); margin-top: 2px;">
-              <span style="font-size: 0.66rem; color: #f87171;">⚠️ Needs ${cat.label}</span>
-              <button class="btn-quick-attach-module btn-secondary-action" data-mod-id="${cat.id}" style="font-size: 0.64rem; padding: 1px 5px; color: #34d399; border-color: rgba(52, 211, 153, 0.4);">
-                + Add Module
-              </button>
+              <span style="font-size: 0.66rem; color: #f87171;">⚠️ Character lacks ${cat.label} behavior</span>
             </div>
           `
               : ""
@@ -351,84 +610,107 @@ export class ControlsInspector {
     return `${devIcon} ${chord}${t.code}`;
   }
 
-  private static attachEventListeners(panel: DevPanel, char: Character, container: HTMLElement): void {
-    const schema = this.getActiveSchema(char);
+  // --- Event Listeners Attachment ---
+
+  private static attachEventListeners(): void {
+    if (!this.modalOverlay || !this.modalChar || !this.workingSchema) return;
+
+    const char = this.modalChar;
+    const schema = this.workingSchema;
+    const panel = this.modalPanel!;
     const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
 
+    // Close button (X)
+    this.modalOverlay.querySelector("#btn-close-controls-modal")?.addEventListener("click", () => {
+      this.closeModal();
+    });
+
+    // Cancel button
+    this.modalOverlay.querySelector("#btn-modal-cancel")?.addEventListener("click", () => {
+      this.closeModal();
+    });
+
+    // Save & Apply button
+    this.modalOverlay.querySelector("#btn-modal-save-close")?.addEventListener("click", () => {
+      this.saveAndClose();
+    });
+
     // Prefab Sync Buttons
-    container.querySelector("#btn-save-controls-to-prefab")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#btn-save-controls-to-prefab")?.addEventListener("click", () => {
       if (prefab) {
         prefab.controlSchema = JSON.parse(JSON.stringify(schema));
         if (prefab.archetype instanceof Character) {
           (prefab.archetype as Character).controlSchema = JSON.parse(JSON.stringify(schema));
         }
         (panel as any).saveCurrentConfig?.();
-        this.renderSection(panel, char, container);
+        this.showToast(`Saved to Prefab: ${prefab.name}`);
+        this.renderModal();
       }
     });
 
-    container.querySelector("#btn-revert-controls-from-prefab")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#btn-revert-controls-from-prefab")?.addEventListener("click", () => {
       if (prefab?.controlSchema) {
-        char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
-        this.renderSection(panel, char, container);
+        this.workingSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.renderModal();
       }
     });
 
-    container.querySelector("#btn-make-char-prefab")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#btn-make-char-prefab")?.addEventListener("click", () => {
       const p = prefabManager.createFromEntity(char);
       p.controlSchema = JSON.parse(JSON.stringify(schema));
       char.controlSchema = JSON.parse(JSON.stringify(schema));
       char.prefabId = p.id;
       (panel as any).saveCurrentConfig?.();
-      this.renderSection(panel, char, container);
+      this.showToast(`Created Prefab: ${p.name}`);
+      this.renderModal();
     });
 
     // 1. Preset Selector
-    const selectPreset = container.querySelector("#select-control-preset") as HTMLSelectElement;
+    const selectPreset = this.modalOverlay.querySelector("#select-control-preset") as HTMLSelectElement;
     if (selectPreset) {
       selectPreset.addEventListener("change", () => {
         const pId = selectPreset.value;
         const found = BuiltinControlSchemas.find((b) => b.id === pId);
         if (found) {
-          this.setActiveSchema(char, found);
-          this.renderSection(panel, char, container);
+          this.workingSchema = JSON.parse(JSON.stringify(found));
+          this.renderModal();
         }
       });
     }
 
     // 2. Tab Buttons
-    container.querySelector("#tab-btn-kbm")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#tab-btn-kbm")?.addEventListener("click", () => {
       this.activeTab = "keyboardMouse";
-      this.renderSection(panel, char, container);
+      this.renderModal();
     });
-    container.querySelector("#tab-btn-pad")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#tab-btn-pad")?.addEventListener("click", () => {
       this.activeTab = "gamepad";
-      this.renderSection(panel, char, container);
+      this.renderModal();
     });
-    container.querySelector("#tab-btn-tch")?.addEventListener("click", () => {
+    this.modalOverlay.querySelector("#tab-btn-tch")?.addEventListener("click", () => {
       this.activeTab = "touch";
-      this.renderSection(panel, char, container);
+      this.renderModal();
     });
 
     // 3. Locomotion Mode Selector
-    const selectLoco = container.querySelector("#select-loco-mode") as HTMLSelectElement;
+    const selectLoco = this.modalOverlay.querySelector("#select-loco-mode") as HTMLSelectElement;
     if (selectLoco) {
       selectLoco.addEventListener("change", () => {
         schema.keyboardMouse.locomotion.mode = selectLoco.value as LocomotionParadigm;
-        this.renderSection(panel, char, container);
+        this.renderModal();
       });
     }
 
     // 4. Forward Trigger Bind Button
-    const btnFwdTrigger = container.querySelector("#btn-bind-fwd-trigger");
+    const btnFwdTrigger = this.modalOverlay.querySelector("#btn-bind-fwd-trigger");
     if (btnFwdTrigger) {
       btnFwdTrigger.addEventListener("click", () => {
-        this.startForwardTriggerListening(panel, char, container);
+        this.startForwardTriggerListening();
       });
     }
 
     // 5. Aim Mode Selector
-    const selectAim = container.querySelector("#select-aim-mode") as HTMLSelectElement;
+    const selectAim = this.modalOverlay.querySelector("#select-aim-mode") as HTMLSelectElement;
     if (selectAim) {
       selectAim.addEventListener("change", () => {
         schema.keyboardMouse.aiming.mode = selectAim.value as AimingParadigm;
@@ -436,7 +718,7 @@ export class ControlsInspector {
     }
 
     // 6. Gamepad Left Stick Primary
-    const selectPadLeft = container.querySelector("#select-pad-left-primary") as HTMLSelectElement;
+    const selectPadLeft = this.modalOverlay.querySelector("#select-pad-left-primary") as HTMLSelectElement;
     if (selectPadLeft) {
       selectPadLeft.addEventListener("change", () => {
         schema.gamepad.leftStick.primaryMode = selectPadLeft.value as any;
@@ -444,7 +726,7 @@ export class ControlsInspector {
     }
 
     // 7. Gamepad Dynamic Override
-    const selectPadOverride = container.querySelector("#select-pad-dynamic-override") as HTMLSelectElement;
+    const selectPadOverride = this.modalOverlay.querySelector("#select-pad-dynamic-override") as HTMLSelectElement;
     if (selectPadOverride) {
       selectPadOverride.addEventListener("change", () => {
         if (!schema.gamepad.leftStick.dynamicOverride) {
@@ -457,8 +739,16 @@ export class ControlsInspector {
       });
     }
 
-    // 8. Add Rule Button
-    container.querySelector("#btn-add-control-rule")?.addEventListener("click", () => {
+    // 8. Gamepad Right Stick Mode
+    const selectPadRight = this.modalOverlay.querySelector("#select-pad-right-mode") as HTMLSelectElement;
+    if (selectPadRight) {
+      selectPadRight.addEventListener("change", () => {
+        schema.gamepad.rightStick.mode = selectPadRight.value as any;
+      });
+    }
+
+    // 9. Add Rule Button
+    this.modalOverlay.querySelector("#btn-add-control-rule")?.addEventListener("click", () => {
       const newRule: ControlRule = {
         id: "rule-" + Date.now().toString(36),
         name: "New Action Rule",
@@ -480,20 +770,21 @@ export class ControlsInspector {
         schema.touch.rules.unshift(newRule);
       }
 
-      this.renderSection(panel, char, container);
+      this.renderModal();
     });
 
-    // 9. Rule Cards Events (Trigger bind, Mode, Condition, Action picker, Delete)
-    container.querySelectorAll(".btn-bind-trigger").forEach((btn) => {
+    // 10. Rule Bind Trigger
+    this.modalOverlay.querySelectorAll(".btn-bind-trigger").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
         if (rId) {
-          this.startRuleTriggerListening(panel, char, container, rId);
+          this.startRuleTriggerListening(rId);
         }
       });
     });
 
-    container.querySelectorAll(".select-rule-mode").forEach((sel) => {
+    // 11. Rule Mode
+    this.modalOverlay.querySelectorAll(".select-rule-mode").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
         const rule = this.findRule(schema, rId);
@@ -503,7 +794,8 @@ export class ControlsInspector {
       });
     });
 
-    container.querySelectorAll(".select-rule-cond").forEach((sel) => {
+    // 12. Rule Condition
+    this.modalOverlay.querySelectorAll(".select-rule-cond").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
         const val = (e.target as HTMLSelectElement).value;
@@ -520,22 +812,57 @@ export class ControlsInspector {
       });
     });
 
-    container.querySelectorAll(".btn-open-action-picker").forEach((btn) => {
+    // 13. Rule Action Picker Popover
+    this.modalOverlay.querySelectorAll(".btn-open-action-picker").forEach((btn) => {
       btn.addEventListener("click", (evt) => {
         evt.stopPropagation();
         const rId = (btn as HTMLElement).dataset.ruleId;
         if (rId) {
-          this.showActionPickerMenu(panel, char, container, rId, btn as HTMLElement);
+          this.showActionPickerMenu(rId, btn as HTMLElement);
         }
       });
     });
 
-    container.querySelectorAll(".btn-delete-rule").forEach((btn) => {
+    // 14. Rule Delete
+    this.modalOverlay.querySelectorAll(".btn-delete-rule").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
         this.deleteRule(schema, rId);
-        this.renderSection(panel, char, container);
+        this.renderModal();
       });
+    });
+
+    // 15. Raw JSON Drawer Toggle & Editor
+    this.modalOverlay.querySelector("#btn-toggle-json-drawer")?.addEventListener("click", () => {
+      this.showJsonEditor = !this.showJsonEditor;
+      this.jsonErrorMessage = null;
+      this.renderModal();
+    });
+
+    this.modalOverlay.querySelector("#btn-apply-json")?.addEventListener("click", () => {
+      const textarea = this.modalOverlay?.querySelector("#textarea-controls-json") as HTMLTextAreaElement | null;
+      if (!textarea) return;
+      try {
+        const parsed = JSON.parse(textarea.value);
+        if (!parsed.id || !parsed.name || !parsed.keyboardMouse || !parsed.gamepad) {
+          throw new Error("JSON missing essential ControlSchema properties (id, name, keyboardMouse, gamepad).");
+        }
+        this.workingSchema = parsed;
+        this.jsonErrorMessage = null;
+        this.showToast("Parsed & Applied JSON Schema");
+        this.renderModal();
+      } catch (err: any) {
+        this.jsonErrorMessage = err.message || "Invalid JSON syntax";
+        this.renderModal();
+      }
+    });
+
+    this.modalOverlay.querySelector("#btn-copy-json")?.addEventListener("click", () => {
+      const textarea = this.modalOverlay?.querySelector("#textarea-controls-json") as HTMLTextAreaElement | null;
+      if (textarea) {
+        navigator.clipboard.writeText(textarea.value);
+        this.showToast("Copied JSON to clipboard");
+      }
     });
   }
 
@@ -563,18 +890,14 @@ export class ControlsInspector {
   }
 
   // --- "Press input to bind" Chord Recorder ---
-  private static startRuleTriggerListening(
-    panel: DevPanel,
-    char: Character,
-    container: HTMLElement,
-    ruleId: string
-  ): void {
+
+  private static startRuleTriggerListening(ruleId: string): void {
     if (this.recorderCleanup) this.recorderCleanup();
     this.listeningRuleId = ruleId;
-    this.renderSection(panel, char, container);
+    this.renderModal();
 
-    const schema = this.getActiveSchema(char);
-    const rule = this.findRule(schema, ruleId);
+    if (!this.workingSchema) return;
+    const rule = this.findRule(this.workingSchema, ruleId);
     if (!rule) return;
 
     const chord = new Set<string>();
@@ -586,7 +909,7 @@ export class ControlsInspector {
       if (e.code === "Escape") {
         cleanup();
         this.listeningRuleId = null;
-        this.renderSection(panel, char, container);
+        this.renderModal();
         return;
       }
 
@@ -603,7 +926,7 @@ export class ControlsInspector {
 
       cleanup();
       this.listeningRuleId = null;
-      this.renderSection(panel, char, container);
+      this.renderModal();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -617,7 +940,7 @@ export class ControlsInspector {
 
       cleanup();
       this.listeningRuleId = null;
-      this.renderSection(panel, char, container);
+      this.renderModal();
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -637,20 +960,25 @@ export class ControlsInspector {
     window.addEventListener("contextmenu", onContextMenu, true);
   }
 
-  private static startForwardTriggerListening(
-    panel: DevPanel,
-    char: Character,
-    container: HTMLElement
-  ): void {
+  private static startForwardTriggerListening(): void {
     if (this.recorderCleanup) this.recorderCleanup();
     this.listeningForwardTrigger = true;
-    this.renderSection(panel, char, container);
+    this.renderModal();
 
-    const schema = this.getActiveSchema(char);
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
 
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningForwardTrigger = false;
+        this.renderModal();
+        return;
+      }
+
       schema.keyboardMouse.locomotion.forwardTrigger = {
         device: "keyboard",
         code: e.code,
@@ -658,7 +986,7 @@ export class ControlsInspector {
       };
       cleanup();
       this.listeningForwardTrigger = false;
-      this.renderSection(panel, char, container);
+      this.renderModal();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -672,7 +1000,7 @@ export class ControlsInspector {
       };
       cleanup();
       this.listeningForwardTrigger = false;
-      this.renderSection(panel, char, container);
+      this.renderModal();
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -693,19 +1021,14 @@ export class ControlsInspector {
   }
 
   // --- Categorized & Collapsible Action Picker Popover ---
-  private static showActionPickerMenu(
-    panel: DevPanel,
-    char: Character,
-    container: HTMLElement,
-    ruleId: string,
-    anchorBtn: HTMLElement
-  ): void {
-    // Remove existing popover if open
+
+  private static showActionPickerMenu(ruleId: string, anchorBtn: HTMLElement): void {
     const existing = document.getElementById("action-picker-popover");
     if (existing) existing.remove();
 
-    const schema = this.getActiveSchema(char);
-    const rule = this.findRule(schema, ruleId);
+    if (!this.modalChar || !this.workingSchema) return;
+    const char = this.modalChar;
+    const rule = this.findRule(this.workingSchema, ruleId);
     if (!rule) return;
 
     const { attached, unattached } = ControlActionCatalog.getCategorizedForCharacter(char);
@@ -713,39 +1036,40 @@ export class ControlsInspector {
     const popover = document.createElement("div");
     popover.id = "action-picker-popover";
     popover.style.cssText = `
-      position: absolute;
-      z-index: 1000;
-      background: rgba(15, 23, 42, 0.98);
-      border: 1px solid rgba(56, 189, 248, 0.4);
+      position: fixed;
+      z-index: 10005;
+      background: #090d16;
+      border: 1px solid rgba(56, 189, 248, 0.5);
       border-radius: 8px;
-      padding: 8px;
-      max-height: 280px;
-      width: 250px;
+      padding: 10px;
+      max-height: 320px;
+      width: 270px;
       overflow-y: auto;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.85);
       backdrop-filter: blur(12px);
       display: flex;
       flex-direction: column;
       gap: 6px;
+      font-family: inherit;
     `;
 
-    // Position near button
+    // Position relative to anchor button within viewport
     const rect = anchorBtn.getBoundingClientRect();
-    popover.style.top = `${rect.bottom + window.scrollY + 4}px`;
-    popover.style.left = `${Math.max(10, rect.left + window.scrollX - 100)}px`;
+    popover.style.top = `${Math.min(window.innerHeight - 340, rect.bottom + 4)}px`;
+    popover.style.left = `${Math.max(10, Math.min(window.innerWidth - 290, rect.left - 100))}px`;
 
     popover.innerHTML = `
-      <div style="font-size: 0.70rem; font-weight: 700; color: #38bdf8; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #38bdf8; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);">
         Select Target Action Function
       </div>
 
-      <!-- Attached Modules (Expanded) -->
+      <!-- Attached Modules (Prioritized) -->
       <div style="display: flex; flex-direction: column; gap: 4px;">
-        <span style="font-size: 0.64rem; font-weight: 700; color: #34d399;">⭐ ATTACHED MODULES</span>
+        <span style="font-size: 0.64rem; font-weight: 700; color: #34d399; letter-spacing: 0.05em;">⭐ ATTACHED MODULES</span>
         ${attached
           .map(
             (cat) => `
-          <div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border-radius: 4px; padding: 4px;">
+          <div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); border-radius: 4px; padding: 4px;">
             <span style="font-size: 0.68rem; font-weight: 600; color: #e2e8f0;">${cat.icon} ${cat.label}</span>
             <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 2px; padding-left: 6px;">
               ${cat.actions
@@ -764,7 +1088,7 @@ export class ControlsInspector {
           .join("")}
       </div>
 
-      <!-- Unattached Modules (Collapsed by default) -->
+      <!-- Unattached Modules (Collapsed by default to eliminate option pollution) -->
       ${
         unattached.length > 0
           ? `
@@ -776,7 +1100,7 @@ export class ControlsInspector {
             ${unattached
               .map(
                 (cat) => `
-              <div style="display: flex; flex-direction: column; background: rgba(0,0,0,0.2); border-radius: 4px; padding: 4px;">
+              <div style="display: flex; flex-direction: column; background: rgba(0,0,0,0.3); border-radius: 4px; padding: 4px;">
                 <span style="font-size: 0.66rem; color: #64748b;">${cat.icon} ${cat.label}</span>
                 <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 6px;">
                   ${cat.actions
@@ -811,7 +1135,7 @@ export class ControlsInspector {
           rule.action.moduleId = mod;
           rule.action.intent = intent;
           popover.remove();
-          this.renderSection(panel, char, container);
+          this.renderModal();
         }
       });
     });

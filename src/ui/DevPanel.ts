@@ -761,14 +761,6 @@ export class DevPanel {
           </div>
         </div>
 
-        <!-- 🎮 Customizable Controls Builder -->
-        <div class="dev-section" id="section-controls-builder" style="${this.selectedEntity instanceof Character ? '' : 'display: none;'}">
-          ${this.renderCollapsibleHeader("controls-builder", "🎮 Customizable Controls Builder")}
-          <div id="collapse-body-controls-builder" style="display: ${this.isSectionCollapsed('controls-builder') ? 'none' : 'block'}; margin-top: 8px;">
-            <div id="controls-builder-container"></div>
-          </div>
-        </div>
-
         <!-- ✨ Add New Object (Creator & Presets) -->
         <div class="dev-section">
           ${this.renderCollapsibleHeader(
@@ -1200,18 +1192,6 @@ export class DevPanel {
 
     // Bind controls on newly rendered cards
     this.bindDynamicModuleControls();
-
-    // Render Controls Builder for Character entities
-    const controlsSec = this.container.querySelector("#section-controls-builder") as HTMLElement | null;
-    const controlsContainer = this.container.querySelector("#controls-builder-container") as HTMLElement | null;
-    if (controlsSec && controlsContainer) {
-      if (e instanceof Character) {
-        controlsSec.style.display = "block";
-        ControlsInspector.renderSection(this, e, controlsContainer);
-      } else {
-        controlsSec.style.display = "none";
-      }
-    }
   }
 
   public toggleModuleEnabled(moduleType: string): void {

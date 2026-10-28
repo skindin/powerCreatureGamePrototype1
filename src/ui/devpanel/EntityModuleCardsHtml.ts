@@ -141,6 +141,11 @@ export class EntityModuleCardsHtml {
               <option value="dummy" ${currentRole === "dummy" ? "selected" : ""}>Dummy (Inert Physical Target)</option>
             </select>
           </div>
+          <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <button id="btn-open-character-controls" class="btn-secondary-action" type="button" style="width: 100%; padding: 6px 10px; font-weight: 600; font-size: 0.76rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08); display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <span>🎮</span> Configure Controls Schema
+            </button>
+          </div>
           </div>
         </div>
       `;
