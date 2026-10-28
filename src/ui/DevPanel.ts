@@ -2193,7 +2193,7 @@ export class DevPanel {
     this.setSelectedEntity(allChars[0] || this.objects[0] || (null as any));
   }
 
-  private setupScrubber(
+  public setupScrubber(
     containerId: string,
     options: {
       label: string;
@@ -2217,11 +2217,23 @@ export class DevPanel {
     return scrubber;
   }
 
-  private setScrubberVal(containerId: string, val: number): void {
+  public setScrubberVal(containerId: string, val: number): void {
     const scrubber = this.scrubbers.get(containerId);
     if (scrubber) {
       scrubber.setValue(val, false);
     }
+  }
+
+  public setupSlider(sliderId: string, labelId: string, onChange: (val: number) => void, decimals: number = 0): void {
+    const slider = this.container.querySelector(`#${sliderId}`) as HTMLInputElement;
+    const label = this.container.querySelector(`#${labelId}`) as HTMLElement;
+    if (!slider || !label) return;
+
+    slider.addEventListener("input", () => {
+      const val = parseFloat(slider.value);
+      label.textContent = decimals > 0 ? val.toFixed(decimals) : Math.round(val).toString();
+      onChange(val);
+    });
   }
 
   public updateInspector(): void {
