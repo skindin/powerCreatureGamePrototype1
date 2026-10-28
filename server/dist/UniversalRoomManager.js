@@ -4716,6 +4716,76 @@ class ConsumeModule {
     this.acceptedTags = this.acceptedTags.filter((t) => t.trim().toLowerCase() !== clean);
   }
 }
+class ElevationRaycaster {
+  /**
+   * Tests if an aim point (aimX, aimY) is directly over a wall tile footprint.
+   * Only considers whether the cursor is over the physical 2D wall tile,
+   * ignoring upward-projected roof depth so space behind walls can be targeted.
+   */
+  static findWallOverlappingCollider(aimX, aimY, _radius = 0, arena2, _hoverScale = 0) {
+    let bestWall = null;
+    let bestDist = Infinity;
+    for (const wall of arena2.walls) {
+      const isOverWallTile = aimX >= wall.x && aimX <= wall.x + wall.width && aimY >= wall.y && aimY <= wall.y + wall.height;
+      if (isOverWallTile) {
+        const midX = wall.x + wall.width * 0.5;
+        const midY = wall.y + wall.height * 0.5;
+        const d = Math.hypot(midX - aimX, midY - aimY);
+        if (d < bestDist) {
+          bestDist = d;
+          bestWall = wall;
+        }
+      }
+    }
+    if (bestWall) {
+      return {
+        wall: bestWall,
+        targetSurfaceHeight: bestWall.wallHeight,
+        physX: aimX,
+        physY: aimY
+      };
+    }
+    return null;
+  }
+  /**
+   * Calculates the distance along ray (startX, startY) + s * (dirX, dirY)
+   * where the ray enters and exits a wall's 2D bounding box.
+   */
+  static getRayWallEnterDistance(startX, startY, dirX, dirY, wall) {
+    let tNear = -Infinity;
+    let tFar = Infinity;
+    if (Math.abs(dirX) > 1e-6) {
+      let t1 = (wall.x - startX) / dirX;
+      let t2 = (wall.x + wall.width - startX) / dirX;
+      if (t1 > t2) {
+        const tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tNear = Math.max(tNear, t1);
+      tFar = Math.min(tFar, t2);
+    } else {
+      if (startX <= wall.x || startX >= wall.x + wall.width) return null;
+    }
+    if (Math.abs(dirY) > 1e-6) {
+      let t1 = (wall.y - startY) / dirY;
+      let t2 = (wall.y + wall.height - startY) / dirY;
+      if (t1 > t2) {
+        const tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tNear = Math.max(tNear, t1);
+      tFar = Math.min(tFar, t2);
+    } else {
+      if (startY <= wall.y || startY >= wall.y + wall.height) return null;
+    }
+    if (tNear <= tFar && tFar >= 0) {
+      return { enterDist: Math.max(0, tNear), exitDist: tFar };
+    }
+    return null;
+  }
+}
 class LaserModule {
   constructor(options) {
     __publicField(this, "id", "laser_blast");
@@ -4813,7 +4883,7 @@ class LaserModule {
     const startX = character.position.x;
     const startY = character.position.y;
     const scale = hoverScale > 0 ? hoverScale : arena2.visualAltitudeScale ?? 0.5;
-    const wallOver = ThrowModule.findWallOverlappingCollider(targetScreenX, targetScreenY, 0.2, arena2, scale);
+    const wallOver = ElevationRaycaster.findWallOverlappingCollider(targetScreenX, targetScreenY, 0.2, arena2, scale);
     const targetSurfaceHeight = wallOver ? wallOver.targetSurfaceHeight : arena2.getSupportingSurfaceHeight(targetScreenX, targetScreenY, 0);
     const targetX = targetScreenX;
     const targetY = targetScreenY;
@@ -4840,7 +4910,7 @@ class LaserModule {
     let hitWall = null;
     let isBlocked = false;
     for (const wall of arena2.walls) {
-      const enterInfo = ThrowModule.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
+      const enterInfo = ElevationRaycaster.getRayWallEnterDistance(startX, startY, dirX, dirY, wall);
       if (enterInfo && enterInfo.enterDist > 0.05 && enterInfo.enterDist < closestWallDist) {
         const beamZ = startZ + slopeZ * enterInfo.enterDist;
         if (beamZ <= wall.wallHeight + 0.01) {
@@ -5240,6 +5310,489 @@ class MeleeModule {
     };
   }
 }
+class LocomotionCapability {
+  static canWalk(char) {
+    return Boolean(
+      char.walkingModule && char.walkingModule.enabled && (char.isRestingOnSurface ? char.hasFriction : char.walkingModule.walkInAir)
+    );
+  }
+  static registerDemand(char, movementInput) {
+    var _a, _b, _c, _d;
+    const canWalk = LocomotionCapability.canWalk(char);
+    const inputMag = Math.hypot(movementInput.x, movementInput.y);
+    const isMoving = inputMag > 0.05;
+    const isActivelySprinting = Boolean(((_a = char.walkingModule) == null ? void 0 : _a.canSprint) && char.isSprinting);
+    let sprintingNow = isActivelySprinting;
+    if (sprintingNow && ((_b = char.walkingModule) == null ? void 0 : _b.sprintConsumesEnergy)) {
+      if (char.energyPool && (char.energyPool.isExhausted || char.energyPool.getCurrentStamina(char.properties) <= 1e-4)) {
+        sprintingNow = false;
+        char.setSprinting(false);
+        const Cr = 0.4;
+        const totalMass = char.hasMass ? Math.max(0.2, char.mass) : 1;
+        const targetSpeed = char.walkingModule.maxSprintSpeedProp.get(char.properties);
+        const rawSprintWatts = totalMass * 9.81 * Cr * targetSpeed / 0.25;
+        char.energyPool.notifyInsufficientEnergy({
+          abilityId: "sprint",
+          demandedAmount: rawSprintWatts,
+          isBurst: false,
+          unit: "W/s",
+          registry: char.properties
+        });
+      }
+    }
+    const locomotionConsumesEnergy = sprintingNow ? (_c = char.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = char.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
+    if (canWalk && isMoving && locomotionConsumesEnergy && char.walkingModule && char.energyPool) {
+      const carriedMass = char.carriedMass;
+      const loadFactor = carriedMass / (Math.max(0.1, char.strength) * 8);
+      const targetSpeed = sprintingNow ? char.walkingModule.maxSprintSpeedProp.get(char.properties) : char.walkingModule.maxWalkSpeedProp.get(char.properties);
+      const v = targetSpeed / (1 + loadFactor);
+      const g = 9.81;
+      const Cr = sprintingNow ? 0.4 : 0.28;
+      const totalMass = char.hasMass ? Math.max(0.2, char.mass) : 1;
+      const resForce = totalMass * g * Cr;
+      const rawLocomotionWatts = resForce * v / 0.25;
+      const cap = sprintingNow ? char.walkingModule.maxSprintPowerProp.get(char.properties) : char.walkingModule.maxWalkPowerProp.get(char.properties);
+      const allowPartial = sprintingNow ? char.walkingModule.sprintAllowPartialPower : char.walkingModule.walkAllowPartialPower;
+      let locomotionWatts = rawLocomotionWatts;
+      if (locomotionWatts > cap) {
+        locomotionWatts = allowPartial ? cap : 0;
+      }
+      const locomotionId = sprintingNow ? "sprint" : "walk";
+      char.energyPool.activeLocomotionId = locomotionId;
+      char.energyPool.registerDemand(locomotionId, locomotionWatts, allowPartial);
+    }
+    return canWalk;
+  }
+  static actuate(char, canWalk, movementInput, dt, arena2) {
+    if (canWalk && char.walkingModule) {
+      char.walkingModule.update(char, movementInput, dt, arena2);
+    } else {
+      char.isActivelyWalking = false;
+    }
+  }
+}
+class ClimbingCapability {
+  static canClimb(char) {
+    return Boolean(
+      char.climbingModule && char.climbingModule.enabled && char.hasVerticalPosition && char.hasStrength
+    );
+  }
+  static registerDemand(char, isClimbInput, arena2) {
+    var _a;
+    const canClimb = ClimbingCapability.canClimb(char);
+    if (canClimb && char.isClimbing && ((_a = char.climbingModule) == null ? void 0 : _a.consumesEnergy) && char.energyPool) {
+      const totalMass = char.mass;
+      const g = arena2.gravity || 9.81;
+      const isometricHoldingWatts = totalMass * g * 0.35 / 0.25;
+      const maxAscentSpeed = char.climbingModule.maxClimbSpeedProp.get(char.properties);
+      const ascentWatts = isClimbInput ? totalMass * g * maxAscentSpeed / 0.25 : 0;
+      const rawClimbWatts = isometricHoldingWatts + ascentWatts;
+      const climbCap = char.climbingModule.maxPowerProp.get(char.properties);
+      let climbWatts = rawClimbWatts;
+      if (climbWatts > climbCap) {
+        climbWatts = char.climbingModule.allowPartialPower ? climbCap : 0;
+      }
+      char.energyPool.registerDemand("climb", climbWatts, char.climbingModule.allowPartialPower);
+    }
+    return canClimb;
+  }
+  static actuate(char, canClimb, movementInput, isClimbInput, dt, arena2) {
+    if (canClimb && char.climbingModule) {
+      char.climbingModule.update(char, movementInput, isClimbInput, dt, arena2);
+    } else if (char.isClimbing) {
+      char.isClimbing = false;
+    }
+  }
+}
+class JumpCapability {
+  static canJump(char) {
+    return Boolean(char.jumpModule && char.jumpModule.enabled && char.hasVerticalPosition);
+  }
+  static executeJump(char, arena2, movementInput) {
+    if (!char.jumpModule || !char.jumpModule.enabled || !char.hasVerticalPosition) {
+      return false;
+    }
+    const surfaceZ = char.supportingSurfaceHeight ?? 0;
+    const isGrounded = char.isRestingOnSurface || Math.abs(char.position.z - surfaceZ) <= 0.08 && Math.abs(char.verticalVelocity) <= 0.8;
+    if (!isGrounded || char.isHeld) {
+      return false;
+    }
+    const baseMass = Math.max(0.2, char.baseMass ?? 1.2);
+    const totalMass = Math.max(0.2, char.mass);
+    const jumpStrength = char.jumpModule.jumpStrengthProp.get(char.properties);
+    const maxInitialSpeed = char.jumpModule.maxInitialSpeedProp.get(char.properties);
+    const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
+    if (targetTakeoffSpeed <= 0.01) return false;
+    const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
+    const pool = char.energyPool;
+    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(char.properties) : 0.25);
+    const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
+    const jumpCap = char.jumpMaxPowerProp ? char.jumpMaxPowerProp.get(char.properties) : 1200;
+    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(0, jumpCap));
+    let energyFraction = 1;
+    if (char.jumpConsumesEnergy) {
+      if (pool) {
+        if (pool.isExhausted) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: char.properties
+          });
+          return false;
+        }
+        if (!char.jumpAllowPartialPower && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, char.properties)) {
+          pool.notifyInsufficientEnergy({
+            abilityId: "jump",
+            demandedAmount: metabolicJoules,
+            isBurst: true,
+            registry: char.properties
+          });
+          return false;
+        }
+        const burstRes = pool.requestInstantBurst({
+          abilityId: "jump",
+          demandedJoules: metabolicJoules,
+          allowPartialPower: char.jumpAllowPartialPower,
+          registry: char.properties
+        });
+        if (!burstRes.granted || burstRes.grantedJoules <= 1e-3 || !char.jumpAllowPartialPower && burstRes.fraction < 1) {
+          return false;
+        }
+        energyFraction = burstRes.fraction * (metabolicJoules / rawMetabolicJoules);
+      }
+    }
+    const jumped = char.jumpModule.jump(char, arena2, movementInput);
+    if (jumped) {
+      const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
+      char.verticalVelocity = achievableSpeed;
+    }
+    return jumped;
+  }
+}
+class HealthRegenCapability {
+  static registerDemand(char) {
+    if (char.healthModule && char.healthModule.enabled && char.healthModule.consumesEnergy && char.energyPool) {
+      const curHp = char.healthModule.getCurrentHp(char.properties);
+      const maxHp = char.healthModule.getMaxHp(char.properties);
+      if (curHp > 0 && curHp < maxHp - 1e-3) {
+        const healRate = char.healthModule.getMaxHealRate(char.properties);
+        if (healRate > 0) {
+          const joulesPerHp = char.healthModule.getJoulesPerHp(char.properties);
+          const rawHealthWatts = healRate * Math.max(1e-4, joulesPerHp);
+          const maxPower = char.healthModule.maxPowerProp.get(char.properties);
+          let healthWatts = rawHealthWatts;
+          if (healthWatts > maxPower) {
+            healthWatts = char.healthModule.allowPartialPower ? maxPower : 0;
+          }
+          char.energyPool.registerDemand("health_regen", healthWatts, char.healthModule.allowPartialPower);
+        }
+      }
+    }
+  }
+  static actuate(char, dt, arena2) {
+    if (char.healthModule && char.healthModule.enabled) {
+      char.healthModule.update(dt, char, arena2);
+    }
+  }
+}
+class ControlModeArbiter {
+  /**
+   * Evaluates the current exclusive primary action control mode for a character.
+   * Modify ONLY this method when adding or reordering modal primary-action abilities.
+   */
+  static resolvePrimaryMode(character, eatActionLatchedUntilRelease = false) {
+    const isLaserActive = Boolean(
+      character.isLaserAiming || character.isLaserFiring || character.laserModule && character.laserModule.enabled && (character.laserModule.isAiming || character.laserModule.isFiring)
+    );
+    if (isLaserActive) {
+      return "LASER";
+    }
+    const isEating = Boolean(character.isConsumingItem);
+    if (isEating || eatActionLatchedUntilRelease) {
+      return "CONSUME";
+    }
+    if (character.heldObject !== null) {
+      return "THROW";
+    }
+    return "PICKUP";
+  }
+  /**
+   * Returns true if the character is currently permitted to charge a throw or
+   * display the ballistic throw trajectory preview.
+   */
+  static canAimOrChargeThrow(character, eatActionLatchedUntilRelease = false) {
+    const isLaserActive = Boolean(
+      character.isLaserAiming || character.isLaserFiring || character.laserModule && character.laserModule.enabled && (character.laserModule.isAiming || character.laserModule.isFiring)
+    );
+    const isEating = Boolean(character.isConsumingItem);
+    return character.heldObject !== null && !isEating && !eatActionLatchedUntilRelease && !isLaserActive;
+  }
+}
+class ThrowCapability {
+  static getAnticipatedModifier(char) {
+    if (char.activeTrajectory && char.heldObject && char.throwModule && char.throwModule.enabled && char.throwModule.consumesEnergy) {
+      const launchVel = char.activeTrajectory.launchVel;
+      if (launchVel) {
+        const heldMass = char.heldObject.hasMass ? Math.max(0.1, char.heldObject.mass) : 1;
+        const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
+        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
+        const pool = char.energyPool;
+        const poolEfficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(char.properties) : 0.25);
+        let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
+        if (pool && pool.enabled) {
+          const throwCap = char.throwModule.maxPowerProp.get(char.properties);
+          const currentStamina = pool.currentStaminaProp.get(char.properties);
+          const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(char.properties);
+          const maxDeliverable = Math.min(
+            throwCap * char.strength,
+            currentStamina,
+            poolEnergy
+          );
+          metabolicJoules = Math.min(maxDeliverable, metabolicJoules);
+          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, char.properties)) {
+            return null;
+          }
+        }
+        return {
+          id: "anticipated_throw",
+          abilityId: "throw",
+          name: "Throw",
+          color: "#f43f5e",
+          amount: Math.round(metabolicJoules),
+          isBurst: true,
+          isPositive: false,
+          order: 950
+        };
+      }
+    }
+    return null;
+  }
+  static syncHeldObjectTransform(char, arena2) {
+    if (char.heldObject) {
+      const heldPos = ThrowCapability.calculateHeldObjectPosition(char, arena2);
+      char.heldObject.position.x = heldPos.x;
+      char.heldObject.position.y = heldPos.y;
+      char.heldObject.position.z = heldPos.z;
+      char.heldObject.velocity.x = char.velocity.x;
+      char.heldObject.velocity.y = char.velocity.y;
+      char.heldObject.verticalVelocity = 0;
+    }
+  }
+  static updateTrajectoryPreview(char, isAimingInput, aimTargetPos, canAimThrow, isLaserModeActive, arena2, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
+    char.isAiming = isAimingInput;
+    char.aimTarget = isAimingInput ? aimTargetPos : null;
+    if (!isLaserModeActive && ControlModeArbiter.canAimOrChargeThrow(char) && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
+      if (char.hasUserSetArcRatio && char.savedArcRatio !== void 0) {
+        char.throwModule.hasUserSetArcRatio = true;
+        char.throwModule.savedArcRatio = char.savedArcRatio;
+      } else if (char.throwModule.hasUserSetArcRatio) {
+        char.hasUserSetArcRatio = true;
+        char.savedArcRatio = char.throwModule.savedArcRatio;
+      }
+      char.activeTrajectory = char.throwModule.calculateTrajectory(
+        char,
+        aimTargetPos.x,
+        aimTargetPos.y,
+        arena2,
+        entities ?? arena2.entities,
+        arena2.visualAltitudeScale,
+        autoLock,
+        lockedAimPos,
+        aimLockDelta
+      );
+      if (canAimThrow && lockedAimPos && char.heldObject) {
+        const lockDx = lockedAimPos.x - char.position.x;
+        const lockDy = lockedAimPos.y - char.position.y;
+        if (Math.hypot(lockDx, lockDy) > 0.05) {
+          char.facingAngle = Math.atan2(lockDy, lockDx);
+          const heldPos = ThrowCapability.calculateHeldObjectPosition(char, arena2);
+          char.heldObject.position.x = heldPos.x;
+          char.heldObject.position.y = heldPos.y;
+          char.heldObject.position.z = heldPos.z;
+        }
+      }
+    } else {
+      char.activeTrajectory = null;
+    }
+  }
+  static calculateHeldObjectPosition(char, arena2) {
+    if (!char.heldObject) {
+      return { x: char.position.x, y: char.position.y, z: char.position.z };
+    }
+    const defaultHandDist = char.colliderRadius + char.heldObject.colliderRadius * 0.5 + 0.08;
+    const dirX = Math.cos(char.facingAngle);
+    const dirY = Math.sin(char.facingAngle);
+    const heldZ = char.heldObject.hasVerticalPosition ? char.position.z + 0.45 : 0;
+    if (!arena2 || char.position.z >= arena2.wallHeight) {
+      return {
+        x: char.position.x + dirX * defaultHandDist,
+        y: char.position.y + dirY * defaultHandDist,
+        z: heldZ
+      };
+    }
+    const objRadius = char.heldObject.colliderRadius > 0 ? char.heldObject.colliderRadius : 0.26;
+    const safetyMargin = 0.12;
+    const requiredClearance = objRadius + safetyMargin;
+    const extraThrowClearback = 0.08;
+    let minHitDistance = Infinity;
+    for (const wall of arena2.walls) {
+      const x1 = wall.x;
+      const x2 = wall.x + wall.width;
+      const y1 = wall.y;
+      const y2 = wall.y + wall.height;
+      const R = requiredClearance;
+      if (dirX > 1e-4 && char.position.x < x1 - R) {
+        const t = (x1 - R - char.position.x) / dirX;
+        if (t > 0 && t < minHitDistance) {
+          const hitY = char.position.y + t * dirY;
+          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
+        }
+      }
+      if (dirX < -1e-4 && char.position.x > x2 + R) {
+        const t = (x2 + R - char.position.x) / dirX;
+        if (t > 0 && t < minHitDistance) {
+          const hitY = char.position.y + t * dirY;
+          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
+        }
+      }
+      if (dirY > 1e-4 && char.position.y < y1 - R) {
+        const t = (y1 - R - char.position.y) / dirY;
+        if (t > 0 && t < minHitDistance) {
+          const hitX = char.position.x + t * dirX;
+          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
+        }
+      }
+      if (dirY < -1e-4 && char.position.y > y2 + R) {
+        const t = (y2 + R - char.position.y) / dirY;
+        if (t > 0 && t < minHitDistance) {
+          const hitX = char.position.x + t * dirX;
+          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
+        }
+      }
+      const corners = [
+        { kx: x1, ky: y1, isExterior: (px, py) => px <= x1 && py <= y1 },
+        { kx: x2, ky: y1, isExterior: (px, py) => px >= x2 && py <= y1 },
+        { kx: x1, ky: y2, isExterior: (px, py) => px <= x1 && py >= y2 },
+        { kx: x2, ky: y2, isExterior: (px, py) => px >= x2 && py >= y2 }
+      ];
+      for (const corner of corners) {
+        const wx = char.position.x - corner.kx;
+        const wy = char.position.y - corner.ky;
+        const B = 2 * (dirX * wx + dirY * wy);
+        const C_quad = wx * wx + wy * wy - R * R;
+        const disc = B * B - 4 * C_quad;
+        if (disc >= 0) {
+          const sqrtDisc = Math.sqrt(disc);
+          const t1 = (-B - sqrtDisc) * 0.5;
+          if (t1 > 0 && t1 < minHitDistance) {
+            const px = char.position.x + t1 * dirX;
+            const py = char.position.y + t1 * dirY;
+            if (corner.isExterior(px, py)) {
+              minHitDistance = t1;
+            }
+          }
+        }
+      }
+    }
+    let safeDistance = defaultHandDist;
+    if (minHitDistance < Infinity) {
+      safeDistance = Math.max(0, Math.min(defaultHandDist, minHitDistance - extraThrowClearback));
+    }
+    let targetX = char.position.x + dirX * safeDistance;
+    let targetY = char.position.y + dirY * safeDistance;
+    for (let iter = 0; iter < 3; iter++) {
+      let adjusted = false;
+      for (const wall of arena2.walls) {
+        const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
+        const closestY = Math.max(wall.y, Math.min(targetY, wall.y + wall.height));
+        const dx = targetX - closestX;
+        const dy = targetY - closestY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < objRadius * objRadius) {
+          adjusted = true;
+          const dist = Math.sqrt(distSq);
+          if (dist > 1e-4) {
+            targetX += dx / dist * (objRadius + 0.02 - dist);
+            targetY += dy / dist * (objRadius + 0.02 - dist);
+          } else {
+            targetX = char.position.x;
+            targetY = char.position.y;
+          }
+        }
+      }
+      if (!adjusted) break;
+    }
+    return { x: targetX, y: targetY, z: heldZ };
+  }
+}
+class LaserCapability {
+  static getAnticipatedModifier(char) {
+    if (char.laserModule && char.laserModule.enabled && char.laserModule.isAiming && !char.laserModule.isFiring) {
+      const demandedPower = char.laserModule.calculateDemandedPower(
+        char.properties,
+        char.laserPowerFraction > 0 ? char.laserPowerFraction : 1
+      );
+      const pool = char.energyPool;
+      if (demandedPower > 0 && (!pool || !pool.isExhausted)) {
+        return {
+          id: "anticipated_laser",
+          abilityId: "laser_blast",
+          name: "Laser",
+          color: "#06b6d4",
+          amount: Math.round(demandedPower),
+          isBurst: false,
+          isPositive: false,
+          order: 940
+        };
+      }
+    }
+    return null;
+  }
+  static isLaserModeActive(char) {
+    return Boolean(
+      char.isLaserAiming || char.isLaserFiring || char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring)
+    );
+  }
+  static actuate(char, dt, arena2) {
+    if (char.laserModule && char.laserModule.enabled) {
+      char.laserModule.update(
+        dt,
+        char,
+        arena2,
+        char.laserAimTarget,
+        char.isLaserAiming,
+        char.isLaserFiring,
+        char.laserCandidateEntities,
+        0,
+        char.laserPowerFraction
+      );
+      char.isLaserFiring = char.laserModule.isFiring;
+    }
+  }
+}
+class MeleeCapability {
+  static executeMelee(char, arena2, potentialTargets, dirX, dirY) {
+    if (!char.meleeModule || !char.meleeModule.enabled) return null;
+    const dx = dirX !== void 0 ? dirX : Math.cos(char.facingAngle ?? 0);
+    const dy = dirY !== void 0 ? dirY : Math.sin(char.facingAngle ?? 0);
+    return char.meleeModule.executePunch(char, dx, dy, potentialTargets, arena2);
+  }
+  static actuate(char, arena2) {
+    if (char.meleeModule && char.meleeModule.enabled && char.isMeleeRequested) {
+      const candidates = char.meleeCandidateEntities ?? arena2.entities;
+      const dirX = char.meleeAimDir ? char.meleeAimDir.x : Math.cos(char.facingAngle ?? 0);
+      const dirY = char.meleeAimDir ? char.meleeAimDir.y : Math.sin(char.facingAngle ?? 0);
+      const mag = Math.hypot(dirX, dirY);
+      const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(char.facingAngle ?? 0);
+      const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(char.facingAngle ?? 0);
+      const hitResult = char.meleeModule.executePunch(char, normDirX, normDirY, candidates, arena2);
+      if (hitResult && char.onPunchExecuted) {
+        char.onPunchExecuted(hitResult, normDirX, normDirY);
+      }
+    }
+  }
+}
 class Character extends GameObject {
   constructor(options = {}) {
     var _a;
@@ -5473,65 +6026,15 @@ class Character extends GameObject {
     return this.role === "dummy";
   }
   /**
-   * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging jump, etc.).
-   * These provide a ghostly preview of the energy cost before committing to the action.
+   * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging laser, etc.).
+   * Delegated to 1-to-1 capability slices in src/character/capabilities/.
    */
   getAnticipatedModifiers() {
     const list = [];
-    if (this.activeTrajectory && this.heldObject && this.throwModule && this.throwModule.enabled && this.throwModule.consumesEnergy) {
-      const launchVel = this.activeTrajectory.launchVel;
-      if (launchVel) {
-        const heldMass = this.heldObject.hasMass ? Math.max(0.1, this.heldObject.mass) : 1;
-        const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
-        const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
-        const pool = this.energyPool;
-        const poolEfficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
-        let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
-        if (pool && pool.enabled) {
-          const throwCap = this.throwModule.maxPowerProp.get(this.properties);
-          const currentStamina = pool.currentStaminaProp.get(this.properties);
-          const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(this.properties);
-          const maxDeliverable = Math.min(
-            throwCap * this.strength,
-            currentStamina,
-            poolEnergy
-          );
-          metabolicJoules = Math.min(maxDeliverable, metabolicJoules);
-          if (pool.isExhausted || !pool.canSatisfyFullEnergy(metabolicJoules, 0.08, this.properties)) {
-            return list;
-          }
-        }
-        list.push({
-          id: "anticipated_throw",
-          abilityId: "throw",
-          name: "Throw",
-          color: "#f43f5e",
-          amount: Math.round(metabolicJoules),
-          isBurst: true,
-          isPositive: false,
-          order: 950
-        });
-      }
-    }
-    if (this.laserModule && this.laserModule.enabled && this.laserModule.isAiming && !this.laserModule.isFiring) {
-      const demandedPower = this.laserModule.calculateDemandedPower(
-        this.properties,
-        this.laserPowerFraction > 0 ? this.laserPowerFraction : 1
-      );
-      const pool = this.energyPool;
-      if (demandedPower > 0 && (!pool || !pool.isExhausted)) {
-        list.push({
-          id: "anticipated_laser",
-          abilityId: "laser_blast",
-          name: "Laser",
-          color: "#06b6d4",
-          amount: Math.round(demandedPower),
-          isBurst: false,
-          isPositive: false,
-          order: 940
-        });
-      }
-    }
+    const throwMod = ThrowCapability.getAnticipatedModifier(this);
+    if (throwMod) list.push(throwMod);
+    const laserMod = LaserCapability.getAnticipatedModifier(this);
+    if (laserMod) list.push(laserMod);
     return list;
   }
   canConsumeHeldObject() {
@@ -5590,77 +6093,16 @@ class Character extends GameObject {
     return this.jumpMaxPowerProp.get(registry);
   }
   /**
-   * Attempts to jump using the attached JumpModule.
+   * Attempts to jump using JumpCapability.
    */
   jump(arena2, movementInput) {
-    if (!this.jumpModule || !this.jumpModule.enabled || !this.hasVerticalPosition) {
-      return false;
-    }
-    const surfaceZ = this.supportingSurfaceHeight ?? 0;
-    const isGrounded = this.isRestingOnSurface || Math.abs(this.position.z - surfaceZ) <= 0.08 && Math.abs(this.verticalVelocity) <= 0.8;
-    if (!isGrounded || this.isHeld) {
-      return false;
-    }
-    const baseMass = Math.max(0.2, this.baseMass ?? 1.2);
-    const totalMass = Math.max(0.2, this.mass);
-    const jumpStrength = this.jumpModule.jumpStrengthProp.get(this.properties);
-    const maxInitialSpeed = this.jumpModule.maxInitialSpeedProp.get(this.properties);
-    const targetTakeoffSpeed = Math.min(maxInitialSpeed, jumpStrength / baseMass);
-    if (targetTakeoffSpeed <= 0.01) return false;
-    const mechanicalJoules = 0.5 * totalMass * (targetTakeoffSpeed * targetTakeoffSpeed);
-    const pool = this.energyPool;
-    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(this.properties) : 0.25);
-    const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
-    const jumpCap = this.jumpMaxPowerProp ? this.jumpMaxPowerProp.get(this.properties) : 1200;
-    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(0, jumpCap));
-    let energyFraction = 1;
-    if (this.jumpConsumesEnergy) {
-      if (pool) {
-        if (pool.isExhausted) {
-          pool.notifyInsufficientEnergy({
-            abilityId: "jump",
-            demandedAmount: metabolicJoules,
-            isBurst: true,
-            registry: this.properties
-          });
-          return false;
-        }
-        if (!this.jumpAllowPartialPower && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, this.properties)) {
-          pool.notifyInsufficientEnergy({
-            abilityId: "jump",
-            demandedAmount: metabolicJoules,
-            isBurst: true,
-            registry: this.properties
-          });
-          return false;
-        }
-        const burstRes = pool.requestInstantBurst({
-          abilityId: "jump",
-          demandedJoules: metabolicJoules,
-          allowPartialPower: this.jumpAllowPartialPower,
-          registry: this.properties
-        });
-        if (!burstRes.granted || burstRes.grantedJoules <= 1e-3 || !this.jumpAllowPartialPower && burstRes.fraction < 1) {
-          return false;
-        }
-        energyFraction = burstRes.fraction * (metabolicJoules / rawMetabolicJoules);
-      }
-    }
-    const jumped = this.jumpModule.jump(this, arena2, movementInput);
-    if (jumped) {
-      const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
-      this.verticalVelocity = achievableSpeed;
-    }
-    return jumped;
+    return JumpCapability.executeJump(this, arena2, movementInput);
   }
   /**
    * Attempts to execute a burst melee punch attack in the specified or current facing direction.
    */
   melee(arena2, potentialTargets, dirX, dirY) {
-    if (!this.meleeModule || !this.meleeModule.enabled) return null;
-    const dx = dirX !== void 0 ? dirX : Math.cos(this.facingAngle ?? 0);
-    const dy = dirY !== void 0 ? dirY : Math.sin(this.facingAngle ?? 0);
-    return this.meleeModule.executePunch(this, dx, dy, potentialTargets, arena2);
+    return MeleeCapability.executeMelee(this, arena2, potentialTargets, dirX, dirY);
   }
   /**
    * Safely releases any held objects, clears references, and dismounts
@@ -5716,311 +6158,59 @@ class Character extends GameObject {
     }
   }
   /**
-   * Main character update tick
+   * Main character update tick.
+   * Orchestrates 1-to-1 capability slices in a fixed deterministic order.
    */
   updateCharacter(dt, movementInput, isAimingInput, aimTargetPos, arena2, isClimbInput = false, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0, hasAuthoredFacingAngle = false) {
-    var _a, _b, _c, _d, _e;
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
     if (this.energyPool && this.energyPool.enabled) {
       this.energyPool.beginTick();
     }
-    const canWalk = Boolean(
-      this.walkingModule && this.walkingModule.enabled && (this.isRestingOnSurface ? this.hasFriction : this.walkingModule.walkInAir)
-    );
-    const inputMag = Math.hypot(movementInput.x, movementInput.y);
-    const isMoving = inputMag > 0.05;
-    const isActivelySprinting = Boolean(((_a = this.walkingModule) == null ? void 0 : _a.canSprint) && this.isSprinting);
-    let sprintingNow = isActivelySprinting;
-    if (sprintingNow && ((_b = this.walkingModule) == null ? void 0 : _b.sprintConsumesEnergy)) {
-      if (this.energyPool && (this.energyPool.isExhausted || this.energyPool.getCurrentStamina(this.properties) <= 1e-4)) {
-        sprintingNow = false;
-        this.setSprinting(false);
-        const Cr = 0.4;
-        const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1;
-        const targetSpeed = this.walkingModule.maxSprintSpeedProp.get(this.properties);
-        const rawSprintWatts = totalMass * 9.81 * Cr * targetSpeed / 0.25;
-        this.energyPool.notifyInsufficientEnergy({
-          abilityId: "sprint",
-          demandedAmount: rawSprintWatts,
-          isBurst: false,
-          unit: "W/s",
-          registry: this.properties
-        });
-      }
-    }
-    const locomotionConsumesEnergy = sprintingNow ? (_c = this.walkingModule) == null ? void 0 : _c.sprintConsumesEnergy : (_d = this.walkingModule) == null ? void 0 : _d.walkConsumesEnergy;
-    if (canWalk && isMoving && locomotionConsumesEnergy && this.walkingModule && this.energyPool) {
-      const carriedMass = this.carriedMass;
-      const loadFactor = carriedMass / (Math.max(0.1, this.strength) * 8);
-      const targetSpeed = sprintingNow ? this.walkingModule.maxSprintSpeedProp.get(this.properties) : this.walkingModule.maxWalkSpeedProp.get(this.properties);
-      const v = targetSpeed / (1 + loadFactor);
-      const g = 9.81;
-      const Cr = sprintingNow ? 0.4 : 0.28;
-      const totalMass = this.hasMass ? Math.max(0.2, this.mass) : 1;
-      const resForce = totalMass * g * Cr;
-      const rawLocomotionWatts = resForce * v / 0.25;
-      const cap = sprintingNow ? this.walkingModule.maxSprintPowerProp.get(this.properties) : this.walkingModule.maxWalkPowerProp.get(this.properties);
-      const allowPartial = sprintingNow ? this.walkingModule.sprintAllowPartialPower : this.walkingModule.walkAllowPartialPower;
-      let locomotionWatts = rawLocomotionWatts;
-      if (locomotionWatts > cap) {
-        locomotionWatts = allowPartial ? cap : 0;
-      }
-      const locomotionId = sprintingNow ? "sprint" : "walk";
-      this.energyPool.activeLocomotionId = locomotionId;
-      this.energyPool.registerDemand(locomotionId, locomotionWatts, allowPartial);
-    }
-    if (this.healthModule && this.healthModule.enabled && this.healthModule.consumesEnergy && this.energyPool) {
-      const curHp = this.healthModule.getCurrentHp(this.properties);
-      const maxHp = this.healthModule.getMaxHp(this.properties);
-      if (curHp > 0 && curHp < maxHp - 1e-3) {
-        const healRate = this.healthModule.getMaxHealRate(this.properties);
-        if (healRate > 0) {
-          const joulesPerHp = this.healthModule.getJoulesPerHp(this.properties);
-          const rawHealthWatts = healRate * Math.max(1e-4, joulesPerHp);
-          const maxPower = this.healthModule.maxPowerProp.get(this.properties);
-          let healthWatts = rawHealthWatts;
-          if (healthWatts > maxPower) {
-            healthWatts = this.healthModule.allowPartialPower ? maxPower : 0;
-          }
-          this.energyPool.registerDemand("health_regen", healthWatts, this.healthModule.allowPartialPower);
-        }
-      }
-    }
-    const canClimb = Boolean(
-      this.climbingModule && this.climbingModule.enabled && this.hasVerticalPosition && this.hasStrength
-    );
-    if (canClimb && this.isClimbing && ((_e = this.climbingModule) == null ? void 0 : _e.consumesEnergy) && this.energyPool) {
-      const totalMass = this.mass;
-      const g = arena2.gravity || 9.81;
-      const isometricHoldingWatts = totalMass * g * 0.35 / 0.25;
-      const maxAscentSpeed = this.climbingModule.maxClimbSpeedProp.get(this.properties);
-      const ascentWatts = isClimbInput ? totalMass * g * maxAscentSpeed / 0.25 : 0;
-      const rawClimbWatts = isometricHoldingWatts + ascentWatts;
-      const climbCap = this.climbingModule.maxPowerProp.get(this.properties);
-      let climbWatts = rawClimbWatts;
-      if (climbWatts > climbCap) {
-        climbWatts = this.climbingModule.allowPartialPower ? climbCap : 0;
-      }
-      this.energyPool.registerDemand("climb", climbWatts, this.climbingModule.allowPartialPower);
-    }
-    if (canClimb) {
-      this.climbingModule.update(this, movementInput, isClimbInput, dt, arena2);
-    } else if (this.isClimbing) {
-      this.isClimbing = false;
-    }
-    const canJump = Boolean(this.jumpModule && this.jumpModule.enabled && this.hasVerticalPosition);
+    const canWalk = LocomotionCapability.registerDemand(this, movementInput);
+    HealthRegenCapability.registerDemand(this);
+    const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena2);
+    ClimbingCapability.actuate(this, canClimb, movementInput, isClimbInput, dt, arena2);
+    const canJump = JumpCapability.canJump(this);
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena2, movementInput);
     }
-    if (canWalk) {
-      this.walkingModule.update(this, movementInput, dt, arena2);
-    } else {
-      this.isActivelyWalking = false;
-    }
+    LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena2);
     this.updatePosition(dt, arena2);
-    if (this.healthModule && this.healthModule.enabled) {
-      this.healthModule.update(dt, this, arena2);
-    }
+    HealthRegenCapability.actuate(this, dt, arena2);
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena2, movementInput);
     }
-    if (this.laserModule && this.laserModule.enabled) {
-      this.laserModule.update(
-        dt,
-        this,
-        arena2,
-        this.laserAimTarget,
-        this.isLaserAiming,
-        this.isLaserFiring,
-        this.laserCandidateEntities,
-        0,
-        this.laserPowerFraction
-      );
-      this.isLaserFiring = this.laserModule.isFiring;
-    }
-    if (this.meleeModule && this.meleeModule.enabled && this.isMeleeRequested) {
-      const candidates = this.meleeCandidateEntities ?? arena2.entities;
-      const dirX = this.meleeAimDir ? this.meleeAimDir.x : Math.cos(this.facingAngle ?? 0);
-      const dirY = this.meleeAimDir ? this.meleeAimDir.y : Math.sin(this.facingAngle ?? 0);
-      const mag = Math.hypot(dirX, dirY);
-      const normDirX = mag > 1e-3 ? dirX / mag : Math.cos(this.facingAngle ?? 0);
-      const normDirY = mag > 1e-3 ? dirY / mag : Math.sin(this.facingAngle ?? 0);
-      const hitResult = this.meleeModule.executePunch(this, normDirX, normDirY, candidates, arena2);
-      if (hitResult && this.onPunchExecuted) {
-        this.onPunchExecuted(hitResult, normDirX, normDirY);
-      }
-    }
+    LaserCapability.actuate(this, dt, arena2);
+    MeleeCapability.actuate(this, arena2);
     if (this.energyPool && this.energyPool.enabled) {
       this.energyPool.update(dt, this.properties);
     }
     const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
     const targetFacePos = canAimThrow && lockedAimPos ? lockedAimPos : aimTargetPos;
     this.updateFacingDirection(isAimingInput, targetFacePos, movementInput, hasAuthoredFacingAngle);
-    if (this.heldObject) {
-      const heldPos = this.calculateHeldObjectPosition(arena2);
-      this.heldObject.position.x = heldPos.x;
-      this.heldObject.position.y = heldPos.y;
-      this.heldObject.position.z = heldPos.z;
-      this.heldObject.velocity.x = this.velocity.x;
-      this.heldObject.velocity.y = this.velocity.y;
-      this.heldObject.verticalVelocity = 0;
-    }
-    this.isAiming = isAimingInput;
-    this.aimTarget = isAimingInput ? aimTargetPos : null;
-    const isLaserModeActive = Boolean(
-      this.isLaserAiming || this.isLaserFiring || this.laserModule && (this.laserModule.isAiming || this.laserModule.isFiring)
+    ThrowCapability.syncHeldObjectTransform(this, arena2);
+    const isLaserModeActive = LaserCapability.isLaserModeActive(this);
+    ThrowCapability.updateTrajectoryPreview(
+      this,
+      isAimingInput,
+      aimTargetPos,
+      canAimThrow,
+      isLaserModeActive,
+      arena2,
+      entities,
+      autoLock,
+      lockedAimPos,
+      aimLockDelta
     );
-    if (!isLaserModeActive && this.heldObject && canAimThrow && this.throwModule && this.throwModule.enabled && this.hasStrength && isAimingInput && aimTargetPos) {
-      if (this.hasUserSetArcRatio && this.savedArcRatio !== void 0) {
-        this.throwModule.hasUserSetArcRatio = true;
-        this.throwModule.savedArcRatio = this.savedArcRatio;
-      } else if (this.throwModule.hasUserSetArcRatio) {
-        this.hasUserSetArcRatio = true;
-        this.savedArcRatio = this.throwModule.savedArcRatio;
-      }
-      this.activeTrajectory = this.throwModule.calculateTrajectory(
-        this,
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena2,
-        entities ?? arena2.entities,
-        arena2.visualAltitudeScale,
-        autoLock,
-        lockedAimPos,
-        aimLockDelta
-      );
-      if (canAimThrow && lockedAimPos) {
-        const lockDx = lockedAimPos.x - this.position.x;
-        const lockDy = lockedAimPos.y - this.position.y;
-        if (Math.hypot(lockDx, lockDy) > 0.05) {
-          this.facingAngle = Math.atan2(lockDy, lockDx);
-          const heldPos = this.calculateHeldObjectPosition(arena2);
-          this.heldObject.position.x = heldPos.x;
-          this.heldObject.position.y = heldPos.y;
-          this.heldObject.position.z = heldPos.z;
-        }
-      }
-    } else {
-      this.activeTrajectory = null;
-    }
   }
   /**
    * Calculates the physical position of an object held in the character's hands.
-   * Naturally holds the object at defaultHandDist in front along facing angle.
-   * If a wall is in front or adjacent, dynamically clamps the hold distance within
-   * [0, defaultHandDist] (and pushes clear of walls) so the object never clips or hits
-   * walls when held or thrown.
+   * Delegated to ThrowCapability.
    */
   calculateHeldObjectPosition(arena2) {
-    if (!this.heldObject) {
-      return { x: this.position.x, y: this.position.y, z: this.position.z };
-    }
-    const defaultHandDist = this.colliderRadius + this.heldObject.colliderRadius * 0.5 + 0.08;
-    const dirX = Math.cos(this.facingAngle);
-    const dirY = Math.sin(this.facingAngle);
-    const heldZ = this.heldObject.hasVerticalPosition ? this.position.z + 0.45 : 0;
-    if (!arena2 || this.position.z >= arena2.wallHeight) {
-      return {
-        x: this.position.x + dirX * defaultHandDist,
-        y: this.position.y + dirY * defaultHandDist,
-        z: heldZ
-      };
-    }
-    const objRadius = this.heldObject.colliderRadius > 0 ? this.heldObject.colliderRadius : 0.26;
-    const safetyMargin = 0.12;
-    const requiredClearance = objRadius + safetyMargin;
-    const extraThrowClearback = 0.08;
-    let minHitDistance = Infinity;
-    for (const wall of arena2.walls) {
-      const x1 = wall.x;
-      const x2 = wall.x + wall.width;
-      const y1 = wall.y;
-      const y2 = wall.y + wall.height;
-      const R = requiredClearance;
-      if (dirX > 1e-4 && this.position.x < x1 - R) {
-        const t = (x1 - R - this.position.x) / dirX;
-        if (t > 0 && t < minHitDistance) {
-          const hitY = this.position.y + t * dirY;
-          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
-        }
-      }
-      if (dirX < -1e-4 && this.position.x > x2 + R) {
-        const t = (x2 + R - this.position.x) / dirX;
-        if (t > 0 && t < minHitDistance) {
-          const hitY = this.position.y + t * dirY;
-          if (hitY >= y1 && hitY <= y2) minHitDistance = t;
-        }
-      }
-      if (dirY > 1e-4 && this.position.y < y1 - R) {
-        const t = (y1 - R - this.position.y) / dirY;
-        if (t > 0 && t < minHitDistance) {
-          const hitX = this.position.x + t * dirX;
-          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
-        }
-      }
-      if (dirY < -1e-4 && this.position.y > y2 + R) {
-        const t = (y2 + R - this.position.y) / dirY;
-        if (t > 0 && t < minHitDistance) {
-          const hitX = this.position.x + t * dirX;
-          if (hitX >= x1 && hitX <= x2) minHitDistance = t;
-        }
-      }
-      const corners = [
-        { kx: x1, ky: y1, isExterior: (px, py) => px <= x1 && py <= y1 },
-        { kx: x2, ky: y1, isExterior: (px, py) => px >= x2 && py <= y1 },
-        { kx: x1, ky: y2, isExterior: (px, py) => px <= x1 && py >= y2 },
-        { kx: x2, ky: y2, isExterior: (px, py) => px >= x2 && py >= y2 }
-      ];
-      for (const corner of corners) {
-        const wx = this.position.x - corner.kx;
-        const wy = this.position.y - corner.ky;
-        const B = 2 * (dirX * wx + dirY * wy);
-        const C_quad = wx * wx + wy * wy - R * R;
-        const disc = B * B - 4 * C_quad;
-        if (disc >= 0) {
-          const sqrtDisc = Math.sqrt(disc);
-          const t1 = (-B - sqrtDisc) * 0.5;
-          if (t1 > 0 && t1 < minHitDistance) {
-            const px = this.position.x + t1 * dirX;
-            const py = this.position.y + t1 * dirY;
-            if (corner.isExterior(px, py)) {
-              minHitDistance = t1;
-            }
-          }
-        }
-      }
-    }
-    let safeDistance = defaultHandDist;
-    if (minHitDistance < Infinity) {
-      safeDistance = Math.max(0, Math.min(defaultHandDist, minHitDistance - extraThrowClearback));
-    }
-    let targetX = this.position.x + dirX * safeDistance;
-    let targetY = this.position.y + dirY * safeDistance;
-    for (let iter = 0; iter < 3; iter++) {
-      let adjusted = false;
-      for (const wall of arena2.walls) {
-        const closestX = Math.max(wall.x, Math.min(targetX, wall.x + wall.width));
-        const closestY = Math.max(wall.y, Math.min(targetY, wall.y + wall.height));
-        const dx = targetX - closestX;
-        const dy = targetY - closestY;
-        const distSq = dx * dx + dy * dy;
-        if (distSq < objRadius * objRadius) {
-          adjusted = true;
-          const dist = Math.sqrt(distSq);
-          if (dist > 1e-4) {
-            targetX += dx / dist * (objRadius + 0.02 - dist);
-            targetY += dy / dist * (objRadius + 0.02 - dist);
-          } else {
-            targetX = this.position.x;
-            targetY = this.position.y;
-          }
-        }
-      }
-      if (!adjusted) break;
-    }
-    return { x: targetX, y: targetY, z: heldZ };
+    return ThrowCapability.calculateHeldObjectPosition(this, arena2);
   }
   /**
    * Resets all dynamic properties and module states of the character
@@ -6040,8 +6230,6 @@ class Character extends GameObject {
   }
   /**
    * Primary entry point for dying and respawning.
-   * Clears held objects, climbing state, velocities, places character at spawn,
-   * and delegates each module with dynamic properties to reset to initial values.
    */
   dieAndRespawn(_arena, explicitPos) {
     var _a;
@@ -11064,14 +11252,14 @@ const PLAYER_COLORS = [
   "#3b82f6"
   // P6: Blue
 ];
-const version = 78;
-const lastSaved = "2026-10-28T01:54:59.011Z";
+const version = 79;
+const lastSaved = "2026-10-28T02:14:02.758Z";
 const arena = { "width": 20, "height": 14, "wallHeight": 1, "presetId": "standard", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
 const globalPhysics = { "gravity": 30, "collisionDamageScale": 0.1, "collisionMode": "dynamic" };
 const player = { "name": "Player 1", "prefabId": "prefab_player", "color": "#f59e0b", "mass": 1.2, "colliderRadius": 0.44, "hasWalking": true, "walkingModule": { "walkInAir": true, "canSprint": true, "maxWalkForce": 35, "maxWalkSpeed": 5.2, "sprintSpeed": 8.06, "walkPowerCapacity": 400, "sprintPowerCapacity": 1200, "airFriction": 1 }, "hasJump": true, "jumpModule": { "jumpImpulse": 16.5, "maxInitialSpeed": 8.8, "jumpPowerCapacity": 1200 }, "hasThrow": true, "throwModule": { "throwPowerCapacity": 1200, "maxPower": 1200, "maxThrowSpeed": 69 }, "hasHealth": true, "healthModule": { "maxHp": 100, "naturalHealRate": 2, "joulesPerHp": 80, "maxPower": 500 }, "hasEnergyPool": true, "energyPool": { "staminaCapacity": 5e3, "staminaRegenRate": 500, "energyPoolCapacity": 1e4 }, "hasMelee": true, "meleeModule": { "impactForce": 350, "maxPower": 500, "allowPartialPower": true }, "hasLaser": true, "laserModule": { "maxPower": 2e3 }, "damageSolverModule": { "selfImpactWeight": 0, "minShockThreshold": 0 } };
 const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":2.2,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":10,"y":7,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":3.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":16.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":11.8,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}]');
 const prefabs = [{ "id": "prefab_apple", "name": "Apple", "icon": "🍏", "archetype": { "id": "archetype_apple", "name": "Apple", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#22c55e", "visualShape": "circle", "isSleeping": false, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": false, "hasConsumableModule": true, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "mass": 0.35, "colliderRadius": 0.25, "bounceMod": 0.2, "verticalBounce": true, "staticGroundFrictionMod": 1, "dynamicGroundFrictionMod": 1, "rigidbodyModule": { "enabled": true, "mass": 0.35, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.25 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.2, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "consumableModule": { "enabled": true, "tag": "food", "totalEnergyJoules": 4e3, "remainingEnergyJoules": 4e3, "consumeRateWatts": 1200, "healRate": 0, "minScaleFloor": 0.35, "minRadiusFloor": 0.12 } } }, { "id": "prefab_super_apple", "name": "Super Apple", "icon": "💖", "archetype": { "id": "archetype_super_apple", "name": "Super Apple", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#ff1493", "visualShape": "circle", "isSleeping": false, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": false, "hasConsumableModule": true, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "mass": 0.45, "colliderRadius": 0.3, "bounceMod": 0.2, "verticalBounce": true, "staticGroundFrictionMod": 1, "dynamicGroundFrictionMod": 1, "rigidbodyModule": { "enabled": true, "mass": 0.45, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.3 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.2, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "consumableModule": { "enabled": true, "tag": "food", "unlimited": true, "totalEnergyJoules": 1e4, "remainingEnergyJoules": 1e4, "consumeRateWatts": 2e3, "healRate": 0, "minScaleFloor": 1, "minRadiusFloor": 0.3 } } }, { "id": "prefab_stone", "name": "Stone", "icon": "🪨", "archetype": { "id": "archetype_stone", "name": "Stone", "position": { "x": 0, "y": 0, "z": 0 }, "color": "#78716c", "visualShape": "circle", "mass": 0.85, "colliderRadius": 0.22, "bounceMod": 0.15, "verticalBounce": true, "hasRigidbody": true, "hasCollider": true, "hasFriction": true, "hasBounce": true, "hasVerticalPosition": true, "hasGravity": true, "hasRollModule": true, "hasConsumableModule": false, "hasHealthModule": false, "hasDamageAuraModule": false, "hasDamageSolverModule": false, "rigidbodyModule": { "enabled": true, "mass": 0.85, "collisionMode": "dynamic", "hasVerticalVelocity": true }, "colliderModule": { "enabled": true, "radius": 0.22 }, "frictionModule": { "enabled": true, "staticFrictionMod": 1, "dynamicFrictionMod": 1 }, "bounceModule": { "enabled": true, "bounceMod": 0.15, "verticalBounce": true }, "verticalPositionModule": { "enabled": true, "z": 0 }, "gravityModule": { "enabled": true }, "rollModule": { "enabled": true, "rollResistance": 0.45, "bumpyRollEnabled": true, "bumpiness": 0.28, "seed": 100 } } }];
-const spawners = [{ "id": "spawner_apple_default", "name": "Apple Spawner", "enabled": true, "prefabId": "prefab_apple", "intervalMinutes": 0.25, "maxCount": 5, "designatedSpawnPoints": [{ "x": 10, "y": 2.2, "z": 0 }, { "x": 10, "y": 11.8, "z": 0 }, { "x": 3.5, "y": 7, "z": 0 }, { "x": 16.5, "y": 7, "z": 0 }, { "x": 10, "y": 7, "z": 0 }] }];
+const spawners = [{ "id": "spawner_apple_default", "name": "Apple Spawner", "enabled": true, "prefabId": "prefab_apple", "intervalMinutes": 0.1, "maxCount": 10, "designatedSpawnPoints": [{ "x": 10, "y": 2.2, "z": 0 }, { "x": 10, "y": 11.8, "z": 0 }, { "x": 3.5, "y": 7, "z": 0 }, { "x": 16.5, "y": 7, "z": 0 }, { "x": 10, "y": 7, "z": 0 }] }];
 const initialWorldConfig = {
   version,
   lastSaved,
