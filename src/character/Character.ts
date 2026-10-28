@@ -182,6 +182,7 @@ export class Character extends GameObject {
   public isAiming: boolean;
   public aimTarget: Vector2D | null;
   public activeTrajectory: TrajectoryCalculation | null;
+  public isAimingTrajectory: boolean = false;
 
   // Laser aiming/firing inputs processed per tick
   public isLaserAiming: boolean = false;

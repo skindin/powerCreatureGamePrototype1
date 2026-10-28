@@ -8,6 +8,7 @@ import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistory
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
+import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -557,7 +558,7 @@ export class PlayerManager {
           input.isKeyPressed("KeyF")
         )
       );
-      const isThrowActive = isHolding && (!hasPrimaryAbility || (!isAltDown && input.isRightMouseDown) || (input.isThrowingPress && input.isMouseDown));
+      const isThrowActive = isHolding && (!hasPrimaryAbility || (!isAltDown && input.isRightMouseDown) || (input.isThrowingPress && input.isMouseDown) || kChar.isAimingTrajectory);
 
       // Mouse aiming & trajectory are active when:
       // 1. In edit mode, or
@@ -725,8 +726,62 @@ export class PlayerManager {
         effectiveMoveY = my;
       }
 
-      const isLaserMode = !isEditMode && ((isAltDown && input.isRightMouseDown) || isStagedLaser);
-      const isMeleeRequested = !isEditMode && ((isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested) || (isStagedMelee && input.isMouseDown));
+      let isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
+
+      // Custom schema rule evaluations:
+      let schemaLaserAim = false;
+      let schemaLaserFire = false;
+      let schemaMelee = false;
+      let schemaThrowAim = false;
+
+      if (kSchema) {
+        const keyStates = {
+          isDown: (code: string) => input.isKeyPressed(code),
+          justPressed: (code: string) => input.isKeyPressed(code),
+          justReleased: (_code: string) => false,
+        };
+        const mouseStates = {
+          isDown: (btn: number) => (btn === 0 ? input.isMouseDown : btn === 2 ? input.isRightMouseDown : false),
+          justPressed: (btn: number) => (btn === 0 ? input.isMouseDown : btn === 2 ? input.isRightMouseDown : false),
+          justReleased: (_btn: number) => false,
+        };
+        const execCtx: any = {
+          character: kChar,
+          isHoldingItem: isHolding,
+          heldItemIsEdible: isHoldingConsumable,
+          targetInReach: grabTargetObjectId !== null,
+          isGrounded: Boolean(kChar.isRestingOnSurface),
+          isClimbing: Boolean(kChar.isClimbing),
+          stagedAction: kChar.stagedAction,
+          isKeyDown: (code: string) => input.isKeyPressed(code),
+        };
+
+        for (const rule of kSchema.keyboardMouse.rules) {
+          if (rule.enabled === false) continue;
+          if (ControlSchemaArbiter.evaluateCondition(rule.condition, execCtx)) {
+            if (ControlSchemaArbiter.isTriggerActive(rule.trigger, execCtx, keyStates, mouseStates)) {
+              ControlsInspector.notifyRuleFired(rule.id);
+              if (rule.action.moduleId === "laser" && rule.action.intent === "aimLaser") {
+                schemaLaserAim = true;
+              }
+              if (rule.action.moduleId === "laser" && rule.action.intent === "fireLaser") {
+                schemaLaserFire = true;
+                schemaLaserAim = true;
+              }
+              if (rule.action.moduleId === "melee" && rule.action.intent === "punch") {
+                schemaMelee = true;
+              }
+              if (rule.action.moduleId === "throwPickup" && rule.action.intent === "aimThrow") {
+                schemaThrowAim = true;
+              }
+            }
+          }
+        }
+        kChar.isAimingTrajectory = schemaThrowAim;
+      }
+
+      const isLaserMode = !isEditMode && ((isAltDown && input.isRightMouseDown) || isStagedLaser || schemaLaserAim);
+      const isMeleeRequested = !isEditMode && ((isAltDown && !input.isRightMouseDown && input.isKeyboardMeleeRequested) || (isStagedMelee && input.isMouseDown) || schemaMelee);
 
       if (isLaserMode || isMeleeRequested) {
         const aimDx = input.actualMousePos.x - kChar.position.x;
@@ -736,7 +791,7 @@ export class PlayerManager {
         }
       }
 
-      const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
+      isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
       if (!input.isMouseDown) {
         grabState.useItemSuppressed = false;
       }
@@ -782,7 +837,7 @@ export class PlayerManager {
         isThrow: (isLaserMode || isMeleeRequested) ? false : (input.isKeyboardThrowRequested ?? false),
         isUsingItem: (isLaserMode || isMeleeRequested) ? false : isUsingItem,
         isLaserAiming: isLaserMode,
-        isLaserFiring: isLaserMode && input.isMouseDown,
+        isLaserFiring: isLaserMode && (input.isMouseDown || schemaLaserFire),
         laserAimX: input.actualMousePos.x,
         laserAimY: input.actualMousePos.y,
         isMeleeRequested: isMeleeRequested,

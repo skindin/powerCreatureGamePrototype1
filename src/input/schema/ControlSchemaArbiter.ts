@@ -90,7 +90,17 @@ export class ControlSchemaArbiter {
     // 1. Verify chord modifiers if any
     if (trigger.chordModifiers && trigger.chordModifiers.length > 0) {
       for (const mod of trigger.chordModifiers) {
-        if (!keyStates.isDown(mod)) {
+        let isModDown = false;
+        if (mod.startsWith("Alt")) {
+          isModDown = keyStates.isDown("AltLeft") || keyStates.isDown("AltRight") || keyStates.isDown("Alt");
+        } else if (mod.startsWith("Shift")) {
+          isModDown = keyStates.isDown("ShiftLeft") || keyStates.isDown("ShiftRight") || keyStates.isDown("Shift");
+        } else if (mod.startsWith("Control") || mod.startsWith("Ctrl")) {
+          isModDown = keyStates.isDown("ControlLeft") || keyStates.isDown("ControlRight") || keyStates.isDown("Control");
+        } else {
+          isModDown = keyStates.isDown(mod);
+        }
+        if (!isModDown) {
           return false;
         }
       }

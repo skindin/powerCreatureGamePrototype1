@@ -5846,6 +5846,7 @@ class Character extends GameObject {
     __publicField(this, "isAiming");
     __publicField(this, "aimTarget");
     __publicField(this, "activeTrajectory");
+    __publicField(this, "isAimingTrajectory", false);
     // Laser aiming/firing inputs processed per tick
     __publicField(this, "isLaserAiming", false);
     __publicField(this, "isLaserFiring", false);
@@ -9055,46 +9056,105 @@ const DefaultControlSchema = {
       strafeRightKey: "KeyD"
     },
     rules: [
-      // Primary Left Click: Evaluated top to bottom
+      // 1. Laser Beam: Aim with Alt + RMB or Stage, Fire with Alt + LMB or Staged LMB
+      {
+        id: "kbm-laser-aim-alt",
+        name: "Aim Laser (Alt + RMB)",
+        enabled: true,
+        priority: 110,
+        trigger: { device: "mouse", code: "MouseRight", chordModifiers: ["AltLeft"], mode: "hold" },
+        condition: { type: "always" },
+        action: { moduleId: "laser", intent: "aimLaser" }
+      },
+      {
+        id: "kbm-laser-fire-alt",
+        name: "Fire Laser (Alt + LMB)",
+        enabled: true,
+        priority: 105,
+        trigger: { device: "mouse", code: "MouseLeft", chordModifiers: ["AltLeft"], mode: "hold" },
+        condition: { type: "always" },
+        action: { moduleId: "laser", intent: "fireLaser" }
+      },
       {
         id: "kbm-laser-fire",
-        name: "Fire Laser",
+        name: "Fire Laser (Staged)",
         enabled: true,
         priority: 100,
         trigger: { device: "mouse", code: "MouseLeft", mode: "hold" },
         condition: { type: "stagedActionIs", param: "laser" },
         action: { moduleId: "laser", intent: "fireLaser" }
       },
+      // 2. Throwing: RMB previews trajectory arc, releasing LMB executes throw
+      {
+        id: "kbm-throw-aim-rmb",
+        name: "Aim Throw Trajectory (RMB)",
+        enabled: true,
+        priority: 95,
+        trigger: { device: "mouse", code: "MouseRight", mode: "hold" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "aimThrow" }
+      },
       {
         id: "kbm-throw-release",
-        name: "Throw Held Item",
+        name: "Throw Held Item (Release LMB)",
         enabled: true,
         priority: 90,
         trigger: { device: "mouse", code: "MouseLeft", mode: "release" },
         condition: { type: "holdingObject" },
         action: { moduleId: "throwPickup", intent: "releaseThrow" }
       },
+      // 3. Melee Punch: Alt + F or direct F
+      {
+        id: "kbm-melee-punch-alt",
+        name: "Melee Punch (Alt + F)",
+        enabled: true,
+        priority: 88,
+        trigger: { device: "keyboard", code: "KeyF", chordModifiers: ["AltLeft"], mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "melee", intent: "punch" }
+      },
+      {
+        id: "kbm-melee-punch",
+        name: "Melee Punch (F Key)",
+        enabled: true,
+        priority: 85,
+        trigger: { device: "keyboard", code: "KeyF", mode: "press" },
+        condition: { type: "always" },
+        action: { moduleId: "melee", intent: "punch" }
+      },
+      // 4. Pickup: Press E or click LMB when in reach
+      {
+        id: "kbm-pickup-key-e",
+        name: "Pick Up Object (E Key)",
+        enabled: true,
+        priority: 82,
+        trigger: { device: "keyboard", code: "KeyE", mode: "press" },
+        condition: { type: "targetInReach" },
+        action: { moduleId: "throwPickup", intent: "pickupReach" }
+      },
       {
         id: "kbm-pickup-click",
-        name: "Pick Up Object",
+        name: "Pick Up Object (LMB Click)",
         enabled: true,
         priority: 80,
         trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
         condition: { type: "targetInReach" },
         action: { moduleId: "throwPickup", intent: "pickupReach" }
       },
+      // 5. Consumable: Hold C to eat
       {
         id: "kbm-eat-held",
-        name: "Eat Held Item",
+        name: "Eat Held Item (C Key)",
         enabled: true,
         priority: 70,
         trigger: { device: "keyboard", code: "KeyC", mode: "hold" },
         condition: { type: "holdingEdible" },
         action: { moduleId: "consume", intent: "eatHeldItem" }
       },
+      // 6. Locomotion: Jump, Sprint, Drop
       {
         id: "kbm-jump",
-        name: "Jump",
+        name: "Jump (Space)",
         enabled: true,
         priority: 60,
         trigger: { device: "keyboard", code: "Space", mode: "press" },
@@ -9103,7 +9163,7 @@ const DefaultControlSchema = {
       },
       {
         id: "kbm-sprint",
-        name: "Sprint",
+        name: "Hold Sprint (Shift)",
         enabled: true,
         priority: 50,
         trigger: { device: "keyboard", code: "ShiftLeft", mode: "hold" },
@@ -9112,7 +9172,7 @@ const DefaultControlSchema = {
       },
       {
         id: "kbm-drop",
-        name: "Drop Item",
+        name: "Drop Item (Q Key)",
         enabled: true,
         priority: 40,
         trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
@@ -9134,13 +9194,31 @@ const DefaultControlSchema = {
     rightStick: { mode: "twinStickAim" },
     rules: [
       {
+        id: "pad-laser-aim-lt",
+        name: "Aim Laser (LT)",
+        enabled: true,
+        priority: 105,
+        trigger: { device: "gamepad", code: "GamepadLT", mode: "hold" },
+        condition: { type: "always" },
+        action: { moduleId: "laser", intent: "aimLaser" }
+      },
+      {
         id: "pad-laser-fire",
         name: "Fire Laser (RT)",
         enabled: true,
         priority: 100,
         trigger: { device: "gamepad", code: "GamepadRT", mode: "hold" },
-        condition: { type: "stagedActionIs", param: "laser" },
+        condition: { type: "always" },
         action: { moduleId: "laser", intent: "fireLaser" }
+      },
+      {
+        id: "pad-throw-aim-lt",
+        name: "Aim Throw Trajectory (LT)",
+        enabled: true,
+        priority: 95,
+        trigger: { device: "gamepad", code: "GamepadLT", mode: "hold" },
+        condition: { type: "holdingObject" },
+        action: { moduleId: "throwPickup", intent: "aimThrow" }
       },
       {
         id: "pad-throw-release",
@@ -9159,6 +9237,15 @@ const DefaultControlSchema = {
         trigger: { device: "gamepad", code: "GamepadRT", mode: "press" },
         condition: { type: "targetInReach" },
         action: { moduleId: "throwPickup", intent: "pickupReach" }
+      },
+      {
+        id: "pad-melee-b",
+        name: "Melee Punch (B)",
+        enabled: true,
+        priority: 75,
+        trigger: { device: "gamepad", code: "GamepadB", mode: "press" },
+        condition: { type: "emptyHanded" },
+        action: { moduleId: "melee", intent: "punch" }
       },
       {
         id: "pad-jump",
@@ -9180,10 +9267,10 @@ const DefaultControlSchema = {
       },
       {
         id: "pad-drop",
-        name: "Drop Item (B)",
+        name: "Drop Item (X)",
         enabled: true,
         priority: 50,
-        trigger: { device: "gamepad", code: "GamepadB", mode: "press" },
+        trigger: { device: "gamepad", code: "GamepadX", mode: "press" },
         condition: { type: "holdingObject" },
         action: { moduleId: "throwPickup", intent: "dropItem" }
       }

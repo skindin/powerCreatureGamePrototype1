@@ -101,6 +101,20 @@ export class ControlActionCatalog {
       isAttached: (char: Character) => Boolean((char.throwModule && char.throwModule.enabled) || (char.pickupModule && char.pickupModule.enabled)),
       actions: [
         {
+          id: "aimThrow",
+          label: "Aim Throw Trajectory",
+          description: "Shows anticipatory parabolic trajectory while held",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.heldObject) {
+              ctx.character.isAimingTrajectory = true;
+            }
+          },
+          stop: (ctx) => {
+            ctx.character.isAimingTrajectory = false;
+          },
+        },
+        {
           id: "releaseThrow",
           label: "Release Throw",
           description: "Throws held item along trajectory to aim position",
