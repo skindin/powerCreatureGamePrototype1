@@ -675,9 +675,11 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
       backdrop-filter: blur(6px);
       z-index: 10000;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       padding: 16px;
+      overflow-y: auto;
       box-sizing: border-box;
     `,document.body.appendChild(i),this.modalOverlay=i,i.onclick=s=>{s.target===i&&this.closeModal()},this.keydownListener=s=>{if(s.code==="Escape"){if(this.listeningRuleId||this.listeningForwardTrigger)return;this.closeModal()}},window.addEventListener("keydown",this.keydownListener),this.renderActiveView()}static closeModal(){this.recorderCleanup&&(this.recorderCleanup(),this.recorderCleanup=null),this.keydownListener&&(window.removeEventListener("keydown",this.keydownListener),this.keydownListener=null),this.popoutWindow&&!this.popoutWindow.closed&&(this.popoutWindow.close(),this.popoutWindow=null),this.modalOverlay&&(this.modalOverlay.remove(),this.modalOverlay=null);const e=document.getElementById("action-picker-popover");e&&e.remove(),this.modalChar=null,this.modalPanel=null,this.workingSchema=null,this.listeningRuleId=null,this.listeningForwardTrigger=!1,this.listeningLocoKey=null}static async saveAndCommit(){if(!this.modalChar||!this.workingSchema)return;const e=this.modalChar,t=this.workingSchema,i=this.getRootContainer(),s=i==null?void 0:i.querySelector("#btn-modal-save-close");s&&(s.disabled=!0,s.textContent="⏳ Saving to Project...");try{await Mt.saveControlSchema(this.modalPanel,e,t);const o=e.prefabId?Se.get(e.prefabId):void 0,n=o?`${e.name||"Character"} & ${o.name} Prefab`:e.name||"Character";this.showToast(`✓ Saved & persisted controls for ${n} to worldConfig.json!`)}catch(o){console.error("Failed to save controls:",o),this.showToast(`❌ Save failed: ${o.message||o}`,!0)}finally{s&&(s.disabled=!1,s.textContent="💾 Save & Apply"),this.renderActiveView()}}static showToast(e,t=!1){const i=[document];this.popoutWindow&&!this.popoutWindow.closed&&i.push(this.popoutWindow.document);for(const s of i){const o=s.getElementById("controls-save-toast");o&&o.remove();const n=s.createElement("div");n.id="controls-save-toast",n.style.cssText=`
         position: fixed;
@@ -695,25 +697,25 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
         align-items: center;
         gap: 8px;
         pointer-events: none;
-      `,n.innerHTML=`<span>${t?"⚠️":"✓"}</span> <span>${e}</span>`,s.body.appendChild(n),setTimeout(()=>{n.style.opacity="0",n.style.transition="opacity 0.3s ease-out",setTimeout(()=>n.remove(),300)},2e3)}}static getRootContainer(){return this.popoutWindow&&!this.popoutWindow.closed?this.popoutWindow.document.getElementById("controls-window-root"):this.modalOverlay?this.modalOverlay:null}static renderActiveView(){const e=this.getRootContainer();if(!e||!this.modalChar||!this.workingSchema)return;const t=this.modalChar,i=this.workingSchema,s=t.prefabId?Se.get(t.prefabId):void 0,o=s?`${s.icon} ${s.name}`:null,n=!!(this.popoutWindow&&!this.popoutWindow.closed),a=this.activeTab==="keyboardMouse"?i.keyboardMouse.rules.length:this.activeTab==="gamepad"?i.gamepad.rules.length:i.touch.rules.length,l=`
+      `,n.innerHTML=`<span>${t?"⚠️":"✓"}</span> <span>${e}</span>`,s.body.appendChild(n),setTimeout(()=>{n.style.opacity="0",n.style.transition="opacity 0.3s ease-out",setTimeout(()=>n.remove(),300)},2e3)}}static getRootContainer(){return this.popoutWindow&&!this.popoutWindow.closed?this.popoutWindow.document.getElementById("controls-window-root"):this.modalOverlay?this.modalOverlay:null}static renderActiveView(){const e=this.getRootContainer();if(!e||!this.modalChar||!this.workingSchema)return;const t=e.querySelector("#controls-scroll-body"),i=t?t.scrollTop:0,s=this.modalChar,o=this.workingSchema,n=s.prefabId?Se.get(s.prefabId):void 0,a=n?`${n.icon} ${n.name}`:null,l=!!(this.popoutWindow&&!this.popoutWindow.closed),c=this.activeTab==="keyboardMouse"?o.keyboardMouse.rules.length:this.activeTab==="gamepad"?o.gamepad.rules.length:o.touch.rules.length,d=`
       <div id="controls-dialog-container" style="
         background: #0f172a;
-        ${n?"height: 100%; border: none; border-radius: 0;":"border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 780px; max-width: 95vw; max-height: 92vh;"}
+        ${l?"height: 100%; border: none; border-radius: 0;":"border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 840px; max-width: 95vw; height: calc(100vh - 40px); max-height: calc(100vh - 40px);"}
         display: flex;
         flex-direction: column;
         overflow: hidden;
         color: #e2e8f0;
-        box-shadow: ${n?"none":"0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15)"};
+        box-shadow: ${l?"none":"0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15)"};
       ">
         <!-- Title Bar / Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.2rem;">🎮</span>
             <div>
               <div style="font-weight: 700; font-size: 0.94rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                Controls Schema: <span style="color: #38bdf8;">${t.name||"Character"}</span>
-                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">ID: ${t.id}</span>
-                ${n?'<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">🪟 Separate Window</span>':""}
+                Controls Schema: <span style="color: #38bdf8;">${s.name||"Character"}</span>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">ID: ${s.id}</span>
+                ${l?'<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">🪟 Separate Window</span>':""}
               </div>
             </div>
           </div>
@@ -721,15 +723,15 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
         </div>
 
         <!-- Subheader: Linked Prefab Bar & Preset Selector -->
-        <div style="padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
+        <div style="flex-shrink: 0; padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.76rem; color: #c084fc; font-weight: 600;">Linked Archetype:</span>
-              <span style="font-size: 0.78rem; color: #e2e8f0; font-weight: 600;">${o||"(Standalone Character)"}</span>
-              ${s?'<span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">Auto-Persists to Prefab on Save</span>':""}
+              <span style="font-size: 0.78rem; color: #e2e8f0; font-weight: 600;">${a||"(Standalone Character)"}</span>
+              ${n?'<span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">Auto-Persists to Prefab on Save</span>':""}
             </div>
             <div style="display: flex; gap: 6px;">
-              ${s?`
+              ${n?`
                 <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Discard unsaved changes and reload clean controls from prefab archetype">↺ Reset to Prefab Defaults</button>
               `:`
                 <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Save as New Prefab</button>
@@ -740,14 +742,14 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
             <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; white-space: nowrap;">Preset Template:</label>
             <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.76rem;">
-              ${ps.map(c=>`<option value="${c.id}" ${c.id===i.id?"selected":""}>${c.name}</option>`).join("")}
-              <option value="custom" ${ps.some(c=>c.id===i.id)?"":"selected"}>Custom (User Modified)</option>
+              ${ps.map(r=>`<option value="${r.id}" ${r.id===o.id?"selected":""}>${r.name}</option>`).join("")}
+              <option value="custom" ${ps.some(r=>r.id===o.id)?"":"selected"}>Custom (User Modified)</option>
             </select>
           </div>
         </div>
 
         <!-- Device Channel Tabs -->
-        <div style="display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
+        <div style="flex-shrink: 0; display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
           <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab==="keyboardMouse"?"background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;":"background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
             ⌨️ Keyboard & Mouse
           </button>
@@ -760,8 +762,19 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
         </div>
 
         <!-- Scrollable Modal Body -->
-        <div style="flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
+        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
           
+          <!-- Collapsible Keybind Tags Area (Layer 1) -->
+          <details id="details-tags" ${this.isTagsSectionCollapsed?"":"open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
+            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
+              <span style="display: flex; align-items: center; gap: 6px;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(o).length})</span>
+              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Physical keys/buttons mapped to named tags)</span>
+            </summary>
+            <div id="controls-tags-container" style="padding: 12px;">
+              ${this.renderTagsSectionHtml(o)}
+            </div>
+          </details>
+
           <!-- Collapsible Paradigms Area -->
           <details id="details-paradigms" ${this.isParadigmsCollapsed?"":"open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
             <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
@@ -769,25 +782,14 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
               <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
             </summary>
             <div id="controls-paradigms-container" style="padding: 12px;">
-              ${this.renderParadigmsHtml(i)}
-            </div>
-          </details>
-
-          <!-- Collapsible Keybind Tags Area (Layer 1) -->
-          <details id="details-tags" ${this.isTagsSectionCollapsed?"":"open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
-            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
-              <span style="display: flex; align-items: center; gap: 6px;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(i).length})</span>
-              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Physical keys/buttons mapped to named tags)</span>
-            </summary>
-            <div id="controls-tags-container" style="padding: 12px;">
-              ${this.renderTagsSectionHtml(i)}
+              ${this.renderParadigmsHtml(o)}
             </div>
           </details>
 
           <!-- Rules Matrix Header (Layer 2) -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
             <span style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
-              ⚡ Layer 2: Action Rules (${a})
+              ⚡ Layer 2: Action Rules (${c})
               <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
@@ -805,7 +807,7 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
 
           <!-- Rules List Container -->
           <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 6px;">
-            ${this.renderRulesListHtml(t,i)}
+            ${this.renderRulesListHtml(s,o)}
           </div>
 
           <!-- Collapsible Raw JSON Editor Drawer -->
@@ -820,7 +822,7 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
             ${this.showJsonEditor?`
               <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px;">
                 ${this.jsonErrorMessage?`<div style="color: #f87171; font-size: 0.72rem; background: rgba(239, 68, 68, 0.15); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3);">⚠️ ${this.jsonErrorMessage}</div>`:""}
-                <textarea id="textarea-controls-json" style="width: 100%; height: 200px; font-family: monospace; font-size: 0.72rem; background: #090d16; color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(i,null,2)}</textarea>
+                <textarea id="textarea-controls-json" style="width: 100%; height: 200px; font-family: monospace; font-size: 0.72rem; background: #090d16; color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(o,null,2)}</textarea>
                 <div style="display: flex; justify-content: flex-end; gap: 6px;">
                   <button id="btn-copy-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #94a3b8;">📋 Copy JSON</button>
                   <button id="btn-apply-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 12px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">Apply JSON Changes</button>
@@ -831,9 +833,9 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
         </div>
 
         <!-- Footer Bar -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08);">
           <div style="font-size: 0.74rem; color: #94a3b8;">
-            Schema: <strong style="color: #cbd5e1;">${i.name}</strong>
+            Schema: <strong style="color: #cbd5e1;">${o.name}</strong>
           </div>
           <div style="display: flex; gap: 8px;">
             <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem;">Close</button>
@@ -843,7 +845,7 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
           </div>
         </div>
       </div>
-    `;e.innerHTML=l,this.attachEventListeners(e)}static renderTagsSectionHtml(e){const t=this.getActiveDeviceTags(e);return t.length===0?`
+    `;if(e.innerHTML=d,i>0){const r=e.querySelector("#controls-scroll-body");r&&(r.scrollTop=i)}this.attachEventListeners(e)}static renderTagsSectionHtml(e){const t=this.getActiveDeviceTags(e);return t.length===0?`
         <div style="text-align: center; color: #64748b; font-size: 0.74rem; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
           No custom keybind tags defined yet. Click "+ Add Keybind Tag" to create one.
         </div>
@@ -1115,7 +1117,7 @@ var ma=Object.defineProperty;var ga=(g,e,t)=>e in g?ma(g,e,{enumerable:!0,config
           </div>
         </details>
       `:""}
-    `,s.body.appendChild(d),d.querySelectorAll(".btn-select-action").forEach(p=>{p.addEventListener("click",()=>{const f=p.dataset.mod,b=p.dataset.intent;if(f&&b){const M=Rt.findAction(f,b);M!=null&&M.recommendedMode&&a.trigger.mode==="press"&&(a.trigger.mode=M.recommendedMode);const v=Ce.getRuleActions(a);v[t]?(v[t].moduleId=f,v[t].intent=b):v.push({moduleId:f,intent:b}),a.actions=v,a.action=v[0],d.remove(),this.renderActiveView()}})});const m=p=>{!d.contains(p.target)&&p.target!==i&&(d.remove(),s.removeEventListener("click",m))};setTimeout(()=>s.addEventListener("click",m),10)}}y(Ee,"modalChar",null),y(Ee,"modalPanel",null),y(Ee,"popoutWindow",null),y(Ee,"modalOverlay",null),y(Ee,"workingSchema",null),y(Ee,"activeTab","keyboardMouse"),y(Ee,"showJsonEditor",!1),y(Ee,"jsonErrorMessage",null),y(Ee,"collapsedRuleIds",new Set),y(Ee,"isParadigmsCollapsed",!1),y(Ee,"isTagsSectionCollapsed",!1),y(Ee,"listeningTagId",null),y(Ee,"listeningRuleId",null),y(Ee,"listeningForwardTrigger",!1),y(Ee,"listeningLocoKey",null),y(Ee,"recorderCleanup",null),y(Ee,"keydownListener",null);class Da{static bindDynamicModuleControls(e){const t=e.selectedEntity;if(!t)return;const i=e.container,o=t instanceof J?t:null,n=(a,l,c,d,r)=>{const u=i.querySelector(`#${a}`),h=`btn-save-${a.replace(/^check-/,"")}`,m=i.querySelector(`#${h}`);!u||!m||m.addEventListener("click",p=>{p.stopPropagation();const f=u.checked;r&&r(f),e.saveIndividualToggle(l,c,f,d,m)})};if(ka.bindControls(e,t,o,n),o){Ca.bindControls(i,o,n),Ra.bindControls(e,o,n),Ta.bindControls(e,o,n),Ia.bindControls(e,o);const a=i.querySelector("#btn-open-character-controls");a&&a.addEventListener("click",l=>{l.stopPropagation(),Ee.openModal(e,o)})}Aa.bindControls(e,t,o,n),Ea.bindControls(e,t,o,n)}}class La{constructor(e){y(this,"container");y(this,"character");y(this,"arena");y(this,"objects");y(this,"onSpawnObject");y(this,"onDeleteObject");y(this,"onClearObjects");y(this,"getAllCharacters");y(this,"selectedEntity");y(this,"isEditMode",!1);y(this,"editTool","entities");y(this,"onSelectionChange");y(this,"getGameLoop");y(this,"getRenderer");y(this,"rollbackDepthTicks",30);y(this,"isOnlineLocked",!1);y(this,"currentConfigVersion",1);y(this,"dirtyState",{arena:!1,globalPhysics:!1,player:!1,spawners:!1,modifiedObjects:new Map,deletedObjectIds:new Set});y(this,"creatorState",{name:"Custom Box",visualShape:"box",color:"#38bdf8",hasRigidbody:!0,hasCollider:!0,colliderRadius:.3,hasMass:!0,mass:1,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.2,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4});y(this,"presets",{"Light Blue Box":{name:"Light Blue Box",visualShape:"box",color:"#38bdf8",hasRigidbody:!0,hasCollider:!0,colliderRadius:.26,hasMass:!0,mass:.7,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.25,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Heavy Red Box":{name:"Heavy Red Box",visualShape:"box",color:"#f87171",hasRigidbody:!0,hasCollider:!0,colliderRadius:.4,hasMass:!0,mass:2.6,hasFriction:!0,staticFrictionMod:1.2,dynamicFrictionMod:1.2,hasBounce:!1,bounceMod:.05,verticalBounce:!1,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Bouncy Ball":{name:"Super Bouncy Ball",visualShape:"circle",color:"#4ade80",hasRigidbody:!0,hasCollider:!0,colliderRadius:.24,hasMass:!0,mass:.5,hasFriction:!0,staticFrictionMod:.8,dynamicFrictionMod:.8,hasBounce:!0,bounceMod:.88,verticalBounce:!0,hasVerticalPosition:!0,elevation:.6,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Rolling Ball":{name:"Rolling Ball",visualShape:"circle",color:"#a855f7",hasRigidbody:!0,hasCollider:!0,colliderRadius:.28,hasMass:!0,mass:.6,hasFriction:!0,staticFrictionMod:.5,dynamicFrictionMod:.5,hasBounce:!0,bounceMod:.95,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!0,rollResistance:0},"Ghost Box":{name:"Ghost Box (No Collider)",visualShape:"box",color:"#94a3b8",hasRigidbody:!1,hasCollider:!1,colliderRadius:.3,hasMass:!1,mass:0,hasFriction:!1,staticFrictionMod:0,dynamicFrictionMod:0,hasBounce:!1,bounceMod:0,verticalBounce:!1,hasVerticalPosition:!1,elevation:0,hasVerticalVelocity:!1,hasGravity:!1,hasRollModule:!1,rollResistance:0}});y(this,"inspectorEl");y(this,"entitySelectorEl");y(this,"characterSpecificControlsEl",null);y(this,"objectSpecificControlsEl");y(this,"modePlayBtn");y(this,"modeEditBtn");y(this,"scrubbers",new Map);y(this,"expandedSections",new Set);y(this,"collapsedBusSubSections",new Set);this.container=e.container,this.character=e.character,this.arena=e.arena,this.objects=e.objects,this.onSpawnObject=e.onSpawnObject,this.onDeleteObject=e.onDeleteObject,this.onClearObjects=e.onClearObjects,this.getAllCharacters=e.getAllCharacters,this.selectedEntity=this.character,wt.onRename((t,i)=>{for(const o of this.objects)o.consumableModule&&o.consumableModule.tag.toLowerCase()===t.toLowerCase()&&(o.consumableModule.tag=i);const s=this.getAllCharacters?this.getAllCharacters():[this.character];for(const o of s)o.consumeModule&&o.consumeModule.onTagRenamed(t,i);this.renderEntityModules(),this.updateInspector()}),wt.onDelete(t=>{for(const s of this.objects)s.consumableModule&&s.consumableModule.tag.toLowerCase()===t.toLowerCase()&&(s.consumableModule.tag="");const i=this.getAllCharacters?this.getAllCharacters():[this.character];for(const s of i)s.consumeModule&&s.consumeModule.onTagDeleted(t);this.renderEntityModules(),this.updateInspector()}),Se.onPrefabsChanged(()=>{this.renderScenePrefabs(),this.updatePrefabInfoBadge()}),ze.onSpawnersChanged(()=>{this.renderSceneSpawners()}),ue.defaultSaveHandler=(t,i,s,o)=>this.saveIndividualProperty(t,i,s,o),this.renderPanel()}isSectionCollapsed(e){return!this.expandedSections.has(e)}toggleSectionCollapse(e){this.expandedSections.has(e)?this.expandedSections.delete(e):this.expandedSections.add(e)}isBusSubCollapsed(e){return this.collapsedBusSubSections.has(e)}toggleBusSubCollapse(e){this.collapsedBusSubSections.has(e)?this.collapsedBusSubSections.delete(e):this.collapsedBusSubSections.add(e)}renderModuleHeader(e,t,i=""){const o=this.isSectionCollapsed("mod-"+e)?"▶":"▼";return`
+    `,s.body.appendChild(d),d.querySelectorAll(".btn-select-action").forEach(p=>{p.addEventListener("click",()=>{const f=p.dataset.mod,b=p.dataset.intent;if(f&&b){const M=Rt.findAction(f,b);M!=null&&M.recommendedMode&&a.trigger.mode==="press"&&(a.trigger.mode=M.recommendedMode);const v=Ce.getRuleActions(a);v[t]?(v[t].moduleId=f,v[t].intent=b):v.push({moduleId:f,intent:b}),a.actions=v,a.action=v[0],d.remove(),this.renderActiveView()}})});const m=p=>{!d.contains(p.target)&&p.target!==i&&(d.remove(),s.removeEventListener("click",m))};setTimeout(()=>s.addEventListener("click",m),10)}}y(Ee,"modalChar",null),y(Ee,"modalPanel",null),y(Ee,"popoutWindow",null),y(Ee,"modalOverlay",null),y(Ee,"workingSchema",null),y(Ee,"activeTab","keyboardMouse"),y(Ee,"showJsonEditor",!1),y(Ee,"jsonErrorMessage",null),y(Ee,"collapsedRuleIds",new Set),y(Ee,"isParadigmsCollapsed",!0),y(Ee,"isTagsSectionCollapsed",!1),y(Ee,"listeningTagId",null),y(Ee,"listeningRuleId",null),y(Ee,"listeningForwardTrigger",!1),y(Ee,"listeningLocoKey",null),y(Ee,"recorderCleanup",null),y(Ee,"keydownListener",null);class Da{static bindDynamicModuleControls(e){const t=e.selectedEntity;if(!t)return;const i=e.container,o=t instanceof J?t:null,n=(a,l,c,d,r)=>{const u=i.querySelector(`#${a}`),h=`btn-save-${a.replace(/^check-/,"")}`,m=i.querySelector(`#${h}`);!u||!m||m.addEventListener("click",p=>{p.stopPropagation();const f=u.checked;r&&r(f),e.saveIndividualToggle(l,c,f,d,m)})};if(ka.bindControls(e,t,o,n),o){Ca.bindControls(i,o,n),Ra.bindControls(e,o,n),Ta.bindControls(e,o,n),Ia.bindControls(e,o);const a=i.querySelector("#btn-open-character-controls");a&&a.addEventListener("click",l=>{l.stopPropagation(),Ee.openModal(e,o)})}Aa.bindControls(e,t,o,n),Ea.bindControls(e,t,o,n)}}class La{constructor(e){y(this,"container");y(this,"character");y(this,"arena");y(this,"objects");y(this,"onSpawnObject");y(this,"onDeleteObject");y(this,"onClearObjects");y(this,"getAllCharacters");y(this,"selectedEntity");y(this,"isEditMode",!1);y(this,"editTool","entities");y(this,"onSelectionChange");y(this,"getGameLoop");y(this,"getRenderer");y(this,"rollbackDepthTicks",30);y(this,"isOnlineLocked",!1);y(this,"currentConfigVersion",1);y(this,"dirtyState",{arena:!1,globalPhysics:!1,player:!1,spawners:!1,modifiedObjects:new Map,deletedObjectIds:new Set});y(this,"creatorState",{name:"Custom Box",visualShape:"box",color:"#38bdf8",hasRigidbody:!0,hasCollider:!0,colliderRadius:.3,hasMass:!0,mass:1,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.2,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4});y(this,"presets",{"Light Blue Box":{name:"Light Blue Box",visualShape:"box",color:"#38bdf8",hasRigidbody:!0,hasCollider:!0,colliderRadius:.26,hasMass:!0,mass:.7,hasFriction:!0,staticFrictionMod:1,dynamicFrictionMod:1,hasBounce:!0,bounceMod:.25,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Heavy Red Box":{name:"Heavy Red Box",visualShape:"box",color:"#f87171",hasRigidbody:!0,hasCollider:!0,colliderRadius:.4,hasMass:!0,mass:2.6,hasFriction:!0,staticFrictionMod:1.2,dynamicFrictionMod:1.2,hasBounce:!1,bounceMod:.05,verticalBounce:!1,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Bouncy Ball":{name:"Super Bouncy Ball",visualShape:"circle",color:"#4ade80",hasRigidbody:!0,hasCollider:!0,colliderRadius:.24,hasMass:!0,mass:.5,hasFriction:!0,staticFrictionMod:.8,dynamicFrictionMod:.8,hasBounce:!0,bounceMod:.88,verticalBounce:!0,hasVerticalPosition:!0,elevation:.6,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!1,rollResistance:.4},"Rolling Ball":{name:"Rolling Ball",visualShape:"circle",color:"#a855f7",hasRigidbody:!0,hasCollider:!0,colliderRadius:.28,hasMass:!0,mass:.6,hasFriction:!0,staticFrictionMod:.5,dynamicFrictionMod:.5,hasBounce:!0,bounceMod:.95,verticalBounce:!0,hasVerticalPosition:!0,elevation:.1,hasVerticalVelocity:!0,hasGravity:!0,hasRollModule:!0,rollResistance:0},"Ghost Box":{name:"Ghost Box (No Collider)",visualShape:"box",color:"#94a3b8",hasRigidbody:!1,hasCollider:!1,colliderRadius:.3,hasMass:!1,mass:0,hasFriction:!1,staticFrictionMod:0,dynamicFrictionMod:0,hasBounce:!1,bounceMod:0,verticalBounce:!1,hasVerticalPosition:!1,elevation:0,hasVerticalVelocity:!1,hasGravity:!1,hasRollModule:!1,rollResistance:0}});y(this,"inspectorEl");y(this,"entitySelectorEl");y(this,"characterSpecificControlsEl",null);y(this,"objectSpecificControlsEl");y(this,"modePlayBtn");y(this,"modeEditBtn");y(this,"scrubbers",new Map);y(this,"expandedSections",new Set);y(this,"collapsedBusSubSections",new Set);this.container=e.container,this.character=e.character,this.arena=e.arena,this.objects=e.objects,this.onSpawnObject=e.onSpawnObject,this.onDeleteObject=e.onDeleteObject,this.onClearObjects=e.onClearObjects,this.getAllCharacters=e.getAllCharacters,this.selectedEntity=this.character,wt.onRename((t,i)=>{for(const o of this.objects)o.consumableModule&&o.consumableModule.tag.toLowerCase()===t.toLowerCase()&&(o.consumableModule.tag=i);const s=this.getAllCharacters?this.getAllCharacters():[this.character];for(const o of s)o.consumeModule&&o.consumeModule.onTagRenamed(t,i);this.renderEntityModules(),this.updateInspector()}),wt.onDelete(t=>{for(const s of this.objects)s.consumableModule&&s.consumableModule.tag.toLowerCase()===t.toLowerCase()&&(s.consumableModule.tag="");const i=this.getAllCharacters?this.getAllCharacters():[this.character];for(const s of i)s.consumeModule&&s.consumeModule.onTagDeleted(t);this.renderEntityModules(),this.updateInspector()}),Se.onPrefabsChanged(()=>{this.renderScenePrefabs(),this.updatePrefabInfoBadge()}),ze.onSpawnersChanged(()=>{this.renderSceneSpawners()}),ue.defaultSaveHandler=(t,i,s,o)=>this.saveIndividualProperty(t,i,s,o),this.renderPanel()}isSectionCollapsed(e){return!this.expandedSections.has(e)}toggleSectionCollapse(e){this.expandedSections.has(e)?this.expandedSections.delete(e):this.expandedSections.add(e)}isBusSubCollapsed(e){return this.collapsedBusSubSections.has(e)}toggleBusSubCollapse(e){this.collapsedBusSubSections.has(e)?this.collapsedBusSubSections.delete(e):this.collapsedBusSubSections.add(e)}renderModuleHeader(e,t,i=""){const o=this.isSectionCollapsed("mod-"+e)?"▶":"▼";return`
       <div class="toggle-row" style="margin-bottom: 2px;">
         <div class="collapsible-section-header" data-collapse-id="mod-${e}" style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
           <span class="collapse-icon" style="font-size: 0.72rem; color: #94a3b8; transition: transform 0.15s ease;">${o}</span>

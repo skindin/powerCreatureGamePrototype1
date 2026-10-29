@@ -37,7 +37,7 @@ export class ControlsInspector {
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
-  private static isParadigmsCollapsed: boolean = false;
+  private static isParadigmsCollapsed: boolean = true;
   private static isTagsSectionCollapsed: boolean = false;
   private static listeningTagId: string | null = null;
   private static listeningRuleId: string | null = null;
@@ -411,9 +411,11 @@ export class ControlsInspector {
       backdrop-filter: blur(6px);
       z-index: 10000;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       padding: 16px;
+      overflow-y: auto;
       box-sizing: border-box;
     `;
     document.body.appendChild(overlay);
@@ -548,6 +550,9 @@ export class ControlsInspector {
     const root = this.getRootContainer();
     if (!root || !this.modalChar || !this.workingSchema) return;
 
+    const existingBody = root.querySelector("#controls-scroll-body") as HTMLElement | null;
+    const prevScrollTop = existingBody ? existingBody.scrollTop : 0;
+
     const char = this.modalChar;
     const schema = this.workingSchema;
     const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
@@ -564,7 +569,7 @@ export class ControlsInspector {
     const dialogHtml = `
       <div id="controls-dialog-container" style="
         background: #0f172a;
-        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 780px; max-width: 95vw; max-height: 92vh;"}
+        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 840px; max-width: 95vw; height: calc(100vh - 40px); max-height: calc(100vh - 40px);"}
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -572,7 +577,7 @@ export class ControlsInspector {
         box-shadow: ${isPopout ? "none" : "0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15)"};
       ">
         <!-- Title Bar / Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.2rem;">🎮</span>
             <div>
@@ -587,7 +592,7 @@ export class ControlsInspector {
         </div>
 
         <!-- Subheader: Linked Prefab Bar & Preset Selector -->
-        <div style="padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
+        <div style="flex-shrink: 0; padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.76rem; color: #c084fc; font-weight: 600;">Linked Archetype:</span>
@@ -619,7 +624,7 @@ export class ControlsInspector {
         </div>
 
         <!-- Device Channel Tabs -->
-        <div style="display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
+        <div style="flex-shrink: 0; display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
           <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
             ⌨️ Keyboard & Mouse
           </button>
@@ -632,19 +637,8 @@ export class ControlsInspector {
         </div>
 
         <!-- Scrollable Modal Body -->
-        <div style="flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
+        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
           
-          <!-- Collapsible Paradigms Area -->
-          <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
-            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
-              <span style="display: flex; align-items: center; gap: 6px;">🎮 Base Locomotion & Aiming Paradigms</span>
-              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
-            </summary>
-            <div id="controls-paradigms-container" style="padding: 12px;">
-              ${this.renderParadigmsHtml(schema)}
-            </div>
-          </details>
-
           <!-- Collapsible Keybind Tags Area (Layer 1) -->
           <details id="details-tags" ${this.isTagsSectionCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
             <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
@@ -653,6 +647,17 @@ export class ControlsInspector {
             </summary>
             <div id="controls-tags-container" style="padding: 12px;">
               ${this.renderTagsSectionHtml(schema)}
+            </div>
+          </details>
+
+          <!-- Collapsible Paradigms Area -->
+          <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
+            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
+              <span style="display: flex; align-items: center; gap: 6px;">🎮 Base Locomotion & Aiming Paradigms</span>
+              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
+            </summary>
+            <div id="controls-paradigms-container" style="padding: 12px;">
+              ${this.renderParadigmsHtml(schema)}
             </div>
           </details>
 
@@ -715,7 +720,7 @@ export class ControlsInspector {
         </div>
 
         <!-- Footer Bar -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08);">
           <div style="font-size: 0.74rem; color: #94a3b8;">
             Schema: <strong style="color: #cbd5e1;">${schema.name}</strong>
           </div>
@@ -730,6 +735,10 @@ export class ControlsInspector {
     `;
 
     root.innerHTML = dialogHtml;
+    if (prevScrollTop > 0) {
+      const newBody = root.querySelector("#controls-scroll-body") as HTMLElement | null;
+      if (newBody) newBody.scrollTop = prevScrollTop;
+    }
     this.attachEventListeners(root);
   }
 
