@@ -11,7 +11,6 @@ import {
   serializeGameObject,
   deserializeGameObject,
   serializePrefab,
-  serializeCharacter,
 } from "../../config/WorldConfig.js";
 import { PlayerDeltaBuilder } from "./PlayerDeltaBuilder.js";
 import type { DevPanel } from "../DevPanel.js";
@@ -332,27 +331,11 @@ export class DevConfigPersistence {
       };
     }
 
-    // 3. If this character is the player character (or prefab_player)
-    const isPlayer = char.prefabId === "prefab_player" || char.playerId === "keyboard" || (panel as any)?.character === char;
-    if (isPlayer) {
-      sections.push("player");
-      delta.player = serializeCharacter(char);
-    }
-
-    // 4. If this character is in the scene objects array
-    const objects = ((panel as any)?.objects as GameObject[]) || [];
-    const inObjects = objects.find((o) => o.id === char.id);
-    if (inObjects) {
-      sections.push("objects");
-      delta.objectsDelta = {
-        upsert: [serializeGameObject(char)],
-      };
-    }
-
-    if (sections.length === 0) {
-      sections.push("player");
-      delta.player = serializeCharacter(char);
-    }
+    // 3. Save strictly ONLY the control schema to player config (never overwrite live gameplay properties like energy, HP, or position)
+    sections.push("player");
+    delta.player = {
+      controlSchema: JSON.parse(JSON.stringify(schema)),
+    } as any;
 
     const resp = await fetch("/api/dev/save-config", {
       method: "POST",
