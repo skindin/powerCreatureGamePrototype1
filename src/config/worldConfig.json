@@ -1,6 +1,6 @@
 {
-  "version": 86,
-  "lastSaved": "2026-10-28T22:39:55.788Z",
+  "version": 94,
+  "lastSaved": "2026-10-29T06:33:12.402Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -407,7 +407,7 @@
       "enabled": true,
       "impactSusceptibility": 1
     },
-    "id": "obj-ry84ro3",
+    "id": "obj-gvty72v",
     "controlSchema": {
       "id": "default",
       "name": "Default (Action Context)",
@@ -427,6 +427,43 @@
         },
         "rules": [
           {
+            "id": "rule-mvt60po7",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "press"
+            },
+            "condition": {
+              "type": "stagedActionIs",
+              "param": "throw"
+            },
+            "action": {
+              "moduleId": "throwPickup",
+              "intent": "releaseThrow"
+            }
+          },
+          {
+            "id": "rule-mvt5txem",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyQ",
+              "mode": "press"
+            },
+            "condition": {
+              "type": "always"
+            },
+            "action": {
+              "moduleId": "throwPickup",
+              "intent": "dropItem"
+            }
+          },
+          {
             "id": "rule-mvsp5nhe",
             "name": "New Action Rule",
             "enabled": true,
@@ -434,14 +471,14 @@
             "trigger": {
               "device": "keyboard",
               "code": "KeyA",
-              "mode": "press"
+              "mode": "hold"
             },
             "condition": {
               "type": "holdingObject"
             },
             "action": {
-              "moduleId": "throwPickup",
-              "intent": "aimThrow"
+              "moduleId": "staging",
+              "intent": "stageMelee"
             }
           },
           {
@@ -1893,6 +1930,43 @@
           },
           "rules": [
             {
+              "id": "rule-mvt60po7",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "press"
+              },
+              "condition": {
+                "type": "stagedActionIs",
+                "param": "throw"
+              },
+              "action": {
+                "moduleId": "throwPickup",
+                "intent": "releaseThrow"
+              }
+            },
+            {
+              "id": "rule-mvt5txem",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyQ",
+                "mode": "press"
+              },
+              "condition": {
+                "type": "always"
+              },
+              "action": {
+                "moduleId": "throwPickup",
+                "intent": "dropItem"
+              }
+            },
+            {
               "id": "rule-mvsp5nhe",
               "name": "New Action Rule",
               "enabled": true,
@@ -1900,14 +1974,14 @@
               "trigger": {
                 "device": "keyboard",
                 "code": "KeyA",
-                "mode": "press"
+                "mode": "hold"
               },
               "condition": {
                 "type": "holdingObject"
               },
               "action": {
-                "moduleId": "throwPickup",
-                "intent": "aimThrow"
+                "moduleId": "staging",
+                "intent": "stageMelee"
               }
             },
             {

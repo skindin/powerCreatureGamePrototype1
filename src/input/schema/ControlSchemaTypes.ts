@@ -19,6 +19,7 @@ export type ConditionType =
   | "always"
   | "holdingObject"
   | "holdingEdible"
+  | "holdingItemWithPrimaryAbility"
   | "emptyHanded"
   | "targetInReach"
   | "stagedActionIs"
@@ -128,6 +129,7 @@ export interface ControlExecutionContext {
   isClimbing: boolean;
   isHoldingItem: boolean;
   heldItemIsEdible: boolean;
+  heldItemHasPrimaryAbility?: boolean;
   targetInReach: GameObject | null;
   stagedAction: string | null;
   

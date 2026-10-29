@@ -9,6 +9,7 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
+import type { ControlExecutionContext } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -534,26 +535,6 @@ export class PlayerManager {
     const map = new Map<string, PlayerInputPacket>();
     const input = this.inputManager;
 
-    // Shared edge-detection accessors for keyboard and mouse
-    const keyStates = {
-      isDown: (code: string) => input.isKeyPressed(code),
-      justPressed: (code: string) => input.isKeyPressed(code) && !this.prevKeysPressed.has(code),
-      justReleased: (code: string) => !input.isKeyPressed(code) && this.prevKeysPressed.has(code),
-    };
-
-    const isMouseBtnDown = (btn: number) => {
-      if (btn === 0) return input.isMouseDown;
-      if (btn === 1) return Boolean(input.isMiddleMouseDown);
-      if (btn === 2) return input.isRightMouseDown;
-      return false;
-    };
-    const mouseStates = {
-      isDown: isMouseBtnDown,
-      justPressed: (btn: number) => isMouseBtnDown(btn) && !this.prevMouseButtons.has(btn),
-      justReleased: (btn: number) => !isMouseBtnDown(btn) && this.prevMouseButtons.has(btn),
-      worldPos: input.actualMousePos,
-    };
-
     // 1. Keyboard & Mouse Input Capture (Fully Schema-Driven via kSchema)
     const kEntry = this.players.get("keyboard");
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
@@ -576,20 +557,41 @@ export class PlayerManager {
           this.arena.wallHeight
         );
         if (target) {
-          grabTargetObjectId = target.id;
           grabTargetObject = target;
+          grabTargetObjectId = target.id;
         }
       }
 
-      const execCtx: any = {
+      // Input state accessors for schema evaluation
+      const keyStates = {
+        isDown: (code: string) => input.isKeyPressed(code),
+        justPressed: (code: string) => input.isKeyPressed(code) && !this.prevKeysPressed.has(code),
+        justReleased: (code: string) => !input.isKeyPressed(code) && this.prevKeysPressed.has(code),
+      };
+
+      const isMouseBtnDown = (btn: number) => {
+        if (btn === 0) return input.isMouseDown;
+        if (btn === 1) return Boolean(input.isMiddleMouseDown);
+        if (btn === 2) return input.isRightMouseDown;
+        return false;
+      };
+      const mouseStates = {
+        isDown: isMouseBtnDown,
+        justPressed: (btn: number) => isMouseBtnDown(btn) && !this.prevMouseButtons.has(btn),
+        justReleased: (btn: number) => !isMouseBtnDown(btn) && this.prevMouseButtons.has(btn),
+        worldPos: input.actualMousePos,
+      };
+
+      const execCtx: ControlExecutionContext = {
         character: kChar,
         arena: this.arena,
         dt: 1 / 60,
-        isGrounded: Boolean(kChar.isRestingOnSurface),
-        isClimbing: Boolean(kChar.isClimbing),
         isHoldingItem: isHolding,
         heldItemIsEdible: isHoldingConsumable,
+        heldItemHasPrimaryAbility: Boolean(kChar.hasPrimaryItemAbility()),
         targetInReach: grabTargetObject,
+        isGrounded: Boolean(kChar.isRestingOnSurface),
+        isClimbing: Boolean(kChar.isClimbing),
         stagedAction: kChar.stagedAction,
         facingAngle: kChar.facingAngle ?? 0,
         mouseAimPos: input.actualMousePos,
@@ -713,8 +715,8 @@ export class PlayerManager {
               }
             } else if (mid === "melee") {
               if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "consume") {
-              if (intent === "eatHeldItem") isUsingItem = true;
+            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
             } else if (mid === "staging") {
               if (rule.trigger.mode === "press" && keyStates.justPressed(rule.trigger.code)) {
                 if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
@@ -730,7 +732,6 @@ export class PlayerManager {
       kChar.isLaserAiming = isLaserAiming;
       kChar.isLaserFiring = isLaserFiring;
       kChar.isMeleeRequested = isMeleeRequested;
-      kChar.isUsingItem = isUsingItem;
 
       // When aiming or holding with directional intent, face aim cursor
       if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
@@ -774,21 +775,25 @@ export class PlayerManager {
         isAiming: isMouseAiming,
         isLockHeld: false,
         lockedAimPos: null,
+        aimLockDelta: 0,
         facingAngle: kChar.facingAngle,
         ...(kLaunchVel ? {
           launchVx: kLaunchVel.vx,
           launchVy: kLaunchVel.vy,
-          launchVz: kLaunchVel.vz
+          launchVz: kLaunchVel.vz,
         } : {}),
         ...(kLaunchPos ? {
           launchStartX: kLaunchPos.x,
           launchStartY: kLaunchPos.y,
-          launchStartZ: kLaunchPos.z
-        } : {})
+          launchStartZ: kLaunchPos.z,
+        } : {}),
       } as any);
+      input.aimLockRawDelta = 0;
+      input.aimLockRawDx = 0;
+      input.aimLockRawDy = 0;
     }
 
-    // 2. Gamepad Input Capture (Fully Schema-Driven via gpSchema)
+    // 2. Gamepads (Fully Schema-Driven via gpSchema)
     for (const entry of this.players.values()) {
       if (entry.isKeyboard || entry.slotIndex === undefined) continue;
       const slot = input.gamepadSlots.get(entry.slotIndex);
@@ -802,8 +807,7 @@ export class PlayerManager {
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
-      let grabTargetObjectId: string | null = null;
-      let grabTargetObject: GameObject | null = null;
+      let grabTargetObjectId = null;
       if (!cChar.heldObject && cChar.pickupModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
         const target = cChar.pickupModule.findTargetObject(
@@ -815,7 +819,6 @@ export class PlayerManager {
         );
         if (target) {
           grabTargetObjectId = target.id;
-          grabTargetObject = target;
         }
       }
 
@@ -823,7 +826,7 @@ export class PlayerManager {
       const slotIdx = entry.slotIndex;
       let prevGpSet = this.prevGamepadButtons.get(slotIdx);
       if (!prevGpSet) {
-        prevGpSet = new Set<number>();
+        prevGpSet = new Set();
         this.prevGamepadButtons.set(slotIdx, prevGpSet);
       }
 
@@ -831,29 +834,43 @@ export class PlayerManager {
         slotIndex: slotIdx,
         isDown: (btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
         justPressed: (btn: number) => Boolean(slot.buttons && slot.buttons[btn] && !prevGpSet.has(btn)),
-        justReleased: (btn: number) => Boolean((!slot.buttons || !slot.buttons[btn]) && prevGpSet.has(btn)),
+        justReleased: (btn: number) => Boolean(slot.buttons && !slot.buttons[btn] && prevGpSet.has(btn)),
         leftStick: slot.movementVector,
-        rightStick: slot.aimStickVector || { x: 0, y: 0 },
+        rightStick: slot.aimStickVector,
       };
 
-      const gpExecCtx: any = {
+      const gpExecCtx: ControlExecutionContext = {
         character: cChar,
         arena: this.arena,
         dt: 1 / 60,
-        isGrounded: Boolean(cChar.isRestingOnSurface),
-        isClimbing: Boolean(cChar.isClimbing),
         isHoldingItem: isCharHolding,
         heldItemIsEdible: isCharHoldingConsumable,
-        targetInReach: grabTargetObject,
+        heldItemHasPrimaryAbility: Boolean(cChar.hasPrimaryItemAbility()),
+        targetInReach: null,
+        isGrounded: Boolean(cChar.isRestingOnSurface),
+        isClimbing: Boolean(cChar.isClimbing),
         stagedAction: cChar.stagedAction,
         facingAngle: cChar.facingAngle ?? 0,
         mouseAimPos: { x: aimX, y: aimY },
         reticleAimPos: { x: aimX, y: aimY },
         isKeyDown: () => false,
         isMouseButtonDown: () => false,
-        isGamepadButtonDown: (_s: number, btn: number) => gpStates.isDown(btn),
-        getGamepadAxis: (_s: number, axis: "LeftStick" | "RightStick") =>
+        isGamepadButtonDown: (_sIdx: number, btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
+        getGamepadAxis: (_sIdx: number, axis: "LeftStick" | "RightStick") =>
           axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
+      };
+
+      const gpDummyKeyStates = {
+        isDown: (_code: string) => false,
+        justPressed: (_code: string) => false,
+        justReleased: (_code: string) => false,
+      };
+
+      const gpDummyMouseStates = {
+        isDown: (_btn: number) => false,
+        justPressed: (_btn: number) => false,
+        justReleased: (_btn: number) => false,
+        worldPos: { x: aimX, y: aimY },
       };
 
       // 1. Stick Mode Evaluation (Dynamic Override)
@@ -905,7 +922,7 @@ export class PlayerManager {
       for (const rule of sortedGpRules) {
         if (rule.enabled === false) continue;
         if (ControlSchemaArbiter.evaluateCondition(rule.condition, gpExecCtx)) {
-          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, gpExecCtx, keyStates, mouseStates, gpStates)) {
+          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
             const mid = rule.action.moduleId;
             const intent = rule.action.intent;
@@ -933,15 +950,8 @@ export class PlayerManager {
               }
             } else if (mid === "melee") {
               if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "consume") {
-              if (intent === "eatHeldItem") isUsingItem = true;
-            } else if (mid === "staging") {
-              const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
-              if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
-                if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
-                else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
-                else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
-              }
+            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
             }
           }
         }
@@ -951,27 +961,34 @@ export class PlayerManager {
       cChar.isLaserAiming = isLaserAiming;
       cChar.isLaserFiring = isLaserFiring;
       cChar.isMeleeRequested = isMeleeRequested;
-      cChar.isUsingItem = isUsingItem;
 
-      // When aiming, face aim target
-      if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
+      // Facing Angle:
+      const moveMag = Math.hypot(gpMoveX, gpMoveY);
+      const isAimFacingActive = isLaserAiming || isLaserFiring || isAimingTrajectory;
+      if (slot.lockedAimPos) {
+        const aimDx = slot.lockedAimPos.x - cChar.position.x;
+        const aimDy = slot.lockedAimPos.y - cChar.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          cChar.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else if (isAimFacingActive && slot.hasMovedAimStick) {
         const aimDx = aimX - cChar.position.x;
         const aimDy = aimY - cChar.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
           cChar.facingAngle = Math.atan2(aimDy, aimDx);
-          if (isAimingTrajectory) {
-            cChar.lastThrowAimAngle = cChar.facingAngle;
-          }
         }
+      } else if (moveMag > 0.05) {
+        cChar.facingAngle = Math.atan2(gpMoveY, gpMoveX);
       }
-
-      const isGamepadAiming = isLaserAiming || isAimingTrajectory || Boolean(slot.isCursorVisible) || Boolean(isCharHolding && !cChar.isPrimaryAbilityNonDirectional());
 
       const activeLaunchVel = isThrow && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
       const activeLaunchPos = isThrow && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
 
+      const isGamepadAiming = isAimingTrajectory || isLaserAiming || Boolean(slot.aimMovedWhileInRange);
+
       map.set(entry.id, {
         playerId: entry.id,
+        playerName: cChar.name,
         moveX: gpMoveX,
         moveY: gpMoveY,
         isSprinting: isSprinting || Boolean(cChar.isSprinting),
@@ -983,13 +1000,14 @@ export class PlayerManager {
         isUsingItem,
         isLaserAiming,
         isLaserFiring,
-        laserAimX: aimX,
-        laserAimY: aimY,
+        laserAimX: slot.aimPos.x,
+        laserAimY: slot.aimPos.y,
+        laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
         isMeleeRequested,
-        meleeAimDirX: (aimX - cChar.position.x) / (Math.hypot(aimX - cChar.position.x, aimY - cChar.position.y) || 1),
-        meleeAimDirY: (aimY - cChar.position.y) / (Math.hypot(aimX - cChar.position.x, aimY - cChar.position.y) || 1),
-        meleeAimX: aimX,
-        meleeAimY: aimY,
+        meleeAimDirX: Math.cos(cChar.facingAngle ?? 0),
+        meleeAimDirY: Math.sin(cChar.facingAngle ?? 0),
+        meleeAimX: cChar.position.x + Math.cos(cChar.facingAngle ?? 0),
+        meleeAimY: cChar.position.y + Math.sin(cChar.facingAngle ?? 0),
         aimX,
         aimY,
         isAiming: isGamepadAiming,
@@ -1015,7 +1033,7 @@ export class PlayerManager {
 
     // Update historical button buffers for edge detection (justPressed / justReleased)
     this.prevKeysPressed = new Set(input.getActiveKeys());
-    this.prevMouseButtons = new Set<number>();
+    this.prevMouseButtons = new Set();
     if (input.isMouseDown) this.prevMouseButtons.add(0);
     if (input.isMiddleMouseDown) this.prevMouseButtons.add(1);
     if (input.isRightMouseDown) this.prevMouseButtons.add(2);
@@ -1032,6 +1050,9 @@ export class PlayerManager {
     return map;
   }
 
+  /**
+   * Applies player input packets to characters deterministically.
+   */
   public applyPlayerInputs(
     inputs: Map<string, PlayerInputPacket>,
     dt: number,
@@ -1301,15 +1322,25 @@ export class PlayerManager {
         char.heldObject.position.y = heldPos.y;
         char.heldObject.position.z = heldPos.z;
 
-        // Primary Item Ability: Continuous consumption when holding consumable item
+        // Primary Item Ability: Actuates held object's primary ability (e.g. consuming for consumables)
         const grabState = this.getGrabSuppressionState(char.id);
         const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
-        if (isUsingItem && char.consumeModule && char.consumeModule.canConsume(char.heldObject)) {
+        if (isUsingItem && char.heldObject && char.hasPrimaryItemAbility()) {
           char.isUsingItem = true;
           const heldItem = char.heldObject;
-          const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
-          char.eatRateWatts = consumeResult.watts;
-          if (consumeResult.isDepleted) {
+          let isDepleted = false;
+
+          if (heldItem.hasPrimaryItemAbility()) {
+            const res = heldItem.usePrimaryItemAbility(dt, char, objects, this.arena);
+            char.eatRateWatts = res.watts ?? 0;
+            isDepleted = Boolean(res.isDepleted);
+          } else if (char.consumeModule && char.consumeModule.canConsume(heldItem)) {
+            const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
+            char.eatRateWatts = consumeResult.watts;
+            isDepleted = Boolean(consumeResult.isDepleted);
+          }
+
+          if (isDepleted) {
             console.log(`🍎 [PlayerManager] Local consumption of ${heldItem?.id} depleted! Removing and unlinking locally`);
             justDepletedConsumable = true;
             if (heldItem?.id) {

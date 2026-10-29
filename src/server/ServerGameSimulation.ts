@@ -239,14 +239,21 @@ export class ServerGameSimulation {
   }
 
   /**
-   * Applies exactly one tick of held-item use (eating) for a character.
+   * Applies exactly one tick of held-item primary ability use (e.g. eating for consumables) for a character.
    */
   private applyItemUse(char: Character, isUsing: boolean, dt: number): void {
-    if (!isUsing || !char.consumeModule || !char.consumeModule.canConsume(char.heldObject)) return;
-    const heldObj = char.heldObject!;
-    const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
-    if (result.isDepleted && !heldObj.consumableModule?.unlimited) {
-      this.triggerObjectDeletion(heldObj.id);
+    if (!isUsing || !char.heldObject) return;
+    const heldObj = char.heldObject;
+    if (heldObj.hasPrimaryItemAbility?.()) {
+      const res = heldObj.usePrimaryItemAbility(dt, char, this.objects, this.arena);
+      if (res.isDepleted && !heldObj.consumableModule?.unlimited) {
+        this.triggerObjectDeletion(heldObj.id);
+      }
+    } else if (char.consumeModule && char.consumeModule.canConsume(heldObj)) {
+      const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
+      if (result.isDepleted && !heldObj.consumableModule?.unlimited) {
+        this.triggerObjectDeletion(heldObj.id);
+      }
     }
   }
 

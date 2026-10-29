@@ -236,6 +236,13 @@ export class Character extends GameObject {
    */
   public hasPrimaryItemAbility(): boolean {
     if (!this.heldObject) return false;
+    if (this.heldObject.hasPrimaryItemAbility?.()) {
+      const type = this.heldObject.getPrimaryItemAbilityType?.();
+      if (type === "consume") {
+        return this.canConsumeHeldObject();
+      }
+      return true;
+    }
     return this.canConsumeHeldObject();
   }
 
@@ -244,6 +251,12 @@ export class Character extends GameObject {
    */
   public isPrimaryAbilityNonDirectional(): boolean {
     if (!this.heldObject) return false;
+    if (this.heldObject.hasPrimaryItemAbility?.()) {
+      const type = this.heldObject.getPrimaryItemAbilityType?.();
+      if (type === "consume") {
+        return this.consumeModule ? !this.consumeModule.involvesDirection : true;
+      }
+    }
     if (this.canConsumeHeldObject()) {
       return this.consumeModule ? !this.consumeModule.involvesDirection : true;
     }
@@ -256,6 +269,27 @@ export class Character extends GameObject {
 
   public get isConsumingItem(): boolean {
     return Boolean(this.canConsumeHeldObject() && this.isUsingItem);
+  }
+
+  /**
+   * Actuates the primary item ability of the currently held object.
+   * For any consumable object, its primary ability is to be consumed.
+   */
+  public useHeldItemPrimaryAbility(dt: number, objects?: GameObject[], arena?: Arena): boolean {
+    if (!this.heldObject) return false;
+    if (this.heldObject.hasPrimaryItemAbility?.()) {
+      const res = this.heldObject.usePrimaryItemAbility(dt, this, objects, arena);
+      if (res.success && res.watts !== undefined) {
+        this.eatRateWatts = res.watts;
+      }
+      return res.success;
+    }
+    if (this.consumeModule && this.canConsumeHeldObject()) {
+      const res = this.consumeModule.consume(dt, this, this.heldObject, objects, arena);
+      this.eatRateWatts = res.watts;
+      return true;
+    }
+    return false;
   }
 
   /**

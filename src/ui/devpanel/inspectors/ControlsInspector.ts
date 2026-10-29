@@ -120,7 +120,8 @@ export class ControlsInspector {
       switch (rule.condition.type) {
         case "always": match = true; break;
         case "holdingObject": match = isHolding; break;
-        case "holdingEdible": match = isHolding && isEdible; break;
+        case "holdingItemWithPrimaryAbility":
+        case "holdingEdible": match = isHolding && (Boolean(char.hasPrimaryItemAbility()) || isEdible); break;
         case "emptyHanded": match = !isHolding; break;
         case "targetInReach": match = Boolean(ctx?.targetInReach || (char.pickupModule && !isHolding)); break;
         case "stagedActionIs": match = char.stagedAction === rule.condition.param; break;
@@ -758,7 +759,7 @@ export class ControlsInspector {
             <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 2px 4px; flex: 1;">
               <option value="always" ${rule.condition.type === "always" ? "selected" : ""}>Always</option>
               <option value="holdingObject" ${rule.condition.type === "holdingObject" ? "selected" : ""}>Holding Item</option>
-              <option value="holdingEdible" ${rule.condition.type === "holdingEdible" ? "selected" : ""}>Holding Edible</option>
+              <option value="holdingItemWithPrimaryAbility" ${rule.condition.type === "holdingItemWithPrimaryAbility" || rule.condition.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
               <option value="emptyHanded" ${rule.condition.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
               <option value="targetInReach" ${rule.condition.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
               <option value="stagedActionIs:laser" ${rule.condition.type === "stagedActionIs" && rule.condition.param === "laser" ? "selected" : ""}>Staged == Laser</option>

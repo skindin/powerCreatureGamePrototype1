@@ -28,6 +28,8 @@ export class ConsumableModule {
   public id = "consumable";
   public name = "Consumable";
   public enabled = true;
+  /** Primary item ability of any consumable object is to be consumed */
+  public readonly primaryAbilityType: string = "consume";
 
   /** Category/type tag of this consumable (e.g. "food", "potion", "battery") */
   public tag: string = "food";

@@ -104,15 +104,15 @@ export const DefaultControlSchema: ControlSchema = {
         action: { moduleId: "throwPickup", intent: "pickupReach" },
       },
 
-      // 5. Consumable: Hold C to eat
+      // 5. Held Item Primary Ability: Hold C to use primary ability of held item (consumables eaten)
       {
-        id: "kbm-eat-held",
-        name: "Eat Held Item (C Key)",
+        id: "kbm-item-primary",
+        name: "Primary Item Ability (C Key)",
         enabled: true,
         priority: 70,
         trigger: { device: "keyboard", code: "KeyC", mode: "hold" },
-        condition: { type: "holdingEdible" },
-        action: { moduleId: "consume", intent: "eatHeldItem" },
+        condition: { type: "holdingItemWithPrimaryAbility" },
+        action: { moduleId: "heldItem", intent: "primaryItemAbility" },
       },
 
       // 6. Locomotion: Jump, Sprint, Drop
@@ -326,13 +326,13 @@ export const HunterControlSchema: ControlSchema = {
         action: { moduleId: "staging", intent: "stageMelee" },
       },
       {
-        id: "hunter-eat-held",
-        name: "Eat Held Item (C)",
+        id: "hunter-item-primary",
+        name: "Primary Item Ability (C)",
         enabled: true,
         priority: 95,
         trigger: { device: "keyboard", code: "KeyC", mode: "hold" },
-        condition: { type: "holdingEdible" },
-        action: { moduleId: "consume", intent: "eatHeldItem" },
+        condition: { type: "holdingItemWithPrimaryAbility" },
+        action: { moduleId: "heldItem", intent: "primaryItemAbility" },
       },
       {
         id: "hunter-jump",

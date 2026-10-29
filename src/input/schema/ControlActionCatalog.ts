@@ -231,21 +231,20 @@ export class ControlActionCatalog {
       ],
     },
 
-    // 6. Consumable
+    // 6. Held Item Abilities
     {
-      id: "consume",
-      label: "Consumable / Eating",
-      icon: "🍎",
-      requiredModule: "consumeModule",
-      isAttached: (char: Character) => Boolean(char.consumeModule && char.consumeModule.enabled),
+      id: "heldItem",
+      label: "Held Item Abilities",
+      icon: "✨",
+      isAttached: (char: Character) => Boolean(char.pickupModule && char.pickupModule.enabled),
       actions: [
         {
-          id: "eatHeldItem",
-          label: "Eat / Drink Held Item",
-          description: "Consumes bites from edible held item to restore HP and energy",
+          id: "primaryItemAbility",
+          label: "Primary Item Ability",
+          description: "Uses the primary ability of the held item (e.g. consuming food or activating tools)",
           recommendedMode: "hold",
           execute: (ctx) => {
-            if (ctx.character.consumeModule && ctx.character.heldObject) {
+            if (ctx.character.heldObject) {
               ctx.character.isUsingItem = true;
             }
           },
@@ -304,6 +303,12 @@ export class ControlActionCatalog {
   ];
 
   public static findAction(moduleId: string, intent: string): ActionDefinition | undefined {
+    // Backward compatibility alias: consume.eatHeldItem -> heldItem.primaryItemAbility
+    if ((moduleId === "consume" || moduleId === "heldItem") && (intent === "eatHeldItem" || intent === "primaryItemAbility")) {
+      const heldCat = this.categories.find((c) => c.id === "heldItem");
+      const action = heldCat?.actions.find((a) => a.id === "primaryItemAbility");
+      if (action) return action;
+    }
     const cat = this.categories.find((c) => c.id === moduleId);
     return cat?.actions.find((a) => a.id === intent);
   }

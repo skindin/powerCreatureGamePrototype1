@@ -38,8 +38,9 @@ export class ControlSchemaArbiter {
       case "holdingObject":
         result = ctx.isHoldingItem;
         break;
+      case "holdingItemWithPrimaryAbility":
       case "holdingEdible":
-        result = ctx.isHoldingItem && ctx.heldItemIsEdible;
+        result = ctx.isHoldingItem && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
         break;
       case "emptyHanded":
         result = !ctx.isHoldingItem;

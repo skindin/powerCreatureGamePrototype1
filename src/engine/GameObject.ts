@@ -13,6 +13,7 @@ import { DamageSolverModule } from "./DamageSolverModule.js";
 import type { ImpactEvent } from "./DamageSolverModule.js";
 import type { HealthModule } from "../character/HealthModule.js";
 import type { CharacterModule } from "../character/CharacterModule.js";
+import type { Character } from "../character/Character.js";
 import type { ConsumableModule } from "./ConsumableModule.js";
 import type { SpawnerModule } from "./SpawnerModule.js";
 
@@ -293,6 +294,53 @@ export class GameObject {
       return this.damageSolverModule.handleImpact(event, this, this.healthModule, worldCollisionDamageScale);
     }
     return 0;
+  }
+
+  /**
+   * Returns whether this object has a primary item ability when held by a creature.
+   * Any consumable object has a primary item ability.
+   */
+  public hasPrimaryItemAbility(): boolean {
+    if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Returns the primary item ability type of this object.
+   * For any consumable object, its primary item ability is 'consume'.
+   */
+  public getPrimaryItemAbilityType(): string | null {
+    if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
+      return "consume";
+    }
+    return null;
+  }
+
+  /**
+   * Actuates the primary item ability of this held object when used by a holder.
+   * For a consumable object, its primary ability is to be consumed by the holder.
+   */
+  public usePrimaryItemAbility(
+    dt: number,
+    holder: Character,
+    objects?: GameObject[],
+    arena?: Arena
+  ): { success: boolean; abilityType: string; isDepleted?: boolean; watts?: number; joules?: number } {
+    if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
+      if (holder.consumeModule && holder.consumeModule.canConsume(this)) {
+        const result = holder.consumeModule.consume(dt, holder, this, objects, arena);
+        return {
+          success: true,
+          abilityType: "consume",
+          isDepleted: result.isDepleted,
+          watts: result.watts,
+          joules: result.joules,
+        };
+      }
+    }
+    return { success: false, abilityType: "none" };
   }
 
   // --- Convenience Getters & Setters ---
