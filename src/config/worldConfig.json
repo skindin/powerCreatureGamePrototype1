@@ -1,6 +1,6 @@
 {
-  "version": 108,
-  "lastSaved": "2026-10-29T10:49:38.317Z",
+  "version": 109,
+  "lastSaved": "2026-10-29T11:04:32.808Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -524,7 +524,7 @@
             "trigger": {
               "device": "mouse",
               "code": "MouseRight",
-              "mode": "press"
+              "mode": "hold"
             },
             "conditions": [
               {
@@ -2309,7 +2309,7 @@
               "trigger": {
                 "device": "mouse",
                 "code": "MouseRight",
-                "mode": "press"
+                "mode": "hold"
               },
               "conditions": [
                 {

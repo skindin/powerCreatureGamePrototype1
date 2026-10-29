@@ -546,11 +546,11 @@ export class PlayerManager {
       const isHolding = kChar.heldObject !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
 
-      // Target discovery in reach for pickup
+      // Target discovery in reach for pickup or swap
       let grabTargetObjectId: string | null = null;
       let grabTargetObject: GameObject | null = null;
-      if (!isHolding && kChar.pickupModule) {
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects];
+      if (kChar.pickupModule) {
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects].filter((c) => c !== kChar.heldObject);
         const target = kChar.pickupModule.findTargetObject(
           kChar,
           input.actualMousePos.x,
@@ -679,6 +679,7 @@ export class PlayerManager {
       let isJumpHeld = false;
       let isGrabHeld = false;
       let isDrop = false;
+      let isSwap = false;
       let isThrow = false;
       let isUsingItem = false;
       let isLaserAiming = false;
@@ -713,9 +714,11 @@ export class PlayerManager {
                 else if (intent === "releaseThrow") isThrow = true;
                 else if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
               } else if (mid === "pickup") {
                 if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
               } else if (mid === "laser") {
                 if (intent === "aimLaser") isLaserAiming = true;
                 else if (intent === "fireLaser") {
@@ -803,9 +806,10 @@ export class PlayerManager {
         isSprinting: isSprinting || Boolean(kChar.isSprinting),
         isJumpHeld,
         isGrabHeld,
-        grabTargetObjectId: isGrabHeld ? grabTargetObjectId : null,
+        grabTargetObjectId: (isGrabHeld || isSwap) ? grabTargetObjectId : null,
         isDrop,
         isThrow,
+        isSwap,
         isUsingItem,
         isLaserAiming,
         isLaserFiring,
@@ -853,9 +857,10 @@ export class PlayerManager {
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
-      let grabTargetObjectId = null;
-      if (!cChar.heldObject && cChar.pickupModule) {
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects];
+      let grabTargetObjectId: string | null = null;
+      let grabTargetObject: GameObject | null = null;
+      if (cChar.pickupModule) {
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects].filter((c) => c !== cChar.heldObject);
         const target = cChar.pickupModule.findTargetObject(
           cChar,
           aimX,
@@ -864,6 +869,7 @@ export class PlayerManager {
           this.arena.wallHeight
         );
         if (target) {
+          grabTargetObject = target;
           grabTargetObjectId = target.id;
         }
       }
@@ -892,7 +898,7 @@ export class PlayerManager {
         isHoldingItem: isCharHolding,
         heldItemIsEdible: isCharHoldingConsumable,
         heldItemHasPrimaryAbility: Boolean(cChar.hasPrimaryItemAbility()),
-        targetInReach: null,
+        targetInReach: grabTargetObject,
         isGrounded: Boolean(cChar.isRestingOnSurface),
         isClimbing: Boolean(cChar.isClimbing),
         stagedAction: cChar.stagedAction,
@@ -957,6 +963,7 @@ export class PlayerManager {
       let isSprinting = false;
       let isGrabHeld = false;
       let isDrop = false;
+      let isSwap = false;
       let isThrow = false;
       let isUsingItem = false;
       let isLaserAiming = false;
@@ -992,9 +999,11 @@ export class PlayerManager {
                 else if (intent === "releaseThrow") isThrow = true;
                 else if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
               } else if (mid === "pickup") {
                 if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
               } else if (mid === "laser") {
                 if (intent === "aimLaser") isLaserAiming = true;
                 else if (intent === "fireLaser") {
@@ -1087,9 +1096,10 @@ export class PlayerManager {
         isSprinting: isSprinting || Boolean(cChar.isSprinting),
         isJumpHeld,
         isGrabHeld,
-        grabTargetObjectId: isGrabHeld ? grabTargetObjectId : null,
+        grabTargetObjectId: (isGrabHeld || isSwap) ? grabTargetObjectId : null,
         isDrop,
         isThrow,
+        isSwap,
         isUsingItem,
         isLaserAiming,
         isLaserFiring,
@@ -1478,7 +1488,7 @@ export class PlayerManager {
       const isKeyboardPlayer = !entry || entry.isKeyboard;
 
       // Reset grab suppression as soon as the grab action is not held
-      if (!pkt.isGrabHeld) {
+      if (!pkt.isGrabHeld && !(pkt as any).isSwap) {
         grabState.grabSuppressed = false;
         grabState.mouseGrabSuppressed = false;
         grabState.keyEGrabSuppressed = false;
@@ -1494,6 +1504,111 @@ export class PlayerManager {
           ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
           : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
       );
+
+      // Dedicated Swap Action: drops current item, discludes it, and grabs selected item
+      if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && char.pickupModule) {
+        const droppedObj = char.heldObject;
+        if (droppedObj) {
+          char.pickupModule.drop(char);
+          input.arcModulationCursor = null;
+          input.arcModulationDeltaY = 0;
+          if (entry && entry.slotIndex !== undefined) {
+            const slot = input.gamepadSlots.get(entry.slotIndex);
+            if (slot) {
+              slot.isLockHeld = false;
+              slot.lockedAimPos = null;
+              slot.arcModulationCursor = null;
+              slot.arcModulationDeltaY = 0;
+              slot.lastThrowAimAngle = undefined;
+            }
+          }
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          ClientActionDispatcher.dispatchDrop(
+            this.onReliableActionDispatched,
+            isReplay,
+            actPlayerId,
+            pkt.tick ?? 0,
+            droppedObj.id
+          );
+        }
+
+        const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter((e) => e !== droppedObj);
+        let targetObj: GameObject | null = null;
+        if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== droppedObj?.id) {
+          targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId) || null;
+        }
+        if (!targetObj && aimTarget) {
+          targetObj = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
+        }
+
+        if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
+          grabState.grabSuppressed = true;
+          if (isKeyboardPlayer) {
+            grabState.mouseGrabSuppressed = true;
+            grabState.keyEGrabSuppressed = true;
+          } else {
+            grabState.rtGrabSuppressed = true;
+            grabState.bGrabSuppressed = true;
+          }
+          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+          if (this.isOnlineMode) {
+            this.onPriorityGrabRequested?.(playerId, char.id, targetObj.id);
+            ClientActionDispatcher.dispatchPickup(
+              this.onReliableActionDispatched,
+              isReplay,
+              actPlayerId,
+              pkt.tick ?? 0,
+              targetObj.id
+            );
+          } else {
+            let itemToHold: GameObject = targetObj;
+            if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
+              const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
+              if (clone) itemToHold = clone;
+            }
+            const pickedUp = char.pickupModule.pickup(char, itemToHold);
+            if (!pickedUp && itemToHold !== targetObj) {
+              const idx = objects.indexOf(itemToHold);
+              if (idx !== -1) objects.splice(idx, 1);
+            } else if (pickedUp) {
+              this.lastHeldObjectIds.set(char.id, itemToHold.id);
+              char.isUsingItem = false;
+              char.eatRateWatts = 0;
+              ClientActionDispatcher.dispatchPickup(
+                this.onReliableActionDispatched,
+                isReplay,
+                actPlayerId,
+                pkt.tick ?? 0,
+                itemToHold.id
+              );
+            }
+          }
+        } else if (aimTarget) {
+          const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+          const held = char.heldObject as GameObject | null;
+          if (pickedUp && held) {
+            grabState.grabSuppressed = true;
+            if (isKeyboardPlayer) {
+              grabState.mouseGrabSuppressed = true;
+              grabState.keyEGrabSuppressed = true;
+            } else {
+              grabState.rtGrabSuppressed = true;
+              grabState.bGrabSuppressed = true;
+            }
+            this.lastHeldObjectIds.set(char.id, held.id);
+            char.isUsingItem = false;
+            char.eatRateWatts = 0;
+            const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+            ClientActionDispatcher.dispatchPickup(
+              this.onReliableActionDispatched,
+              isReplay,
+              actPlayerId,
+              pkt.tick ?? 0,
+              held.id
+            );
+          }
+        }
+      }
       const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;
       if (!isEditMode && isSeeking && !char.heldObject && char.pickupModule) {
         if (pkt.grabTargetObjectId !== undefined) {

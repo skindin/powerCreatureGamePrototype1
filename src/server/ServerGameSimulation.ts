@@ -403,6 +403,40 @@ export class ServerGameSimulation {
           }
         }
 
+        // Process Swap Item (drop held object, then arbitrate grab excluding dropped object)
+        if ((pkt as any).isSwap && char.pickupModule) {
+          const dropped = char.heldObject;
+          if (dropped) {
+            char.pickupModule.drop(char);
+          }
+          const others = [...this.allCharacters.filter((c) => c !== char), ...this.objects].filter((o) => o !== dropped);
+          let target: GameObject | null = null;
+          if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== dropped?.id) {
+            const explicitTarget = others.find((o) => o.id === pkt.grabTargetObjectId);
+            if (explicitTarget && (!explicitTarget.isHeld || explicitTarget.heldBy === char)) {
+              const maxReach = char.pickupModule.pickupReach * 1.35;
+              const charZ = Math.max(char.position.z, char.supportingSurfaceHeight ?? 0);
+              const targetZ = Math.max(explicitTarget.position.z, explicitTarget.supportingSurfaceHeight ?? 0);
+              const dist3D = Math.hypot(
+                explicitTarget.position.x - char.position.x,
+                explicitTarget.position.y - char.position.y,
+                targetZ - charZ
+              );
+              if (dist3D <= maxReach) {
+                target = explicitTarget;
+              }
+            }
+          } else {
+            const grabAimX = aimTarget ? aimTarget.x : char.position.x;
+            const grabAimY = aimTarget ? aimTarget.y : char.position.y;
+            target = char.pickupModule.findTargetObject(char, grabAimX, grabAimY, others, this.arena.wallHeight);
+          }
+
+          if (target && (!target.isHeld || target.heldBy === char)) {
+            grabRequests.push({ char, target, pkt });
+          }
+        }
+
         // Laser inputs
         if (char.laserModule) {
           char.isLaserAiming = Boolean((pkt as any).isLaserAiming);

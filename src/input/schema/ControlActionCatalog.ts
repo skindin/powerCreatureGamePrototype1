@@ -159,6 +159,29 @@ export class ControlActionCatalog {
             }
           },
         },
+        {
+          id: "swap",
+          label: "Swap Item",
+          description: "Drops currently held item and picks up the selected item (excluding the dropped item)",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            const pickupMod = ctx.character.pickupModule;
+            if (!pickupMod) return;
+            const char = ctx.character;
+            const dropped = char.heldObject;
+            if (dropped) {
+              pickupMod.drop(char);
+            }
+            const target = ctx.targetInReach && ctx.targetInReach !== dropped ? ctx.targetInReach : null;
+            if (target) {
+              pickupMod.pickup(char, target);
+            } else if ((ctx as any).candidateEntities && ctx.arena) {
+              const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+              const candidates = ((ctx as any).candidateEntities as any[]).filter((e) => e !== dropped && e.colliderModule);
+              pickupMod.pickupAndSwap(char, candidates, ctx.arena.wallHeight, aim?.x, aim?.y);
+            }
+          },
+        },
       ],
     },
 
