@@ -1550,6 +1550,10 @@ export class ControlsInspector {
         const mod = (btn as HTMLElement).dataset.mod;
         const intent = (btn as HTMLElement).dataset.intent;
         if (mod && intent) {
+          const actDef = ControlActionCatalog.findAction(mod, intent);
+          if (actDef?.recommendedMode && rule.trigger.mode === "press") {
+            rule.trigger.mode = actDef.recommendedMode;
+          }
           const actions = ControlSchemaArbiter.getRuleActions(rule);
           if (actions[actionIdx]) {
             actions[actionIdx].moduleId = mod;

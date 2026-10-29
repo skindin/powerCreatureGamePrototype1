@@ -683,6 +683,7 @@ export class PlayerManager {
       let isLaserFiring = false;
       let isMeleeRequested = false;
       let isAimingTrajectory = false;
+      let activeHoldStage: string | null = null;
 
       const sortedRules = [...kSchema.keyboardMouse.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedRules) {
@@ -720,16 +721,48 @@ export class PlayerManager {
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
-                if (rule.trigger.mode === "press" && keyStates.justPressed(rule.trigger.code)) {
-                  if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
-                  else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
-                  else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
-                  else if (intent === "clearStage") kChar.stagedAction = null;
+                const isHold = rule.trigger.mode === "hold" || intent.startsWith("holdStage");
+                if (isHold) {
+                  const targetStage =
+                    intent === "holdStageLaser" || intent === "stageLaser"
+                      ? "laser"
+                      : intent === "holdStageThrow" || intent === "stageThrow"
+                      ? "throw"
+                      : intent === "holdStageMelee" || intent === "stageMelee"
+                      ? "melee"
+                      : null;
+                  if (targetStage) {
+                    activeHoldStage = targetStage;
+                    kChar.stagedAction = targetStage;
+                  }
+                } else if (rule.trigger.mode === "press") {
+                  const isJustTriggered =
+                    rule.trigger.device === "mouse"
+                      ? mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : rule.trigger.code === "MouseMiddle" ? 1 : 2)
+                      : keyStates.justPressed(rule.trigger.code);
+                  if (isJustTriggered) {
+                    if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
+                    else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
+                    else if (intent === "clearStage") kChar.stagedAction = null;
+                  }
+                } else if (rule.trigger.mode === "release" && intent === "clearStage") {
+                  kChar.stagedAction = null;
                 }
               }
             }
           }
         }
+      }
+
+      // Handle hold staging release cleanup
+      if (activeHoldStage) {
+        kChar.activeHoldStage = activeHoldStage;
+      } else if (kChar.activeHoldStage) {
+        if (kChar.stagedAction === kChar.activeHoldStage) {
+          kChar.stagedAction = null;
+        }
+        kChar.activeHoldStage = null;
       }
 
       kChar.isAimingTrajectory = isAimingTrajectory;
@@ -921,6 +954,7 @@ export class PlayerManager {
       let isLaserFiring = false;
       let isMeleeRequested = false;
       let isAimingTrajectory = false;
+      let activeGpHoldStage: string | null = null;
 
       const sortedGpRules = [...gpSchema.gamepad.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedGpRules) {
@@ -958,10 +992,46 @@ export class PlayerManager {
                 if (intent === "punch") isMeleeRequested = true;
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
+              } else if (mid === "staging") {
+                const isHold = rule.trigger.mode === "hold" || intent.startsWith("holdStage");
+                if (isHold) {
+                  const targetStage =
+                    intent === "holdStageLaser" || intent === "stageLaser"
+                      ? "laser"
+                      : intent === "holdStageThrow" || intent === "stageThrow"
+                      ? "throw"
+                      : intent === "holdStageMelee" || intent === "stageMelee"
+                      ? "melee"
+                      : null;
+                  if (targetStage) {
+                    activeGpHoldStage = targetStage;
+                    cChar.stagedAction = targetStage;
+                  }
+                } else if (rule.trigger.mode === "press") {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
+                  if (gpStates.justPressed(btnCode)) {
+                    if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
+                    else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
+                    else if (intent === "clearStage") cChar.stagedAction = null;
+                  }
+                } else if (rule.trigger.mode === "release" && intent === "clearStage") {
+                  cChar.stagedAction = null;
+                }
               }
             }
           }
         }
+      }
+
+      // Handle hold staging release cleanup
+      if (activeGpHoldStage) {
+        cChar.activeHoldStage = activeGpHoldStage;
+      } else if (cChar.activeHoldStage) {
+        if (cChar.stagedAction === cChar.activeHoldStage) {
+          cChar.stagedAction = null;
+        }
+        cChar.activeHoldStage = null;
       }
 
       cChar.isAimingTrajectory = isAimingTrajectory;

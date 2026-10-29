@@ -5903,6 +5903,11 @@ class Character extends GameObject {
      */
     __publicField(this, "stagedAction", null);
     /**
+     * Staged action currently maintained by an active "hold" trigger.
+     * Cleared automatically when the hold trigger is released, if stagedAction still matches this value.
+     */
+    __publicField(this, "activeHoldStage", null);
+    /**
      * Character-specific control schema loaded from its archetype or Prefab.
      */
     __publicField(this, "controlSchema");

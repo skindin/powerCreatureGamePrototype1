@@ -204,6 +204,12 @@ export class Character extends GameObject {
   public stagedAction: string | null = null;
 
   /**
+   * Staged action currently maintained by an active "hold" trigger.
+   * Cleared automatically when the hold trigger is released, if stagedAction still matches this value.
+   */
+  public activeHoldStage: string | null = null;
+
+  /**
    * Character-specific control schema loaded from its archetype or Prefab.
    */
   public controlSchema?: ControlSchema;

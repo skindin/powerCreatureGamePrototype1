@@ -263,30 +263,84 @@ export class ControlActionCatalog {
       isAttached: () => true, // Always available
       actions: [
         {
-          id: "stageLaser",
-          label: "Stage Mode: Laser",
-          description: "Sets staged primary action to Laser",
-          recommendedMode: "press",
+          id: "holdStageThrow",
+          label: "Hold Stage: Throw / Grab",
+          description: "Stages Throw while held, and clears it when released if still staged to Throw",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "throw";
+            ctx.character.activeHoldStage = "throw";
+          },
+          stop: (ctx) => {
+            if (ctx.character.stagedAction === "throw") {
+              ctx.character.stagedAction = null;
+            }
+            if (ctx.character.activeHoldStage === "throw") {
+              ctx.character.activeHoldStage = null;
+            }
+          },
+        },
+        {
+          id: "holdStageLaser",
+          label: "Hold Stage: Laser",
+          description: "Stages Laser while held, and clears it when released if still staged to Laser",
+          recommendedMode: "hold",
           execute: (ctx) => {
             ctx.character.stagedAction = "laser";
+            ctx.character.activeHoldStage = "laser";
+          },
+          stop: (ctx) => {
+            if (ctx.character.stagedAction === "laser") {
+              ctx.character.stagedAction = null;
+            }
+            if (ctx.character.activeHoldStage === "laser") {
+              ctx.character.activeHoldStage = null;
+            }
+          },
+        },
+        {
+          id: "holdStageMelee",
+          label: "Hold Stage: Melee",
+          description: "Stages Melee while held, and clears it when released if still staged to Melee",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "melee";
+            ctx.character.activeHoldStage = "melee";
+          },
+          stop: (ctx) => {
+            if (ctx.character.stagedAction === "melee") {
+              ctx.character.stagedAction = null;
+            }
+            if (ctx.character.activeHoldStage === "melee") {
+              ctx.character.activeHoldStage = null;
+            }
+          },
+        },
+        {
+          id: "stageLaser",
+          label: "Stage Mode: Laser (Toggle)",
+          description: "Toggles staged primary action to Laser",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = ctx.character.stagedAction === "laser" ? null : "laser";
           },
         },
         {
           id: "stageThrow",
-          label: "Stage Mode: Throw / Grab",
-          description: "Sets staged primary action to Throw or Grab",
+          label: "Stage Mode: Throw / Grab (Toggle)",
+          description: "Toggles staged primary action to Throw or Grab",
           recommendedMode: "press",
           execute: (ctx) => {
-            ctx.character.stagedAction = "throw";
+            ctx.character.stagedAction = ctx.character.stagedAction === "throw" ? null : "throw";
           },
         },
         {
           id: "stageMelee",
-          label: "Stage Mode: Melee",
-          description: "Sets staged primary action to Melee Punch",
+          label: "Stage Mode: Melee (Toggle)",
+          description: "Toggles staged primary action to Melee Punch",
           recommendedMode: "press",
           execute: (ctx) => {
-            ctx.character.stagedAction = "melee";
+            ctx.character.stagedAction = ctx.character.stagedAction === "melee" ? null : "melee";
           },
         },
         {
@@ -296,6 +350,7 @@ export class ControlActionCatalog {
           recommendedMode: "press",
           execute: (ctx) => {
             ctx.character.stagedAction = null;
+            ctx.character.activeHoldStage = null;
           },
         },
       ],
