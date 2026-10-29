@@ -687,41 +687,45 @@ export class PlayerManager {
       const sortedRules = [...kSchema.keyboardMouse.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
-        if (ControlSchemaArbiter.evaluateCondition(rule.condition, execCtx)) {
+        if (ControlSchemaArbiter.evaluateAllConditions(rule, execCtx)) {
           if (ControlSchemaArbiter.isTriggerActive(rule.trigger, execCtx, keyStates, mouseStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
-            const mid = rule.action.moduleId;
-            const intent = rule.action.intent;
+            const actions = ControlSchemaArbiter.getRuleActions(rule);
+            for (const act of actions) {
+              const mid = act.moduleId;
+              const intent = act.intent;
 
-            if (mid === "locomotion") {
-              if (intent === "jump") isJumpHeld = true;
-              else if (intent === "holdSprint") isSprinting = true;
-              else if (intent === "toggleSprint") {
-                if (rule.trigger.mode === "press" && (keyStates.justPressed(rule.trigger.code) || mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : 2))) {
-                  kChar.setSprinting(!kChar.isSprinting);
+              if (mid === "locomotion") {
+                if (intent === "jump") isJumpHeld = true;
+                else if (intent === "holdSprint") isSprinting = true;
+                else if (intent === "toggleSprint") {
+                  if (rule.trigger.mode === "press" && (keyStates.justPressed(rule.trigger.code) || mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : 2))) {
+                    kChar.setSprinting(!kChar.isSprinting);
+                  }
+                  isSprinting = Boolean(kChar.isSprinting);
                 }
-                isSprinting = Boolean(kChar.isSprinting);
-              }
-            } else if (mid === "throwPickup") {
-              if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "aimThrow") isAimingTrajectory = true;
-              else if (intent === "releaseThrow") isThrow = true;
-              else if (intent === "dropItem") isDrop = true;
-            } else if (mid === "laser") {
-              if (intent === "aimLaser") isLaserAiming = true;
-              else if (intent === "fireLaser") {
-                isLaserFiring = true;
-                isLaserAiming = true;
-              }
-            } else if (mid === "melee") {
-              if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
-            } else if (mid === "staging") {
-              if (rule.trigger.mode === "press" && keyStates.justPressed(rule.trigger.code)) {
-                if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
-                else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
-                else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
+              } else if (mid === "throwPickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "aimThrow") isAimingTrajectory = true;
+                else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "dropItem") isDrop = true;
+              } else if (mid === "laser") {
+                if (intent === "aimLaser") isLaserAiming = true;
+                else if (intent === "fireLaser") {
+                  isLaserFiring = true;
+                  isLaserAiming = true;
+                }
+              } else if (mid === "melee") {
+                if (intent === "punch") isMeleeRequested = true;
+              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
+              } else if (mid === "staging") {
+                if (rule.trigger.mode === "press" && keyStates.justPressed(rule.trigger.code)) {
+                  if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
+                  else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+                  else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
+                  else if (intent === "clearStage") kChar.stagedAction = null;
+                }
               }
             }
           }
@@ -921,37 +925,40 @@ export class PlayerManager {
       const sortedGpRules = [...gpSchema.gamepad.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedGpRules) {
         if (rule.enabled === false) continue;
-        if (ControlSchemaArbiter.evaluateCondition(rule.condition, gpExecCtx)) {
+        if (ControlSchemaArbiter.evaluateAllConditions(rule, gpExecCtx)) {
           if (ControlSchemaArbiter.isTriggerActive(rule.trigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
-            const mid = rule.action.moduleId;
-            const intent = rule.action.intent;
+            const actions = ControlSchemaArbiter.getRuleActions(rule);
+            for (const act of actions) {
+              const mid = act.moduleId;
+              const intent = act.intent;
 
-            if (mid === "locomotion") {
-              if (intent === "jump") isJumpHeld = true;
-              else if (intent === "holdSprint") isSprinting = true;
-              else if (intent === "toggleSprint") {
-                const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
-                if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
-                  cChar.setSprinting(!cChar.isSprinting);
+              if (mid === "locomotion") {
+                if (intent === "jump") isJumpHeld = true;
+                else if (intent === "holdSprint") isSprinting = true;
+                else if (intent === "toggleSprint") {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
+                  if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
+                    cChar.setSprinting(!cChar.isSprinting);
+                  }
+                  isSprinting = Boolean(cChar.isSprinting);
                 }
-                isSprinting = Boolean(cChar.isSprinting);
+              } else if (mid === "throwPickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "aimThrow") isAimingTrajectory = true;
+                else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "dropItem") isDrop = true;
+              } else if (mid === "laser") {
+                if (intent === "aimLaser") isLaserAiming = true;
+                else if (intent === "fireLaser") {
+                  isLaserFiring = true;
+                  isLaserAiming = true;
+                }
+              } else if (mid === "melee") {
+                if (intent === "punch") isMeleeRequested = true;
+              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               }
-            } else if (mid === "throwPickup") {
-              if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "aimThrow") isAimingTrajectory = true;
-              else if (intent === "releaseThrow") isThrow = true;
-              else if (intent === "dropItem") isDrop = true;
-            } else if (mid === "laser") {
-              if (intent === "aimLaser") isLaserAiming = true;
-              else if (intent === "fireLaser") {
-                isLaserFiring = true;
-                isLaserAiming = true;
-              }
-            } else if (mid === "melee") {
-              if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
             }
           }
         }

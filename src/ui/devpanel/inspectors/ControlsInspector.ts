@@ -8,12 +8,15 @@ import type {
   AimingParadigm,
   ConditionType,
   TriggerMode,
+  ConditionGate,
+  ActionInvocation,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
+import { ControlSchemaArbiter } from "../../../input/schema/ControlSchemaArbiter.js";
 import { prefabManager } from "../../../engine/prefab/PrefabManager.js";
 import { DevConfigPersistence } from "../DevConfigPersistence.js";
 
@@ -116,18 +119,44 @@ export class ControlsInspector {
     const isEdible = Boolean(char.canConsumeHeldObject());
 
     for (const rule of rules) {
-      let match = false;
-      switch (rule.condition.type) {
-        case "always": match = true; break;
-        case "holdingObject": match = isHolding; break;
-        case "holdingItemWithPrimaryAbility":
-        case "holdingEdible": match = isHolding && (Boolean(char.hasPrimaryItemAbility()) || isEdible); break;
-        case "emptyHanded": match = !isHolding; break;
-        case "targetInReach": match = Boolean(ctx?.targetInReach || (char.pickupModule && !isHolding)); break;
-        case "stagedActionIs": match = char.stagedAction === rule.condition.param; break;
-        case "grounded": match = Boolean(char.isRestingOnSurface); break;
-        case "climbing": match = Boolean(char.isClimbing); break;
-        default: match = true;
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      let match = true;
+      for (const cond of conds) {
+        let condMatch = false;
+        switch (cond.type) {
+          case "always": condMatch = true; break;
+          case "holdingObject": condMatch = isHolding; break;
+          case "holdingItemWithPrimaryAbility":
+          case "holdingEdible": condMatch = isHolding && (Boolean(char.hasPrimaryItemAbility()) || isEdible); break;
+          case "emptyHanded": condMatch = !isHolding; break;
+          case "targetInReach": condMatch = Boolean(ctx?.targetInReach || (char.pickupModule && !isHolding)); break;
+          case "stagedActionIs": condMatch = char.stagedAction === cond.param; break;
+          case "grounded": condMatch = Boolean(char.isRestingOnSurface); break;
+          case "climbing": condMatch = Boolean(char.isClimbing); break;
+          case "isAiming": condMatch = Boolean(char.isLaserAiming || char.isAimingTrajectory); break;
+          case "isAimingTrajectory": condMatch = Boolean(char.isAimingTrajectory); break;
+          case "isLaserAiming": condMatch = Boolean(char.isLaserAiming); break;
+          case "buttonHeld":
+            if (ctx && cond.param) {
+              if (cond.param.startsWith("Mouse")) {
+                const btnIdx = cond.param === "MouseLeft" ? 0 : cond.param === "MouseMiddle" ? 1 : 2;
+                condMatch = ctx.isMouseButtonDown ? ctx.isMouseButtonDown(btnIdx) : false;
+              } else if (cond.param.startsWith("Gamepad")) {
+                const gpIdx = ControlSchemaArbiter.parseGamepadButtonCode(cond.param);
+                condMatch = ctx.isGamepadButtonDown ? ctx.isGamepadButtonDown(gpIdx) : false;
+              } else {
+                condMatch = ctx.isKeyDown ? ctx.isKeyDown(cond.param) : false;
+              }
+            } else {
+              condMatch = false;
+            }
+            break;
+          default: condMatch = true;
+        }
+        if (!condMatch) {
+          match = false;
+          break;
+        }
       }
 
       // Update in popout window
@@ -730,21 +759,18 @@ export class ControlsInspector {
       .map((rule) => {
         const isListening = this.listeningRuleId === rule.id;
         const triggerLabel = this.formatTriggerLabel(rule);
-        const actionDef = ControlActionCatalog.findAction(rule.action.moduleId, rule.action.intent);
-        const actionLabel = actionDef ? actionDef.label : `${rule.action.moduleId}:${rule.action.intent}`;
-
-        // Module presence verification
-        const cat = ControlActionCatalog.categories.find((c) => c.id === rule.action.moduleId);
-        const isModuleMissing = cat && !cat.isAttached(char);
+        const conds = ControlSchemaArbiter.getRuleConditions(rule);
+        const actions = ControlSchemaArbiter.getRuleActions(rule);
 
         return `
-        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 4px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; position: relative; transition: all 0.15s ease;">
+        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 8px 10px; position: relative; transition: all 0.15s ease;">
+          <!-- Rule Header: Pip, Trigger, Mode, Delete -->
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <!-- Status Pip -->
             <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
 
             <!-- Trigger Button (Press to Bind) -->
-            <button class="btn-bind-trigger btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; min-width: 110px; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}">
+            <button class="btn-bind-trigger btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; min-width: 120px; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}">
               ${isListening ? "🔴 Listening..." : triggerLabel}
             </button>
 
@@ -755,19 +781,7 @@ export class ControlsInspector {
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
             </select>
 
-            <!-- Condition Gate Selector -->
-            <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 2px 4px; flex: 1;">
-              <option value="always" ${rule.condition.type === "always" ? "selected" : ""}>Always</option>
-              <option value="holdingObject" ${rule.condition.type === "holdingObject" ? "selected" : ""}>Holding Item</option>
-              <option value="holdingItemWithPrimaryAbility" ${rule.condition.type === "holdingItemWithPrimaryAbility" || rule.condition.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
-              <option value="emptyHanded" ${rule.condition.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
-              <option value="targetInReach" ${rule.condition.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-              <option value="stagedActionIs:laser" ${rule.condition.type === "stagedActionIs" && rule.condition.param === "laser" ? "selected" : ""}>Staged == Laser</option>
-              <option value="stagedActionIs:throw" ${rule.condition.type === "stagedActionIs" && rule.condition.param === "throw" ? "selected" : ""}>Staged == Throw</option>
-              <option value="stagedActionIs:melee" ${rule.condition.type === "stagedActionIs" && rule.condition.param === "melee" ? "selected" : ""}>Staged == Melee</option>
-              <option value="grounded" ${rule.condition.type === "grounded" ? "selected" : ""}>On Ground</option>
-              <option value="climbing" ${rule.condition.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
-            </select>
+            <div style="flex: 1;"></div>
 
             <!-- Delete Rule Button -->
             <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="padding: 2px 6px; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.72rem;" title="Remove Rule">
@@ -775,24 +789,71 @@ export class ControlsInspector {
             </button>
           </div>
 
-          <!-- Target Action Picker Button -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px; padding-left: 14px;">
-            <span style="font-size: 0.70rem; color: #94a3b8;">Action Function:</span>
-            <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 2px 8px; color: #facc15; border-color: rgba(250, 204, 21, 0.3); text-align: right;">
-              ${actionLabel} ▼
-            </button>
+          <!-- Multi-Conditions Section -->
+          <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 4px; padding: 4px 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.66rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.04em;">IF (ALL CONDITIONS MATCH):</span>
+              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.64rem; padding: 1px 6px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Add condition gate">+ Add Condition</button>
+            </div>
+            ${conds
+              .map(
+                (cond: ConditionGate, cIdx: number) => `
+              <div style="display: flex; align-items: center; gap: 4px; padding-left: 2px;">
+                <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${cIdx + 1}.</span>
+                <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 4px; flex: 1;">
+                  <option value="always" ${cond.type === "always" ? "selected" : ""}>Always</option>
+                  <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Item</option>
+                  <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                  <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                  <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                  <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
+                  <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
+                  <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
+                  <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                  <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                  <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                  <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                  <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                  <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Button / Key Held...</option>
+                </select>
+                ${
+                  cond.type === "buttonHeld"
+                    ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight, KeyF, GamepadLeftTrigger" style="font-size: 0.68rem; padding: 2px 4px; width: 140px; color: #38bdf8;" title="Button code to check if currently held down" />`
+                    : ""
+                }
+                <button class="btn-delete-condition btn-secondary-action" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="padding: 1px 5px; color: #f87171; font-size: 0.65rem;" title="Remove Condition">✕</button>
+              </div>
+            `
+              )
+              .join("")}
           </div>
 
-          <!-- Module Missing Warning Banner -->
-          ${
-            isModuleMissing
-              ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(239, 68, 68, 0.12); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3); margin-top: 2px;">
-              <span style="font-size: 0.68rem; color: #f87171;">⚠️ Character lacks ${cat.label} behavior</span>
+          <!-- Multi-Actions Section -->
+          <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(250, 204, 21, 0.15); border-radius: 4px; padding: 4px 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.66rem; font-weight: 700; color: #facc15; letter-spacing: 0.04em;">THEN (EXECUTE ACTIONS IN ORDER):</span>
+              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.64rem; padding: 1px 6px; color: #facc15; border-color: rgba(250, 204, 21, 0.4);" title="Add action function">+ Add Action</button>
             </div>
-          `
-              : ""
-          }
+            ${actions
+              .map((act: ActionInvocation, aIdx: number) => {
+                const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+                const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
+                const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
+                const isModuleMissing = cat && !cat.isAttached(char);
+
+                return `
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; padding-left: 2px;">
+                  <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${aIdx + 1}.</span>
+                  <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.70rem; padding: 2px 8px; color: #facc15; border-color: rgba(250, 204, 21, 0.3); text-align: left; flex: 1;">
+                    ${actionLabel} ▼
+                  </button>
+                  ${isModuleMissing ? `<span style="font-size: 0.62rem; color: #f87171;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
+                  <button class="btn-delete-action btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="padding: 1px 5px; color: #f87171; font-size: 0.65rem;" title="Remove Action" ${actions.length <= 1 ? "disabled style='opacity:0.3; cursor:not-allowed;'" : ""}>✕</button>
+                </div>
+              `;
+              })
+              .join("")}
+          </div>
         </div>
       `;
       })
@@ -960,7 +1021,9 @@ export class ControlsInspector {
           this.activeTab === "gamepad"
             ? { device: "gamepad", code: "GamepadA", mode: "press" }
             : { device: "keyboard", code: "Space", mode: "press" },
+        conditions: [{ type: "always" }],
         condition: { type: "always" },
+        actions: [{ moduleId: "locomotion", intent: "jump" }],
         action: { moduleId: "locomotion", intent: "jump" },
       };
 
@@ -996,19 +1059,110 @@ export class ControlsInspector {
       });
     });
 
-    // 12. Rule Condition
+    // 12. Rule Conditions (Multiple)
+    root.querySelectorAll(".btn-add-condition").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          conds.push({ type: "always" });
+          rule.conditions = conds;
+          rule.condition = conds[0];
+          this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-condition").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const cIdx = parseInt((btn as HTMLElement).dataset.condIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          if (conds.length > 1) {
+            conds.splice(cIdx, 1);
+          } else {
+            conds[0] = { type: "always" };
+          }
+          rule.conditions = conds;
+          rule.condition = conds[0];
+          this.renderActiveView();
+        }
+      });
+    });
+
     root.querySelectorAll(".select-rule-cond").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
+        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
         const val = (e.target as HTMLSelectElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          if (!conds[cIdx]) conds[cIdx] = { type: "always" };
           if (val.startsWith("stagedActionIs:")) {
-            rule.condition.type = "stagedActionIs";
-            rule.condition.param = val.split(":")[1];
+            conds[cIdx].type = "stagedActionIs";
+            conds[cIdx].param = val.split(":")[1];
+          } else if (val === "buttonHeld") {
+            conds[cIdx].type = "buttonHeld";
+            if (!conds[cIdx].param) conds[cIdx].param = "MouseRight";
           } else {
-            rule.condition.type = val as ConditionType;
-            rule.condition.param = undefined;
+            conds[cIdx].type = val as ConditionType;
+            conds[cIdx].param = undefined;
+          }
+          rule.conditions = conds;
+          rule.condition = conds[0];
+          this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".input-cond-param").forEach((inp) => {
+      inp.addEventListener("input", (e) => {
+        const rId = (inp as HTMLElement).dataset.ruleId;
+        const cIdx = parseInt((inp as HTMLElement).dataset.condIdx ?? "0", 10);
+        const val = (e.target as HTMLInputElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          if (conds[cIdx]) {
+            conds[cIdx].param = val;
+            rule.conditions = conds;
+            rule.condition = conds[0];
+          }
+        }
+      });
+    });
+
+    // 12b. Rule Actions (Multiple)
+    root.querySelectorAll(".btn-add-action").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const actions = ControlSchemaArbiter.getRuleActions(rule);
+          actions.push({ moduleId: "locomotion", intent: "jump" });
+          rule.actions = actions;
+          rule.action = actions[0];
+          this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-action").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const aIdx = parseInt((btn as HTMLElement).dataset.actionIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const actions = ControlSchemaArbiter.getRuleActions(rule);
+          if (actions.length > 1) {
+            actions.splice(aIdx, 1);
+            rule.actions = actions;
+            rule.action = actions[0];
+            this.renderActiveView();
           }
         }
       });
@@ -1019,8 +1173,9 @@ export class ControlsInspector {
       btn.addEventListener("click", (evt) => {
         evt.stopPropagation();
         const rId = (btn as HTMLElement).dataset.ruleId;
+        const aIdx = parseInt((btn as HTMLElement).dataset.actionIdx ?? "0", 10);
         if (rId) {
-          this.showActionPickerMenu(rId, btn as HTMLElement);
+          this.showActionPickerMenu(rId, aIdx, btn as HTMLElement);
         }
       });
     });
@@ -1284,7 +1439,7 @@ export class ControlsInspector {
 
   // --- Categorized Action Function Popover ---
 
-  private static showActionPickerMenu(ruleId: string, anchorBtn: HTMLElement): void {
+  private static showActionPickerMenu(ruleId: string, actionIdx: number, anchorBtn: HTMLElement): void {
     const activeDoc = this.popoutWindow && !this.popoutWindow.closed ? this.popoutWindow.document : document;
     const existing = activeDoc.getElementById("action-picker-popover");
     if (existing) existing.remove();
@@ -1395,8 +1550,15 @@ export class ControlsInspector {
         const mod = (btn as HTMLElement).dataset.mod;
         const intent = (btn as HTMLElement).dataset.intent;
         if (mod && intent) {
-          rule.action.moduleId = mod;
-          rule.action.intent = intent;
+          const actions = ControlSchemaArbiter.getRuleActions(rule);
+          if (actions[actionIdx]) {
+            actions[actionIdx].moduleId = mod;
+            actions[actionIdx].intent = intent;
+          } else {
+            actions.push({ moduleId: mod, intent });
+          }
+          rule.actions = actions;
+          rule.action = actions[0];
           popover.remove();
           this.renderActiveView();
         }

@@ -3,6 +3,7 @@ import type {
   ControlSchema,
   ControlRule,
   ConditionGate,
+  ActionInvocation,
   ControlExecutionContext,
   InputTriggerBinding,
 } from "./ControlSchemaTypes.js";
@@ -27,6 +28,26 @@ export class ControlSchemaArbiter {
       this.cursorReticleOffsets.set(characterId, offset);
     }
     return offset;
+  }
+
+  public static getRuleConditions(rule: ControlRule): ConditionGate[] {
+    if (rule.conditions && rule.conditions.length > 0) return rule.conditions;
+    if (rule.condition) return [rule.condition];
+    return [{ type: "always" }];
+  }
+
+  public static getRuleActions(rule: ControlRule): ActionInvocation[] {
+    if (rule.actions && rule.actions.length > 0) return rule.actions;
+    if (rule.action) return [rule.action];
+    return [];
+  }
+
+  public static evaluateAllConditions(rule: ControlRule, ctx: ControlExecutionContext): boolean {
+    const conds = this.getRuleConditions(rule);
+    for (const cond of conds) {
+      if (!this.evaluateCondition(cond, ctx)) return false;
+    }
+    return true;
   }
 
   public static evaluateCondition(cond: ConditionGate, ctx: ControlExecutionContext): boolean {
@@ -59,8 +80,26 @@ export class ControlSchemaArbiter {
         break;
       case "buttonHeld":
         if (cond.param) {
-          result = ctx.isKeyDown(cond.param);
+          const p = cond.param.trim();
+          if (p === "MouseLeft") result = ctx.isMouseButtonDown(0);
+          else if (p === "MouseMiddle") result = ctx.isMouseButtonDown(1);
+          else if (p === "MouseRight") result = ctx.isMouseButtonDown(2);
+          else if (p.startsWith("Gamepad")) {
+            const btn = ControlSchemaArbiter.parseGamepadButtonCode(p);
+            result = ctx.isGamepadButtonDown(0, btn);
+          } else {
+            result = ctx.isKeyDown(p);
+          }
         }
+        break;
+      case "isAiming":
+        result = Boolean(ctx.character.isAimingTrajectory || ctx.character.isLaserAiming);
+        break;
+      case "isAimingTrajectory":
+        result = Boolean(ctx.character.isAimingTrajectory);
+        break;
+      case "isLaserAiming":
+        result = Boolean(ctx.character.isLaserAiming);
         break;
       default:
         result = true;
@@ -249,16 +288,19 @@ export class ControlSchemaArbiter {
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
-        const matchesCondition = this.evaluateCondition(rule.condition, ctx);
+        const matchesCondition = this.evaluateAllConditions(rule, ctx);
         const triggerActive = this.isTriggerActive(rule.trigger, ctx, keyStates, mouseStates);
 
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
           activeRules.push(rule);
-          const actDef = ControlActionCatalog.findAction(rule.action.moduleId, rule.action.intent);
-          if (actDef) {
-            actDef.execute(ctx, rule.action.args);
+          const actions = this.getRuleActions(rule);
+          for (const act of actions) {
+            const actDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+            if (actDef) {
+              actDef.execute(ctx, act.args);
+            }
           }
         }
       }
@@ -324,16 +366,19 @@ export class ControlSchemaArbiter {
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
-        const matchesCondition = this.evaluateCondition(rule.condition, ctx);
+        const matchesCondition = this.evaluateAllConditions(rule, ctx);
         const triggerActive = this.isTriggerActive(rule.trigger, ctx, keyStates, mouseStates, gamepadStates);
 
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
           activeRules.push(rule);
-          const actDef = ControlActionCatalog.findAction(rule.action.moduleId, rule.action.intent);
-          if (actDef) {
-            actDef.execute(ctx, rule.action.args);
+          const actions = this.getRuleActions(rule);
+          for (const act of actions) {
+            const actDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+            if (actDef) {
+              actDef.execute(ctx, act.args);
+            }
           }
         }
       }

@@ -26,6 +26,9 @@ export type ConditionType =
   | "buttonHeld"
   | "grounded"
   | "climbing"
+  | "isAiming"
+  | "isAimingTrajectory"
+  | "isLaserAiming"
   | "customProperty";
 
 export interface ConditionGate {
@@ -34,18 +37,22 @@ export interface ConditionGate {
   negate?: boolean;
 }
 
+export interface ActionInvocation {
+  moduleId: string; // e.g. "locomotion", "throwPickup", "laser", "melee", "heldItem", "staging"
+  intent: string;   // e.g. "jump", "releaseThrow", "fireLaser", "stageLaser"
+  args?: Record<string, any>;
+}
+
 export interface ControlRule {
   id: string;
   name?: string;
   enabled?: boolean;
   priority?: number; // Higher numbers evaluated first
   trigger: InputTriggerBinding;
-  condition: ConditionGate;
-  action: {
-    moduleId: string; // e.g. "locomotion", "throwPickup", "laser", "melee", "consume", "staging"
-    intent: string;   // e.g. "jump", "releaseThrow", "fireLaser", "stageLaser"
-    args?: Record<string, any>;
-  };
+  conditions?: ConditionGate[]; // Multiple conditions (ALL must match: logical AND)
+  condition?: ConditionGate;    // Single condition (for backwards compatibility)
+  actions?: ActionInvocation[]; // Multiple result functions executed
+  action?: ActionInvocation;    // Single action (for backwards compatibility)
 }
 
 export type LocomotionParadigm = "directVector" | "forwardFacingDrive" | "cursorSteer";
