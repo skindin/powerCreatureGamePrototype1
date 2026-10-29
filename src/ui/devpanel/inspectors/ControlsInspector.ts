@@ -985,7 +985,7 @@ export class ControlsInspector {
           <!-- Rule Header: Collapse, Pip, Tag Selector, Mode, Delete -->
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <!-- Collapse / Expand Toggle Button -->
-            <button class="btn-toggle-rule-collapse btn-secondary-action" data-rule-id="${rule.id}" type="button" style="padding: 2px 5px; font-size: 0.70rem; color: #94a3b8; line-height: 1;" title="${isCollapsed ? "Expand Rule Block" : "Collapse Rule Block"}">
+            <button class="btn-toggle-rule-collapse btn-secondary-action" data-rule-id="${rule.id}" type="button" style="flex: 0 0 22px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; color: #94a3b8; border-radius: 4px;" title="${isCollapsed ? "Expand Rule Block" : "Collapse Rule Block"}">
               ${isCollapsed ? "▶" : "▼"}
             </button>
 
@@ -993,13 +993,13 @@ export class ControlsInspector {
             <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
 
             <!-- Tag Selector Dropdown -->
-            <select class="select-rule-tag dev-select" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: #38bdf8; min-width: 140px; max-width: 185px;" title="Select keybind tag trigger">
+            <select class="select-rule-tag dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: #38bdf8; min-width: 130px; max-width: 175px;" title="Select keybind tag trigger">
               ${tags.length === 0 ? `<option value="">(No tags defined)</option>` : ""}
               ${tags.map((t) => `<option value="${t.id}" ${t.id === rule.tagId ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
             </select>
 
             <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 2px 4px; width: 75px;">
+            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.70rem; padding: 2px 4px; width: 68px;">
               <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
               <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
@@ -1008,7 +1008,7 @@ export class ControlsInspector {
             ${
               isCollapsed
                 ? `
-              <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 4px;" title="[${tagDisplayName}] IF: ${condSummary} ➔ THEN: ${actionSummary}">
+              <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 6px;" title="[${tagDisplayName}] IF: ${condSummary} ➔ THEN: ${actionSummary}">
                 <span style="color: #38bdf8; font-weight: 600;">[${tagDisplayName}]</span> <span style="color: #94a3b8;">IF:</span> ${condSummary} <span style="color: #facc15;">➔</span> <strong style="color: #e2e8f0;">${actionSummary}</strong>
               </div>
             `
@@ -1016,7 +1016,7 @@ export class ControlsInspector {
             }
 
             <!-- Delete Rule Button -->
-            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="padding: 2px 6px; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.72rem;" title="Remove Rule">
+            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 22px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.72rem; border-radius: 4px;" title="Remove Rule">
               🗑️
             </button>
           </div>
@@ -1029,7 +1029,7 @@ export class ControlsInspector {
           <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 4px; padding: 4px 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-size: 0.66rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.04em;">IF (ALL CONDITIONS MATCH):</span>
-              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.64rem; padding: 1px 6px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Add condition gate">+ Add Condition</button>
+              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.64rem; padding: 1px 6px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Add condition gate">+ Add Condition</button>
             </div>
             ${conds
               .map(
@@ -1058,7 +1058,7 @@ export class ControlsInspector {
                     ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight, KeyF, GamepadLeftTrigger" style="font-size: 0.68rem; padding: 2px 4px; width: 140px; color: #38bdf8;" title="Button code to check if currently held down" />`
                     : ""
                 }
-                <button class="btn-delete-condition btn-secondary-action" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="padding: 1px 5px; color: #f87171; font-size: 0.65rem;" title="Remove Condition">✕</button>
+                <button class="btn-delete-condition btn-secondary-action" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; font-size: 0.65rem; border-radius: 3px;" title="Remove Condition">✕</button>
               </div>
             `
               )
@@ -1069,7 +1069,7 @@ export class ControlsInspector {
           <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(250, 204, 21, 0.15); border-radius: 4px; padding: 4px 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-size: 0.66rem; font-weight: 700; color: #facc15; letter-spacing: 0.04em;">THEN (EXECUTE ACTIONS IN ORDER):</span>
-              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.64rem; padding: 1px 6px; color: #facc15; border-color: rgba(250, 204, 21, 0.4);" title="Add action function">+ Add Action</button>
+              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.64rem; padding: 1px 6px; color: #facc15; border-color: rgba(250, 204, 21, 0.4);" title="Add action function">+ Add Action</button>
             </div>
             ${actions
               .map((act: ActionInvocation, aIdx: number) => {
@@ -1085,7 +1085,7 @@ export class ControlsInspector {
                     ${actionLabel} ▼
                   </button>
                   ${isModuleMissing ? `<span style="font-size: 0.62rem; color: #f87171;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
-                  <button class="btn-delete-action btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="padding: 1px 5px; color: #f87171; font-size: 0.65rem;" title="Remove Action" ${actions.length <= 1 ? "disabled style='opacity:0.3; cursor:not-allowed;'" : ""}>✕</button>
+                  <button class="btn-delete-action btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; font-size: 0.65rem; border-radius: 3px;" title="Remove Action" ${actions.length <= 1 ? "disabled style='opacity:0.3; cursor:not-allowed;'" : ""}>✕</button>
                 </div>
               `;
               })
