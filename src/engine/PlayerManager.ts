@@ -155,7 +155,7 @@ export class PlayerManager {
       return false;
     }
     if (kChar.isLaserAiming || kChar.isEatingFood) return false;
-    return Boolean(kChar.isAimingTrajectory || (!kChar.isPrimaryAbilityNonDirectional()));
+    return Boolean(kChar.isAimingTrajectory);
     /* const _isAltDown = Boolean(
       this.inputManager.isCombatModifierActive ? this.inputManager.isCombatModifierActive() : (
         this.inputManager.isAltHeld ||
@@ -588,6 +588,7 @@ export class PlayerManager {
         character: kChar,
         arena: this.arena,
         dt: 1 / 60,
+        schema: kSchema,
         isHoldingItem: isHolding,
         heldItemIsEdible: isHoldingConsumable,
         heldItemHasPrimaryAbility: Boolean(kChar.hasPrimaryItemAbility()),
@@ -602,6 +603,8 @@ export class PlayerManager {
         isMouseButtonDown: isMouseBtnDown,
         isGamepadButtonDown: () => false,
         getGamepadAxis: () => ({ x: 0, y: 0 }),
+        keyStates,
+        mouseStates,
       };
 
       // 1. Locomotion Movement Vector
@@ -693,7 +696,8 @@ export class PlayerManager {
         if (rule.enabled === false) continue;
         if (ControlSchemaArbiter.evaluateAllConditions(rule, execCtx)) {
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
-          if (ControlSchemaArbiter.isTriggerActive(effTrigger, execCtx, keyStates, mouseStates)) {
+          const isPassive = !rule.tagId && (!effTrigger.code || effTrigger.code === "None" || effTrigger.code === "Always" || effTrigger.code === "");
+          if (isPassive || ControlSchemaArbiter.isTriggerActive(effTrigger, execCtx, keyStates, mouseStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             for (const act of actions) {
@@ -794,7 +798,7 @@ export class PlayerManager {
         }
       }
 
-      const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory || Boolean(isHolding && !kChar.isPrimaryAbilityNonDirectional()));
+      const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
 
       const kLaunchVel = isThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
       const kLaunchPos = isThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
@@ -895,6 +899,7 @@ export class PlayerManager {
         character: cChar,
         arena: this.arena,
         dt: 1 / 60,
+        schema: gpSchema,
         isHoldingItem: isCharHolding,
         heldItemIsEdible: isCharHoldingConsumable,
         heldItemHasPrimaryAbility: Boolean(cChar.hasPrimaryItemAbility()),
@@ -910,6 +915,7 @@ export class PlayerManager {
         isGamepadButtonDown: (_sIdx: number, btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
         getGamepadAxis: (_sIdx: number, axis: "LeftStick" | "RightStick") =>
           axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
+        gamepadStates: gpStates,
       };
 
       const gpDummyKeyStates = {
@@ -977,7 +983,8 @@ export class PlayerManager {
         if (rule.enabled === false) continue;
         if (ControlSchemaArbiter.evaluateAllConditions(rule, gpExecCtx)) {
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
-          if (ControlSchemaArbiter.isTriggerActive(effTrigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
+          const isPassive = !rule.tagId && (!effTrigger.code || effTrigger.code === "None" || effTrigger.code === "Always" || effTrigger.code === "");
+          if (isPassive || ControlSchemaArbiter.isTriggerActive(effTrigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             for (const act of actions) {
@@ -1992,7 +1999,7 @@ export class PlayerManager {
           isCursorVisibleNow = true;
         } else if (isHolding) {
           const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
-          const isThrowActive = !char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld);
+          const isThrowActive = Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld);
 
           if (!slot.hasMovedAimStick) {
             if (isThrowActive) {

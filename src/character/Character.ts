@@ -522,7 +522,7 @@ export class Character extends GameObject {
       }
     }
 
-    const shouldFaceCursor = this.heldObject && aimTargetPos && (!this.isPrimaryAbilityNonDirectional() || isAimingInput);
+    const shouldFaceCursor = Boolean(this.heldObject && aimTargetPos && (isAimingInput || this.isAimingTrajectory));
 
     if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;
@@ -604,7 +604,7 @@ export class Character extends GameObject {
     }
 
     // Facing orientation & held object synchronization
-    const canAimThrow = !this.heldObject || !this.isPrimaryAbilityNonDirectional() || isAimingInput;
+    const canAimThrow = Boolean(isAimingInput || this.isAimingTrajectory);
     const targetFacePos = (canAimThrow && lockedAimPos) ? lockedAimPos : aimTargetPos;
 
     this.updateFacingDirection(isAimingInput, targetFacePos, movementInput, hasAuthoredFacingAngle);

@@ -1,6 +1,6 @@
 {
-  "version": 109,
-  "lastSaved": "2026-10-29T11:04:32.808Z",
+  "version": 115,
+  "lastSaved": "2026-10-29T14:15:48.389Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -427,6 +427,102 @@
         },
         "rules": [
           {
+            "id": "rule-mvtmc4ey",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "tagId": "tag-kbm-ffc1ts",
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "holdingItemWithPrimaryAbility"
+              }
+            ],
+            "condition": {
+              "type": "holdingItemWithPrimaryAbility"
+            },
+            "actions": [
+              {
+                "moduleId": "heldItem",
+                "intent": "primaryItemAbility"
+              }
+            ],
+            "action": {
+              "moduleId": "heldItem",
+              "intent": "primaryItemAbility"
+            }
+          },
+          {
+            "id": "rule-mvtm5syk",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "tagId": "tag-kbm-ffc1ts",
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "stagedActionIs",
+                "param": "laser"
+              }
+            ],
+            "condition": {
+              "type": "stagedActionIs",
+              "param": "laser"
+            },
+            "actions": [
+              {
+                "moduleId": "laser",
+                "intent": "fireLaser"
+              }
+            ],
+            "action": {
+              "moduleId": "laser",
+              "intent": "fireLaser"
+            }
+          },
+          {
+            "id": "rule-mvtm4hy4",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "tagId": "tag-kbm-mxj04b",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyS",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "condition": {
+              "type": "always"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "holdStageLaser"
+              },
+              {
+                "moduleId": "laser",
+                "intent": "aimLaser"
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "holdStageLaser"
+            }
+          },
+          {
             "id": "rule-mvteq488",
             "name": "New Action Rule",
             "enabled": true,
@@ -498,21 +594,21 @@
             },
             "conditions": [
               {
-                "type": "always"
+                "type": "emptyHanded"
               }
             ],
             "condition": {
-              "type": "always"
+              "type": "emptyHanded"
             },
             "actions": [
               {
-                "moduleId": "heldItem",
-                "intent": "primaryItemAbility"
+                "moduleId": "throw",
+                "intent": "releaseThrow"
               }
             ],
             "action": {
-              "moduleId": "heldItem",
-              "intent": "primaryItemAbility"
+              "moduleId": "throw",
+              "intent": "releaseThrow"
             },
             "tagId": "tag-kbm-ffc1ts"
           },
@@ -536,12 +632,12 @@
             },
             "actions": [
               {
-                "moduleId": "throwPickup",
+                "moduleId": "pickup",
                 "intent": "pickupReach"
               }
             ],
             "action": {
-              "moduleId": "throwPickup",
+              "moduleId": "pickup",
               "intent": "pickupReach"
             },
             "tagId": "tag-kbm-ffc1ts"
@@ -635,17 +731,13 @@
             },
             "action": {
               "moduleId": "pickup",
-              "intent": "dropItem"
+              "intent": "swap"
             },
             "tagId": "tag-kbm-tn6irx",
             "actions": [
               {
                 "moduleId": "pickup",
-                "intent": "dropItem"
-              },
-              {
-                "moduleId": "pickup",
-                "intent": "pickupReach"
+                "intent": "swap"
               }
             ]
           },
@@ -730,6 +822,15 @@
             "trigger": {
               "device": "keyboard",
               "code": "KeyD",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-mxj04b",
+            "name": "Laser",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyS",
               "mode": "press"
             }
           }
@@ -2212,6 +2313,102 @@
           },
           "rules": [
             {
+              "id": "rule-mvtmc4ey",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "tagId": "tag-kbm-ffc1ts",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "holdingItemWithPrimaryAbility"
+                }
+              ],
+              "condition": {
+                "type": "holdingItemWithPrimaryAbility"
+              },
+              "actions": [
+                {
+                  "moduleId": "heldItem",
+                  "intent": "primaryItemAbility"
+                }
+              ],
+              "action": {
+                "moduleId": "heldItem",
+                "intent": "primaryItemAbility"
+              }
+            },
+            {
+              "id": "rule-mvtm5syk",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "tagId": "tag-kbm-ffc1ts",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "stagedActionIs",
+                  "param": "laser"
+                }
+              ],
+              "condition": {
+                "type": "stagedActionIs",
+                "param": "laser"
+              },
+              "actions": [
+                {
+                  "moduleId": "laser",
+                  "intent": "fireLaser"
+                }
+              ],
+              "action": {
+                "moduleId": "laser",
+                "intent": "fireLaser"
+              }
+            },
+            {
+              "id": "rule-mvtm4hy4",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "tagId": "tag-kbm-mxj04b",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyS",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "always"
+                }
+              ],
+              "condition": {
+                "type": "always"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "holdStageLaser"
+                },
+                {
+                  "moduleId": "laser",
+                  "intent": "aimLaser"
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "holdStageLaser"
+              }
+            },
+            {
               "id": "rule-mvteq488",
               "name": "New Action Rule",
               "enabled": true,
@@ -2283,21 +2480,21 @@
               },
               "conditions": [
                 {
-                  "type": "always"
+                  "type": "emptyHanded"
                 }
               ],
               "condition": {
-                "type": "always"
+                "type": "emptyHanded"
               },
               "actions": [
                 {
-                  "moduleId": "heldItem",
-                  "intent": "primaryItemAbility"
+                  "moduleId": "throw",
+                  "intent": "releaseThrow"
                 }
               ],
               "action": {
-                "moduleId": "heldItem",
-                "intent": "primaryItemAbility"
+                "moduleId": "throw",
+                "intent": "releaseThrow"
               },
               "tagId": "tag-kbm-ffc1ts"
             },
@@ -2321,12 +2518,12 @@
               },
               "actions": [
                 {
-                  "moduleId": "throwPickup",
+                  "moduleId": "pickup",
                   "intent": "pickupReach"
                 }
               ],
               "action": {
-                "moduleId": "throwPickup",
+                "moduleId": "pickup",
                 "intent": "pickupReach"
               },
               "tagId": "tag-kbm-ffc1ts"
@@ -2420,17 +2617,13 @@
               },
               "action": {
                 "moduleId": "pickup",
-                "intent": "dropItem"
+                "intent": "swap"
               },
               "tagId": "tag-kbm-tn6irx",
               "actions": [
                 {
                   "moduleId": "pickup",
-                  "intent": "dropItem"
-                },
-                {
-                  "moduleId": "pickup",
-                  "intent": "pickupReach"
+                  "intent": "swap"
                 }
               ]
             },
@@ -2515,6 +2708,15 @@
               "trigger": {
                 "device": "keyboard",
                 "code": "KeyD",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-mxj04b",
+              "name": "Laser",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyS",
                 "mode": "press"
               }
             }

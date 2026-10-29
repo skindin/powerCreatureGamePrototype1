@@ -18,12 +18,17 @@ export interface InputTriggerBinding {
 export type ConditionType =
   | "always"
   | "holdingObject"
+  | "holdingPlainObject"
+  | "holdingObjectWithoutAbility"
   | "holdingEdible"
   | "holdingItemWithPrimaryAbility"
   | "emptyHanded"
   | "targetInReach"
   | "stagedActionIs"
   | "buttonHeld"
+  | "tagHeld"
+  | "tagPressed"
+  | "tagReleased"
   | "grounded"
   | "climbing"
   | "isAiming"
@@ -160,4 +165,22 @@ export interface ControlExecutionContext {
   isMouseButtonDown: (button: number) => boolean;
   isGamepadButtonDown: (slotIndex: number, btn: number) => boolean;
   getGamepadAxis: (slotIndex: number, axis: "LeftStick" | "RightStick") => Vector2D;
+
+  schema?: ControlSchema;
+  keyStates?: {
+    isDown: (code: string) => boolean;
+    justPressed: (code: string) => boolean;
+    justReleased: (code: string) => boolean;
+  };
+  mouseStates?: {
+    isDown: (btn: number) => boolean;
+    justPressed: (btn: number) => boolean;
+    justReleased: (btn: number) => boolean;
+  };
+  gamepadStates?: {
+    slotIndex: number;
+    isDown: (btn: number) => boolean;
+    justPressed: (btn: number) => boolean;
+    justReleased: (btn: number) => boolean;
+  };
 }

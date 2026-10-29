@@ -951,7 +951,7 @@ export class ControlsInspector {
     return rules
       .map((rule) => {
         const currentTag = tags.find((t) => t.id === rule.tagId);
-        const tagDisplayName = currentTag ? currentTag.name : rule.trigger.code;
+        const tagDisplayName = currentTag ? currentTag.name : (rule.tagId ? rule.tagId : "⚡ Passive");
         const conds = ControlSchemaArbiter.getRuleConditions(rule);
         const actions = ControlSchemaArbiter.getRuleActions(rule);
         const isCollapsed = this.collapsedRuleIds.has(rule.id);
@@ -960,10 +960,23 @@ export class ControlsInspector {
           .map((c: ConditionGate) => {
             if (c.type === "always") return "Always";
             if (c.type === "holdingObject") return "Holding";
+            if (c.type === "holdingPlainObject" || c.type === "holdingObjectWithoutAbility") return "Holding Plain Object";
             if (c.type === "holdingItemWithPrimaryAbility" || c.type === "holdingEdible") return "Holding Ability Item";
             if (c.type === "emptyHanded") return "Empty-Hand";
             if (c.type === "targetInReach") return "In Reach";
             if (c.type === "stagedActionIs") return `Staged==${c.param}`;
+            if (c.type === "tagHeld") {
+              const t = tags.find((tag) => tag.id === c.param);
+              return `${t ? t.name : c.param} (Held)`;
+            }
+            if (c.type === "tagPressed") {
+              const t = tags.find((tag) => tag.id === c.param);
+              return `${t ? t.name : c.param} (Pressed)`;
+            }
+            if (c.type === "tagReleased") {
+              const t = tags.find((tag) => tag.id === c.param);
+              return `${t ? t.name : c.param} (Released)`;
+            }
             if (c.type === "buttonHeld") return `Held(${c.param})`;
             if (c.type === "isAiming") return "Aiming";
             if (c.type === "isAimingTrajectory") return "Aim Throw";
@@ -995,12 +1008,12 @@ export class ControlsInspector {
 
             <!-- Tag Selector Dropdown -->
             <select class="select-rule-tag dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: #38bdf8; min-width: 130px; max-width: 175px;" title="Select keybind tag trigger">
-              ${tags.length === 0 ? `<option value="">(No tags defined)</option>` : ""}
+              <option value="" ${!rule.tagId ? "selected" : ""}>⚡ Passive / Always</option>
               ${tags.map((t) => `<option value="${t.id}" ${t.id === rule.tagId ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
             </select>
 
             <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.70rem; padding: 2px 4px; width: 68px;">
+            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.70rem; padding: 2px 4px; width: 68px;" ${!rule.tagId ? "disabled style='opacity: 0.4; pointer-events: none;'" : ""}>
               <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
               <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
@@ -1038,21 +1051,31 @@ export class ControlsInspector {
               <div style="display: flex; align-items: center; gap: 4px; padding-left: 2px;">
                 <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${cIdx + 1}.</span>
                 <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 4px; flex: 1;">
-                  <option value="always" ${cond.type === "always" ? "selected" : ""}>Always</option>
-                  <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Item</option>
-                  <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
-                  <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
-                  <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-                  <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
-                  <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
-                  <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
-                  <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
-                  <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
-                  <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
-                  <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
-                  <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
-                  <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
-                  <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Button / Key Held...</option>
+                  <optgroup label="🎮 Keybind / Control Inputs">
+                    ${tags.map((t) => `
+                      <option value="tagHeld:${t.id}" ${cond.type === "tagHeld" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Held)</option>
+                      <option value="tagPressed:${t.id}" ${cond.type === "tagPressed" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Pressed)</option>
+                      <option value="tagReleased:${t.id}" ${cond.type === "tagReleased" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Released)</option>
+                    `).join("")}
+                    <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>⌨️ Raw Key/Button Code...</option>
+                  </optgroup>
+                  <optgroup label="🌍 Game Conditions">
+                    <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional / Run Every Frame)</option>
+                    <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
+                    <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                    <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
+                    <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                    <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                    <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
+                    <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
+                    <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
+                    <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
+                    <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                    <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                    <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                    <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                    <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                  </optgroup>
                 </select>
                 ${
                   cond.type === "buttonHeld"
@@ -1410,13 +1433,20 @@ export class ControlsInspector {
         const tagId = (e.target as HTMLSelectElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          rule.tagId = tagId;
-          const tags = this.getActiveDeviceTags(schema);
-          const tag = tags.find((t) => t.id === tagId);
-          if (tag) {
-            rule.trigger.code = tag.trigger.code;
-            rule.trigger.device = tag.trigger.device;
-            rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined;
+          if (!tagId) {
+            rule.tagId = undefined;
+            rule.trigger.code = "Always";
+            rule.trigger.device = "keyboard";
+            rule.trigger.chordModifiers = undefined;
+          } else {
+            rule.tagId = tagId;
+            const tags = this.getActiveDeviceTags(schema);
+            const tag = tags.find((t) => t.id === tagId);
+            if (tag) {
+              rule.trigger.code = tag.trigger.code;
+              rule.trigger.device = tag.trigger.device;
+              rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined;
+            }
           }
           this.renderActiveView();
         }
@@ -1480,6 +1510,15 @@ export class ControlsInspector {
           if (val.startsWith("stagedActionIs:")) {
             conds[cIdx].type = "stagedActionIs";
             conds[cIdx].param = val.split(":")[1];
+          } else if (val.startsWith("tagHeld:")) {
+            conds[cIdx].type = "tagHeld";
+            conds[cIdx].param = val.substring("tagHeld:".length);
+          } else if (val.startsWith("tagPressed:")) {
+            conds[cIdx].type = "tagPressed";
+            conds[cIdx].param = val.substring("tagPressed:".length);
+          } else if (val.startsWith("tagReleased:")) {
+            conds[cIdx].type = "tagReleased";
+            conds[cIdx].param = val.substring("tagReleased:".length);
           } else if (val === "buttonHeld") {
             conds[cIdx].type = "buttonHeld";
             if (!conds[cIdx].param) conds[cIdx].param = "MouseRight";

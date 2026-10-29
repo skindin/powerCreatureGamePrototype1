@@ -6,6 +6,7 @@ import type {
   ActionInvocation,
   ControlExecutionContext,
   InputTriggerBinding,
+  TriggerMode,
   DeviceChannel,
   InputTagBinding,
 } from "./ControlSchemaTypes.js";
@@ -56,6 +57,9 @@ export class ControlSchemaArbiter {
         };
       }
     }
+    if (!rule.tagId && (!rule.trigger?.code || rule.trigger.code === "None" || rule.trigger.code === "Always" || rule.trigger.code === "")) {
+      return { device: "keyboard", code: "Always", mode: "press" };
+    }
     return rule.trigger;
   }
 
@@ -76,6 +80,10 @@ export class ControlSchemaArbiter {
       case "holdingObject":
         result = ctx.isHoldingItem;
         break;
+      case "holdingPlainObject":
+      case "holdingObjectWithoutAbility":
+        result = ctx.isHoldingItem && !ctx.heldItemHasPrimaryAbility && !ctx.heldItemIsEdible;
+        break;
       case "holdingItemWithPrimaryAbility":
       case "holdingEdible":
         result = ctx.isHoldingItem && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
@@ -94,6 +102,31 @@ export class ControlSchemaArbiter {
         break;
       case "climbing":
         result = ctx.isClimbing;
+        break;
+      case "tagHeld":
+      case "tagPressed":
+      case "tagReleased":
+        if (cond.param && ctx.schema) {
+          const mode: TriggerMode = cond.type === "tagHeld" ? "hold" : cond.type === "tagPressed" ? "press" : "release";
+          const tags = [
+            ...(ctx.schema.keyboardMouse?.tags ?? []),
+            ...(ctx.schema.gamepad?.tags ?? []),
+            ...(ctx.schema.touch?.tags ?? []),
+          ];
+          const tag = tags.find((t) => t.id === cond.param || t.name === cond.param);
+          if (tag) {
+            const eff = { ...tag.trigger, mode };
+            const dummyKeys = { isDown: ctx.isKeyDown, justPressed: () => false, justReleased: () => false };
+            const dummyMouse = { isDown: ctx.isMouseButtonDown, justPressed: () => false, justReleased: () => false };
+            result = this.isTriggerActive(
+              eff,
+              ctx,
+              ctx.keyStates ?? dummyKeys,
+              ctx.mouseStates ?? dummyMouse,
+              ctx.gamepadStates
+            );
+          }
+        }
         break;
       case "buttonHeld":
         if (cond.param) {

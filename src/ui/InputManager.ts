@@ -1298,7 +1298,7 @@ export class InputManager {
       } else if (isHolding) {
         // If holding an object and player has NOT moved the right aim stick yet
         if (!slot.hasMovedAimStick) {
-          const isThrowActive = !char.isPrimaryAbilityNonDirectional() || slot.isAltHeld;
+          const isThrowActive = Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld);
           if (isThrowActive) {
             let dirX = 1;
             let dirY = 0;
@@ -1380,7 +1380,7 @@ export class InputManager {
       // Button 5 (RB / R1): Holding enters Trajectory Scaler Mode
       const isRbPressed = isButtonPressed(5);
       const canModulateTrajectory = isHolding && Boolean(char.throwModule && char.throwModule.enabled) &&
-        (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld);
+        (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld));
 
       if (isRbPressed && canModulateTrajectory) {
         if (!slot.isLockHeld) {
@@ -1444,7 +1444,7 @@ export class InputManager {
 
       if (rMag > deadzone && !slot.isLockHeld) {
         // Move aim cursor if aiming is enabled: throwing mode (LT held or throwable held), laser mode (LB held), or selecting nearby grabbable objects
-        const canAim = slot.isLaserAiming || (isHolding && (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld)) || (!isHolding && hasReachable);
+        const canAim = slot.isLaserAiming || (isHolding && (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld))) || (!isHolding && hasReachable);
         if (canAim) {
           const cursorSpeed = 17.0;
           if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
@@ -1471,7 +1471,7 @@ export class InputManager {
         }
       }
 
-      if (isHolding && (!char.isPrimaryAbilityNonDirectional() || slot.isAltHeld)) {
+      if (isHolding && (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld))) {
         if (slot.hasMovedAimStick) {
           const aimDx = slot.aimPos.x - char.position.x;
           const aimDy = slot.aimPos.y - char.position.y;
