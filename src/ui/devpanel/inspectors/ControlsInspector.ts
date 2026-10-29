@@ -38,7 +38,6 @@ export class ControlsInspector {
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
   private static isParadigmsCollapsed: boolean = true;
-  private static isTagsSectionCollapsed: boolean = false;
   private static listeningTagId: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
@@ -281,6 +280,12 @@ export class ControlsInspector {
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
 
+    if (typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
+
     // If popout window is already open, focus it and update content
     if (this.popoutWindow && !this.popoutWindow.closed) {
       try {
@@ -335,10 +340,10 @@ export class ControlsInspector {
       display: flex;
       flex-direction: column;
     }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #090d16; }
-    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 5px; }
+    ::-webkit-scrollbar-thumb:hover { background: #7dd3fc; }
     .btn-secondary-action {
       background: #1e293b;
       color: #cbd5e1;
@@ -396,6 +401,12 @@ export class ControlsInspector {
   }
 
   private static openInCanvasModal(_panel: DevPanel, _char: Character): void {
+    if (typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {}
+    }
+
     if (this.modalOverlay) {
       this.modalOverlay.remove();
     }
@@ -413,9 +424,9 @@ export class ControlsInspector {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
       padding: 16px;
-      overflow-y: auto;
+      overflow: hidden;
       box-sizing: border-box;
     `;
     document.body.appendChild(overlay);
@@ -569,13 +580,19 @@ export class ControlsInspector {
     const dialogHtml = `
       <div id="controls-dialog-container" style="
         background: #0f172a;
-        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 840px; max-width: 95vw; height: calc(100vh - 40px); max-height: calc(100vh - 40px);"}
+        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 840px; max-width: 95vw; height: min(880px, calc(100vh - 32px)); max-height: calc(100vh - 32px);"}
         display: flex;
         flex-direction: column;
         overflow: hidden;
         color: #e2e8f0;
         box-shadow: ${isPopout ? "none" : "0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15)"};
       ">
+        <style>
+          #controls-scroll-body::-webkit-scrollbar { width: 10px; height: 10px; }
+          #controls-scroll-body::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 5px; }
+          #controls-scroll-body::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 5px; border: 2px solid rgba(15, 23, 42, 0.6); }
+          #controls-scroll-body::-webkit-scrollbar-thumb:hover { background: #7dd3fc; }
+        </style>
         <!-- Title Bar / Header -->
         <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -637,18 +654,23 @@ export class ControlsInspector {
         </div>
 
         <!-- Scrollable Modal Body -->
-        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
+        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #38bdf8 rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
           
-          <!-- Collapsible Keybind Tags Area (Layer 1) -->
-          <details id="details-tags" ${this.isTagsSectionCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
-            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
-              <span style="display: flex; align-items: center; gap: 6px;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(schema).length})</span>
-              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Physical keys/buttons mapped to named tags)</span>
-            </summary>
-            <div id="controls-tags-container" style="padding: 12px;">
+          <!-- Layer 1: Keybind Tags Section (Always Open & Prominent) -->
+          <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.4); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 0.84rem; font-weight: 700; color: #38bdf8;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(schema).length})</span>
+                <span style="font-size: 0.68rem; color: #94a3b8;">Physical keys & buttons mapped to reusable tags</span>
+              </div>
+              <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #94a3b8;" title="Jump down to Layer 2 Action Rules">
+                ↓ Jump to Rules
+              </button>
+            </div>
+            <div id="controls-tags-container">
               ${this.renderTagsSectionHtml(schema)}
             </div>
-          </details>
+          </div>
 
           <!-- Collapsible Paradigms Area -->
           <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
@@ -662,12 +684,15 @@ export class ControlsInspector {
           </details>
 
           <!-- Rules Matrix Header (Layer 2) -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+          <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
             <span style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
               ⚡ Layer 2: Action Rules (${activeRulesCount})
               <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);" title="Scroll up to Layer 1 Keybind Tags">
+                ↑ Layer 1 Tags
+              </button>
               <button id="btn-collapse-all-rules" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #94a3b8;" title="Collapse all rules">
                 ▶ Collapse All
               </button>
@@ -1251,9 +1276,19 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
-    // 8b. Layer 1: Keybind Tags Listeners
-    root.querySelector("#details-tags")?.addEventListener("toggle", (e: Event) => {
-      this.isTagsSectionCollapsed = !(e.target as HTMLDetailsElement).open;
+    // Navigation Jump Listeners between Layer 1 and Layer 2
+    root.querySelector("#btn-jump-to-tags")?.addEventListener("click", () => {
+      const scrollBody = root.querySelector("#controls-scroll-body") as HTMLElement | null;
+      if (scrollBody) {
+        scrollBody.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+
+    root.querySelector("#btn-jump-to-rules")?.addEventListener("click", () => {
+      const rulesHeader = root.querySelector("#section-rules-header") as HTMLElement | null;
+      if (rulesHeader) {
+        rulesHeader.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
 
     root.querySelector("#btn-add-tag")?.addEventListener("click", () => {

@@ -812,6 +812,18 @@ export class InputManager {
 
     window.addEventListener("wheel", (e) => {
       this.syncModifierStates(e);
+
+      // If the controls modal/inspector or other UI dialog is open, never block wheel scrolling
+      if (typeof document !== "undefined") {
+        if (
+          document.getElementById("controls-modal-overlay") ||
+          document.getElementById("controls-dialog-container") ||
+          document.getElementById("controls-window-root")
+        ) {
+          return;
+        }
+      }
+
       const isPointerLocked = (typeof document !== "undefined" && document.pointerLockElement === this.canvas);
       const isOverCanvas = (e.target === this.canvas || (e.target instanceof Node && this.canvas.contains(e.target)));
 
@@ -824,7 +836,7 @@ export class InputManager {
       if (
         e.target instanceof Element &&
         e.target.closest(
-          "#dev-sidebar, .dev-scrollable, .modal-backdrop, #players-modal, #settings-modal, #feedback-modal, #feedback-panel, .top-bar, .quick-action-sidebar, .dev-panel-header"
+          "#dev-sidebar, .dev-scrollable, .modal-backdrop, #players-modal, #settings-modal, #feedback-modal, #feedback-panel, .top-bar, .quick-action-sidebar, .dev-panel-header, #controls-modal-overlay, #controls-dialog-container, #controls-scroll-body, .control-rule-card"
         )
       ) {
         return;
