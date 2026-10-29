@@ -37,7 +37,7 @@ export class ControlsInspector {
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
-  private static isParadigmsCollapsed: boolean = true;
+  private static isParadigmsCollapsed: boolean = false;
   private static listeningTagId: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
@@ -672,10 +672,10 @@ export class ControlsInspector {
             </div>
           </div>
 
-          <!-- Collapsible Paradigms Area -->
+          <!-- Collapsible Movement & Aiming Mode Area -->
           <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
             <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
-              <span style="display: flex; align-items: center; gap: 6px;">🎮 Base Locomotion & Aiming Paradigms</span>
+              <span style="display: flex; align-items: center; gap: 6px;">🎮 Movement & Aiming Mode (WASD vs Mouse Drive)</span>
               <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
             </summary>
             <div id="controls-paradigms-container" style="padding: 12px;">
