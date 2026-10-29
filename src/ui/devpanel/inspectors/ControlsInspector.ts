@@ -37,7 +37,6 @@ export class ControlsInspector {
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
-  private static isParadigmsCollapsed: boolean = false;
   private static listeningTagId: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
@@ -656,7 +655,20 @@ export class ControlsInspector {
         <!-- Scrollable Modal Body -->
         <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #38bdf8 rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
           
-          <!-- Layer 1: Keybind Tags Section (Always Open & Prominent) -->
+          <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
+          <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.4); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
+              <span style="font-size: 0.84rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+                🎮 Locomotion & Aiming (WASD vs Mouse Movement)
+              </span>
+              <span style="font-size: 0.68rem; color: #94a3b8;">Choose movement mode and directional keys</span>
+            </div>
+            <div id="controls-paradigms-container">
+              ${this.renderParadigmsHtml(schema)}
+            </div>
+          </div>
+
+          <!-- Layer 1: Keybind Tags Section -->
           <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.4); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px;">
@@ -671,17 +683,6 @@ export class ControlsInspector {
               ${this.renderTagsSectionHtml(schema)}
             </div>
           </div>
-
-          <!-- Collapsible Movement & Aiming Mode Area -->
-          <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
-            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
-              <span style="display: flex; align-items: center; gap: 6px;">🎮 Movement & Aiming Mode (WASD vs Mouse Drive)</span>
-              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
-            </summary>
-            <div id="controls-paradigms-container" style="padding: 12px;">
-              ${this.renderParadigmsHtml(schema)}
-            </div>
-          </details>
 
           <!-- Rules Matrix Header (Layer 2) -->
           <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
@@ -1246,14 +1247,6 @@ export class ControlsInspector {
     if (selectPadRight) {
       selectPadRight.addEventListener("change", () => {
         schema.gamepad.rightStick.mode = selectPadRight.value as any;
-      });
-    }
-
-    // 8b. Paradigms Details Toggle Tracking
-    const detailsParadigms = root.querySelector("#details-paradigms") as HTMLDetailsElement | null;
-    if (detailsParadigms) {
-      detailsParadigms.addEventListener("toggle", () => {
-        this.isParadigmsCollapsed = !detailsParadigms.open;
       });
     }
 
