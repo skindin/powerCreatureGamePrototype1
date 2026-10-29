@@ -1,6 +1,6 @@
 {
-  "version": 115,
-  "lastSaved": "2026-10-29T14:15:48.389Z",
+  "version": 116,
+  "lastSaved": "2026-10-29T15:03:36.604Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -427,6 +427,35 @@
         },
         "rules": [
           {
+            "id": "rule-mvtoappo",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "holdingPlainObject"
+              }
+            ],
+            "condition": {
+              "type": "holdingPlainObject"
+            },
+            "actions": [
+              {
+                "moduleId": "throw",
+                "intent": "aimThrow"
+              }
+            ],
+            "action": {
+              "moduleId": "throw",
+              "intent": "aimThrow"
+            }
+          },
+          {
             "id": "rule-mvtmc4ey",
             "name": "New Action Rule",
             "enabled": true,
@@ -581,36 +610,6 @@
               "moduleId": "locomotion",
               "intent": "holdSprint"
             }
-          },
-          {
-            "id": "rule-mvt7ylfn",
-            "name": "New Action Rule",
-            "enabled": true,
-            "priority": 50,
-            "trigger": {
-              "device": "mouse",
-              "code": "MouseRight",
-              "mode": "hold"
-            },
-            "conditions": [
-              {
-                "type": "emptyHanded"
-              }
-            ],
-            "condition": {
-              "type": "emptyHanded"
-            },
-            "actions": [
-              {
-                "moduleId": "throw",
-                "intent": "releaseThrow"
-              }
-            ],
-            "action": {
-              "moduleId": "throw",
-              "intent": "releaseThrow"
-            },
-            "tagId": "tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt7ndq1",
@@ -2313,6 +2312,35 @@
           },
           "rules": [
             {
+              "id": "rule-mvtoappo",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "holdingPlainObject"
+                }
+              ],
+              "condition": {
+                "type": "holdingPlainObject"
+              },
+              "actions": [
+                {
+                  "moduleId": "throw",
+                  "intent": "aimThrow"
+                }
+              ],
+              "action": {
+                "moduleId": "throw",
+                "intent": "aimThrow"
+              }
+            },
+            {
               "id": "rule-mvtmc4ey",
               "name": "New Action Rule",
               "enabled": true,
@@ -2467,36 +2495,6 @@
                 "moduleId": "locomotion",
                 "intent": "holdSprint"
               }
-            },
-            {
-              "id": "rule-mvt7ylfn",
-              "name": "New Action Rule",
-              "enabled": true,
-              "priority": 50,
-              "trigger": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "hold"
-              },
-              "conditions": [
-                {
-                  "type": "emptyHanded"
-                }
-              ],
-              "condition": {
-                "type": "emptyHanded"
-              },
-              "actions": [
-                {
-                  "moduleId": "throw",
-                  "intent": "releaseThrow"
-                }
-              ],
-              "action": {
-                "moduleId": "throw",
-                "intent": "releaseThrow"
-              },
-              "tagId": "tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt7ndq1",

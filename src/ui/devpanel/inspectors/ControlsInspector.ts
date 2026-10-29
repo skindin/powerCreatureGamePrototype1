@@ -966,15 +966,15 @@ export class ControlsInspector {
             if (c.type === "targetInReach") return "In Reach";
             if (c.type === "stagedActionIs") return `Staged==${c.param}`;
             if (c.type === "tagHeld") {
-              const t = tags.find((tag) => tag.id === c.param);
+              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
               return `${t ? t.name : c.param} (Held)`;
             }
             if (c.type === "tagPressed") {
-              const t = tags.find((tag) => tag.id === c.param);
+              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
               return `${t ? t.name : c.param} (Pressed)`;
             }
             if (c.type === "tagReleased") {
-              const t = tags.find((tag) => tag.id === c.param);
+              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
               return `${t ? t.name : c.param} (Released)`;
             }
             if (c.type === "buttonHeld") return `Held(${c.param})`;
@@ -1052,11 +1052,9 @@ export class ControlsInspector {
                 <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${cIdx + 1}.</span>
                 <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 4px; flex: 1;">
                   <optgroup label="🎮 Keybind / Control Inputs">
-                    ${tags.map((t) => `
-                      <option value="tagHeld:${t.id}" ${cond.type === "tagHeld" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Held)</option>
-                      <option value="tagPressed:${t.id}" ${cond.type === "tagPressed" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Pressed)</option>
-                      <option value="tagReleased:${t.id}" ${cond.type === "tagReleased" && cond.param === t.id ? "selected" : ""}>⌨️ Keybind: ${t.name} (Released)</option>
-                    `).join("")}
+                    <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>⌨️ Keybind: Press</option>
+                    <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>⌨️ Keybind: Hold</option>
+                    <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>⌨️ Keybind: Release</option>
                     <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>⌨️ Raw Key/Button Code...</option>
                   </optgroup>
                   <optgroup label="🌍 Game Conditions">
@@ -1078,7 +1076,14 @@ export class ControlsInspector {
                   </optgroup>
                 </select>
                 ${
-                  cond.type === "buttonHeld"
+                  cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
+                    ? `
+                  <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 6px; flex: 1; max-width: 170px; color: #38bdf8; font-weight: 600;" title="Select keybind tag to check">
+                    ${tags.length === 0 ? `<option value="">(No tags defined)</option>` : ""}
+                    ${tags.map((t) => `<option value="${t.id}" ${cond.param === t.id || cond.param === t.name ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
+                  </select>
+                `
+                    : cond.type === "buttonHeld"
                     ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight, KeyF, GamepadLeftTrigger" style="font-size: 0.68rem; padding: 2px 4px; width: 140px; color: #38bdf8;" title="Button code to check if currently held down" />`
                     : ""
                 }
@@ -1510,15 +1515,12 @@ export class ControlsInspector {
           if (val.startsWith("stagedActionIs:")) {
             conds[cIdx].type = "stagedActionIs";
             conds[cIdx].param = val.split(":")[1];
-          } else if (val.startsWith("tagHeld:")) {
-            conds[cIdx].type = "tagHeld";
-            conds[cIdx].param = val.substring("tagHeld:".length);
-          } else if (val.startsWith("tagPressed:")) {
-            conds[cIdx].type = "tagPressed";
-            conds[cIdx].param = val.substring("tagPressed:".length);
-          } else if (val.startsWith("tagReleased:")) {
-            conds[cIdx].type = "tagReleased";
-            conds[cIdx].param = val.substring("tagReleased:".length);
+          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
+            conds[cIdx].type = val;
+            const tags = this.getActiveDeviceTags(schema);
+            if (!conds[cIdx].param || !tags.some((t) => t.id === conds[cIdx].param)) {
+              conds[cIdx].param = tags[0]?.id ?? "";
+            }
           } else if (val === "buttonHeld") {
             conds[cIdx].type = "buttonHeld";
             if (!conds[cIdx].param) conds[cIdx].param = "MouseRight";
@@ -1529,6 +1531,24 @@ export class ControlsInspector {
           rule.conditions = conds;
           rule.condition = conds[0];
           this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".select-cond-tag").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          if (conds[cIdx]) {
+            conds[cIdx].param = val;
+            rule.conditions = conds;
+            rule.condition = conds[0];
+            this.renderActiveView();
+          }
         }
       });
     });
