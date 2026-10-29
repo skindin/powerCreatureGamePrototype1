@@ -27,6 +27,7 @@ export interface PlayerEntry {
 }
 
 export interface GrabSuppressionState {
+  grabSuppressed: boolean;
   mouseGrabSuppressed: boolean;
   keyEGrabSuppressed: boolean;
   rtGrabSuppressed: boolean;
@@ -77,6 +78,7 @@ export class PlayerManager {
     let state = this.grabSuppressedStates.get(entityId);
     if (!state) {
       state = {
+        grabSuppressed: false,
         mouseGrabSuppressed: false,
         keyEGrabSuppressed: false,
         rtGrabSuppressed: false,
@@ -1474,9 +1476,24 @@ export class PlayerManager {
       // Explicit grab target resolution
       const grabState = this.getGrabSuppressionState(char.id);
       const isKeyboardPlayer = !entry || entry.isKeyboard;
-      const isDeviceSuppressed = isKeyboardPlayer
-        ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
-        : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed);
+
+      // Reset grab suppression as soon as the grab action is not held
+      if (!pkt.isGrabHeld) {
+        grabState.grabSuppressed = false;
+        grabState.mouseGrabSuppressed = false;
+        grabState.keyEGrabSuppressed = false;
+        grabState.rtGrabSuppressed = false;
+        grabState.bGrabSuppressed = false;
+      }
+      if (!(pkt as any).isUsingItem) {
+        grabState.useItemSuppressed = false;
+      }
+
+      const isDeviceSuppressed = grabState.grabSuppressed || (
+        isKeyboardPlayer
+          ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
+          : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
+      );
       const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;
       if (!isEditMode && isSeeking && !char.heldObject && char.pickupModule) {
         if (pkt.grabTargetObjectId !== undefined) {
@@ -1487,6 +1504,7 @@ export class PlayerManager {
               if (this.isOnlineMode) {
                 // Online Mode: Do NOT assume pickup was successful! Send priority message to server.
                 const gState = this.getGrabSuppressionState(char.id);
+                gState.grabSuppressed = true;
                 if (isKeyboardPlayer) {
                   gState.mouseGrabSuppressed = true;
                   gState.keyEGrabSuppressed = true;
@@ -1548,6 +1566,7 @@ export class PlayerManager {
           if (target) {
             if (this.isOnlineMode) {
               const gState = this.getGrabSuppressionState(char.id);
+              gState.grabSuppressed = true;
               if (isKeyboardPlayer) {
                 gState.mouseGrabSuppressed = true;
                 gState.keyEGrabSuppressed = true;

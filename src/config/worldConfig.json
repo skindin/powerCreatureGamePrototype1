@@ -1,6 +1,6 @@
 {
-  "version": 105,
-  "lastSaved": "2026-10-29T10:36:53.564Z",
+  "version": 108,
+  "lastSaved": "2026-10-29T10:49:38.317Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -628,16 +628,26 @@
             "trigger": {
               "device": "keyboard",
               "code": "KeyF",
-              "mode": "press"
+              "mode": "hold"
             },
             "condition": {
               "type": "always"
             },
             "action": {
-              "moduleId": "throwPickup",
-              "intent": "pickupReach"
+              "moduleId": "pickup",
+              "intent": "dropItem"
             },
-            "tagId": "tag-kbm-tn6irx"
+            "tagId": "tag-kbm-tn6irx",
+            "actions": [
+              {
+                "moduleId": "pickup",
+                "intent": "dropItem"
+              },
+              {
+                "moduleId": "pickup",
+                "intent": "pickupReach"
+              }
+            ]
           },
           {
             "id": "kbm-drop",
@@ -2403,16 +2413,26 @@
               "trigger": {
                 "device": "keyboard",
                 "code": "KeyF",
-                "mode": "press"
+                "mode": "hold"
               },
               "condition": {
                 "type": "always"
               },
               "action": {
-                "moduleId": "throwPickup",
-                "intent": "pickupReach"
+                "moduleId": "pickup",
+                "intent": "dropItem"
               },
-              "tagId": "tag-kbm-tn6irx"
+              "tagId": "tag-kbm-tn6irx",
+              "actions": [
+                {
+                  "moduleId": "pickup",
+                  "intent": "dropItem"
+                },
+                {
+                  "moduleId": "pickup",
+                  "intent": "pickupReach"
+                }
+              ]
             },
             {
               "id": "kbm-drop",
