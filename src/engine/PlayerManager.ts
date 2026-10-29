@@ -689,7 +689,8 @@ export class PlayerManager {
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
         if (ControlSchemaArbiter.evaluateAllConditions(rule, execCtx)) {
-          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, execCtx, keyStates, mouseStates)) {
+          const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
+          if (ControlSchemaArbiter.isTriggerActive(effTrigger, execCtx, keyStates, mouseStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             for (const act of actions) {
@@ -700,7 +701,7 @@ export class PlayerManager {
                 if (intent === "jump") isJumpHeld = true;
                 else if (intent === "holdSprint") isSprinting = true;
                 else if (intent === "toggleSprint") {
-                  if (rule.trigger.mode === "press" && (keyStates.justPressed(rule.trigger.code) || mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : 2))) {
+                  if (effTrigger.mode === "press" && (keyStates.justPressed(effTrigger.code) || mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : 2))) {
                     kChar.setSprinting(!kChar.isSprinting);
                   }
                   isSprinting = Boolean(kChar.isSprinting);
@@ -724,7 +725,7 @@ export class PlayerManager {
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
-                const isHold = rule.trigger.mode === "hold" || intent.startsWith("holdStage");
+                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
                 if (isHold) {
                   const targetStage =
                     intent === "holdStageLaser" || intent === "stageLaser"
@@ -740,11 +741,11 @@ export class PlayerManager {
                     activeHoldStage = targetStage;
                     kChar.stagedAction = targetStage;
                   }
-                } else if (rule.trigger.mode === "press") {
+                } else if (effTrigger.mode === "press") {
                   const isJustTriggered =
-                    rule.trigger.device === "mouse"
-                      ? mouseStates.justPressed(rule.trigger.code === "MouseLeft" ? 0 : rule.trigger.code === "MouseMiddle" ? 1 : 2)
-                      : keyStates.justPressed(rule.trigger.code);
+                    effTrigger.device === "mouse"
+                      ? mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : effTrigger.code === "MouseMiddle" ? 1 : 2)
+                      : keyStates.justPressed(effTrigger.code);
                   if (isJustTriggered) {
                     if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
                     else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
@@ -752,7 +753,7 @@ export class PlayerManager {
                     else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
                     else if (intent === "clearStage") kChar.stagedAction = null;
                   }
-                } else if (rule.trigger.mode === "release" && intent === "clearStage") {
+                } else if (effTrigger.mode === "release" && intent === "clearStage") {
                   kChar.stagedAction = null;
                 }
               }
@@ -966,7 +967,8 @@ export class PlayerManager {
       for (const rule of sortedGpRules) {
         if (rule.enabled === false) continue;
         if (ControlSchemaArbiter.evaluateAllConditions(rule, gpExecCtx)) {
-          if (ControlSchemaArbiter.isTriggerActive(rule.trigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
+          const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
+          if (ControlSchemaArbiter.isTriggerActive(effTrigger, gpExecCtx, gpDummyKeyStates, gpDummyMouseStates, gpStates)) {
             ControlsInspector.notifyRuleFired(rule.id);
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             for (const act of actions) {
@@ -977,8 +979,8 @@ export class PlayerManager {
                 if (intent === "jump") isJumpHeld = true;
                 else if (intent === "holdSprint") isSprinting = true;
                 else if (intent === "toggleSprint") {
-                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
-                  if (rule.trigger.mode === "press" && gpStates.justPressed(btnCode)) {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
+                  if (effTrigger.mode === "press" && gpStates.justPressed(btnCode)) {
                     cChar.setSprinting(!cChar.isSprinting);
                   }
                   isSprinting = Boolean(cChar.isSprinting);
@@ -1002,7 +1004,7 @@ export class PlayerManager {
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
-                const isHold = rule.trigger.mode === "hold" || intent.startsWith("holdStage");
+                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
                 if (isHold) {
                   const targetStage =
                     intent === "holdStageLaser" || intent === "stageLaser"
@@ -1018,8 +1020,8 @@ export class PlayerManager {
                     activeGpHoldStage = targetStage;
                     cChar.stagedAction = targetStage;
                   }
-                } else if (rule.trigger.mode === "press") {
-                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(rule.trigger.code);
+                } else if (effTrigger.mode === "press") {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
                   if (gpStates.justPressed(btnCode)) {
                     if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
                     else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
@@ -1027,7 +1029,7 @@ export class PlayerManager {
                     else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
                     else if (intent === "clearStage") cChar.stagedAction = null;
                   }
-                } else if (rule.trigger.mode === "release" && intent === "clearStage") {
+                } else if (effTrigger.mode === "release" && intent === "clearStage") {
                   cChar.stagedAction = null;
                 }
               }

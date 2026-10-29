@@ -10,6 +10,8 @@ import type {
   TriggerMode,
   ConditionGate,
   ActionInvocation,
+  InputTagBinding,
+  InputTriggerBinding,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
@@ -36,6 +38,8 @@ export class ControlsInspector {
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
   private static isParadigmsCollapsed: boolean = false;
+  private static isTagsSectionCollapsed: boolean = false;
+  private static listeningTagId: string | null = null;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
@@ -52,18 +56,98 @@ export class ControlsInspector {
     return Boolean(this.modalOverlay && document.body.contains(this.modalOverlay));
   }
 
+  public static ensureSchemaTags(schema: ControlSchema): void {
+    if (!schema) return;
+    // 1. Keyboard & Mouse Tags
+    if (!schema.keyboardMouse.tags) {
+      schema.keyboardMouse.tags = [];
+    }
+    const kTags = schema.keyboardMouse.tags;
+    for (const rule of schema.keyboardMouse.rules) {
+      if (!rule.tagId) {
+        let matchingTag: InputTagBinding | undefined = kTags.find(
+          (t) =>
+            t.trigger.code === rule.trigger.code &&
+            t.trigger.device === rule.trigger.device &&
+            (t.trigger.chordModifiers?.join(",") ?? "") === (rule.trigger.chordModifiers?.join(",") ?? "")
+        );
+        if (!matchingTag) {
+          const tagId = "tag-kbm-" + Math.random().toString(36).substring(2, 8);
+          matchingTag = {
+            id: tagId,
+            name: rule.name ? rule.name.replace(/\s*\(.*\)/, "").trim() : `${rule.trigger.code}`,
+            trigger: {
+              device: rule.trigger.device,
+              code: rule.trigger.code,
+              chordModifiers: rule.trigger.chordModifiers ? [...rule.trigger.chordModifiers] : undefined,
+              mode: rule.trigger.mode ?? "press",
+            },
+          };
+          kTags.push(matchingTag);
+        }
+        rule.tagId = matchingTag.id;
+      }
+    }
+
+    // 2. Gamepad Tags
+    if (!schema.gamepad.tags) {
+      schema.gamepad.tags = [];
+    }
+    const gpTags = schema.gamepad.tags;
+    for (const rule of schema.gamepad.rules) {
+      if (!rule.tagId) {
+        let matchingTag: InputTagBinding | undefined = gpTags.find((t) => t.trigger.code === rule.trigger.code);
+        if (!matchingTag) {
+          const tagId = "tag-pad-" + Math.random().toString(36).substring(2, 8);
+          matchingTag = {
+            id: tagId,
+            name: rule.name ? rule.name.replace(/\s*\(.*\)/, "").trim() : `${rule.trigger.code}`,
+            trigger: {
+              device: "gamepad",
+              code: rule.trigger.code,
+              mode: rule.trigger.mode ?? "press",
+            },
+          };
+          gpTags.push(matchingTag);
+        }
+        rule.tagId = matchingTag.id;
+      }
+    }
+
+    // 3. Touch Tags
+    if (!schema.touch.tags) {
+      schema.touch.tags = [];
+    }
+  }
+
+  public static getActiveDeviceTags(schema: ControlSchema): InputTagBinding[] {
+    if (this.activeTab === "keyboardMouse") {
+      if (!schema.keyboardMouse.tags) schema.keyboardMouse.tags = [];
+      return schema.keyboardMouse.tags;
+    }
+    if (this.activeTab === "gamepad") {
+      if (!schema.gamepad.tags) schema.gamepad.tags = [];
+      return schema.gamepad.tags;
+    }
+    if (!schema.touch.tags) schema.touch.tags = [];
+    return schema.touch.tags;
+  }
+
   public static getActiveSchema(char: Character): ControlSchema {
     if (char.controlSchema) {
+      this.ensureSchemaTags(char.controlSchema);
       return char.controlSchema;
     }
     if (char.prefabId) {
       const prefab = prefabManager.get(char.prefabId);
       if (prefab?.controlSchema) {
         char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.ensureSchemaTags(char.controlSchema!);
         return char.controlSchema!;
       }
     }
     char.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    this.ensureSchemaTags(char.controlSchema!);
     return char.controlSchema!;
   }
 
@@ -561,10 +645,21 @@ export class ControlsInspector {
             </div>
           </details>
 
-          <!-- Rules Matrix Header -->
+          <!-- Collapsible Keybind Tags Area (Layer 1) -->
+          <details id="details-tags" ${this.isTagsSectionCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
+            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
+              <span style="display: flex; align-items: center; gap: 6px;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(schema).length})</span>
+              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Physical keys/buttons mapped to named tags)</span>
+            </summary>
+            <div id="controls-tags-container" style="padding: 12px;">
+              ${this.renderTagsSectionHtml(schema)}
+            </div>
+          </details>
+
+          <!-- Rules Matrix Header (Layer 2) -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
             <span style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
-              ⚡ Action Rules (${activeRulesCount})
+              ⚡ Layer 2: Action Rules (${activeRulesCount})
               <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
@@ -639,6 +734,52 @@ export class ControlsInspector {
   }
 
   // --- Sub-Section HTML Builders ---
+
+  private static renderTagsSectionHtml(schema: ControlSchema): string {
+    const tags = this.getActiveDeviceTags(schema);
+    if (tags.length === 0) {
+      return `
+        <div style="text-align: center; color: #64748b; font-size: 0.74rem; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+          No custom keybind tags defined yet. Click "+ Add Keybind Tag" to create one.
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+            + Add Keybind Tag
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: grid; grid-template-columns: 1fr 140px 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #64748b; padding: 0 4px;">
+          <span>TAG NAME</span>
+          <span>KEY / BUTTON BIND</span>
+          <span></span>
+        </div>
+        ${tags.map((tag) => {
+          const isListening = this.listeningTagId === tag.id;
+          const triggerLabel = this.formatTriggerLabel(tag);
+          return `
+            <div class="keybind-tag-row" style="display: grid; grid-template-columns: 1fr 140px 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 4px 6px;">
+              <input type="text" class="input-tag-name dev-input" data-tag-id="${tag.id}" value="${tag.name}" placeholder="e.g. Sprint, Aim, Jump..." style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: #e2e8f0;" />
+              <button class="btn-bind-tag btn-secondary-action" data-tag-id="${tag.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}" title="Click to bind key or mouse button">
+                ${isListening ? "🔴 Press key..." : triggerLabel}
+              </button>
+              <button class="btn-delete-tag btn-secondary-action" data-tag-id="${tag.id}" style="padding: 2px 4px; color: #f87171; font-size: 0.70rem; border-color: rgba(248, 113, 113, 0.3);" title="Delete Tag">
+                🗑️
+              </button>
+            </div>
+          `;
+        }).join("")}
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+            + Add Keybind Tag
+          </button>
+        </div>
+      </div>
+    `;
+  }
 
   private static renderParadigmsHtml(schema: ControlSchema): string {
     if (this.activeTab === "keyboardMouse") {
@@ -766,6 +907,7 @@ export class ControlsInspector {
         : this.activeTab === "gamepad"
         ? schema.gamepad.rules
         : schema.touch.rules;
+    const tags = this.getActiveDeviceTags(schema);
 
     if (rules.length === 0) {
       return `<div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 16px; background: rgba(15, 23, 42, 0.4); border-radius: 6px;">No action rules defined for this device. Click "+ Add Rule".</div>`;
@@ -773,8 +915,8 @@ export class ControlsInspector {
 
     return rules
       .map((rule) => {
-        const isListening = this.listeningRuleId === rule.id;
-        const triggerLabel = this.formatTriggerLabel(rule);
+        const currentTag = tags.find((t) => t.id === rule.tagId);
+        const tagDisplayName = currentTag ? currentTag.name : rule.trigger.code;
         const conds = ControlSchemaArbiter.getRuleConditions(rule);
         const actions = ControlSchemaArbiter.getRuleActions(rule);
         const isCollapsed = this.collapsedRuleIds.has(rule.id);
@@ -806,7 +948,7 @@ export class ControlsInspector {
 
         return `
         <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; position: relative; transition: all 0.15s ease;">
-          <!-- Rule Header: Collapse, Pip, Trigger, Mode, Delete -->
+          <!-- Rule Header: Collapse, Pip, Tag Selector, Mode, Delete -->
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <!-- Collapse / Expand Toggle Button -->
             <button class="btn-toggle-rule-collapse btn-secondary-action" data-rule-id="${rule.id}" type="button" style="padding: 2px 5px; font-size: 0.70rem; color: #94a3b8; line-height: 1;" title="${isCollapsed ? "Expand Rule Block" : "Collapse Rule Block"}">
@@ -816,10 +958,11 @@ export class ControlsInspector {
             <!-- Status Pip -->
             <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
 
-            <!-- Trigger Button (Press to Bind) -->
-            <button class="btn-bind-trigger btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; min-width: 120px; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}">
-              ${isListening ? "🔴 Listening..." : triggerLabel}
-            </button>
+            <!-- Tag Selector Dropdown -->
+            <select class="select-rule-tag dev-select" data-rule-id="${rule.id}" style="font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: #38bdf8; min-width: 140px; max-width: 185px;" title="Select keybind tag trigger">
+              ${tags.length === 0 ? `<option value="">(No tags defined)</option>` : ""}
+              ${tags.map((t) => `<option value="${t.id}" ${t.id === rule.tagId ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
+            </select>
 
             <!-- Mode Selector -->
             <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.70rem; padding: 2px 4px; width: 75px;">
@@ -831,8 +974,8 @@ export class ControlsInspector {
             ${
               isCollapsed
                 ? `
-              <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 4px;" title="IF: ${condSummary} ➔ THEN: ${actionSummary}">
-                <span style="color: #38bdf8;">IF:</span> ${condSummary} <span style="color: #facc15;">➔</span> <strong style="color: #e2e8f0;">${actionSummary}</strong>
+              <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 4px;" title="[${tagDisplayName}] IF: ${condSummary} ➔ THEN: ${actionSummary}">
+                <span style="color: #38bdf8; font-weight: 600;">[${tagDisplayName}]</span> <span style="color: #94a3b8;">IF:</span> ${condSummary} <span style="color: #facc15;">➔</span> <strong style="color: #e2e8f0;">${actionSummary}</strong>
               </div>
             `
                 : `<div style="flex: 1;"></div>`
@@ -922,8 +1065,8 @@ export class ControlsInspector {
       .join("");
   }
 
-  private static formatTriggerLabel(rule: ControlRule): string {
-    const t = rule.trigger;
+  private static formatTriggerLabel(item: { trigger: InputTriggerBinding } | InputTriggerBinding): string {
+    const t = "trigger" in item ? item.trigger : item;
     const devIcon = t.device === "keyboard" ? "⌨️" : t.device === "mouse" ? "🖱️" : "🎮";
     const chord = t.chordModifiers && t.chordModifiers.length > 0 ? `${t.chordModifiers.join("+")} + ` : "";
     return `${devIcon} ${chord}${t.code}`;
@@ -1099,17 +1242,96 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
+    // 8b. Layer 1: Keybind Tags Listeners
+    root.querySelector("#details-tags")?.addEventListener("toggle", (e: Event) => {
+      this.isTagsSectionCollapsed = !(e.target as HTMLDetailsElement).open;
+    });
+
+    root.querySelector("#btn-add-tag")?.addEventListener("click", () => {
+      const tags = this.getActiveDeviceTags(schema);
+      const isPad = this.activeTab === "gamepad";
+      const newTag: InputTagBinding = {
+        id: (isPad ? "tag-pad-" : "tag-kbm-") + Math.random().toString(36).substring(2, 8),
+        name: `Tag ${tags.length + 1}`,
+        trigger: isPad
+          ? { device: "gamepad", code: "GamepadA", mode: "press" }
+          : { device: "keyboard", code: "KeyF", mode: "press" },
+      };
+      tags.push(newTag);
+      this.renderActiveView();
+    });
+
+    root.querySelectorAll(".input-tag-name").forEach((inp) => {
+      inp.addEventListener("input", (e) => {
+        const tagId = (inp as HTMLElement).dataset.tagId;
+        const val = (e.target as HTMLInputElement).value;
+        const tags = this.getActiveDeviceTags(schema);
+        const tag = tags.find((t) => t.id === tagId);
+        if (tag) tag.name = val;
+      });
+      inp.addEventListener("change", () => {
+        this.renderActiveView();
+      });
+    });
+
+    root.querySelectorAll(".btn-bind-tag").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tagId = (btn as HTMLElement).dataset.tagId;
+        if (tagId) {
+          this.startTagTriggerListening(tagId);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-tag").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tagId = (btn as HTMLElement).dataset.tagId;
+        const tags = this.getActiveDeviceTags(schema);
+        const idx = tags.findIndex((t) => t.id === tagId);
+        if (idx !== -1) {
+          tags.splice(idx, 1);
+          const rules =
+            this.activeTab === "keyboardMouse"
+              ? schema.keyboardMouse.rules
+              : this.activeTab === "gamepad"
+              ? schema.gamepad.rules
+              : schema.touch.rules;
+          for (const rule of rules) {
+            if (rule.tagId === tagId) {
+              rule.tagId = tags[0]?.id;
+              if (tags[0]) {
+                rule.trigger.code = tags[0].trigger.code;
+                rule.trigger.device = tags[0].trigger.device;
+                rule.trigger.chordModifiers = tags[0].trigger.chordModifiers ? [...tags[0].trigger.chordModifiers] : undefined;
+              }
+            }
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+
     // 9. Add Rule Button
     root.querySelector("#btn-add-control-rule")?.addEventListener("click", () => {
+      const tags = this.getActiveDeviceTags(schema);
+      const isPad = this.activeTab === "gamepad";
+      const defaultTag = tags[0];
       const newRule: ControlRule = {
         id: "rule-" + Date.now().toString(36),
         name: "New Action Rule",
         enabled: true,
         priority: 50,
-        trigger:
-          this.activeTab === "gamepad"
-            ? { device: "gamepad", code: "GamepadA", mode: "press" }
-            : { device: "keyboard", code: "Space", mode: "press" },
+        tagId: defaultTag?.id,
+        trigger: defaultTag
+          ? {
+              device: defaultTag.trigger.device,
+              code: defaultTag.trigger.code,
+              chordModifiers: defaultTag.trigger.chordModifiers ? [...defaultTag.trigger.chordModifiers] : undefined,
+              mode: "press",
+            }
+          : isPad
+          ? { device: "gamepad", code: "GamepadA", mode: "press" }
+          : { device: "keyboard", code: "Space", mode: "press" },
         conditions: [{ type: "always" }],
         condition: { type: "always" },
         actions: [{ moduleId: "locomotion", intent: "jump" }],
@@ -1144,12 +1366,22 @@ export class ControlsInspector {
       });
     });
 
-    // 10. Rule Bind Trigger
-    root.querySelectorAll(".btn-bind-trigger").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const rId = (btn as HTMLElement).dataset.ruleId;
-        if (rId) {
-          this.startRuleTriggerListening(rId);
+    // 10. Rule Select Tag
+    root.querySelectorAll(".select-rule-tag").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const tagId = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          rule.tagId = tagId;
+          const tags = this.getActiveDeviceTags(schema);
+          const tag = tags.find((t) => t.id === tagId);
+          if (tag) {
+            rule.trigger.code = tag.trigger.code;
+            rule.trigger.device = tag.trigger.device;
+            rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined;
+          }
+          this.renderActiveView();
         }
       });
     });
@@ -1352,18 +1584,110 @@ export class ControlsInspector {
     if (idx !== -1) rules.splice(idx, 1);
   }
 
-  // --- "Press Input to Bind" Chord Recorder ---
+  // --- "Press Input to Bind" Tag Recorder (Layer 1) ---
 
-  private static startRuleTriggerListening(ruleId: string): void {
+  private static syncRulesForTag(schema: ControlSchema, tag: InputTagBinding): void {
+    const rules =
+      this.activeTab === "keyboardMouse"
+        ? schema.keyboardMouse.rules
+        : this.activeTab === "gamepad"
+        ? schema.gamepad.rules
+        : schema.touch.rules;
+    for (const rule of rules) {
+      if (rule.tagId === tag.id) {
+        rule.trigger.device = tag.trigger.device;
+        rule.trigger.code = tag.trigger.code;
+        rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined;
+      }
+    }
+  }
+
+  private static startTagTriggerListening(tagId: string): void {
     if (this.recorderCleanup) this.recorderCleanup();
-    this.listeningRuleId = ruleId;
+    this.listeningTagId = tagId;
     this.renderActiveView();
 
     if (!this.workingSchema) return;
-    const rule = this.findRule(this.workingSchema, ruleId);
-    if (!rule) return;
+    const schema = this.workingSchema;
+    const tags = this.getActiveDeviceTags(schema);
+    const tag = tags.find((t) => t.id === tagId);
+    if (!tag) return;
 
-    const chord = new Set<string>();
+    if (this.activeTab === "gamepad") {
+      let isDone = false;
+      let animId: number | null = null;
+
+      const pollGamepad = () => {
+        if (isDone) return;
+        const gamepads = typeof navigator.getGamepads === "function" ? navigator.getGamepads() : [];
+        for (let g = 0; g < gamepads.length; g++) {
+          const gp = gamepads[g];
+          if (!gp) continue;
+          for (let b = 0; b < gp.buttons.length; b++) {
+            if (gp.buttons[b].pressed || gp.buttons[b].value > 0.5) {
+              const code = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+              tag.trigger = {
+                device: "gamepad",
+                code,
+                mode: "press",
+              };
+              this.syncRulesForTag(schema, tag);
+              cleanup();
+              this.listeningTagId = null;
+              this.renderActiveView();
+              return;
+            }
+          }
+        }
+        animId = requestAnimationFrame(pollGamepad);
+      };
+
+      const cleanup = () => {
+        isDone = true;
+        if (animId !== null) cancelAnimationFrame(animId);
+        window.removeEventListener("keydown", onKeyDown, true);
+        if (this.popoutWindow && !this.popoutWindow.closed) {
+          this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        }
+        this.recorderCleanup = null;
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.code === "Escape") {
+          cleanup();
+          this.listeningTagId = null;
+          this.renderActiveView();
+        }
+      };
+
+      this.recorderCleanup = cleanup;
+      window.addEventListener("keydown", onKeyDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      }
+      animId = requestAnimationFrame(pollGamepad);
+      return;
+    }
+
+    // Keyboard & Mouse recording with immediate modifier detection + chord support
+    let heldModifier: string | null = null;
+    let chordTimer: any = null;
+
+    const commitTrigger = (device: "keyboard" | "mouse", code: string, chordModifiers?: string[]) => {
+      tag.trigger = {
+        device,
+        code,
+        chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined,
+        mode: "press",
+      };
+      this.syncRulesForTag(schema, tag);
+      cleanup();
+      this.listeningTagId = null;
+      this.renderActiveView();
+    };
+
+    const isModifier = (code: string) =>
+      ["AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "MetaLeft", "MetaRight"].includes(code);
 
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
@@ -1371,25 +1695,42 @@ export class ControlsInspector {
 
       if (e.code === "Escape") {
         cleanup();
-        this.listeningRuleId = null;
+        this.listeningTagId = null;
         this.renderActiveView();
         return;
       }
 
-      // Check if it's a modifier key
-      if (["AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(e.code)) {
-        chord.add(e.code);
+      if (isModifier(e.code)) {
+        if (!heldModifier) {
+          heldModifier = e.code;
+          // Set ~250ms timer to bind as standalone modifier if no second key is pressed
+          chordTimer = setTimeout(() => {
+            if (heldModifier) {
+              commitTrigger("keyboard", heldModifier);
+            }
+          }, 250);
+        }
         return;
       }
 
-      // Main key pressed!
-      rule.trigger.device = "keyboard";
-      rule.trigger.code = e.code;
-      rule.trigger.chordModifiers = chord.size > 0 ? Array.from(chord) : undefined;
+      // Non-modifier pressed!
+      if (heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("keyboard", e.code, [heldModifier]);
+      } else {
+        commitTrigger("keyboard", e.code);
+      }
+    };
 
-      cleanup();
-      this.listeningRuleId = null;
-      this.renderActiveView();
+    const onKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // If releasing the modifier before another key was pressed, bind immediately as standalone
+      if (heldModifier && e.code === heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("keyboard", heldModifier);
+      }
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -1397,13 +1738,12 @@ export class ControlsInspector {
       e.stopPropagation();
 
       const btnName = e.button === 0 ? "MouseLeft" : e.button === 1 ? "MouseMiddle" : "MouseRight";
-      rule.trigger.device = "mouse";
-      rule.trigger.code = btnName;
-      rule.trigger.chordModifiers = chord.size > 0 ? Array.from(chord) : undefined;
-
-      cleanup();
-      this.listeningRuleId = null;
-      this.renderActiveView();
+      if (heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("mouse", btnName, [heldModifier]);
+      } else {
+        commitTrigger("mouse", btnName);
+      }
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -1411,11 +1751,14 @@ export class ControlsInspector {
     };
 
     const cleanup = () => {
+      if (chordTimer) clearTimeout(chordTimer);
       window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("contextmenu", onContextMenu, true);
       if (this.popoutWindow && !this.popoutWindow.closed) {
         this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("keyup", onKeyUp, true);
         this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
         this.popoutWindow.removeEventListener("contextmenu", onContextMenu, true);
       }
@@ -1424,10 +1767,12 @@ export class ControlsInspector {
 
     this.recorderCleanup = cleanup;
     window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("contextmenu", onContextMenu, true);
     if (this.popoutWindow && !this.popoutWindow.closed) {
       this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("keyup", onKeyUp, true);
       this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
       this.popoutWindow.addEventListener("contextmenu", onContextMenu, true);
     }

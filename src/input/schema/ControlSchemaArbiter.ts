@@ -6,6 +6,8 @@ import type {
   ActionInvocation,
   ControlExecutionContext,
   InputTriggerBinding,
+  DeviceChannel,
+  InputTagBinding,
 } from "./ControlSchemaTypes.js";
 import { ControlActionCatalog } from "./ControlActionCatalog.js";
 
@@ -40,6 +42,21 @@ export class ControlSchemaArbiter {
     if (rule.actions && rule.actions.length > 0) return rule.actions;
     if (rule.action) return [rule.action];
     return [];
+  }
+
+  public static resolveEffectiveTrigger(rule: ControlRule, schema?: ControlSchema, device?: DeviceChannel): InputTriggerBinding {
+    if (rule.tagId && schema && device) {
+      const cfg = device === "keyboardMouse" ? schema.keyboardMouse : device === "gamepad" ? schema.gamepad : schema.touch;
+      const tags: InputTagBinding[] = cfg.tags ?? [];
+      const tag = tags.find((t: InputTagBinding) => t.id === rule.tagId);
+      if (tag) {
+        return {
+          ...tag.trigger,
+          mode: rule.trigger?.mode ?? tag.trigger.mode ?? "press",
+        };
+      }
+    }
+    return rule.trigger;
   }
 
   public static evaluateAllConditions(rule: ControlRule, ctx: ControlExecutionContext): boolean {
@@ -194,6 +211,28 @@ export class ControlSchemaArbiter {
     }
   }
 
+  public static formatGamepadButtonIndex(btn: number): string {
+    switch (btn) {
+      case 0: return "GamepadA";
+      case 1: return "GamepadB";
+      case 2: return "GamepadX";
+      case 3: return "GamepadY";
+      case 4: return "GamepadLB";
+      case 5: return "GamepadRB";
+      case 6: return "GamepadLT";
+      case 7: return "GamepadRT";
+      case 8: return "GamepadBack";
+      case 9: return "GamepadStart";
+      case 10: return "GamepadLS";
+      case 11: return "GamepadRS";
+      case 12: return "GamepadDpadUp";
+      case 13: return "GamepadDpadDown";
+      case 14: return "GamepadDpadLeft";
+      case 15: return "GamepadDpadRight";
+      default: return `GamepadBtn${btn}`;
+    }
+  }
+
   public static evaluateFrame(
     schema: ControlSchema,
     ctx: ControlExecutionContext,
@@ -289,7 +328,8 @@ export class ControlSchemaArbiter {
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
         const matchesCondition = this.evaluateAllConditions(rule, ctx);
-        const triggerActive = this.isTriggerActive(rule.trigger, ctx, keyStates, mouseStates);
+        const effTrigger = this.resolveEffectiveTrigger(rule, schema, "keyboardMouse");
+        const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates);
 
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
@@ -367,7 +407,8 @@ export class ControlSchemaArbiter {
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
         const matchesCondition = this.evaluateAllConditions(rule, ctx);
-        const triggerActive = this.isTriggerActive(rule.trigger, ctx, keyStates, mouseStates, gamepadStates);
+        const effTrigger = this.resolveEffectiveTrigger(rule, schema, "gamepad");
+        const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates, gamepadStates);
 
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 

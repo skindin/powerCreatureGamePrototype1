@@ -43,11 +43,18 @@ export interface ActionInvocation {
   args?: Record<string, any>;
 }
 
+export interface InputTagBinding {
+  id: string;
+  name: string;
+  trigger: InputTriggerBinding;
+}
+
 export interface ControlRule {
   id: string;
   name?: string;
   enabled?: boolean;
   priority?: number; // Higher numbers evaluated first
+  tagId?: string;    // Reference to an InputTagBinding.id
   trigger: InputTriggerBinding;
   conditions?: ConditionGate[]; // Multiple conditions (ALL must match: logical AND)
   condition?: ConditionGate;    // Single condition (for backwards compatibility)
@@ -59,6 +66,7 @@ export type LocomotionParadigm = "directVector" | "forwardFacingDrive" | "cursor
 export type AimingParadigm = "faceMouseCursor" | "twinStickAim" | "faceMovement";
 
 export interface KeyboardMouseConfig {
+  tags?: InputTagBinding[];
   aiming: {
     mode: AimingParadigm;
   };
@@ -74,6 +82,7 @@ export interface KeyboardMouseConfig {
 }
 
 export interface GamepadConfig {
+  tags?: InputTagBinding[];
   leftStick: {
     primaryMode: "directLocomotion" | "cursorSteer";
     dynamicOverride?: {
@@ -112,6 +121,7 @@ export interface TouchWidgetConfig {
 }
 
 export interface TouchConfig {
+  tags?: InputTagBinding[];
   widgets: TouchWidgetConfig[];
   rules: ControlRule[];
 }
