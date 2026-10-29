@@ -34,6 +34,8 @@ export class ControlsInspector {
   private static activeTab: DeviceChannel = "keyboardMouse";
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
+  private static collapsedRuleIds: Set<string> = new Set<string>();
+  private static isParadigmsCollapsed: boolean = false;
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
@@ -130,7 +132,7 @@ export class ControlsInspector {
           case "holdingEdible": condMatch = isHolding && (Boolean(char.hasPrimaryItemAbility()) || isEdible); break;
           case "emptyHanded": condMatch = !isHolding; break;
           case "targetInReach": condMatch = Boolean(ctx?.targetInReach || (char.pickupModule && !isHolding)); break;
-          case "stagedActionIs": condMatch = char.stagedAction === cond.param; break;
+          case "stagedActionIs": condMatch = char.stagedAction === cond.param || (cond.param === "pickup" && char.stagedAction === "grab"); break;
           case "grounded": condMatch = Boolean(char.isRestingOnSurface); break;
           case "climbing": condMatch = Boolean(char.isClimbing); break;
           case "isAiming": condMatch = Boolean(char.isLaserAiming || char.isAimingTrajectory); break;
@@ -548,10 +550,16 @@ export class ControlsInspector {
         <!-- Scrollable Modal Body -->
         <div style="flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
           
-          <!-- Paradigms Area -->
-          <div id="controls-paradigms-container" style="background: rgba(15, 23, 42, 0.75); padding: 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08);">
-            ${this.renderParadigmsHtml(schema)}
-          </div>
+          <!-- Collapsible Paradigms Area -->
+          <details id="details-paradigms" ${this.isParadigmsCollapsed ? "" : "open"} style="background: rgba(15, 23, 42, 0.75); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden;">
+            <summary style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; padding: 10px 12px; cursor: pointer; user-select: none; display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03);">
+              <span style="display: flex; align-items: center; gap: 6px;">🎮 Base Locomotion & Aiming Paradigms</span>
+              <span style="font-size: 0.68rem; color: #64748b; font-weight: 400;">(Click to collapse/expand)</span>
+            </summary>
+            <div id="controls-paradigms-container" style="padding: 12px;">
+              ${this.renderParadigmsHtml(schema)}
+            </div>
+          </details>
 
           <!-- Rules Matrix Header -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
@@ -559,9 +567,17 @@ export class ControlsInspector {
               ⚡ Action Rules (${activeRulesCount})
               <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
             </span>
-            <button id="btn-add-control-rule" class="btn-secondary-action" style="font-size: 0.74rem; padding: 4px 12px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">
-              + Add Rule
-            </button>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-collapse-all-rules" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #94a3b8;" title="Collapse all rules">
+                ▶ Collapse All
+              </button>
+              <button id="btn-expand-all-rules" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #94a3b8;" title="Expand all rules">
+                ▼ Expand All
+              </button>
+              <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">
+                + Add Rule
+              </button>
+            </div>
           </div>
 
           <!-- Rules List Container -->
@@ -761,11 +777,42 @@ export class ControlsInspector {
         const triggerLabel = this.formatTriggerLabel(rule);
         const conds = ControlSchemaArbiter.getRuleConditions(rule);
         const actions = ControlSchemaArbiter.getRuleActions(rule);
+        const isCollapsed = this.collapsedRuleIds.has(rule.id);
+
+        const condSummary = conds
+          .map((c: ConditionGate) => {
+            if (c.type === "always") return "Always";
+            if (c.type === "holdingObject") return "Holding";
+            if (c.type === "holdingItemWithPrimaryAbility" || c.type === "holdingEdible") return "Holding Ability Item";
+            if (c.type === "emptyHanded") return "Empty-Hand";
+            if (c.type === "targetInReach") return "In Reach";
+            if (c.type === "stagedActionIs") return `Staged==${c.param}`;
+            if (c.type === "buttonHeld") return `Held(${c.param})`;
+            if (c.type === "isAiming") return "Aiming";
+            if (c.type === "isAimingTrajectory") return "Aim Throw";
+            if (c.type === "isLaserAiming") return "Aim Laser";
+            if (c.type === "grounded") return "Grounded";
+            if (c.type === "climbing") return "Climbing";
+            return c.type;
+          })
+          .join(" + ");
+
+        const actionSummary = actions
+          .map((a: ActionInvocation) => {
+            const actDef = ControlActionCatalog.findAction(a.moduleId, a.intent);
+            return actDef ? actDef.label : `${a.moduleId}:${a.intent}`;
+          })
+          .join(", ");
 
         return `
-        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 8px 10px; position: relative; transition: all 0.15s ease;">
-          <!-- Rule Header: Pip, Trigger, Mode, Delete -->
+        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; position: relative; transition: all 0.15s ease;">
+          <!-- Rule Header: Collapse, Pip, Trigger, Mode, Delete -->
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+            <!-- Collapse / Expand Toggle Button -->
+            <button class="btn-toggle-rule-collapse btn-secondary-action" data-rule-id="${rule.id}" type="button" style="padding: 2px 5px; font-size: 0.70rem; color: #94a3b8; line-height: 1;" title="${isCollapsed ? "Expand Rule Block" : "Collapse Rule Block"}">
+              ${isCollapsed ? "▶" : "▼"}
+            </button>
+
             <!-- Status Pip -->
             <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
 
@@ -781,7 +828,15 @@ export class ControlsInspector {
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
             </select>
 
-            <div style="flex: 1;"></div>
+            ${
+              isCollapsed
+                ? `
+              <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 4px;" title="IF: ${condSummary} ➔ THEN: ${actionSummary}">
+                <span style="color: #38bdf8;">IF:</span> ${condSummary} <span style="color: #facc15;">➔</span> <strong style="color: #e2e8f0;">${actionSummary}</strong>
+              </div>
+            `
+                : `<div style="flex: 1;"></div>`
+            }
 
             <!-- Delete Rule Button -->
             <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="padding: 2px 6px; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.72rem;" title="Remove Rule">
@@ -789,6 +844,10 @@ export class ControlsInspector {
             </button>
           </div>
 
+          ${
+            isCollapsed
+              ? ""
+              : `
           <!-- Multi-Conditions Section -->
           <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 4px; padding: 4px 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -808,6 +867,7 @@ export class ControlsInspector {
                   <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
                   <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
                   <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
+                  <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
                   <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
                   <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
                   <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
@@ -854,6 +914,8 @@ export class ControlsInspector {
               })
               .join("")}
           </div>
+          `
+          }
         </div>
       `;
       })
@@ -1010,6 +1072,33 @@ export class ControlsInspector {
       });
     }
 
+    // 8b. Paradigms Details Toggle Tracking
+    const detailsParadigms = root.querySelector("#details-paradigms") as HTMLDetailsElement | null;
+    if (detailsParadigms) {
+      detailsParadigms.addEventListener("toggle", () => {
+        this.isParadigmsCollapsed = !detailsParadigms.open;
+      });
+    }
+
+    // 8c. Collapse All / Expand All Rules
+    root.querySelector("#btn-collapse-all-rules")?.addEventListener("click", () => {
+      const rules =
+        this.activeTab === "keyboardMouse"
+          ? schema.keyboardMouse.rules
+          : this.activeTab === "gamepad"
+          ? schema.gamepad.rules
+          : schema.touch.rules;
+      for (const r of rules) {
+        this.collapsedRuleIds.add(r.id);
+      }
+      this.renderActiveView();
+    });
+
+    root.querySelector("#btn-expand-all-rules")?.addEventListener("click", () => {
+      this.collapsedRuleIds.clear();
+      this.renderActiveView();
+    });
+
     // 9. Add Rule Button
     root.querySelector("#btn-add-control-rule")?.addEventListener("click", () => {
       const newRule: ControlRule = {
@@ -1027,6 +1116,8 @@ export class ControlsInspector {
         action: { moduleId: "locomotion", intent: "jump" },
       };
 
+      this.collapsedRuleIds.delete(newRule.id);
+
       if (this.activeTab === "keyboardMouse") {
         schema.keyboardMouse.rules.unshift(newRule);
       } else if (this.activeTab === "gamepad") {
@@ -1036,6 +1127,21 @@ export class ControlsInspector {
       }
 
       this.renderActiveView();
+    });
+
+    // 9b. Toggle Individual Rule Collapse
+    root.querySelectorAll(".btn-toggle-rule-collapse").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        if (rId) {
+          if (this.collapsedRuleIds.has(rId)) {
+            this.collapsedRuleIds.delete(rId);
+          } else {
+            this.collapsedRuleIds.add(rId);
+          }
+          this.renderActiveView();
+        }
+      });
     });
 
     // 10. Rule Bind Trigger

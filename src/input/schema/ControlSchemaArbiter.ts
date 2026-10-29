@@ -70,7 +70,7 @@ export class ControlSchemaArbiter {
         result = ctx.targetInReach !== null;
         break;
       case "stagedActionIs":
-        result = ctx.stagedAction === cond.param;
+        result = ctx.stagedAction === cond.param || (cond.param === "pickup" && ctx.stagedAction === "grab");
         break;
       case "grounded":
         result = ctx.isGrounded;

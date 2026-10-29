@@ -52,7 +52,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 95,
         trigger: { device: "mouse", code: "MouseRight", mode: "hold" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "aimThrow" },
+        action: { moduleId: "throw", intent: "aimThrow" },
       },
       {
         id: "kbm-throw-release",
@@ -61,7 +61,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 90,
         trigger: { device: "mouse", code: "MouseLeft", mode: "release" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "releaseThrow" },
+        action: { moduleId: "throw", intent: "releaseThrow" },
       },
 
       // 3. Melee Punch: Alt + F or direct F
@@ -92,7 +92,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 82,
         trigger: { device: "keyboard", code: "KeyE", mode: "press" },
         condition: { type: "targetInReach" },
-        action: { moduleId: "throwPickup", intent: "pickupReach" },
+        action: { moduleId: "pickup", intent: "pickupReach" },
       },
       {
         id: "kbm-pickup-click",
@@ -101,7 +101,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 80,
         trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
         condition: { type: "targetInReach" },
-        action: { moduleId: "throwPickup", intent: "pickupReach" },
+        action: { moduleId: "pickup", intent: "pickupReach" },
       },
 
       // 5. Held Item Primary Ability: Hold C to use primary ability of held item (consumables eaten)
@@ -141,7 +141,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 40,
         trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "dropItem" },
+        action: { moduleId: "pickup", intent: "dropItem" },
       },
     ],
   },
@@ -182,7 +182,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 95,
         trigger: { device: "gamepad", code: "GamepadLT", mode: "hold" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "aimThrow" },
+        action: { moduleId: "throw", intent: "aimThrow" },
       },
       {
         id: "pad-throw-release",
@@ -191,7 +191,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 90,
         trigger: { device: "gamepad", code: "GamepadRT", mode: "release" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "releaseThrow" },
+        action: { moduleId: "throw", intent: "releaseThrow" },
       },
       {
         id: "pad-pickup-rt",
@@ -200,7 +200,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 80,
         trigger: { device: "gamepad", code: "GamepadRT", mode: "press" },
         condition: { type: "targetInReach" },
-        action: { moduleId: "throwPickup", intent: "pickupReach" },
+        action: { moduleId: "pickup", intent: "pickupReach" },
       },
       {
         id: "pad-melee-b",
@@ -236,7 +236,7 @@ export const DefaultControlSchema: ControlSchema = {
         priority: 50,
         trigger: { device: "gamepad", code: "GamepadX", mode: "press" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "dropItem" },
+        action: { moduleId: "pickup", intent: "dropItem" },
       },
     ],
   },
@@ -309,7 +309,7 @@ export const HunterControlSchema: ControlSchema = {
       },
       {
         id: "hunter-stage-throw",
-        name: "Stage Throw/Grab (E)",
+        name: "Stage Throw (E)",
         enabled: true,
         priority: 100,
         trigger: { device: "keyboard", code: "KeyE", mode: "press" },
@@ -379,7 +379,7 @@ export const HunterControlSchema: ControlSchema = {
         priority: 70,
         trigger: { device: "mouse", code: "MouseLeft", mode: "release" },
         condition: { type: "holdingObject" },
-        action: { moduleId: "throwPickup", intent: "releaseThrow" },
+        action: { moduleId: "throw", intent: "releaseThrow" },
       },
       {
         id: "hunter-exec-pickup",
@@ -388,7 +388,7 @@ export const HunterControlSchema: ControlSchema = {
         priority: 60,
         trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
         condition: { type: "targetInReach" },
-        action: { moduleId: "throwPickup", intent: "pickupReach" },
+        action: { moduleId: "pickup", intent: "pickupReach" },
       },
     ],
   },

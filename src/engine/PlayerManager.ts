@@ -705,10 +705,13 @@ export class PlayerManager {
                   }
                   isSprinting = Boolean(kChar.isSprinting);
                 }
-              } else if (mid === "throwPickup") {
-                if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "aimThrow") isAimingTrajectory = true;
+              } else if (mid === "throw" || mid === "throwPickup") {
+                if (intent === "aimThrow") isAimingTrajectory = true;
                 else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+              } else if (mid === "pickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
               } else if (mid === "laser") {
                 if (intent === "aimLaser") isLaserAiming = true;
@@ -728,6 +731,8 @@ export class PlayerManager {
                       ? "laser"
                       : intent === "holdStageThrow" || intent === "stageThrow"
                       ? "throw"
+                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
+                      ? "pickup"
                       : intent === "holdStageMelee" || intent === "stageMelee"
                       ? "melee"
                       : null;
@@ -743,6 +748,7 @@ export class PlayerManager {
                   if (isJustTriggered) {
                     if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
                     else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stagePickup") kChar.stagedAction = kChar.stagedAction === "pickup" ? null : "pickup";
                     else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
                     else if (intent === "clearStage") kChar.stagedAction = null;
                   }
@@ -977,10 +983,13 @@ export class PlayerManager {
                   }
                   isSprinting = Boolean(cChar.isSprinting);
                 }
-              } else if (mid === "throwPickup") {
-                if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "aimThrow") isAimingTrajectory = true;
+              } else if (mid === "throw" || mid === "throwPickup") {
+                if (intent === "aimThrow") isAimingTrajectory = true;
                 else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+              } else if (mid === "pickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
                 else if (intent === "dropItem") isDrop = true;
               } else if (mid === "laser") {
                 if (intent === "aimLaser") isLaserAiming = true;
@@ -1000,6 +1009,8 @@ export class PlayerManager {
                       ? "laser"
                       : intent === "holdStageThrow" || intent === "stageThrow"
                       ? "throw"
+                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
+                      ? "pickup"
                       : intent === "holdStageMelee" || intent === "stageMelee"
                       ? "melee"
                       : null;
@@ -1012,6 +1023,7 @@ export class PlayerManager {
                   if (gpStates.justPressed(btnCode)) {
                     if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
                     else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stagePickup") cChar.stagedAction = cChar.stagedAction === "pickup" ? null : "pickup";
                     else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
                     else if (intent === "clearStage") cChar.stagedAction = null;
                   }

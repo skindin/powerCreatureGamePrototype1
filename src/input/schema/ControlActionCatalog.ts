@@ -92,13 +92,13 @@ export class ControlActionCatalog {
       ],
     },
 
-    // 3. Throw & Pickup
+    // 3. Throwing
     {
-      id: "throwPickup",
-      label: "Throw & Pickup",
+      id: "throw",
+      label: "Throwing & Trajectory",
       icon: "🎯",
       requiredModule: "throwModule",
-      isAttached: (char: Character) => Boolean((char.throwModule && char.throwModule.enabled) || (char.pickupModule && char.pickupModule.enabled)),
+      isAttached: (char: Character) => Boolean(char.throwModule && char.throwModule.enabled),
       actions: [
         {
           id: "aimThrow",
@@ -126,9 +126,20 @@ export class ControlActionCatalog {
             }
           },
         },
+      ],
+    },
+
+    // 4. Grabbing & Pickup
+    {
+      id: "pickup",
+      label: "Grabbing & Pickup",
+      icon: "✋",
+      requiredModule: "pickupModule",
+      isAttached: (char: Character) => Boolean(char.pickupModule && char.pickupModule.enabled),
+      actions: [
         {
           id: "pickupReach",
-          label: "Pick Up Object",
+          label: "Pick Up / Grab Object",
           description: "Picks up the target object currently within reach",
           recommendedMode: "press",
           execute: (ctx) => {
@@ -264,7 +275,7 @@ export class ControlActionCatalog {
       actions: [
         {
           id: "holdStageThrow",
-          label: "Hold Stage: Throw / Grab",
+          label: "Hold Stage: Throw",
           description: "Stages Throw while held, and clears it when released if still staged to Throw",
           recommendedMode: "hold",
           execute: (ctx) => {
@@ -276,6 +287,24 @@ export class ControlActionCatalog {
               ctx.character.stagedAction = null;
             }
             if (ctx.character.activeHoldStage === "throw") {
+              ctx.character.activeHoldStage = null;
+            }
+          },
+        },
+        {
+          id: "holdStagePickup",
+          label: "Hold Stage: Pick Up / Grab",
+          description: "Stages Pick Up / Grab while held, and clears it when released if still staged to Pick Up",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            ctx.character.stagedAction = "pickup";
+            ctx.character.activeHoldStage = "pickup";
+          },
+          stop: (ctx) => {
+            if (ctx.character.stagedAction === "pickup") {
+              ctx.character.stagedAction = null;
+            }
+            if (ctx.character.activeHoldStage === "pickup") {
               ctx.character.activeHoldStage = null;
             }
           },
@@ -327,11 +356,20 @@ export class ControlActionCatalog {
         },
         {
           id: "stageThrow",
-          label: "Stage Mode: Throw / Grab (Toggle)",
-          description: "Toggles staged primary action to Throw or Grab",
+          label: "Stage Mode: Throw (Toggle)",
+          description: "Toggles staged primary action to Throw",
           recommendedMode: "press",
           execute: (ctx) => {
             ctx.character.stagedAction = ctx.character.stagedAction === "throw" ? null : "throw";
+          },
+        },
+        {
+          id: "stagePickup",
+          label: "Stage Mode: Pick Up / Grab (Toggle)",
+          description: "Toggles staged primary action to Pick Up or Grab",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            ctx.character.stagedAction = ctx.character.stagedAction === "pickup" ? null : "pickup";
           },
         },
         {
@@ -358,6 +396,14 @@ export class ControlActionCatalog {
   ];
 
   public static findAction(moduleId: string, intent: string): ActionDefinition | undefined {
+    // Backward compatibility alias: throwPickup -> throw or pickup
+    if (moduleId === "throwPickup") {
+      if (intent === "pickupReach" || intent === "dropItem") {
+        moduleId = "pickup";
+      } else {
+        moduleId = "throw";
+      }
+    }
     // Backward compatibility alias: consume.eatHeldItem -> heldItem.primaryItemAbility
     if ((moduleId === "consume" || moduleId === "heldItem") && (intent === "eatHeldItem" || intent === "primaryItemAbility")) {
       const heldCat = this.categories.find((c) => c.id === "heldItem");

@@ -1,6 +1,6 @@
 {
-  "version": 94,
-  "lastSaved": "2026-10-29T06:33:12.402Z",
+  "version": 101,
+  "lastSaved": "2026-10-29T07:26:11.578Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -379,7 +379,7 @@
       "staminaRegenRate": 500,
       "energyPoolCapacity": 10000,
       "currentStamina": 5000,
-      "currentEnergy": 3780.295518325542,
+      "currentEnergy": 1838.208978244285,
       "muscleEfficiency": 0.25,
       "infiniteEnergy": false,
       "debugAutoRefillOnEmpty": false
@@ -407,7 +407,7 @@
       "enabled": true,
       "impactSusceptibility": 1
     },
-    "id": "obj-gvty72v",
+    "id": "obj-4gtnmig",
     "controlSchema": {
       "id": "default",
       "name": "Default (Action Context)",
@@ -427,6 +427,64 @@
         },
         "rules": [
           {
+            "id": "rule-mvt7ylfn",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "condition": {
+              "type": "always"
+            },
+            "actions": [
+              {
+                "moduleId": "heldItem",
+                "intent": "primaryItemAbility"
+              }
+            ],
+            "action": {
+              "moduleId": "heldItem",
+              "intent": "primaryItemAbility"
+            }
+          },
+          {
+            "id": "rule-mvt7ndq1",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "press"
+            },
+            "conditions": [
+              {
+                "type": "emptyHanded"
+              }
+            ],
+            "condition": {
+              "type": "emptyHanded"
+            },
+            "actions": [
+              {
+                "moduleId": "throwPickup",
+                "intent": "pickupReach"
+              }
+            ],
+            "action": {
+              "moduleId": "throwPickup",
+              "intent": "pickupReach"
+            }
+          },
+          {
             "id": "rule-mvt60po7",
             "name": "New Action Rule",
             "enabled": true,
@@ -443,7 +501,13 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "releaseThrow"
-            }
+            },
+            "conditions": [
+              {
+                "type": "stagedActionIs",
+                "param": "throw"
+              }
+            ]
           },
           {
             "id": "rule-mvt5txem",
@@ -478,8 +542,18 @@
             },
             "action": {
               "moduleId": "staging",
-              "intent": "stageMelee"
-            }
+              "intent": "stageThrow"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "stageThrow"
+              },
+              {
+                "moduleId": "throwPickup",
+                "intent": "aimThrow"
+              }
+            ]
           },
           {
             "id": "rule-mvsp117f",
@@ -778,7 +852,8 @@
       "hangDistance": 0.1,
       "preventWalkOff": false
     },
-    "hasDamageSolverModule": true
+    "hasDamageSolverModule": true,
+    "Current Energy (J)": 10000
   },
   "objects": [
     {
@@ -1930,6 +2005,64 @@
           },
           "rules": [
             {
+              "id": "rule-mvt7ylfn",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "always"
+                }
+              ],
+              "condition": {
+                "type": "always"
+              },
+              "actions": [
+                {
+                  "moduleId": "heldItem",
+                  "intent": "primaryItemAbility"
+                }
+              ],
+              "action": {
+                "moduleId": "heldItem",
+                "intent": "primaryItemAbility"
+              }
+            },
+            {
+              "id": "rule-mvt7ndq1",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "press"
+              },
+              "conditions": [
+                {
+                  "type": "emptyHanded"
+                }
+              ],
+              "condition": {
+                "type": "emptyHanded"
+              },
+              "actions": [
+                {
+                  "moduleId": "throwPickup",
+                  "intent": "pickupReach"
+                }
+              ],
+              "action": {
+                "moduleId": "throwPickup",
+                "intent": "pickupReach"
+              }
+            },
+            {
               "id": "rule-mvt60po7",
               "name": "New Action Rule",
               "enabled": true,
@@ -1946,7 +2079,13 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "releaseThrow"
-              }
+              },
+              "conditions": [
+                {
+                  "type": "stagedActionIs",
+                  "param": "throw"
+                }
+              ]
             },
             {
               "id": "rule-mvt5txem",
@@ -1981,8 +2120,18 @@
               },
               "action": {
                 "moduleId": "staging",
-                "intent": "stageMelee"
-              }
+                "intent": "stageThrow"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "stageThrow"
+                },
+                {
+                  "moduleId": "throwPickup",
+                  "intent": "aimThrow"
+                }
+              ]
             },
             {
               "id": "rule-mvsp117f",
