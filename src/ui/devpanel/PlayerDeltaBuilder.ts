@@ -68,14 +68,18 @@ export class PlayerDeltaBuilder {
       }
       if (char.healthModule) {
         if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
+        if (prop === char.healthModule.currentHpProp) return "healthModule.currentHp";
         if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
         if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
         if (prop === char.healthModule.joulesPerHpProp) return "healthModule.joulesPerHp";
       }
       if (char.energyPool) {
+        if (prop === char.energyPool.currentEnergyProp) return "energyPool.currentEnergy";
+        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
+        if (prop === char.energyPool.currentStaminaProp) return "energyPool.currentStamina";
         if (prop === char.energyPool.maxStaminaProp) return "energyPool.staminaCapacity";
         if (prop === char.energyPool.staminaRegenRateProp) return "energyPool.staminaRegenRate";
-        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
+        if (prop === char.energyPool.muscleEfficiencyProp) return "energyPool.muscleEfficiency";
       }
       if (char.wallEdgeAssistModule) {
         if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
@@ -147,12 +151,15 @@ export class PlayerDeltaBuilder {
       if (l.includes("punch freq") || l.includes("attack freq")) return "meleeModule.punchFrequency";
       if (l.includes("punch reach") || l.includes("attack reach")) return "meleeModule.reach";
       if (l.includes("attack width") || l.includes("punch width")) return "meleeModule.width";
+      if (l.includes("current hp") || l.includes("current health")) return "healthModule.currentHp";
       if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
       if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
       if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
       if (l.includes("energy cost per hp") || l.includes("joules/hp") || l.includes("joule per hp") || l.includes("hp per joule")) return "healthModule.joulesPerHp";
+      if (l.includes("current stamina")) return "energyPool.currentStamina";
       if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
       if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
+      if (l.includes("current energy")) return "energyPool.currentEnergy";
       if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
       if (l.includes("max power out")) return "energyPool.maxPowerOutput";
       if (l.includes("muscle") || l.includes("metabolic eff")) return "energyPool.muscleEfficiency";
@@ -260,10 +267,17 @@ export class PlayerDeltaBuilder {
       meleeReach: "meleeModule.reach",
       meleeWidth: "meleeModule.width",
       meleeAllowPartialPower: "meleeModule.allowPartialPower",
+      currentHp: "healthModule.currentHp",
+      "Current Health (HP)": "healthModule.currentHp",
+      currentStamina: "energyPool.currentStamina",
+      "Current Stamina (Joules)": "energyPool.currentStamina",
+      "Current Stamina (J)": "energyPool.currentStamina",
       staminaCapacity: "energyPool.staminaCapacity",
       "Stamina Capacity (J)": "energyPool.staminaCapacity",
       staminaRegenRate: "energyPool.staminaRegenRate",
       "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
+      currentEnergy: "energyPool.currentEnergy",
+      "Current Energy (J)": "energyPool.currentEnergy",
       energyPoolCapacity: "energyPool.energyPoolCapacity",
       "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
       maxPowerOutput: "energyPool.maxPowerOutput",

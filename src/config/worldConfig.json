@@ -1,6 +1,6 @@
 {
-  "version": 101,
-  "lastSaved": "2026-10-29T07:26:11.578Z",
+  "version": 105,
+  "lastSaved": "2026-10-29T10:36:53.564Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -379,7 +379,7 @@
       "staminaRegenRate": 500,
       "energyPoolCapacity": 10000,
       "currentStamina": 5000,
-      "currentEnergy": 1838.208978244285,
+      "currentEnergy": 10000,
       "muscleEfficiency": 0.25,
       "infiniteEnergy": false,
       "debugAutoRefillOnEmpty": false
@@ -407,7 +407,7 @@
       "enabled": true,
       "impactSusceptibility": 1
     },
-    "id": "obj-4gtnmig",
+    "id": "obj-a0git3s",
     "controlSchema": {
       "id": "default",
       "name": "Default (Action Context)",
@@ -426,6 +426,66 @@
           }
         },
         "rules": [
+          {
+            "id": "rule-mvteq488",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "tagId": "tag-kbm-i3csb0",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyD",
+              "mode": "press"
+            },
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "condition": {
+              "type": "always"
+            },
+            "actions": [
+              {
+                "moduleId": "melee",
+                "intent": "punch"
+              }
+            ],
+            "action": {
+              "moduleId": "melee",
+              "intent": "punch"
+            }
+          },
+          {
+            "id": "rule-mvtefwff",
+            "name": "New Action Rule",
+            "enabled": true,
+            "priority": 50,
+            "tagId": "tag-kbm-6o3l7h",
+            "trigger": {
+              "device": "keyboard",
+              "code": "ShiftLeft",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "condition": {
+              "type": "always"
+            },
+            "actions": [
+              {
+                "moduleId": "locomotion",
+                "intent": "holdSprint"
+              }
+            ],
+            "action": {
+              "moduleId": "locomotion",
+              "intent": "holdSprint"
+            }
+          },
           {
             "id": "rule-mvt7ylfn",
             "name": "New Action Rule",
@@ -453,7 +513,8 @@
             "action": {
               "moduleId": "heldItem",
               "intent": "primaryItemAbility"
-            }
+            },
+            "tagId": "tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt7ndq1",
@@ -482,7 +543,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "pickupReach"
-            }
+            },
+            "tagId": "tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt60po7",
@@ -507,7 +569,8 @@
                 "type": "stagedActionIs",
                 "param": "throw"
               }
-            ]
+            ],
+            "tagId": "tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt5txem",
@@ -525,7 +588,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "dropItem"
-            }
+            },
+            "tagId": "tag-kbm-5j0zp9"
           },
           {
             "id": "rule-mvsp5nhe",
@@ -553,7 +617,8 @@
                 "moduleId": "throwPickup",
                 "intent": "aimThrow"
               }
-            ]
+            ],
+            "tagId": "tag-kbm-5ftccu"
           },
           {
             "id": "rule-mvsp117f",
@@ -571,7 +636,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "pickupReach"
-            }
+            },
+            "tagId": "tag-kbm-tn6irx"
           },
           {
             "id": "kbm-drop",
@@ -589,6 +655,72 @@
             "action": {
               "moduleId": "locomotion",
               "intent": "jump"
+            },
+            "tagId": "tag-kbm-scjxrr"
+          }
+        ],
+        "tags": [
+          {
+            "id": "tag-kbm-ffc1ts",
+            "name": "Action",
+            "trigger": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "hold"
+            }
+          },
+          {
+            "id": "tag-kbm-5j0zp9",
+            "name": "Drop Item",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyQ",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-5ftccu",
+            "name": " Throw Mode",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyA",
+              "mode": "hold"
+            }
+          },
+          {
+            "id": "tag-kbm-tn6irx",
+            "name": "Interact",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyF",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-scjxrr",
+            "name": "Jump",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Space",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-6o3l7h",
+            "name": "Sprint",
+            "trigger": {
+              "device": "keyboard",
+              "code": "ShiftLeft",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-i3csb0",
+            "name": "Melee",
+            "trigger": {
+              "device": "keyboard",
+              "code": "KeyD",
+              "mode": "press"
             }
           }
         ]
@@ -623,7 +755,8 @@
             "action": {
               "moduleId": "laser",
               "intent": "aimLaser"
-            }
+            },
+            "tagId": "tag-pad-qq9kph"
           },
           {
             "id": "pad-laser-fire",
@@ -641,7 +774,8 @@
             "action": {
               "moduleId": "laser",
               "intent": "fireLaser"
-            }
+            },
+            "tagId": "tag-pad-yg4ita"
           },
           {
             "id": "pad-throw-aim-lt",
@@ -659,7 +793,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "aimThrow"
-            }
+            },
+            "tagId": "tag-pad-qq9kph"
           },
           {
             "id": "pad-throw-release",
@@ -677,7 +812,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "releaseThrow"
-            }
+            },
+            "tagId": "tag-pad-yg4ita"
           },
           {
             "id": "pad-pickup-rt",
@@ -695,7 +831,8 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "pickupReach"
-            }
+            },
+            "tagId": "tag-pad-yg4ita"
           },
           {
             "id": "pad-melee-b",
@@ -713,7 +850,8 @@
             "action": {
               "moduleId": "melee",
               "intent": "punch"
-            }
+            },
+            "tagId": "tag-pad-wbxscb"
           },
           {
             "id": "pad-jump",
@@ -731,7 +869,8 @@
             "action": {
               "moduleId": "locomotion",
               "intent": "jump"
-            }
+            },
+            "tagId": "tag-pad-i8r8qh"
           },
           {
             "id": "pad-sprint-toggle",
@@ -749,7 +888,8 @@
             "action": {
               "moduleId": "locomotion",
               "intent": "toggleSprint"
-            }
+            },
+            "tagId": "tag-pad-r7p78d"
           },
           {
             "id": "pad-drop",
@@ -767,6 +907,63 @@
             "action": {
               "moduleId": "throwPickup",
               "intent": "dropItem"
+            },
+            "tagId": "tag-pad-1wlz43"
+          }
+        ],
+        "tags": [
+          {
+            "id": "tag-pad-qq9kph",
+            "name": "Aim Laser",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadLT",
+              "mode": "hold"
+            }
+          },
+          {
+            "id": "tag-pad-yg4ita",
+            "name": "Fire Laser",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadRT",
+              "mode": "hold"
+            }
+          },
+          {
+            "id": "tag-pad-wbxscb",
+            "name": "Melee Punch",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadB",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-pad-i8r8qh",
+            "name": "Jump",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadA",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-pad-r7p78d",
+            "name": "Toggle Sprint",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadLS",
+              "mode": "press"
+            }
+          },
+          {
+            "id": "tag-pad-1wlz43",
+            "name": "Drop Item",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadX",
+              "mode": "press"
             }
           }
         ]
@@ -836,7 +1033,8 @@
             "tapAction": "jump"
           }
         ],
-        "rules": []
+        "rules": [],
+        "tags": []
       }
     },
     "strength": 1,
@@ -852,8 +1050,7 @@
       "hangDistance": 0.1,
       "preventWalkOff": false
     },
-    "hasDamageSolverModule": true,
-    "Current Energy (J)": 10000
+    "hasDamageSolverModule": true
   },
   "objects": [
     {
@@ -2005,6 +2202,66 @@
           },
           "rules": [
             {
+              "id": "rule-mvteq488",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "tagId": "tag-kbm-i3csb0",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyD",
+                "mode": "press"
+              },
+              "conditions": [
+                {
+                  "type": "always"
+                }
+              ],
+              "condition": {
+                "type": "always"
+              },
+              "actions": [
+                {
+                  "moduleId": "melee",
+                  "intent": "punch"
+                }
+              ],
+              "action": {
+                "moduleId": "melee",
+                "intent": "punch"
+              }
+            },
+            {
+              "id": "rule-mvtefwff",
+              "name": "New Action Rule",
+              "enabled": true,
+              "priority": 50,
+              "tagId": "tag-kbm-6o3l7h",
+              "trigger": {
+                "device": "keyboard",
+                "code": "ShiftLeft",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "always"
+                }
+              ],
+              "condition": {
+                "type": "always"
+              },
+              "actions": [
+                {
+                  "moduleId": "locomotion",
+                  "intent": "holdSprint"
+                }
+              ],
+              "action": {
+                "moduleId": "locomotion",
+                "intent": "holdSprint"
+              }
+            },
+            {
               "id": "rule-mvt7ylfn",
               "name": "New Action Rule",
               "enabled": true,
@@ -2031,7 +2288,8 @@
               "action": {
                 "moduleId": "heldItem",
                 "intent": "primaryItemAbility"
-              }
+              },
+              "tagId": "tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt7ndq1",
@@ -2060,7 +2318,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "pickupReach"
-              }
+              },
+              "tagId": "tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt60po7",
@@ -2085,7 +2344,8 @@
                   "type": "stagedActionIs",
                   "param": "throw"
                 }
-              ]
+              ],
+              "tagId": "tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt5txem",
@@ -2103,7 +2363,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "dropItem"
-              }
+              },
+              "tagId": "tag-kbm-5j0zp9"
             },
             {
               "id": "rule-mvsp5nhe",
@@ -2131,7 +2392,8 @@
                   "moduleId": "throwPickup",
                   "intent": "aimThrow"
                 }
-              ]
+              ],
+              "tagId": "tag-kbm-5ftccu"
             },
             {
               "id": "rule-mvsp117f",
@@ -2149,7 +2411,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "pickupReach"
-              }
+              },
+              "tagId": "tag-kbm-tn6irx"
             },
             {
               "id": "kbm-drop",
@@ -2167,6 +2430,72 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "jump"
+              },
+              "tagId": "tag-kbm-scjxrr"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tag-kbm-ffc1ts",
+              "name": "Action",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-kbm-5j0zp9",
+              "name": "Drop Item",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyQ",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-5ftccu",
+              "name": " Throw Mode",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyA",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-kbm-tn6irx",
+              "name": "Interact",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyF",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-scjxrr",
+              "name": "Jump",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Space",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-6o3l7h",
+              "name": "Sprint",
+              "trigger": {
+                "device": "keyboard",
+                "code": "ShiftLeft",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-i3csb0",
+              "name": "Melee",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyD",
+                "mode": "press"
               }
             }
           ]
@@ -2201,7 +2530,8 @@
               "action": {
                 "moduleId": "laser",
                 "intent": "aimLaser"
-              }
+              },
+              "tagId": "tag-pad-qq9kph"
             },
             {
               "id": "pad-laser-fire",
@@ -2219,7 +2549,8 @@
               "action": {
                 "moduleId": "laser",
                 "intent": "fireLaser"
-              }
+              },
+              "tagId": "tag-pad-yg4ita"
             },
             {
               "id": "pad-throw-aim-lt",
@@ -2237,7 +2568,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "aimThrow"
-              }
+              },
+              "tagId": "tag-pad-qq9kph"
             },
             {
               "id": "pad-throw-release",
@@ -2255,7 +2587,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "releaseThrow"
-              }
+              },
+              "tagId": "tag-pad-yg4ita"
             },
             {
               "id": "pad-pickup-rt",
@@ -2273,7 +2606,8 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "pickupReach"
-              }
+              },
+              "tagId": "tag-pad-yg4ita"
             },
             {
               "id": "pad-melee-b",
@@ -2291,7 +2625,8 @@
               "action": {
                 "moduleId": "melee",
                 "intent": "punch"
-              }
+              },
+              "tagId": "tag-pad-wbxscb"
             },
             {
               "id": "pad-jump",
@@ -2309,7 +2644,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "jump"
-              }
+              },
+              "tagId": "tag-pad-i8r8qh"
             },
             {
               "id": "pad-sprint-toggle",
@@ -2327,7 +2663,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "toggleSprint"
-              }
+              },
+              "tagId": "tag-pad-r7p78d"
             },
             {
               "id": "pad-drop",
@@ -2345,6 +2682,63 @@
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "dropItem"
+              },
+              "tagId": "tag-pad-1wlz43"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tag-pad-qq9kph",
+              "name": "Aim Laser",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadLT",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-pad-yg4ita",
+              "name": "Fire Laser",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadRT",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-pad-wbxscb",
+              "name": "Melee Punch",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadB",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-pad-i8r8qh",
+              "name": "Jump",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadA",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-pad-r7p78d",
+              "name": "Toggle Sprint",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadLS",
+                "mode": "press"
+              }
+            },
+            {
+              "id": "tag-pad-1wlz43",
+              "name": "Drop Item",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadX",
+                "mode": "press"
               }
             }
           ]
@@ -2414,7 +2808,8 @@
               "tapAction": "jump"
             }
           ],
-          "rules": []
+          "rules": [],
+          "tags": []
         }
       }
     }

@@ -1,6 +1,7 @@
 import type { Character } from "../../../character/Character.js";
 import { PropertyControl } from "../../PropertyControl.js";
 import type { DevPanel } from "../../DevPanel.js";
+import { DevConfigPersistence } from "../DevConfigPersistence.js";
 
 /**
  * Isolated 1-to-1 DevPanel inspector binder for EnergyPool & Stamina Reservoir.
@@ -109,9 +110,20 @@ export class EnergyPoolInspector {
       panel.updateInspector();
     });
 
-    container.querySelector("#btn-energy-refill")?.addEventListener("click", () => {
+    container.querySelector("#btn-energy-refill")?.addEventListener("click", async () => {
       ep.refill(char.properties);
       panel.updateInspector();
+      try {
+        await DevConfigPersistence.saveIndividualProperty(
+          panel,
+          char,
+          ep.currentEnergyProp,
+          ep.getCurrentEnergy(char.properties),
+          "Current Energy (J)"
+        );
+      } catch (err) {
+        console.warn("Failed to auto-save refilled energy:", err);
+      }
     });
   }
 }
