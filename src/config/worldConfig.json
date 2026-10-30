@@ -1,6 +1,6 @@
 {
-  "version": 116,
-  "lastSaved": "2026-10-29T15:03:36.604Z",
+  "version": 118,
+  "lastSaved": "2026-10-29T20:54:41.925Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -448,12 +448,17 @@
               {
                 "moduleId": "throw",
                 "intent": "aimThrow"
+              },
+              {
+                "moduleId": "staging",
+                "intent": "holdStageThrow"
               }
             ],
             "action": {
               "moduleId": "throw",
               "intent": "aimThrow"
-            }
+            },
+            "tagId": "tag-kbm-r4sbea"
           },
           {
             "id": "rule-mvtmc4ey",
@@ -831,6 +836,15 @@
               "device": "keyboard",
               "code": "KeyS",
               "mode": "press"
+            }
+          },
+          {
+            "id": "tag-kbm-r4sbea",
+            "name": "New Action Rule",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
             }
           }
         ]
@@ -2333,12 +2347,17 @@
                 {
                   "moduleId": "throw",
                   "intent": "aimThrow"
+                },
+                {
+                  "moduleId": "staging",
+                  "intent": "holdStageThrow"
                 }
               ],
               "action": {
                 "moduleId": "throw",
                 "intent": "aimThrow"
-              }
+              },
+              "tagId": "tag-kbm-r4sbea"
             },
             {
               "id": "rule-mvtmc4ey",
@@ -2716,6 +2735,15 @@
                 "device": "keyboard",
                 "code": "KeyS",
                 "mode": "press"
+              }
+            },
+            {
+              "id": "tag-kbm-r4sbea",
+              "name": "New Action Rule",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
               }
             }
           ]

@@ -356,10 +356,17 @@ export class ControlSchemaArbiter {
         }
       }
 
-      // 3. Rule arbitration (sorted by priority descending)
+      // 3. Rule arbitration (sorted by priority descending, cascading per tag-thread)
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      const executedTagTriggers = new Set<string>();
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
+        const tagKey = rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null;
+        if (tagKey && executedTagTriggers.has(tagKey)) {
+          ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
+          continue;
+        }
+
         const matchesCondition = this.evaluateAllConditions(rule, ctx);
         const effTrigger = this.resolveEffectiveTrigger(rule, schema, "keyboardMouse");
         const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates);
@@ -367,6 +374,9 @@ export class ControlSchemaArbiter {
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
+          if (tagKey) {
+            executedTagTriggers.add(tagKey);
+          }
           activeRules.push(rule);
           const actions = this.getRuleActions(rule);
           for (const act of actions) {
@@ -435,10 +445,17 @@ export class ControlSchemaArbiter {
         }
       }
 
-      // Rule arbitration
+      // Rule arbitration (sorted by priority descending, cascading per tag-thread)
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      const executedTagTriggers = new Set<string>();
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
+        const tagKey = rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null;
+        if (tagKey && executedTagTriggers.has(tagKey)) {
+          ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
+          continue;
+        }
+
         const matchesCondition = this.evaluateAllConditions(rule, ctx);
         const effTrigger = this.resolveEffectiveTrigger(rule, schema, "gamepad");
         const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates, gamepadStates);
@@ -446,6 +463,9 @@ export class ControlSchemaArbiter {
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
+          if (tagKey) {
+            executedTagTriggers.add(tagKey);
+          }
           activeRules.push(rule);
           const actions = this.getRuleActions(rule);
           for (const act of actions) {

@@ -8,8 +8,6 @@ import type {
   AimingParadigm,
   ConditionType,
   TriggerMode,
-  ConditionGate,
-  ActionInvocation,
   InputTagBinding,
   InputTriggerBinding,
 } from "../../../input/schema/ControlSchemaTypes.js";
@@ -578,51 +576,51 @@ export class ControlsInspector {
 
     const dialogHtml = `
       <div id="controls-dialog-container" style="
-        background: #0f172a;
-        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; width: 840px; max-width: 95vw; height: min(880px, calc(100vh - 32px)); max-height: calc(100vh - 32px);"}
+        background: #0b1120;
+        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; width: 880px; max-width: 96vw; height: min(900px, calc(100vh - 28px)); max-height: calc(100vh - 28px);"}
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        color: #e2e8f0;
-        box-shadow: ${isPopout ? "none" : "0 25px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15)"};
+        color: #ffffff;
+        box-shadow: ${isPopout ? "none" : "0 25px 60px rgba(0, 0, 0, 0.85)"};
       ">
         <style>
           #controls-scroll-body::-webkit-scrollbar { width: 10px; height: 10px; }
           #controls-scroll-body::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 5px; }
-          #controls-scroll-body::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 5px; border: 2px solid rgba(15, 23, 42, 0.6); }
-          #controls-scroll-body::-webkit-scrollbar-thumb:hover { background: #7dd3fc; }
+          #controls-scroll-body::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 5px; border: 2px solid rgba(15, 23, 42, 0.6); }
+          #controls-scroll-body::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.55); }
         </style>
         <!-- Title Bar / Header -->
-        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.2rem;">🎮</span>
+            <span style="font-size: 1.15rem;">🎮</span>
             <div>
-              <div style="font-weight: 700; font-size: 0.94rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                Controls Schema: <span style="color: #38bdf8;">${char.name || "Character"}</span>
-                <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">ID: ${char.id}</span>
-                ${isPopout ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">🪟 Separate Window</span>` : ""}
+              <div style="font-weight: 700; font-size: 0.94rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                Controls Schema: <span style="color: #ffffff;">${char.name || "Character"}</span>
+                <span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">ID: ${char.id}</span>
+                ${isPopout ? `<span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">🪟 Separate Window</span>` : ""}
               </div>
             </div>
           </div>
-          <button id="btn-close-controls-modal" class="btn-secondary-action" style="padding: 4px 10px; font-size: 0.82rem; color: #94a3b8;" title="Close Window">✕ Close</button>
+          <button id="btn-close-controls-modal" class="btn-secondary-action" style="padding: 4px 10px; font-size: 0.82rem; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Close Window">✕ Close</button>
         </div>
 
         <!-- Subheader: Linked Prefab Bar & Preset Selector -->
-        <div style="flex-shrink: 0; padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 6px 12px;">
+        <div style="flex-shrink: 0; padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 6px 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.76rem; color: #c084fc; font-weight: 600;">Linked Archetype:</span>
-              <span style="font-size: 0.78rem; color: #e2e8f0; font-weight: 600;">${prefabName || "(Standalone Character)"}</span>
-              ${prefab ? `<span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px;">Auto-Persists to Prefab on Save</span>` : ""}
+              <span style="font-size: 0.76rem; color: #94a3b8; font-weight: 600;">Linked Archetype:</span>
+              <span style="font-size: 0.78rem; color: #ffffff; font-weight: 600;">${prefabName || "(Standalone Character)"}</span>
+              ${prefab ? `<span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">Auto-Persists to Prefab on Save</span>` : ""}
             </div>
             <div style="display: flex; gap: 6px;">
               ${
                 prefab
                   ? `
-                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" title="Discard unsaved changes and reload clean controls from prefab archetype">↺ Reset to Prefab Defaults</button>
+                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05);" title="Discard unsaved changes and reload clean controls from prefab archetype">↺ Reset to Prefab Defaults</button>
               `
                   : `
-                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Save as New Prefab</button>
+                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Save as New Prefab</button>
               `
               }
             </div>
@@ -630,7 +628,7 @@ export class ControlsInspector {
 
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
             <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; white-space: nowrap;">Preset Template:</label>
-            <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.76rem;">
+            <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.76rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);">
               ${BuiltinControlSchemas.map(
                 (p) => `<option value="${p.id}" ${p.id === schema.id ? "selected" : ""}>${p.name}</option>`
               ).join("")}
@@ -641,24 +639,24 @@ export class ControlsInspector {
 
         <!-- Device Channel Tabs -->
         <div style="flex-shrink: 0; display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
-          <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
+          <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
             ⌨️ Keyboard & Mouse
           </button>
-          <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "gamepad" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
+          <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "gamepad" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
             🎮 Gamepad
           </button>
-          <button id="tab-btn-tch" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "touch" ? "background: #1e293b; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); border-bottom: 2px solid #38bdf8;" : "background: rgba(15, 23, 42, 0.6); color: #94a3b8;"}">
+          <button id="tab-btn-tch" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "touch" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
             📱 Mobile Touch
           </button>
         </div>
 
         <!-- Scrollable Modal Body -->
-        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #38bdf8 rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #1e293b;">
+        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #090d16;">
           
           <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
-          <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.4); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
-              <span style="font-size: 0.84rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+          <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+              <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
                 🎮 Locomotion & Aiming (WASD vs Mouse Movement)
               </span>
               <span style="font-size: 0.68rem; color: #94a3b8;">Choose movement mode and directional keys</span>
@@ -669,14 +667,14 @@ export class ControlsInspector {
           </div>
 
           <!-- Layer 1: Keybind Tags Section -->
-          <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.4); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px;">
+          <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.84rem; font-weight: 700; color: #38bdf8;">🏷️ Layer 1: Keybind Tags (${this.getActiveDeviceTags(schema).length})</span>
-                <span style="font-size: 0.68rem; color: #94a3b8;">Physical keys & buttons mapped to reusable tags</span>
+                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🏷️ Layer 1: Action Name Keybinds (${this.getActiveDeviceTags(schema).length})</span>
+                <span style="font-size: 0.68rem; color: #94a3b8;">Action names mapped to physical keys & buttons</span>
               </div>
-              <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #94a3b8;" title="Jump down to Layer 2 Action Rules">
-                ↓ Jump to Rules
+              <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Jump down to Layer 2 Action Threads">
+                ↓ Jump to Threads
               </button>
             </div>
             <div id="controls-tags-container">
@@ -685,36 +683,30 @@ export class ControlsInspector {
           </div>
 
           <!-- Rules Matrix Header (Layer 2) -->
-          <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
-            <span style="font-size: 0.80rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
-              ⚡ Layer 2: Action Rules (${activeRulesCount})
-              <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Evaluated top to bottom</span>
+          <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+            <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+              ⚡ Layer 2: Action Threads (${activeRulesCount} branches)
+              <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Cascading IF / ELSE IF / ELSE per action tag</span>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
-              <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);" title="Scroll up to Layer 1 Keybind Tags">
-                ↑ Layer 1 Tags
+              <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Scroll up to Layer 1 Keybinds">
+                ↑ Keybinds
               </button>
-              <button id="btn-collapse-all-rules" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #94a3b8;" title="Collapse all rules">
-                ▶ Collapse All
-              </button>
-              <button id="btn-expand-all-rules" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #94a3b8;" title="Expand all rules">
-                ▼ Expand All
-              </button>
-              <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">
+              <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
                 + Add Rule
               </button>
             </div>
           </div>
 
           <!-- Rules List Container -->
-          <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 6px;">
+          <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
             ${this.renderRulesListHtml(char, schema)}
           </div>
 
           <!-- Collapsible Raw JSON Editor Drawer -->
-          <div style="margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px;">
+          <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <button id="btn-toggle-json-drawer" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 10px; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">
+              <button id="btn-toggle-json-drawer" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;">
                 ${this.showJsonEditor ? "▲ Hide Raw JSON" : "📋 View / Edit Raw JSON"}
               </button>
               <span style="font-size: 0.70rem; color: #64748b;">Direct JSON Schema inspection & export</span>
@@ -723,20 +715,20 @@ export class ControlsInspector {
             ${
               this.showJsonEditor
                 ? `
-              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px;">
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 6px; padding: 8px;">
                 ${
                   this.jsonErrorMessage
-                    ? `<div style="color: #f87171; font-size: 0.72rem; background: rgba(239, 68, 68, 0.15); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3);">⚠️ ${this.jsonErrorMessage}</div>`
+                    ? `<div style="color: #ffffff; font-size: 0.72rem; background: rgba(239, 68, 68, 0.2); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.4);">⚠️ ${this.jsonErrorMessage}</div>`
                     : ""
                 }
-                <textarea id="textarea-controls-json" style="width: 100%; height: 200px; font-family: monospace; font-size: 0.72rem; background: #090d16; color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(
+                <textarea id="textarea-controls-json" style="width: 100%; height: 200px; font-family: monospace; font-size: 0.72rem; background: #090d16; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(
                     schema,
                     null,
                     2
                   )}</textarea>
                 <div style="display: flex; justify-content: flex-end; gap: 6px;">
-                  <button id="btn-copy-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #94a3b8;">📋 Copy JSON</button>
-                  <button id="btn-apply-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 12px; color: #34d399; border-color: rgba(52, 211, 153, 0.4); font-weight: 600;">Apply JSON Changes</button>
+                  <button id="btn-copy-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;">📋 Copy JSON</button>
+                  <button id="btn-apply-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">Apply JSON Changes</button>
                 </div>
               </div>
             `
@@ -746,13 +738,13 @@ export class ControlsInspector {
         </div>
 
         <!-- Footer Bar -->
-        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08);">
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(148, 163, 184, 0.15);">
           <div style="font-size: 0.74rem; color: #94a3b8;">
-            Schema: <strong style="color: #cbd5e1;">${schema.name}</strong>
+            Schema: <strong style="color: #ffffff;">${schema.name}</strong>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem;">Close</button>
-            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 18px; font-size: 0.78rem; font-weight: 700; color: #38bdf8; border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12);" title="Saves live controls, updates the linked prefab archetype, and permanently persists to worldConfig.json on disk">
+            <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;">Close</button>
+            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 18px; font-size: 0.78rem; font-weight: 700; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(255, 255, 255, 0.12);" title="Saves live controls, updates the linked prefab archetype, and permanently persists to worldConfig.json on disk">
               💾 Save & Apply
             </button>
           </div>
@@ -774,11 +766,11 @@ export class ControlsInspector {
     const tags = this.getActiveDeviceTags(schema);
     if (tags.length === 0) {
       return `
-        <div style="text-align: center; color: #64748b; font-size: 0.74rem; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-          No custom keybind tags defined yet. Click "+ Add Keybind Tag" to create one.
+        <div style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">
+          No action keybind tags defined yet. Click "+ Add Keybind Tag" to create one.
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05);">
             + Add Keybind Tag
           </button>
         </div>
@@ -787,8 +779,8 @@ export class ControlsInspector {
 
     return `
       <div style="display: flex; flex-direction: column; gap: 6px;">
-        <div style="display: grid; grid-template-columns: 1fr 140px 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #64748b; padding: 0 4px;">
-          <span>TAG NAME</span>
+        <div style="display: grid; grid-template-columns: 1fr 150px 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #94a3b8; padding: 0 4px;">
+          <span>ACTION NAME</span>
           <span>KEY / BUTTON BIND</span>
           <span></span>
         </div>
@@ -796,19 +788,19 @@ export class ControlsInspector {
           const isListening = this.listeningTagId === tag.id;
           const triggerLabel = this.formatTriggerLabel(tag);
           return `
-            <div class="keybind-tag-row" style="display: grid; grid-template-columns: 1fr 140px 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 4px 6px;">
-              <input type="text" class="input-tag-name dev-input" data-tag-id="${tag.id}" value="${tag.name}" placeholder="e.g. Sprint, Aim, Jump..." style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: #e2e8f0;" />
-              <button class="btn-bind-tag btn-secondary-action" data-tag-id="${tag.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; text-align: center; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #38bdf8;"}" title="Click to bind key or mouse button">
+            <div class="keybind-tag-row" style="display: grid; grid-template-columns: 1fr 150px 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 4px 6px;">
+              <input type="text" class="input-tag-name dev-input" data-tag-id="${tag.id}" value="${tag.name}" placeholder="e.g. Action, Sprint, Aim, Jump..." style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);" />
+              <button class="btn-bind-tag btn-secondary-action" data-tag-id="${tag.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; text-align: center; border: 1px solid rgba(148, 163, 184, 0.25); ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #ffffff; background: rgba(255, 255, 255, 0.05);"}" title="Click to bind key or mouse button">
                 ${isListening ? "🔴 Press key..." : triggerLabel}
               </button>
-              <button class="btn-delete-tag btn-secondary-action" data-tag-id="${tag.id}" style="padding: 2px 4px; color: #f87171; font-size: 0.70rem; border-color: rgba(248, 113, 113, 0.3);" title="Delete Tag">
+              <button class="btn-delete-tag btn-secondary-action" data-tag-id="${tag.id}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.70rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;" title="Delete Tag">
                 🗑️
               </button>
             </div>
           `;
         }).join("")}
         <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05);">
             + Add Keybind Tag
           </button>
         </div>
@@ -827,13 +819,13 @@ export class ControlsInspector {
         const val = cfg.locomotion[keyName];
         const isListening = this.listeningLocoKey === keyName;
         return `
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.4); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.06);">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.4); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.18);">
             <span style="font-size: 0.74rem; color: #94a3b8; font-weight: 500;">${label}:</span>
             <div style="display: flex; gap: 4px; align-items: center;">
-              <button data-loco-key="${keyName}" class="btn-bind-loco-key btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : (val ? "color: #38bdf8;" : "color: #64748b; font-style: italic;")}">
+              <button data-loco-key="${keyName}" class="btn-bind-loco-key btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05); ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : (val ? "color: #ffffff;" : "color: #64748b; font-style: italic;")}">
                 ${isListening ? "🔴 Press key..." : (val ? `⌨️ ${val}` : "(Unbound)")}
               </button>
-              ${val ? `<button data-clear-loco-key="${keyName}" class="btn-clear-loco-key btn-icon" style="padding: 2px 6px; font-size: 0.70rem; color: #f87171; background: rgba(239, 68, 68, 0.1);" title="Unbind key">✕</button>` : ""}
+              ${val ? `<button data-clear-loco-key="${keyName}" class="btn-clear-loco-key btn-icon" style="padding: 2px 6px; font-size: 0.70rem; color: #94a3b8; background: transparent; border: 1px solid rgba(148, 163, 184, 0.2);" title="Unbind key">✕</button>` : ""}
             </div>
           </div>
         `;
@@ -842,8 +834,8 @@ export class ControlsInspector {
       return `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.76rem; color: #cbd5e1; font-weight: 600;">Locomotion Mode:</label>
-            <select id="select-loco-mode" class="dev-select" style="width: 58%; font-size: 0.74rem;">
+            <label style="font-size: 0.76rem; color: #ffffff; font-weight: 600;">Locomotion Mode:</label>
+            <select id="select-loco-mode" class="dev-select" style="width: 58%; font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);">
               <option value="directVector" ${cfg.locomotion.mode === "directVector" ? "selected" : ""}>Direct 8-Way (WASD)</option>
               <option value="forwardFacingDrive" ${isFwd ? "selected" : ""}>Forward-Facing Drive (Move to Mouse)</option>
             </select>
@@ -852,9 +844,9 @@ export class ControlsInspector {
           ${
             isFwd
               ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(6, 182, 212, 0.08); padding: 6px 8px; border-radius: 4px; border: 1px solid rgba(6, 182, 212, 0.25);">
-              <span style="font-size: 0.74rem; color: #38bdf8; font-weight: 600;">Forward Drive Trigger:</span>
-              <button id="btn-bind-fwd-trigger" class="btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; ${isListeningFwd ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #e2e8f0;"}">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.04); padding: 6px 8px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">
+              <span style="font-size: 0.74rem; color: #ffffff; font-weight: 600;">Forward Drive Trigger:</span>
+              <button id="btn-bind-fwd-trigger" class="btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05); ${isListeningFwd ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #ffffff;"}">
                 ${isListeningFwd ? "🔴 Press key/mouse..." : `⌨️ ${fwdCode}`}
               </button>
             </div>
@@ -863,7 +855,7 @@ export class ControlsInspector {
               ${renderLocoKeyRow("Strafe Left (Optional)", "strafeLeftKey")}
               ${renderLocoKeyRow("Strafe Right (Optional)", "strafeRightKey")}
             </div>
-            <span style="font-size: 0.70rem; color: #64748b; line-height: 1.3;">
+            <span style="font-size: 0.70rem; color: #94a3b8; line-height: 1.3;">
               Creature faces mouse cursor. Drive trigger moves forward. Reverse and strafe keys are optional — click ✕ to unbind them and free A, S, D for abilities.
             </span>
           `
@@ -944,188 +936,233 @@ export class ControlsInspector {
         : schema.touch.rules;
     const tags = this.getActiveDeviceTags(schema);
 
-    if (rules.length === 0) {
-      return `<div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 16px; background: rgba(15, 23, 42, 0.4); border-radius: 6px;">No action rules defined for this device. Click "+ Add Rule".</div>`;
+    // Group rules by tagId
+    const tagRuleMap = new Map<string, ControlRule[]>();
+    for (const t of tags) {
+      tagRuleMap.set(t.id, []);
+    }
+    const untaggedRules: ControlRule[] = [];
+
+    for (const rule of rules) {
+      if (rule.tagId && tagRuleMap.has(rule.tagId)) {
+        tagRuleMap.get(rule.tagId)!.push(rule);
+      } else {
+        untaggedRules.push(rule);
+      }
     }
 
-    return rules
-      .map((rule) => {
-        const currentTag = tags.find((t) => t.id === rule.tagId);
-        const tagDisplayName = currentTag ? currentTag.name : (rule.tagId ? rule.tagId : "⚡ Passive");
-        const conds = ControlSchemaArbiter.getRuleConditions(rule);
-        const actions = ControlSchemaArbiter.getRuleActions(rule);
-        const isCollapsed = this.collapsedRuleIds.has(rule.id);
+    const renderBranchRowHtml = (rule: ControlRule, branchBadge: string) => {
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      const actions = ControlSchemaArbiter.getRuleActions(rule);
 
-        const condSummary = conds
-          .map((c: ConditionGate) => {
-            if (c.type === "always") return "Always";
-            if (c.type === "holdingObject") return "Holding";
-            if (c.type === "holdingPlainObject" || c.type === "holdingObjectWithoutAbility") return "Holding Plain Object";
-            if (c.type === "holdingItemWithPrimaryAbility" || c.type === "holdingEdible") return "Holding Ability Item";
-            if (c.type === "emptyHanded") return "Empty-Hand";
-            if (c.type === "targetInReach") return "In Reach";
-            if (c.type === "stagedActionIs") return `Staged==${c.param}`;
-            if (c.type === "tagHeld") {
-              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
-              return `${t ? t.name : c.param} (Held)`;
-            }
-            if (c.type === "tagPressed") {
-              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
-              return `${t ? t.name : c.param} (Pressed)`;
-            }
-            if (c.type === "tagReleased") {
-              const t = tags.find((tag) => tag.id === c.param || tag.name === c.param);
-              return `${t ? t.name : c.param} (Released)`;
-            }
-            if (c.type === "buttonHeld") return `Held(${c.param})`;
-            if (c.type === "isAiming") return "Aiming";
-            if (c.type === "isAimingTrajectory") return "Aim Throw";
-            if (c.type === "isLaserAiming") return "Aim Laser";
-            if (c.type === "grounded") return "Grounded";
-            if (c.type === "climbing") return "Climbing";
-            return c.type;
-          })
-          .join(" + ");
+      return `
+        <div class="thread-branch-row" id="rule-card-${rule.id}" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 4px; padding: 6px 10px;">
+          <!-- Left: Pip + Badge + Horizontal Conditions -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+            <span class="rule-status-pip" id="pip-${rule.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
 
-        const actionSummary = actions
-          .map((a: ActionInvocation) => {
-            const actDef = ControlActionCatalog.findAction(a.moduleId, a.intent);
-            return actDef ? actDef.label : `${a.moduleId}:${a.intent}`;
-          })
-          .join(", ");
+            <span style="font-size: 0.65rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+              ${branchBadge}
+            </span>
 
-        return `
-        <div class="control-rule-card" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; position: relative; transition: all 0.15s ease;">
-          <!-- Rule Header: Collapse, Pip, Tag Selector, Mode, Delete -->
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-            <!-- Collapse / Expand Toggle Button -->
-            <button class="btn-toggle-rule-collapse btn-secondary-action" data-rule-id="${rule.id}" type="button" style="flex: 0 0 22px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; color: #94a3b8; border-radius: 4px;" title="${isCollapsed ? "Expand Rule Block" : "Collapse Rule Block"}">
-              ${isCollapsed ? "▶" : "▼"}
-            </button>
+            <!-- Horizontal Conditions Container -->
+            <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+              ${conds
+                .map((cond, cIdx) => `
+                ${cIdx > 0 ? `<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>` : ""}
+                <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
+                  <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
+                    <optgroup label="🎮 Keybind / Control Inputs">
+                      <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
+                      <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
+                      <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
+                      <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
+                    </optgroup>
+                    <optgroup label="🌍 Game Conditions">
+                      <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
+                      <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                      <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
+                      <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                      <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
+                      <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                      <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
+                      <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
+                      <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
+                      <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
+                      <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                      <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                      <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                      <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                      <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                    </optgroup>
+                  </select>
+                  ${
+                    cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
+                      ? `
+                    <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                      ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+                    </select>
+                  `
+                      : cond.type === "buttonHeld"
+                      ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
+                      : ""
+                  }
+                  ${conds.length > 1 ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
+                </div>
+              `).join("")}
+              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
+            </div>
+          </div>
 
-            <!-- Status Pip -->
-            <span class="rule-status-pip" id="pip-${rule.id}" style="width: 8px; height: 8px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Matches Live Player Condition"></span>
+          <!-- Right: Arrow + Actions + Mode + Delete -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0;">
+            <span style="font-size: 0.68rem; font-weight: 700; color: #ffffff;">➔ THEN:</span>
 
-            <!-- Tag Selector Dropdown -->
-            <select class="select-rule-tag dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: #38bdf8; min-width: 130px; max-width: 175px;" title="Select keybind tag trigger">
-              <option value="" ${!rule.tagId ? "selected" : ""}>⚡ Passive / Always</option>
-              ${tags.map((t) => `<option value="${t.id}" ${t.id === rule.tagId ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
-            </select>
+            <!-- Actions container -->
+            <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+              ${actions
+                .map((act, aIdx) => {
+                  const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+                  const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
+                  const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
+                  const isModuleMissing = cat && !cat.isAttached(char);
+                  return `
+                    <div style="display: inline-flex; align-items: center; gap: 2px;">
+                      <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.68rem; padding: 2px 7px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px;" title="Change Action Function">
+                        ${actionLabel} ▼
+                      </button>
+                      ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️</span>` : ""}
+                      ${actions.length > 1 ? `<button class="btn-delete-action btn-icon" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>` : ""}
+                    </div>
+                  `;
+                })
+                .join("")}
+              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action">+ Action</button>
+            </div>
 
             <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.70rem; padding: 2px 4px; width: 68px;" ${!rule.tagId ? "disabled style='opacity: 0.4; pointer-events: none;'" : ""}>
-              <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
+            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
               <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
+              <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
               <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
             </select>
 
-            ${
-              isCollapsed
-                ? `
-              <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: #94a3b8; padding: 0 6px;" title="[${tagDisplayName}] IF: ${condSummary} ➔ THEN: ${actionSummary}">
-                <span style="color: #38bdf8; font-weight: 600;">[${tagDisplayName}]</span> <span style="color: #94a3b8;">IF:</span> ${condSummary} <span style="color: #facc15;">➔</span> <strong style="color: #e2e8f0;">${actionSummary}</strong>
-              </div>
-            `
-                : `<div style="flex: 1;"></div>`
-            }
-
-            <!-- Delete Rule Button -->
-            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 22px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; border-color: rgba(248, 113, 113, 0.3); font-size: 0.72rem; border-radius: 4px;" title="Remove Rule">
+            <!-- Delete Branch Button -->
+            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
               🗑️
             </button>
           </div>
+        </div>
+      `;
+    };
 
-          ${
-            isCollapsed
-              ? ""
-              : `
-          <!-- Multi-Conditions Section -->
-          <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 4px; padding: 4px 6px;">
+    const threadHtmlCards = tags.map((t) => {
+      const tagRules = tagRuleMap.get(t.id) ?? [];
+      const triggerLabel = this.formatTriggerLabel(t);
+
+      if (tagRules.length === 0) {
+        return `
+          <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.66rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.04em;">IF (ALL CONDITIONS MATCH):</span>
-              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.64rem; padding: 1px 6px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Add condition gate">+ Add Condition</button>
-            </div>
-            ${conds
-              .map(
-                (cond: ConditionGate, cIdx: number) => `
-              <div style="display: flex; align-items: center; gap: 4px; padding-left: 2px;">
-                <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${cIdx + 1}.</span>
-                <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 4px; flex: 1;">
-                  <optgroup label="🎮 Keybind / Control Inputs">
-                    <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>⌨️ Keybind: Press</option>
-                    <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>⌨️ Keybind: Hold</option>
-                    <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>⌨️ Keybind: Release</option>
-                    <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>⌨️ Raw Key/Button Code...</option>
-                  </optgroup>
-                  <optgroup label="🌍 Game Conditions">
-                    <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional / Run Every Frame)</option>
-                    <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
-                    <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
-                    <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
-                    <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
-                    <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-                    <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
-                    <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
-                    <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
-                    <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
-                    <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
-                    <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
-                    <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
-                    <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
-                    <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
-                  </optgroup>
-                </select>
-                ${
-                  cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
-                    ? `
-                  <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 2px 6px; flex: 1; max-width: 170px; color: #38bdf8; font-weight: 600;" title="Select keybind tag to check">
-                    ${tags.length === 0 ? `<option value="">(No tags defined)</option>` : ""}
-                    ${tags.map((t) => `<option value="${t.id}" ${cond.param === t.id || cond.param === t.name ? "selected" : ""}>🏷️ ${t.name} [${this.formatTriggerLabel(t)}]</option>`).join("")}
-                  </select>
-                `
-                    : cond.type === "buttonHeld"
-                    ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight, KeyF, GamepadLeftTrigger" style="font-size: 0.68rem; padding: 2px 4px; width: 140px; color: #38bdf8;" title="Button code to check if currently held down" />`
-                    : ""
-                }
-                <button class="btn-delete-condition btn-secondary-action" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; font-size: 0.65rem; border-radius: 3px;" title="Remove Condition">✕</button>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff;">🏷️ ${t.name}</span>
+                <span style="font-size: 0.68rem; color: #94a3b8; background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; padding: 1px 6px;">[ ${triggerLabel} ]</span>
               </div>
-            `
-              )
-              .join("")}
+              <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="hold" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
+                + Add Branch
+              </button>
+            </div>
+            <div style="font-size: 0.68rem; color: #94a3b8; font-style: italic; padding: 4px 6px;">
+              No action branches configured. Click "+ Add Branch" to define what happens when this keybind is held, pressed, or released.
+            </div>
+          </div>
+        `;
+      }
+
+      // Group rules by mode
+      const modeOrder: TriggerMode[] = ["hold", "press", "release"];
+      const modeGroups = new Map<TriggerMode, ControlRule[]>();
+      for (const r of tagRules) {
+        const m = r.trigger.mode || "press";
+        if (!modeGroups.has(m)) modeGroups.set(m, []);
+        modeGroups.get(m)!.push(r);
+      }
+
+      // Sort existing modes according to modeOrder
+      const presentModes = modeOrder.filter((m) => modeGroups.has(m));
+      for (const [m] of modeGroups) {
+        if (!presentModes.includes(m)) presentModes.push(m);
+      }
+
+      return `
+        <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px;">
+          <!-- Thread Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">🏷️ ${t.name}</span>
+              <span style="font-size: 0.68rem; color: #94a3b8; background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; padding: 1px 6px;">[ ${triggerLabel} ]</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="hold" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
+                + Add Branch
+              </button>
+            </div>
           </div>
 
-          <!-- Multi-Actions Section -->
-          <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(250, 204, 21, 0.15); border-radius: 4px; padding: 4px 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.66rem; font-weight: 700; color: #facc15; letter-spacing: 0.04em;">THEN (EXECUTE ACTIONS IN ORDER):</span>
-              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 auto; font-size: 0.64rem; padding: 1px 6px; color: #facc15; border-color: rgba(250, 204, 21, 0.4);" title="Add action function">+ Add Action</button>
-            </div>
-            ${actions
-              .map((act: ActionInvocation, aIdx: number) => {
-                const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
-                const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
-                const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
-                const isModuleMissing = cat && !cat.isAttached(char);
+          <!-- Cascade Branches by Mode -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${presentModes
+              .map((mode) => {
+                const modeRules = modeGroups.get(mode) ?? [];
+                const modeLabel = mode === "hold" ? "🔹 While Held:" : mode === "press" ? "🔹 On Press:" : "🔹 On Release:";
 
                 return `
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; padding-left: 2px;">
-                  <span style="font-size: 0.65rem; color: #64748b; width: 14px;">${aIdx + 1}.</span>
-                  <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.70rem; padding: 2px 8px; color: #facc15; border-color: rgba(250, 204, 21, 0.3); text-align: left; flex: 1;">
-                    ${actionLabel} ▼
-                  </button>
-                  ${isModuleMissing ? `<span style="font-size: 0.62rem; color: #f87171;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
-                  <button class="btn-delete-action btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #f87171; font-size: 0.65rem; border-radius: 3px;" title="Remove Action" ${actions.length <= 1 ? "disabled style='opacity:0.3; cursor:not-allowed;'" : ""}>✕</button>
-                </div>
-              `;
+                  <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 2px 2px;">
+                      <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8;">${modeLabel}</span>
+                      <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="${mode}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;" title="Add another cascading branch in this event">+ Add Else If</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      ${modeRules
+                        .map((r, rIdx) => {
+                          const isLast = rIdx === modeRules.length - 1;
+                          const conds = ControlSchemaArbiter.getRuleConditions(r);
+                          const isAlways = conds.length === 1 && conds[0].type === "always";
+                          let badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+                          return renderBranchRowHtml(r, badge);
+                        })
+                        .join("")}
+                    </div>
+                  </div>
+                `;
               })
               .join("")}
           </div>
-          `
-          }
         </div>
       `;
-      })
-      .join("");
+    });
+
+    const untaggedCard =
+      untaggedRules.length > 0
+        ? `
+      <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">⚡ Passive & Independent Rules</span>
+            <span style="font-size: 0.68rem; color: #94a3b8;">(Unbound / Continuous / Always active)</span>
+          </div>
+          <button id="btn-add-independent-rule" class="btn-secondary-action" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
+            + Add Independent Rule
+          </button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          ${untaggedRules.map((r, rIdx) => renderBranchRowHtml(r, `RULE ${rIdx + 1}`)).join("")}
+        </div>
+      </div>
+    `
+        : "";
+
+    return threadHtmlCards.join("") + untaggedCard;
   }
 
   private static formatTriggerLabel(item: { trigger: InputTriggerBinding } | InputTriggerBinding): string {
@@ -1376,44 +1413,68 @@ export class ControlsInspector {
       });
     });
 
-    // 9. Add Rule Button
-    root.querySelector("#btn-add-control-rule")?.addEventListener("click", () => {
-      const tags = this.getActiveDeviceTags(schema);
-      const isPad = this.activeTab === "gamepad";
-      const defaultTag = tags[0];
+    // 9. Add Rule Button / Add Independent Rule
+    const addIndependentRule = () => {
+      const rules =
+        this.activeTab === "keyboardMouse"
+          ? schema.keyboardMouse.rules
+          : this.activeTab === "gamepad"
+          ? schema.gamepad.rules
+          : schema.touch.rules;
       const newRule: ControlRule = {
-        id: "rule-" + Date.now().toString(36),
-        name: "New Action Rule",
+        id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+        name: "Independent Rule",
         enabled: true,
         priority: 50,
-        tagId: defaultTag?.id,
-        trigger: defaultTag
-          ? {
-              device: defaultTag.trigger.device,
-              code: defaultTag.trigger.code,
-              chordModifiers: defaultTag.trigger.chordModifiers ? [...defaultTag.trigger.chordModifiers] : undefined,
-              mode: "press",
-            }
-          : isPad
-          ? { device: "gamepad", code: "GamepadA", mode: "press" }
-          : { device: "keyboard", code: "Space", mode: "press" },
+        trigger: { device: "keyboard", code: "Always", mode: "hold" },
         conditions: [{ type: "always" }],
         condition: { type: "always" },
-        actions: [{ moduleId: "locomotion", intent: "jump" }],
-        action: { moduleId: "locomotion", intent: "jump" },
+        actions: [{ moduleId: "throwPickup", intent: "aimThrow" }],
+        action: { moduleId: "throwPickup", intent: "aimThrow" },
       };
-
-      this.collapsedRuleIds.delete(newRule.id);
-
-      if (this.activeTab === "keyboardMouse") {
-        schema.keyboardMouse.rules.unshift(newRule);
-      } else if (this.activeTab === "gamepad") {
-        schema.gamepad.rules.unshift(newRule);
-      } else {
-        schema.touch.rules.unshift(newRule);
-      }
-
+      rules.push(newRule);
       this.renderActiveView();
+    };
+
+    root.querySelector("#btn-add-control-rule")?.addEventListener("click", addIndependentRule);
+    root.querySelector("#btn-add-independent-rule")?.addEventListener("click", addIndependentRule);
+
+    // 9a. Add Thread Branch (IF / ELSE IF)
+    root.querySelectorAll(".btn-add-thread-branch").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = (btn as HTMLElement).dataset.tagId;
+        const mode = ((btn as HTMLElement).dataset.mode as TriggerMode) || "hold";
+        const tags = this.getActiveDeviceTags(schema);
+        const tag = tags.find((t) => t.id === tId);
+        const rules =
+          this.activeTab === "keyboardMouse"
+            ? schema.keyboardMouse.rules
+            : this.activeTab === "gamepad"
+            ? schema.gamepad.rules
+            : schema.touch.rules;
+
+        const newRule: ControlRule = {
+          id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+          name: "Action Branch",
+          enabled: true,
+          priority: 50,
+          tagId: tId,
+          trigger: tag
+            ? {
+                device: tag.trigger.device,
+                code: tag.trigger.code,
+                chordModifiers: tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined,
+                mode,
+              }
+            : { device: "keyboard", code: "Space", mode },
+          conditions: [{ type: "always" }],
+          condition: { type: "always" },
+          actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+          action: { moduleId: "throwPickup", intent: "grabItem" },
+        };
+        rules.push(newRule);
+        this.renderActiveView();
+      });
     });
 
     // 9b. Toggle Individual Rule Collapse
@@ -1465,6 +1526,7 @@ export class ControlsInspector {
         const rule = this.findRule(schema, rId);
         if (rule) {
           rule.trigger.mode = (e.target as HTMLSelectElement).value as TriggerMode;
+          this.renderActiveView();
         }
       });
     });
@@ -2004,7 +2066,7 @@ export class ControlsInspector {
       position: fixed;
       z-index: 10005;
       background: #090d16;
-      border: 1px solid rgba(56, 189, 248, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.3);
       border-radius: 8px;
       padding: 10px;
       max-height: 340px;
@@ -2025,24 +2087,24 @@ export class ControlsInspector {
     popover.style.left = `${Math.max(10, Math.min(winWidth - 310, rect.left - 100))}px`;
 
     popover.innerHTML = `
-      <div style="font-size: 0.74rem; font-weight: 700; color: #38bdf8; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #ffffff; padding-bottom: 6px; border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
         Select Target Action Function
       </div>
 
       <!-- Attached Modules (Prioritized) -->
       <div style="display: flex; flex-direction: column; gap: 4px;">
-        <span style="font-size: 0.66rem; font-weight: 700; color: #34d399; letter-spacing: 0.05em;">⭐ ATTACHED MODULES</span>
+        <span style="font-size: 0.66rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em;">⭐ ATTACHED MODULES</span>
         ${attached
           .map(
             (cat) => `
-          <div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); border-radius: 4px; padding: 4px;">
-            <span style="font-size: 0.70rem; font-weight: 600; color: #e2e8f0;">${cat.icon} ${cat.label}</span>
+          <div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 4px; padding: 4px;">
+            <span style="font-size: 0.70rem; font-weight: 600; color: #ffffff;">${cat.icon} ${cat.label}</span>
             <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 2px; padding-left: 6px;">
               ${cat.actions
                 .map(
                   (act) => `
-                <button class="btn-select-action" data-mod="${cat.id}" data-intent="${act.id}" style="text-align: left; background: none; border: none; color: #94a3b8; font-size: 0.70rem; padding: 3px 4px; border-radius: 3px; cursor: pointer;">
-                  • <strong style="color: #cbd5e1;">${act.label}</strong>
+                <button class="btn-select-action" data-mod="${cat.id}" data-intent="${act.id}" style="text-align: left; background: none; border: none; color: #ffffff; font-size: 0.70rem; padding: 3px 4px; border-radius: 3px; cursor: pointer;">
+                  • <strong style="color: #ffffff;">${act.label}</strong>
                 </button>
               `
                 )
