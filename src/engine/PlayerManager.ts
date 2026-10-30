@@ -596,6 +596,8 @@ export class PlayerManager {
         isGrounded: Boolean(kChar.isRestingOnSurface),
         isClimbing: Boolean(kChar.isClimbing),
         stagedAction: kChar.stagedAction,
+        stagedActions: kChar.stagedActions,
+        getStage: (group = "default") => kChar.getStage(group),
         facingAngle: kChar.facingAngle ?? 0,
         mouseAimPos: input.actualMousePos,
         reticleAimPos: input.actualMousePos,
@@ -749,7 +751,7 @@ export class PlayerManager {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
                 if (intent === "setStage") {
-                  kChar.stagedAction = act.args?.stage || "none";
+                  kChar.setStage(act.args?.group || act.args?.stageSet || "default", act.args?.stage || "none");
                 } else if (intent.includes("Laser")) {
                   kChar.stagedAction = "laser";
                 } else if (intent.includes("Throw")) {
@@ -897,6 +899,8 @@ export class PlayerManager {
         isGrounded: Boolean(cChar.isRestingOnSurface),
         isClimbing: Boolean(cChar.isClimbing),
         stagedAction: cChar.stagedAction,
+        stagedActions: cChar.stagedActions,
+        getStage: (group = "default") => cChar.getStage(group),
         facingAngle: cChar.facingAngle ?? 0,
         mouseAimPos: { x: aimX, y: aimY },
         reticleAimPos: { x: aimX, y: aimY },
@@ -1014,7 +1018,7 @@ export class PlayerManager {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
                 if (intent === "setStage") {
-                  cChar.stagedAction = act.args?.stage || "none";
+                  cChar.setStage(act.args?.group || act.args?.stageSet || "default", act.args?.stage || "none");
                 } else if (intent.includes("Laser")) {
                   cChar.stagedAction = "laser";
                 } else if (intent.includes("Throw")) {

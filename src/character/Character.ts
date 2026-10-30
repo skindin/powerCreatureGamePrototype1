@@ -204,6 +204,23 @@ export class Character extends GameObject {
   public stagedAction: string = "none";
 
   /**
+   * Named stage set dictionary supporting multiple concurrent stage groups.
+   */
+  public stagedActions: Record<string, string> = { default: "none" };
+
+  public getStage(group = "default"): string {
+    return this.stagedActions[group] ?? (group === "default" ? this.stagedAction : "none") ?? "none";
+  }
+
+  public setStage(group = "default", stage = "none"): void {
+    if (!this.stagedActions) this.stagedActions = {};
+    this.stagedActions[group] = stage;
+    if (group === "default" || group === "main") {
+      this.stagedAction = stage;
+    }
+  }
+
+  /**
    * Character-specific control schema loaded from its archetype or Prefab.
    */
   public controlSchema?: ControlSchema;

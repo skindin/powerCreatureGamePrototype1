@@ -8,6 +8,7 @@ import type {
   AimingParadigm,
   ConditionType,
   ConditionGate,
+  StageGroup,
   TriggerMode,
   InputTagBinding,
   InputTriggerBinding,
@@ -504,6 +505,21 @@ export class ControlsInspector {
 
     // Pre-save flush: ensure all live select and input values in the DOM are written to workingSchema
     if (root) {
+      root.querySelectorAll(".select-action-stage-group").forEach((sel) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const val = (sel as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = (stmts[sIdx] as ActionStatement).action;
+            act.args = { ...(act.args || {}), group: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+          }
+        }
+      });
       root.querySelectorAll(".select-action-stage").forEach((sel) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
         const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
@@ -516,6 +532,30 @@ export class ControlsInspector {
             act.args = { ...(act.args || {}), stage: val };
             rule.body = stmts;
             ControlSchemaArbiter.syncRuleFromStatements(rule);
+          }
+        }
+      });
+      root.querySelectorAll(".select-cond-stage-group").forEach((sel) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
+        const val = (sel as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.stageGroup = val;
+          }
+        }
+      });
+      root.querySelectorAll(".select-cond-stage").forEach((sel) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
+        const val = (sel as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
           }
         }
       });
@@ -874,24 +914,100 @@ export class ControlsInspector {
     `;
   }
 
-  public static getActiveStages(schema: ControlSchema): string[] {
-    if (!schema.stages || !Array.isArray(schema.stages)) {
-      schema.stages = ["none"];
+  public static getActiveStageGroups(schema: ControlSchema): StageGroup[] {
+    if (!schema.stageGroups || !Array.isArray(schema.stageGroups) || schema.stageGroups.length === 0) {
+      if (schema.stages && Array.isArray(schema.stages) && schema.stages.length > 0) {
+        schema.stageGroups = [{ name: "default", stages: [...schema.stages] }];
+      } else {
+        schema.stageGroups = [{ name: "default", stages: ["none"] }];
+      }
     }
-    if (!schema.stages.includes("none")) {
-      schema.stages.unshift("none");
-    } else if (schema.stages[0] !== "none") {
-      schema.stages = ["none", ...schema.stages.filter((s) => s !== "none")];
+    for (const g of schema.stageGroups) {
+      if (!g.stages || !Array.isArray(g.stages) || g.stages.length === 0) {
+        g.stages = ["none"];
+      } else if (!g.stages.includes("none")) {
+        g.stages.unshift("none");
+      } else if (g.stages[0] !== "none") {
+        g.stages = ["none", ...g.stages.filter((s) => s !== "none")];
+      }
     }
-    return schema.stages;
+    schema.stages = schema.stageGroups[0].stages;
+    return schema.stageGroups;
   }
 
-  private static renameStageInRules(schema: ControlSchema, oldName: string, newName: string): void {
+  public static getStagesForGroup(schema: ControlSchema, groupName?: string): string[] {
+    const groups = this.getActiveStageGroups(schema);
+    const g = groups.find((grp) => grp.name === (groupName || "default")) || groups[0];
+    return g ? g.stages : ["none"];
+  }
+
+  public static getActiveStages(schema: ControlSchema): string[] {
+    return this.getActiveStageGroups(schema)[0].stages;
+  }
+
+  private static renameStageGroupInRules(schema: ControlSchema, oldGroupName: string, newGroupName: string): void {
     const processRule = (rule: ControlRule) => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
       let condsChanged = false;
       const updateCond = (cond: ConditionGate) => {
-        if (cond.type === "stagedActionIs" && (cond.param === oldName || (!cond.param && oldName === "none"))) {
+        if (cond.type === "stagedActionIs" && (cond.stageGroup === oldGroupName || (!cond.stageGroup && oldGroupName === "default"))) {
+          cond.stageGroup = newGroupName;
+          condsChanged = true;
+        }
+        if (cond.type === "group" && cond.conditions) {
+          for (const sub of cond.conditions) {
+            updateCond(sub);
+          }
+        }
+      };
+      for (const cond of conds) {
+        updateCond(cond);
+      }
+      if (condsChanged) {
+        rule.conditions = conds;
+        rule.condition = conds[0];
+      }
+
+      const stmts = ControlSchemaArbiter.getRuleBody(rule);
+      let stmtsChanged = false;
+      for (const stmt of stmts) {
+        if (stmt.type === "action") {
+          if (stmt.action.moduleId === "staging" && stmt.action.intent === "setStage") {
+            if (stmt.action.args?.group === oldGroupName || (!stmt.action.args?.group && oldGroupName === "default")) {
+              stmt.action.args = { ...(stmt.action.args || {}), group: newGroupName };
+              stmtsChanged = true;
+            }
+          }
+        } else if (stmt.type === "nestedThread") {
+          for (const childRule of stmt.rules) {
+            processRule(childRule);
+          }
+        }
+      }
+      if (stmtsChanged) {
+        rule.body = stmts;
+        ControlSchemaArbiter.syncRuleFromStatements(rule);
+      }
+    };
+
+    if (schema.keyboardMouse?.rules) {
+      for (const r of schema.keyboardMouse.rules) processRule(r);
+    }
+    if (schema.gamepad?.rules) {
+      for (const r of schema.gamepad.rules) processRule(r);
+    }
+    if (schema.touch?.rules) {
+      for (const r of schema.touch.rules) processRule(r);
+    }
+  }
+
+  private static renameStageInRules(schema: ControlSchema, groupName: string, oldName: string, newName: string): void {
+    const processRule = (rule: ControlRule) => {
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      let condsChanged = false;
+      const updateCond = (cond: ConditionGate) => {
+        const matchesGroup = (cond.stageGroup || "default") === (groupName || "default");
+        if (cond.type === "stagedActionIs" && matchesGroup && (cond.param === oldName || (!cond.param && oldName === "none"))) {
           cond.param = newName;
           condsChanged = true;
         }
@@ -914,7 +1030,8 @@ export class ControlsInspector {
       for (const stmt of stmts) {
         if (stmt.type === "action") {
           if (stmt.action.moduleId === "staging" && stmt.action.intent === "setStage") {
-            if (stmt.action.args?.stage === oldName || (!stmt.action.args?.stage && oldName === "none")) {
+            const matchesGroup = (stmt.action.args?.group || "default") === (groupName || "default");
+            if (matchesGroup && (stmt.action.args?.stage === oldName || (!stmt.action.args?.stage && oldName === "none"))) {
               stmt.action.args = { ...(stmt.action.args || {}), stage: newName };
               stmtsChanged = true;
             }
@@ -940,6 +1057,15 @@ export class ControlsInspector {
     if (schema.touch?.rules) {
       for (const r of schema.touch.rules) processRule(r);
     }
+  }
+
+  private static deleteStageGroupInRules(schema: ControlSchema, deletedGroupName: string): void {
+    const firstGroup = schema.stageGroups?.[0]?.name || "default";
+    this.renameStageGroupInRules(schema, deletedGroupName, firstGroup);
+  }
+
+  private static deleteStageInRules(schema: ControlSchema, groupName: string, deletedStageName: string): void {
+    this.renameStageInRules(schema, groupName, deletedStageName, "none");
   }
 
   public static getConditionListAndIndex(rule: ControlRule, pathStr: string): { list: ConditionGate[]; index: number } | null {
@@ -986,43 +1112,77 @@ export class ControlsInspector {
   }
 
   private static renderStagesSectionHtml(schema: ControlSchema): string {
-    const stages = this.getActiveStages(schema);
+    const stageGroups = this.getActiveStageGroups(schema);
     return `
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <div style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #94a3b8; padding: 0 4px;">
-          <span>STAGE NAME</span>
-          <span></span>
-        </div>
-        ${stages.map((stg, idx) => {
-          const isNone = stg === "none";
-          return `
-            <div class="control-stage-row" style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 4px 6px;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 0.74rem;">🎭</span>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        ${stageGroups
+          .map((group, gIdx) => `
+          <div class="stage-group-card" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(167, 139, 250, 0.25); border-radius: 6px; padding: 7px 9px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; border-bottom: 1px solid rgba(167, 139, 250, 0.2); padding-bottom: 5px;">
+              <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                <span style="font-size: 0.74rem;">📁</span>
+                <span style="font-size: 0.66rem; font-weight: 700; color: #a78bfa; text-transform: uppercase;">SET:</span>
                 <input
                   type="text"
-                  class="input-stage-name dev-input"
-                  data-stage-idx="${idx}"
-                  value="${stg}"
-                  placeholder="Stage name..."
-                  ${isNone ? "disabled" : ""}
-                  style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: ${isNone ? "#94a3b8" : "#ffffff"}; background: ${isNone ? "rgba(255,255,255,0.03)" : "#0f172a"}; border: 1px solid rgba(148, 163, 184, 0.25); flex: 1;"
+                  class="input-stage-group-name dev-input"
+                  data-group-idx="${gIdx}"
+                  value="${group.name}"
+                  placeholder="Set name (e.g. default, stance)..."
+                  style="font-size: 0.72rem; padding: 2px 6px; font-weight: 700; color: #ffffff; background: #0f172a; border: 1px solid rgba(167, 139, 250, 0.35); max-width: 140px;"
                 />
-                ${isNone ? `<span style="font-size: 0.64rem; color: #64748b; font-style: italic; white-space: nowrap;">(Immutable Default)</span>` : ""}
+                ${gIdx === 0 ? `<span style="font-size: 0.62rem; color: #64748b; font-style: italic;">(Primary Set)</span>` : ""}
               </div>
               <div>
-                ${!isNone ? `
-                  <button class="btn-delete-stage btn-secondary-action" data-stage-idx="${idx}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.70rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent; cursor: pointer;" title="Delete Stage">
-                    🗑️
+                ${stageGroups.length > 1 ? `
+                  <button class="btn-delete-stage-group btn-secondary-action" data-group-idx="${gIdx}" style="padding: 2px 6px; color: #f87171; font-size: 0.66rem; border: 1px solid rgba(248, 113, 113, 0.3); background: transparent; cursor: pointer;" title="Delete Stage Set">
+                    🗑️ Delete Set
                   </button>
                 ` : ""}
               </div>
             </div>
-          `;
-        }).join("")}
+
+            <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 4px;">
+              ${group.stages
+                .map((stg, sIdx) => {
+                  const isNone = stg === "none";
+                  return `
+                  <div class="control-stage-row" style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 4px; padding: 3px 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 0.70rem;">🎭</span>
+                      <input
+                        type="text"
+                        class="input-stage-name dev-input"
+                        data-group-idx="${gIdx}"
+                        data-stage-idx="${sIdx}"
+                        value="${stg}"
+                        placeholder="Stage name..."
+                        ${isNone ? "disabled" : ""}
+                        style="font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: ${isNone ? "#94a3b8" : "#ffffff"}; background: ${isNone ? "rgba(255,255,255,0.03)" : "#0f172a"}; border: 1px solid rgba(148, 163, 184, 0.25); flex: 1;"
+                      />
+                      ${isNone ? `<span style="font-size: 0.62rem; color: #64748b; font-style: italic; white-space: nowrap;">(Immutable Default)</span>` : ""}
+                    </div>
+                    <div>
+                      ${!isNone ? `
+                        <button class="btn-delete-stage btn-secondary-action" data-group-idx="${gIdx}" data-stage-idx="${sIdx}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.68rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent; cursor: pointer;" title="Delete Stage">
+                          🗑️
+                        </button>
+                      ` : ""}
+                    </div>
+                  </div>
+                `;
+                })
+                .join("")}
+              <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+                <button class="btn-add-stage btn-secondary-action" data-group-idx="${gIdx}" type="button" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+                  + Add Stage to "${group.name}"
+                </button>
+              </div>
+            </div>
+          </div>
+        `).join("")}
         <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-          <button id="btn-add-stage" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05); cursor: pointer;">
-            + Add Stage
+          <button id="btn-add-stage-group" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.35); background: rgba(167, 139, 250, 0.08); cursor: pointer;">
+            + Add Stage Set
           </button>
         </div>
       </div>
@@ -1156,7 +1316,7 @@ export class ControlsInspector {
         ? schema.gamepad.rules
         : schema.touch.rules;
     const tags = this.getActiveDeviceTags(schema);
-    const stages = this.getActiveStages(schema);
+    const stageGroups = this.getActiveStageGroups(schema);
 
     // Normalize legacy rules that had tagId or outer trigger modes into unified conditions
     for (const rule of rules) {
@@ -1209,11 +1369,18 @@ export class ControlsInspector {
             <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
               ${actionLabel} ▼
             </button>
-            ${act.moduleId === "staging" ? `
-              <select class="select-action-stage dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a; max-width: 110px;" title="Target Stage">
-                ${stages.map((stg) => `<option value="${stg}" ${(act.args?.stage || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
-              </select>
-            ` : ""}
+            ${act.moduleId === "staging" ? (() => {
+              const currentGroup = act.args?.group || stageGroups[0]?.name || "default";
+              const stagesInGroup = ControlsInspector.getStagesForGroup(schema, currentGroup);
+              return `
+                <select class="select-action-stage-group dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); background: #0f172a; max-width: 95px;" title="Target Stage Set">
+                  ${stageGroups.map((g) => `<option value="${g.name}" ${currentGroup === g.name ? "selected" : ""}>📁 ${g.name}</option>`).join("")}
+                </select>
+                <select class="select-action-stage dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a; max-width: 105px;" title="Target Stage within ${currentGroup}">
+                  ${stagesInGroup.map((stg) => `<option value="${stg}" ${(act.args?.stage || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
+                </select>
+              `;
+            })() : ""}
             ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
           </div>
           <div style="display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
@@ -1338,11 +1505,18 @@ export class ControlsInspector {
                     </select>
                   `
                       : cond.type === "stagedActionIs"
-                      ? `
-                    <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 110px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select Stage">
-                      ${stages.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
-                    </select>
-                  `
+                      ? (() => {
+                        const currentGroup = cond.stageGroup || stageGroups[0]?.name || "default";
+                        const stagesInGroup = ControlsInspector.getStagesForGroup(schema, currentGroup);
+                        return `
+                          <select class="select-cond-stage-group dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 95px; color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); background: #0f172a;" title="Stage Set">
+                            ${stageGroups.map((g) => `<option value="${g.name}" ${currentGroup === g.name ? "selected" : ""}>📁 ${g.name}</option>`).join("")}
+                          </select>
+                          <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 105px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Stage within ${currentGroup}">
+                            ${stagesInGroup.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
+                          </select>
+                        `;
+                      })()
                       : cond.type === "buttonHeld"
                       ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-path="${currentPath}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
                       : ""
@@ -1742,47 +1916,101 @@ export class ControlsInspector {
     });
 
     // Stage Management Listeners
-    root.querySelector("#btn-add-stage")?.addEventListener("click", () => {
-      const stages = this.getActiveStages(schema);
-      let counter = 1;
-      let newName = `stage_${counter}`;
-      while (stages.includes(newName)) {
+    root.querySelector("#btn-add-stage-group")?.addEventListener("click", () => {
+      const groups = ControlsInspector.getActiveStageGroups(schema);
+      let counter = groups.length + 1;
+      let newName = `set_${counter}`;
+      while (groups.some((g) => g.name === newName)) {
         counter++;
-        newName = `stage_${counter}`;
+        newName = `set_${counter}`;
       }
-      stages.push(newName);
-      schema.stages = stages;
+      groups.push({ name: newName, stages: ["none"] });
       this.renderActiveView();
+    });
+
+    root.querySelectorAll(".input-stage-group-name").forEach((inp) => {
+      inp.addEventListener("change", (e) => {
+        const gIdx = parseInt((inp as HTMLElement).dataset.groupIdx ?? "-1", 10);
+        const groups = ControlsInspector.getActiveStageGroups(schema);
+        if (gIdx >= 0 && groups[gIdx]) {
+          const oldName = groups[gIdx].name;
+          const newName = (e.target as HTMLInputElement).value.trim();
+          if (!newName || groups.some((g, i) => i !== gIdx && g.name === newName)) {
+            (e.target as HTMLInputElement).value = oldName;
+            return;
+          }
+          groups[gIdx].name = newName;
+          ControlsInspector.renameStageGroupInRules(schema, oldName, newName);
+          this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-stage-group").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gIdx = parseInt((btn as HTMLElement).dataset.groupIdx ?? "-1", 10);
+        const groups = ControlsInspector.getActiveStageGroups(schema);
+        if (groups.length > 1 && gIdx >= 0 && groups[gIdx]) {
+          const oldName = groups[gIdx].name;
+          groups.splice(gIdx, 1);
+          ControlsInspector.deleteStageGroupInRules(schema, oldName);
+          this.renderActiveView();
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-add-stage").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gIdx = parseInt((btn as HTMLElement).dataset.groupIdx ?? "0", 10);
+        const groups = ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx]) {
+          const group = groups[gIdx];
+          let counter = 1;
+          let newName = `stage_${counter}`;
+          while (group.stages.includes(newName)) {
+            counter++;
+            newName = `stage_${counter}`;
+          }
+          group.stages.push(newName);
+          this.renderActiveView();
+        }
+      });
     });
 
     root.querySelectorAll(".input-stage-name").forEach((inp) => {
       inp.addEventListener("change", (e) => {
-        const idx = parseInt((inp as HTMLElement).dataset.stageIdx ?? "-1", 10);
-        if (idx <= 0) return; // Cannot edit "none"
-        const stages = this.getActiveStages(schema);
-        const oldName = stages[idx];
-        const newName = (e.target as HTMLInputElement).value.trim();
-        if (!newName || newName === "none" || (stages.includes(newName) && stages.indexOf(newName) !== idx)) {
-          (e.target as HTMLInputElement).value = oldName;
-          return;
+        const gIdx = parseInt((inp as HTMLElement).dataset.groupIdx ?? "0", 10);
+        const sIdx = parseInt((inp as HTMLElement).dataset.stageIdx ?? "-1", 10);
+        if (sIdx <= 0) return; // Cannot edit "none"
+        const groups = ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx] && groups[gIdx].stages[sIdx]) {
+          const group = groups[gIdx];
+          const oldName = group.stages[sIdx];
+          const newName = (e.target as HTMLInputElement).value.trim();
+          if (!newName || newName === "none" || (group.stages.includes(newName) && group.stages.indexOf(newName) !== sIdx)) {
+            (e.target as HTMLInputElement).value = oldName;
+            return;
+          }
+          group.stages[sIdx] = newName;
+          ControlsInspector.renameStageInRules(schema, group.name, oldName, newName);
+          this.renderActiveView();
         }
-        stages[idx] = newName;
-        schema.stages = stages;
-        this.renameStageInRules(schema, oldName, newName);
-        this.renderActiveView();
       });
     });
 
     root.querySelectorAll(".btn-delete-stage").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const idx = parseInt((btn as HTMLElement).dataset.stageIdx ?? "-1", 10);
-        if (idx <= 0) return; // Cannot delete "none"
-        const stages = this.getActiveStages(schema);
-        const oldName = stages[idx];
-        stages.splice(idx, 1);
-        schema.stages = stages;
-        this.renameStageInRules(schema, oldName, "none");
-        this.renderActiveView();
+        const gIdx = parseInt((btn as HTMLElement).dataset.groupIdx ?? "0", 10);
+        const sIdx = parseInt((btn as HTMLElement).dataset.stageIdx ?? "-1", 10);
+        if (sIdx <= 0) return; // Cannot delete "none"
+        const groups = ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx] && groups[gIdx].stages[sIdx]) {
+          const group = groups[gIdx];
+          const oldName = group.stages[sIdx];
+          group.stages.splice(sIdx, 1);
+          ControlsInspector.deleteStageInRules(schema, group.name, oldName);
+          this.renderActiveView();
+        }
       });
     });
 
@@ -1998,7 +2226,11 @@ export class ControlsInspector {
           if (targetCond) {
             if (val === "stagedActionIs") {
               targetCond.type = "stagedActionIs";
-              const stages = this.getActiveStages(schema);
+              const groups = ControlsInspector.getActiveStageGroups(schema);
+              if (!targetCond.stageGroup || !groups.some((g) => g.name === targetCond.stageGroup)) {
+                targetCond.stageGroup = groups[0]?.name || "default";
+              }
+              const stages = ControlsInspector.getStagesForGroup(schema, targetCond.stageGroup);
               if (!targetCond.param || !stages.includes(targetCond.param)) {
                 targetCond.param = "none";
               }
@@ -2039,6 +2271,27 @@ export class ControlsInspector {
       });
     });
 
+    root.querySelectorAll(".select-cond-stage-group").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.stageGroup = val;
+            const stages = ControlsInspector.getStagesForGroup(schema, val);
+            if (!targetCond.param || !stages.includes(targetCond.param)) {
+              targetCond.param = "none";
+            }
+            rule.condition = rule.conditions?.[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+
     root.querySelectorAll(".select-cond-stage").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
@@ -2066,6 +2319,29 @@ export class ControlsInspector {
           const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
           if (targetCond) {
             targetCond.param = val;
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll(".select-action-stage-group").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = (stmts[sIdx] as ActionStatement).action;
+            act.args = { ...(act.args || {}), group: val };
+            const stages = ControlsInspector.getStagesForGroup(schema, val);
+            if (!act.args.stage || !stages.includes(act.args.stage)) {
+              act.args.stage = "none";
+            }
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+            this.renderActiveView();
           }
         }
       });
@@ -2851,6 +3127,8 @@ export class ControlsInspector {
 
     popover.querySelectorAll(".btn-select-action").forEach((btn) => {
       btn.addEventListener("click", () => {
+        if (!this.workingSchema) return;
+        const schema = this.workingSchema;
         const mod = (btn as HTMLElement).dataset.mod;
         const intent = (btn as HTMLElement).dataset.intent;
         if (mod && intent) {
@@ -2862,19 +3140,34 @@ export class ControlsInspector {
           if (stmts[statementIdx] && stmts[statementIdx].type === "action") {
             (stmts[statementIdx] as ActionStatement).action.moduleId = mod;
             (stmts[statementIdx] as ActionStatement).action.intent = intent;
-            if (mod === "staging" && intent === "setStage" && !(stmts[statementIdx] as ActionStatement).action.args?.stage) {
-              (stmts[statementIdx] as ActionStatement).action.args = { stage: "none" };
+            if (mod === "staging" && intent === "setStage") {
+              const defaultGrp = ControlsInspector.getActiveStageGroups(schema)[0]?.name || "default";
+              const existingArgs = (stmts[statementIdx] as ActionStatement).action.args || {};
+              (stmts[statementIdx] as ActionStatement).action.args = {
+                group: existingArgs.group || defaultGrp,
+                stage: existingArgs.stage || "none",
+              };
             }
           } else {
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             if (actions[statementIdx]) {
               actions[statementIdx].moduleId = mod;
               actions[statementIdx].intent = intent;
-              if (mod === "staging" && intent === "setStage" && !actions[statementIdx].args?.stage) {
-                actions[statementIdx].args = { stage: "none" };
+              if (mod === "staging" && intent === "setStage") {
+                const defaultGrp = ControlsInspector.getActiveStageGroups(schema)[0]?.name || "default";
+                const existingArgs = actions[statementIdx].args || {};
+                actions[statementIdx].args = {
+                  group: existingArgs.group || defaultGrp,
+                  stage: existingArgs.stage || "none",
+                };
               }
             } else {
-              actions.push({ moduleId: mod, intent, args: mod === "staging" ? { stage: "none" } : undefined });
+              const defaultGrp = ControlsInspector.getActiveStageGroups(schema)[0]?.name || "default";
+              actions.push({
+                moduleId: mod,
+                intent,
+                args: mod === "staging" ? { group: defaultGrp, stage: "none" } : undefined,
+              });
             }
             rule.actions = actions;
             rule.action = actions[0];

@@ -39,9 +39,15 @@ export type ConditionType =
   | "isLaserAiming"
   | "customProperty";
 
+export interface StageGroup {
+  name: string;
+  stages: string[];
+}
+
 export interface ConditionGate {
   type: ConditionType;
-  param?: string; // e.g. "laser", "melee", property name, or button code
+  param?: string; // e.g. "laser", "melee", property name, button code, or stage name
+  stageGroup?: string; // stage set/group name when type === "stagedActionIs" (defaults to "default")
   negate?: boolean;
   op?: LogicalOperator; // Logical operator for nested group ("and" | "or", default "or")
   conditions?: ConditionGate[]; // Child conditions if type === "group"
@@ -159,6 +165,7 @@ export interface ControlSchema {
   description?: string;
   activeDevice: DeviceChannel;
   stages?: string[];
+  stageGroups?: StageGroup[];
   keyboardMouse: KeyboardMouseConfig;
   gamepad: GamepadConfig;
   touch: TouchConfig;
@@ -177,6 +184,8 @@ export interface ControlExecutionContext {
   heldItemHasPrimaryAbility?: boolean;
   targetInReach: GameObject | null;
   stagedAction: string | null;
+  stagedActions?: Record<string, string>;
+  getStage?: (group?: string) => string;
   
   // Aim positions
   mouseAimPos: Vector2D;

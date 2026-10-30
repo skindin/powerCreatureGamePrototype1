@@ -6,6 +6,7 @@ export const DefaultControlSchema: ControlSchema = {
   description: "Standard twin-stick and WASD setup with smart contextual action triggers.",
   activeDevice: "keyboardMouse",
   stages: ["none", "laser", "throw", "melee"],
+  stageGroups: [{ name: "default", stages: ["none", "laser", "throw", "melee"] }],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
@@ -292,6 +293,7 @@ export const HunterControlSchema: ControlSchema = {
   description: "Character faces the mouse. Right-click drives forward. Left hand stages abilities, left-click executes.",
   activeDevice: "keyboardMouse",
   stages: ["none", "laser", "throw", "melee"],
+  stageGroups: [{ name: "default", stages: ["none", "laser", "throw", "melee"] }],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {

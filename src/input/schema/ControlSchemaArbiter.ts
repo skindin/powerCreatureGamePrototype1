@@ -154,7 +154,10 @@ export class ControlSchemaArbiter {
         result = ctx.targetInReach !== null;
         break;
       case "stagedActionIs": {
-        const current = ctx.stagedAction || "none";
+        const group = cond.stageGroup || "default";
+        const current = ctx.character?.getStage
+          ? ctx.character.getStage(group)
+          : (ctx.stagedActions?.[group] ?? (group === "default" ? ctx.stagedAction : "none") ?? "none");
         const expected = cond.param || "none";
         result = current === expected;
         break;

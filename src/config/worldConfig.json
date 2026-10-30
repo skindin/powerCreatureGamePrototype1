@@ -1,6 +1,6 @@
 {
-  "version": 137,
-  "lastSaved": "2026-10-30T12:39:22.830Z",
+  "version": 143,
+  "lastSaved": "2026-10-30T12:58:15.360Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -640,7 +640,7 @@
                         "moduleId": "staging",
                         "intent": "setStage",
                         "args": {
-                          "stage": "none"
+                          "stage": "itemAbility"
                         }
                       }
                     ],
@@ -662,7 +662,7 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "none"
+                            "stage": "itemAbility"
                           }
                         }
                       }
@@ -711,7 +711,7 @@
                         "moduleId": "staging",
                         "intent": "setStage",
                         "args": {
-                          "stage": "none"
+                          "stage": "grab"
                         }
                       }
                     ],
@@ -733,7 +733,7 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "none"
+                            "stage": "grab"
                           }
                         }
                       }
@@ -914,6 +914,488 @@
                   "args": {
                     "stage": "none"
                   }
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuyuaktqyz",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyuakt",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-scjxrr"
+              }
+            ],
+            "condition": {
+              "type": "tagHeld",
+              "param": "tag-kbm-scjxrr"
+            },
+            "actions": [
+              {
+                "moduleId": "locomotion",
+                "intent": "jump"
+              }
+            ],
+            "action": {
+              "moduleId": "locomotion",
+              "intent": "jump"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "locomotion",
+                  "intent": "jump"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuyukiqe8r",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyukiq",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagPressed",
+                "param": "tag-kbm-i3csb0"
+              }
+            ],
+            "condition": {
+              "type": "tagPressed",
+              "param": "tag-kbm-i3csb0"
+            },
+            "actions": [
+              {
+                "moduleId": "throwPickup",
+                "intent": "grabItem"
+              }
+            ],
+            "action": {
+              "moduleId": "throwPickup",
+              "intent": "grabItem"
+            }
+          },
+          {
+            "id": "rule-mvuyutgqxj8",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyutgq",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-mxj04b"
+              }
+            ],
+            "condition": {
+              "type": "tagHeld",
+              "param": "tag-kbm-mxj04b"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "laser"
+                }
+              },
+              {
+                "moduleId": "laser",
+                "intent": "aimLaser"
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "setStage",
+              "args": {
+                "stage": "laser"
+              }
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "laser"
+                  }
+                }
+              },
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "laser",
+                  "intent": "aimLaser"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuz1v84zsz",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyutgq",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagReleased",
+                "param": "tag-kbm-mxj04b"
+              },
+              {
+                "type": "stagedActionIs",
+                "param": "laser"
+              }
+            ],
+            "condition": {
+              "type": "tagReleased",
+              "param": "tag-kbm-mxj04b"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "setStage",
+              "args": {
+                "stage": "none"
+              }
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuyy7gta43",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyy7gt",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-5ftccu"
+              }
+            ],
+            "condition": {
+              "type": "tagHeld",
+              "param": "tag-kbm-5ftccu"
+            },
+            "actions": [
+              {
+                "moduleId": "throw",
+                "intent": "aimThrow"
+              },
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "throw"
+                }
+              }
+            ],
+            "action": {
+              "moduleId": "throw",
+              "intent": "aimThrow"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "throw",
+                  "intent": "aimThrow"
+                }
+              },
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "throw"
+                  }
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuyzn14ezj",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuyy7gt",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagReleased",
+                "param": "tag-kbm-5ftccu"
+              },
+              {
+                "type": "stagedActionIs",
+                "param": "throw"
+              }
+            ],
+            "condition": {
+              "type": "tagReleased",
+              "param": "tag-kbm-5ftccu"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "setStage",
+              "args": {
+                "stage": "none"
+              }
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuz2yjunae",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuz2yju",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-6o3l7h"
+              }
+            ],
+            "condition": {
+              "type": "tagHeld",
+              "param": "tag-kbm-6o3l7h"
+            },
+            "actions": [
+              {
+                "moduleId": "locomotion",
+                "intent": "holdSprint"
+              }
+            ],
+            "action": {
+              "moduleId": "locomotion",
+              "intent": "holdSprint"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "locomotion",
+                  "intent": "holdSprint"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuz5lavrjc",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuz5lav",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-tn6irx"
+              },
+              {
+                "type": "emptyHanded"
+              }
+            ],
+            "condition": {
+              "type": "tagHeld",
+              "param": "tag-kbm-tn6irx"
+            },
+            "actions": [
+              {
+                "moduleId": "pickup",
+                "intent": "pickupReach"
+              }
+            ],
+            "action": {
+              "moduleId": "pickup",
+              "intent": "pickupReach"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "pickup",
+                  "intent": "pickupReach"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuz7b3sp8t",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuz7b3s",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagPressed",
+                "param": "tag-kbm-tn6irx"
+              },
+              {
+                "type": "holdingObject"
+              },
+              {
+                "type": "targetInReach"
+              }
+            ],
+            "condition": {
+              "type": "tagPressed",
+              "param": "tag-kbm-tn6irx"
+            },
+            "actions": [
+              {
+                "moduleId": "pickup",
+                "intent": "swap"
+              }
+            ],
+            "action": {
+              "moduleId": "pickup",
+              "intent": "swap"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "pickup",
+                  "intent": "swap"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvuz63kzy0m",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuz63kz",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagPressed",
+                "param": "tag-kbm-5j0zp9"
+              }
+            ],
+            "condition": {
+              "type": "tagPressed",
+              "param": "tag-kbm-5j0zp9"
+            },
+            "actions": [
+              {
+                "moduleId": "pickup",
+                "intent": "dropItem"
+              }
+            ],
+            "action": {
+              "moduleId": "pickup",
+              "intent": "dropItem"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "pickup",
+                  "intent": "dropItem"
                 }
               }
             ],
@@ -2692,7 +3174,7 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "none"
+                            "stage": "itemAbility"
                           }
                         }
                       ],
@@ -2714,7 +3196,7 @@
                             "moduleId": "staging",
                             "intent": "setStage",
                             "args": {
-                              "stage": "none"
+                              "stage": "itemAbility"
                             }
                           }
                         }
@@ -2763,7 +3245,7 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "none"
+                            "stage": "grab"
                           }
                         }
                       ],
@@ -2785,7 +3267,7 @@
                             "moduleId": "staging",
                             "intent": "setStage",
                             "args": {
-                              "stage": "none"
+                              "stage": "grab"
                             }
                           }
                         }
@@ -2966,6 +3448,488 @@
                     "args": {
                       "stage": "none"
                     }
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuyuaktqyz",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyuakt",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-scjxrr"
+                }
+              ],
+              "condition": {
+                "type": "tagHeld",
+                "param": "tag-kbm-scjxrr"
+              },
+              "actions": [
+                {
+                  "moduleId": "locomotion",
+                  "intent": "jump"
+                }
+              ],
+              "action": {
+                "moduleId": "locomotion",
+                "intent": "jump"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "locomotion",
+                    "intent": "jump"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuyukiqe8r",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyukiq",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-i3csb0"
+                }
+              ],
+              "condition": {
+                "type": "tagPressed",
+                "param": "tag-kbm-i3csb0"
+              },
+              "actions": [
+                {
+                  "moduleId": "throwPickup",
+                  "intent": "grabItem"
+                }
+              ],
+              "action": {
+                "moduleId": "throwPickup",
+                "intent": "grabItem"
+              }
+            },
+            {
+              "id": "rule-mvuyutgqxj8",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyutgq",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-mxj04b"
+                }
+              ],
+              "condition": {
+                "type": "tagHeld",
+                "param": "tag-kbm-mxj04b"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "laser"
+                  }
+                },
+                {
+                  "moduleId": "laser",
+                  "intent": "aimLaser"
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "laser"
+                }
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "laser"
+                    }
+                  }
+                },
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "laser",
+                    "intent": "aimLaser"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuz1v84zsz",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyutgq",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagReleased",
+                  "param": "tag-kbm-mxj04b"
+                },
+                {
+                  "type": "stagedActionIs",
+                  "param": "laser"
+                }
+              ],
+              "condition": {
+                "type": "tagReleased",
+                "param": "tag-kbm-mxj04b"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "none"
+                    }
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuyy7gta43",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyy7gt",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-5ftccu"
+                }
+              ],
+              "condition": {
+                "type": "tagHeld",
+                "param": "tag-kbm-5ftccu"
+              },
+              "actions": [
+                {
+                  "moduleId": "throw",
+                  "intent": "aimThrow"
+                },
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "throw"
+                  }
+                }
+              ],
+              "action": {
+                "moduleId": "throw",
+                "intent": "aimThrow"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "throw",
+                    "intent": "aimThrow"
+                  }
+                },
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "throw"
+                    }
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuyzn14ezj",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuyy7gt",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagReleased",
+                  "param": "tag-kbm-5ftccu"
+                },
+                {
+                  "type": "stagedActionIs",
+                  "param": "throw"
+                }
+              ],
+              "condition": {
+                "type": "tagReleased",
+                "param": "tag-kbm-5ftccu"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "none"
+                    }
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuz2yjunae",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuz2yju",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-6o3l7h"
+                }
+              ],
+              "condition": {
+                "type": "tagHeld",
+                "param": "tag-kbm-6o3l7h"
+              },
+              "actions": [
+                {
+                  "moduleId": "locomotion",
+                  "intent": "holdSprint"
+                }
+              ],
+              "action": {
+                "moduleId": "locomotion",
+                "intent": "holdSprint"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "locomotion",
+                    "intent": "holdSprint"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuz5lavrjc",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuz5lav",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-tn6irx"
+                },
+                {
+                  "type": "emptyHanded"
+                }
+              ],
+              "condition": {
+                "type": "tagHeld",
+                "param": "tag-kbm-tn6irx"
+              },
+              "actions": [
+                {
+                  "moduleId": "pickup",
+                  "intent": "pickupReach"
+                }
+              ],
+              "action": {
+                "moduleId": "pickup",
+                "intent": "pickupReach"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "pickup",
+                    "intent": "pickupReach"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuz7b3sp8t",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuz7b3s",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-tn6irx"
+                },
+                {
+                  "type": "holdingObject"
+                },
+                {
+                  "type": "targetInReach"
+                }
+              ],
+              "condition": {
+                "type": "tagPressed",
+                "param": "tag-kbm-tn6irx"
+              },
+              "actions": [
+                {
+                  "moduleId": "pickup",
+                  "intent": "swap"
+                }
+              ],
+              "action": {
+                "moduleId": "pickup",
+                "intent": "swap"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "pickup",
+                    "intent": "swap"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvuz63kzy0m",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuz63kz",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-5j0zp9"
+                }
+              ],
+              "condition": {
+                "type": "tagPressed",
+                "param": "tag-kbm-5j0zp9"
+              },
+              "actions": [
+                {
+                  "moduleId": "pickup",
+                  "intent": "dropItem"
+                }
+              ],
+              "action": {
+                "moduleId": "pickup",
+                "intent": "dropItem"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "pickup",
+                    "intent": "dropItem"
                   }
                 }
               ],

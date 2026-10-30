@@ -302,8 +302,17 @@ export class ControlActionCatalog {
           description: "Sets the active stage state to a chosen stage value",
           recommendedMode: "press",
           execute: (ctx, args) => {
+            const group = args?.group || args?.stageSet || "default";
             const targetStage = args?.stage || "none";
-            ctx.character.stagedAction = targetStage;
+            if (ctx.character?.setStage) {
+              ctx.character.setStage(group, targetStage);
+            } else {
+              if (!ctx.character.stagedActions) ctx.character.stagedActions = {};
+              ctx.character.stagedActions[group] = targetStage;
+              if (group === "default" || group === "main") {
+                ctx.character.stagedAction = targetStage;
+              }
+            }
           },
         },
       ],
