@@ -1045,23 +1045,29 @@ var pa=Object.defineProperty;var ma=(b,e,t)=>e in b?pa(b,e,{enumerable:!0,config
             </div>
           </div>
 
-          <!-- Bottom Row: THEN Action Execution (Separated Vertically) -->
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 14px; border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 5px;">
-            <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.2); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
-              THEN:
-            </span>
+          <!-- Bottom Block: THEN Action Execution (Stacked Vertically Like Classic Code) -->
+          <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid rgba(148, 163, 184, 0.25); margin-left: 6px; margin-top: 3px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em;">
+                THEN:
+              </span>
+              <button class="btn-add-action btn-secondary-action" data-rule-id="${d.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action function">+ Add Action</button>
+            </div>
 
-            <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+            <!-- Vertically Stacked Actions -->
+            <div style="display: flex; flex-direction: column; gap: 3px;">
               ${p.map((h,m)=>{const y=Wt.findAction(h.moduleId,h.intent),v=y?y.label:`${h.moduleId}:${h.intent}`,M=Wt.categories.find(f=>f.id===h.moduleId),w=M&&!M.isAttached(e);return`
-                    <div style="display: inline-flex; align-items: center; gap: 2px;">
-                      <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${d.id}" data-action-idx="${m}" style="font-size: 0.68rem; padding: 2px 7px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px;" title="Change Action Function">
-                        ${v} ▼
-                      </button>
-                      ${w?'<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️</span>':""}
-                      ${p.length>1?`<button class="btn-delete-action btn-icon" data-rule-id="${d.id}" data-action-idx="${m}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>`:""}
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(148,163,184,0.15); border-radius: 3px; padding: 2px 6px;">
+                      <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+                        <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${m+1}.</span>
+                        <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${d.id}" data-action-idx="${m}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
+                          ${v} ▼
+                        </button>
+                        ${w?'<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>':""}
+                      </div>
+                      ${p.length>1?`<button class="btn-delete-action btn-icon" data-rule-id="${d.id}" data-action-idx="${m}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>`:""}
                     </div>
                   `}).join("")}
-              <button class="btn-add-action btn-secondary-action" data-rule-id="${d.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action">+ Action</button>
             </div>
           </div>
         </div>
