@@ -24,6 +24,7 @@ import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog
 import { ControlSchemaArbiter } from "../../../input/schema/ControlSchemaArbiter.js";
 import { prefabManager } from "../../../engine/prefab/PrefabManager.js";
 import { DevConfigPersistence } from "../DevConfigPersistence.js";
+import { UserControlScriptRunner, DEFAULT_CONTROLS_SCRIPT } from "../../../input/UserControlScriptRunner.js";
 
 /**
  * ControlsInspector provides a dedicated separate program window (and fallback modal dialog)
@@ -36,7 +37,7 @@ export class ControlsInspector {
   private static popoutWindow: Window | null = null;
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
-  private static activeTab: DeviceChannel = "keyboardMouse";
+  private static activeTab: DeviceChannel | "script" = "script";
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
@@ -665,7 +666,9 @@ export class ControlsInspector {
         ? schema.keyboardMouse.rules.length
         : this.activeTab === "gamepad"
         ? schema.gamepad.rules.length
-        : schema.touch.rules.length;
+        : this.activeTab === "touch"
+        ? schema.touch.rules.length
+        : 0;
 
     const dialogHtml = `
       <div id="controls-dialog-container" style="
@@ -732,8 +735,11 @@ export class ControlsInspector {
 
         <!-- Device Channel Tabs -->
         <div style="flex-shrink: 0; display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
+          <button id="tab-btn-script" class="btn-secondary-action" style="flex: 1.2; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "script" ? "background: #0f172a; color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); border-bottom: 2px solid #38bdf8;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
+            ⚡ JS Script (controls.js)
+          </button>
           <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
-            ⌨️ Keyboard & Mouse
+            ⌨️ Visual Blocks (KBM)
           </button>
           <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "gamepad" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
             🎮 Gamepad
@@ -745,7 +751,7 @@ export class ControlsInspector {
 
         <!-- Scrollable Modal Body -->
         <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #090d16;">
-          
+          ${this.activeTab === "script" ? this.renderScriptEditorHtml() : `
           <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
           <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
@@ -841,6 +847,7 @@ export class ControlsInspector {
                 : ""
             }
           </div>
+          `}
         </div>
 
         <!-- Footer Bar -->
@@ -867,6 +874,89 @@ export class ControlsInspector {
   }
 
   // --- Sub-Section HTML Builders ---
+
+  private static escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  private static renderScriptEditorHtml(): string {
+    const runner = UserControlScriptRunner.getInstance();
+    const escapedSource = this.escapeHtml(runner.scriptSource);
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Status & Action Bar -->
+        <div style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.25rem;">⚡</span>
+            <div>
+              <div style="font-weight: 700; font-size: 0.86rem; color: #38bdf8;">
+                JavaScript Custom Controls Script
+              </div>
+              <div style="font-size: 0.72rem; color: #94a3b8;">
+                Script Path: <code style="color: #cbd5e1; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 3px;">src/config/controls.js</code>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: #cbd5e1; cursor: pointer; user-select: none;">
+              <input type="checkbox" id="toggle-enable-script" ${runner.isEnabled ? "checked" : ""} />
+              <span>Enable JS Script</span>
+            </label>
+            <button id="btn-reload-script" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 10px; color: #ffffff;" title="Reload clean copy from file on disk">
+              🔄 Reload File
+            </button>
+            <button id="btn-reset-script" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 10px; color: #ffffff;" title="Reset code to default control template">
+              ↺ Reset Default
+            </button>
+            <button id="btn-save-script-now" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 14px; font-weight: 700; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Save changes and apply immediately">
+              💾 Save & Apply (Ctrl+S)
+            </button>
+          </div>
+        </div>
+
+        ${
+          runner.lastError
+            ? `
+          <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; padding: 10px 14px; color: #fca5a5; font-size: 0.76rem; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">⚠️</span>
+            <div>
+              <strong>Script Error:</strong>
+              <div style="font-family: monospace; margin-top: 2px;">${this.escapeHtml(runner.lastError)}</div>
+            </div>
+          </div>
+        `
+            : `
+          <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; padding: 8px 14px; color: #86efac; font-size: 0.74rem; display: flex; align-items: center; gap: 8px;">
+            <span>●</span>
+            <span>JS Control Engine active. You can edit this file in your editor or below. Auto-reloads when window regains focus.</span>
+          </div>
+        `
+        }
+
+        <!-- Textarea Code Editor -->
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <textarea id="textarea-controls-script" style="width: 100%; height: 480px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.78rem; line-height: 1.45; background: #070a12; color: #e2e8f0; border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 6px; padding: 12px; resize: vertical; box-sizing: border-box; outline: none; tab-size: 2;" spellcheck="false">${escapedSource}</textarea>
+        </div>
+
+        <!-- Quick Reference Guide -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 6px; padding: 10px 14px; font-size: 0.72rem; color: #94a3b8; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-weight: 700; color: #cbd5e1;">💡 Script Reference Quick Tips:</div>
+          <div>• <code>input.isDown("KeyW")</code>, <code>input.isPressed("MouseLeft")</code>, <code>input.isReleased("MouseLeft")</code></div>
+          <div>• <code>input.getHoldDuration("MouseLeft")</code> (ms), <code>input.isHeldFor("MouseLeft", 200)</code></div>
+          <div>• <code>input.mouse.x</code>, <code>input.mouse.y</code>, <code>input.mouse.dx</code>, <code>input.mouse.dy</code></div>
+          <div>• <code>actions.move(x, y)</code>, <code>actions.jump()</code>, <code>actions.sprint(bool)</code>, <code>actions.punch()</code></div>
+          <div>• <code>actions.aimThrow()</code>, <code>actions.lockAimTarget(x, y)</code>, <code>actions.modulateArc(delta)</code>, <code>actions.releaseThrow()</code></div>
+          <div>• <code>state</code> is a persistent JavaScript object preserved across every frame.</div>
+        </div>
+      </div>
+    `;
+  }
 
   private static renderTagsSectionHtml(schema: ControlSchema): string {
     const tags = this.getActiveDeviceTags(schema);
@@ -1693,8 +1783,64 @@ export class ControlsInspector {
       this.closeModal();
     });
 
+    // Script Editor Handlers
+    const scriptTextarea = root.querySelector("#textarea-controls-script") as HTMLTextAreaElement | null;
+    const toggleEnableScript = root.querySelector("#toggle-enable-script") as HTMLInputElement | null;
+    if (toggleEnableScript) {
+      toggleEnableScript.addEventListener("change", () => {
+        UserControlScriptRunner.getInstance().isEnabled = toggleEnableScript.checked;
+        this.renderActiveView();
+      });
+    }
+
+    const saveScript = async () => {
+      if (!scriptTextarea) return;
+      const code = scriptTextarea.value;
+      const res = await UserControlScriptRunner.getInstance().saveScriptToServer(code);
+      if (res.success) {
+        this.showToast("Saved & applied controls.js!");
+      } else {
+        this.showToast(`Error: ${res.error}`);
+      }
+      this.renderActiveView();
+    };
+
+    root.querySelector("#btn-save-script-now")?.addEventListener("click", saveScript);
+
+    root.querySelector("#btn-reload-script")?.addEventListener("click", async () => {
+      await UserControlScriptRunner.getInstance().loadFromDisk();
+      this.showToast("Reloaded controls.js from disk");
+      this.renderActiveView();
+    });
+
+    root.querySelector("#btn-reset-script")?.addEventListener("click", () => {
+      if (confirm("Reset controls.js to the default template? Any unsaved edits will be lost.")) {
+        UserControlScriptRunner.getInstance().compileScript(DEFAULT_CONTROLS_SCRIPT);
+        if (scriptTextarea) scriptTextarea.value = DEFAULT_CONTROLS_SCRIPT;
+        this.renderActiveView();
+      }
+    });
+
+    if (scriptTextarea) {
+      scriptTextarea.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+          e.preventDefault();
+          saveScript();
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          const start = scriptTextarea.selectionStart;
+          const end = scriptTextarea.selectionEnd;
+          scriptTextarea.value = scriptTextarea.value.substring(0, start) + "  " + scriptTextarea.value.substring(end);
+          scriptTextarea.selectionStart = scriptTextarea.selectionEnd = start + 2;
+        }
+      });
+    }
+
     // Save & Apply button
     root.querySelector("#btn-modal-save-close")?.addEventListener("click", () => {
+      if (this.activeTab === "script" && scriptTextarea) {
+        saveScript();
+      }
       this.saveAndCommit();
     });
 
@@ -1731,6 +1877,10 @@ export class ControlsInspector {
     }
 
     // 2. Tab Buttons
+    root.querySelector("#tab-btn-script")?.addEventListener("click", () => {
+      this.activeTab = "script";
+      this.renderActiveView();
+    });
     root.querySelector("#tab-btn-kbm")?.addEventListener("click", () => {
       this.activeTab = "keyboardMouse";
       this.renderActiveView();

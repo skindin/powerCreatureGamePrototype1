@@ -10,6 +10,7 @@ import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
+import { UserControlScriptRunner } from "../input/UserControlScriptRunner.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -97,6 +98,8 @@ export class PlayerManager {
   }) {
     this.arena = options.arena;
     this.inputManager = options.inputManager;
+
+    UserControlScriptRunner.getInstance().init();
 
     const initialHandle = (() => {
       try {
@@ -542,7 +545,19 @@ export class PlayerManager {
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
-      const kSchema = ControlsInspector.getActiveSchema(kChar);
+
+      const scriptRunner = UserControlScriptRunner.getInstance();
+      const scriptCmd = scriptRunner.isEnabled
+        ? scriptRunner.poll(kChar, input, this.arena, objects, this.allCharacters, 1 / 60)
+        : null;
+
+      if (scriptCmd) {
+        map.set("keyboard", scriptCmd as any);
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      } else {
+        const kSchema = ControlsInspector.getActiveSchema(kChar);
       const isHolding = kChar.heldObject !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
 
@@ -834,9 +849,10 @@ export class PlayerManager {
           launchStartZ: kLaunchPos.z,
         } : {}),
       } as any);
-      input.aimLockRawDelta = 0;
-      input.aimLockRawDx = 0;
-      input.aimLockRawDy = 0;
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      }
     }
 
     // 2. Gamepads (Fully Schema-Driven via gpSchema)
