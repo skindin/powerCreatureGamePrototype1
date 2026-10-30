@@ -9,7 +9,7 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
-import type { ControlExecutionContext, ControlRule, InputTriggerBinding, ControlSchema, DeviceChannel } from "../input/schema/ControlSchemaTypes.js";
+import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -70,18 +70,6 @@ export class PlayerManager {
   private prevKeysPressed: Set<string> = new Set();
   private prevMouseButtons: Set<number> = new Set();
   private prevGamepadButtons: Map<number, Set<number>> = new Map();
-  private inputButtonClaims: Map<
-    string,
-    {
-      leafRuleId: string;
-      rootRuleId: string;
-      actionKey: string;
-      isContinuous: boolean;
-      lastTickRan: number;
-      isSpent: boolean;
-    }
-  > = new Map();
-  private currentControlTick: number = 0;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -548,229 +536,6 @@ export class PlayerManager {
   public capturePlayerInputs(isEditMode: boolean, objects: GameObject[] = []): Map<string, PlayerInputPacket> {
     const map = new Map<string, PlayerInputPacket>();
     const input = this.inputManager;
-    this.currentControlTick++;
-
-    const isMouseBtnDown = (btn: number) => {
-      if (btn === 0) return input.isMouseDown;
-      if (btn === 1) return Boolean(input.isMiddleMouseDown);
-      if (btn === 2) return input.isRightMouseDown;
-      return false;
-    };
-
-    const isPhysicalButtonDown = (code: string, gpSlotIdx?: number): boolean => {
-      if (code === "MouseLeft") return input.isMouseDown;
-      if (code === "MouseMiddle") return Boolean(input.isMiddleMouseDown);
-      if (code === "MouseRight") return input.isRightMouseDown;
-      if (code.startsWith("Gamepad") && gpSlotIdx !== undefined) {
-        const slot = input.gamepadSlots.get(gpSlotIdx);
-        if (!slot || !slot.buttons) return false;
-        const btn = ControlSchemaArbiter.parseGamepadButtonCode(code);
-        return Boolean(slot.buttons[btn]);
-      }
-      return input.isKeyPressed(code);
-    };
-
-    // Helper to release button claims when physical input is no longer down
-    const releaseButtonClaims = (code: string, charId?: string) => {
-      if (charId) {
-        this.inputButtonClaims.delete(`${charId}:${code}`);
-      } else {
-        for (const k of Array.from(this.inputButtonClaims.keys())) {
-          if (k.endsWith(`:${code}`)) {
-            this.inputButtonClaims.delete(k);
-          }
-        }
-      }
-    };
-
-    // Clean up claims for any released inputs
-    for (const [btn, code] of [[0, "MouseLeft"], [1, "MouseMiddle"], [2, "MouseRight"]] as const) {
-      if (!isMouseBtnDown(btn)) {
-        releaseButtonClaims(code);
-      }
-    }
-
-    for (const claimKey of Array.from(this.inputButtonClaims.keys())) {
-      const parts = claimKey.split(":");
-      const btnCode = parts[1] || parts[0];
-      if (
-        btnCode.startsWith("Key") ||
-        btnCode.startsWith("Digit") ||
-        btnCode.startsWith("Space") ||
-        btnCode.startsWith("Shift") ||
-        btnCode.startsWith("Control") ||
-        btnCode.startsWith("Alt")
-      ) {
-        if (!input.isKeyPressed(btnCode)) {
-          this.inputButtonClaims.delete(claimKey);
-        }
-      }
-    }
-
-    for (const [slotIdx, slot] of input.gamepadSlots) {
-      if (!slot.connected || !slot.buttons) continue;
-      for (let b = 0; b < slot.buttons.length; b++) {
-        if (!slot.buttons[b]) {
-          const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
-          releaseButtonClaims(gpCode);
-          releaseButtonClaims(`gp-${slotIdx}-${gpCode}`);
-        }
-      }
-    }
-
-    // Age out active continuous claims that ceased running on the previous tick
-    for (const claim of this.inputButtonClaims.values()) {
-      if (!claim.isSpent && claim.lastTickRan < this.currentControlTick - 1) {
-        claim.isSpent = true;
-      }
-    }
-
-    const normalizeActionKey = (moduleId: string, intent: string): string => {
-      let mid = moduleId;
-      let int = intent;
-      if (mid === "throwPickup" || mid === "pickup") mid = "pickup";
-      if (mid === "heldItem" || mid === "item" || mid === "consume") {
-        mid = "consume";
-        if (int === "primaryItemAbility") int = "eatHeldItem";
-      }
-      if (int === "swapItem") int = "swap";
-      return `${mid}:${int}`;
-    };
-
-    const isOneShotAction = (normalizedKey: string): boolean => {
-      switch (normalizedKey) {
-        case "pickup:pickupReach":
-        case "pickup:dropItem":
-        case "pickup:swap":
-        case "throw:releaseThrow":
-        case "throw:dropItem":
-        case "melee:punch":
-        case "locomotion:jump":
-          return true;
-        default:
-          return false;
-      }
-    };
-
-    const ruleContainsAction = (rule: ControlRule, targetActionKey: string): boolean => {
-      const statements = ControlSchemaArbiter.getRuleBody(rule);
-      for (const stmt of statements) {
-        if (stmt.type === "action") {
-          const k = normalizeActionKey(stmt.action.moduleId, stmt.action.intent);
-          if (k === targetActionKey) return true;
-        } else if (stmt.type === "nestedThread") {
-          for (const childRule of stmt.rules) {
-            if (ruleContainsAction(childRule, targetActionKey)) return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    const getRuleButtonCodes = (rule: ControlRule, schema?: ControlSchema, device?: DeviceChannel): string[] => {
-      const codes: string[] = [];
-      const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, schema, device);
-      if (effTrigger && effTrigger.code && effTrigger.code !== "Always" && effTrigger.code !== "None") {
-        codes.push(effTrigger.code);
-      }
-      const conds = ControlSchemaArbiter.getRuleConditions(rule);
-      for (const c of conds) {
-        if (c.type === "tagHeld" || c.type === "tagCleanHold" || c.type === "tagPressed") {
-          if (c.param && schema) {
-            const tags = [
-              ...(schema.keyboardMouse?.tags ?? []),
-              ...(schema.gamepad?.tags ?? []),
-              ...(schema.touch?.tags ?? []),
-            ];
-            const tag = tags.find((t) => t.id === c.param || t.name === c.param);
-            if (tag && tag.trigger.code) {
-              codes.push(tag.trigger.code);
-            }
-          }
-        } else if (c.type === "buttonHeld" && c.param) {
-          codes.push(c.param.trim());
-        }
-      }
-      return codes;
-    };
-
-    const checkAndClaimAction = (
-      char: Character,
-      leafRule: ControlRule,
-      rootRule: ControlRule,
-      act: { moduleId: string; intent: string },
-      associatedButtons: string[],
-      gpSlotIdx?: number
-    ): boolean => {
-      if (associatedButtons.length === 0) return true;
-      const normKey = normalizeActionKey(act.moduleId, act.intent);
-
-      // 1. Verify all held associated buttons permit this action
-      for (const btn of associatedButtons) {
-        if (!isPhysicalButtonDown(btn, gpSlotIdx)) continue;
-        const claimKey = `${char.id}:${btn}`;
-        const claim = this.inputButtonClaims.get(claimKey);
-        if (claim) {
-          if (claim.isSpent) return false;
-          if (claim.leafRuleId !== leafRule.id && claim.actionKey !== normKey) return false;
-        }
-      }
-
-      // 2. Claim / update buttons
-      const isOneShot = isOneShotAction(normKey);
-      for (const btn of associatedButtons) {
-        if (!isPhysicalButtonDown(btn, gpSlotIdx)) continue;
-        const claimKey = `${char.id}:${btn}`;
-        const claim = this.inputButtonClaims.get(claimKey);
-        if (!claim) {
-          this.inputButtonClaims.set(claimKey, {
-            leafRuleId: leafRule.id,
-            rootRuleId: rootRule.id,
-            actionKey: normKey,
-            isContinuous: !isOneShot,
-            lastTickRan: this.currentControlTick,
-            isSpent: isOneShot,
-          });
-        } else {
-          claim.lastTickRan = this.currentControlTick;
-          if (isOneShot) claim.isSpent = true;
-        }
-      }
-
-      return true;
-    };
-
-    const createCleanHoldChecker = (ctx: ControlExecutionContext, kStates?: any, mStates?: any, gStates?: any) => {
-      return (trigger: InputTriggerBinding, r?: ControlRule): boolean => {
-        // 1. Physical button must be down
-        const isDown = ControlSchemaArbiter.isTriggerActive({ ...trigger, mode: "hold" }, ctx, kStates, mStates, gStates);
-        if (!isDown) return false;
-
-        const code = trigger.code;
-        if (!code || code === "Always" || code === "None") return true;
-
-        // 2. Check claim
-        const claimKey = `${ctx.character.id}:${code}`;
-        const claim = this.inputButtonClaims.get(claimKey);
-        if (!claim) {
-          return true; // Fresh press
-        }
-
-        if (claim.isSpent) {
-          return false; // Spent on an action that completed or one-shot
-        }
-
-        // 3. If claimed by active continuous action:
-        if (r) {
-          if (claim.rootRuleId === r.id || claim.leafRuleId === r.id || ruleContainsAction(r, claim.actionKey)) {
-            return true;
-          }
-          return false;
-        }
-
-        return true;
-      };
-    };
 
     // 1. Keyboard & Mouse Input Capture (Fully Schema-Driven via kSchema)
     const kEntry = this.players.get("keyboard");
@@ -841,7 +606,6 @@ export class PlayerManager {
         keyStates,
         mouseStates,
       };
-      execCtx.isCleanHoldActive = createCleanHoldChecker(execCtx, keyStates, mouseStates);
 
       // 1. Locomotion Movement Vector
       let moveX = 0;
@@ -925,10 +689,9 @@ export class PlayerManager {
       let isLaserFiring = false;
       let isMeleeRequested = false;
       let isAimingTrajectory = false;
-      let activeHoldStage: string | null = null;
 
       const executedKbmThreads = new Set<string>();
-      const executeKbmRules = (ruleList: ControlRule[], inheritedButtons: string[] = [], rootRule?: ControlRule) => {
+      const executeKbmRules = (ruleList: ControlRule[]) => {
         const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
         for (const rule of sortedRules) {
           if (rule.enabled === false) continue;
@@ -946,18 +709,12 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
-          const currentRoot = rootRule ?? rule;
-          const ruleButtons = [...inheritedButtons, ...getRuleButtonCodes(rule, kSchema, "keyboardMouse")];
-
           const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
 
           for (const stmt of statements) {
             if (stmt.type === "action") {
               const act = stmt.action;
-              if (!checkAndClaimAction(kChar, rule, currentRoot, act, ruleButtons)) {
-                continue;
-              }
               const mid = act.moduleId;
               const intent = act.intent;
 
@@ -991,56 +748,28 @@ export class PlayerManager {
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
-                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
-                if (isHold) {
-                  const targetStage =
-                    intent === "holdStageLaser" || intent === "stageLaser"
-                      ? "laser"
-                      : intent === "holdStageThrow" || intent === "stageThrow"
-                      ? "throw"
-                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
-                      ? "pickup"
-                      : intent === "holdStageMelee" || intent === "stageMelee"
-                      ? "melee"
-                      : null;
-                  if (targetStage) {
-                    activeHoldStage = targetStage;
-                    kChar.stagedAction = targetStage;
-                  }
-                } else if (effTrigger.mode === "press") {
-                  const isJustTriggered =
-                    effTrigger.device === "mouse"
-                      ? mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : effTrigger.code === "MouseMiddle" ? 1 : 2)
-                      : keyStates.justPressed(effTrigger.code);
-                  if (isJustTriggered) {
-                    if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
-                    else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
-                    else if (intent === "stagePickup") kChar.stagedAction = kChar.stagedAction === "pickup" ? null : "pickup";
-                    else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
-                    else if (intent === "clearStage") kChar.stagedAction = null;
-                  }
-                } else if (effTrigger.mode === "release" && intent === "clearStage") {
-                  kChar.stagedAction = null;
+                if (intent === "setStage") {
+                  kChar.stagedAction = act.args?.stage || "none";
+                } else if (intent.includes("Laser")) {
+                  kChar.stagedAction = "laser";
+                } else if (intent.includes("Throw")) {
+                  kChar.stagedAction = "throw";
+                } else if (intent.includes("Pickup") || intent.includes("Grab")) {
+                  kChar.stagedAction = "pickup";
+                } else if (intent.includes("Melee")) {
+                  kChar.stagedAction = "melee";
+                } else if (intent === "clearStage") {
+                  kChar.stagedAction = "none";
                 }
               }
             } else if (stmt.type === "nestedThread") {
-              executeKbmRules(stmt.rules, ruleButtons, currentRoot);
+              executeKbmRules(stmt.rules);
             }
           }
         }
       };
 
       executeKbmRules(kSchema.keyboardMouse.rules);
-
-      // Handle hold staging release cleanup
-      if (activeHoldStage) {
-        kChar.activeHoldStage = activeHoldStage;
-      } else if (kChar.activeHoldStage) {
-        if (kChar.stagedAction === kChar.activeHoldStage) {
-          kChar.stagedAction = null;
-        }
-        kChar.activeHoldStage = null;
-      }
 
       kChar.isAimingTrajectory = isAimingTrajectory;
       kChar.isLaserAiming = isLaserAiming;
@@ -1178,7 +907,6 @@ export class PlayerManager {
           axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
         gamepadStates: gpStates,
       };
-      gpExecCtx.isCleanHoldActive = createCleanHoldChecker(gpExecCtx, undefined, undefined, gpStates);
 
       // 1. Stick Mode Evaluation (Dynamic Override)
       let gpMoveX = slot.movementVector.x;
@@ -1225,10 +953,9 @@ export class PlayerManager {
       let isLaserFiring = false;
       let isMeleeRequested = false;
       let isAimingTrajectory = false;
-      let activeGpHoldStage: string | null = null;
 
       const executedGpThreads = new Set<string>();
-      const executeGpRules = (ruleList: ControlRule[], inheritedButtons: string[] = [], rootRule?: ControlRule) => {
+      const executeGpRules = (ruleList: ControlRule[]) => {
         const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
         for (const rule of sortedRules) {
           if (rule.enabled === false) continue;
@@ -1246,18 +973,12 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
-          const currentRoot = rootRule ?? rule;
-          const ruleButtons = [...inheritedButtons, ...getRuleButtonCodes(rule, gpSchema, "gamepad")];
-
           const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
 
           for (const stmt of statements) {
             if (stmt.type === "action") {
               const act = stmt.action;
-              if (!checkAndClaimAction(cChar, rule, currentRoot, act, ruleButtons, slotIdx)) {
-                continue;
-              }
               const mid = act.moduleId;
               const intent = act.intent;
 
@@ -1292,53 +1013,28 @@ export class PlayerManager {
               } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
                 if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
               } else if (mid === "staging") {
-                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
-                if (isHold) {
-                  const targetStage =
-                    intent === "holdStageLaser" || intent === "stageLaser"
-                      ? "laser"
-                      : intent === "holdStageThrow" || intent === "stageThrow"
-                      ? "throw"
-                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
-                      ? "pickup"
-                      : intent === "holdStageMelee" || intent === "stageMelee"
-                      ? "melee"
-                      : null;
-                  if (targetStage) {
-                    activeGpHoldStage = targetStage;
-                    cChar.stagedAction = targetStage;
-                  }
-                } else if (effTrigger.mode === "press") {
-                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
-                  if (gpStates.justPressed(btnCode)) {
-                    if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
-                    else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
-                    else if (intent === "stagePickup") cChar.stagedAction = cChar.stagedAction === "pickup" ? null : "pickup";
-                    else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
-                    else if (intent === "clearStage") cChar.stagedAction = null;
-                  }
-                } else if (effTrigger.mode === "release" && intent === "clearStage") {
-                  cChar.stagedAction = null;
+                if (intent === "setStage") {
+                  cChar.stagedAction = act.args?.stage || "none";
+                } else if (intent.includes("Laser")) {
+                  cChar.stagedAction = "laser";
+                } else if (intent.includes("Throw")) {
+                  cChar.stagedAction = "throw";
+                } else if (intent.includes("Pickup") || intent.includes("Grab")) {
+                  cChar.stagedAction = "pickup";
+                } else if (intent.includes("Melee")) {
+                  cChar.stagedAction = "melee";
+                } else if (intent === "clearStage") {
+                  cChar.stagedAction = "none";
                 }
               }
             } else if (stmt.type === "nestedThread") {
-              executeGpRules(stmt.rules, ruleButtons, currentRoot);
+              executeGpRules(stmt.rules);
             }
           }
         }
       };
 
       executeGpRules(gpSchema.gamepad.rules);
-
-      // Handle hold staging release cleanup
-      if (activeGpHoldStage) {
-        cChar.activeHoldStage = activeGpHoldStage;
-      } else if (cChar.activeHoldStage) {
-        if (cChar.stagedAction === cChar.activeHoldStage) {
-          cChar.stagedAction = null;
-        }
-        cChar.activeHoldStage = null;
-      }
 
       cChar.isAimingTrajectory = isAimingTrajectory;
       cChar.isLaserAiming = isLaserAiming;

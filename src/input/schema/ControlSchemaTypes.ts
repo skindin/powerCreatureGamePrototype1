@@ -27,7 +27,6 @@ export type ConditionType =
   | "stagedActionIs"
   | "buttonHeld"
   | "tagHeld"
-  | "tagCleanHold"
   | "tagPressed"
   | "tagReleased"
   | "grounded"
@@ -153,6 +152,7 @@ export interface ControlSchema {
   name: string;
   description?: string;
   activeDevice: DeviceChannel;
+  stages?: string[];
   keyboardMouse: KeyboardMouseConfig;
   gamepad: GamepadConfig;
   touch: TouchConfig;
@@ -184,7 +184,6 @@ export interface ControlExecutionContext {
   getGamepadAxis: (slotIndex: number, axis: "LeftStick" | "RightStick") => Vector2D;
 
   schema?: ControlSchema;
-  isCleanHoldActive?: (trigger: InputTriggerBinding, rule?: ControlRule) => boolean;
   keyStates?: {
     isDown: (code: string) => boolean;
     justPressed: (code: string) => boolean;

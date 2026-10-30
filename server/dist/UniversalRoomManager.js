@@ -5899,14 +5899,9 @@ class Character extends GameObject {
     __publicField(this, "meleeCandidateEntities");
     __publicField(this, "onPunchExecuted");
     /**
-     * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
+     * Currently active modal or stage state set by custom control schemes (defaults to immutable "none").
      */
-    __publicField(this, "stagedAction", null);
-    /**
-     * Staged action currently maintained by an active "hold" trigger.
-     * Cleared automatically when the hold trigger is released, if stagedAction still matches this value.
-     */
-    __publicField(this, "activeHoldStage", null);
+    __publicField(this, "stagedAction", "none");
     /**
      * Character-specific control schema loaded from its archetype or Prefab.
      */
@@ -9134,6 +9129,7 @@ const DefaultControlSchema = {
   name: "Default (Action Context)",
   description: "Standard twin-stick and WASD setup with smart contextual action triggers.",
   activeDevice: "keyboardMouse",
+  stages: ["none", "laser", "throw", "melee"],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
@@ -9413,6 +9409,7 @@ const HunterControlSchema = {
   name: "Hunter (Mouse-Facing Forward Drive)",
   description: "Character faces the mouse. Right-click drives forward. Left hand stages abilities, left-click executes.",
   activeDevice: "keyboardMouse",
+  stages: ["none", "laser", "throw", "melee"],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
@@ -9428,7 +9425,7 @@ const HunterControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageLaser" }
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "laser" } }
       },
       {
         id: "hunter-stage-throw",
@@ -9437,7 +9434,7 @@ const HunterControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyE", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageThrow" }
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "throw" } }
       },
       {
         id: "hunter-stage-melee",
@@ -9446,7 +9443,7 @@ const HunterControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyF", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageMelee" }
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "melee" } }
       },
       {
         id: "hunter-item-primary",

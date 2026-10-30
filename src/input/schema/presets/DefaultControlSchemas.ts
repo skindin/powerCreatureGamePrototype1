@@ -5,6 +5,7 @@ export const DefaultControlSchema: ControlSchema = {
   name: "Default (Action Context)",
   description: "Standard twin-stick and WASD setup with smart contextual action triggers.",
   activeDevice: "keyboardMouse",
+  stages: ["none", "laser", "throw", "melee"],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
@@ -290,6 +291,7 @@ export const HunterControlSchema: ControlSchema = {
   name: "Hunter (Mouse-Facing Forward Drive)",
   description: "Character faces the mouse. Right-click drives forward. Left hand stages abilities, left-click executes.",
   activeDevice: "keyboardMouse",
+  stages: ["none", "laser", "throw", "melee"],
   keyboardMouse: {
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
@@ -305,7 +307,7 @@ export const HunterControlSchema: ControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyQ", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageLaser" },
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "laser" } },
       },
       {
         id: "hunter-stage-throw",
@@ -314,7 +316,7 @@ export const HunterControlSchema: ControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyE", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageThrow" },
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "throw" } },
       },
       {
         id: "hunter-stage-melee",
@@ -323,7 +325,7 @@ export const HunterControlSchema: ControlSchema = {
         priority: 100,
         trigger: { device: "keyboard", code: "KeyF", mode: "press" },
         condition: { type: "always" },
-        action: { moduleId: "staging", intent: "stageMelee" },
+        action: { moduleId: "staging", intent: "setStage", args: { stage: "melee" } },
       },
       {
         id: "hunter-item-primary",

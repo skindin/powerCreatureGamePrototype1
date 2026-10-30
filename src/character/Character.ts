@@ -199,15 +199,9 @@ export class Character extends GameObject {
   public onPunchExecuted?: (hitResult: MeleeHitResult, dirX: number, dirY: number) => void;
 
   /**
-   * Currently active modal or staged action mode set by custom control schemes (e.g. "laser", "throw", "melee").
+   * Currently active modal or stage state set by custom control schemes (defaults to immutable "none").
    */
-  public stagedAction: string | null = null;
-
-  /**
-   * Staged action currently maintained by an active "hold" trigger.
-   * Cleared automatically when the hold trigger is released, if stagedAction still matches this value.
-   */
-  public activeHoldStage: string | null = null;
+  public stagedAction: string = "none";
 
   /**
    * Character-specific control schema loaded from its archetype or Prefab.

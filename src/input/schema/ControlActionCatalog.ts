@@ -289,129 +289,21 @@ export class ControlActionCatalog {
       ],
     },
 
-    // 7. Control Staging & Reticle Modes
+    // 7. Control Staging
     {
       id: "staging",
-      label: "Control Staging & Modes",
-      icon: "🔄",
+      label: "Stage",
+      icon: "🎭",
       isAttached: () => true, // Always available
       actions: [
         {
-          id: "holdStageThrow",
-          label: "Hold Stage: Throw",
-          description: "Stages Throw while held, and clears it when released if still staged to Throw",
-          recommendedMode: "hold",
-          execute: (ctx) => {
-            ctx.character.stagedAction = "throw";
-            ctx.character.activeHoldStage = "throw";
-          },
-          stop: (ctx) => {
-            if (ctx.character.stagedAction === "throw") {
-              ctx.character.stagedAction = null;
-            }
-            if (ctx.character.activeHoldStage === "throw") {
-              ctx.character.activeHoldStage = null;
-            }
-          },
-        },
-        {
-          id: "holdStagePickup",
-          label: "Hold Stage: Pick Up / Grab",
-          description: "Stages Pick Up / Grab while held, and clears it when released if still staged to Pick Up",
-          recommendedMode: "hold",
-          execute: (ctx) => {
-            ctx.character.stagedAction = "pickup";
-            ctx.character.activeHoldStage = "pickup";
-          },
-          stop: (ctx) => {
-            if (ctx.character.stagedAction === "pickup") {
-              ctx.character.stagedAction = null;
-            }
-            if (ctx.character.activeHoldStage === "pickup") {
-              ctx.character.activeHoldStage = null;
-            }
-          },
-        },
-        {
-          id: "holdStageLaser",
-          label: "Hold Stage: Laser",
-          description: "Stages Laser while held, and clears it when released if still staged to Laser",
-          recommendedMode: "hold",
-          execute: (ctx) => {
-            ctx.character.stagedAction = "laser";
-            ctx.character.activeHoldStage = "laser";
-          },
-          stop: (ctx) => {
-            if (ctx.character.stagedAction === "laser") {
-              ctx.character.stagedAction = null;
-            }
-            if (ctx.character.activeHoldStage === "laser") {
-              ctx.character.activeHoldStage = null;
-            }
-          },
-        },
-        {
-          id: "holdStageMelee",
-          label: "Hold Stage: Melee",
-          description: "Stages Melee while held, and clears it when released if still staged to Melee",
-          recommendedMode: "hold",
-          execute: (ctx) => {
-            ctx.character.stagedAction = "melee";
-            ctx.character.activeHoldStage = "melee";
-          },
-          stop: (ctx) => {
-            if (ctx.character.stagedAction === "melee") {
-              ctx.character.stagedAction = null;
-            }
-            if (ctx.character.activeHoldStage === "melee") {
-              ctx.character.activeHoldStage = null;
-            }
-          },
-        },
-        {
-          id: "stageLaser",
-          label: "Stage Mode: Laser (Toggle)",
-          description: "Toggles staged primary action to Laser",
+          id: "setStage",
+          label: "Set Stage",
+          description: "Sets the active stage state to a chosen stage value",
           recommendedMode: "press",
-          execute: (ctx) => {
-            ctx.character.stagedAction = ctx.character.stagedAction === "laser" ? null : "laser";
-          },
-        },
-        {
-          id: "stageThrow",
-          label: "Stage Mode: Throw (Toggle)",
-          description: "Toggles staged primary action to Throw",
-          recommendedMode: "press",
-          execute: (ctx) => {
-            ctx.character.stagedAction = ctx.character.stagedAction === "throw" ? null : "throw";
-          },
-        },
-        {
-          id: "stagePickup",
-          label: "Stage Mode: Pick Up / Grab (Toggle)",
-          description: "Toggles staged primary action to Pick Up or Grab",
-          recommendedMode: "press",
-          execute: (ctx) => {
-            ctx.character.stagedAction = ctx.character.stagedAction === "pickup" ? null : "pickup";
-          },
-        },
-        {
-          id: "stageMelee",
-          label: "Stage Mode: Melee (Toggle)",
-          description: "Toggles staged primary action to Melee Punch",
-          recommendedMode: "press",
-          execute: (ctx) => {
-            ctx.character.stagedAction = ctx.character.stagedAction === "melee" ? null : "melee";
-          },
-        },
-        {
-          id: "clearStage",
-          label: "Clear Staged Mode",
-          description: "Clears staged action back to default auto-context",
-          recommendedMode: "press",
-          execute: (ctx) => {
-            ctx.character.stagedAction = null;
-            ctx.character.activeHoldStage = null;
+          execute: (ctx, args) => {
+            const targetStage = args?.stage || "none";
+            ctx.character.stagedAction = targetStage;
           },
         },
       ],

@@ -702,6 +702,19 @@ export class ControlsInspector {
             </div>
           </div>
 
+          <!-- Section: Stages -->
+          <div id="section-stages" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🎭 Stages (${this.getActiveStages(schema).length})</span>
+                <span style="font-size: 0.68rem; color: #94a3b8;">User-defined modal states for branching conditions</span>
+              </div>
+            </div>
+            <div id="controls-stages-container">
+              ${this.renderStagesSectionHtml(schema)}
+            </div>
+          </div>
+
           <!-- Rules Matrix Header (Layer 2) -->
           <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
             <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
@@ -822,6 +835,110 @@ export class ControlsInspector {
         <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
           <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05);">
             + Add Keybind Tag
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  public static getActiveStages(schema: ControlSchema): string[] {
+    if (!schema.stages || !Array.isArray(schema.stages)) {
+      schema.stages = ["none"];
+    }
+    if (!schema.stages.includes("none")) {
+      schema.stages.unshift("none");
+    } else if (schema.stages[0] !== "none") {
+      schema.stages = ["none", ...schema.stages.filter((s) => s !== "none")];
+    }
+    return schema.stages;
+  }
+
+  private static renameStageInRules(schema: ControlSchema, oldName: string, newName: string): void {
+    const processRule = (rule: ControlRule) => {
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      let condsChanged = false;
+      for (const cond of conds) {
+        if (cond.type === "stagedActionIs" && (cond.param === oldName || (!cond.param && oldName === "none"))) {
+          cond.param = newName;
+          condsChanged = true;
+        }
+      }
+      if (condsChanged) {
+        rule.conditions = conds;
+        rule.condition = conds[0];
+      }
+
+      const stmts = ControlSchemaArbiter.getRuleBody(rule);
+      let stmtsChanged = false;
+      for (const stmt of stmts) {
+        if (stmt.type === "action") {
+          if (stmt.action.moduleId === "staging" && stmt.action.intent === "setStage") {
+            if (stmt.action.args?.stage === oldName || (!stmt.action.args?.stage && oldName === "none")) {
+              stmt.action.args = { ...(stmt.action.args || {}), stage: newName };
+              stmtsChanged = true;
+            }
+          }
+        } else if (stmt.type === "nestedThread") {
+          for (const childRule of stmt.rules) {
+            processRule(childRule);
+          }
+        }
+      }
+      if (stmtsChanged) {
+        rule.body = stmts;
+        ControlSchemaArbiter.syncRuleFromStatements(rule);
+      }
+    };
+
+    if (schema.keyboardMouse?.rules) {
+      for (const r of schema.keyboardMouse.rules) processRule(r);
+    }
+    if (schema.gamepad?.rules) {
+      for (const r of schema.gamepad.rules) processRule(r);
+    }
+    if (schema.touch?.rules) {
+      for (const r of schema.touch.rules) processRule(r);
+    }
+  }
+
+  private static renderStagesSectionHtml(schema: ControlSchema): string {
+    const stages = this.getActiveStages(schema);
+    return `
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #94a3b8; padding: 0 4px;">
+          <span>STAGE NAME</span>
+          <span></span>
+        </div>
+        ${stages.map((stg, idx) => {
+          const isNone = stg === "none";
+          return `
+            <div class="control-stage-row" style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 4px 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.74rem;">🎭</span>
+                <input
+                  type="text"
+                  class="input-stage-name dev-input"
+                  data-stage-idx="${idx}"
+                  value="${stg}"
+                  placeholder="Stage name..."
+                  ${isNone ? "disabled" : ""}
+                  style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: ${isNone ? "#94a3b8" : "#ffffff"}; background: ${isNone ? "rgba(255,255,255,0.03)" : "#0f172a"}; border: 1px solid rgba(148, 163, 184, 0.25); flex: 1;"
+                />
+                ${isNone ? `<span style="font-size: 0.64rem; color: #64748b; font-style: italic; white-space: nowrap;">(Immutable Default)</span>` : ""}
+              </div>
+              <div>
+                ${!isNone ? `
+                  <button class="btn-delete-stage btn-secondary-action" data-stage-idx="${idx}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.70rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent; cursor: pointer;" title="Delete Stage">
+                    🗑️
+                  </button>
+                ` : ""}
+              </div>
+            </div>
+          `;
+        }).join("")}
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-stage" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05); cursor: pointer;">
+            + Add Stage
           </button>
         </div>
       </div>
@@ -955,6 +1072,7 @@ export class ControlsInspector {
         ? schema.gamepad.rules
         : schema.touch.rules;
     const tags = this.getActiveDeviceTags(schema);
+    const stages = this.getActiveStages(schema);
 
     // Normalize legacy rules that had tagId or outer trigger modes into unified conditions
     for (const rule of rules) {
@@ -964,7 +1082,7 @@ export class ControlsInspector {
         const conds = ControlSchemaArbiter.getRuleConditions(rule);
         if (conds.length === 1 && conds[0].type === "always") {
           rule.conditions = [{ type: condType, param: rule.tagId }];
-        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagCleanHold" || c.type === "tagPressed" || c.type === "tagReleased")) {
+        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased")) {
           rule.conditions = [{ type: condType, param: rule.tagId }, ...conds];
         } else {
           rule.conditions = conds;
@@ -1007,6 +1125,11 @@ export class ControlsInspector {
             <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
               ${actionLabel} ▼
             </button>
+            ${act.moduleId === "staging" ? `
+              <select class="select-action-stage dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a; max-width: 110px;" title="Target Stage">
+                ${stages.map((stg) => `<option value="${stg}" ${(act.args?.stage || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
+              </select>
+            ` : ""}
             ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
           </div>
           <div style="display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
@@ -1099,21 +1222,17 @@ export class ControlsInspector {
                       <optgroup label="🎮 Keybind / Control Inputs">
                         <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
                         <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
-                        <option value="tagCleanHold" ${cond.type === "tagCleanHold" ? "selected" : ""}>Keybind: Clean Hold</option>
                         <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
                         <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
                       </optgroup>
                       <optgroup label="🌍 Game Conditions">
                         <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
+                        <option value="stagedActionIs" ${cond.type === "stagedActionIs" ? "selected" : ""}>Stage Is...</option>
                         <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
                         <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
                         <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
                         <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
                         <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-                        <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
-                        <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
-                        <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
-                        <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
                         <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
                         <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
                         <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
@@ -1122,10 +1241,16 @@ export class ControlsInspector {
                       </optgroup>
                     </select>
                     ${
-                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagCleanHold" || cond.type === "tagReleased"
+                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
                         ? `
                       <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
                         ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+                      </select>
+                    `
+                        : cond.type === "stagedActionIs"
+                        ? `
+                      <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 110px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select Stage">
+                        ${stages.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
                       </select>
                     `
                         : cond.type === "buttonHeld"
@@ -1495,6 +1620,51 @@ export class ControlsInspector {
       });
     });
 
+    // Stage Management Listeners
+    root.querySelector("#btn-add-stage")?.addEventListener("click", () => {
+      const stages = this.getActiveStages(schema);
+      let counter = 1;
+      let newName = `stage_${counter}`;
+      while (stages.includes(newName)) {
+        counter++;
+        newName = `stage_${counter}`;
+      }
+      stages.push(newName);
+      schema.stages = stages;
+      this.renderActiveView();
+    });
+
+    root.querySelectorAll(".input-stage-name").forEach((inp) => {
+      inp.addEventListener("change", (e) => {
+        const idx = parseInt((inp as HTMLElement).dataset.stageIdx ?? "-1", 10);
+        if (idx <= 0) return; // Cannot edit "none"
+        const stages = this.getActiveStages(schema);
+        const oldName = stages[idx];
+        const newName = (e.target as HTMLInputElement).value.trim();
+        if (!newName || newName === "none" || (stages.includes(newName) && stages.indexOf(newName) !== idx)) {
+          (e.target as HTMLInputElement).value = oldName;
+          return;
+        }
+        stages[idx] = newName;
+        schema.stages = stages;
+        this.renameStageInRules(schema, oldName, newName);
+        this.renderActiveView();
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-stage").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = parseInt((btn as HTMLElement).dataset.stageIdx ?? "-1", 10);
+        if (idx <= 0) return; // Cannot delete "none"
+        const stages = this.getActiveStages(schema);
+        const oldName = stages[idx];
+        stages.splice(idx, 1);
+        schema.stages = stages;
+        this.renameStageInRules(schema, oldName, "none");
+        this.renderActiveView();
+      });
+    });
+
     // 9. Add Thread Button / Add New Cascade Thread
     const addNewThread = () => {
       const rules =
@@ -1660,10 +1830,13 @@ export class ControlsInspector {
         if (rule) {
           const conds = ControlSchemaArbiter.getRuleConditions(rule);
           if (!conds[cIdx]) conds[cIdx] = { type: "always" };
-          if (val.startsWith("stagedActionIs:")) {
+          if (val === "stagedActionIs") {
             conds[cIdx].type = "stagedActionIs";
-            conds[cIdx].param = val.split(":")[1];
-          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagCleanHold" || val === "tagReleased") {
+            const stages = this.getActiveStages(schema);
+            if (!conds[cIdx].param || !stages.includes(conds[cIdx].param)) {
+              conds[cIdx].param = "none";
+            }
+          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
             conds[cIdx].type = val;
             const tags = this.getActiveDeviceTags(schema);
             if (!conds[cIdx].param || !tags.some((t) => t.id === conds[cIdx].param)) {
@@ -1695,6 +1868,43 @@ export class ControlsInspector {
             conds[cIdx].param = val;
             rule.conditions = conds;
             rule.condition = conds[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll(".select-cond-stage").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const conds = ControlSchemaArbiter.getRuleConditions(rule);
+          if (conds[cIdx]) {
+            conds[cIdx].param = val;
+            rule.conditions = conds;
+            rule.condition = conds[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll(".select-action-stage").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = (stmts[sIdx] as ActionStatement).action;
+            act.args = { ...(act.args || {}), stage: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
             this.renderActiveView();
           }
         }
@@ -2490,13 +2700,19 @@ export class ControlsInspector {
           if (stmts[statementIdx] && stmts[statementIdx].type === "action") {
             (stmts[statementIdx] as ActionStatement).action.moduleId = mod;
             (stmts[statementIdx] as ActionStatement).action.intent = intent;
+            if (mod === "staging" && intent === "setStage" && !(stmts[statementIdx] as ActionStatement).action.args?.stage) {
+              (stmts[statementIdx] as ActionStatement).action.args = { stage: "none" };
+            }
           } else {
             const actions = ControlSchemaArbiter.getRuleActions(rule);
             if (actions[statementIdx]) {
               actions[statementIdx].moduleId = mod;
               actions[statementIdx].intent = intent;
+              if (mod === "staging" && intent === "setStage" && !actions[statementIdx].args?.stage) {
+                actions[statementIdx].args = { stage: "none" };
+              }
             } else {
-              actions.push({ moduleId: mod, intent });
+              actions.push({ moduleId: mod, intent, args: mod === "staging" ? { stage: "none" } : undefined });
             }
             rule.actions = actions;
             rule.action = actions[0];
