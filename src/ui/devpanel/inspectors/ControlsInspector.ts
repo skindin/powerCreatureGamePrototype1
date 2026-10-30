@@ -964,7 +964,7 @@ export class ControlsInspector {
         const conds = ControlSchemaArbiter.getRuleConditions(rule);
         if (conds.length === 1 && conds[0].type === "always") {
           rule.conditions = [{ type: condType, param: rule.tagId }];
-        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased")) {
+        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagCleanHold" || c.type === "tagPressed" || c.type === "tagReleased")) {
           rule.conditions = [{ type: condType, param: rule.tagId }, ...conds];
         } else {
           rule.conditions = conds;
@@ -1099,6 +1099,7 @@ export class ControlsInspector {
                       <optgroup label="🎮 Keybind / Control Inputs">
                         <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
                         <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
+                        <option value="tagCleanHold" ${cond.type === "tagCleanHold" ? "selected" : ""}>Keybind: Clean Hold</option>
                         <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
                         <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
                       </optgroup>
@@ -1121,7 +1122,7 @@ export class ControlsInspector {
                       </optgroup>
                     </select>
                     ${
-                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
+                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagCleanHold" || cond.type === "tagReleased"
                         ? `
                       <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
                         ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
@@ -1662,7 +1663,7 @@ export class ControlsInspector {
           if (val.startsWith("stagedActionIs:")) {
             conds[cIdx].type = "stagedActionIs";
             conds[cIdx].param = val.split(":")[1];
-          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
+          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagCleanHold" || val === "tagReleased") {
             conds[cIdx].type = val;
             const tags = this.getActiveDeviceTags(schema);
             if (!conds[cIdx].param || !tags.some((t) => t.id === conds[cIdx].param)) {

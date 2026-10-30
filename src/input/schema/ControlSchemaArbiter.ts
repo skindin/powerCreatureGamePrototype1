@@ -109,12 +109,12 @@ export class ControlSchemaArbiter {
   public static evaluateAllConditions(rule: ControlRule, ctx: ControlExecutionContext): boolean {
     const conds = this.getRuleConditions(rule);
     for (const cond of conds) {
-      if (!this.evaluateCondition(cond, ctx)) return false;
+      if (!this.evaluateCondition(cond, ctx, rule)) return false;
     }
     return true;
   }
 
-  public static evaluateCondition(cond: ConditionGate, ctx: ControlExecutionContext): boolean {
+  public static evaluateCondition(cond: ConditionGate, ctx: ControlExecutionContext, rule?: ControlRule): boolean {
     let result = false;
     switch (cond.type) {
       case "always":
@@ -145,6 +145,32 @@ export class ControlSchemaArbiter {
         break;
       case "climbing":
         result = ctx.isClimbing;
+        break;
+      case "tagCleanHold":
+        if (cond.param && ctx.schema) {
+          const tags = [
+            ...(ctx.schema.keyboardMouse?.tags ?? []),
+            ...(ctx.schema.gamepad?.tags ?? []),
+            ...(ctx.schema.touch?.tags ?? []),
+          ];
+          const tag = tags.find((t) => t.id === cond.param || t.name === cond.param);
+          if (tag) {
+            const eff = { ...tag.trigger, mode: "hold" as TriggerMode };
+            if (ctx.isCleanHoldActive) {
+              result = ctx.isCleanHoldActive(eff, rule);
+            } else {
+              const dummyKeys = { isDown: ctx.isKeyDown, justPressed: () => false, justReleased: () => false };
+              const dummyMouse = { isDown: ctx.isMouseButtonDown, justPressed: () => false, justReleased: () => false };
+              result = this.isTriggerActive(
+                eff,
+                ctx,
+                ctx.keyStates ?? dummyKeys,
+                ctx.mouseStates ?? dummyMouse,
+                ctx.gamepadStates
+              );
+            }
+          }
+        }
         break;
       case "tagHeld":
       case "tagPressed":
@@ -301,7 +327,7 @@ export class ControlSchemaArbiter {
     // 2. Check if rule conditions already contains an explicit input trigger condition
     const conds = this.getRuleConditions(rule);
     const hasInputCondition = conds.some(
-      (c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased" || c.type === "buttonHeld"
+      (c) => c.type === "tagHeld" || c.type === "tagCleanHold" || c.type === "tagPressed" || c.type === "tagReleased" || c.type === "buttonHeld"
     );
 
     const effTrigger = this.resolveEffectiveTrigger(rule, schema, device);

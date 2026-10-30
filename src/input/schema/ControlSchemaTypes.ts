@@ -27,6 +27,7 @@ export type ConditionType =
   | "stagedActionIs"
   | "buttonHeld"
   | "tagHeld"
+  | "tagCleanHold"
   | "tagPressed"
   | "tagReleased"
   | "grounded"
@@ -183,6 +184,7 @@ export interface ControlExecutionContext {
   getGamepadAxis: (slotIndex: number, axis: "LeftStick" | "RightStick") => Vector2D;
 
   schema?: ControlSchema;
+  isCleanHoldActive?: (trigger: InputTriggerBinding, rule?: ControlRule) => boolean;
   keyStates?: {
     isDown: (code: string) => boolean;
     justPressed: (code: string) => boolean;
