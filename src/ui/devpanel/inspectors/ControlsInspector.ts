@@ -1087,33 +1087,11 @@ export class ControlsInspector {
     };
 
     const threadHtmlCards: string[] = [];
-    let threadCounter = 1;
 
     for (const [tId, threadRules] of threadMap.entries()) {
-      // Find a readable title from first rule's tag condition if present
-      const firstTagCond = threadRules[0]?.conditions?.find(
-        (c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased"
-      );
-      const tagObj = firstTagCond ? tags.find((t) => t.id === firstTagCond.param || t.name === firstTagCond.param) : null;
-      const threadTitle = tagObj ? `Thread: ${tagObj.name}` : `Thread #${threadCounter}`;
-      threadCounter++;
-
       threadHtmlCards.push(`
         <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px;">
-          <!-- Thread Header -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">⚡ ${threadTitle}</span>
-              <span style="font-size: 0.68rem; color: #94a3b8;">(${threadRules.length} ${threadRules.length === 1 ? "branch" : "cascading branches"})</span>
-            </div>
-            <div style="display: flex; gap: 6px;">
-              <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
-                + Add Else If Branch
-              </button>
-            </div>
-          </div>
-
-          <!-- Cascade Branches in Thread -->
+          <!-- Cascade Branches in Block -->
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${threadRules
               .map((r, rIdx) => {
@@ -1125,6 +1103,13 @@ export class ControlsInspector {
               })
               .join("")}
           </div>
+
+          <!-- Add Branch to this Cascade Block -->
+          <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+            <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
+              + Add Else If Branch
+            </button>
+          </div>
         </div>
       `);
     }
@@ -1132,8 +1117,8 @@ export class ControlsInspector {
     return `
       ${threadHtmlCards.join("")}
       <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
-        <button id="btn-add-control-thread" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
-          + Add New Conditional Thread
+        <button id="btn-add-control-thread" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600; cursor: pointer;">
+          + Add Cascade Block
         </button>
       </div>
     `;
