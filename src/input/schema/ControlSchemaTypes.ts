@@ -66,6 +66,7 @@ export interface ControlRule {
   condition?: ConditionGate;    // Single condition (for backwards compatibility)
   actions?: ActionInvocation[]; // Multiple result functions executed
   action?: ActionInvocation;    // Single action (for backwards compatibility)
+  children?: ControlRule[];     // Nested conditional threads/cascade inside this rule's THEN block
 }
 
 export type LocomotionParadigm = "directVector" | "forwardFacingDrive" | "cursorSteer";

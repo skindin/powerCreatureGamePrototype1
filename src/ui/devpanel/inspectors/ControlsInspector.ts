@@ -58,8 +58,26 @@ export class ControlsInspector {
     if (!schema.keyboardMouse.tags) {
       schema.keyboardMouse.tags = [];
     }
+    // Clean up phantom "Always" tags if present
+    schema.keyboardMouse.tags = schema.keyboardMouse.tags.filter(
+      (t) => t.trigger.code !== "Always" && t.trigger.code !== "None" && Boolean(t.trigger.code)
+    );
     const kTags = schema.keyboardMouse.tags;
+
+    // Ensure at least one primary Action tag exists
+    if (kTags.length === 0) {
+      kTags.push({
+        id: "tag-kbm-action",
+        name: "Action",
+        trigger: { device: "mouse", code: "MouseRight", mode: "hold" },
+      });
+    }
+
     for (const rule of schema.keyboardMouse.rules) {
+      if (rule.trigger.code === "Always" || rule.trigger.code === "None" || !rule.trigger.code) {
+        rule.tagId = undefined;
+        continue;
+      }
       if (!rule.tagId) {
         let matchingTag: InputTagBinding | undefined = kTags.find(
           (t) =>
@@ -89,8 +107,24 @@ export class ControlsInspector {
     if (!schema.gamepad.tags) {
       schema.gamepad.tags = [];
     }
+    schema.gamepad.tags = schema.gamepad.tags.filter(
+      (t) => t.trigger.code !== "Always" && t.trigger.code !== "None" && Boolean(t.trigger.code)
+    );
     const gpTags = schema.gamepad.tags;
+
+    if (gpTags.length === 0) {
+      gpTags.push({
+        id: "tag-pad-action",
+        name: "Action",
+        trigger: { device: "gamepad", code: "GamepadRT", mode: "hold" },
+      });
+    }
+
     for (const rule of schema.gamepad.rules) {
+      if (rule.trigger.code === "Always" || rule.trigger.code === "None" || !rule.trigger.code) {
+        rule.tagId = undefined;
+        continue;
+      }
       if (!rule.tagId) {
         let matchingTag: InputTagBinding | undefined = gpTags.find((t) => t.trigger.code === rule.trigger.code);
         if (!matchingTag) {
@@ -197,68 +231,49 @@ export class ControlsInspector {
         ? this.workingSchema.gamepad.rules
         : this.workingSchema.touch.rules;
 
-    const isHolding = Boolean(char.heldObject);
-    const isEdible = Boolean(char.canConsumeHeldObject());
+    const effectiveCtx = ctx ?? {
+      character: char,
+      dt: 1 / 60,
+      isHoldingItem: Boolean(char.heldObject),
+      heldItemIsEdible: Boolean(char.canConsumeHeldObject()),
+      heldItemHasPrimaryAbility: Boolean(char.hasPrimaryItemAbility()),
+      targetInReach: null,
+      isGrounded: Boolean(char.isRestingOnSurface),
+      isClimbing: Boolean(char.isClimbing),
+      stagedAction: char.stagedAction,
+      facingAngle: char.facingAngle ?? 0,
+      mouseAimPos: { x: 0, y: 0 },
+      reticleAimPos: { x: 0, y: 0 },
+      isKeyDown: () => false,
+      isMouseButtonDown: () => false,
+      isGamepadButtonDown: () => false,
+      getGamepadAxis: () => ({ x: 0, y: 0 }),
+      schema: this.workingSchema,
+    };
 
-    for (const rule of rules) {
-      const conds = ControlSchemaArbiter.getRuleConditions(rule);
-      let match = true;
-      for (const cond of conds) {
-        let condMatch = false;
-        switch (cond.type) {
-          case "always": condMatch = true; break;
-          case "holdingObject": condMatch = isHolding; break;
-          case "holdingItemWithPrimaryAbility":
-          case "holdingEdible": condMatch = isHolding && (Boolean(char.hasPrimaryItemAbility()) || isEdible); break;
-          case "emptyHanded": condMatch = !isHolding; break;
-          case "targetInReach": condMatch = Boolean(ctx?.targetInReach || (char.pickupModule && !isHolding)); break;
-          case "stagedActionIs": condMatch = char.stagedAction === cond.param || (cond.param === "pickup" && char.stagedAction === "grab"); break;
-          case "grounded": condMatch = Boolean(char.isRestingOnSurface); break;
-          case "climbing": condMatch = Boolean(char.isClimbing); break;
-          case "isAiming": condMatch = Boolean(char.isLaserAiming || char.isAimingTrajectory); break;
-          case "isAimingTrajectory": condMatch = Boolean(char.isAimingTrajectory); break;
-          case "isLaserAiming": condMatch = Boolean(char.isLaserAiming); break;
-          case "buttonHeld":
-            if (ctx && cond.param) {
-              if (cond.param.startsWith("Mouse")) {
-                const btnIdx = cond.param === "MouseLeft" ? 0 : cond.param === "MouseMiddle" ? 1 : 2;
-                condMatch = ctx.isMouseButtonDown ? ctx.isMouseButtonDown(btnIdx) : false;
-              } else if (cond.param.startsWith("Gamepad")) {
-                const gpIdx = ControlSchemaArbiter.parseGamepadButtonCode(cond.param);
-                condMatch = ctx.isGamepadButtonDown ? ctx.isGamepadButtonDown(gpIdx) : false;
-              } else {
-                condMatch = ctx.isKeyDown ? ctx.isKeyDown(cond.param) : false;
-              }
-            } else {
-              condMatch = false;
-            }
-            break;
-          default: condMatch = true;
+    const checkRules = (ruleList: ControlRule[]) => {
+      for (const rule of ruleList) {
+        const match = ControlSchemaArbiter.evaluateAllConditions(rule, effectiveCtx);
+        if (isPopoutActive) {
+          const pip = this.popoutWindow!.document.getElementById(`pip-${rule.id}`);
+          if (pip) {
+            pip.style.background = match ? "#10b981" : "#475569";
+            pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
+          }
         }
-        if (!condMatch) {
-          match = false;
-          break;
+        if (isModalActive && this.modalOverlay) {
+          const pip = this.modalOverlay.querySelector(`#pip-${rule.id}`) as HTMLElement | null;
+          if (pip) {
+            pip.style.background = match ? "#10b981" : "#475569";
+            pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
+          }
+        }
+        if (rule.children && rule.children.length > 0) {
+          checkRules(rule.children);
         }
       }
-
-      // Update in popout window
-      if (isPopoutActive) {
-        const pip = this.popoutWindow!.document.getElementById(`pip-${rule.id}`);
-        if (pip) {
-          pip.style.background = match ? "#10b981" : "#475569";
-          pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
-        }
-      }
-
-      // Update in fallback modal
-      if (isModalActive && this.modalOverlay) {
-        const pip = this.modalOverlay.querySelector(`#pip-${rule.id}`) as HTMLElement | null;
-        if (pip) {
-          pip.style.background = match ? "#10b981" : "#475569";
-          pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
-        }
-      }
-    }
+    };
+    checkRules(rules);
   }
 
   // --- Window / Modal Open & Lifecycle ---
@@ -969,15 +984,7 @@ export class ControlsInspector {
       `;
     }
 
-    // Group rules by threadId
-    const threadMap = new Map<string, ControlRule[]>();
-    for (const rule of rules) {
-      const tId = rule.threadId!;
-      if (!threadMap.has(tId)) threadMap.set(tId, []);
-      threadMap.get(tId)!.push(rule);
-    }
-
-    const renderBranchRowHtml = (rule: ControlRule, branchBadge: string) => {
+    const renderBranchRowHtml = (rule: ControlRule, branchBadge: string, depth = 0) => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
       const actions = ControlSchemaArbiter.getRuleActions(rule);
 
@@ -1055,7 +1062,10 @@ export class ControlsInspector {
               <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em;">
                 THEN:
               </span>
-              <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action function">+ Add Action</button>
+              <div style="display: flex; gap: 4px;">
+                <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px; cursor: pointer;" title="Add action function">+ Add Action</button>
+                <button class="btn-add-nested-thread btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px; cursor: pointer;" title="Add nested IF/THEN block inside this action">+ Add Nested Thread</button>
+              </div>
             </div>
 
             <!-- Vertically Stacked Actions -->
@@ -1081,41 +1091,60 @@ export class ControlsInspector {
                 })
                 .join("")}
             </div>
+
+            <!-- Nested Cascade Blocks inside THEN -->
+            ${rule.children && rule.children.length > 0 ? renderCascadeBlocksHtml(rule.children, depth + 1) : ""}
           </div>
         </div>
       `;
     };
 
-    const threadHtmlCards: string[] = [];
+    const renderCascadeBlocksHtml = (ruleList: ControlRule[], depth = 0): string => {
+      // Group rules by threadId
+      const threadMap = new Map<string, ControlRule[]>();
+      for (const rule of ruleList) {
+        if (!rule.threadId) {
+          rule.threadId = `thread-${rule.id}`;
+        }
+        const tId = rule.threadId;
+        if (!threadMap.has(tId)) threadMap.set(tId, []);
+        threadMap.get(tId)!.push(rule);
+      }
 
-    for (const [tId, threadRules] of threadMap.entries()) {
-      threadHtmlCards.push(`
-        <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px;">
-          <!-- Cascade Branches in Block -->
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${threadRules
-              .map((r, rIdx) => {
-                const isLast = rIdx === threadRules.length - 1;
-                const conds = ControlSchemaArbiter.getRuleConditions(r);
-                const isAlways = conds.length === 1 && conds[0].type === "always";
-                const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
-                return renderBranchRowHtml(r, badge);
-              })
-              .join("")}
-          </div>
+      const threadCards: string[] = [];
 
-          <!-- Add Branch to this Cascade Block -->
-          <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
-            <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
-              + Add Else If Branch
-            </button>
+      for (const [tId, threadRules] of threadMap.entries()) {
+        const bg = depth === 0 ? "rgba(15, 23, 42, 0.7)" : "rgba(10, 15, 29, 0.85)";
+        const border = depth === 0 ? "rgba(148, 163, 184, 0.2)" : "rgba(148, 163, 184, 0.25)";
+        threadCards.push(`
+          <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: ${depth === 0 ? "10px 12px" : "8px 10px"}; margin-top: ${depth > 0 ? "6px" : "0"};">
+            <!-- Cascade Branches in Block -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${threadRules
+                .map((r, rIdx) => {
+                  const isLast = rIdx === threadRules.length - 1;
+                  const conds = ControlSchemaArbiter.getRuleConditions(r);
+                  const isAlways = conds.length === 1 && conds[0].type === "always";
+                  const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+                  return renderBranchRowHtml(r, badge, depth);
+                })
+                .join("")}
+            </div>
+
+            <!-- Add Branch to this Cascade Block -->
+            <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+              <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
+                + Add Else If Branch
+              </button>
+            </div>
           </div>
-        </div>
-      `);
-    }
+        `);
+      }
+      return threadCards.join("");
+    };
 
     return `
-      ${threadHtmlCards.join("")}
+      ${renderCascadeBlocksHtml(rules, 0)}
       <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
         <button id="btn-add-control-thread" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600; cursor: pointer;">
           + Add Cascade Block
@@ -1404,12 +1433,13 @@ export class ControlsInspector {
     root.querySelectorAll(".btn-add-thread-branch").forEach((btn) => {
       btn.addEventListener("click", () => {
         const threadId = (btn as HTMLElement).dataset.threadId || `thread-${Date.now().toString(36)}`;
-        const rules =
+        const rootRules =
           this.activeTab === "keyboardMouse"
             ? schema.keyboardMouse.rules
             : this.activeTab === "gamepad"
             ? schema.gamepad.rules
             : schema.touch.rules;
+        const targetList = this.findRuleListForThread(schema, threadId) ?? rootRules;
 
         const newRule: ControlRule = {
           id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
@@ -1423,8 +1453,34 @@ export class ControlsInspector {
           actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
           action: { moduleId: "throwPickup", intent: "grabItem" },
         };
-        rules.push(newRule);
+        targetList.push(newRule);
         this.renderActiveView();
+      });
+    });
+
+    // 9a2. Add Nested Thread within an action block (THEN: block)
+    root.querySelectorAll(".btn-add-nested-thread").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          if (!rule.children) rule.children = [];
+          const childThreadId = `thread-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
+          const childRule: ControlRule = {
+            id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+            name: "Nested Action Branch",
+            enabled: true,
+            priority: 50,
+            threadId: childThreadId,
+            trigger: { device: "keyboard", code: "Always", mode: "hold" },
+            conditions: [{ type: "always" }],
+            condition: { type: "always" },
+            actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+            action: { moduleId: "throwPickup", intent: "grabItem" },
+          };
+          rule.children.push(childRule);
+          this.renderActiveView();
+        }
       });
     });
 
@@ -1672,25 +1728,75 @@ export class ControlsInspector {
 
   private static findRule(schema: ControlSchema, ruleId?: string): ControlRule | undefined {
     if (!ruleId) return undefined;
-    const rules =
+    const rootRules =
       this.activeTab === "keyboardMouse"
         ? schema.keyboardMouse.rules
         : this.activeTab === "gamepad"
         ? schema.gamepad.rules
         : schema.touch.rules;
-    return rules.find((r) => r.id === ruleId);
+
+    function search(list: ControlRule[]): ControlRule | undefined {
+      for (const r of list) {
+        if (r.id === ruleId) return r;
+        if (r.children && r.children.length > 0) {
+          const found = search(r.children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    }
+
+    return search(rootRules);
   }
 
   private static deleteRule(schema: ControlSchema, ruleId?: string): void {
     if (!ruleId) return;
-    const rules =
+    const rootRules =
       this.activeTab === "keyboardMouse"
         ? schema.keyboardMouse.rules
         : this.activeTab === "gamepad"
         ? schema.gamepad.rules
         : schema.touch.rules;
-    const idx = rules.findIndex((r) => r.id === ruleId);
-    if (idx !== -1) rules.splice(idx, 1);
+
+    function remove(list: ControlRule[]): boolean {
+      const idx = list.findIndex((r) => r.id === ruleId);
+      if (idx !== -1) {
+        list.splice(idx, 1);
+        return true;
+      }
+      for (const r of list) {
+        if (r.children && r.children.length > 0) {
+          if (remove(r.children)) return true;
+        }
+      }
+      return false;
+    }
+
+    remove(rootRules);
+  }
+
+  private static findRuleListForThread(schema: ControlSchema, threadId: string): ControlRule[] | null {
+    const rootRules =
+      this.activeTab === "keyboardMouse"
+        ? schema.keyboardMouse.rules
+        : this.activeTab === "gamepad"
+        ? schema.gamepad.rules
+        : schema.touch.rules;
+
+    function search(list: ControlRule[]): ControlRule[] | null {
+      if (list.some((r) => r.threadId === threadId)) {
+        return list;
+      }
+      for (const r of list) {
+        if (r.children && r.children.length > 0) {
+          const found = search(r.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    return search(rootRules);
   }
 
   // --- "Press Input to Bind" Tag Recorder (Layer 1) ---

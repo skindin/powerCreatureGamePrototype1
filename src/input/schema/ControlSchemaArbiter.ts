@@ -177,6 +177,10 @@ export class ControlSchemaArbiter {
       justReleased: (btn: number) => boolean;
     }
   ): boolean {
+    if (!trigger || !trigger.code || trigger.code === "Always" || trigger.code === "None") {
+      return true;
+    }
+
     // 1. Verify chord modifiers if any
     if (trigger.chordModifiers && trigger.chordModifiers.length > 0) {
       for (const mod of trigger.chordModifiers) {
@@ -220,6 +224,54 @@ export class ControlSchemaArbiter {
     }
 
     return false;
+  }
+
+  public static isRuleApplicable(
+    rule: ControlRule,
+    ctx: ControlExecutionContext,
+    schema?: ControlSchema,
+    device?: DeviceChannel,
+    keyStates?: {
+      isDown: (code: string) => boolean;
+      justPressed: (code: string) => boolean;
+      justReleased: (code: string) => boolean;
+    },
+    mouseStates?: {
+      isDown: (btn: number) => boolean;
+      justPressed: (btn: number) => boolean;
+      justReleased: (btn: number) => boolean;
+    },
+    gamepadStates?: {
+      slotIndex: number;
+      isDown: (btn: number) => boolean;
+      justPressed: (btn: number) => boolean;
+      justReleased: (btn: number) => boolean;
+    }
+  ): boolean {
+    if (rule.enabled === false) return false;
+
+    // 1. Evaluate explicit conditions
+    if (!this.evaluateAllConditions(rule, ctx)) {
+      return false;
+    }
+
+    // 2. Check if rule conditions already contains an explicit input trigger condition
+    const conds = this.getRuleConditions(rule);
+    const hasInputCondition = conds.some(
+      (c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased" || c.type === "buttonHeld"
+    );
+
+    const effTrigger = this.resolveEffectiveTrigger(rule, schema, device);
+    const isPassiveTrigger = !effTrigger || !effTrigger.code || effTrigger.code === "Always" || effTrigger.code === "None";
+
+    if (hasInputCondition || isPassiveTrigger) {
+      return true;
+    }
+
+    // 3. Fallback for legacy preset rules where input trigger is held in rule.trigger
+    const kStates = keyStates ?? ctx.keyStates ?? { isDown: ctx.isKeyDown, justPressed: () => false, justReleased: () => false };
+    const mStates = mouseStates ?? ctx.mouseStates ?? { isDown: ctx.isMouseButtonDown, justPressed: () => false, justReleased: () => false };
+    return this.isTriggerActive(effTrigger, ctx, kStates, mStates, gamepadStates ?? ctx.gamepadStates);
   }
 
   public static parseGamepadButtonCode(code: string): number {

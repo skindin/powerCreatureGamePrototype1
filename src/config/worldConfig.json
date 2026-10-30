@@ -1,6 +1,6 @@
 {
-  "version": 118,
-  "lastSaved": "2026-10-29T20:54:41.925Z",
+  "version": 121,
+  "lastSaved": "2026-10-30T08:55:55.988Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -458,58 +458,31 @@
               "moduleId": "throw",
               "intent": "aimThrow"
             },
-            "tagId": "tag-kbm-r4sbea"
-          },
-          {
-            "id": "rule-mvtmc4ey",
-            "name": "New Action Rule",
-            "enabled": true,
-            "priority": 50,
-            "tagId": "tag-kbm-ffc1ts",
-            "trigger": {
-              "device": "mouse",
-              "code": "MouseRight",
-              "mode": "hold"
-            },
-            "conditions": [
-              {
-                "type": "holdingItemWithPrimaryAbility"
-              }
-            ],
-            "condition": {
-              "type": "holdingItemWithPrimaryAbility"
-            },
-            "actions": [
-              {
-                "moduleId": "heldItem",
-                "intent": "primaryItemAbility"
-              }
-            ],
-            "action": {
-              "moduleId": "heldItem",
-              "intent": "primaryItemAbility"
-            }
+            "threadId": "thread-tag-kbm-r4sbea"
           },
           {
             "id": "rule-mvtm5syk",
             "name": "New Action Rule",
             "enabled": true,
             "priority": 50,
-            "tagId": "tag-kbm-ffc1ts",
             "trigger": {
-              "device": "mouse",
-              "code": "MouseRight",
+              "device": "keyboard",
+              "code": "Always",
               "mode": "hold"
             },
             "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-ffc1ts"
+              },
               {
                 "type": "stagedActionIs",
                 "param": "laser"
               }
             ],
             "condition": {
-              "type": "stagedActionIs",
-              "param": "laser"
+              "type": "tagHeld",
+              "param": "tag-kbm-ffc1ts"
             },
             "actions": [
               {
@@ -520,26 +493,28 @@
             "action": {
               "moduleId": "laser",
               "intent": "fireLaser"
-            }
+            },
+            "threadId": "thread-tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvtm4hy4",
             "name": "New Action Rule",
             "enabled": true,
             "priority": 50,
-            "tagId": "tag-kbm-mxj04b",
             "trigger": {
               "device": "keyboard",
-              "code": "KeyS",
+              "code": "Always",
               "mode": "hold"
             },
             "conditions": [
               {
-                "type": "always"
+                "type": "tagHeld",
+                "param": "tag-kbm-mxj04b"
               }
             ],
             "condition": {
-              "type": "always"
+              "type": "tagHeld",
+              "param": "tag-kbm-mxj04b"
             },
             "actions": [
               {
@@ -554,26 +529,28 @@
             "action": {
               "moduleId": "staging",
               "intent": "holdStageLaser"
-            }
+            },
+            "threadId": "thread-tag-kbm-mxj04b"
           },
           {
             "id": "rule-mvteq488",
             "name": "New Action Rule",
             "enabled": true,
             "priority": 50,
-            "tagId": "tag-kbm-i3csb0",
             "trigger": {
               "device": "keyboard",
-              "code": "KeyD",
-              "mode": "press"
+              "code": "Always",
+              "mode": "hold"
             },
             "conditions": [
               {
-                "type": "always"
+                "type": "tagPressed",
+                "param": "tag-kbm-i3csb0"
               }
             ],
             "condition": {
-              "type": "always"
+              "type": "tagPressed",
+              "param": "tag-kbm-i3csb0"
             },
             "actions": [
               {
@@ -584,26 +561,28 @@
             "action": {
               "moduleId": "melee",
               "intent": "punch"
-            }
+            },
+            "threadId": "thread-tag-kbm-i3csb0"
           },
           {
             "id": "rule-mvtefwff",
             "name": "New Action Rule",
             "enabled": true,
             "priority": 50,
-            "tagId": "tag-kbm-6o3l7h",
             "trigger": {
               "device": "keyboard",
-              "code": "ShiftLeft",
+              "code": "Always",
               "mode": "hold"
             },
             "conditions": [
               {
-                "type": "always"
+                "type": "tagHeld",
+                "param": "tag-kbm-6o3l7h"
               }
             ],
             "condition": {
-              "type": "always"
+              "type": "tagHeld",
+              "param": "tag-kbm-6o3l7h"
             },
             "actions": [
               {
@@ -614,7 +593,8 @@
             "action": {
               "moduleId": "locomotion",
               "intent": "holdSprint"
-            }
+            },
+            "threadId": "thread-tag-kbm-6o3l7h"
           },
           {
             "id": "rule-mvt7ndq1",
@@ -622,17 +602,22 @@
             "enabled": true,
             "priority": 50,
             "trigger": {
-              "device": "mouse",
-              "code": "MouseRight",
+              "device": "keyboard",
+              "code": "Always",
               "mode": "hold"
             },
             "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-ffc1ts"
+              },
               {
                 "type": "emptyHanded"
               }
             ],
             "condition": {
-              "type": "emptyHanded"
+              "type": "tagHeld",
+              "param": "tag-kbm-ffc1ts"
             },
             "actions": [
               {
@@ -644,7 +629,7 @@
               "moduleId": "pickup",
               "intent": "pickupReach"
             },
-            "tagId": "tag-kbm-ffc1ts"
+            "threadId": "thread-tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt60po7",
@@ -652,13 +637,13 @@
             "enabled": true,
             "priority": 50,
             "trigger": {
-              "device": "mouse",
-              "code": "MouseRight",
-              "mode": "press"
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
             },
             "condition": {
-              "type": "stagedActionIs",
-              "param": "throw"
+              "type": "tagPressed",
+              "param": "tag-kbm-ffc1ts"
             },
             "action": {
               "moduleId": "throwPickup",
@@ -666,11 +651,15 @@
             },
             "conditions": [
               {
+                "type": "tagPressed",
+                "param": "tag-kbm-ffc1ts"
+              },
+              {
                 "type": "stagedActionIs",
                 "param": "throw"
               }
             ],
-            "tagId": "tag-kbm-ffc1ts"
+            "threadId": "thread-tag-kbm-ffc1ts"
           },
           {
             "id": "rule-mvt5txem",
@@ -679,17 +668,24 @@
             "priority": 50,
             "trigger": {
               "device": "keyboard",
-              "code": "KeyQ",
-              "mode": "press"
+              "code": "Always",
+              "mode": "hold"
             },
             "condition": {
-              "type": "always"
+              "type": "tagPressed",
+              "param": "tag-kbm-5j0zp9"
             },
             "action": {
               "moduleId": "throwPickup",
               "intent": "dropItem"
             },
-            "tagId": "tag-kbm-5j0zp9"
+            "conditions": [
+              {
+                "type": "tagPressed",
+                "param": "tag-kbm-5j0zp9"
+              }
+            ],
+            "threadId": "thread-tag-kbm-5j0zp9"
           },
           {
             "id": "rule-mvsp5nhe",
@@ -698,11 +694,12 @@
             "priority": 50,
             "trigger": {
               "device": "keyboard",
-              "code": "KeyA",
+              "code": "Always",
               "mode": "hold"
             },
             "condition": {
-              "type": "holdingObject"
+              "type": "tagHeld",
+              "param": "tag-kbm-5ftccu"
             },
             "action": {
               "moduleId": "staging",
@@ -718,7 +715,16 @@
                 "intent": "aimThrow"
               }
             ],
-            "tagId": "tag-kbm-5ftccu"
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-5ftccu"
+              },
+              {
+                "type": "holdingObject"
+              }
+            ],
+            "threadId": "thread-tag-kbm-5ftccu"
           },
           {
             "id": "rule-mvsp117f",
@@ -727,23 +733,30 @@
             "priority": 50,
             "trigger": {
               "device": "keyboard",
-              "code": "KeyF",
+              "code": "Always",
               "mode": "hold"
             },
             "condition": {
-              "type": "always"
+              "type": "tagHeld",
+              "param": "tag-kbm-tn6irx"
             },
             "action": {
               "moduleId": "pickup",
               "intent": "swap"
             },
-            "tagId": "tag-kbm-tn6irx",
             "actions": [
               {
                 "moduleId": "pickup",
                 "intent": "swap"
               }
-            ]
+            ],
+            "conditions": [
+              {
+                "type": "tagHeld",
+                "param": "tag-kbm-tn6irx"
+              }
+            ],
+            "threadId": "thread-tag-kbm-tn6irx"
           },
           {
             "id": "kbm-drop",
@@ -752,17 +765,27 @@
             "priority": 40,
             "trigger": {
               "device": "keyboard",
-              "code": "Space",
-              "mode": "press"
+              "code": "Always",
+              "mode": "hold"
             },
             "condition": {
-              "type": "grounded"
+              "type": "tagPressed",
+              "param": "tag-kbm-scjxrr"
             },
             "action": {
               "moduleId": "locomotion",
               "intent": "jump"
             },
-            "tagId": "tag-kbm-scjxrr"
+            "conditions": [
+              {
+                "type": "tagPressed",
+                "param": "tag-kbm-scjxrr"
+              },
+              {
+                "type": "grounded"
+              }
+            ],
+            "threadId": "thread-tag-kbm-scjxrr"
           }
         ],
         "tags": [
@@ -836,15 +859,6 @@
               "device": "keyboard",
               "code": "KeyS",
               "mode": "press"
-            }
-          },
-          {
-            "id": "tag-kbm-r4sbea",
-            "name": "New Action Rule",
-            "trigger": {
-              "device": "keyboard",
-              "code": "Always",
-              "mode": "hold"
             }
           }
         ]
@@ -2357,58 +2371,31 @@
                 "moduleId": "throw",
                 "intent": "aimThrow"
               },
-              "tagId": "tag-kbm-r4sbea"
-            },
-            {
-              "id": "rule-mvtmc4ey",
-              "name": "New Action Rule",
-              "enabled": true,
-              "priority": 50,
-              "tagId": "tag-kbm-ffc1ts",
-              "trigger": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "hold"
-              },
-              "conditions": [
-                {
-                  "type": "holdingItemWithPrimaryAbility"
-                }
-              ],
-              "condition": {
-                "type": "holdingItemWithPrimaryAbility"
-              },
-              "actions": [
-                {
-                  "moduleId": "heldItem",
-                  "intent": "primaryItemAbility"
-                }
-              ],
-              "action": {
-                "moduleId": "heldItem",
-                "intent": "primaryItemAbility"
-              }
+              "threadId": "thread-tag-kbm-r4sbea"
             },
             {
               "id": "rule-mvtm5syk",
               "name": "New Action Rule",
               "enabled": true,
               "priority": 50,
-              "tagId": "tag-kbm-ffc1ts",
               "trigger": {
-                "device": "mouse",
-                "code": "MouseRight",
+                "device": "keyboard",
+                "code": "Always",
                 "mode": "hold"
               },
               "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-ffc1ts"
+                },
                 {
                   "type": "stagedActionIs",
                   "param": "laser"
                 }
               ],
               "condition": {
-                "type": "stagedActionIs",
-                "param": "laser"
+                "type": "tagHeld",
+                "param": "tag-kbm-ffc1ts"
               },
               "actions": [
                 {
@@ -2419,26 +2406,28 @@
               "action": {
                 "moduleId": "laser",
                 "intent": "fireLaser"
-              }
+              },
+              "threadId": "thread-tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvtm4hy4",
               "name": "New Action Rule",
               "enabled": true,
               "priority": 50,
-              "tagId": "tag-kbm-mxj04b",
               "trigger": {
                 "device": "keyboard",
-                "code": "KeyS",
+                "code": "Always",
                 "mode": "hold"
               },
               "conditions": [
                 {
-                  "type": "always"
+                  "type": "tagHeld",
+                  "param": "tag-kbm-mxj04b"
                 }
               ],
               "condition": {
-                "type": "always"
+                "type": "tagHeld",
+                "param": "tag-kbm-mxj04b"
               },
               "actions": [
                 {
@@ -2453,26 +2442,28 @@
               "action": {
                 "moduleId": "staging",
                 "intent": "holdStageLaser"
-              }
+              },
+              "threadId": "thread-tag-kbm-mxj04b"
             },
             {
               "id": "rule-mvteq488",
               "name": "New Action Rule",
               "enabled": true,
               "priority": 50,
-              "tagId": "tag-kbm-i3csb0",
               "trigger": {
                 "device": "keyboard",
-                "code": "KeyD",
-                "mode": "press"
+                "code": "Always",
+                "mode": "hold"
               },
               "conditions": [
                 {
-                  "type": "always"
+                  "type": "tagPressed",
+                  "param": "tag-kbm-i3csb0"
                 }
               ],
               "condition": {
-                "type": "always"
+                "type": "tagPressed",
+                "param": "tag-kbm-i3csb0"
               },
               "actions": [
                 {
@@ -2483,26 +2474,28 @@
               "action": {
                 "moduleId": "melee",
                 "intent": "punch"
-              }
+              },
+              "threadId": "thread-tag-kbm-i3csb0"
             },
             {
               "id": "rule-mvtefwff",
               "name": "New Action Rule",
               "enabled": true,
               "priority": 50,
-              "tagId": "tag-kbm-6o3l7h",
               "trigger": {
                 "device": "keyboard",
-                "code": "ShiftLeft",
+                "code": "Always",
                 "mode": "hold"
               },
               "conditions": [
                 {
-                  "type": "always"
+                  "type": "tagHeld",
+                  "param": "tag-kbm-6o3l7h"
                 }
               ],
               "condition": {
-                "type": "always"
+                "type": "tagHeld",
+                "param": "tag-kbm-6o3l7h"
               },
               "actions": [
                 {
@@ -2513,7 +2506,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "holdSprint"
-              }
+              },
+              "threadId": "thread-tag-kbm-6o3l7h"
             },
             {
               "id": "rule-mvt7ndq1",
@@ -2521,17 +2515,22 @@
               "enabled": true,
               "priority": 50,
               "trigger": {
-                "device": "mouse",
-                "code": "MouseRight",
+                "device": "keyboard",
+                "code": "Always",
                 "mode": "hold"
               },
               "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-ffc1ts"
+                },
                 {
                   "type": "emptyHanded"
                 }
               ],
               "condition": {
-                "type": "emptyHanded"
+                "type": "tagHeld",
+                "param": "tag-kbm-ffc1ts"
               },
               "actions": [
                 {
@@ -2543,7 +2542,7 @@
                 "moduleId": "pickup",
                 "intent": "pickupReach"
               },
-              "tagId": "tag-kbm-ffc1ts"
+              "threadId": "thread-tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt60po7",
@@ -2551,13 +2550,13 @@
               "enabled": true,
               "priority": 50,
               "trigger": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "press"
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
               },
               "condition": {
-                "type": "stagedActionIs",
-                "param": "throw"
+                "type": "tagPressed",
+                "param": "tag-kbm-ffc1ts"
               },
               "action": {
                 "moduleId": "throwPickup",
@@ -2565,11 +2564,15 @@
               },
               "conditions": [
                 {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-ffc1ts"
+                },
+                {
                   "type": "stagedActionIs",
                   "param": "throw"
                 }
               ],
-              "tagId": "tag-kbm-ffc1ts"
+              "threadId": "thread-tag-kbm-ffc1ts"
             },
             {
               "id": "rule-mvt5txem",
@@ -2578,17 +2581,24 @@
               "priority": 50,
               "trigger": {
                 "device": "keyboard",
-                "code": "KeyQ",
-                "mode": "press"
+                "code": "Always",
+                "mode": "hold"
               },
               "condition": {
-                "type": "always"
+                "type": "tagPressed",
+                "param": "tag-kbm-5j0zp9"
               },
               "action": {
                 "moduleId": "throwPickup",
                 "intent": "dropItem"
               },
-              "tagId": "tag-kbm-5j0zp9"
+              "conditions": [
+                {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-5j0zp9"
+                }
+              ],
+              "threadId": "thread-tag-kbm-5j0zp9"
             },
             {
               "id": "rule-mvsp5nhe",
@@ -2597,11 +2607,12 @@
               "priority": 50,
               "trigger": {
                 "device": "keyboard",
-                "code": "KeyA",
+                "code": "Always",
                 "mode": "hold"
               },
               "condition": {
-                "type": "holdingObject"
+                "type": "tagHeld",
+                "param": "tag-kbm-5ftccu"
               },
               "action": {
                 "moduleId": "staging",
@@ -2617,7 +2628,16 @@
                   "intent": "aimThrow"
                 }
               ],
-              "tagId": "tag-kbm-5ftccu"
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-5ftccu"
+                },
+                {
+                  "type": "holdingObject"
+                }
+              ],
+              "threadId": "thread-tag-kbm-5ftccu"
             },
             {
               "id": "rule-mvsp117f",
@@ -2626,23 +2646,30 @@
               "priority": 50,
               "trigger": {
                 "device": "keyboard",
-                "code": "KeyF",
+                "code": "Always",
                 "mode": "hold"
               },
               "condition": {
-                "type": "always"
+                "type": "tagHeld",
+                "param": "tag-kbm-tn6irx"
               },
               "action": {
                 "moduleId": "pickup",
                 "intent": "swap"
               },
-              "tagId": "tag-kbm-tn6irx",
               "actions": [
                 {
                   "moduleId": "pickup",
                   "intent": "swap"
                 }
-              ]
+              ],
+              "conditions": [
+                {
+                  "type": "tagHeld",
+                  "param": "tag-kbm-tn6irx"
+                }
+              ],
+              "threadId": "thread-tag-kbm-tn6irx"
             },
             {
               "id": "kbm-drop",
@@ -2651,17 +2678,27 @@
               "priority": 40,
               "trigger": {
                 "device": "keyboard",
-                "code": "Space",
-                "mode": "press"
+                "code": "Always",
+                "mode": "hold"
               },
               "condition": {
-                "type": "grounded"
+                "type": "tagPressed",
+                "param": "tag-kbm-scjxrr"
               },
               "action": {
                 "moduleId": "locomotion",
                 "intent": "jump"
               },
-              "tagId": "tag-kbm-scjxrr"
+              "conditions": [
+                {
+                  "type": "tagPressed",
+                  "param": "tag-kbm-scjxrr"
+                },
+                {
+                  "type": "grounded"
+                }
+              ],
+              "threadId": "thread-tag-kbm-scjxrr"
             }
           ],
           "tags": [
@@ -2735,15 +2772,6 @@
                 "device": "keyboard",
                 "code": "KeyS",
                 "mode": "press"
-              }
-            },
-            {
-              "id": "tag-kbm-r4sbea",
-              "name": "New Action Rule",
-              "trigger": {
-                "device": "keyboard",
-                "code": "Always",
-                "mode": "hold"
               }
             }
           ]
