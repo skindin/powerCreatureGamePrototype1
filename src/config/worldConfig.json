@@ -1,6 +1,6 @@
 {
-  "version": 134,
-  "lastSaved": "2026-10-30T12:21:18.368Z",
+  "version": 137,
+  "lastSaved": "2026-10-30T12:39:22.830Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -612,6 +612,20 @@
                     "conditions": [
                       {
                         "type": "holdingItemWithPrimaryAbility"
+                      },
+                      {
+                        "type": "group",
+                        "op": "or",
+                        "conditions": [
+                          {
+                            "type": "stagedActionIs",
+                            "param": "none"
+                          },
+                          {
+                            "type": "stagedActionIs",
+                            "param": "itemAbility"
+                          }
+                        ]
                       }
                     ],
                     "condition": {
@@ -621,6 +635,13 @@
                       {
                         "moduleId": "heldItem",
                         "intent": "primaryItemAbility"
+                      },
+                      {
+                        "moduleId": "staging",
+                        "intent": "setStage",
+                        "args": {
+                          "stage": "none"
+                        }
                       }
                     ],
                     "action": {
@@ -633,6 +654,16 @@
                         "action": {
                           "moduleId": "heldItem",
                           "intent": "primaryItemAbility"
+                        }
+                      },
+                      {
+                        "type": "action",
+                        "action": {
+                          "moduleId": "staging",
+                          "intent": "setStage",
+                          "args": {
+                            "stage": "none"
+                          }
                         }
                       }
                     ],
@@ -654,11 +685,18 @@
                         "type": "emptyHanded"
                       },
                       {
-                        "type": "stagedActionIs",
-                        "param": "none"
-                      },
-                      {
-                        "type": "targetInReach"
+                        "type": "group",
+                        "op": "or",
+                        "conditions": [
+                          {
+                            "type": "stagedActionIs",
+                            "param": "none"
+                          },
+                          {
+                            "type": "stagedActionIs",
+                            "param": "grab"
+                          }
+                        ]
                       }
                     ],
                     "condition": {
@@ -668,6 +706,13 @@
                       {
                         "moduleId": "pickup",
                         "intent": "pickupReach"
+                      },
+                      {
+                        "moduleId": "staging",
+                        "intent": "setStage",
+                        "args": {
+                          "stage": "none"
+                        }
                       }
                     ],
                     "action": {
@@ -680,6 +725,16 @@
                         "action": {
                           "moduleId": "pickup",
                           "intent": "pickupReach"
+                        }
+                      },
+                      {
+                        "type": "action",
+                        "action": {
+                          "moduleId": "staging",
+                          "intent": "setStage",
+                          "args": {
+                            "stage": "none"
+                          }
                         }
                       }
                     ],
@@ -1255,7 +1310,8 @@
         "none",
         "laser",
         "throw",
-        "itemAbility"
+        "itemAbility",
+        "grab"
       ]
     },
     "strength": 1,
@@ -2608,6 +2664,20 @@
                       "conditions": [
                         {
                           "type": "holdingItemWithPrimaryAbility"
+                        },
+                        {
+                          "type": "group",
+                          "op": "or",
+                          "conditions": [
+                            {
+                              "type": "stagedActionIs",
+                              "param": "none"
+                            },
+                            {
+                              "type": "stagedActionIs",
+                              "param": "itemAbility"
+                            }
+                          ]
                         }
                       ],
                       "condition": {
@@ -2617,6 +2687,13 @@
                         {
                           "moduleId": "heldItem",
                           "intent": "primaryItemAbility"
+                        },
+                        {
+                          "moduleId": "staging",
+                          "intent": "setStage",
+                          "args": {
+                            "stage": "none"
+                          }
                         }
                       ],
                       "action": {
@@ -2629,6 +2706,16 @@
                           "action": {
                             "moduleId": "heldItem",
                             "intent": "primaryItemAbility"
+                          }
+                        },
+                        {
+                          "type": "action",
+                          "action": {
+                            "moduleId": "staging",
+                            "intent": "setStage",
+                            "args": {
+                              "stage": "none"
+                            }
                           }
                         }
                       ],
@@ -2650,11 +2737,18 @@
                           "type": "emptyHanded"
                         },
                         {
-                          "type": "stagedActionIs",
-                          "param": "none"
-                        },
-                        {
-                          "type": "targetInReach"
+                          "type": "group",
+                          "op": "or",
+                          "conditions": [
+                            {
+                              "type": "stagedActionIs",
+                              "param": "none"
+                            },
+                            {
+                              "type": "stagedActionIs",
+                              "param": "grab"
+                            }
+                          ]
                         }
                       ],
                       "condition": {
@@ -2664,6 +2758,13 @@
                         {
                           "moduleId": "pickup",
                           "intent": "pickupReach"
+                        },
+                        {
+                          "moduleId": "staging",
+                          "intent": "setStage",
+                          "args": {
+                            "stage": "none"
+                          }
                         }
                       ],
                       "action": {
@@ -2676,6 +2777,16 @@
                           "action": {
                             "moduleId": "pickup",
                             "intent": "pickupReach"
+                          }
+                        },
+                        {
+                          "type": "action",
+                          "action": {
+                            "moduleId": "staging",
+                            "intent": "setStage",
+                            "args": {
+                              "stage": "none"
+                            }
                           }
                         }
                       ],
@@ -3251,7 +3362,8 @@
           "none",
           "laser",
           "throw",
-          "itemAbility"
+          "itemAbility",
+          "grab"
         ]
       }
     }

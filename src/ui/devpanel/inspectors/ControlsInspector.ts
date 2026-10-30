@@ -501,6 +501,38 @@ export class ControlsInspector {
     const char = this.modalChar;
     const schema = this.workingSchema;
     const root = this.getRootContainer();
+
+    // Pre-save flush: ensure all live select and input values in the DOM are written to workingSchema
+    if (root) {
+      root.querySelectorAll(".select-action-stage").forEach((sel) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const val = (sel as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = (stmts[sIdx] as ActionStatement).action;
+            act.args = { ...(act.args || {}), stage: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+          }
+        }
+      });
+      root.querySelectorAll(".input-cond-param").forEach((inp) => {
+        const rId = (inp as HTMLElement).dataset.ruleId;
+        const cPath = (inp as HTMLElement).dataset.condPath ?? "";
+        const val = (inp as HTMLInputElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+          }
+        }
+      });
+    }
+
     const saveBtn = root?.querySelector("#btn-modal-save-close") as HTMLButtonElement | null;
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -2034,6 +2066,25 @@ export class ControlsInspector {
           const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
           if (targetCond) {
             targetCond.param = val;
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll(".select-action-stage").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = (sel as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const val = (e.target as HTMLSelectElement).value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = (stmts[sIdx] as ActionStatement).action;
+            act.args = { ...(act.args || {}), stage: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+            this.renderActiveView();
           }
         }
       });
