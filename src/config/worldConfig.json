@@ -1,6 +1,6 @@
 {
-  "version": 143,
-  "lastSaved": "2026-10-30T12:58:15.360Z",
+  "version": 147,
+  "lastSaved": "2026-10-30T13:24:35.776Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -454,7 +454,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "throw"
+                  "stage": "throw",
+                  "group": "action"
                 }
               }
             ],
@@ -476,7 +477,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "throw"
+                    "stage": "throw",
+                    "group": "action"
                   }
                 }
               }
@@ -497,7 +499,8 @@
             "conditions": [
               {
                 "type": "stagedActionIs",
-                "param": "throw"
+                "param": "throw",
+                "stageGroup": "action"
               },
               {
                 "type": "tagPressed",
@@ -506,7 +509,8 @@
             ],
             "condition": {
               "type": "stagedActionIs",
-              "param": "throw"
+              "param": "throw",
+              "stageGroup": "action"
             },
             "actions": [
               {
@@ -570,12 +574,14 @@
                     "conditions": [
                       {
                         "type": "stagedActionIs",
-                        "param": "laser"
+                        "param": "laser",
+                        "stageGroup": "action"
                       }
                     ],
                     "condition": {
                       "type": "stagedActionIs",
-                      "param": "laser"
+                      "param": "laser",
+                      "stageGroup": "action"
                     },
                     "actions": [
                       {
@@ -619,11 +625,13 @@
                         "conditions": [
                           {
                             "type": "stagedActionIs",
-                            "param": "none"
+                            "param": "none",
+                            "stageGroup": "action"
                           },
                           {
                             "type": "stagedActionIs",
-                            "param": "itemAbility"
+                            "param": "itemAbility",
+                            "stageGroup": "action"
                           }
                         ]
                       }
@@ -640,7 +648,8 @@
                         "moduleId": "staging",
                         "intent": "setStage",
                         "args": {
-                          "stage": "itemAbility"
+                          "stage": "itemAbility",
+                          "group": "action"
                         }
                       }
                     ],
@@ -662,7 +671,8 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "itemAbility"
+                            "stage": "itemAbility",
+                            "group": "action"
                           }
                         }
                       }
@@ -690,11 +700,13 @@
                         "conditions": [
                           {
                             "type": "stagedActionIs",
-                            "param": "none"
+                            "param": "none",
+                            "stageGroup": "action"
                           },
                           {
                             "type": "stagedActionIs",
-                            "param": "grab"
+                            "param": "grab",
+                            "stageGroup": "action"
                           }
                         ]
                       }
@@ -711,7 +723,8 @@
                         "moduleId": "staging",
                         "intent": "setStage",
                         "args": {
-                          "stage": "grab"
+                          "stage": "grab",
+                          "group": "action"
                         }
                       }
                     ],
@@ -733,7 +746,8 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "grab"
+                            "stage": "grab",
+                            "group": "action"
                           }
                         }
                       }
@@ -894,7 +908,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               }
             ],
@@ -902,7 +917,8 @@
               "moduleId": "staging",
               "intent": "setStage",
               "args": {
-                "stage": "none"
+                "stage": "none",
+                "group": "action"
               }
             },
             "body": [
@@ -912,7 +928,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               }
@@ -984,14 +1001,24 @@
             },
             "actions": [
               {
-                "moduleId": "throwPickup",
-                "intent": "grabItem"
+                "moduleId": "melee",
+                "intent": "punch"
               }
             ],
             "action": {
-              "moduleId": "throwPickup",
-              "intent": "grabItem"
-            }
+              "moduleId": "melee",
+              "intent": "punch"
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "melee",
+                  "intent": "punch"
+                }
+              }
+            ],
+            "children": []
           },
           {
             "id": "rule-mvuyutgqxj8",
@@ -1019,7 +1046,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "laser"
+                  "stage": "laser",
+                  "group": "action"
                 }
               },
               {
@@ -1031,7 +1059,8 @@
               "moduleId": "staging",
               "intent": "setStage",
               "args": {
-                "stage": "laser"
+                "stage": "laser",
+                "group": "action"
               }
             },
             "body": [
@@ -1041,7 +1070,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "laser"
+                    "stage": "laser",
+                    "group": "action"
                   }
                 }
               },
@@ -1073,7 +1103,8 @@
               },
               {
                 "type": "stagedActionIs",
-                "param": "laser"
+                "param": "laser",
+                "stageGroup": "action"
               }
             ],
             "condition": {
@@ -1085,7 +1116,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               }
             ],
@@ -1093,7 +1125,8 @@
               "moduleId": "staging",
               "intent": "setStage",
               "args": {
-                "stage": "none"
+                "stage": "none",
+                "group": "action"
               }
             },
             "body": [
@@ -1103,7 +1136,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               }
@@ -1140,7 +1174,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "throw"
+                  "stage": "throw",
+                  "group": "action"
                 }
               }
             ],
@@ -1162,7 +1197,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "throw"
+                    "stage": "throw",
+                    "group": "action"
                   }
                 }
               }
@@ -1187,7 +1223,8 @@
               },
               {
                 "type": "stagedActionIs",
-                "param": "throw"
+                "param": "throw",
+                "stageGroup": "action"
               }
             ],
             "condition": {
@@ -1199,7 +1236,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               }
             ],
@@ -1207,7 +1245,8 @@
               "moduleId": "staging",
               "intent": "setStage",
               "args": {
-                "stage": "none"
+                "stage": "none",
+                "group": "action"
               }
             },
             "body": [
@@ -1217,7 +1256,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               }
@@ -1324,7 +1364,7 @@
             },
             "conditions": [
               {
-                "type": "tagPressed",
+                "type": "tagHeld",
                 "param": "tag-kbm-tn6irx"
               },
               {
@@ -1332,16 +1372,29 @@
               },
               {
                 "type": "targetInReach"
+              },
+              {
+                "type": "stagedActionIs",
+                "stageGroup": "interact",
+                "param": "none"
               }
             ],
             "condition": {
-              "type": "tagPressed",
+              "type": "tagHeld",
               "param": "tag-kbm-tn6irx"
             },
             "actions": [
               {
                 "moduleId": "pickup",
                 "intent": "swap"
+              },
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "group": "interact",
+                  "stage": "dirty"
+                }
               }
             ],
             "action": {
@@ -1354,6 +1407,17 @@
                 "action": {
                   "moduleId": "pickup",
                   "intent": "swap"
+                }
+              },
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "group": "interact",
+                    "stage": "dirty"
+                  }
                 }
               }
             ],
@@ -1396,6 +1460,60 @@
                 "action": {
                   "moduleId": "pickup",
                   "intent": "dropItem"
+                }
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "rule-mvv00aqr8yr",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvv00aqr",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagReleased",
+                "param": "tag-kbm-tn6irx"
+              }
+            ],
+            "condition": {
+              "type": "tagReleased",
+              "param": "tag-kbm-tn6irx"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "group": "interact",
+                  "stage": "none"
+                }
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "setStage",
+              "args": {
+                "group": "interact",
+                "stage": "none"
+              }
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "group": "interact",
+                    "stage": "none"
+                  }
                 }
               }
             ],
@@ -1794,6 +1912,25 @@
         "throw",
         "itemAbility",
         "grab"
+      ],
+      "stageGroups": [
+        {
+          "name": "action",
+          "stages": [
+            "none",
+            "laser",
+            "throw",
+            "itemAbility",
+            "grab"
+          ]
+        },
+        {
+          "name": "interact",
+          "stages": [
+            "none",
+            "dirty"
+          ]
+        }
       ]
     },
     "strength": 1,
@@ -2988,7 +3125,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "throw"
+                    "stage": "throw",
+                    "group": "action"
                   }
                 }
               ],
@@ -3010,7 +3148,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "throw"
+                      "stage": "throw",
+                      "group": "action"
                     }
                   }
                 }
@@ -3031,7 +3170,8 @@
               "conditions": [
                 {
                   "type": "stagedActionIs",
-                  "param": "throw"
+                  "param": "throw",
+                  "stageGroup": "action"
                 },
                 {
                   "type": "tagPressed",
@@ -3040,7 +3180,8 @@
               ],
               "condition": {
                 "type": "stagedActionIs",
-                "param": "throw"
+                "param": "throw",
+                "stageGroup": "action"
               },
               "actions": [
                 {
@@ -3104,12 +3245,14 @@
                       "conditions": [
                         {
                           "type": "stagedActionIs",
-                          "param": "laser"
+                          "param": "laser",
+                          "stageGroup": "action"
                         }
                       ],
                       "condition": {
                         "type": "stagedActionIs",
-                        "param": "laser"
+                        "param": "laser",
+                        "stageGroup": "action"
                       },
                       "actions": [
                         {
@@ -3153,11 +3296,13 @@
                           "conditions": [
                             {
                               "type": "stagedActionIs",
-                              "param": "none"
+                              "param": "none",
+                              "stageGroup": "action"
                             },
                             {
                               "type": "stagedActionIs",
-                              "param": "itemAbility"
+                              "param": "itemAbility",
+                              "stageGroup": "action"
                             }
                           ]
                         }
@@ -3174,7 +3319,8 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "itemAbility"
+                            "stage": "itemAbility",
+                            "group": "action"
                           }
                         }
                       ],
@@ -3196,7 +3342,8 @@
                             "moduleId": "staging",
                             "intent": "setStage",
                             "args": {
-                              "stage": "itemAbility"
+                              "stage": "itemAbility",
+                              "group": "action"
                             }
                           }
                         }
@@ -3224,11 +3371,13 @@
                           "conditions": [
                             {
                               "type": "stagedActionIs",
-                              "param": "none"
+                              "param": "none",
+                              "stageGroup": "action"
                             },
                             {
                               "type": "stagedActionIs",
-                              "param": "grab"
+                              "param": "grab",
+                              "stageGroup": "action"
                             }
                           ]
                         }
@@ -3245,7 +3394,8 @@
                           "moduleId": "staging",
                           "intent": "setStage",
                           "args": {
-                            "stage": "grab"
+                            "stage": "grab",
+                            "group": "action"
                           }
                         }
                       ],
@@ -3267,7 +3417,8 @@
                             "moduleId": "staging",
                             "intent": "setStage",
                             "args": {
-                              "stage": "grab"
+                              "stage": "grab",
+                              "group": "action"
                             }
                           }
                         }
@@ -3428,7 +3579,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               ],
@@ -3436,7 +3588,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               },
               "body": [
@@ -3446,7 +3599,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "none"
+                      "stage": "none",
+                      "group": "action"
                     }
                   }
                 }
@@ -3518,14 +3672,24 @@
               },
               "actions": [
                 {
-                  "moduleId": "throwPickup",
-                  "intent": "grabItem"
+                  "moduleId": "melee",
+                  "intent": "punch"
                 }
               ],
               "action": {
-                "moduleId": "throwPickup",
-                "intent": "grabItem"
-              }
+                "moduleId": "melee",
+                "intent": "punch"
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "melee",
+                    "intent": "punch"
+                  }
+                }
+              ],
+              "children": []
             },
             {
               "id": "rule-mvuyutgqxj8",
@@ -3553,7 +3717,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "laser"
+                    "stage": "laser",
+                    "group": "action"
                   }
                 },
                 {
@@ -3565,7 +3730,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "laser"
+                  "stage": "laser",
+                  "group": "action"
                 }
               },
               "body": [
@@ -3575,7 +3741,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "laser"
+                      "stage": "laser",
+                      "group": "action"
                     }
                   }
                 },
@@ -3607,7 +3774,8 @@
                 },
                 {
                   "type": "stagedActionIs",
-                  "param": "laser"
+                  "param": "laser",
+                  "stageGroup": "action"
                 }
               ],
               "condition": {
@@ -3619,7 +3787,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               ],
@@ -3627,7 +3796,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               },
               "body": [
@@ -3637,7 +3807,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "none"
+                      "stage": "none",
+                      "group": "action"
                     }
                   }
                 }
@@ -3674,7 +3845,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "throw"
+                    "stage": "throw",
+                    "group": "action"
                   }
                 }
               ],
@@ -3696,7 +3868,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "throw"
+                      "stage": "throw",
+                      "group": "action"
                     }
                   }
                 }
@@ -3721,7 +3894,8 @@
                 },
                 {
                   "type": "stagedActionIs",
-                  "param": "throw"
+                  "param": "throw",
+                  "stageGroup": "action"
                 }
               ],
               "condition": {
@@ -3733,7 +3907,8 @@
                   "moduleId": "staging",
                   "intent": "setStage",
                   "args": {
-                    "stage": "none"
+                    "stage": "none",
+                    "group": "action"
                   }
                 }
               ],
@@ -3741,7 +3916,8 @@
                 "moduleId": "staging",
                 "intent": "setStage",
                 "args": {
-                  "stage": "none"
+                  "stage": "none",
+                  "group": "action"
                 }
               },
               "body": [
@@ -3751,7 +3927,8 @@
                     "moduleId": "staging",
                     "intent": "setStage",
                     "args": {
-                      "stage": "none"
+                      "stage": "none",
+                      "group": "action"
                     }
                   }
                 }
@@ -3858,7 +4035,7 @@
               },
               "conditions": [
                 {
-                  "type": "tagPressed",
+                  "type": "tagHeld",
                   "param": "tag-kbm-tn6irx"
                 },
                 {
@@ -3866,16 +4043,29 @@
                 },
                 {
                   "type": "targetInReach"
+                },
+                {
+                  "type": "stagedActionIs",
+                  "stageGroup": "interact",
+                  "param": "none"
                 }
               ],
               "condition": {
-                "type": "tagPressed",
+                "type": "tagHeld",
                 "param": "tag-kbm-tn6irx"
               },
               "actions": [
                 {
                   "moduleId": "pickup",
                   "intent": "swap"
+                },
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "group": "interact",
+                    "stage": "dirty"
+                  }
                 }
               ],
               "action": {
@@ -3888,6 +4078,17 @@
                   "action": {
                     "moduleId": "pickup",
                     "intent": "swap"
+                  }
+                },
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "group": "interact",
+                      "stage": "dirty"
+                    }
                   }
                 }
               ],
@@ -3930,6 +4131,60 @@
                   "action": {
                     "moduleId": "pickup",
                     "intent": "dropItem"
+                  }
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "rule-mvv00aqr8yr",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvv00aqr",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagReleased",
+                  "param": "tag-kbm-tn6irx"
+                }
+              ],
+              "condition": {
+                "type": "tagReleased",
+                "param": "tag-kbm-tn6irx"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "group": "interact",
+                    "stage": "none"
+                  }
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "group": "interact",
+                  "stage": "none"
+                }
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "group": "interact",
+                      "stage": "none"
+                    }
                   }
                 }
               ],
@@ -4328,6 +4583,25 @@
           "throw",
           "itemAbility",
           "grab"
+        ],
+        "stageGroups": [
+          {
+            "name": "action",
+            "stages": [
+              "none",
+              "laser",
+              "throw",
+              "itemAbility",
+              "grab"
+            ]
+          },
+          {
+            "name": "interact",
+            "stages": [
+              "none",
+              "dirty"
+            ]
+          }
         ]
       }
     }
