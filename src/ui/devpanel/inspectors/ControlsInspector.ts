@@ -10,7 +10,7 @@ import type {
   TriggerMode,
   InputTagBinding,
   InputTriggerBinding,
-  RuleStatement,
+  ActionInvocation,
   ActionStatement,
   NestedThreadStatement,
 } from "../../../input/schema/ControlSchemaTypes.js";
@@ -994,7 +994,7 @@ export class ControlsInspector {
       act: ActionInvocation,
       sIdx: number,
       totalStmts: number
-    ) => {
+    ): string => {
       const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
       const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
       const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
@@ -1024,7 +1024,7 @@ export class ControlsInspector {
       sIdx: number,
       totalStmts: number,
       depth: number
-    ) => {
+    ): string => {
       const threadRules = stmt.rules;
       const bg = "rgba(10, 15, 29, 0.85)";
       const border = "rgba(148, 163, 184, 0.25)";
@@ -1074,7 +1074,7 @@ export class ControlsInspector {
       branchIdx = 0,
       totalBranches = 1,
       threadId = ""
-    ) => {
+    ): string => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
       const statements = ControlSchemaArbiter.getRuleBody(rule);
 

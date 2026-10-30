@@ -1,6 +1,6 @@
 {
-  "version": 129,
-  "lastSaved": "2026-10-30T10:28:42.610Z",
+  "version": 130,
+  "lastSaved": "2026-10-30T10:42:19.382Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -536,12 +536,12 @@
             },
             "conditions": [
               {
-                "type": "tagHeld",
+                "type": "tagCleanHold",
                 "param": "tag-kbm-ffc1ts"
               }
             ],
             "condition": {
-              "type": "tagHeld",
+              "type": "tagCleanHold",
               "param": "tag-kbm-ffc1ts"
             },
             "actions": [],
@@ -2462,12 +2462,12 @@
               },
               "conditions": [
                 {
-                  "type": "tagHeld",
+                  "type": "tagCleanHold",
                   "param": "tag-kbm-ffc1ts"
                 }
               ],
               "condition": {
-                "type": "tagHeld",
+                "type": "tagCleanHold",
                 "param": "tag-kbm-ffc1ts"
               },
               "actions": [],

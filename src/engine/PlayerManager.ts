@@ -9,7 +9,7 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
-import type { ControlExecutionContext } from "../input/schema/ControlSchemaTypes.js";
+import type { ControlExecutionContext, ControlRule, InputTriggerBinding } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -1071,19 +1071,6 @@ export class PlayerManager {
       };
       updateRulePreconditions(gpSchema.gamepad.rules, gpExecCtx);
       gpExecCtx.isCleanHoldActive = createCleanHoldChecker(gpExecCtx, undefined, undefined, gpStates);
-
-      const gpDummyKeyStates = {
-        isDown: (_code: string) => false,
-        justPressed: (_code: string) => false,
-        justReleased: (_code: string) => false,
-      };
-
-      const gpDummyMouseStates = {
-        isDown: (_btn: number) => false,
-        justPressed: (_btn: number) => false,
-        justReleased: (_btn: number) => false,
-        worldPos: { x: aimX, y: aimY },
-      };
 
       // 1. Stick Mode Evaluation (Dynamic Override)
       let gpMoveX = slot.movementVector.x;
