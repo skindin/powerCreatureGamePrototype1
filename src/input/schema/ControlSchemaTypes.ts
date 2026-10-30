@@ -54,6 +54,19 @@ export interface InputTagBinding {
   trigger: InputTriggerBinding;
 }
 
+export interface ActionStatement {
+  type: "action";
+  action: ActionInvocation;
+}
+
+export interface NestedThreadStatement {
+  type: "nestedThread";
+  threadId: string;
+  rules: ControlRule[];
+}
+
+export type RuleStatement = ActionStatement | NestedThreadStatement;
+
 export interface ControlRule {
   id: string;
   name?: string;
@@ -64,9 +77,10 @@ export interface ControlRule {
   trigger: InputTriggerBinding;
   conditions?: ConditionGate[]; // Multiple conditions (ALL must match: logical AND)
   condition?: ConditionGate;    // Single condition (for backwards compatibility)
-  actions?: ActionInvocation[]; // Multiple result functions executed
+  body?: RuleStatement[];       // Ordered sequence of actions and nested IF threads in THEN block
+  actions?: ActionInvocation[]; // Multiple result functions executed (legacy / flat)
   action?: ActionInvocation;    // Single action (for backwards compatibility)
-  children?: ControlRule[];     // Nested conditional threads/cascade inside this rule's THEN block
+  children?: ControlRule[];     // Nested conditional threads/cascade inside this rule's THEN block (legacy / flat)
 }
 
 export type LocomotionParadigm = "directVector" | "forwardFacingDrive" | "cursorSteer";

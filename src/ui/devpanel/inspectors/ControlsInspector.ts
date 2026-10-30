@@ -10,6 +10,9 @@ import type {
   TriggerMode,
   InputTagBinding,
   InputTriggerBinding,
+  RuleStatement,
+  ActionStatement,
+  NestedThreadStatement,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
@@ -268,8 +271,10 @@ export class ControlsInspector {
             pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
           }
         }
-        if (rule.children && rule.children.length > 0) {
-          checkRules(rule.children);
+        for (const stmt of ControlSchemaArbiter.getRuleBody(rule)) {
+          if (stmt.type === "nestedThread") {
+            checkRules(stmt.rules);
+          }
         }
       }
     };
@@ -984,9 +989,94 @@ export class ControlsInspector {
       `;
     }
 
-    const renderBranchRowHtml = (rule: ControlRule, branchBadge: string, depth = 0) => {
+    const renderActionStatementHtml = (
+      rule: ControlRule,
+      act: ActionInvocation,
+      sIdx: number,
+      totalStmts: number
+    ) => {
+      const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+      const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
+      const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
+      const isModuleMissing = cat && !cat.isAttached(char);
+
+      return `
+        <div class="then-statement-action" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(148,163,184,0.15); border-radius: 3px; padding: 2px 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+            <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${sIdx + 1}.</span>
+            <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
+              ${actionLabel} ▼
+            </button>
+            ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
+          </div>
+          <div style="display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
+            <button class="btn-move-statement-up btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx > 0 ? "pointer" : "default"};" ${sIdx === 0 ? "disabled" : ""} title="Move Action Up">▲</button>
+            <button class="btn-move-statement-down btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx < totalStmts - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx < totalStmts - 1 ? "pointer" : "default"};" ${sIdx === totalStmts - 1 ? "disabled" : ""} title="Move Action Down">▼</button>
+            <button class="btn-delete-statement btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderNestedThreadStatementHtml = (
+      parentRule: ControlRule,
+      stmt: NestedThreadStatement,
+      sIdx: number,
+      totalStmts: number,
+      depth: number
+    ) => {
+      const threadRules = stmt.rules;
+      const bg = "rgba(10, 15, 29, 0.85)";
+      const border = "rgba(148, 163, 184, 0.25)";
+
+      return `
+        <div class="control-thread-card nested-thread-card" data-parent-rule-id="${parentRule.id}" data-thread-id="${stmt.threadId}" style="display: flex; flex-direction: column; gap: 6px; background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: 8px 10px; margin-top: 3px; margin-bottom: 3px;">
+          <!-- Nested Thread Card Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${sIdx + 1}.</span>
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; letter-spacing: 0.03em;">🔀 Nested Cascade Block</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <button class="btn-move-statement-up btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx > 0 ? "pointer" : "default"};" ${sIdx === 0 ? "disabled" : ""} title="Move Nested Thread Up">▲ Thread</button>
+              <button class="btn-move-statement-down btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx < totalStmts - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx < totalStmts - 1 ? "pointer" : "default"};" ${sIdx === totalStmts - 1 ? "disabled" : ""} title="Move Nested Thread Down">▼ Thread</button>
+              <button class="btn-delete-statement btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Entire Nested Thread">🗑️</button>
+            </div>
+          </div>
+
+          <!-- Cascade Branches in Block -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            ${threadRules
+              .map((r, rIdx) => {
+                const isLast = rIdx === threadRules.length - 1;
+                const conds = ControlSchemaArbiter.getRuleConditions(r);
+                const isAlways = conds.length === 1 && conds[0].type === "always";
+                const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+                return renderBranchRowHtml(r, badge, depth, rIdx, threadRules.length, stmt.threadId);
+              })
+              .join("")}
+          </div>
+
+          <!-- Add Branch to this Cascade Block -->
+          <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+            <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${stmt.threadId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
+              + Add Else If Branch
+            </button>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderBranchRowHtml = (
+      rule: ControlRule,
+      branchBadge: string,
+      depth = 0,
+      branchIdx = 0,
+      totalBranches = 1,
+      threadId = ""
+    ) => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
-      const actions = ControlSchemaArbiter.getRuleActions(rule);
+      const statements = ControlSchemaArbiter.getRuleBody(rule);
 
       return `
         <div class="thread-branch-block" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 5px; padding: 7px 10px;">
@@ -1048,9 +1138,13 @@ export class ControlsInspector {
               </div>
             </div>
 
-            <!-- Delete Branch Button -->
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
+            <!-- Branch Reorder & Delete Buttons -->
+            <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+              ${totalBranches > 1 ? `
+                <button class="btn-move-branch-up btn-icon" data-thread-id="${threadId}" data-branch-idx="${branchIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${branchIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${branchIdx > 0 ? "pointer" : "default"};" ${branchIdx === 0 ? "disabled" : ""} title="Move Branch Up">▲</button>
+                <button class="btn-move-branch-down btn-icon" data-thread-id="${threadId}" data-branch-idx="${branchIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${branchIdx < totalBranches - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${branchIdx < totalBranches - 1 ? "pointer" : "default"};" ${branchIdx === totalBranches - 1 ? "disabled" : ""} title="Move Branch Down">▼</button>
+              ` : ""}
+              <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent; cursor: pointer;" title="Remove Branch">
                 🗑️
               </button>
             </div>
@@ -1068,32 +1162,20 @@ export class ControlsInspector {
               </div>
             </div>
 
-            <!-- Vertically Stacked Actions -->
-            <div style="display: flex; flex-direction: column; gap: 3px;">
-              ${actions
-                .map((act, aIdx) => {
-                  const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
-                  const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
-                  const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
-                  const isModuleMissing = cat && !cat.isAttached(char);
-                  return `
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(148,163,184,0.15); border-radius: 3px; padding: 2px 6px;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
-                        <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${aIdx + 1}.</span>
-                        <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
-                          ${actionLabel} ▼
-                        </button>
-                        ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
-                      </div>
-                      ${actions.length > 1 ? `<button class="btn-delete-action btn-icon" data-rule-id="${rule.id}" data-action-idx="${aIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>` : ""}
-                    </div>
-                  `;
-                })
-                .join("")}
+            <!-- Vertically Ordered Statements in THEN Body (Actions & Nested Cascade Blocks Interleaved) -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${statements.length === 0
+                ? `<div style="font-size: 0.62rem; color: #64748b; font-style: italic; padding: 2px 4px;">No actions or nested blocks in this THEN body.</div>`
+                : statements
+                    .map((stmt, sIdx) => {
+                      if (stmt.type === "action") {
+                        return renderActionStatementHtml(rule, stmt.action, sIdx, statements.length);
+                      } else {
+                        return renderNestedThreadStatementHtml(rule, stmt, sIdx, statements.length, depth + 1);
+                      }
+                    })
+                    .join("")}
             </div>
-
-            <!-- Nested Cascade Blocks inside THEN -->
-            ${rule.children && rule.children.length > 0 ? renderCascadeBlocksHtml(rule.children, depth + 1) : ""}
           </div>
         </div>
       `;
@@ -1112,12 +1194,22 @@ export class ControlsInspector {
       }
 
       const threadCards: string[] = [];
+      const totalBlocks = threadMap.size;
+      let bIdx = 0;
 
       for (const [tId, threadRules] of threadMap.entries()) {
         const bg = depth === 0 ? "rgba(15, 23, 42, 0.7)" : "rgba(10, 15, 29, 0.85)";
         const border = depth === 0 ? "rgba(148, 163, 184, 0.2)" : "rgba(148, 163, 184, 0.25)";
         threadCards.push(`
           <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: ${depth === 0 ? "10px 12px" : "8px 10px"}; margin-top: ${depth > 0 ? "6px" : "0"};">
+            ${depth === 0 && totalBlocks > 1 ? `
+              <!-- Top-level Block Reorder Controls -->
+              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-bottom: -2px;">
+                <button class="btn-move-cascade-block-up btn-icon" data-thread-id="${tId}" style="font-size: 0.58rem; padding: 1px 6px; color: ${bIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${bIdx > 0 ? "pointer" : "default"};" ${bIdx === 0 ? "disabled" : ""} title="Move Entire Block Up">▲ Block</button>
+                <button class="btn-move-cascade-block-down btn-icon" data-thread-id="${tId}" style="font-size: 0.58rem; padding: 1px 6px; color: ${bIdx < totalBlocks - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${bIdx < totalBlocks - 1 ? "pointer" : "default"};" ${bIdx === totalBlocks - 1 ? "disabled" : ""} title="Move Entire Block Down">▼ Block</button>
+              </div>
+            ` : ""}
+
             <!-- Cascade Branches in Block -->
             <div style="display: flex; flex-direction: column; gap: 8px;">
               ${threadRules
@@ -1126,7 +1218,7 @@ export class ControlsInspector {
                   const conds = ControlSchemaArbiter.getRuleConditions(r);
                   const isAlways = conds.length === 1 && conds[0].type === "always";
                   const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
-                  return renderBranchRowHtml(r, badge, depth);
+                  return renderBranchRowHtml(r, badge, depth, rIdx, threadRules.length, tId);
                 })
                 .join("")}
             </div>
@@ -1139,6 +1231,7 @@ export class ControlsInspector {
             </div>
           </div>
         `);
+        bIdx++;
       }
       return threadCards.join("");
     };
@@ -1464,22 +1557,7 @@ export class ControlsInspector {
         const rId = (btn as HTMLElement).dataset.ruleId;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          if (!rule.children) rule.children = [];
-          const childThreadId = `thread-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
-          const childRule: ControlRule = {
-            id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
-            name: "Nested Action Branch",
-            enabled: true,
-            priority: 50,
-            threadId: childThreadId,
-            trigger: { device: "keyboard", code: "Always", mode: "hold" },
-            conditions: [{ type: "always" }],
-            condition: { type: "always" },
-            actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
-            action: { moduleId: "throwPickup", intent: "grabItem" },
-          };
-          rule.children.push(childRule);
-          this.renderActiveView();
+          this.addNestedThreadToRule(rule);
         }
       });
     });
@@ -1639,34 +1717,84 @@ export class ControlsInspector {
       });
     });
 
-    // 12b. Rule Actions (Multiple)
+    // 12b. Rule Actions & Statements (Multiple & Interleaved)
     root.querySelectorAll(".btn-add-action").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const actions = ControlSchemaArbiter.getRuleActions(rule);
-          actions.push({ moduleId: "locomotion", intent: "jump" });
-          rule.actions = actions;
-          rule.action = actions[0];
-          this.renderActiveView();
+          this.addActionToRule(rule);
         }
       });
     });
 
-    root.querySelectorAll(".btn-delete-action").forEach((btn) => {
+    root.querySelectorAll(".btn-move-statement-up").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
-        const aIdx = parseInt((btn as HTMLElement).dataset.actionIdx ?? "0", 10);
+        const sIdx = parseInt((btn as HTMLElement).dataset.statementIdx ?? "0", 10);
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const actions = ControlSchemaArbiter.getRuleActions(rule);
-          if (actions.length > 1) {
-            actions.splice(aIdx, 1);
-            rule.actions = actions;
-            rule.action = actions[0];
-            this.renderActiveView();
-          }
+          this.moveStatement(rule, sIdx, -1);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-move-statement-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((btn as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.moveStatement(rule, sIdx, 1);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-delete-statement").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const sIdx = parseInt((btn as HTMLElement).dataset.statementIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.deleteStatement(rule, sIdx);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-move-branch-up").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = (btn as HTMLElement).dataset.threadId;
+        const bIdx = parseInt((btn as HTMLElement).dataset.branchIdx ?? "0", 10);
+        if (tId) {
+          this.moveBranch(schema, tId, bIdx, -1);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-move-branch-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = (btn as HTMLElement).dataset.threadId;
+        const bIdx = parseInt((btn as HTMLElement).dataset.branchIdx ?? "0", 10);
+        if (tId) {
+          this.moveBranch(schema, tId, bIdx, 1);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-move-cascade-block-up").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = (btn as HTMLElement).dataset.threadId;
+        if (tId) {
+          this.moveCascadeBlock(schema, tId, -1);
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-move-cascade-block-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = (btn as HTMLElement).dataset.threadId;
+        if (tId) {
+          this.moveCascadeBlock(schema, tId, 1);
         }
       });
     });
@@ -1676,9 +1804,9 @@ export class ControlsInspector {
       btn.addEventListener("click", (evt) => {
         evt.stopPropagation();
         const rId = (btn as HTMLElement).dataset.ruleId;
-        const aIdx = parseInt((btn as HTMLElement).dataset.actionIdx ?? "0", 10);
+        const sIdx = parseInt((btn as HTMLElement).dataset.statementIdx ?? (btn as HTMLElement).dataset.actionIdx ?? "0", 10);
         if (rId) {
-          this.showActionPickerMenu(rId, aIdx, btn as HTMLElement);
+          this.showActionPickerMenu(rId, sIdx, btn as HTMLElement);
         }
       });
     });
@@ -1738,6 +1866,12 @@ export class ControlsInspector {
     function search(list: ControlRule[]): ControlRule | undefined {
       for (const r of list) {
         if (r.id === ruleId) return r;
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            const found = search(stmt.rules);
+            if (found) return found;
+          }
+        }
         if (r.children && r.children.length > 0) {
           const found = search(r.children);
           if (found) return found;
@@ -1765,6 +1899,14 @@ export class ControlsInspector {
         return true;
       }
       for (const r of list) {
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            if (remove(stmt.rules)) {
+              ControlSchemaArbiter.syncRuleFromStatements(r);
+              return true;
+            }
+          }
+        }
         if (r.children && r.children.length > 0) {
           if (remove(r.children)) return true;
         }
@@ -1788,6 +1930,12 @@ export class ControlsInspector {
         return list;
       }
       for (const r of list) {
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            const found = search(stmt.rules);
+            if (found) return found;
+          }
+        }
         if (r.children && r.children.length > 0) {
           const found = search(r.children);
           if (found) return found;
@@ -1797,6 +1945,123 @@ export class ControlsInspector {
     }
 
     return search(rootRules);
+  }
+
+  private static addActionToRule(rule: ControlRule): void {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    stmts.push({
+      type: "action",
+      action: { moduleId: "locomotion", intent: "jump" },
+    });
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+
+  private static addNestedThreadToRule(rule: ControlRule): void {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    const subThreadId = `subthread-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
+    const newChildRule: ControlRule = {
+      id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+      name: "Nested Action Branch",
+      enabled: true,
+      priority: 50,
+      threadId: subThreadId,
+      trigger: { device: "keyboard", code: "Always", mode: "hold" },
+      conditions: [{ type: "always" }],
+      condition: { type: "always" },
+      actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+      action: { moduleId: "throwPickup", intent: "grabItem" },
+      body: [{ type: "action", action: { moduleId: "throwPickup", intent: "grabItem" } }],
+    };
+    stmts.push({
+      type: "nestedThread",
+      threadId: subThreadId,
+      rules: [newChildRule],
+    });
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+
+  private static moveStatement(rule: ControlRule, stmtIdx: number, delta: -1 | 1): void {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    const targetIdx = stmtIdx + delta;
+    if (targetIdx < 0 || targetIdx >= stmts.length) return;
+    const temp = stmts[stmtIdx];
+    stmts[stmtIdx] = stmts[targetIdx];
+    stmts[targetIdx] = temp;
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+
+  private static deleteStatement(rule: ControlRule, stmtIdx: number): void {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    if (stmtIdx >= 0 && stmtIdx < stmts.length) {
+      stmts.splice(stmtIdx, 1);
+      rule.body = stmts;
+      ControlSchemaArbiter.syncRuleFromStatements(rule);
+      this.renderActiveView();
+    }
+  }
+
+  private static moveBranch(schema: ControlSchema, threadId: string, branchIdx: number, delta: -1 | 1): void {
+    const list = this.findRuleListForThread(schema, threadId);
+    if (!list) return;
+    const threadRules = list.filter((r) => r.threadId === threadId);
+    const targetBranchIdx = branchIdx + delta;
+    if (targetBranchIdx < 0 || targetBranchIdx >= threadRules.length) return;
+    const ruleA = threadRules[branchIdx];
+    const ruleB = threadRules[targetBranchIdx];
+    const idxA = list.indexOf(ruleA);
+    const idxB = list.indexOf(ruleB);
+    if (idxA !== -1 && idxB !== -1) {
+      list[idxA] = ruleB;
+      list[idxB] = ruleA;
+      this.renderActiveView();
+    }
+  }
+
+  private static moveCascadeBlock(schema: ControlSchema, threadId: string, delta: -1 | 1): void {
+    const rootRules =
+      this.activeTab === "keyboardMouse"
+        ? schema.keyboardMouse.rules
+        : this.activeTab === "gamepad"
+        ? schema.gamepad.rules
+        : schema.touch.rules;
+
+    const distinctThreadIds: string[] = [];
+    for (const r of rootRules) {
+      const tId = r.threadId || `thread-${r.id}`;
+      if (!distinctThreadIds.includes(tId)) {
+        distinctThreadIds.push(tId);
+      }
+    }
+
+    const curIdx = distinctThreadIds.indexOf(threadId);
+    const targetIdx = curIdx + delta;
+    if (curIdx === -1 || targetIdx < 0 || targetIdx >= distinctThreadIds.length) return;
+
+    const otherThreadId = distinctThreadIds[targetIdx];
+    const groups = new Map<string, ControlRule[]>();
+    for (const tId of distinctThreadIds) {
+      groups.set(tId, []);
+    }
+    for (const r of rootRules) {
+      const tId = r.threadId || `thread-${r.id}`;
+      groups.get(tId)?.push(r);
+    }
+
+    distinctThreadIds[curIdx] = otherThreadId;
+    distinctThreadIds[targetIdx] = threadId;
+
+    rootRules.length = 0;
+    for (const tId of distinctThreadIds) {
+      const grp = groups.get(tId);
+      if (grp) rootRules.push(...grp);
+    }
+    this.renderActiveView();
   }
 
   // --- "Press Input to Bind" Tag Recorder (Layer 1) ---
@@ -2105,7 +2370,7 @@ export class ControlsInspector {
 
   // --- Categorized Action Function Popover ---
 
-  private static showActionPickerMenu(ruleId: string, actionIdx: number, anchorBtn: HTMLElement): void {
+  private static showActionPickerMenu(ruleId: string, statementIdx: number, anchorBtn: HTMLElement): void {
     const activeDoc = this.popoutWindow && !this.popoutWindow.closed ? this.popoutWindow.document : document;
     const existing = activeDoc.getElementById("action-picker-popover");
     if (existing) existing.remove();
@@ -2220,15 +2485,23 @@ export class ControlsInspector {
           if (actDef?.recommendedMode && rule.trigger.mode === "press") {
             rule.trigger.mode = actDef.recommendedMode;
           }
-          const actions = ControlSchemaArbiter.getRuleActions(rule);
-          if (actions[actionIdx]) {
-            actions[actionIdx].moduleId = mod;
-            actions[actionIdx].intent = intent;
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[statementIdx] && stmts[statementIdx].type === "action") {
+            (stmts[statementIdx] as ActionStatement).action.moduleId = mod;
+            (stmts[statementIdx] as ActionStatement).action.intent = intent;
           } else {
-            actions.push({ moduleId: mod, intent });
+            const actions = ControlSchemaArbiter.getRuleActions(rule);
+            if (actions[statementIdx]) {
+              actions[statementIdx].moduleId = mod;
+              actions[statementIdx].intent = intent;
+            } else {
+              actions.push({ moduleId: mod, intent });
+            }
+            rule.actions = actions;
+            rule.action = actions[0];
           }
-          rule.actions = actions;
-          rule.action = actions[0];
+          rule.body = stmts;
+          ControlSchemaArbiter.syncRuleFromStatements(rule);
           popover.remove();
           this.renderActiveView();
         }

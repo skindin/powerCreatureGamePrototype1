@@ -710,80 +710,80 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
-          const actions = ControlSchemaArbiter.getRuleActions(rule);
+          const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
 
-          for (const act of actions) {
-            const mid = act.moduleId;
-            const intent = act.intent;
+          for (const stmt of statements) {
+            if (stmt.type === "action") {
+              const act = stmt.action;
+              const mid = act.moduleId;
+              const intent = act.intent;
 
-            if (mid === "locomotion") {
-              if (intent === "jump") isJumpHeld = true;
-              else if (intent === "holdSprint") isSprinting = true;
-              else if (intent === "toggleSprint") {
-                if (effTrigger.mode === "press" ? (keyStates.justPressed(effTrigger.code) || mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : 2)) : true) {
-                  kChar.setSprinting(!kChar.isSprinting);
+              if (mid === "locomotion") {
+                if (intent === "jump") isJumpHeld = true;
+                else if (intent === "holdSprint") isSprinting = true;
+                else if (intent === "toggleSprint") {
+                  if (effTrigger.mode === "press" ? (keyStates.justPressed(effTrigger.code) || mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : 2)) : true) {
+                    kChar.setSprinting(!kChar.isSprinting);
+                  }
+                  isSprinting = Boolean(kChar.isSprinting);
                 }
-                isSprinting = Boolean(kChar.isSprinting);
-              }
-            } else if (mid === "throw" || mid === "throwPickup") {
-              if (intent === "aimThrow") isAimingTrajectory = true;
-              else if (intent === "releaseThrow") isThrow = true;
-              else if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "dropItem") isDrop = true;
-              else if (intent === "swap" || intent === "swapItem") isSwap = true;
-            } else if (mid === "pickup") {
-              if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "dropItem") isDrop = true;
-              else if (intent === "swap" || intent === "swapItem") isSwap = true;
-            } else if (mid === "laser") {
-              if (intent === "aimLaser") isLaserAiming = true;
-              else if (intent === "fireLaser") {
-                isLaserFiring = true;
-                isLaserAiming = true;
-              }
-            } else if (mid === "melee") {
-              if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
-            } else if (mid === "staging") {
-              const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
-              if (isHold) {
-                const targetStage =
-                  intent === "holdStageLaser" || intent === "stageLaser"
-                    ? "laser"
-                    : intent === "holdStageThrow" || intent === "stageThrow"
-                    ? "throw"
-                    : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
-                    ? "pickup"
-                    : intent === "holdStageMelee" || intent === "stageMelee"
-                    ? "melee"
-                    : null;
-                if (targetStage) {
-                  activeHoldStage = targetStage;
-                  kChar.stagedAction = targetStage;
+              } else if (mid === "throw" || mid === "throwPickup") {
+                if (intent === "aimThrow") isAimingTrajectory = true;
+                else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
+              } else if (mid === "pickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
+              } else if (mid === "laser") {
+                if (intent === "aimLaser") isLaserAiming = true;
+                else if (intent === "fireLaser") {
+                  isLaserFiring = true;
+                  isLaserAiming = true;
                 }
-              } else if (effTrigger.mode === "press") {
-                const isJustTriggered =
-                  effTrigger.device === "mouse"
-                    ? mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : effTrigger.code === "MouseMiddle" ? 1 : 2)
-                    : keyStates.justPressed(effTrigger.code);
-                if (isJustTriggered) {
-                  if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
-                  else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
-                  else if (intent === "stagePickup") kChar.stagedAction = kChar.stagedAction === "pickup" ? null : "pickup";
-                  else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
-                  else if (intent === "clearStage") kChar.stagedAction = null;
+              } else if (mid === "melee") {
+                if (intent === "punch") isMeleeRequested = true;
+              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
+              } else if (mid === "staging") {
+                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
+                if (isHold) {
+                  const targetStage =
+                    intent === "holdStageLaser" || intent === "stageLaser"
+                      ? "laser"
+                      : intent === "holdStageThrow" || intent === "stageThrow"
+                      ? "throw"
+                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
+                      ? "pickup"
+                      : intent === "holdStageMelee" || intent === "stageMelee"
+                      ? "melee"
+                      : null;
+                  if (targetStage) {
+                    activeHoldStage = targetStage;
+                    kChar.stagedAction = targetStage;
+                  }
+                } else if (effTrigger.mode === "press") {
+                  const isJustTriggered =
+                    effTrigger.device === "mouse"
+                      ? mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : effTrigger.code === "MouseMiddle" ? 1 : 2)
+                      : keyStates.justPressed(effTrigger.code);
+                  if (isJustTriggered) {
+                    if (intent === "stageLaser") kChar.stagedAction = kChar.stagedAction === "laser" ? null : "laser";
+                    else if (intent === "stageThrow") kChar.stagedAction = kChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stagePickup") kChar.stagedAction = kChar.stagedAction === "pickup" ? null : "pickup";
+                    else if (intent === "stageMelee") kChar.stagedAction = kChar.stagedAction === "melee" ? null : "melee";
+                    else if (intent === "clearStage") kChar.stagedAction = null;
+                  }
+                } else if (effTrigger.mode === "release" && intent === "clearStage") {
+                  kChar.stagedAction = null;
                 }
-              } else if (effTrigger.mode === "release" && intent === "clearStage") {
-                kChar.stagedAction = null;
               }
+            } else if (stmt.type === "nestedThread") {
+              executeKbmRules(stmt.rules);
             }
-          }
-
-          // Recursively evaluate nested child rules inside this action block
-          if (rule.children && rule.children.length > 0) {
-            executeKbmRules(rule.children);
           }
         }
       };
@@ -1016,78 +1016,78 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
-          const actions = ControlSchemaArbiter.getRuleActions(rule);
+          const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
 
-          for (const act of actions) {
-            const mid = act.moduleId;
-            const intent = act.intent;
+          for (const stmt of statements) {
+            if (stmt.type === "action") {
+              const act = stmt.action;
+              const mid = act.moduleId;
+              const intent = act.intent;
 
-            if (mid === "locomotion") {
-              if (intent === "jump") isJumpHeld = true;
-              else if (intent === "holdSprint") isSprinting = true;
-              else if (intent === "toggleSprint") {
-                const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
-                if (effTrigger.mode === "press" ? gpStates.justPressed(btnCode) : true) {
-                  cChar.setSprinting(!cChar.isSprinting);
+              if (mid === "locomotion") {
+                if (intent === "jump") isJumpHeld = true;
+                else if (intent === "holdSprint") isSprinting = true;
+                else if (intent === "toggleSprint") {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
+                  if (effTrigger.mode === "press" ? gpStates.justPressed(btnCode) : true) {
+                    cChar.setSprinting(!cChar.isSprinting);
+                  }
+                  isSprinting = Boolean(cChar.isSprinting);
                 }
-                isSprinting = Boolean(cChar.isSprinting);
-              }
-            } else if (mid === "throw" || mid === "throwPickup") {
-              if (intent === "aimThrow") isAimingTrajectory = true;
-              else if (intent === "releaseThrow") isThrow = true;
-              else if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "dropItem") isDrop = true;
-              else if (intent === "swap" || intent === "swapItem") isSwap = true;
-            } else if (mid === "pickup") {
-              if (intent === "pickupReach") isGrabHeld = true;
-              else if (intent === "dropItem") isDrop = true;
-              else if (intent === "swap" || intent === "swapItem") isSwap = true;
-            } else if (mid === "laser") {
-              if (intent === "aimLaser") isLaserAiming = true;
-              else if (intent === "fireLaser") {
-                isLaserFiring = true;
-                isLaserAiming = true;
-              }
-            } else if (mid === "melee") {
-              if (intent === "punch") isMeleeRequested = true;
-            } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-              if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
-            } else if (mid === "staging") {
-              const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
-              if (isHold) {
-                const targetStage =
-                  intent === "holdStageLaser" || intent === "stageLaser"
-                    ? "laser"
-                    : intent === "holdStageThrow" || intent === "stageThrow"
-                    ? "throw"
-                    : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
-                    ? "pickup"
-                    : intent === "holdStageMelee" || intent === "stageMelee"
-                    ? "melee"
-                    : null;
-                if (targetStage) {
-                  activeGpHoldStage = targetStage;
-                  cChar.stagedAction = targetStage;
+              } else if (mid === "throw" || mid === "throwPickup") {
+                if (intent === "aimThrow") isAimingTrajectory = true;
+                else if (intent === "releaseThrow") isThrow = true;
+                else if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
+              } else if (mid === "pickup") {
+                if (intent === "pickupReach") isGrabHeld = true;
+                else if (intent === "dropItem") isDrop = true;
+                else if (intent === "swap" || intent === "swapItem") isSwap = true;
+              } else if (mid === "laser") {
+                if (intent === "aimLaser") isLaserAiming = true;
+                else if (intent === "fireLaser") {
+                  isLaserFiring = true;
+                  isLaserAiming = true;
                 }
-              } else if (effTrigger.mode === "press") {
-                const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
-                if (gpStates.justPressed(btnCode)) {
-                  if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
-                  else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
-                  else if (intent === "stagePickup") cChar.stagedAction = cChar.stagedAction === "pickup" ? null : "pickup";
-                  else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
-                  else if (intent === "clearStage") cChar.stagedAction = null;
+              } else if (mid === "melee") {
+                if (intent === "punch") isMeleeRequested = true;
+              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
+              } else if (mid === "staging") {
+                const isHold = effTrigger.mode === "hold" || intent.startsWith("holdStage");
+                if (isHold) {
+                  const targetStage =
+                    intent === "holdStageLaser" || intent === "stageLaser"
+                      ? "laser"
+                      : intent === "holdStageThrow" || intent === "stageThrow"
+                      ? "throw"
+                      : intent === "holdStagePickup" || intent === "stagePickup" || intent === "holdStageGrab" || intent === "stageGrab"
+                      ? "pickup"
+                      : intent === "holdStageMelee" || intent === "stageMelee"
+                      ? "melee"
+                      : null;
+                  if (targetStage) {
+                    activeGpHoldStage = targetStage;
+                    cChar.stagedAction = targetStage;
+                  }
+                } else if (effTrigger.mode === "press") {
+                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
+                  if (gpStates.justPressed(btnCode)) {
+                    if (intent === "stageLaser") cChar.stagedAction = cChar.stagedAction === "laser" ? null : "laser";
+                    else if (intent === "stageThrow") cChar.stagedAction = cChar.stagedAction === "throw" ? null : "throw";
+                    else if (intent === "stagePickup") cChar.stagedAction = cChar.stagedAction === "pickup" ? null : "pickup";
+                    else if (intent === "stageMelee") cChar.stagedAction = cChar.stagedAction === "melee" ? null : "melee";
+                    else if (intent === "clearStage") cChar.stagedAction = null;
+                  }
+                } else if (effTrigger.mode === "release" && intent === "clearStage") {
+                  cChar.stagedAction = null;
                 }
-              } else if (effTrigger.mode === "release" && intent === "clearStage") {
-                cChar.stagedAction = null;
               }
+            } else if (stmt.type === "nestedThread") {
+              executeGpRules(stmt.rules);
             }
-          }
-
-          // Recursively evaluate nested child rules inside this action block
-          if (rule.children && rule.children.length > 0) {
-            executeGpRules(rule.children);
           }
         }
       };

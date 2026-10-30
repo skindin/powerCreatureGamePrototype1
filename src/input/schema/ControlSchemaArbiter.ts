@@ -9,6 +9,7 @@ import type {
   TriggerMode,
   DeviceChannel,
   InputTagBinding,
+  RuleStatement,
 } from "./ControlSchemaTypes.js";
 import { ControlActionCatalog } from "./ControlActionCatalog.js";
 
@@ -40,9 +41,51 @@ export class ControlSchemaArbiter {
   }
 
   public static getRuleActions(rule: ControlRule): ActionInvocation[] {
+    if (rule.body && rule.body.length > 0) {
+      return rule.body.filter((s) => s.type === "action").map((s) => (s as { type: "action"; action: ActionInvocation }).action);
+    }
     if (rule.actions && rule.actions.length > 0) return rule.actions;
     if (rule.action) return [rule.action];
     return [];
+  }
+
+  public static getRuleBody(rule: ControlRule): RuleStatement[] {
+    if (rule.body && rule.body.length > 0) {
+      return rule.body;
+    }
+    const statements: RuleStatement[] = [];
+    const actions = this.getRuleActions(rule);
+    for (const act of actions) {
+      statements.push({ type: "action", action: act });
+    }
+    if (rule.children && rule.children.length > 0) {
+      const threadMap = new Map<string, ControlRule[]>();
+      for (const child of rule.children) {
+        const tId = child.threadId || `thread-${child.id}`;
+        if (!threadMap.has(tId)) threadMap.set(tId, []);
+        threadMap.get(tId)!.push(child);
+      }
+      for (const [threadId, rules] of threadMap.entries()) {
+        statements.push({ type: "nestedThread", threadId, rules });
+      }
+    }
+    return statements;
+  }
+
+  public static syncRuleFromStatements(rule: ControlRule): void {
+    if (!rule.body) return;
+    const actions: ActionInvocation[] = [];
+    const children: ControlRule[] = [];
+    for (const stmt of rule.body) {
+      if (stmt.type === "action") {
+        actions.push(stmt.action);
+      } else if (stmt.type === "nestedThread") {
+        children.push(...stmt.rules);
+      }
+    }
+    rule.actions = actions;
+    rule.action = actions[0];
+    rule.children = children;
   }
 
   public static resolveEffectiveTrigger(rule: ControlRule, schema?: ControlSchema, device?: DeviceChannel): InputTriggerBinding {
