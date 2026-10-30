@@ -7,6 +7,7 @@ import type {
   LocomotionParadigm,
   AimingParadigm,
   ConditionType,
+  ConditionGate,
   TriggerMode,
   InputTagBinding,
   InputTriggerBinding,
@@ -857,11 +858,19 @@ export class ControlsInspector {
     const processRule = (rule: ControlRule) => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
       let condsChanged = false;
-      for (const cond of conds) {
+      const updateCond = (cond: ConditionGate) => {
         if (cond.type === "stagedActionIs" && (cond.param === oldName || (!cond.param && oldName === "none"))) {
           cond.param = newName;
           condsChanged = true;
         }
+        if (cond.type === "group" && cond.conditions) {
+          for (const sub of cond.conditions) {
+            updateCond(sub);
+          }
+        }
+      };
+      for (const cond of conds) {
+        updateCond(cond);
       }
       if (condsChanged) {
         rule.conditions = conds;
@@ -899,6 +908,49 @@ export class ControlsInspector {
     if (schema.touch?.rules) {
       for (const r of schema.touch.rules) processRule(r);
     }
+  }
+
+  public static getConditionListAndIndex(rule: ControlRule, pathStr: string): { list: ConditionGate[]; index: number } | null {
+    if (!pathStr && pathStr !== "0") return null;
+    const parts = pathStr.split(".").map((p) => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    const conds = ControlSchemaArbiter.getRuleConditions(rule);
+    let currentList = conds;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const idx = parts[i];
+      const parentGate = currentList[idx];
+      if (!parentGate || parentGate.type !== "group" || !parentGate.conditions) {
+        return null;
+      }
+      currentList = parentGate.conditions;
+    }
+    return { list: currentList, index: parts[parts.length - 1] };
+  }
+
+  public static getConditionByPath(rule: ControlRule, pathStr: string): ConditionGate | null {
+    const res = this.getConditionListAndIndex(rule, pathStr);
+    if (!res || !res.list[res.index]) return null;
+    return res.list[res.index];
+  }
+
+  public static getConditionGroupList(rule: ControlRule, pathStr: string): { list: ConditionGate[]; group?: ConditionGate } | null {
+    const conds = ControlSchemaArbiter.getRuleConditions(rule);
+    if (!pathStr || pathStr.trim() === "") {
+      return { list: conds };
+    }
+    const parts = pathStr.split(".").map((p) => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    let currentGroup: ConditionGate | undefined;
+    let currentList = conds;
+    for (let i = 0; i < parts.length; i++) {
+      const idx = parts[i];
+      currentGroup = currentList[idx];
+      if (!currentGroup || currentGroup.type !== "group" || !currentGroup.conditions) {
+        return null;
+      }
+      currentList = currentGroup.conditions;
+    }
+    return { list: currentList, group: currentGroup };
   }
 
   private static renderStagesSectionHtml(schema: ControlSchema): string {
@@ -1190,6 +1242,90 @@ export class ControlsInspector {
       `;
     };
 
+    const renderConditionTreeHtml = (
+      rule: ControlRule,
+      condList: ConditionGate[],
+      op: "and" | "or",
+      parentPath: string,
+      depth = 0
+    ): string => {
+      const isRoot = parentPath === "";
+      return `
+        <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+          ${condList
+            .map((cond, cIdx) => {
+              const currentPath = parentPath !== "" ? `${parentPath}.${cIdx}` : `${cIdx}`;
+              const opBadgeHtml = cIdx > 0 ? `
+                <button class="btn-toggle-cond-op" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; font-weight: 800; color: ${op === "or" ? "#f59e0b" : "#38bdf8"}; background: ${op === "or" ? "rgba(245, 158, 11, 0.15)" : "rgba(56, 189, 248, 0.15)"}; border: 1px solid ${op === "or" ? "rgba(245, 158, 11, 0.4)" : "rgba(56, 189, 248, 0.4)"}; border-radius: 3px; padding: 0 4px; cursor: pointer; text-transform: uppercase;" title="Click to toggle between AND / OR">${op.toUpperCase()}</button>
+              ` : "";
+
+              if (cond.type === "group") {
+                const groupOp = cond.op || "or";
+                const subConds = cond.conditions || [];
+                return `
+                  ${opBadgeHtml}
+                  <div class="cond-group-block" style="display: inline-flex; align-items: center; gap: 3px; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 4px; padding: 1px 4px;">
+                    <span style="font-size: 0.82rem; font-weight: 800; color: #c084fc; user-select: none;">(</span>
+                    ${renderConditionTreeHtml(rule, subConds, groupOp, currentPath, depth + 1)}
+                    <span style="font-size: 0.82rem; font-weight: 800; color: #c084fc; user-select: none;">)</span>
+                    <button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-path="${currentPath}" type="button" style="font-size: 0.58rem; padding: 0 3px; color: #f87171; background: transparent; border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 2px; cursor: pointer;" title="Remove Condition Group">✕</button>
+                  </div>
+                `;
+              }
+
+              return `
+                ${opBadgeHtml}
+                <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
+                  <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
+                    <optgroup label="🎮 Keybind / Control Inputs">
+                      <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
+                      <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
+                      <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
+                      <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
+                    </optgroup>
+                    <optgroup label="🌍 Game Conditions">
+                      <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
+                      <option value="stagedActionIs" ${cond.type === "stagedActionIs" ? "selected" : ""}>Stage Is...</option>
+                      <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                      <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
+                      <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                      <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
+                      <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                      <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                      <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                      <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                      <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                      <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                    </optgroup>
+                  </select>
+                  ${
+                    cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
+                      ? `
+                    <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                      ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+                    </select>
+                  `
+                      : cond.type === "stagedActionIs"
+                      ? `
+                    <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 110px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select Stage">
+                      ${stages.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
+                    </select>
+                  `
+                      : cond.type === "buttonHeld"
+                      ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-path="${currentPath}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
+                      : ""
+                  }
+                  ${condList.length > 1 || !isRoot ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-path="${currentPath}" type="button" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
+                </div>
+              `;
+            })
+            .join("")}
+          <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition">+ Cond</button>
+          <button class="btn-add-cond-group btn-secondary-action" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; padding: 1px 5px; color: #c084fc; border: 1px solid rgba(168,85,247,0.35); background: rgba(168,85,247,0.1); border-radius: 3px;" title="Add nested condition group (OR / AND)">${isRoot ? "+ (Group)" : "+ ( )"}</button>
+        </div>
+      `;
+    };
+
     const renderBranchRowHtml = (
       rule: ControlRule,
       branchBadge: string,
@@ -1199,11 +1335,12 @@ export class ControlsInspector {
       threadId = ""
     ): string => {
       const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      const rootOp = rule.conditionOp || "and";
       const statements = ControlSchemaArbiter.getRuleBody(rule);
 
       return `
         <div class="thread-branch-block" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 5px; padding: 7px 10px;">
-          <!-- Top Row: Branch Label + Status Pip + Horizontally Stacked Conditions -->
+          <!-- Top Row: Branch Label + Status Pip + Horizontally Stacked Conditions with Nested Groups -->
           <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;">
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
               <span class="rule-status-pip" id="pip-${rule.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
@@ -1212,56 +1349,8 @@ export class ControlsInspector {
                 ${branchBadge}:
               </span>
 
-              <!-- Stacked Conditions (Listed Horizontally) -->
-              <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
-                ${conds
-                  .map((cond, cIdx) => `
-                  ${cIdx > 0 ? `<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>` : ""}
-                  <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
-                    <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
-                      <optgroup label="🎮 Keybind / Control Inputs">
-                        <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
-                        <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
-                        <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
-                        <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
-                      </optgroup>
-                      <optgroup label="🌍 Game Conditions">
-                        <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
-                        <option value="stagedActionIs" ${cond.type === "stagedActionIs" ? "selected" : ""}>Stage Is...</option>
-                        <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
-                        <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
-                        <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
-                        <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
-                        <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-                        <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
-                        <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
-                        <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
-                        <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
-                        <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
-                      </optgroup>
-                    </select>
-                    ${
-                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
-                        ? `
-                      <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
-                        ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
-                      </select>
-                    `
-                        : cond.type === "stagedActionIs"
-                        ? `
-                      <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 110px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select Stage">
-                        ${stages.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
-                      </select>
-                    `
-                        : cond.type === "buttonHeld"
-                        ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
-                        : ""
-                    }
-                    ${conds.length > 1 ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
-                  </div>
-                `).join("")}
-                <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
-              </div>
+              <!-- Stacked Conditions (Listed Horizontally with Nested Groups) -->
+              ${renderConditionTreeHtml(rule, conds, rootOp, "")}
             </div>
 
             <!-- Branch Reorder & Delete Buttons -->
@@ -1787,17 +1876,60 @@ export class ControlsInspector {
       });
     });
 
-    // 12. Rule Conditions (Multiple)
+    // 12. Rule Conditions (Multiple, Nested Groups & Logical Operators)
+    root.querySelectorAll(".btn-toggle-cond-op").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const gPath = (btn as HTMLElement).dataset.groupPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          if (gPath === "") {
+            rule.conditionOp = (rule.conditionOp ?? "and") === "and" ? "or" : "and";
+          } else {
+            const res = ControlsInspector.getConditionGroupList(rule, gPath);
+            if (res?.group) {
+              res.group.op = (res.group.op ?? "or") === "and" ? "or" : "and";
+            }
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+
     root.querySelectorAll(".btn-add-condition").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
+        const gPath = (btn as HTMLElement).dataset.groupPath ?? "";
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          conds.push({ type: "always" });
-          rule.conditions = conds;
-          rule.condition = conds[0];
-          this.renderActiveView();
+          const res = ControlsInspector.getConditionGroupList(rule, gPath);
+          if (res) {
+            res.list.push({ type: "always" });
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+
+    root.querySelectorAll(".btn-add-cond-group").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = (btn as HTMLElement).dataset.ruleId;
+        const gPath = (btn as HTMLElement).dataset.groupPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const res = ControlsInspector.getConditionGroupList(rule, gPath);
+          if (res) {
+            res.list.push({
+              type: "group",
+              op: "or",
+              conditions: [{ type: "always" }, { type: "always" }],
+            });
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
+          }
         }
       });
     });
@@ -1805,18 +1937,20 @@ export class ControlsInspector {
     root.querySelectorAll(".btn-delete-condition").forEach((btn) => {
       btn.addEventListener("click", () => {
         const rId = (btn as HTMLElement).dataset.ruleId;
-        const cIdx = parseInt((btn as HTMLElement).dataset.condIdx ?? "0", 10);
+        const cPath = (btn as HTMLElement).dataset.condPath ?? "";
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          if (conds.length > 1) {
-            conds.splice(cIdx, 1);
-          } else {
-            conds[0] = { type: "always" };
+          const res = ControlsInspector.getConditionListAndIndex(rule, cPath);
+          if (res) {
+            if (res.list.length > 1) {
+              res.list.splice(res.index, 1);
+            } else {
+              res.list[0] = { type: "always" };
+            }
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
           }
-          rule.conditions = conds;
-          rule.condition = conds[0];
-          this.renderActiveView();
         }
       });
     });
@@ -1824,34 +1958,34 @@ export class ControlsInspector {
     root.querySelectorAll(".select-rule-cond").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
-        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
         const val = (e.target as HTMLSelectElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          if (!conds[cIdx]) conds[cIdx] = { type: "always" };
-          if (val === "stagedActionIs") {
-            conds[cIdx].type = "stagedActionIs";
-            const stages = this.getActiveStages(schema);
-            if (!conds[cIdx].param || !stages.includes(conds[cIdx].param)) {
-              conds[cIdx].param = "none";
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            if (val === "stagedActionIs") {
+              targetCond.type = "stagedActionIs";
+              const stages = this.getActiveStages(schema);
+              if (!targetCond.param || !stages.includes(targetCond.param)) {
+                targetCond.param = "none";
+              }
+            } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
+              targetCond.type = val;
+              const tags = this.getActiveDeviceTags(schema);
+              if (!targetCond.param || !tags.some((t) => t.id === targetCond.param)) {
+                targetCond.param = tags[0]?.id ?? "";
+              }
+            } else if (val === "buttonHeld") {
+              targetCond.type = "buttonHeld";
+              if (!targetCond.param) targetCond.param = "MouseRight";
+            } else {
+              targetCond.type = val as ConditionType;
+              targetCond.param = undefined;
             }
-          } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
-            conds[cIdx].type = val;
-            const tags = this.getActiveDeviceTags(schema);
-            if (!conds[cIdx].param || !tags.some((t) => t.id === conds[cIdx].param)) {
-              conds[cIdx].param = tags[0]?.id ?? "";
-            }
-          } else if (val === "buttonHeld") {
-            conds[cIdx].type = "buttonHeld";
-            if (!conds[cIdx].param) conds[cIdx].param = "MouseRight";
-          } else {
-            conds[cIdx].type = val as ConditionType;
-            conds[cIdx].param = undefined;
+            rule.condition = rule.conditions?.[0];
+            this.renderActiveView();
           }
-          rule.conditions = conds;
-          rule.condition = conds[0];
-          this.renderActiveView();
         }
       });
     });
@@ -1859,15 +1993,14 @@ export class ControlsInspector {
     root.querySelectorAll(".select-cond-tag").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
-        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
         const val = (e.target as HTMLSelectElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          if (conds[cIdx]) {
-            conds[cIdx].param = val;
-            rule.conditions = conds;
-            rule.condition = conds[0];
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+            rule.condition = rule.conditions?.[0];
             this.renderActiveView();
           }
         }
@@ -1877,34 +2010,14 @@ export class ControlsInspector {
     root.querySelectorAll(".select-cond-stage").forEach((sel) => {
       sel.addEventListener("change", (e) => {
         const rId = (sel as HTMLElement).dataset.ruleId;
-        const cIdx = parseInt((sel as HTMLElement).dataset.condIdx ?? "0", 10);
+        const cPath = (sel as HTMLElement).dataset.condPath ?? "";
         const val = (e.target as HTMLSelectElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          if (conds[cIdx]) {
-            conds[cIdx].param = val;
-            rule.conditions = conds;
-            rule.condition = conds[0];
-            this.renderActiveView();
-          }
-        }
-      });
-    });
-
-    root.querySelectorAll(".select-action-stage").forEach((sel) => {
-      sel.addEventListener("change", (e) => {
-        const rId = (sel as HTMLElement).dataset.ruleId;
-        const sIdx = parseInt((sel as HTMLElement).dataset.statementIdx ?? "0", 10);
-        const val = (e.target as HTMLSelectElement).value;
-        const rule = this.findRule(schema, rId);
-        if (rule) {
-          const stmts = ControlSchemaArbiter.getRuleBody(rule);
-          if (stmts[sIdx] && stmts[sIdx].type === "action") {
-            const act = (stmts[sIdx] as ActionStatement).action;
-            act.args = { ...(act.args || {}), stage: val };
-            rule.body = stmts;
-            ControlSchemaArbiter.syncRuleFromStatements(rule);
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+            rule.condition = rule.conditions?.[0];
             this.renderActiveView();
           }
         }
@@ -1914,15 +2027,13 @@ export class ControlsInspector {
     root.querySelectorAll(".input-cond-param").forEach((inp) => {
       inp.addEventListener("input", (e) => {
         const rId = (inp as HTMLElement).dataset.ruleId;
-        const cIdx = parseInt((inp as HTMLElement).dataset.condIdx ?? "0", 10);
+        const cPath = (inp as HTMLElement).dataset.condPath ?? "";
         const val = (e.target as HTMLInputElement).value;
         const rule = this.findRule(schema, rId);
         if (rule) {
-          const conds = ControlSchemaArbiter.getRuleConditions(rule);
-          if (conds[cIdx]) {
-            conds[cIdx].param = val;
-            rule.conditions = conds;
-            rule.condition = conds[0];
+          const targetCond = ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
           }
         }
       });

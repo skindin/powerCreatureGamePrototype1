@@ -108,15 +108,31 @@ export class ControlSchemaArbiter {
 
   public static evaluateAllConditions(rule: ControlRule, ctx: ControlExecutionContext): boolean {
     const conds = this.getRuleConditions(rule);
-    for (const cond of conds) {
-      if (!this.evaluateCondition(cond, ctx, rule)) return false;
+    if (conds.length === 0) return true;
+    const op = rule.conditionOp ?? "and";
+    if (op === "or") {
+      return conds.some((cond) => this.evaluateCondition(cond, ctx, rule));
     }
-    return true;
+    return conds.every((cond) => this.evaluateCondition(cond, ctx, rule));
   }
 
   public static evaluateCondition(cond: ConditionGate, ctx: ControlExecutionContext, _rule?: ControlRule): boolean {
     let result = false;
     switch (cond.type) {
+      case "group": {
+        const subConds = cond.conditions ?? [];
+        if (subConds.length === 0) {
+          result = true;
+        } else {
+          const groupOp = cond.op ?? "or";
+          if (groupOp === "or") {
+            result = subConds.some((c) => this.evaluateCondition(c, ctx, _rule));
+          } else {
+            result = subConds.every((c) => this.evaluateCondition(c, ctx, _rule));
+          }
+        }
+        break;
+      }
       case "always":
         result = true;
         break;
@@ -272,6 +288,16 @@ export class ControlSchemaArbiter {
     return false;
   }
 
+  public static containsInputCondition(cond: ConditionGate): boolean {
+    if (cond.type === "tagHeld" || cond.type === "tagPressed" || cond.type === "tagReleased" || cond.type === "buttonHeld") {
+      return true;
+    }
+    if (cond.type === "group" && cond.conditions) {
+      return cond.conditions.some((c) => this.containsInputCondition(c));
+    }
+    return false;
+  }
+
   public static isRuleApplicable(
     rule: ControlRule,
     ctx: ControlExecutionContext,
@@ -303,9 +329,7 @@ export class ControlSchemaArbiter {
 
     // 2. Check if rule conditions already contains an explicit input trigger condition
     const conds = this.getRuleConditions(rule);
-    const hasInputCondition = conds.some(
-      (c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased" || c.type === "buttonHeld"
-    );
+    const hasInputCondition = conds.some((c) => this.containsInputCondition(c));
 
     const effTrigger = this.resolveEffectiveTrigger(rule, schema, device);
     const isPassiveTrigger = !effTrigger || !effTrigger.code || effTrigger.code === "Always" || effTrigger.code === "None";

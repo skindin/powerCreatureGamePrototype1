@@ -1,6 +1,6 @@
 {
-  "version": 130,
-  "lastSaved": "2026-10-30T10:42:19.382Z",
+  "version": 134,
+  "lastSaved": "2026-10-30T12:21:18.368Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -452,7 +452,10 @@
               },
               {
                 "moduleId": "staging",
-                "intent": "holdStageThrow"
+                "intent": "setStage",
+                "args": {
+                  "stage": "throw"
+                }
               }
             ],
             "action": {
@@ -471,7 +474,10 @@
                 "type": "action",
                 "action": {
                   "moduleId": "staging",
-                  "intent": "holdStageThrow"
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "throw"
+                  }
                 }
               }
             ],
@@ -536,12 +542,12 @@
             },
             "conditions": [
               {
-                "type": "tagCleanHold",
+                "type": "tagHeld",
                 "param": "tag-kbm-ffc1ts"
               }
             ],
             "condition": {
-              "type": "tagCleanHold",
+              "type": "tagHeld",
               "param": "tag-kbm-ffc1ts"
             },
             "actions": [],
@@ -646,6 +652,13 @@
                     "conditions": [
                       {
                         "type": "emptyHanded"
+                      },
+                      {
+                        "type": "stagedActionIs",
+                        "param": "none"
+                      },
+                      {
+                        "type": "targetInReach"
                       }
                     ],
                     "condition": {
@@ -799,6 +812,57 @@
                 "children": []
               }
             ]
+          },
+          {
+            "id": "rule-mvuxjb3jumc",
+            "name": "Action Branch",
+            "enabled": true,
+            "priority": 50,
+            "threadId": "thread-mvuxjb3j",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Always",
+              "mode": "hold"
+            },
+            "conditions": [
+              {
+                "type": "tagReleased",
+                "param": "tag-kbm-ffc1ts"
+              }
+            ],
+            "condition": {
+              "type": "tagReleased",
+              "param": "tag-kbm-ffc1ts"
+            },
+            "actions": [
+              {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              }
+            ],
+            "action": {
+              "moduleId": "staging",
+              "intent": "setStage",
+              "args": {
+                "stage": "none"
+              }
+            },
+            "body": [
+              {
+                "type": "action",
+                "action": {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              }
+            ],
+            "children": []
           }
         ],
         "tags": [
@@ -1186,7 +1250,13 @@
         ],
         "rules": [],
         "tags": []
-      }
+      },
+      "stages": [
+        "none",
+        "laser",
+        "throw",
+        "itemAbility"
+      ]
     },
     "strength": 1,
     "hasPickup": true,
@@ -2378,7 +2448,10 @@
                 },
                 {
                   "moduleId": "staging",
-                  "intent": "holdStageThrow"
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "throw"
+                  }
                 }
               ],
               "action": {
@@ -2397,7 +2470,10 @@
                   "type": "action",
                   "action": {
                     "moduleId": "staging",
-                    "intent": "holdStageThrow"
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "throw"
+                    }
                   }
                 }
               ],
@@ -2462,12 +2538,12 @@
               },
               "conditions": [
                 {
-                  "type": "tagCleanHold",
+                  "type": "tagHeld",
                   "param": "tag-kbm-ffc1ts"
                 }
               ],
               "condition": {
-                "type": "tagCleanHold",
+                "type": "tagHeld",
                 "param": "tag-kbm-ffc1ts"
               },
               "actions": [],
@@ -2572,6 +2648,13 @@
                       "conditions": [
                         {
                           "type": "emptyHanded"
+                        },
+                        {
+                          "type": "stagedActionIs",
+                          "param": "none"
+                        },
+                        {
+                          "type": "targetInReach"
                         }
                       ],
                       "condition": {
@@ -2725,6 +2808,57 @@
                   "children": []
                 }
               ]
+            },
+            {
+              "id": "rule-mvuxjb3jumc",
+              "name": "Action Branch",
+              "enabled": true,
+              "priority": 50,
+              "threadId": "thread-mvuxjb3j",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Always",
+                "mode": "hold"
+              },
+              "conditions": [
+                {
+                  "type": "tagReleased",
+                  "param": "tag-kbm-ffc1ts"
+                }
+              ],
+              "condition": {
+                "type": "tagReleased",
+                "param": "tag-kbm-ffc1ts"
+              },
+              "actions": [
+                {
+                  "moduleId": "staging",
+                  "intent": "setStage",
+                  "args": {
+                    "stage": "none"
+                  }
+                }
+              ],
+              "action": {
+                "moduleId": "staging",
+                "intent": "setStage",
+                "args": {
+                  "stage": "none"
+                }
+              },
+              "body": [
+                {
+                  "type": "action",
+                  "action": {
+                    "moduleId": "staging",
+                    "intent": "setStage",
+                    "args": {
+                      "stage": "none"
+                    }
+                  }
+                }
+              ],
+              "children": []
             }
           ],
           "tags": [
@@ -3112,7 +3246,13 @@
           ],
           "rules": [],
           "tags": []
-        }
+        },
+        "stages": [
+          "none",
+          "laser",
+          "throw",
+          "itemAbility"
+        ]
       }
     }
   ],

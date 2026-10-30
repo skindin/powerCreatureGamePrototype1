@@ -15,7 +15,10 @@ export interface InputTriggerBinding {
   holdThresholdMs?: number; // default ~200ms
 }
 
+export type LogicalOperator = "and" | "or";
+
 export type ConditionType =
+  | "group"
   | "always"
   | "holdingObject"
   | "holdingPlainObject"
@@ -40,6 +43,8 @@ export interface ConditionGate {
   type: ConditionType;
   param?: string; // e.g. "laser", "melee", property name, or button code
   negate?: boolean;
+  op?: LogicalOperator; // Logical operator for nested group ("and" | "or", default "or")
+  conditions?: ConditionGate[]; // Child conditions if type === "group"
 }
 
 export interface ActionInvocation {
@@ -75,7 +80,8 @@ export interface ControlRule {
   threadId?: string; // Grouping ID for cascading IF / ELSE IF / ELSE thread
   tagId?: string;    // Reference to an InputTagBinding.id (legacy)
   trigger: InputTriggerBinding;
-  conditions?: ConditionGate[]; // Multiple conditions (ALL must match: logical AND)
+  conditionOp?: LogicalOperator; // Logical operator for rule conditions ("and" | "or", default "and")
+  conditions?: ConditionGate[]; // Multiple conditions
   condition?: ConditionGate;    // Single condition (for backwards compatibility)
   body?: RuleStatement[];       // Ordered sequence of actions and nested IF threads in THEN block
   actions?: ActionInvocation[]; // Multiple result functions executed (legacy / flat)
