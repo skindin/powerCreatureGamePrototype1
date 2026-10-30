@@ -936,19 +936,45 @@ export class ControlsInspector {
         : schema.touch.rules;
     const tags = this.getActiveDeviceTags(schema);
 
-    // Group rules by tagId
-    const tagRuleMap = new Map<string, ControlRule[]>();
-    for (const t of tags) {
-      tagRuleMap.set(t.id, []);
-    }
-    const untaggedRules: ControlRule[] = [];
-
+    // Normalize legacy rules that had tagId or outer trigger modes into unified conditions
     for (const rule of rules) {
-      if (rule.tagId && tagRuleMap.has(rule.tagId)) {
-        tagRuleMap.get(rule.tagId)!.push(rule);
-      } else {
-        untaggedRules.push(rule);
+      if (rule.tagId) {
+        const mode = rule.trigger?.mode || "press";
+        const condType: ConditionType = mode === "hold" ? "tagHeld" : mode === "release" ? "tagReleased" : "tagPressed";
+        const conds = ControlSchemaArbiter.getRuleConditions(rule);
+        if (conds.length === 1 && conds[0].type === "always") {
+          rule.conditions = [{ type: condType, param: rule.tagId }];
+        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased")) {
+          rule.conditions = [{ type: condType, param: rule.tagId }, ...conds];
+        } else {
+          rule.conditions = conds;
+        }
+        rule.condition = rule.conditions[0];
+        if (!rule.threadId) {
+          rule.threadId = `thread-${rule.tagId}`;
+        }
+        rule.tagId = undefined;
+        rule.trigger = { device: "keyboard", code: "Always", mode: "hold" };
       }
+      if (!rule.threadId) {
+        rule.threadId = `thread-${rule.id}`;
+      }
+    }
+
+    if (rules.length === 0) {
+      return `
+        <div style="text-align: center; color: #94a3b8; font-size: 0.76rem; padding: 18px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
+          No conditional threads defined. Click "+ Add New Conditional Thread" to build a control cascade.
+        </div>
+      `;
+    }
+
+    // Group rules by threadId
+    const threadMap = new Map<string, ControlRule[]>();
+    for (const rule of rules) {
+      const tId = rule.threadId!;
+      if (!threadMap.has(tId)) threadMap.set(tId, []);
+      threadMap.get(tId)!.push(rule);
     }
 
     const renderBranchRowHtml = (rule: ControlRule, branchBadge: string) => {
@@ -1000,7 +1026,7 @@ export class ControlsInspector {
                     ${
                       cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
                         ? `
-                      <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                      <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
                         ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
                       </select>
                     `
@@ -1015,14 +1041,8 @@ export class ControlsInspector {
               </div>
             </div>
 
-            <!-- Mode Selector + Delete Branch -->
+            <!-- Delete Branch Button -->
             <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
-                <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
-                <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
-                <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
-              </select>
-
               <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
                 🗑️
               </button>
@@ -1066,113 +1086,57 @@ export class ControlsInspector {
       `;
     };
 
-    const threadHtmlCards = tags.map((t) => {
-      const tagRules = tagRuleMap.get(t.id) ?? [];
-      const triggerLabel = this.formatTriggerLabel(t);
+    const threadHtmlCards: string[] = [];
+    let threadCounter = 1;
 
-      if (tagRules.length === 0) {
-        return `
-          <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 10px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff;">🏷️ ${t.name}</span>
-                <span style="font-size: 0.68rem; color: #94a3b8; background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; padding: 1px 6px;">[ ${triggerLabel} ]</span>
-              </div>
-              <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="hold" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
-                + Add Branch
-              </button>
-            </div>
-            <div style="font-size: 0.68rem; color: #94a3b8; font-style: italic; padding: 4px 6px;">
-              No action branches configured. Click "+ Add Branch" to define what happens when this keybind is held, pressed, or released.
-            </div>
-          </div>
-        `;
-      }
+    for (const [tId, threadRules] of threadMap.entries()) {
+      // Find a readable title from first rule's tag condition if present
+      const firstTagCond = threadRules[0]?.conditions?.find(
+        (c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased"
+      );
+      const tagObj = firstTagCond ? tags.find((t) => t.id === firstTagCond.param || t.name === firstTagCond.param) : null;
+      const threadTitle = tagObj ? `Thread: ${tagObj.name}` : `Thread #${threadCounter}`;
+      threadCounter++;
 
-      // Group rules by mode
-      const modeOrder: TriggerMode[] = ["hold", "press", "release"];
-      const modeGroups = new Map<TriggerMode, ControlRule[]>();
-      for (const r of tagRules) {
-        const m = r.trigger.mode || "press";
-        if (!modeGroups.has(m)) modeGroups.set(m, []);
-        modeGroups.get(m)!.push(r);
-      }
-
-      // Sort existing modes according to modeOrder
-      const presentModes = modeOrder.filter((m) => modeGroups.has(m));
-      for (const [m] of modeGroups) {
-        if (!presentModes.includes(m)) presentModes.push(m);
-      }
-
-      return `
+      threadHtmlCards.push(`
         <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px;">
           <!-- Thread Header -->
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">🏷️ ${t.name}</span>
-              <span style="font-size: 0.68rem; color: #94a3b8; background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.2); border-radius: 4px; padding: 1px 6px;">[ ${triggerLabel} ]</span>
+              <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">⚡ ${threadTitle}</span>
+              <span style="font-size: 0.68rem; color: #94a3b8;">(${threadRules.length} ${threadRules.length === 1 ? "branch" : "cascading branches"})</span>
             </div>
             <div style="display: flex; gap: 6px;">
-              <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="hold" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
-                + Add Branch
+              <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
+                + Add Else If Branch
               </button>
             </div>
           </div>
 
-          <!-- Cascade Branches by Mode -->
+          <!-- Cascade Branches in Thread -->
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${presentModes
-              .map((mode) => {
-                const modeRules = modeGroups.get(mode) ?? [];
-                const modeLabel = mode === "hold" ? "🔹 While Held:" : mode === "press" ? "🔹 On Press:" : "🔹 On Release:";
-
-                return `
-                  <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 4px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 2px 2px;">
-                      <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8;">${modeLabel}</span>
-                      <button class="btn-add-thread-branch btn-secondary-action" data-tag-id="${t.id}" data-mode="${mode}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;" title="Add another cascading branch in this event">+ Add Else If</button>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                      ${modeRules
-                        .map((r, rIdx) => {
-                          const isLast = rIdx === modeRules.length - 1;
-                          const conds = ControlSchemaArbiter.getRuleConditions(r);
-                          const isAlways = conds.length === 1 && conds[0].type === "always";
-                          let badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
-                          return renderBranchRowHtml(r, badge);
-                        })
-                        .join("")}
-                    </div>
-                  </div>
-                `;
+            ${threadRules
+              .map((r, rIdx) => {
+                const isLast = rIdx === threadRules.length - 1;
+                const conds = ControlSchemaArbiter.getRuleConditions(r);
+                const isAlways = conds.length === 1 && conds[0].type === "always";
+                const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+                return renderBranchRowHtml(r, badge);
               })
               .join("")}
           </div>
         </div>
-      `;
-    });
+      `);
+    }
 
-    const untaggedCard =
-      untaggedRules.length > 0
-        ? `
-      <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 10px 12px; margin-top: 4px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">⚡ Passive & Independent Rules</span>
-            <span style="font-size: 0.68rem; color: #94a3b8;">(Unbound / Continuous / Always active)</span>
-          </div>
-          <button id="btn-add-independent-rule" class="btn-secondary-action" style="font-size: 0.64rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.04);">
-            + Add Independent Rule
-          </button>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          ${untaggedRules.map((r, rIdx) => renderBranchRowHtml(r, `RULE ${rIdx + 1}`)).join("")}
-        </div>
+    return `
+      ${threadHtmlCards.join("")}
+      <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+        <button id="btn-add-control-thread" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
+          + Add New Conditional Thread
+        </button>
       </div>
-    `
-        : "";
-
-    return threadHtmlCards.join("") + untaggedCard;
+    `;
   }
 
   private static formatTriggerLabel(item: { trigger: InputTriggerBinding } | InputTriggerBinding): string {
@@ -1423,39 +1387,38 @@ export class ControlsInspector {
       });
     });
 
-    // 9. Add Rule Button / Add Independent Rule
-    const addIndependentRule = () => {
+    // 9. Add Thread Button / Add New Cascade Thread
+    const addNewThread = () => {
       const rules =
         this.activeTab === "keyboardMouse"
           ? schema.keyboardMouse.rules
           : this.activeTab === "gamepad"
           ? schema.gamepad.rules
           : schema.touch.rules;
+      const threadId = `thread-${Date.now().toString(36)}`;
       const newRule: ControlRule = {
         id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
-        name: "Independent Rule",
+        name: "Action Branch",
         enabled: true,
         priority: 50,
+        threadId,
         trigger: { device: "keyboard", code: "Always", mode: "hold" },
         conditions: [{ type: "always" }],
         condition: { type: "always" },
-        actions: [{ moduleId: "throwPickup", intent: "aimThrow" }],
-        action: { moduleId: "throwPickup", intent: "aimThrow" },
+        actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+        action: { moduleId: "throwPickup", intent: "grabItem" },
       };
       rules.push(newRule);
       this.renderActiveView();
     };
 
-    root.querySelector("#btn-add-control-rule")?.addEventListener("click", addIndependentRule);
-    root.querySelector("#btn-add-independent-rule")?.addEventListener("click", addIndependentRule);
+    root.querySelector("#btn-add-control-rule")?.addEventListener("click", addNewThread);
+    root.querySelector("#btn-add-control-thread")?.addEventListener("click", addNewThread);
 
     // 9a. Add Thread Branch (IF / ELSE IF)
     root.querySelectorAll(".btn-add-thread-branch").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const tId = (btn as HTMLElement).dataset.tagId;
-        const mode = ((btn as HTMLElement).dataset.mode as TriggerMode) || "hold";
-        const tags = this.getActiveDeviceTags(schema);
-        const tag = tags.find((t) => t.id === tId);
+        const threadId = (btn as HTMLElement).dataset.threadId || `thread-${Date.now().toString(36)}`;
         const rules =
           this.activeTab === "keyboardMouse"
             ? schema.keyboardMouse.rules
@@ -1468,15 +1431,8 @@ export class ControlsInspector {
           name: "Action Branch",
           enabled: true,
           priority: 50,
-          tagId: tId,
-          trigger: tag
-            ? {
-                device: tag.trigger.device,
-                code: tag.trigger.code,
-                chordModifiers: tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : undefined,
-                mode,
-              }
-            : { device: "keyboard", code: "Space", mode },
+          threadId,
+          trigger: { device: "keyboard", code: "Always", mode: "hold" },
           conditions: [{ type: "always" }],
           condition: { type: "always" },
           actions: [{ moduleId: "throwPickup", intent: "grabItem" }],

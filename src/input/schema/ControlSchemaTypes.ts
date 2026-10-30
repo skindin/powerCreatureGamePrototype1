@@ -59,7 +59,8 @@ export interface ControlRule {
   name?: string;
   enabled?: boolean;
   priority?: number; // Higher numbers evaluated first
-  tagId?: string;    // Reference to an InputTagBinding.id
+  threadId?: string; // Grouping ID for cascading IF / ELSE IF / ELSE thread
+  tagId?: string;    // Reference to an InputTagBinding.id (legacy)
   trigger: InputTriggerBinding;
   conditions?: ConditionGate[]; // Multiple conditions (ALL must match: logical AND)
   condition?: ConditionGate;    // Single condition (for backwards compatibility)

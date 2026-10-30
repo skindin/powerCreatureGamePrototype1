@@ -356,13 +356,13 @@ export class ControlSchemaArbiter {
         }
       }
 
-      // 3. Rule arbitration (sorted by priority descending, cascading per tag-thread)
+      // 3. Rule arbitration (sorted by priority descending, cascading per thread)
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-      const executedTagTriggers = new Set<string>();
+      const executedThreads = new Set<string>();
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
-        const tagKey = rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null;
-        if (tagKey && executedTagTriggers.has(tagKey)) {
+        const threadKey = rule.threadId ?? (rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null);
+        if (threadKey && executedThreads.has(threadKey)) {
           ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
           continue;
         }
@@ -374,8 +374,8 @@ export class ControlSchemaArbiter {
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
-          if (tagKey) {
-            executedTagTriggers.add(tagKey);
+          if (threadKey) {
+            executedThreads.add(threadKey);
           }
           activeRules.push(rule);
           const actions = this.getRuleActions(rule);
@@ -445,13 +445,13 @@ export class ControlSchemaArbiter {
         }
       }
 
-      // Rule arbitration (sorted by priority descending, cascading per tag-thread)
+      // Rule arbitration (sorted by priority descending, cascading per thread)
       const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-      const executedTagTriggers = new Set<string>();
+      const executedThreads = new Set<string>();
       for (const rule of sortedRules) {
         if (rule.enabled === false) continue;
-        const tagKey = rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null;
-        if (tagKey && executedTagTriggers.has(tagKey)) {
+        const threadKey = rule.threadId ?? (rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null);
+        if (threadKey && executedThreads.has(threadKey)) {
           ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
           continue;
         }
@@ -463,8 +463,8 @@ export class ControlSchemaArbiter {
         ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
 
         if (matchesCondition && triggerActive) {
-          if (tagKey) {
-            executedTagTriggers.add(tagKey);
+          if (threadKey) {
+            executedThreads.add(threadKey);
           }
           activeRules.push(rule);
           const actions = this.getRuleActions(rule);
