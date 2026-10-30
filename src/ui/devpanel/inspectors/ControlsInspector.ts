@@ -956,69 +956,85 @@ export class ControlsInspector {
       const actions = ControlSchemaArbiter.getRuleActions(rule);
 
       return `
-        <div class="thread-branch-row" id="rule-card-${rule.id}" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 4px; padding: 6px 10px;">
-          <!-- Left: Pip + Badge + Horizontal Conditions -->
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
-            <span class="rule-status-pip" id="pip-${rule.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
+        <div class="thread-branch-block" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 5px; padding: 7px 10px;">
+          <!-- Top Row: Branch Label + Status Pip + Horizontally Stacked Conditions -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+              <span class="rule-status-pip" id="pip-${rule.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
 
-            <span style="font-size: 0.65rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
-              ${branchBadge}
-            </span>
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+                ${branchBadge}:
+              </span>
 
-            <!-- Horizontal Conditions Container -->
-            <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
-              ${conds
-                .map((cond, cIdx) => `
-                ${cIdx > 0 ? `<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>` : ""}
-                <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
-                  <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
-                    <optgroup label="🎮 Keybind / Control Inputs">
-                      <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
-                      <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
-                      <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
-                      <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
-                    </optgroup>
-                    <optgroup label="🌍 Game Conditions">
-                      <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
-                      <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
-                      <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
-                      <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
-                      <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
-                      <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
-                      <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
-                      <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
-                      <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
-                      <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
-                      <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
-                      <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
-                      <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
-                      <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
-                      <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
-                    </optgroup>
-                  </select>
-                  ${
-                    cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
-                      ? `
-                    <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
-                      ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+              <!-- Stacked Conditions (Listed Horizontally) -->
+              <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+                ${conds
+                  .map((cond, cIdx) => `
+                  ${cIdx > 0 ? `<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>` : ""}
+                  <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
+                    <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
+                      <optgroup label="🎮 Keybind / Control Inputs">
+                        <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
+                        <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
+                        <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
+                        <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
+                      </optgroup>
+                      <optgroup label="🌍 Game Conditions">
+                        <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
+                        <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                        <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
+                        <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                        <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
+                        <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                        <option value="stagedActionIs:throw" ${cond.type === "stagedActionIs" && cond.param === "throw" ? "selected" : ""}>Staged == Throw</option>
+                        <option value="stagedActionIs:laser" ${cond.type === "stagedActionIs" && cond.param === "laser" ? "selected" : ""}>Staged == Laser</option>
+                        <option value="stagedActionIs:pickup" ${cond.type === "stagedActionIs" && (cond.param === "pickup" || cond.param === "grab") ? "selected" : ""}>Staged == Pick Up</option>
+                        <option value="stagedActionIs:melee" ${cond.type === "stagedActionIs" && cond.param === "melee" ? "selected" : ""}>Staged == Melee</option>
+                        <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                        <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                        <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                        <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                        <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                      </optgroup>
                     </select>
-                  `
-                      : cond.type === "buttonHeld"
-                      ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
-                      : ""
-                  }
-                  ${conds.length > 1 ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
-                </div>
-              `).join("")}
-              <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
+                    ${
+                      cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased"
+                        ? `
+                      <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                        ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+                      </select>
+                    `
+                        : cond.type === "buttonHeld"
+                        ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`
+                        : ""
+                    }
+                    ${conds.length > 1 ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-idx="${cIdx}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
+                  </div>
+                `).join("")}
+                <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
+              </div>
+            </div>
+
+            <!-- Mode Selector + Delete Branch -->
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
+                <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
+                <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
+                <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
+              </select>
+
+              <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
+                🗑️
+              </button>
             </div>
           </div>
 
-          <!-- Right: Arrow + Actions + Mode + Delete -->
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0;">
-            <span style="font-size: 0.68rem; font-weight: 700; color: #ffffff;">➔ THEN:</span>
+          <!-- Bottom Row: THEN Action Execution (Separated Vertically) -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 14px; border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 5px;">
+            <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.2); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+              THEN:
+            </span>
 
-            <!-- Actions container -->
             <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
               ${actions
                 .map((act, aIdx) => {
@@ -1039,18 +1055,6 @@ export class ControlsInspector {
                 .join("")}
               <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action">+ Action</button>
             </div>
-
-            <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${rule.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
-              <option value="hold" ${rule.trigger.mode === "hold" ? "selected" : ""}>Hold</option>
-              <option value="press" ${rule.trigger.mode === "press" ? "selected" : ""}>Press</option>
-              <option value="release" ${rule.trigger.mode === "release" ? "selected" : ""}>Release</option>
-            </select>
-
-            <!-- Delete Branch Button -->
-            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
-              🗑️
-            </button>
           </div>
         </div>
       `;

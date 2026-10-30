@@ -979,62 +979,78 @@ var pa=Object.defineProperty;var ma=(b,e,t)=>e in b?pa(b,e,{enumerable:!0,config
         </span>
       </div>
     `}static renderRulesListHtml(e,t){const i=this.activeTab==="keyboardMouse"?t.keyboardMouse.rules:this.activeTab==="gamepad"?t.gamepad.rules:t.touch.rules,s=this.getActiveDeviceTags(t),o=new Map;for(const d of s)o.set(d.id,[]);const n=[];for(const d of i)d.tagId&&o.has(d.tagId)?o.get(d.tagId).push(d):n.push(d);const a=(d,r)=>{const u=Pe.getRuleConditions(d),p=Pe.getRuleActions(d);return`
-        <div class="thread-branch-row" id="rule-card-${d.id}" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 4px; padding: 6px 10px;">
-          <!-- Left: Pip + Badge + Horizontal Conditions -->
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
-            <span class="rule-status-pip" id="pip-${d.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
+        <div class="thread-branch-block" id="rule-card-${d.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 5px; padding: 7px 10px;">
+          <!-- Top Row: Branch Label + Status Pip + Horizontally Stacked Conditions -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+              <span class="rule-status-pip" id="pip-${d.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
 
-            <span style="font-size: 0.65rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
-              ${r}
-            </span>
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+                ${r}:
+              </span>
 
-            <!-- Horizontal Conditions Container -->
-            <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
-              ${u.map((h,m)=>`
-                ${m>0?'<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>':""}
-                <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
-                  <select class="select-rule-cond dev-select" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
-                    <optgroup label="🎮 Keybind / Control Inputs">
-                      <option value="tagPressed" ${h.type==="tagPressed"?"selected":""}>Keybind: Press</option>
-                      <option value="tagHeld" ${h.type==="tagHeld"?"selected":""}>Keybind: Hold</option>
-                      <option value="tagReleased" ${h.type==="tagReleased"?"selected":""}>Keybind: Release</option>
-                      <option value="buttonHeld" ${h.type==="buttonHeld"?"selected":""}>Raw Key/Button Code...</option>
-                    </optgroup>
-                    <optgroup label="🌍 Game Conditions">
-                      <option value="always" ${h.type==="always"?"selected":""}>Always (Unconditional)</option>
-                      <option value="emptyHanded" ${h.type==="emptyHanded"?"selected":""}>Empty-Handed</option>
-                      <option value="holdingPlainObject" ${h.type==="holdingPlainObject"||h.type==="holdingObjectWithoutAbility"?"selected":""}>Holding Plain Item (No Ability)</option>
-                      <option value="holdingItemWithPrimaryAbility" ${h.type==="holdingItemWithPrimaryAbility"||h.type==="holdingEdible"?"selected":""}>Holding Item With Ability</option>
-                      <option value="holdingObject" ${h.type==="holdingObject"?"selected":""}>Holding Any Item</option>
-                      <option value="targetInReach" ${h.type==="targetInReach"?"selected":""}>Target in Reach</option>
-                      <option value="stagedActionIs:throw" ${h.type==="stagedActionIs"&&h.param==="throw"?"selected":""}>Staged == Throw</option>
-                      <option value="stagedActionIs:laser" ${h.type==="stagedActionIs"&&h.param==="laser"?"selected":""}>Staged == Laser</option>
-                      <option value="stagedActionIs:pickup" ${h.type==="stagedActionIs"&&(h.param==="pickup"||h.param==="grab")?"selected":""}>Staged == Pick Up</option>
-                      <option value="stagedActionIs:melee" ${h.type==="stagedActionIs"&&h.param==="melee"?"selected":""}>Staged == Melee</option>
-                      <option value="grounded" ${h.type==="grounded"?"selected":""}>On Ground</option>
-                      <option value="climbing" ${h.type==="climbing"?"selected":""}>Climbing Wall</option>
-                      <option value="isAimingTrajectory" ${h.type==="isAimingTrajectory"?"selected":""}>Aiming Trajectory (Throw)</option>
-                      <option value="isLaserAiming" ${h.type==="isLaserAiming"?"selected":""}>Aiming Laser</option>
-                      <option value="isAiming" ${h.type==="isAiming"?"selected":""}>Aiming (Any)</option>
-                    </optgroup>
-                  </select>
-                  ${h.type==="tagPressed"||h.type==="tagHeld"||h.type==="tagReleased"?`
-                    <select class="select-cond-tag dev-select" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
-                      ${s.map(y=>`<option value="${y.id}" ${h.param===y.id||h.param===y.name?"selected":""}>🏷️ ${y.name}</option>`).join("")}
+              <!-- Stacked Conditions (Listed Horizontally) -->
+              <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+                ${u.map((h,m)=>`
+                  ${m>0?'<span style="font-size: 0.62rem; font-weight: 700; color: #94a3b8; padding: 0 1px;">AND</span>':""}
+                  <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
+                    <select class="select-rule-cond dev-select" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
+                      <optgroup label="🎮 Keybind / Control Inputs">
+                        <option value="tagPressed" ${h.type==="tagPressed"?"selected":""}>Keybind: Press</option>
+                        <option value="tagHeld" ${h.type==="tagHeld"?"selected":""}>Keybind: Hold</option>
+                        <option value="tagReleased" ${h.type==="tagReleased"?"selected":""}>Keybind: Release</option>
+                        <option value="buttonHeld" ${h.type==="buttonHeld"?"selected":""}>Raw Key/Button Code...</option>
+                      </optgroup>
+                      <optgroup label="🌍 Game Conditions">
+                        <option value="always" ${h.type==="always"?"selected":""}>Always (Unconditional)</option>
+                        <option value="emptyHanded" ${h.type==="emptyHanded"?"selected":""}>Empty-Handed</option>
+                        <option value="holdingPlainObject" ${h.type==="holdingPlainObject"||h.type==="holdingObjectWithoutAbility"?"selected":""}>Holding Plain Item (No Ability)</option>
+                        <option value="holdingItemWithPrimaryAbility" ${h.type==="holdingItemWithPrimaryAbility"||h.type==="holdingEdible"?"selected":""}>Holding Item With Ability</option>
+                        <option value="holdingObject" ${h.type==="holdingObject"?"selected":""}>Holding Any Item</option>
+                        <option value="targetInReach" ${h.type==="targetInReach"?"selected":""}>Target in Reach</option>
+                        <option value="stagedActionIs:throw" ${h.type==="stagedActionIs"&&h.param==="throw"?"selected":""}>Staged == Throw</option>
+                        <option value="stagedActionIs:laser" ${h.type==="stagedActionIs"&&h.param==="laser"?"selected":""}>Staged == Laser</option>
+                        <option value="stagedActionIs:pickup" ${h.type==="stagedActionIs"&&(h.param==="pickup"||h.param==="grab")?"selected":""}>Staged == Pick Up</option>
+                        <option value="stagedActionIs:melee" ${h.type==="stagedActionIs"&&h.param==="melee"?"selected":""}>Staged == Melee</option>
+                        <option value="grounded" ${h.type==="grounded"?"selected":""}>On Ground</option>
+                        <option value="climbing" ${h.type==="climbing"?"selected":""}>Climbing Wall</option>
+                        <option value="isAimingTrajectory" ${h.type==="isAimingTrajectory"?"selected":""}>Aiming Trajectory (Throw)</option>
+                        <option value="isLaserAiming" ${h.type==="isLaserAiming"?"selected":""}>Aiming Laser</option>
+                        <option value="isAiming" ${h.type==="isAiming"?"selected":""}>Aiming (Any)</option>
+                      </optgroup>
                     </select>
-                  `:h.type==="buttonHeld"?`<input class="input-cond-param dev-input" data-rule-id="${d.id}" data-cond-idx="${m}" value="${h.param??"MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`:""}
-                  ${u.length>1?`<button class="btn-delete-condition btn-icon" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>`:""}
-                </div>
-              `).join("")}
-              <button class="btn-add-condition btn-secondary-action" data-rule-id="${d.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
+                    ${h.type==="tagPressed"||h.type==="tagHeld"||h.type==="tagReleased"?`
+                      <select class="select-cond-tag dev-select" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 130px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                        ${s.map(y=>`<option value="${y.id}" ${h.param===y.id||h.param===y.name?"selected":""}>🏷️ ${y.name}</option>`).join("")}
+                      </select>
+                    `:h.type==="buttonHeld"?`<input class="input-cond-param dev-input" data-rule-id="${d.id}" data-cond-idx="${m}" value="${h.param??"MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />`:""}
+                    ${u.length>1?`<button class="btn-delete-condition btn-icon" data-rule-id="${d.id}" data-cond-idx="${m}" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>`:""}
+                  </div>
+                `).join("")}
+                <button class="btn-add-condition btn-secondary-action" data-rule-id="${d.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition gate">+ Cond</button>
+              </div>
+            </div>
+
+            <!-- Mode Selector + Delete Branch -->
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              <select class="select-rule-mode dev-select" data-rule-id="${d.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
+                <option value="hold" ${d.trigger.mode==="hold"?"selected":""}>Hold</option>
+                <option value="press" ${d.trigger.mode==="press"?"selected":""}>Press</option>
+                <option value="release" ${d.trigger.mode==="release"?"selected":""}>Release</option>
+              </select>
+
+              <button class="btn-delete-rule btn-secondary-action" data-rule-id="${d.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
+                🗑️
+              </button>
             </div>
           </div>
 
-          <!-- Right: Arrow + Actions + Mode + Delete -->
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0;">
-            <span style="font-size: 0.68rem; font-weight: 700; color: #ffffff;">➔ THEN:</span>
+          <!-- Bottom Row: THEN Action Execution (Separated Vertically) -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 14px; border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 5px;">
+            <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.2); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+              THEN:
+            </span>
 
-            <!-- Actions container -->
             <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
               ${p.map((h,m)=>{const y=Wt.findAction(h.moduleId,h.intent),v=y?y.label:`${h.moduleId}:${h.intent}`,M=Wt.categories.find(f=>f.id===h.moduleId),w=M&&!M.isAttached(e);return`
                     <div style="display: inline-flex; align-items: center; gap: 2px;">
@@ -1047,18 +1063,6 @@ var pa=Object.defineProperty;var ma=(b,e,t)=>e in b?pa(b,e,{enumerable:!0,config
                   `}).join("")}
               <button class="btn-add-action btn-secondary-action" data-rule-id="${d.id}" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add action">+ Action</button>
             </div>
-
-            <!-- Mode Selector -->
-            <select class="select-rule-mode dev-select" data-rule-id="${d.id}" style="font-size: 0.66rem; padding: 1px 4px; width: 62px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a;" title="Trigger mode">
-              <option value="hold" ${d.trigger.mode==="hold"?"selected":""}>Hold</option>
-              <option value="press" ${d.trigger.mode==="press"?"selected":""}>Press</option>
-              <option value="release" ${d.trigger.mode==="release"?"selected":""}>Release</option>
-            </select>
-
-            <!-- Delete Branch Button -->
-            <button class="btn-delete-rule btn-secondary-action" data-rule-id="${d.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent;" title="Remove Branch">
-              🗑️
-            </button>
           </div>
         </div>
       `},l=s.map(d=>{const r=o.get(d.id)??[],u=this.formatTriggerLabel(d);if(r.length===0)return`
