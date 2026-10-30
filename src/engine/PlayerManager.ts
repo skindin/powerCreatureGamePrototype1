@@ -9,7 +9,7 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
-import type { ControlExecutionContext, ControlRule, InputTriggerBinding } from "../input/schema/ControlSchemaTypes.js";
+import type { ControlExecutionContext, ControlRule, InputTriggerBinding, ControlSchema, DeviceChannel } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -70,11 +70,18 @@ export class PlayerManager {
   private prevKeysPressed: Set<string> = new Set();
   private prevMouseButtons: Set<number> = new Set();
   private prevGamepadButtons: Map<number, Set<number>> = new Map();
-  private inputPressStartTicks: Map<string, number> = new Map();
-  private rulePreconditionTicks: Map<string, number> = new Map();
-  private lastPickupTicks: Map<string, number> = new Map();
-  private lastDropOrThrowTicks: Map<string, number> = new Map();
-  private currentControlTick = 0;
+  private inputButtonClaims: Map<
+    string,
+    {
+      leafRuleId: string;
+      rootRuleId: string;
+      actionKey: string;
+      isContinuous: boolean;
+      lastTickRan: number;
+      isSpent: boolean;
+    }
+  > = new Map();
+  private currentControlTick: number = 0;
 
   /**
    * Retrieves or initializes the grab input suppression tracking state for an entity.
@@ -550,122 +557,219 @@ export class PlayerManager {
       return false;
     };
 
-    // Update inputPressStartTicks for mouse buttons
+    const isPhysicalButtonDown = (code: string, gpSlotIdx?: number): boolean => {
+      if (code === "MouseLeft") return input.isMouseDown;
+      if (code === "MouseMiddle") return Boolean(input.isMiddleMouseDown);
+      if (code === "MouseRight") return input.isRightMouseDown;
+      if (code.startsWith("Gamepad") && gpSlotIdx !== undefined) {
+        const slot = input.gamepadSlots.get(gpSlotIdx);
+        if (!slot || !slot.buttons) return false;
+        const btn = ControlSchemaArbiter.parseGamepadButtonCode(code);
+        return Boolean(slot.buttons[btn]);
+      }
+      return input.isKeyPressed(code);
+    };
+
+    // Helper to release button claims when physical input is no longer down
+    const releaseButtonClaims = (code: string, charId?: string) => {
+      if (charId) {
+        this.inputButtonClaims.delete(`${charId}:${code}`);
+      } else {
+        for (const k of Array.from(this.inputButtonClaims.keys())) {
+          if (k.endsWith(`:${code}`)) {
+            this.inputButtonClaims.delete(k);
+          }
+        }
+      }
+    };
+
+    // Clean up claims for any released inputs
     for (const [btn, code] of [[0, "MouseLeft"], [1, "MouseMiddle"], [2, "MouseRight"]] as const) {
-      if (isMouseBtnDown(btn) && !this.prevMouseButtons.has(btn)) {
-        this.inputPressStartTicks.set(code, this.currentControlTick);
-      } else if (!isMouseBtnDown(btn)) {
-        this.inputPressStartTicks.delete(code);
+      if (!isMouseBtnDown(btn)) {
+        releaseButtonClaims(code);
       }
     }
 
-    // Update inputPressStartTicks for keyboard keys
-    const activeKeys = input.getActiveKeys();
-    for (const k of activeKeys) {
-      if (!this.prevKeysPressed.has(k) || !this.inputPressStartTicks.has(k)) {
-        this.inputPressStartTicks.set(k, this.currentControlTick);
-      }
-    }
-    for (const k of this.inputPressStartTicks.keys()) {
-      if (!k.startsWith("Mouse") && !k.startsWith("Gamepad") && !k.startsWith("gp-") && !input.isKeyPressed(k)) {
-        this.inputPressStartTicks.delete(k);
-      }
-    }
-
-    // Update inputPressStartTicks for gamepad buttons
-    for (const [slotIdx, slot] of input.gamepadSlots) {
-      if (!slot.connected || !slot.buttons) continue;
-      const prevSet = this.prevGamepadButtons.get(slotIdx);
-      for (let b = 0; b < slot.buttons.length; b++) {
-        const code = ControlSchemaArbiter.formatGamepadButtonIndex(b);
-        const key = `gp-${slotIdx}-${code}`;
-        const isDown = Boolean(slot.buttons[b]);
-        const wasDown = Boolean(prevSet && prevSet.has(b));
-        if (isDown && !wasDown) {
-          this.inputPressStartTicks.set(key, this.currentControlTick);
-          this.inputPressStartTicks.set(code, this.currentControlTick);
-        } else if (!isDown) {
-          this.inputPressStartTicks.delete(key);
-          this.inputPressStartTicks.delete(code);
+    for (const claimKey of Array.from(this.inputButtonClaims.keys())) {
+      const parts = claimKey.split(":");
+      const btnCode = parts[1] || parts[0];
+      if (
+        btnCode.startsWith("Key") ||
+        btnCode.startsWith("Digit") ||
+        btnCode.startsWith("Space") ||
+        btnCode.startsWith("Shift") ||
+        btnCode.startsWith("Control") ||
+        btnCode.startsWith("Alt")
+      ) {
+        if (!input.isKeyPressed(btnCode)) {
+          this.inputButtonClaims.delete(claimKey);
         }
       }
     }
 
+    for (const [slotIdx, slot] of input.gamepadSlots) {
+      if (!slot.connected || !slot.buttons) continue;
+      for (let b = 0; b < slot.buttons.length; b++) {
+        if (!slot.buttons[b]) {
+          const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+          releaseButtonClaims(gpCode);
+          releaseButtonClaims(`gp-${slotIdx}-${gpCode}`);
+        }
+      }
+    }
+
+    // Age out active continuous claims that ceased running on the previous tick
+    for (const claim of this.inputButtonClaims.values()) {
+      if (!claim.isSpent && claim.lastTickRan < this.currentControlTick - 1) {
+        claim.isSpent = true;
+      }
+    }
+
+    const normalizeActionKey = (moduleId: string, intent: string): string => {
+      let mid = moduleId;
+      let int = intent;
+      if (mid === "throwPickup" || mid === "pickup") mid = "pickup";
+      if (mid === "heldItem" || mid === "item" || mid === "consume") {
+        mid = "consume";
+        if (int === "primaryItemAbility") int = "eatHeldItem";
+      }
+      if (int === "swapItem") int = "swap";
+      return `${mid}:${int}`;
+    };
+
+    const isOneShotAction = (normalizedKey: string): boolean => {
+      switch (normalizedKey) {
+        case "pickup:pickupReach":
+        case "pickup:dropItem":
+        case "pickup:swap":
+        case "throw:releaseThrow":
+        case "throw:dropItem":
+        case "melee:punch":
+        case "locomotion:jump":
+          return true;
+        default:
+          return false;
+      }
+    };
+
+    const ruleContainsAction = (rule: ControlRule, targetActionKey: string): boolean => {
+      const statements = ControlSchemaArbiter.getRuleBody(rule);
+      for (const stmt of statements) {
+        if (stmt.type === "action") {
+          const k = normalizeActionKey(stmt.action.moduleId, stmt.action.intent);
+          if (k === targetActionKey) return true;
+        } else if (stmt.type === "nestedThread") {
+          for (const childRule of stmt.rules) {
+            if (ruleContainsAction(childRule, targetActionKey)) return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    const getRuleButtonCodes = (rule: ControlRule, schema?: ControlSchema, device?: DeviceChannel): string[] => {
+      const codes: string[] = [];
+      const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, schema, device);
+      if (effTrigger && effTrigger.code && effTrigger.code !== "Always" && effTrigger.code !== "None") {
+        codes.push(effTrigger.code);
+      }
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      for (const c of conds) {
+        if (c.type === "tagHeld" || c.type === "tagCleanHold" || c.type === "tagPressed") {
+          if (c.param && schema) {
+            const tags = [
+              ...(schema.keyboardMouse?.tags ?? []),
+              ...(schema.gamepad?.tags ?? []),
+              ...(schema.touch?.tags ?? []),
+            ];
+            const tag = tags.find((t) => t.id === c.param || t.name === c.param);
+            if (tag && tag.trigger.code) {
+              codes.push(tag.trigger.code);
+            }
+          }
+        } else if (c.type === "buttonHeld" && c.param) {
+          codes.push(c.param.trim());
+        }
+      }
+      return codes;
+    };
+
+    const checkAndClaimAction = (
+      char: Character,
+      leafRule: ControlRule,
+      rootRule: ControlRule,
+      act: { moduleId: string; intent: string },
+      associatedButtons: string[],
+      gpSlotIdx?: number
+    ): boolean => {
+      if (associatedButtons.length === 0) return true;
+      const normKey = normalizeActionKey(act.moduleId, act.intent);
+
+      // 1. Verify all held associated buttons permit this action
+      for (const btn of associatedButtons) {
+        if (!isPhysicalButtonDown(btn, gpSlotIdx)) continue;
+        const claimKey = `${char.id}:${btn}`;
+        const claim = this.inputButtonClaims.get(claimKey);
+        if (claim) {
+          if (claim.isSpent) return false;
+          if (claim.leafRuleId !== leafRule.id && claim.actionKey !== normKey) return false;
+        }
+      }
+
+      // 2. Claim / update buttons
+      const isOneShot = isOneShotAction(normKey);
+      for (const btn of associatedButtons) {
+        if (!isPhysicalButtonDown(btn, gpSlotIdx)) continue;
+        const claimKey = `${char.id}:${btn}`;
+        const claim = this.inputButtonClaims.get(claimKey);
+        if (!claim) {
+          this.inputButtonClaims.set(claimKey, {
+            leafRuleId: leafRule.id,
+            rootRuleId: rootRule.id,
+            actionKey: normKey,
+            isContinuous: !isOneShot,
+            lastTickRan: this.currentControlTick,
+            isSpent: isOneShot,
+          });
+        } else {
+          claim.lastTickRan = this.currentControlTick;
+          if (isOneShot) claim.isSpent = true;
+        }
+      }
+
+      return true;
+    };
+
     const createCleanHoldChecker = (ctx: ControlExecutionContext, kStates?: any, mStates?: any, gStates?: any) => {
       return (trigger: InputTriggerBinding, r?: ControlRule): boolean => {
+        // 1. Physical button must be down
         const isDown = ControlSchemaArbiter.isTriggerActive({ ...trigger, mode: "hold" }, ctx, kStates, mStates, gStates);
         if (!isDown) return false;
 
         const code = trigger.code;
         if (!code || code === "Always" || code === "None") return true;
 
-        const pressTick = this.inputPressStartTicks.get(code);
-        if (pressTick === undefined) return false;
-
-        const charId = ctx.character.id;
-        if (ctx.isHoldingItem) {
-          const lastPickup = this.lastPickupTicks.get(charId);
-          if (lastPickup !== undefined && pressTick <= lastPickup) {
-            return false;
-          }
-        } else {
-          const lastDropThrow = this.lastDropOrThrowTicks.get(charId);
-          if (lastDropThrow !== undefined && pressTick <= lastDropThrow) {
-            return false;
-          }
+        // 2. Check claim
+        const claimKey = `${ctx.character.id}:${code}`;
+        const claim = this.inputButtonClaims.get(claimKey);
+        if (!claim) {
+          return true; // Fresh press
         }
 
+        if (claim.isSpent) {
+          return false; // Spent on an action that completed or one-shot
+        }
+
+        // 3. If claimed by active continuous action:
         if (r) {
-          const nonInputConds = ControlSchemaArbiter.getRuleConditions(r).filter(
-            (c) =>
-              c.type !== "tagHeld" &&
-              c.type !== "tagCleanHold" &&
-              c.type !== "tagPressed" &&
-              c.type !== "tagReleased" &&
-              c.type !== "buttonHeld"
-          );
-
-          if (nonInputConds.length > 0) {
-            const met = nonInputConds.every((c) => ControlSchemaArbiter.evaluateCondition(c, ctx));
-            if (!met) return false;
-
-            const condStartTick = this.rulePreconditionTicks.get(r.id);
-            if (condStartTick !== undefined && pressTick < condStartTick) {
-              return false;
-            }
+          if (claim.rootRuleId === r.id || claim.leafRuleId === r.id || ruleContainsAction(r, claim.actionKey)) {
+            return true;
           }
+          return false;
         }
 
         return true;
       };
-    };
-
-    const updateRulePreconditions = (rules: ControlRule[], ctx: ControlExecutionContext) => {
-      for (const r of rules) {
-        const nonInputConds = ControlSchemaArbiter.getRuleConditions(r).filter(
-          (c) =>
-            c.type !== "tagHeld" &&
-            c.type !== "tagCleanHold" &&
-            c.type !== "tagPressed" &&
-            c.type !== "tagReleased" &&
-            c.type !== "buttonHeld"
-        );
-        if (nonInputConds.length > 0) {
-          const met = nonInputConds.every((c) => ControlSchemaArbiter.evaluateCondition(c, ctx));
-          if (met) {
-            if (!this.rulePreconditionTicks.has(r.id)) {
-              this.rulePreconditionTicks.set(r.id, this.currentControlTick);
-            }
-          } else {
-            this.rulePreconditionTicks.delete(r.id);
-          }
-        }
-        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
-          if (stmt.type === "nestedThread") {
-            updateRulePreconditions(stmt.rules, ctx);
-          }
-        }
-      }
     };
 
     // 1. Keyboard & Mouse Input Capture (Fully Schema-Driven via kSchema)
@@ -737,7 +841,6 @@ export class PlayerManager {
         keyStates,
         mouseStates,
       };
-      updateRulePreconditions(kSchema.keyboardMouse.rules, execCtx);
       execCtx.isCleanHoldActive = createCleanHoldChecker(execCtx, keyStates, mouseStates);
 
       // 1. Locomotion Movement Vector
@@ -825,7 +928,7 @@ export class PlayerManager {
       let activeHoldStage: string | null = null;
 
       const executedKbmThreads = new Set<string>();
-      const executeKbmRules = (ruleList: ControlRule[]) => {
+      const executeKbmRules = (ruleList: ControlRule[], inheritedButtons: string[] = [], rootRule?: ControlRule) => {
         const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
         for (const rule of sortedRules) {
           if (rule.enabled === false) continue;
@@ -843,12 +946,18 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
+          const currentRoot = rootRule ?? rule;
+          const ruleButtons = [...inheritedButtons, ...getRuleButtonCodes(rule, kSchema, "keyboardMouse")];
+
           const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
 
           for (const stmt of statements) {
             if (stmt.type === "action") {
               const act = stmt.action;
+              if (!checkAndClaimAction(kChar, rule, currentRoot, act, ruleButtons)) {
+                continue;
+              }
               const mid = act.moduleId;
               const intent = act.intent;
 
@@ -915,7 +1024,7 @@ export class PlayerManager {
                 }
               }
             } else if (stmt.type === "nestedThread") {
-              executeKbmRules(stmt.rules);
+              executeKbmRules(stmt.rules, ruleButtons, currentRoot);
             }
           }
         }
@@ -1069,7 +1178,6 @@ export class PlayerManager {
           axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
         gamepadStates: gpStates,
       };
-      updateRulePreconditions(gpSchema.gamepad.rules, gpExecCtx);
       gpExecCtx.isCleanHoldActive = createCleanHoldChecker(gpExecCtx, undefined, undefined, gpStates);
 
       // 1. Stick Mode Evaluation (Dynamic Override)
@@ -1120,7 +1228,7 @@ export class PlayerManager {
       let activeGpHoldStage: string | null = null;
 
       const executedGpThreads = new Set<string>();
-      const executeGpRules = (ruleList: ControlRule[]) => {
+      const executeGpRules = (ruleList: ControlRule[], inheritedButtons: string[] = [], rootRule?: ControlRule) => {
         const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
         for (const rule of sortedRules) {
           if (rule.enabled === false) continue;
@@ -1138,12 +1246,18 @@ export class PlayerManager {
           }
           ControlsInspector.notifyRuleFired(rule.id);
 
+          const currentRoot = rootRule ?? rule;
+          const ruleButtons = [...inheritedButtons, ...getRuleButtonCodes(rule, gpSchema, "gamepad")];
+
           const statements = ControlSchemaArbiter.getRuleBody(rule);
           const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
 
           for (const stmt of statements) {
             if (stmt.type === "action") {
               const act = stmt.action;
+              if (!checkAndClaimAction(cChar, rule, currentRoot, act, ruleButtons, slotIdx)) {
+                continue;
+              }
               const mid = act.moduleId;
               const intent = act.intent;
 
@@ -1208,7 +1322,7 @@ export class PlayerManager {
                 }
               }
             } else if (stmt.type === "nestedThread") {
-              executeGpRules(stmt.rules);
+              executeGpRules(stmt.rules, ruleButtons, currentRoot);
             }
           }
         }
@@ -1352,7 +1466,6 @@ export class PlayerManager {
       if (pkt.isDrop && char.heldObject && char.pickupModule) {
         const droppedObj = char.heldObject;
         char.pickupModule.drop(char);
-        this.lastDropOrThrowTicks.set(char.id, this.currentControlTick);
         input.arcModulationCursor = null;
         input.arcModulationDeltaY = 0;
         if (entry && entry.slotIndex !== undefined) {
@@ -1409,7 +1522,6 @@ export class PlayerManager {
         );
 
         if (thrown) {
-          this.lastDropOrThrowTicks.set(char.id, this.currentControlTick);
           (char as any)._lastThrowRecoilTime = performance.now();
           char.isUsingItem = false;
           char.eatRateWatts = 0;
@@ -1679,7 +1791,6 @@ export class PlayerManager {
         const droppedObj = char.heldObject;
         if (droppedObj) {
           char.pickupModule.drop(char);
-          this.lastDropOrThrowTicks.set(char.id, this.currentControlTick);
           input.arcModulationCursor = null;
           input.arcModulationDeltaY = 0;
           if (entry && entry.slotIndex !== undefined) {
@@ -1741,7 +1852,6 @@ export class PlayerManager {
               const idx = objects.indexOf(itemToHold);
               if (idx !== -1) objects.splice(idx, 1);
             } else if (pickedUp) {
-              this.lastPickupTicks.set(char.id, this.currentControlTick);
               this.lastHeldObjectIds.set(char.id, itemToHold.id);
               char.isUsingItem = false;
               char.eatRateWatts = 0;
@@ -1758,7 +1868,6 @@ export class PlayerManager {
           const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
           const held = char.heldObject as GameObject | null;
           if (pickedUp && held) {
-            this.lastPickupTicks.set(char.id, this.currentControlTick);
             grabState.grabSuppressed = true;
             if (isKeyboardPlayer) {
               grabState.mouseGrabSuppressed = true;
@@ -1824,7 +1933,6 @@ export class PlayerManager {
                   const idx = objects.indexOf(itemToHold);
                   if (idx !== -1) objects.splice(idx, 1);
                 } else if (pickedUp) {
-                  this.lastPickupTicks.set(char.id, this.currentControlTick);
                   const gState = this.getGrabSuppressionState(char.id);
                   const isButtonHeld = this.inputManager.isMouseDown ||
                     this.inputManager.justPickedUp ||
@@ -1879,7 +1987,6 @@ export class PlayerManager {
                   const idx = objects.indexOf(clone);
                   if (idx !== -1) objects.splice(idx, 1);
                 } else {
-                  this.lastPickupTicks.set(char.id, this.currentControlTick);
                   const gState = this.getGrabSuppressionState(char.id);
                   const isButtonHeld = this.inputManager.isMouseDown ||
                     this.inputManager.justPickedUp ||
@@ -1904,7 +2011,6 @@ export class PlayerManager {
               const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
               const held = char.heldObject as GameObject | null;
               if (pickedUp && held) {
-                this.lastPickupTicks.set(char.id, this.currentControlTick);
                 const gState = this.getGrabSuppressionState(char.id);
                 const isButtonHeld = this.inputManager.isMouseDown ||
                   this.inputManager.justPickedUp ||
