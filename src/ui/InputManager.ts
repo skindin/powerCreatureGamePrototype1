@@ -203,6 +203,104 @@ export class InputManager {
   public arcModulationDeltaY: number = 0; // Accumulated vertical mouse delta for trajectory modulation
   public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
   public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
+  public isRawDragging: boolean = false;
+  public rawDragDx: number = 0;
+  public rawDragDy: number = 0;
+  public rawDragConsumer?: ((dx: number, dy: number) => void) | null = null;
+
+  /**
+   * Universal entry point for any action or system requesting raw mouse drag input (X or Y).
+   * - Locks the game cursor to its current position so it doesn't wander.
+   * - Hides the hardware cursor and engages pointer lock.
+   * - Routes all raw movementX / movementY deltas to rawDragDx/Dy and consumer callback.
+   */
+  public beginRawDrag(onDelta?: (dx: number, dy: number) => void): void {
+    if (this.isRawDragging) {
+      if (onDelta) this.rawDragConsumer = onDelta;
+      return;
+    }
+
+    this.isRawDragging = true;
+    this.rawDragConsumer = onDelta || null;
+    this.rawDragDx = 0;
+    this.rawDragDy = 0;
+    this.aimLockRawDx = 0;
+    this.aimLockRawDy = 0;
+    this.aimLockRawDelta = 0;
+
+    // Snapshot current game cursor position so it stays fixed in place
+    this.recordedMousePos = { x: this.actualMousePos.x, y: this.actualMousePos.y };
+    this.lockedAimPos = { x: this.actualMousePos.x, y: this.actualMousePos.y };
+
+    this.hideCursor();
+    this.requestPointerLock();
+    if (typeof document !== "undefined") {
+      document.body.classList.add("pointer-locked");
+      this.canvas?.classList.add("pointer-locked");
+    }
+  }
+
+  /**
+   * Universal exit point for ending raw mouse drag input.
+   * - Exits pointer lock.
+   * - Snaps real cursor back to game cursor position without coordinate drift.
+   * - Unhides the hardware cursor.
+   */
+  public endRawDrag(): void {
+    if (!this.isRawDragging && !this.lockedAimPos && !this.isPointerLocked) return;
+
+    this.isRawDragging = false;
+    this.rawDragConsumer = null;
+
+    if (this.recordedMousePos) {
+      this.mousePos.x = this.recordedMousePos.x;
+      this.mousePos.y = this.recordedMousePos.y;
+      this.actualMousePos.x = this.recordedMousePos.x;
+      this.actualMousePos.y = this.recordedMousePos.y;
+    }
+
+    const wasLocked = Boolean(this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
+    if (wasLocked) {
+      this.isAwaitingUnlock = true;
+      this.exitPointerLock();
+      if (this.unlockTimeoutId) clearTimeout(this.unlockTimeoutId);
+      this.unlockTimeoutId = window.setTimeout(() => {
+        if (this.isAwaitingUnlock) {
+          this.completeUnlock();
+        }
+      }, 80);
+    } else {
+      this.completeUnlock();
+    }
+  }
+
+  public completeUnlock(): void {
+    if (this.unlockTimeoutId) {
+      clearTimeout(this.unlockTimeoutId);
+      this.unlockTimeoutId = null;
+    }
+    // 1. Mouse has been first unlocked!
+    // 2. AND THEN set game cursor to recorded mouse position:
+    if (this.recordedMousePos) {
+      this.mousePos.x = this.recordedMousePos.x;
+      this.mousePos.y = this.recordedMousePos.y;
+      this.actualMousePos.x = this.recordedMousePos.x;
+      this.actualMousePos.y = this.recordedMousePos.y;
+    }
+    // 3. Make real cursor visible again:
+    this.unhideCursor();
+    // 4. And make game cursor follow mouse again:
+    this.isAwaitingUnlock = false;
+    this.isRawDragging = false;
+    this.lockedAimPos = null;
+    this.arcModulationCursor = null;
+    this.arcModulationDeltaY = 0;
+    this.arcDetentSide = null;
+    if (typeof document !== "undefined") {
+      document.body.classList.remove("pointer-locked");
+      this.canvas?.classList.remove("pointer-locked");
+    }
+  }
   public lastClientX: number | null = null;
   public lastClientY: number | null = null;
   public isKeyboardMeleeRequested: boolean = false;
@@ -598,7 +696,7 @@ export class InputManager {
       }
       this.lastMouseMoveTime = performance.now();
 
-      if (this.isRightMouseDown && this.lockedAimPos) {
+      if (this.isRawDragging || (this.isRightMouseDown && this.lockedAimPos) || this.lockedAimPos) {
         // While locked, take raw mouse input to increase/decrease arc height
         const movementDy = (e.movementY !== undefined && e.movementY !== 0)
           ? e.movementY
@@ -613,6 +711,11 @@ export class InputManager {
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
         this.arcModulationDeltaY += movementDy;
+        this.rawDragDx += movementDx;
+        this.rawDragDy += movementDy;
+        if (this.rawDragConsumer) {
+          this.rawDragConsumer(movementDx, movementDy);
+        }
 
         // Keep game cursor snapped to recorded mouse pos
         if (this.recordedMousePos) {
@@ -762,6 +865,9 @@ export class InputManager {
 
     window.addEventListener("mouseup", (e) => {
       this.syncModifierStates(e);
+      if (this.isRawDragging) {
+        this.endRawDrag();
+      }
       if (e.button === 2) {
         this.isRightMouseDown = false;
       this.isMiddleMouseDown = false;

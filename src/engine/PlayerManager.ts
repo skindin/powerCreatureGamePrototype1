@@ -1891,7 +1891,7 @@ export class PlayerManager {
         entry.wasCursorVisible = true;
         this.inputManager.isCursorVisible = true;
 
-        const aimPos = (this.inputManager.isRightMouseDown && this.inputManager.lockedAimPos)
+        const aimPos = this.inputManager.lockedAimPos
           ? this.inputManager.lockedAimPos
           : this.inputManager.mousePos;
 
