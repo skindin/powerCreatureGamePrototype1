@@ -10,8 +10,12 @@ import type {
   DeviceChannel,
   InputTagBinding,
   RuleStatement,
+  PrebuiltControlChannels,
 } from "./ControlSchemaTypes.js";
 import { ControlActionCatalog } from "./ControlActionCatalog.js";
+import { InputPressTokenManager } from "./InputPressTokenManager.js";
+import type { InputManager } from "../../ui/InputManager.js";
+import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
 
 export interface EvaluatedControlFrame {
   movementVector: Vector2D;
@@ -610,5 +614,260 @@ export class ControlSchemaArbiter {
       activeRules,
       ruleStates,
     };
+  }
+
+  public static evaluateChannels(
+    channels: PrebuiltControlChannels,
+    execCtx: ControlExecutionContext,
+    input: InputManager
+  ): PlayerInputPacket {
+    const char = execCtx.character;
+    const now = performance.now();
+    const tokens = InputPressTokenManager.getInstance();
+
+    // 1. Gather all currently depressed keys & buttons
+    const activeKeys = new Set<string>();
+    if (input.isMouseDown) activeKeys.add("MouseLeft");
+    if (input.isMiddleMouseDown) activeKeys.add("MouseMiddle");
+    if (input.isRightMouseDown) activeKeys.add("MouseRight");
+    for (const key of input.getActiveKeys()) {
+      activeKeys.add(key);
+    }
+    tokens.update(activeKeys, now);
+
+    // 2. Explicit Locomotion Movement Vector
+    let moveX = 0;
+    let moveY = 0;
+    const loco = channels.locomotion;
+
+    if (loco.mode === "directVector") {
+      for (const k of loco.upKeys) if (tokens.isDown(k)) { moveY -= 1; break; }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) { moveY += 1; break; }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) { moveX -= 1; break; }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) { moveX += 1; break; }
+    } else if (loco.mode === "forwardFacingDrive") {
+      const fwdAngle = char.facingAngle ?? 0;
+      const fwdX = Math.cos(fwdAngle);
+      const fwdY = Math.sin(fwdAngle);
+      const leftX = -fwdY;
+      const leftY = fwdX;
+
+      const fwdKey = loco.forwardKey || loco.upKeys[0];
+      if (fwdKey && tokens.isDown(fwdKey)) {
+        moveX += fwdX;
+        moveY += fwdY;
+      }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) { moveX -= fwdX * 0.75; moveY -= fwdY * 0.75; break; }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) { moveX += leftX * 0.85; moveY += leftY * 0.85; break; }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) { moveX -= leftX * 0.85; moveY -= leftY * 0.85; break; }
+    } else if (loco.mode === "facingRelativeStrafe") {
+      const fwdAngle = char.facingAngle ?? 0;
+      const fwdX = Math.cos(fwdAngle);
+      const fwdY = Math.sin(fwdAngle);
+      const leftX = -fwdY;
+      const leftY = fwdX;
+
+      for (const k of loco.upKeys) if (tokens.isDown(k)) { moveX += fwdX; moveY += fwdY; break; }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) { moveX -= fwdX; moveY -= fwdY; break; }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) { moveX += leftX; moveY += leftY; break; }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) { moveX -= leftX; moveY -= leftY; break; }
+    }
+
+    const moveMag = Math.hypot(moveX, moveY);
+    if (moveMag > 1.0) {
+      moveX /= moveMag;
+      moveY /= moveMag;
+    }
+
+    // Sprinting
+    let isSprinting = false;
+    if (loco.sprintKey) {
+      if (loco.sprintMode === "toggle") {
+        if (tokens.isFresh(loco.sprintKey)) {
+          char.setSprinting(!char.isSprinting);
+          tokens.claim(loco.sprintKey, "toggleSprint");
+        }
+        isSprinting = Boolean(char.isSprinting);
+      } else {
+        isSprinting = tokens.isDown(loco.sprintKey);
+      }
+    }
+
+    // Jumping
+    const isJumpHeld = loco.jumpKey ? tokens.isDown(loco.jumpKey) : false;
+
+    // 3. Aiming & Facing Direction
+    if (channels.aiming.mode === "faceMouseCursor") {
+      const aimDx = input.actualMousePos.x - char.position.x;
+      const aimDy = input.actualMousePos.y - char.position.y;
+      if (Math.hypot(aimDx, aimDy) > 0.05) {
+        char.facingAngle = Math.atan2(aimDy, aimDx);
+      }
+    } else if (channels.aiming.mode === "faceMovement") {
+      if (moveMag > 0.05) {
+        char.facingAngle = Math.atan2(moveY, moveX);
+      }
+    }
+
+    // 4. Combat Channels: Melee & Laser
+    let isMeleeRequested = false;
+    if (channels.melee.enabled) {
+      const code = channels.melee.trigger.code;
+      if (tokens.canExecute(code, channels.melee.claimPolicy, "melee")) {
+        tokens.claim(code, "melee");
+        isMeleeRequested = true;
+      }
+    }
+
+    let isLaserAiming = false;
+    let isLaserFiring = false;
+    if (channels.laser.enabled) {
+      const aimTrig = channels.laser.aimTrigger;
+      const isAltChord = (aimTrig.chordModifiers || []).every((m) => tokens.isDown(m));
+      if (isAltChord && tokens.isDown(aimTrig.code)) {
+        isLaserAiming = true;
+        if (tokens.isDown(channels.laser.fireTrigger.code)) {
+          isLaserFiring = true;
+        }
+      }
+    }
+
+    // 5. Item Ability / Consume Channel
+    let isUsingItem = false;
+    const canUseItem = execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
+    if (canUseItem && channels.consume.enabled) {
+      const code = channels.consume.trigger.code;
+      if (tokens.canExecute(code, channels.consume.claimPolicy, "consume")) {
+        tokens.claim(code, "consume");
+        isUsingItem = true;
+      }
+    }
+
+    // 6. Throw Channel & Universal Trajectory Raw Drag
+    let isAimingTrajectory = false;
+    let isThrow = false;
+    if (execCtx.isHoldingItem && channels.throw.enabled) {
+      const aimCode = channels.throw.aimTrigger.code;
+      const isAimHeld = tokens.isDown(aimCode);
+
+      if (isAimHeld) {
+        isAimingTrajectory = true;
+        const fireCode = channels.throw.fireTrigger.code;
+        const fireHeldMs = tokens.getHoldDuration(fireCode, now);
+
+        if (channels.throw.arcModulationSource === "mouseDragY") {
+          if (tokens.isDown(fireCode)) {
+            if (fireHeldMs >= (channels.throw.arcDragHoldThresholdMs || 200)) {
+              // Engage universal raw mouse drag
+              if (!input.isRawDragging) {
+                input.beginRawDrag((_dx, dy) => {
+                  if (char.throwModule) {
+                    const cur = char.throwModule.savedArcRatio ?? 0.5;
+                    const next = Math.max(0.0, Math.min(1.0, cur + (-dy * 0.005)));
+                    char.throwModule.savedArcRatio = next;
+                    char.savedArcRatio = next;
+                    char.throwModule.hasUserSetArcRatio = true;
+                    char.hasUserSetArcRatio = true;
+                  }
+                });
+              }
+            }
+          }
+        }
+
+        // Fire release check
+        const wasFireDown = execCtx.mouseStates?.justReleased(fireCode === "MouseLeft" ? 0 : 2) || (execCtx.keyStates?.justReleased(fireCode) ?? false);
+        if (wasFireDown) {
+          if (input.isRawDragging) {
+            input.endRawDrag();
+            if (channels.throw.fireOnReleaseAim !== true) {
+              isThrow = true;
+              tokens.claim(fireCode, "throw");
+            }
+          } else if (fireHeldMs < (channels.throw.arcDragHoldThresholdMs || 200)) {
+            isThrow = true;
+            tokens.claim(fireCode, "throw");
+          }
+        }
+      } else {
+        if (input.isRawDragging) {
+          input.endRawDrag();
+        }
+      }
+    }
+
+    // 7. Object Interaction Channel (Grab / Swap)
+    let isGrabHeld = false;
+    let isSwap = false;
+    if (channels.interaction.enabled) {
+      const code = channels.interaction.trigger.code;
+      if (!execCtx.isHoldingItem) {
+        // Empty handed pickup: requires clean press so held buttons don't accidentally grab
+        if (tokens.canExecute(code, channels.interaction.claimPolicy, "interact") && execCtx.targetInReach) {
+          tokens.claim(code, "interact");
+          isGrabHeld = true;
+        }
+      } else if (channels.interaction.allowSwapWhenHolding && execCtx.targetInReach && !isAimingTrajectory && !isUsingItem) {
+        // Swap with nearby item
+        if (tokens.canExecute(code, channels.interaction.claimPolicy, "swap")) {
+          tokens.claim(code, "swap");
+          isSwap = true;
+        }
+      }
+    }
+
+    // Sync character intent flags
+    char.isAimingTrajectory = isAimingTrajectory;
+    char.isLaserAiming = isLaserAiming;
+    char.isLaserFiring = isLaserFiring;
+    char.isMeleeRequested = isMeleeRequested;
+
+    if (isAimingTrajectory && char.facingAngle !== undefined) {
+      char.lastThrowAimAngle = char.facingAngle;
+    }
+
+    const isAiming = isLaserAiming || isAimingTrajectory;
+    const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
+    const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
+
+    return {
+      playerId: "keyboard",
+      moveX,
+      moveY,
+      isSprinting: isSprinting || Boolean(char.isSprinting),
+      isJumpHeld,
+      isGrabHeld,
+      grabTargetObjectId: (isGrabHeld || isSwap) && execCtx.targetInReach ? execCtx.targetInReach.id : null,
+      isDrop: false,
+      isThrow,
+      isSwap,
+      isUsingItem,
+      isLaserAiming,
+      isLaserFiring,
+      laserAimX: input.actualMousePos.x,
+      laserAimY: input.actualMousePos.y,
+      isMeleeRequested,
+      meleeAimDirX: (input.actualMousePos.x - char.position.x) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
+      meleeAimDirY: (input.actualMousePos.y - char.position.y) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
+      meleeAimX: input.actualMousePos.x,
+      meleeAimY: input.actualMousePos.y,
+      aimX: input.actualMousePos.x,
+      aimY: input.actualMousePos.y,
+      isAiming,
+      isLockHeld: Boolean(input.lockedAimPos),
+      lockedAimPos: input.lockedAimPos,
+      aimLockDelta: 0,
+      facingAngle: char.facingAngle,
+      ...(kLaunchVel ? {
+        launchVx: kLaunchVel.vx,
+        launchVy: kLaunchVel.vy,
+        launchVz: kLaunchVel.vz,
+      } : {}),
+      ...(kLaunchPos ? {
+        launchStartX: kLaunchPos.x,
+        launchStartY: kLaunchPos.y,
+        launchStartZ: kLaunchPos.z,
+      } : {}),
+    } as any;
   }
 }

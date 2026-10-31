@@ -9138,6 +9138,53 @@ function serializePrefab(prefab) {
     ...schema ? { controlSchema: schema } : {}
   };
 }
+const DefaultPrebuiltChannels = {
+  locomotion: {
+    mode: "directVector",
+    upKeys: ["KeyW", "ArrowUp"],
+    downKeys: ["KeyS", "ArrowDown"],
+    leftKeys: ["KeyA", "ArrowLeft"],
+    rightKeys: ["KeyD", "ArrowRight"],
+    sprintKey: "ShiftLeft",
+    sprintMode: "hold",
+    jumpKey: "Space"
+  },
+  aiming: {
+    mode: "faceMouseCursor",
+    rawMouseDragEnabled: true
+  },
+  interaction: {
+    enabled: true,
+    trigger: { device: "mouse", code: "MouseLeft", mode: "press" },
+    claimPolicy: "requireCleanPress",
+    allowSwapWhenHolding: true
+  },
+  throw: {
+    enabled: true,
+    aimTrigger: { device: "mouse", code: "MouseRight", mode: "hold" },
+    fireTrigger: { device: "mouse", code: "MouseLeft", mode: "press" },
+    fireOnReleaseAim: false,
+    arcModulationSource: "mouseDragY",
+    arcDragHoldThresholdMs: 200,
+    claimPolicy: "requireCleanPress"
+  },
+  consume: {
+    enabled: true,
+    trigger: { device: "keyboard", code: "KeyE", mode: "hold" },
+    claimPolicy: "requireCleanPress"
+  },
+  melee: {
+    enabled: true,
+    trigger: { device: "keyboard", code: "KeyF", mode: "press" },
+    claimPolicy: "requireCleanPress"
+  },
+  laser: {
+    enabled: true,
+    aimTrigger: { device: "mouse", code: "MouseRight", chordModifiers: ["AltLeft"], mode: "hold" },
+    fireTrigger: { device: "mouse", code: "MouseLeft", mode: "hold" },
+    powerModulationSource: "mouseWheel"
+  }
+};
 const DefaultControlSchema = {
   id: "default",
   name: "Default (Action Context)",
@@ -9146,6 +9193,7 @@ const DefaultControlSchema = {
   stages: ["none", "laser", "throw", "melee"],
   stageGroups: [{ name: "default", stages: ["none", "laser", "throw", "melee"] }],
   keyboardMouse: {
+    channels: JSON.parse(JSON.stringify(DefaultPrebuiltChannels)),
     aiming: { mode: "faceMouseCursor" },
     locomotion: {
       mode: "directVector",

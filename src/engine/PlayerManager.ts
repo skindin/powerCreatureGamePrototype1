@@ -542,6 +542,7 @@ export class PlayerManager {
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
+
       const kSchema = ControlsInspector.getActiveSchema(kChar);
       const isHolding = kChar.heldObject !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
@@ -609,6 +610,13 @@ export class PlayerManager {
         mouseStates,
       };
 
+      if (kSchema.keyboardMouse.channels) {
+        const packet = ControlSchemaArbiter.evaluateChannels(kSchema.keyboardMouse.channels, execCtx, input);
+        map.set("keyboard", packet);
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      } else {
       // 1. Locomotion Movement Vector
       let moveX = 0;
       let moveY = 0;
@@ -834,9 +842,10 @@ export class PlayerManager {
           launchStartZ: kLaunchPos.z,
         } : {}),
       } as any);
-      input.aimLockRawDelta = 0;
-      input.aimLockRawDx = 0;
-      input.aimLockRawDy = 0;
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      }
     }
 
     // 2. Gamepads (Fully Schema-Driven via gpSchema)

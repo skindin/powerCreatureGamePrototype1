@@ -18,6 +18,7 @@ import type {
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
+  DefaultPrebuiltChannels,
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
@@ -37,6 +38,7 @@ export class ControlsInspector {
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
+  private static viewMode: "channels" | "legacyBlocks" = "channels";
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
@@ -44,6 +46,7 @@ export class ControlsInspector {
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
+  private static listeningChannelTarget: { channel: string; field: string; index?: number } | null = null;
   private static recorderCleanup: (() => void) | null = null;
   private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
@@ -57,8 +60,16 @@ export class ControlsInspector {
     return Boolean(this.modalOverlay && document.body.contains(this.modalOverlay));
   }
 
+  public static ensureChannels(schema: ControlSchema): void {
+    if (!schema) return;
+    if (!schema.keyboardMouse.channels) {
+      schema.keyboardMouse.channels = JSON.parse(JSON.stringify(DefaultPrebuiltChannels));
+    }
+  }
+
   public static ensureSchemaTags(schema: ControlSchema): void {
     if (!schema) return;
+    this.ensureChannels(schema);
     // 1. Keyboard & Mouse Tags
     if (!schema.keyboardMouse.tags) {
       schema.keyboardMouse.tags = [];
@@ -292,12 +303,15 @@ export class ControlsInspector {
   public static openWindow(panel: DevPanel, char: Character): void {
     this.modalChar = char;
     this.modalPanel = panel;
-    this.workingSchema = JSON.parse(JSON.stringify(this.getActiveSchema(char)));
+    const schema = this.getActiveSchema(char);
+    this.ensureChannels(schema);
+    this.workingSchema = JSON.parse(JSON.stringify(schema));
     this.showJsonEditor = false;
     this.jsonErrorMessage = null;
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
+    this.listeningChannelTarget = null;
 
     if (typeof document !== "undefined" && document.pointerLockElement) {
       try {
@@ -494,6 +508,7 @@ export class ControlsInspector {
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
+    this.listeningChannelTarget = null;
   }
 
   private static async saveAndCommit(): Promise<void> {
@@ -746,68 +761,116 @@ export class ControlsInspector {
         <!-- Scrollable Modal Body -->
         <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #090d16;">
           
-          <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
-          <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-              <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-                🎮 Locomotion & Aiming (WASD vs Mouse Movement)
+          ${this.activeTab === "keyboardMouse" ? `
+            <!-- Mode Switcher Pill -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 8px 14px;">
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-mode-channels" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "channels" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
+                  🎛️ Modular Channels (Plug & Play)
+                </button>
+                <button id="btn-mode-legacy" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "legacyBlocks" ? "background: rgba(255, 255, 255, 0.15); color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.4);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
+                  🔧 Visual Block Builder (Legacy)
+                </button>
+              </div>
+              <span style="font-size: 0.70rem; color: #94a3b8;">
+                ${this.viewMode === "channels" ? "✨ Discrete, robust channels with intrinsic clean-press tokens & valued raw mouse drag" : "Raw statement cascades & condition dropdowns"}
               </span>
-              <span style="font-size: 0.68rem; color: #94a3b8;">Choose movement mode and directional keys</span>
             </div>
-            <div id="controls-paradigms-container">
-              ${this.renderParadigmsHtml(schema)}
-            </div>
-          </div>
 
-          <!-- Layer 1: Keybind Tags Section -->
-          <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🏷️ Layer 1: Action Name Keybinds (${this.getActiveDeviceTags(schema).length})</span>
-                <span style="font-size: 0.68rem; color: #94a3b8;">Action names mapped to physical keys & buttons</span>
+            ${this.viewMode === "channels" ? this.renderChannelsHtml(schema) : `
+              <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
+              <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+                  <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                    🎮 Locomotion & Aiming (WASD vs Mouse Movement)
+                  </span>
+                  <span style="font-size: 0.68rem; color: #94a3b8;">Choose movement mode and directional keys</span>
+                </div>
+                <div id="controls-paradigms-container">
+                  ${this.renderParadigmsHtml(schema)}
+                </div>
               </div>
-              <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Jump down to Layer 2 Action Threads">
-                ↓ Jump to Threads
-              </button>
-            </div>
-            <div id="controls-tags-container">
-              ${this.renderTagsSectionHtml(schema)}
-            </div>
-          </div>
 
-          <!-- Section: Stages -->
-          <div id="section-stages" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🎭 Stages (${this.getActiveStages(schema).length})</span>
-                <span style="font-size: 0.68rem; color: #94a3b8;">User-defined modal states for branching conditions</span>
+              <!-- Layer 1: Keybind Tags Section -->
+              <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🏷️ Layer 1: Action Name Keybinds (${this.getActiveDeviceTags(schema).length})</span>
+                    <span style="font-size: 0.68rem; color: #94a3b8;">Action names mapped to physical keys & buttons</span>
+                  </div>
+                  <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Jump down to Layer 2 Action Threads">
+                    ↓ Jump to Threads
+                  </button>
+                </div>
+                <div id="controls-tags-container">
+                  ${this.renderTagsSectionHtml(schema)}
+                </div>
+              </div>
+
+              <!-- Section: Stages -->
+              <div id="section-stages" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🎭 Stages (${this.getActiveStages(schema).length})</span>
+                    <span style="font-size: 0.68rem; color: #94a3b8;">User-defined modal states for branching conditions</span>
+                  </div>
+                </div>
+                <div id="controls-stages-container">
+                  ${this.renderStagesSectionHtml(schema)}
+                </div>
+              </div>
+
+              <!-- Rules Matrix Header (Layer 2) -->
+              <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                  ⚡ Layer 2: Action Threads (${activeRulesCount} branches)
+                  <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Cascading IF / ELSE IF / ELSE per action tag</span>
+                </span>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Scroll up to Layer 1 Keybinds">
+                    ↑ Keybinds
+                  </button>
+                  <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
+                    + Add Rule
+                  </button>
+                </div>
+              </div>
+
+              <!-- Rules List Container -->
+              <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+                ${this.renderRulesListHtml(char, schema)}
+              </div>
+            `}
+          ` : `
+            <!-- Gamepad / Touch Locomotion Paradigm Section -->
+            <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                  🎮 Locomotion & Aiming
+                </span>
+              </div>
+              <div id="controls-paradigms-container">
+                ${this.renderParadigmsHtml(schema)}
               </div>
             </div>
-            <div id="controls-stages-container">
-              ${this.renderStagesSectionHtml(schema)}
-            </div>
-          </div>
 
-          <!-- Rules Matrix Header (Layer 2) -->
-          <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
-            <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-              ⚡ Layer 2: Action Threads (${activeRulesCount} branches)
-              <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Cascading IF / ELSE IF / ELSE per action tag</span>
-            </span>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Scroll up to Layer 1 Keybinds">
-                ↑ Keybinds
-              </button>
-              <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
-                + Add Rule
-              </button>
+            <!-- Rules Matrix Header -->
+            <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+              <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                ⚡ Action Threads (${activeRulesCount} branches)
+              </span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
+                  + Add Rule
+                </button>
+              </div>
             </div>
-          </div>
 
-          <!-- Rules List Container -->
-          <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
-            ${this.renderRulesListHtml(char, schema)}
-          </div>
+            <!-- Rules List Container -->
+            <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+              ${this.renderRulesListHtml(char, schema)}
+            </div>
+          `}
 
           <!-- Collapsible Raw JSON Editor Drawer -->
           <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 10px;">
@@ -1187,6 +1250,448 @@ export class ControlsInspector {
         </div>
       </div>
     `;
+  }
+
+  public static formatChannelKeyLabel(code: string, chordModifiers?: string[]): string {
+    if (!code) return "None";
+    let base = code;
+    if (base.startsWith("Key")) base = base.substring(3);
+    else if (base.startsWith("Digit")) base = base.substring(5);
+    else if (base === "MouseLeft") base = "LMB";
+    else if (base === "MouseRight") base = "RMB";
+    else if (base === "MouseMiddle") base = "MMB";
+    else if (base === "Space") base = "Space";
+    else if (base === "ShiftLeft") base = "Shift";
+    else if (base === "ControlLeft") base = "Ctrl";
+    else if (base === "AltLeft") base = "Alt";
+    else if (base === "ArrowUp") base = "↑";
+    else if (base === "ArrowDown") base = "↓";
+    else if (base === "ArrowLeft") base = "←";
+    else if (base === "ArrowRight") base = "→";
+
+    if (chordModifiers && chordModifiers.length > 0) {
+      const mods = chordModifiers.map((m) => {
+        if (m.startsWith("Alt")) return "Alt";
+        if (m.startsWith("Shift")) return "Shift";
+        if (m.startsWith("Control") || m.startsWith("Ctrl")) return "Ctrl";
+        return m;
+      });
+      return `${mods.join(" + ")} + ${base}`;
+    }
+    return base;
+  }
+
+  private static renderChannelsHtml(schema: ControlSchema): string {
+    this.ensureChannels(schema);
+    const ch = schema.keyboardMouse.channels!;
+
+    const isListening = (channel: string, field: string, index?: number) => {
+      if (!this.listeningChannelTarget) return false;
+      return (
+        this.listeningChannelTarget.channel === channel &&
+        this.listeningChannelTarget.field === field &&
+        this.listeningChannelTarget.index === index
+      );
+    };
+
+    const formatKeyBtn = (channel: string, field: string, code: string, chordModifiers?: string[], index?: number) => {
+      const listening = isListening(channel, field, index);
+      const label = this.formatChannelKeyLabel(code, chordModifiers);
+      const idxAttr = index !== undefined ? `data-index="${index}"` : "";
+      return `
+        <button class="btn-channel-bind btn-secondary-action" data-channel="${channel}" data-field="${field}" ${idxAttr} type="button" style="
+          font-size: 0.74rem;
+          padding: 3px 10px;
+          font-weight: 600;
+          min-width: 55px;
+          text-align: center;
+          border-radius: 4px;
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          ${listening ? "background: #ef4444; color: #ffffff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #ffffff;"}
+        " title="Click to bind key or mouse button">
+          ${listening ? "🔴 Press key..." : label}
+        </button>
+      `;
+    };
+
+    const formatTriggerBtn = (channel: string, field: string, trigger: InputTriggerBinding) => {
+      return formatKeyBtn(channel, field, trigger.code, trigger.chordModifiers);
+    };
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Card 1: Locomotion & Movement -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">🏃</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Locomotion & Movement</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Locomotion Mode:</label>
+              <select class="channel-loco-mode dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 4px;">
+                <option value="directVector" ${ch.locomotion.mode === "directVector" ? "selected" : ""}>Direct 2D Vector (WASD / Arrows)</option>
+                <option value="forwardFacingDrive" ${ch.locomotion.mode === "forwardFacingDrive" ? "selected" : ""}>Forward-Facing Drive (Thrust + Mouse Facing)</option>
+                <option value="facingRelativeStrafe" ${ch.locomotion.mode === "facingRelativeStrafe" ? "selected" : ""}>Facing-Relative Strafe (Heading Relative)</option>
+              </select>
+            </div>
+          </div>
+
+          ${ch.locomotion.mode === "forwardFacingDrive" ? `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Forward Thrust:</span>
+                ${formatKeyBtn("locomotion", "forwardKey", ch.locomotion.forwardKey || "MouseRight")}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Reverse / Brake:</span>
+                ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[0] || "KeyS", undefined, 0)}
+              </div>
+            </div>
+            <div style="font-size: 0.68rem; color: #64748b; font-style: italic;">
+              ℹ️ Facing heading is steered directly by the mouse cursor. Forward thrust propels creature along current heading.
+            </div>
+          ` : `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Up:</span>
+                <div style="display: flex; gap: 6px;">
+                  ${formatKeyBtn("locomotion", "upKeys", ch.locomotion.upKeys[0] || "KeyW", undefined, 0)}
+                  ${formatKeyBtn("locomotion", "upKeys", ch.locomotion.upKeys[1] || "ArrowUp", undefined, 1)}
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Down:</span>
+                <div style="display: flex; gap: 6px;">
+                  ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[0] || "KeyS", undefined, 0)}
+                  ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[1] || "ArrowDown", undefined, 1)}
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Left:</span>
+                <div style="display: flex; gap: 6px;">
+                  ${formatKeyBtn("locomotion", "leftKeys", ch.locomotion.leftKeys[0] || "KeyA", undefined, 0)}
+                  ${formatKeyBtn("locomotion", "leftKeys", ch.locomotion.leftKeys[1] || "ArrowLeft", undefined, 1)}
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Right:</span>
+                <div style="display: flex; gap: 6px;">
+                  ${formatKeyBtn("locomotion", "rightKeys", ch.locomotion.rightKeys[0] || "KeyD", undefined, 0)}
+                  ${formatKeyBtn("locomotion", "rightKeys", ch.locomotion.rightKeys[1] || "ArrowRight", undefined, 1)}
+                </div>
+              </div>
+            </div>
+          `}
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Sprint:</span>
+                <select class="channel-sprint-mode dev-select" style="font-size: 0.68rem; padding: 2px 4px; color: #94a3b8; background: #0f172a; border: 1px solid rgba(148,163,184,0.2);">
+                  <option value="hold" ${ch.locomotion.sprintMode === "hold" ? "selected" : ""}>Hold</option>
+                  <option value="toggle" ${ch.locomotion.sprintMode === "toggle" ? "selected" : ""}>Toggle</option>
+                </select>
+              </div>
+              ${formatKeyBtn("locomotion", "sprintKey", ch.locomotion.sprintKey || "ShiftLeft")}
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+              <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Jump / Hop:</span>
+              ${formatKeyBtn("locomotion", "jumpKey", ch.locomotion.jumpKey || "Space")}
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Aiming & Reticle -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">🎯</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Aiming & Reticle</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Aim Orientation:</label>
+              <select class="channel-aim-mode dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 4px;">
+                <option value="faceMouseCursor" ${ch.aiming.mode === "faceMouseCursor" ? "selected" : ""}>Face Mouse Cursor (World Coordinates)</option>
+                <option value="faceMovement" ${ch.aiming.mode === "faceMovement" ? "selected" : ""}>Face Locomotion Direction</option>
+              </select>
+            </div>
+          </div>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+            <input type="checkbox" class="channel-raw-drag" ${ch.aiming.rawMouseDragEnabled !== false ? "checked" : ""} />
+            <span><strong>Universal Raw Mouse Drag Lifecycle:</strong> Automatically engage pointer lock and hide hardware cursor during valued mouse drags (arc height modulation, laser power), locking the game crosshair in place and cleanly restoring mouse position on release.</span>
+          </label>
+        </div>
+
+        <!-- Card 3: Object Interaction (Pick Up / Swap) -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">📦</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Object Interaction (Pick Up / Swap)</span>
+            </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-enabled" data-channel="interaction" ${ch.interaction.enabled ? "checked" : ""} />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div>
+              <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Interaction Trigger (Grab Ground Item):</div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">Triggered when hands are empty and a freebody object is within 3D reach.</div>
+            </div>
+            ${formatTriggerBtn("interaction", "trigger", ch.interaction.trigger)}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 4px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-clean-press" data-channel="interaction" ${ch.interaction.claimPolicy === "requireCleanPress" ? "checked" : ""} />
+              <span><strong>Require Clean Press (Token Isolation):</strong> Button must be released and pressed fresh to grab. Holding LMB after finishing eating or firing will NEVER trigger ground pickup.</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-swap" ${ch.interaction.allowSwapWhenHolding ? "checked" : ""} />
+              <span><strong>Allow Quick Swap:</strong> Pressing interaction while holding an item automatically drops held item and picks up reachable item.</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Card 4: Throw & Ballistics (Parabolic Arc & Clearance) -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">🏹</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Throw & Ballistics (Parabolic Arc)</span>
+            </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-enabled" data-channel="throw" ${ch.throw.enabled ? "checked" : ""} />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+              <div>
+                <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Aim Trigger:</div>
+                <div style="font-size: 0.68rem; color: #94a3b8;">Hold to preview trajectory arc</div>
+              </div>
+              ${formatTriggerBtn("throw", "aimTrigger", ch.throw.aimTrigger)}
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+              <div>
+                <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Fire Trigger:</div>
+                <div style="font-size: 0.68rem; color: #94a3b8;">Click to throw, hold to drag arc</div>
+              </div>
+              ${formatTriggerBtn("throw", "fireTrigger", ch.throw.fireTrigger)}
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.74rem; font-weight: 600; color: #cbd5e1;">Arc Modulation Socket:</span>
+              <select class="channel-throw-arc-source dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 6px; border-radius: 4px;">
+                <option value="mouseDragY" ${ch.throw.arcModulationSource === "mouseDragY" ? "selected" : ""}>🖱️ Vertical Mouse Drag</option>
+                <option value="mouseWheel" ${ch.throw.arcModulationSource === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                <option value="none" ${ch.throw.arcModulationSource === "none" ? "selected" : ""}>🔒 Disabled (Fixed)</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.74rem; font-weight: 600; color: #cbd5e1;">Drag Hold Threshold:</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" class="channel-throw-drag-threshold dev-input" value="${ch.throw.arcDragHoldThresholdMs || 200}" min="50" max="1000" step="25" style="width: 60px; font-size: 0.74rem; padding: 2px 6px; text-align: center; background: #0f172a; color: #ffffff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;" />
+                <span style="font-size: 0.68rem; color: #94a3b8;">ms</span>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 4px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-release-throw" ${ch.throw.fireOnReleaseAim ? "checked" : ""} />
+              <span><strong>Release Aim to Fire:</strong> Releasing the Aim button executes the throw immediately (instead of requiring Fire button click).</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-clean-press" data-channel="throw" ${ch.throw.claimPolicy === "requireCleanPress" ? "checked" : ""} />
+              <span><strong>Require Clean Press:</strong> Prevents accidental throws from sustained mouse clicks.</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Card 5: Item Ability & Consume (Edibles / Tools) -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">🍎</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Item Ability & Consume (Edibles / Tools)</span>
+            </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+              <input type="checkbox" class="channel-toggle-enabled" data-channel="consume" ${ch.consume.enabled ? "checked" : ""} />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
+            <div>
+              <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Item Use / Bite Key:</div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">Active while holding an edible or item with primary ability. Hold to consume bites.</div>
+            </div>
+            ${formatTriggerBtn("consume", "trigger", ch.consume.trigger)}
+          </div>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer; padding: 2px 4px;">
+            <input type="checkbox" class="channel-toggle-clean-press" data-channel="consume" ${ch.consume.claimPolicy === "requireCleanPress" ? "checked" : ""} />
+            <span><strong>Require Clean Press (Token Isolation):</strong> Holding this key claims the consume token. Once the apple is completely eaten, continuing to hold this button will NEVER accidentally pick up a rock off the ground.</span>
+          </label>
+        </div>
+
+        <!-- Card 6: Combat & Energy Channels -->
+        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.05rem;">⚔️</span>
+              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Combat & Energy Channels</span>
+            </div>
+          </div>
+
+          <!-- Melee Subcard -->
+          <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.80rem; font-weight: 700; color: #cbd5e1;">🥊 Melee Punch</span>
+              </div>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.70rem; color: #94a3b8; cursor: pointer;">
+                <input type="checkbox" class="channel-toggle-enabled" data-channel="melee" ${ch.melee.enabled ? "checked" : ""} />
+                <span>Enabled</span>
+              </label>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.74rem; color: #cbd5e1;">Punch Key:</span>
+              ${formatTriggerBtn("melee", "trigger", ch.melee.trigger)}
+            </div>
+          </div>
+
+          <!-- Laser Subcard -->
+          <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.80rem; font-weight: 700; color: #cbd5e1;">⚡ Laser Beam</span>
+              </div>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.70rem; color: #94a3b8; cursor: pointer;">
+                <input type="checkbox" class="channel-toggle-enabled" data-channel="laser" ${ch.laser.enabled ? "checked" : ""} />
+                <span>Enabled</span>
+              </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.74rem; color: #cbd5e1;">Aim Chord:</span>
+                ${formatTriggerBtn("laser", "aimTrigger", ch.laser.aimTrigger)}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.74rem; color: #cbd5e1;">Fire Trigger:</span>
+                ${formatTriggerBtn("laser", "fireTrigger", ch.laser.fireTrigger)}
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(148,163,184,0.1); padding-top: 6px;">
+              <span style="font-size: 0.74rem; color: #cbd5e1;">Power Modulation Socket:</span>
+              <select class="channel-laser-power-source dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 2px 6px; border-radius: 4px;">
+                <option value="mouseWheel" ${ch.laser.powerModulationSource === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                <option value="mouseDragY" ${ch.laser.powerModulationSource === "mouseDragY" ? "selected" : ""}>🖱️ Vertical Mouse Drag</option>
+                <option value="none" ${ch.laser.powerModulationSource === "none" ? "selected" : ""}>🔒 Disabled</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private static startChannelKeyListening(channel: string, field: string, index?: number): void {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningChannelTarget = { channel, field, index };
+    this.renderActiveView();
+
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+    this.ensureChannels(schema);
+    const channels = schema.keyboardMouse.channels!;
+
+    let heldModifier: string | null = null;
+    let chordTimer: any = null;
+
+    const commitTrigger = (device: "keyboard" | "mouse", code: string, chordModifiers?: string[]) => {
+      const ch = (channels as any)[channel];
+      if (ch) {
+        if (index !== undefined && Array.isArray(ch[field])) {
+          ch[field][index] = code;
+        } else if (typeof ch[field] === "object" && ch[field] !== null && "code" in ch[field]) {
+          ch[field].device = device;
+          ch[field].code = code;
+          ch[field].chordModifiers = chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined;
+        } else {
+          ch[field] = code;
+        }
+      }
+      cleanup();
+      this.listeningChannelTarget = null;
+      this.renderActiveView();
+    };
+
+    const isModifier = (code: string) =>
+      ["AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "MetaLeft", "MetaRight"].includes(code);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningChannelTarget = null;
+        this.renderActiveView();
+        return;
+      }
+
+      if (isModifier(e.code)) {
+        if (!heldModifier) {
+          heldModifier = e.code;
+          chordTimer = setTimeout(() => {
+            commitTrigger("keyboard", heldModifier!);
+          }, 350);
+        }
+        return;
+      }
+
+      if (chordTimer) clearTimeout(chordTimer);
+      const chordMods = heldModifier ? [heldModifier] : undefined;
+      commitTrigger("keyboard", e.code, chordMods);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const buttonMap: Record<number, string> = {
+        0: "MouseLeft",
+        1: "MouseMiddle",
+        2: "MouseRight",
+        3: "MouseBack",
+        4: "MouseForward",
+      };
+      const code = buttonMap[e.button] || `MouseButton${e.button}`;
+      if (chordTimer) clearTimeout(chordTimer);
+      const chordMods = heldModifier ? [heldModifier] : undefined;
+      commitTrigger("mouse", code, chordMods);
+    };
+
+    const cleanup = () => {
+      if (chordTimer) clearTimeout(chordTimer);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+      }
+      this.recorderCleanup = null;
+    };
+
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+    }
   }
 
   private static renderParadigmsHtml(schema: ControlSchema): string {
@@ -1743,6 +2248,124 @@ export class ControlsInspector {
       this.activeTab = "touch";
       this.renderActiveView();
     });
+
+    // View Mode Switcher (Channels vs Legacy Block Builder)
+    root.querySelector("#btn-mode-channels")?.addEventListener("click", () => {
+      this.viewMode = "channels";
+      this.renderActiveView();
+    });
+    root.querySelector("#btn-mode-legacy")?.addEventListener("click", () => {
+      this.viewMode = "legacyBlocks";
+      this.renderActiveView();
+    });
+
+    // Pre-Built Modular Channels Listeners
+    if (this.viewMode === "channels" && schema.keyboardMouse.channels) {
+      const ch = schema.keyboardMouse.channels;
+
+      // Channel Key/Button Bind Buttons
+      root.querySelectorAll(".btn-channel-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const channel = (btn as HTMLElement).dataset.channel;
+          const field = (btn as HTMLElement).dataset.field;
+          const indexStr = (btn as HTMLElement).dataset.index;
+          const index = indexStr !== undefined ? parseInt(indexStr, 10) : undefined;
+          if (channel && field) {
+            this.startChannelKeyListening(channel, field, index);
+          }
+        });
+      });
+
+      // Locomotion Mode Dropdown
+      root.querySelectorAll(".channel-loco-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          ch.locomotion.mode = (e.target as HTMLSelectElement).value as any;
+          this.renderActiveView();
+        });
+      });
+
+      // Sprint Mode Dropdown
+      root.querySelectorAll(".channel-sprint-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          ch.locomotion.sprintMode = (e.target as HTMLSelectElement).value as any;
+        });
+      });
+
+      // Aiming Mode Dropdown
+      root.querySelectorAll(".channel-aim-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          ch.aiming.mode = (e.target as HTMLSelectElement).value as any;
+        });
+      });
+
+      // Raw Drag Toggle
+      root.querySelectorAll(".channel-raw-drag").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          ch.aiming.rawMouseDragEnabled = (e.target as HTMLInputElement).checked;
+        });
+      });
+
+      // Throw Arc Modulation Source
+      root.querySelectorAll(".channel-throw-arc-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          ch.throw.arcModulationSource = (e.target as HTMLSelectElement).value as any;
+        });
+      });
+
+      // Throw Arc Drag Threshold
+      root.querySelectorAll(".channel-throw-drag-threshold").forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          const val = parseInt((e.target as HTMLInputElement).value, 10);
+          if (!isNaN(val) && val >= 50) {
+            ch.throw.arcDragHoldThresholdMs = val;
+          }
+        });
+      });
+
+      // Laser Power Source
+      root.querySelectorAll(".channel-laser-power-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          ch.laser.powerModulationSource = (e.target as HTMLSelectElement).value as any;
+        });
+      });
+
+      // Enabled Toggles
+      root.querySelectorAll(".channel-toggle-enabled").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const channel = (chk as HTMLElement).dataset.channel;
+          const checked = (e.target as HTMLInputElement).checked;
+          if (channel && (ch as any)[channel]) {
+            (ch as any)[channel].enabled = checked;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Clean Press Toggles
+      root.querySelectorAll(".channel-toggle-clean-press").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const channel = (chk as HTMLElement).dataset.channel;
+          const checked = (e.target as HTMLInputElement).checked;
+          if (channel && (ch as any)[channel]) {
+            (ch as any)[channel].claimPolicy = checked ? "requireCleanPress" : "allowContinuousHold";
+          }
+        });
+      });
+
+      // Quick Swap Toggle
+      root.querySelectorAll(".channel-toggle-swap").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          ch.interaction.allowSwapWhenHolding = (e.target as HTMLInputElement).checked;
+        });
+      });
+
+      // Throw Release Aim to Fire Toggle
+      root.querySelectorAll(".channel-toggle-release-throw").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          ch.throw.fireOnReleaseAim = (e.target as HTMLInputElement).checked;
+        });
+      });
+    }
 
     // 3. Locomotion Mode Selector
     const selectLoco = root.querySelector("#select-loco-mode") as HTMLSelectElement;

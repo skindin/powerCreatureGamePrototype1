@@ -98,6 +98,81 @@ export interface ControlRule {
 export type LocomotionParadigm = "directVector" | "forwardFacingDrive" | "cursorSteer";
 export type AimingParadigm = "faceMouseCursor" | "twinStickAim" | "faceMovement";
 
+export type ValuedInputSource =
+  | "none"
+  | "mouseDragY"
+  | "mouseDragX"
+  | "mouseWheel"
+  | "mousePositionWorld"
+  | "gamepadRightStickY"
+  | "gamepadRightStick"
+  | "gamepadLeftStick";
+
+export type ClaimPolicy = "requireCleanPress" | "allowContinuousHold" | "exclusiveClaim";
+
+export interface LocomotionChannelConfig {
+  mode: "directVector" | "forwardFacingDrive" | "facingRelativeStrafe";
+  upKeys: string[];       // e.g. ["KeyW", "ArrowUp"]
+  downKeys: string[];     // e.g. ["KeyS", "ArrowDown"]
+  leftKeys: string[];     // e.g. ["KeyA", "ArrowLeft"]
+  rightKeys: string[];    // e.g. ["KeyD", "ArrowRight"]
+  forwardKey?: string;    // for forwardFacingDrive (e.g. "MouseRight" or "KeyW")
+  sprintKey: string;      // default "ShiftLeft"
+  sprintMode: "hold" | "toggle";
+  jumpKey: string;        // default "Space"
+}
+
+export interface AimingChannelConfig {
+  mode: AimingParadigm;
+  rawMouseDragEnabled?: boolean;
+}
+
+export interface InteractionChannelConfig {
+  enabled: boolean;
+  trigger: InputTriggerBinding;          // default LMB
+  claimPolicy: ClaimPolicy;              // default "requireCleanPress"
+  allowSwapWhenHolding: boolean;         // default true
+}
+
+export interface ThrowChannelConfig {
+  enabled: boolean;
+  aimTrigger: InputTriggerBinding;       // default RMB (hold)
+  fireTrigger: InputTriggerBinding;      // default LMB (press)
+  fireOnReleaseAim?: boolean;            // default false (LMB fires; if true, releasing RMB fires)
+  arcModulationSource: ValuedInputSource; // default "mouseDragY"
+  arcDragHoldThresholdMs: number;        // default 200ms
+  claimPolicy: ClaimPolicy;              // default "requireCleanPress"
+}
+
+export interface ConsumeChannelConfig {
+  enabled: boolean;
+  trigger: InputTriggerBinding;          // default KeyE
+  claimPolicy: ClaimPolicy;              // default "requireCleanPress"
+}
+
+export interface MeleeChannelConfig {
+  enabled: boolean;
+  trigger: InputTriggerBinding;          // default KeyF
+  claimPolicy: ClaimPolicy;              // default "requireCleanPress"
+}
+
+export interface LaserChannelConfig {
+  enabled: boolean;
+  aimTrigger: InputTriggerBinding;       // default Alt + RMB
+  fireTrigger: InputTriggerBinding;      // default LMB
+  powerModulationSource: ValuedInputSource; // default "mouseWheel"
+}
+
+export interface PrebuiltControlChannels {
+  locomotion: LocomotionChannelConfig;
+  aiming: AimingChannelConfig;
+  interaction: InteractionChannelConfig;
+  throw: ThrowChannelConfig;
+  consume: ConsumeChannelConfig;
+  melee: MeleeChannelConfig;
+  laser: LaserChannelConfig;
+}
+
 export interface KeyboardMouseConfig {
   tags?: InputTagBinding[];
   aiming: {
@@ -111,6 +186,7 @@ export interface KeyboardMouseConfig {
     reverseKey?: string;     // e.g. "KeyS"
     moveForwardKey?: string; // e.g. "KeyW"
   };
+  channels?: PrebuiltControlChannels;
   rules: ControlRule[];
 }
 
