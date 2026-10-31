@@ -201,15 +201,6 @@ export class InputManager {
   public aimLockRawDx: number = 0; // Raw physical horizontal mouse delta during lock
   public aimLockRawDy: number = 0; // Raw physical vertical mouse delta during lock
   public arcModulationDeltaY: number = 0; // Accumulated vertical mouse delta for trajectory modulation
-  public frameMouseDx: number = 0; // Accumulated raw mouse movement X for script/analog controls
-  public frameMouseDy: number = 0; // Accumulated raw mouse movement Y for script/analog controls
-
-  public consumeFrameMouseDelta(): { dx: number; dy: number } {
-    const delta = { dx: this.frameMouseDx, dy: this.frameMouseDy };
-    this.frameMouseDx = 0;
-    this.frameMouseDy = 0;
-    return delta;
-  }
   public arcModulationCursor: Vector2D | null = null; // Screen-space position of modulation cursor during right-click lock
   public arcDetentSide: "lower" | "higher" | null = null; // Active side of the efficiency detent threshold
   public lastClientX: number | null = null;
@@ -607,19 +598,17 @@ export class InputManager {
       }
       this.lastMouseMoveTime = performance.now();
 
-      const movementDy = (e.movementY !== undefined && e.movementY !== 0)
-        ? e.movementY
-        : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
-      const movementDx = (e.movementX !== undefined && e.movementX !== 0)
-        ? e.movementX
-        : (this.lastClientX !== null ? e.clientX - this.lastClientX : 0);
-      this.lastClientX = e.clientX;
-      this.lastClientY = e.clientY;
-
-      this.frameMouseDx += movementDx;
-      this.frameMouseDy += movementDy;
-
       if (this.isRightMouseDown && this.lockedAimPos) {
+        // While locked, take raw mouse input to increase/decrease arc height
+        const movementDy = (e.movementY !== undefined && e.movementY !== 0)
+          ? e.movementY
+          : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
+        const movementDx = (e.movementX !== undefined && e.movementX !== 0)
+          ? e.movementX
+          : (this.lastClientX !== null ? e.clientX - this.lastClientX : 0);
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
+
         this.aimLockRawDx += movementDx;
         this.aimLockRawDy += movementDy;
         this.aimLockRawDelta += movementDx + movementDy;
@@ -863,6 +852,13 @@ export class InputManager {
         const dir = e.deltaY < 0 ? 1 : -1;
         const step = isShift ? dir * (this.laserScrollSensitivity * 3.0) : dir * this.laserScrollSensitivity;
         this.onLaserWheelAdjust?.(step);
+      } else {
+        // Change throw trajectory height:
+        // Scroll UP (negative deltaY) = higher/steeper arc
+        // Scroll DOWN (positive deltaY) = flatter/lower arc
+        const sign = Math.sign(e.deltaY);
+        const notchDelta = (sign !== 0 ? sign : (e.deltaY < 0 ? -1 : 1)) * 15;
+        this.arcModulationDeltaY += notchDelta;
       }
     }, { passive: false });
 

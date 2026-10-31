@@ -594,66 +594,6 @@ function autoTunnelPlugin(): Plugin {
           return;
         }
 
-        // Custom JS Controls Script API
-        if (urlPath === '/api/dev/controls-script') {
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-          if (req.method === 'OPTIONS') {
-            res.statusCode = 204;
-            res.end();
-            return;
-          }
-
-          const scriptPath = path.resolve(__dirname, 'src/config/controls.js');
-          const publicScriptPath = path.resolve(__dirname, 'public/controls.js');
-
-          if (req.method === 'GET') {
-            try {
-              const code = fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, 'utf8') : '';
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ code }));
-            } catch (err: any) {
-              res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ error: 'Failed to read controls.js', details: err?.message }));
-            }
-            return;
-          }
-
-          if (req.method === 'POST') {
-            if (isTunnel) {
-              res.statusCode = 403;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ error: 'Controls script saving is not permitted via public tunnel' }));
-              return;
-            }
-
-            parseJsonBody(req).then((body: any) => {
-              if (typeof body.code !== 'string') {
-                res.statusCode = 400;
-                res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                res.end(JSON.stringify({ error: 'Missing code string in request body' }));
-                return;
-              }
-              fs.writeFileSync(scriptPath, body.code, 'utf8');
-              try {
-                fs.writeFileSync(publicScriptPath, body.code, 'utf8');
-              } catch {}
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ success: true }));
-            }).catch((err: any) => {
-              res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ error: 'Failed to save controls.js', details: err?.message }));
-            });
-            return;
-          }
-        }
-
         // Git Data Status API (inspects worldConfig, ahead commits, and active branch non-blockingly)
         if (urlPath === '/api/dev/git-status') {
           res.setHeader('Access-Control-Allow-Origin', '*');
