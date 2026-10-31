@@ -9,6 +9,8 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
+import { ModularPipelineEvaluator } from "../input/schema/ModularPipelineEvaluator.js";
+import { DefaultPipelineBindings } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
@@ -542,7 +544,6 @@ export class PlayerManager {
     const isUnassignedKeyboard = !kEntry && this.players.size === 0 && input.isKeyboardActive && !input.isKeyboardSuspended;
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
-
       const kSchema = ControlsInspector.getActiveSchema(kChar);
       const isHolding = kChar.heldObject !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
@@ -610,7 +611,16 @@ export class PlayerManager {
         mouseStates,
       };
 
-      if (kSchema.keyboardMouse.channels) {
+      if (!kSchema.keyboardMouse.pipeline) {
+        kSchema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
+      }
+      if (kSchema.keyboardMouse.pipeline) {
+        const packet = ModularPipelineEvaluator.evaluatePipeline(kSchema.keyboardMouse.pipeline, execCtx, input);
+        map.set("keyboard", packet);
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      } else if (kSchema.keyboardMouse.channels) {
         const packet = ControlSchemaArbiter.evaluateChannels(kSchema.keyboardMouse.channels, execCtx, input);
         map.set("keyboard", packet);
         input.aimLockRawDelta = 0;

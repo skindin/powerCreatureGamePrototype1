@@ -19,6 +19,7 @@ import type {
 import {
   DefaultControlSchema,
   DefaultPrebuiltChannels,
+  DefaultPipelineBindings,
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
@@ -38,7 +39,7 @@ export class ControlsInspector {
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
-  private static viewMode: "channels" | "legacyBlocks" = "channels";
+  private static viewMode: "pipeline" | "legacyBlocks" = "pipeline";
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
@@ -46,7 +47,7 @@ export class ControlsInspector {
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
-  private static listeningChannelTarget: { channel: string; field: string; index?: number } | null = null;
+  private static listeningPipelineTarget: { bindingId: string; subKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "gate" } | null = null;
   private static recorderCleanup: (() => void) | null = null;
   private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
@@ -62,6 +63,12 @@ export class ControlsInspector {
 
   public static ensureChannels(schema: ControlSchema): void {
     if (!schema) return;
+    if (!schema.keyboardMouse.pipeline) {
+      schema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
+    }
+    if (!schema.pipeline) {
+      schema.pipeline = schema.keyboardMouse.pipeline;
+    }
     if (!schema.keyboardMouse.channels) {
       schema.keyboardMouse.channels = JSON.parse(JSON.stringify(DefaultPrebuiltChannels));
     }
@@ -311,7 +318,7 @@ export class ControlsInspector {
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
-    this.listeningChannelTarget = null;
+    this.listeningPipelineTarget = null;
 
     if (typeof document !== "undefined" && document.pointerLockElement) {
       try {
@@ -508,7 +515,7 @@ export class ControlsInspector {
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
-    this.listeningChannelTarget = null;
+    this.listeningPipelineTarget = null;
   }
 
   private static async saveAndCommit(): Promise<void> {
@@ -765,19 +772,19 @@ export class ControlsInspector {
             <!-- Mode Switcher Pill -->
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 8px 14px;">
               <div style="display: flex; gap: 8px; align-items: center;">
-                <button id="btn-mode-channels" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "channels" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
-                  🎛️ Modular Channels (Plug & Play)
+                <button id="btn-mode-pipeline" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "pipeline" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
+                  🔀 Modular Input Pipeline (Left-to-Right)
                 </button>
                 <button id="btn-mode-legacy" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "legacyBlocks" ? "background: rgba(255, 255, 255, 0.15); color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.4);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
                   🔧 Visual Block Builder (Legacy)
                 </button>
               </div>
               <span style="font-size: 0.70rem; color: #94a3b8;">
-                ${this.viewMode === "channels" ? "✨ Discrete, robust channels with intrinsic clean-press tokens & valued raw mouse drag" : "Raw statement cascades & condition dropdowns"}
+                ${this.viewMode === "pipeline" ? "✨ Left-to-Right signal flow: Raw Hardware Input ➔ Processor & Cleaning ➔ Module Socket" : "Raw statement cascades & condition dropdowns"}
               </span>
             </div>
 
-            ${this.viewMode === "channels" ? this.renderChannelsHtml(schema) : `
+            ${this.viewMode === "pipeline" ? this.renderPipelineHtml(schema) : `
               <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
               <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
@@ -1281,350 +1288,341 @@ export class ControlsInspector {
     return base;
   }
 
-  private static renderChannelsHtml(schema: ControlSchema): string {
+  private static renderPipelineHtml(schema: ControlSchema): string {
     this.ensureChannels(schema);
-    const ch = schema.keyboardMouse.channels!;
+    const pipeline = schema.keyboardMouse.pipeline || [];
 
-    const isListening = (channel: string, field: string, index?: number) => {
-      if (!this.listeningChannelTarget) return false;
+    const isListening = (bindingId: string, subKey?: string) => {
+      if (!this.listeningPipelineTarget) return false;
       return (
-        this.listeningChannelTarget.channel === channel &&
-        this.listeningChannelTarget.field === field &&
-        this.listeningChannelTarget.index === index
+        this.listeningPipelineTarget.bindingId === bindingId &&
+        this.listeningPipelineTarget.subKey === subKey
       );
     };
 
-    const formatKeyBtn = (channel: string, field: string, code: string, chordModifiers?: string[], index?: number) => {
-      const listening = isListening(channel, field, index);
-      const label = this.formatChannelKeyLabel(code, chordModifiers);
-      const idxAttr = index !== undefined ? `data-index="${index}"` : "";
-      return `
-        <button class="btn-channel-bind btn-secondary-action" data-channel="${channel}" data-field="${field}" ${idxAttr} type="button" style="
-          font-size: 0.74rem;
-          padding: 3px 10px;
-          font-weight: 600;
-          min-width: 55px;
-          text-align: center;
-          border-radius: 4px;
-          border: 1px solid rgba(148, 163, 184, 0.3);
-          ${listening ? "background: #ef4444; color: #ffffff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #ffffff;"}
-        " title="Click to bind key or mouse button">
-          ${listening ? "🔴 Press key..." : label}
-        </button>
-      `;
-    };
-
-    const formatTriggerBtn = (channel: string, field: string, trigger: InputTriggerBinding) => {
-      return formatKeyBtn(channel, field, trigger.code, trigger.chordModifiers);
-    };
-
     return `
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <!-- Card 1: Locomotion & Movement -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">🏃</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Locomotion & Movement</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Locomotion Mode:</label>
-              <select class="channel-loco-mode dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 4px;">
-                <option value="directVector" ${ch.locomotion.mode === "directVector" ? "selected" : ""}>Direct 2D Vector (WASD / Arrows)</option>
-                <option value="forwardFacingDrive" ${ch.locomotion.mode === "forwardFacingDrive" ? "selected" : ""}>Forward-Facing Drive (Thrust + Mouse Facing)</option>
-                <option value="facingRelativeStrafe" ${ch.locomotion.mode === "facingRelativeStrafe" ? "selected" : ""}>Facing-Relative Strafe (Heading Relative)</option>
-              </select>
-            </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Header description -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
+          <div style="font-size: 0.74rem; color: #cbd5e1;">
+            <strong style="color: #38bdf8;">Left-to-Right Modular Input Pipeline:</strong>
+            Raw Hardware Input ➔ Processor & Cleaning ➔ Character Module Socket. Every row is completely independent and deletable.
           </div>
+          <button id="btn-add-pipeline-binding" class="btn-secondary-action" type="button" style="font-size: 0.74rem; font-weight: 700; padding: 4px 12px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
+            + Add Input Binding
+          </button>
+        </div>
 
-          ${ch.locomotion.mode === "forwardFacingDrive" ? `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Forward Thrust:</span>
-                ${formatKeyBtn("locomotion", "forwardKey", ch.locomotion.forwardKey || "MouseRight")}
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Reverse / Brake:</span>
-                ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[0] || "KeyS", undefined, 0)}
-              </div>
+        <!-- Table Column Headers -->
+        <div style="display: grid; grid-template-columns: 240px 24px 1fr 24px 220px 48px; gap: 8px; padding: 0 12px; font-size: 0.68rem; font-weight: 700; color: #94a3b8;">
+          <span>RAW INPUT (SOURCE)</span>
+          <span style="text-align: center;"></span>
+          <span>PROCESSOR & CLEANING (CENTER)</span>
+          <span style="text-align: center;"></span>
+          <span>MODULE FUNCTION (SOCKET)</span>
+          <span style="text-align: center;">DELETE</span>
+        </div>
+
+        <!-- Pipeline Rows Container -->
+        <div id="pipeline-rows-container" style="display: flex; flex-direction: column; gap: 8px;">
+          ${pipeline.length === 0 ? `
+            <div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 24px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.2);">
+              No input bindings defined. Click "+ Add Input Binding" to connect an input!
             </div>
-            <div style="font-size: 0.68rem; color: #64748b; font-style: italic;">
-              ℹ️ Facing heading is steered directly by the mouse cursor. Forward thrust propels creature along current heading.
-            </div>
-          ` : `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Up:</span>
-                <div style="display: flex; gap: 6px;">
-                  ${formatKeyBtn("locomotion", "upKeys", ch.locomotion.upKeys[0] || "KeyW", undefined, 0)}
-                  ${formatKeyBtn("locomotion", "upKeys", ch.locomotion.upKeys[1] || "ArrowUp", undefined, 1)}
+          ` : pipeline.map((b) => {
+            const { source, processor: proc } = b;
+
+            // Render Source Column (Left)
+            let sourceHtml = "";
+            if (source.type === "button") {
+              const listening = isListening(b.id, "button");
+              const label = this.formatChannelKeyLabel(source.code, source.chordModifiers);
+              sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON / CHORD</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button" selected>Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
+                    font-size: 0.74rem;
+                    padding: 3px 8px;
+                    font-weight: 600;
+                    border-radius: 4px;
+                    border: 1px solid rgba(148, 163, 184, 0.3);
+                    ${listening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #fff;"}
+                  " title="Click to bind key or mouse button">
+                    ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
+                  </button>
+                </div>
+              `;
+            } else if (source.type === "composite_4key") {
+              sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">4-KEY COMPOSITE</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key" selected>4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="upKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "upKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ↑ ${this.formatChannelKeyLabel(source.upKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="downKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "downKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ↓ ${this.formatChannelKeyLabel(source.downKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="leftKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "leftKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ← ${this.formatChannelKeyLabel(source.leftKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="rightKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "rightKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      → ${this.formatChannelKeyLabel(source.rightKey)}
+                    </button>
+                  </div>
+                </div>
+              `;
+            } else if (source.type === "1d_scalar") {
+              sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">1D SCALAR INPUT</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar" selected>1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <select class="pipe-source-scalar dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
+                    <option value="mouseDeltaY" ${source.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical)</option>
+                    <option value="mouseDeltaX" ${source.source === "mouseDeltaX" ? "selected" : ""}>🖱️ Mouse Delta X (Horizontal)</option>
+                    <option value="mouseWheel" ${source.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                  </select>
+                </div>
+              `;
+            } else if (source.type === "2d_vector") {
+              sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">2D VECTOR INPUT</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector" selected>2D Vector</option>
+                    </select>
+                  </div>
+                  <select class="pipe-source-vector dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
+                    <option value="mouseWorldPos" ${source.source === "mouseWorldPos" ? "selected" : ""}>🌐 Mouse World Position</option>
+                    <option value="mouseScreenPos" ${source.source === "mouseScreenPos" ? "selected" : ""}>🖥️ Mouse Screen Position</option>
+                  </select>
+                </div>
+              `;
+            }
+
+            // Render Center Column (Processor & Cleaning)
+            let centerHtml = "";
+            if (proc.type === "button") {
+              centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Button Processor:</span>
+                    <select class="pipe-proc-trigger-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="down" ${proc.triggerMode === "down" ? "selected" : ""}>Down (Fresh Press)</option>
+                      <option value="hold" ${proc.triggerMode === "hold" ? "selected" : ""}>Hold (Sustained)</option>
+                      <option value="up" ${proc.triggerMode === "up" ? "selected" : ""}>Up (Release)</option>
+                      <option value="timedHold" ${proc.triggerMode === "timedHold" ? "selected" : ""}>Timed Hold (>200ms)</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 0.68rem; color: #94a3b8;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Ignores key if already claimed by another active ability">
+                      <input type="checkbox" class="pipe-proc-clean" data-binding-id="${b.id}" ${proc.requireCleanPress ? "checked" : ""} />
+                      <span>Require Clean Press</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Claims physical key so other abilities on this key won't fire during hold">
+                      <input type="checkbox" class="pipe-proc-claim" data-binding-id="${b.id}" ${proc.claimOnFire ? "checked" : ""} />
+                      <span>Claim On Fire</span>
+                    </label>
+                  </div>
+                </div>
+              `;
+            } else if (proc.type === "1d_scalar") {
+              const isListeningGate = isListening(b.id, "gate");
+              const gateLabel = proc.gateButton?.code ? this.formatChannelKeyLabel(proc.gateButton.code) : "None (Always)";
+              centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">1D Scalar Processor:</span>
+                    <select class="pipe-proc-scalar-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="accumulator" ${proc.mode === "accumulator" ? "selected" : ""}>Accumulator (0.0 to 1.0)</option>
+                      <option value="delta" ${proc.mode === "delta" ? "selected" : ""}>Instant Delta</option>
+                    </select>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <span style="font-size: 0.64rem; color: #94a3b8;">Gate:</span>
+                      <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="gate" type="button" style="font-size: 0.68rem; padding: 2px 6px; ${isListeningGate ? "background: #ef4444; color: #fff;" : ""}">
+                        ${isListeningGate ? "🔴 Press..." : gateLabel}
+                      </button>
+                    </div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #94a3b8;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Freezes game reticle in place and locks & hides real OS cursor while actively reading mouse input">
+                      <input type="checkbox" class="pipe-proc-cursor-lock" data-binding-id="${b.id}" ${proc.autoCursorLock ? "checked" : ""} />
+                      <span style="color: #38bdf8; font-weight: 600;">🔒 Auto Lock Game & Real Cursor</span>
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <span>Sens:</span>
+                      <input type="number" class="pipe-proc-sens dev-input" data-binding-id="${b.id}" value="${proc.sensitivity ?? 0.005}" step="0.001" style="width: 50px; font-size: 0.68rem; padding: 1px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;" />
+                    </div>
+                  </div>
+                </div>
+              `;
+            } else if (proc.type === "2d_vector") {
+              centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">2D Vector Processor:</span>
+                    <select class="pipe-proc-vector-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="direct" ${proc.mode === "direct" ? "selected" : ""}>Direct Cartesian (WASD)</option>
+                      <option value="facingRelative" ${proc.mode === "facingRelative" ? "selected" : ""}>Facing-Relative Strafe</option>
+                    </select>
+                  </div>
+                  <div style="font-size: 0.64rem; color: #64748b;">Normalizes direction vector and filters inputs</div>
+                </div>
+              `;
+            } else if (proc.type === "facing") {
+              centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Facing Angle Processor:</span>
+                    <select class="pipe-proc-facing-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="fromMousePos" ${proc.mode === "fromMousePos" ? "selected" : ""}>From Mouse World Pos</option>
+                      <option value="fromMovement" ${proc.mode === "fromMovement" ? "selected" : ""}>From Movement Direction</option>
+                    </select>
+                  </div>
+                  <div style="font-size: 0.64rem; color: #64748b;">Calculates heading angle independently from thrust</div>
+                </div>
+              `;
+            }
+
+            return `
+              <div class="pipeline-binding-row" data-binding-id="${b.id}" style="
+                display: grid;
+                grid-template-columns: 240px 24px 1fr 24px 220px 48px;
+                align-items: center;
+                gap: 8px;
+                background: rgba(15, 23, 42, 0.75);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 6px;
+                padding: 8px 12px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+              ">
+                <!-- Column 1: Raw Input (Left) -->
+                <div>${sourceHtml}</div>
+
+                <!-- Column 2: Arrow 1 -->
+                <div style="display: flex; justify-content: center; align-items: center; color: #38bdf8; font-size: 0.95rem;">➔</div>
+
+                <!-- Column 3: Processor / Adapter (Center) -->
+                <div>${centerHtml}</div>
+
+                <!-- Column 4: Arrow 2 -->
+                <div style="display: flex; justify-content: center; align-items: center; color: #34d399; font-size: 0.95rem;">➔</div>
+
+                <!-- Column 5: Module Socket (Right) -->
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="font-size: 0.64rem; font-weight: 700; color: #34d399;">MODULE SOCKET</div>
+                  <select class="pipe-target-socket dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; padding: 3px 6px; background: #0f172a; color: #ffffff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;">
+                    <optgroup label="Locomotion">
+                      <option value="locomotion.moveVector" ${b.target === "locomotion.moveVector" ? "selected" : ""}>🏃 Locomotion.Move Vector</option>
+                      <option value="locomotion.forwardThrust" ${b.target === "locomotion.forwardThrust" ? "selected" : ""}>🚀 Locomotion.Forward Thrust</option>
+                      <option value="locomotion.reverseThrust" ${b.target === "locomotion.reverseThrust" ? "selected" : ""}>🛑 Locomotion.Reverse Thrust</option>
+                      <option value="locomotion.strafeLeft" ${b.target === "locomotion.strafeLeft" ? "selected" : ""}>⬅️ Locomotion.Strafe Left</option>
+                      <option value="locomotion.strafeRight" ${b.target === "locomotion.strafeRight" ? "selected" : ""}>➡️ Locomotion.Strafe Right</option>
+                      <option value="locomotion.sprint" ${b.target === "locomotion.sprint" ? "selected" : ""}>⚡ Locomotion.Sprint</option>
+                      <option value="locomotion.jump" ${b.target === "locomotion.jump" ? "selected" : ""}>🦘 Locomotion.Jump</option>
+                    </optgroup>
+                    <optgroup label="Character Heading">
+                      <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
+                    </optgroup>
+                    <optgroup label="Throw & Ballistics">
+                      <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🏹 Throw.Aim Arc</option>
+                      <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height (0..1)</option>
+                      <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
+                    </optgroup>
+                    <optgroup label="Interaction & Consumables">
+                      <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
+                      <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
+                      <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
+                    </optgroup>
+                    <optgroup label="Combat">
+                      <option value="melee.punch" ${b.target === "melee.punch" ? "selected" : ""}>🥊 Melee.Punch</option>
+                      <option value="laser.aim" ${b.target === "laser.aim" ? "selected" : ""}>⚡ Laser.Aim Chord</option>
+                      <option value="laser.fire" ${b.target === "laser.fire" ? "selected" : ""}>⚡ Laser.Fire</option>
+                      <option value="laser.power" ${b.target === "laser.power" ? "selected" : ""}>⚡ Laser.Power Level</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <!-- Column 6: Delete -->
+                <div style="display: flex; align-items: center; justify-content: center;">
+                  <button class="btn-delete-pipeline-binding btn-icon" data-binding-id="${b.id}" type="button" style="padding: 3px 6px; font-size: 0.76rem; color: #ef4444; background: transparent; border: 1px solid rgba(239,68,68,0.25); border-radius: 4px; cursor: pointer;" title="Delete this input binding">
+                    🗑️
+                  </button>
                 </div>
               </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Down:</span>
-                <div style="display: flex; gap: 6px;">
-                  ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[0] || "KeyS", undefined, 0)}
-                  ${formatKeyBtn("locomotion", "downKeys", ch.locomotion.downKeys[1] || "ArrowDown", undefined, 1)}
-                </div>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Left:</span>
-                <div style="display: flex; gap: 6px;">
-                  ${formatKeyBtn("locomotion", "leftKeys", ch.locomotion.leftKeys[0] || "KeyA", undefined, 0)}
-                  ${formatKeyBtn("locomotion", "leftKeys", ch.locomotion.leftKeys[1] || "ArrowLeft", undefined, 1)}
-                </div>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Move Right:</span>
-                <div style="display: flex; gap: 6px;">
-                  ${formatKeyBtn("locomotion", "rightKeys", ch.locomotion.rightKeys[0] || "KeyD", undefined, 0)}
-                  ${formatKeyBtn("locomotion", "rightKeys", ch.locomotion.rightKeys[1] || "ArrowRight", undefined, 1)}
-                </div>
-              </div>
-            </div>
-          `}
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Sprint:</span>
-                <select class="channel-sprint-mode dev-select" style="font-size: 0.68rem; padding: 2px 4px; color: #94a3b8; background: #0f172a; border: 1px solid rgba(148,163,184,0.2);">
-                  <option value="hold" ${ch.locomotion.sprintMode === "hold" ? "selected" : ""}>Hold</option>
-                  <option value="toggle" ${ch.locomotion.sprintMode === "toggle" ? "selected" : ""}>Toggle</option>
-                </select>
-              </div>
-              ${formatKeyBtn("locomotion", "sprintKey", ch.locomotion.sprintKey || "ShiftLeft")}
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-              <span style="font-size: 0.74rem; color: #cbd5e1; font-weight: 600;">Jump / Hop:</span>
-              ${formatKeyBtn("locomotion", "jumpKey", ch.locomotion.jumpKey || "Space")}
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 2: Aiming & Reticle -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">🎯</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Aiming & Reticle</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Aim Orientation:</label>
-              <select class="channel-aim-mode dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 4px;">
-                <option value="faceMouseCursor" ${ch.aiming.mode === "faceMouseCursor" ? "selected" : ""}>Face Mouse Cursor (World Coordinates)</option>
-                <option value="faceMovement" ${ch.aiming.mode === "faceMovement" ? "selected" : ""}>Face Locomotion Direction</option>
-              </select>
-            </div>
-          </div>
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-            <input type="checkbox" class="channel-raw-drag" ${ch.aiming.rawMouseDragEnabled !== false ? "checked" : ""} />
-            <span><strong>Universal Raw Mouse Drag Lifecycle:</strong> Automatically engage pointer lock and hide hardware cursor during valued mouse drags (arc height modulation, laser power), locking the game crosshair in place and cleanly restoring mouse position on release.</span>
-          </label>
-        </div>
-
-        <!-- Card 3: Object Interaction (Pick Up / Swap) -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">📦</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Object Interaction (Pick Up / Swap)</span>
-            </div>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-enabled" data-channel="interaction" ${ch.interaction.enabled ? "checked" : ""} />
-              <span>Enabled</span>
-            </label>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-            <div>
-              <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Interaction Trigger (Grab Ground Item):</div>
-              <div style="font-size: 0.68rem; color: #94a3b8;">Triggered when hands are empty and a freebody object is within 3D reach.</div>
-            </div>
-            ${formatTriggerBtn("interaction", "trigger", ch.interaction.trigger)}
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 4px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-clean-press" data-channel="interaction" ${ch.interaction.claimPolicy === "requireCleanPress" ? "checked" : ""} />
-              <span><strong>Require Clean Press (Token Isolation):</strong> Button must be released and pressed fresh to grab. Holding LMB after finishing eating or firing will NEVER trigger ground pickup.</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-swap" ${ch.interaction.allowSwapWhenHolding ? "checked" : ""} />
-              <span><strong>Allow Quick Swap:</strong> Pressing interaction while holding an item automatically drops held item and picks up reachable item.</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Card 4: Throw & Ballistics (Parabolic Arc & Clearance) -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">🏹</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Throw & Ballistics (Parabolic Arc)</span>
-            </div>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-enabled" data-channel="throw" ${ch.throw.enabled ? "checked" : ""} />
-              <span>Enabled</span>
-            </label>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-              <div>
-                <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Aim Trigger:</div>
-                <div style="font-size: 0.68rem; color: #94a3b8;">Hold to preview trajectory arc</div>
-              </div>
-              ${formatTriggerBtn("throw", "aimTrigger", ch.throw.aimTrigger)}
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-              <div>
-                <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Fire Trigger:</div>
-                <div style="font-size: 0.68rem; color: #94a3b8;">Click to throw, hold to drag arc</div>
-              </div>
-              ${formatTriggerBtn("throw", "fireTrigger", ch.throw.fireTrigger)}
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 0.74rem; font-weight: 600; color: #cbd5e1;">Arc Modulation Socket:</span>
-              <select class="channel-throw-arc-source dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 6px; border-radius: 4px;">
-                <option value="mouseDragY" ${ch.throw.arcModulationSource === "mouseDragY" ? "selected" : ""}>🖱️ Vertical Mouse Drag</option>
-                <option value="mouseWheel" ${ch.throw.arcModulationSource === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
-                <option value="none" ${ch.throw.arcModulationSource === "none" ? "selected" : ""}>🔒 Disabled (Fixed)</option>
-              </select>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 0.74rem; font-weight: 600; color: #cbd5e1;">Drag Hold Threshold:</span>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <input type="number" class="channel-throw-drag-threshold dev-input" value="${ch.throw.arcDragHoldThresholdMs || 200}" min="50" max="1000" step="25" style="width: 60px; font-size: 0.74rem; padding: 2px 6px; text-align: center; background: #0f172a; color: #ffffff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;" />
-                <span style="font-size: 0.68rem; color: #94a3b8;">ms</span>
-              </div>
-            </div>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 4px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-release-throw" ${ch.throw.fireOnReleaseAim ? "checked" : ""} />
-              <span><strong>Release Aim to Fire:</strong> Releasing the Aim button executes the throw immediately (instead of requiring Fire button click).</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-clean-press" data-channel="throw" ${ch.throw.claimPolicy === "requireCleanPress" ? "checked" : ""} />
-              <span><strong>Require Clean Press:</strong> Prevents accidental throws from sustained mouse clicks.</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Card 5: Item Ability & Consume (Edibles / Tools) -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">🍎</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Item Ability & Consume (Edibles / Tools)</span>
-            </div>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
-              <input type="checkbox" class="channel-toggle-enabled" data-channel="consume" ${ch.consume.enabled ? "checked" : ""} />
-              <span>Enabled</span>
-            </label>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.15);">
-            <div>
-              <div style="font-size: 0.76rem; font-weight: 600; color: #ffffff;">Item Use / Bite Key:</div>
-              <div style="font-size: 0.68rem; color: #94a3b8;">Active while holding an edible or item with primary ability. Hold to consume bites.</div>
-            </div>
-            ${formatTriggerBtn("consume", "trigger", ch.consume.trigger)}
-          </div>
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer; padding: 2px 4px;">
-            <input type="checkbox" class="channel-toggle-clean-press" data-channel="consume" ${ch.consume.claimPolicy === "requireCleanPress" ? "checked" : ""} />
-            <span><strong>Require Clean Press (Token Isolation):</strong> Holding this key claims the consume token. Once the apple is completely eaten, continuing to hold this button will NEVER accidentally pick up a rock off the ground.</span>
-          </label>
-        </div>
-
-        <!-- Card 6: Combat & Energy Channels -->
-        <div class="channel-card" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.05rem;">⚔️</span>
-              <span style="font-size: 0.86rem; font-weight: 700; color: #ffffff;">Combat & Energy Channels</span>
-            </div>
-          </div>
-
-          <!-- Melee Subcard -->
-          <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 0.80rem; font-weight: 700; color: #cbd5e1;">🥊 Melee Punch</span>
-              </div>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.70rem; color: #94a3b8; cursor: pointer;">
-                <input type="checkbox" class="channel-toggle-enabled" data-channel="melee" ${ch.melee.enabled ? "checked" : ""} />
-                <span>Enabled</span>
-              </label>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.74rem; color: #cbd5e1;">Punch Key:</span>
-              ${formatTriggerBtn("melee", "trigger", ch.melee.trigger)}
-            </div>
-          </div>
-
-          <!-- Laser Subcard -->
-          <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 0.80rem; font-weight: 700; color: #cbd5e1;">⚡ Laser Beam</span>
-              </div>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.70rem; color: #94a3b8; cursor: pointer;">
-                <input type="checkbox" class="channel-toggle-enabled" data-channel="laser" ${ch.laser.enabled ? "checked" : ""} />
-                <span>Enabled</span>
-              </label>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.74rem; color: #cbd5e1;">Aim Chord:</span>
-                ${formatTriggerBtn("laser", "aimTrigger", ch.laser.aimTrigger)}
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.74rem; color: #cbd5e1;">Fire Trigger:</span>
-                ${formatTriggerBtn("laser", "fireTrigger", ch.laser.fireTrigger)}
-              </div>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(148,163,184,0.1); padding-top: 6px;">
-              <span style="font-size: 0.74rem; color: #cbd5e1;">Power Modulation Socket:</span>
-              <select class="channel-laser-power-source dev-select" style="font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); padding: 2px 6px; border-radius: 4px;">
-                <option value="mouseWheel" ${ch.laser.powerModulationSource === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
-                <option value="mouseDragY" ${ch.laser.powerModulationSource === "mouseDragY" ? "selected" : ""}>🖱️ Vertical Mouse Drag</option>
-                <option value="none" ${ch.laser.powerModulationSource === "none" ? "selected" : ""}>🔒 Disabled</option>
-              </select>
-            </div>
-          </div>
+            `;
+          }).join("")}
         </div>
       </div>
     `;
   }
 
-  private static startChannelKeyListening(channel: string, field: string, index?: number): void {
+  private static startPipelineKeyListening(bindingId: string, subKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "gate" | "button"): void {
     if (this.recorderCleanup) this.recorderCleanup();
-    this.listeningChannelTarget = { channel, field, index };
+    this.listeningPipelineTarget = { bindingId, subKey: subKey === "button" ? undefined : subKey };
     this.renderActiveView();
 
     if (!this.workingSchema) return;
     const schema = this.workingSchema;
     this.ensureChannels(schema);
-    const channels = schema.keyboardMouse.channels!;
+    const pipeline = schema.keyboardMouse.pipeline || [];
+    const binding = pipeline.find((b) => b.id === bindingId);
+    if (!binding) return;
 
     let heldModifier: string | null = null;
     let chordTimer: any = null;
 
     const commitTrigger = (device: "keyboard" | "mouse", code: string, chordModifiers?: string[]) => {
-      const ch = (channels as any)[channel];
-      if (ch) {
-        if (index !== undefined && Array.isArray(ch[field])) {
-          ch[field][index] = code;
-        } else if (typeof ch[field] === "object" && ch[field] !== null && "code" in ch[field]) {
-          ch[field].device = device;
-          ch[field].code = code;
-          ch[field].chordModifiers = chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined;
-        } else {
-          ch[field] = code;
+      if (subKey === "gate") {
+        if (binding.processor.type === "1d_scalar") {
+          binding.processor.gateButton = {
+            device,
+            code,
+            mode: "hold",
+          };
         }
+      } else if (subKey === "upKey" || subKey === "downKey" || subKey === "leftKey" || subKey === "rightKey") {
+        if (binding.source.type === "composite_4key") {
+          binding.source[subKey] = code;
+        }
+      } else {
+        // Main button
+        binding.source = {
+          type: "button",
+          device,
+          code,
+          chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined,
+        };
       }
       cleanup();
-      this.listeningChannelTarget = null;
+      this.listeningPipelineTarget = null;
       this.renderActiveView();
     };
 
@@ -1637,7 +1635,7 @@ export class ControlsInspector {
 
       if (e.code === "Escape") {
         cleanup();
-        this.listeningChannelTarget = null;
+        this.listeningPipelineTarget = null;
         this.renderActiveView();
         return;
       }
@@ -2249,9 +2247,9 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
-    // View Mode Switcher (Channels vs Legacy Block Builder)
-    root.querySelector("#btn-mode-channels")?.addEventListener("click", () => {
-      this.viewMode = "channels";
+    // View Mode Switcher (Modular Pipeline vs Legacy Block Builder)
+    root.querySelector("#btn-mode-pipeline")?.addEventListener("click", () => {
+      this.viewMode = "pipeline";
       this.renderActiveView();
     });
     root.querySelector("#btn-mode-legacy")?.addEventListener("click", () => {
@@ -2259,110 +2257,191 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
-    // Pre-Built Modular Channels Listeners
-    if (this.viewMode === "channels" && schema.keyboardMouse.channels) {
-      const ch = schema.keyboardMouse.channels;
+    // Modular Left-to-Right Pipeline Event Listeners
+    if (this.viewMode === "pipeline" && schema.keyboardMouse.pipeline) {
+      const pipeline = schema.keyboardMouse.pipeline;
 
-      // Channel Key/Button Bind Buttons
-      root.querySelectorAll(".btn-channel-bind").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const channel = (btn as HTMLElement).dataset.channel;
-          const field = (btn as HTMLElement).dataset.field;
-          const indexStr = (btn as HTMLElement).dataset.index;
-          const index = indexStr !== undefined ? parseInt(indexStr, 10) : undefined;
-          if (channel && field) {
-            this.startChannelKeyListening(channel, field, index);
-          }
+      // Add Binding Button
+      root.querySelector("#btn-add-pipeline-binding")?.addEventListener("click", () => {
+        pipeline.push({
+          id: "pipe-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+          name: "New Binding",
+          enabled: true,
+          source: { type: "button", device: "keyboard", code: "KeyE" },
+          processor: { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true },
+          target: "pickup.grab",
         });
+        schema.pipeline = pipeline;
+        this.renderActiveView();
       });
 
-      // Locomotion Mode Dropdown
-      root.querySelectorAll(".channel-loco-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          ch.locomotion.mode = (e.target as HTMLSelectElement).value as any;
+      // Delete Binding Button
+      root.querySelectorAll(".btn-delete-pipeline-binding").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          schema.keyboardMouse.pipeline = pipeline.filter((b) => b.id !== bId);
+          schema.pipeline = schema.keyboardMouse.pipeline;
           this.renderActiveView();
         });
       });
 
-      // Sprint Mode Dropdown
-      root.querySelectorAll(".channel-sprint-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          ch.locomotion.sprintMode = (e.target as HTMLSelectElement).value as any;
+      // Pipeline Keybind Buttons
+      root.querySelectorAll(".btn-pipeline-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const subkey = (btn as HTMLElement).dataset.subkey as any;
+          if (bId) {
+            this.startPipelineKeyListening(bId, subkey);
+          }
         });
       });
 
-      // Aiming Mode Dropdown
-      root.querySelectorAll(".channel-aim-mode").forEach((sel) => {
+      // Switch Source Type (Button vs 4-Key WASD vs 1D Scalar vs 2D Vector)
+      root.querySelectorAll(".pipe-switch-source-type").forEach((sel) => {
         sel.addEventListener("change", (e) => {
-          ch.aiming.mode = (e.target as HTMLSelectElement).value as any;
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const val = (e.target as HTMLSelectElement).value;
+          const b = pipeline.find((p) => p.id === bId);
+          if (!b) return;
+
+          if (val === "button") {
+            b.source = { type: "button", device: "keyboard", code: "KeyE" };
+            b.processor = { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true };
+          } else if (val === "composite_4key") {
+            b.source = { type: "composite_4key", upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+            b.processor = { type: "2d_vector", mode: "direct" };
+            b.target = "locomotion.moveVector";
+          } else if (val === "1d_scalar") {
+            b.source = { type: "1d_scalar", source: "mouseDeltaY" };
+            b.processor = { type: "1d_scalar", mode: "accumulator", sensitivity: 0.005, clampMin: 0.0, clampMax: 1.0, initialValue: 0.5, autoCursorLock: true, gateButton: { device: "mouse", code: "MouseLeft", mode: "hold" } };
+            b.target = "throw.arcHeight";
+          } else if (val === "2d_vector") {
+            b.source = { type: "2d_vector", source: "mouseWorldPos" };
+            b.processor = { type: "facing", mode: "fromMousePos" };
+            b.target = "character.facing";
+          }
+          this.renderActiveView();
         });
       });
 
-      // Raw Drag Toggle
-      root.querySelectorAll(".channel-raw-drag").forEach((chk) => {
+      // 1D Scalar Source Dropdown
+      root.querySelectorAll(".pipe-source-scalar").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "1d_scalar") {
+            b.source.source = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // 2D Vector Source Dropdown
+      root.querySelectorAll(".pipe-source-vector").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "2d_vector") {
+            b.source.source = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Trigger Mode Dropdown
+      root.querySelectorAll(".pipe-proc-trigger-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.triggerMode = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Require Clean Press Checkbox
+      root.querySelectorAll(".pipe-proc-clean").forEach((chk) => {
         chk.addEventListener("change", (e) => {
-          ch.aiming.rawMouseDragEnabled = (e.target as HTMLInputElement).checked;
+          const bId = (chk as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.requireCleanPress = (e.target as HTMLInputElement).checked;
+          }
         });
       });
 
-      // Throw Arc Modulation Source
-      root.querySelectorAll(".channel-throw-arc-source").forEach((sel) => {
+      // Claim On Fire Checkbox
+      root.querySelectorAll(".pipe-proc-claim").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.claimOnFire = (e.target as HTMLInputElement).checked;
+          }
+        });
+      });
+
+      // 1D Scalar Processor Mode (Accumulator vs Delta)
+      root.querySelectorAll(".pipe-proc-scalar-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
-          ch.throw.arcModulationSource = (e.target as HTMLSelectElement).value as any;
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.mode = (e.target as HTMLSelectElement).value as any;
+          }
         });
       });
 
-      // Throw Arc Drag Threshold
-      root.querySelectorAll(".channel-throw-drag-threshold").forEach((inp) => {
+      // Auto Cursor Lock Checkbox
+      root.querySelectorAll(".pipe-proc-cursor-lock").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.autoCursorLock = (e.target as HTMLInputElement).checked;
+          }
+        });
+      });
+
+      // Sensitivity Input
+      root.querySelectorAll(".pipe-proc-sens").forEach((inp) => {
         inp.addEventListener("change", (e) => {
-          const val = parseInt((e.target as HTMLInputElement).value, 10);
-          if (!isNaN(val) && val >= 50) {
-            ch.throw.arcDragHoldThresholdMs = val;
+          const bId = (inp as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.sensitivity = parseFloat((e.target as HTMLInputElement).value) || 0.005;
           }
         });
       });
 
-      // Laser Power Source
-      root.querySelectorAll(".channel-laser-power-source").forEach((sel) => {
+      // 2D Vector Processor Mode (Direct vs FacingRelative)
+      root.querySelectorAll(".pipe-proc-vector-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
-          ch.laser.powerModulationSource = (e.target as HTMLSelectElement).value as any;
-        });
-      });
-
-      // Enabled Toggles
-      root.querySelectorAll(".channel-toggle-enabled").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          const channel = (chk as HTMLElement).dataset.channel;
-          const checked = (e.target as HTMLInputElement).checked;
-          if (channel && (ch as any)[channel]) {
-            (ch as any)[channel].enabled = checked;
-            this.renderActiveView();
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "2d_vector") {
+            b.processor.mode = (e.target as HTMLSelectElement).value as any;
           }
         });
       });
 
-      // Clean Press Toggles
-      root.querySelectorAll(".channel-toggle-clean-press").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          const channel = (chk as HTMLElement).dataset.channel;
-          const checked = (e.target as HTMLInputElement).checked;
-          if (channel && (ch as any)[channel]) {
-            (ch as any)[channel].claimPolicy = checked ? "requireCleanPress" : "allowContinuousHold";
+      // Facing Processor Mode (FromMousePos vs FromMovement)
+      root.querySelectorAll(".pipe-proc-facing-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "facing") {
+            b.processor.mode = (e.target as HTMLSelectElement).value as any;
           }
         });
       });
 
-      // Quick Swap Toggle
-      root.querySelectorAll(".channel-toggle-swap").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          ch.interaction.allowSwapWhenHolding = (e.target as HTMLInputElement).checked;
-        });
-      });
-
-      // Throw Release Aim to Fire Toggle
-      root.querySelectorAll(".channel-toggle-release-throw").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          ch.throw.fireOnReleaseAim = (e.target as HTMLInputElement).checked;
+      // Target Socket Dropdown
+      root.querySelectorAll(".pipe-target-socket").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.target = (e.target as HTMLSelectElement).value as any;
+          }
         });
       });
     }

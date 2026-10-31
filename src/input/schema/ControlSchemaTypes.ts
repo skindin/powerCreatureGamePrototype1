@@ -173,6 +173,99 @@ export interface PrebuiltControlChannels {
   laser: LaserChannelConfig;
 }
 
+// --- Modular Input Pipeline System (Source -> Processor -> Target Socket) ---
+
+export type ModuleTargetSocket =
+  | "locomotion.moveVector"
+  | "locomotion.forwardThrust"
+  | "locomotion.reverseThrust"
+  | "locomotion.strafeLeft"
+  | "locomotion.strafeRight"
+  | "locomotion.sprint"
+  | "locomotion.jump"
+  | "character.facing"
+  | "throw.aim"
+  | "throw.arcHeight"
+  | "throw.fire"
+  | "consume.bite"
+  | "pickup.grab"
+  | "pickup.swap"
+  | "melee.punch"
+  | "laser.aim"
+  | "laser.fire"
+  | "laser.power";
+
+export type RawInputSource =
+  | {
+      type: "button";
+      device: "keyboard" | "mouse" | "gamepad";
+      code: string;
+      chordModifiers?: string[];
+    }
+  | {
+      type: "1d_scalar";
+      source: "mouseDeltaY" | "mouseDeltaX" | "mouseWheel" | "gamepadTriggerR" | "gamepadTriggerL";
+    }
+  | {
+      type: "2d_vector";
+      source: "mouseWorldPos" | "mouseScreenPos" | "gamepadLeftStick" | "gamepadRightStick";
+    }
+  | {
+      type: "composite_4key";
+      upKey: string;
+      downKey: string;
+      leftKey: string;
+      rightKey: string;
+    };
+
+export interface ButtonProcessorConfig {
+  type: "button";
+  triggerMode: "down" | "hold" | "up" | "timedHold";
+  holdThresholdMs?: number;
+  requireCleanPress?: boolean;
+  claimOnFire?: boolean;
+}
+
+export interface ScalarProcessorConfig {
+  type: "1d_scalar";
+  mode: "delta" | "accumulator";
+  sensitivity?: number;
+  clampMin?: number;
+  clampMax?: number;
+  initialValue?: number;
+  gateButton?: {
+    code: string;
+    device?: "keyboard" | "mouse";
+    mode?: "hold" | "down";
+  };
+  autoCursorLock?: boolean; // locks game cursor & hides/locks OS cursor when gate is active
+}
+
+export interface VectorProcessorConfig {
+  type: "2d_vector";
+  mode: "direct" | "facingRelative" | "normalize";
+}
+
+export interface FacingProcessorConfig {
+  type: "facing";
+  mode: "fromMousePos" | "fromMovement";
+}
+
+export type ProcessorConfig =
+  | ButtonProcessorConfig
+  | ScalarProcessorConfig
+  | VectorProcessorConfig
+  | FacingProcessorConfig;
+
+export interface InputPipelineBinding {
+  id: string;
+  name?: string;
+  enabled: boolean;
+  source: RawInputSource;
+  processor: ProcessorConfig;
+  target: ModuleTargetSocket;
+}
+
 export interface KeyboardMouseConfig {
   tags?: InputTagBinding[];
   aiming: {
@@ -187,6 +280,7 @@ export interface KeyboardMouseConfig {
     moveForwardKey?: string; // e.g. "KeyW"
   };
   channels?: PrebuiltControlChannels;
+  pipeline?: InputPipelineBinding[];
   rules: ControlRule[];
 }
 
@@ -242,6 +336,7 @@ export interface ControlSchema {
   activeDevice: DeviceChannel;
   stages?: string[];
   stageGroups?: StageGroup[];
+  pipeline?: InputPipelineBinding[];
   keyboardMouse: KeyboardMouseConfig;
   gamepad: GamepadConfig;
   touch: TouchConfig;
