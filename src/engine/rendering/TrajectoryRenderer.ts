@@ -275,10 +275,18 @@ export class TrajectoryRenderer {
     const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio);
     let isSnapped = false;
     if (isLockHeld) {
-      if (traj.flattestPoints && traj.flattestPoints.length >= 2) {
+      const isCharging = Boolean(character?.isChargingThrow);
+      const chargingTowards = character?.throwChargingTowards || (traj as any)?.chargingTowards;
+
+      // When charging towards flattest arc -> do not show max height arc
+      // When charging towards highest arc -> do not show flattest arc
+      const showFlattest = !isCharging || chargingTowards === "flattest";
+      const showSteepest = !isCharging || chargingTowards === "steepest";
+
+      if (showFlattest && traj.flattestPoints && traj.flattestPoints.length >= 2) {
         drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
       }
-      if (traj.steepestPoints && traj.steepestPoints.length >= 2) {
+      if (showSteepest && traj.steepestPoints && traj.steepestPoints.length >= 2) {
         drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
       }
 
@@ -594,6 +602,16 @@ export class TrajectoryRenderer {
     ctx.strokeStyle = color;
     ctx.lineWidth = isLocked ? 2.4 : 1.8;
     ctx.stroke();
+
+    // Cancel icon inside circle when in throw cancel deadzone
+    if (color === "#ef4444") {
+      ctx.beginPath();
+      ctx.moveTo(screenX - 5, screenY - 5);
+      ctx.lineTo(screenX + 5, screenY + 5);
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 2.0;
+      ctx.stroke();
+    }
 
     // 4 Crosshair ticks extending outward
     const tickInner = reticleRadius + 2;

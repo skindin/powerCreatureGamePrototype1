@@ -95,6 +95,18 @@ export class ThrowCapability {
       aimTargetPos
     ) {
       if (char.isChargingThrow) {
+        const aimDx = aimTargetPos.x - char.position.x;
+        const aimDy = aimTargetPos.y - char.position.y;
+        const distToAim = Math.hypot(aimDx, aimDy);
+        const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+        if (distToAim < cancelDistance) {
+          char.activeTrajectory = null;
+          char.isThrowCancelZone = true;
+          return;
+        }
+        char.isThrowCancelZone = false;
+
         // Step 1: Baseline optimal trajectory calculation
         char.throwModule.hasUserSetArcRatio = false;
         const baseTraj = char.throwModule.calculateTrajectory(
@@ -126,6 +138,8 @@ export class ThrowCapability {
         const targetRatio = flattestBlocked ? 1.0 : 0.0;
         const chargedRatio = optRatio + (targetRatio - optRatio) * chargeProgress;
 
+        char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+
         char.throwModule.hasUserSetArcRatio = true;
         char.throwModule.savedArcRatio = chargedRatio;
         char.hasUserSetArcRatio = true;
@@ -143,7 +157,13 @@ export class ThrowCapability {
           lockedAimPos,
           aimLockDelta
         );
+
+        if (char.activeTrajectory) {
+          (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+        }
       } else {
+        char.isThrowCancelZone = false;
+        char.throwChargingTowards = undefined;
         if (char.hasUserSetArcRatio && char.savedArcRatio !== undefined) {
           char.throwModule.hasUserSetArcRatio = true;
           char.throwModule.savedArcRatio = char.savedArcRatio;
@@ -177,6 +197,8 @@ export class ThrowCapability {
       }
     } else {
       char.activeTrajectory = null;
+      char.isThrowCancelZone = false;
+      char.throwChargingTowards = undefined;
     }
   }
 

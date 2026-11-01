@@ -246,8 +246,25 @@ export class ModularPipelineEvaluator {
               break;
             case "throw.fire":
               if (execCtx.isHoldingItem) {
-                isThrow = true;
-                claimAll("throw.fire");
+                const aimDx = input.actualMousePos.x - char.position.x;
+                const aimDy = input.actualMousePos.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (char.isChargingThrow && distToAim < cancelDistance) {
+                  isThrow = false;
+                  char.isChargingThrow = false;
+                  char.throwChargeStartTime = null;
+                  char.throwChargeProgress = 0;
+                  char.activeTrajectory = null;
+                  char.isThrowCancelZone = false;
+                  claimAll("throw.cancel");
+                } else {
+                  isThrow = true;
+                  char.isChargingThrow = false;
+                  char.throwChargeStartTime = null;
+                  claimAll("throw.fire");
+                }
               }
               break;
             case "consume.bite":
@@ -287,12 +304,27 @@ export class ModularPipelineEvaluator {
           }
         }
 
-        // Auto-release fire for chargeBow on button release
+        // Auto-release fire for chargeBow on button release (or cancel if within cancel distance)
         if (target === "throw.chargeBow" && anyJustReleased && char.isChargingThrow && execCtx.isHoldingItem) {
-          isThrow = true;
-          char.isChargingThrow = false;
-          char.throwChargeStartTime = null;
-          claimAll("throw.fire");
+          const aimDx = input.actualMousePos.x - char.position.x;
+          const aimDy = input.actualMousePos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+          if (distToAim < cancelDistance) {
+            isThrow = false;
+            char.isChargingThrow = false;
+            char.throwChargeStartTime = null;
+            char.throwChargeProgress = 0;
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = false;
+            claimAll("throw.cancel");
+          } else {
+            isThrow = true;
+            char.isChargingThrow = false;
+            char.throwChargeStartTime = null;
+            claimAll("throw.fire");
+          }
         }
       }
 
@@ -424,11 +456,16 @@ export class ModularPipelineEvaluator {
       char.isChargingThrow = false;
       char.throwChargeStartTime = null;
       char.throwChargeProgress = 0;
+      char.isThrowCancelZone = false;
     }
     if (isThrow) {
       char.isChargingThrow = false;
       char.throwChargeStartTime = null;
       char.throwChargeProgress = 0;
+      char.isThrowCancelZone = false;
+    }
+    if (!isAimingTrajectory) {
+      char.isThrowCancelZone = false;
     }
 
     const isAiming = isLaserAiming || isAimingTrajectory;

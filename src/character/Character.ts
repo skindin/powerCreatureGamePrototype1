@@ -61,6 +61,8 @@ export class Character extends GameObject {
   public isChargingThrow: boolean = false;
   public throwChargeStartTime: number | null = null;
   public throwChargeProgress: number = 0;
+  public throwChargingTowards?: "flattest" | "steepest";
+  public isThrowCancelZone: boolean = false;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {

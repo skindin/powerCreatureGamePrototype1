@@ -663,7 +663,8 @@ export class Renderer {
 
           // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
           if (!cChar.activeTrajectory) {
-            this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, cursor.color);
+            const reticleColor = cChar.isThrowCancelZone ? "#ef4444" : cursor.color;
+            this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, reticleColor);
           }
         }
       } else {

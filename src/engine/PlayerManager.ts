@@ -1209,6 +1209,10 @@ export class PlayerManager {
 
       // Dedicated Throw (RT / Left Click)
       if (pkt.isThrow && char.heldObject && char.throwModule) {
+        if (char.isThrowCancelZone) {
+          // Throw was cancelled inside character cancel deadzone
+          return;
+        }
         const thrownObj = char.heldObject;
         const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 3);
         const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 3);
