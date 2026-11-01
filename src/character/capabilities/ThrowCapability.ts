@@ -108,22 +108,20 @@ export class ThrowCapability {
         }
         char.isThrowCancelZone = false;
 
-        // Step 1: Baseline optimal trajectory calculation
-        char.throwModule.hasUserSetArcRatio = false;
-        const baseTraj = char.throwModule.calculateTrajectory(
+        // Step 1: Baseline lowest energy wall-clearing trajectory calculation
+        const clearTraj = ThrowCapability.findLowestEnergyWallClearTrajectory(
           char,
+          arena,
           aimTargetPos.x,
           aimTargetPos.y,
-          arena,
-          entities ?? arena.entities,
-          arena.visualAltitudeScale,
+          entities,
           autoLock,
           lockedAimPos,
           aimLockDelta
         );
 
-        const optRatio = char.throwModule.savedArcRatio ?? 0.5;
-        const flattestBlocked = Boolean(baseTraj?.flattestPoints?.some((pt) => pt.collidesWall));
+        const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
+        const flattestBlocked = Boolean(clearTraj?.flattestPoints?.some((pt) => pt.collidesWall));
 
         // Step 2: Compute charge progress (700ms charge window)
         const now = performance.now();
@@ -137,7 +135,7 @@ export class ThrowCapability {
         // - If flattest trajectory has no wall collisions -> charge towards 0.0 (flattest / highest speed)
         // - If flattest trajectory is blocked by a wall -> charge towards 1.0 (increase height to loft over wall)
         const targetRatio = flattestBlocked ? 1.0 : 0.0;
-        const chargedRatio = optRatio + (targetRatio - optRatio) * chargeProgress;
+        const chargedRatio = startRatio + (targetRatio - startRatio) * chargeProgress;
 
         char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
 
@@ -147,17 +145,19 @@ export class ThrowCapability {
         char.savedArcRatio = chargedRatio;
 
         // Step 4: Final trajectory calculation with the charged arc ratio
-        char.activeTrajectory = char.throwModule.calculateTrajectory(
-          char,
-          aimTargetPos.x,
-          aimTargetPos.y,
-          arena,
-          entities ?? arena.entities,
-          arena.visualAltitudeScale,
-          autoLock,
-          lockedAimPos,
-          aimLockDelta
-        );
+        char.activeTrajectory = (chargeProgress > 0.001)
+          ? char.throwModule.calculateTrajectory(
+              char,
+              aimTargetPos.x,
+              aimTargetPos.y,
+              arena,
+              entities ?? arena.entities,
+              arena.visualAltitudeScale,
+              autoLock,
+              lockedAimPos,
+              aimLockDelta
+            )
+          : clearTraj;
 
         if (char.activeTrajectory) {
           (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
