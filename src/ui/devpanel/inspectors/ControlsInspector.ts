@@ -1631,6 +1631,8 @@ export class ControlsInspector {
                       <optgroup label="Throw & Ballistics">
                         <option value="throw.chargeBow" ${b.target === "throw.chargeBow" ? "selected" : ""}>🏹 Throw.Charge Bow (Hold to Flatten/Loft, Release to Fire)</option>
                         <option value="throw.quickOptimal" ${b.target === "throw.quickOptimal" ? "selected" : ""}>⚡ Throw.Quick Optimal (Most Efficient Trajectory)</option>
+                        <option value="throw.quickWallClear" ${b.target === "throw.quickWallClear" ? "selected" : ""}>⚡ Throw.Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
+                        <option value="throw.aimWallClear" ${b.target === "throw.aimWallClear" ? "selected" : ""}>🏹 Throw.Aim Wall-Clear (Aim Lowest Energy No Wall Collision)</option>
                         <option value="throw.chargeArc" ${b.target === "throw.chargeArc" ? "selected" : ""}>⏳ Throw.Charge Arc (Hold to Flatten/Loft)</option>
                         <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🎯 Throw.Aim Arc (Manual)</option>
                         <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height Modulation</option>

@@ -1,6 +1,6 @@
 {
-  "version": 187,
-  "lastSaved": "2026-11-01T09:07:42.681Z",
+  "version": 194,
+  "lastSaved": "2026-11-01T09:14:37.151Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1749,24 +1749,6 @@
             "target": "locomotion.jump"
           },
           {
-            "id": "pipe-throw-fire",
-            "name": "Throw Fire Release",
-            "enabled": true,
-            "condition": "holdingItem",
-            "source": {
-              "type": "button",
-              "device": "mouse",
-              "code": "MouseRight"
-            },
-            "processor": {
-              "type": "button",
-              "triggerMode": "hold",
-              "requireCleanPress": true,
-              "claimOnFire": true
-            },
-            "target": "throw.chargeBow"
-          },
-          {
             "id": "pipe-pickup-grab",
             "name": "Grab Ground Item",
             "enabled": true,
@@ -1913,6 +1895,47 @@
               "claimOnFire": true
             },
             "target": "pickup.swap"
+          },
+          {
+            "id": "pipe-mvxlyqiwdo8",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseWheel"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.005,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "autoCursorLock": false,
+              "gateButton": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              }
+            },
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-mvxm2asjf1q",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "throw.chargeBow"
           }
         ]
       },
@@ -2318,24 +2341,6 @@
           "target": "locomotion.jump"
         },
         {
-          "id": "pipe-throw-fire",
-          "name": "Throw Fire Release",
-          "enabled": true,
-          "condition": "holdingItem",
-          "source": {
-            "type": "button",
-            "device": "mouse",
-            "code": "MouseRight"
-          },
-          "processor": {
-            "type": "button",
-            "triggerMode": "hold",
-            "requireCleanPress": true,
-            "claimOnFire": true
-          },
-          "target": "throw.chargeBow"
-        },
-        {
           "id": "pipe-pickup-grab",
           "name": "Grab Ground Item",
           "enabled": true,
@@ -2477,11 +2482,52 @@
           },
           "processor": {
             "type": "button",
-            "triggerMode": "down",
+            "triggerMode": "hold",
             "requireCleanPress": true,
             "claimOnFire": true
           },
           "target": "pickup.swap"
+        },
+        {
+          "id": "pipe-mvxlyqiwdo8",
+          "name": "New Binding",
+          "enabled": true,
+          "source": {
+            "type": "1d_scalar",
+            "source": "mouseWheel"
+          },
+          "processor": {
+            "type": "1d_scalar",
+            "mode": "accumulator",
+            "sensitivity": 0.005,
+            "clampMin": 0,
+            "clampMax": 1,
+            "initialValue": 0.5,
+            "autoCursorLock": false,
+            "gateButton": {
+              "device": "mouse",
+              "code": "MouseRight",
+              "mode": "hold"
+            }
+          },
+          "target": "throw.arcHeight"
+        },
+        {
+          "id": "pipe-mvxm2asjf1q",
+          "name": "New Binding",
+          "enabled": true,
+          "source": {
+            "type": "button",
+            "device": "mouse",
+            "code": "MouseRight"
+          },
+          "processor": {
+            "type": "button",
+            "triggerMode": "hold",
+            "requireCleanPress": true,
+            "claimOnFire": true
+          },
+          "target": "throw.chargeBow"
         }
       ]
     },
@@ -4972,24 +5018,6 @@
               "target": "locomotion.jump"
             },
             {
-              "id": "pipe-throw-fire",
-              "name": "Throw Fire Release",
-              "enabled": true,
-              "condition": "holdingItem",
-              "source": {
-                "type": "button",
-                "device": "mouse",
-                "code": "MouseRight"
-              },
-              "processor": {
-                "type": "button",
-                "triggerMode": "hold",
-                "requireCleanPress": true,
-                "claimOnFire": true
-              },
-              "target": "throw.chargeBow"
-            },
-            {
               "id": "pipe-pickup-grab",
               "name": "Grab Ground Item",
               "enabled": true,
@@ -5136,6 +5164,47 @@
                 "claimOnFire": true
               },
               "target": "pickup.swap"
+            },
+            {
+              "id": "pipe-mvxlyqiwdo8",
+              "name": "New Binding",
+              "enabled": true,
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseWheel"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.005,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "autoCursorLock": false,
+                "gateButton": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "mode": "hold"
+                }
+              },
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-mvxm2asjf1q",
+              "name": "New Binding",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "throw.chargeBow"
             }
           ]
         },
@@ -5541,24 +5610,6 @@
             "target": "locomotion.jump"
           },
           {
-            "id": "pipe-throw-fire",
-            "name": "Throw Fire Release",
-            "enabled": true,
-            "condition": "holdingItem",
-            "source": {
-              "type": "button",
-              "device": "mouse",
-              "code": "MouseRight"
-            },
-            "processor": {
-              "type": "button",
-              "triggerMode": "hold",
-              "requireCleanPress": true,
-              "claimOnFire": true
-            },
-            "target": "throw.chargeBow"
-          },
-          {
             "id": "pipe-pickup-grab",
             "name": "Grab Ground Item",
             "enabled": true,
@@ -5700,11 +5751,52 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "down",
+              "triggerMode": "hold",
               "requireCleanPress": true,
               "claimOnFire": true
             },
             "target": "pickup.swap"
+          },
+          {
+            "id": "pipe-mvxlyqiwdo8",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseWheel"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.005,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "autoCursorLock": false,
+              "gateButton": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              }
+            },
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-mvxm2asjf1q",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "throw.chargeBow"
           }
         ]
       }

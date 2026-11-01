@@ -189,6 +189,8 @@ export type ModuleTargetSocket =
   | "throw.chargeBow"
   | "throw.chargeArc"
   | "throw.quickOptimal"
+  | "throw.quickWallClear"
+  | "throw.aimWallClear"
   | "throw.fire"
   | "consume.bite"
   | "pickup.grab"

@@ -6,6 +6,7 @@ import type {
 import type { InputManager } from "../../ui/InputManager.js";
 import { InputPressTokenManager } from "./InputPressTokenManager.js";
 import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
+import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
 
 /**
  * ModularPipelineEvaluator executes the unbundled, modular Left-to-Right input pipeline:
@@ -251,6 +252,29 @@ export class ModularPipelineEvaluator {
                 consumeAll("throw.fire");
               }
               break;
+            case "throw.quickWallClear":
+              if (execCtx.isHoldingItem && execCtx.arena) {
+                ThrowCapability.findLowestEnergyWallClearTrajectory(
+                  char,
+                  execCtx.arena,
+                  input.actualMousePos.x,
+                  input.actualMousePos.y,
+                  execCtx.arena.entities,
+                  false,
+                  input.lockedAimPos,
+                  0
+                );
+                isThrow = true;
+                consumeAll("throw.fire");
+              }
+              break;
+            case "throw.aimWallClear":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isAimingWallClear = true;
+                claimAll("throw.aimWallClear");
+              }
+              break;
             case "throw.fire":
               if (execCtx.isHoldingItem) {
                 const aimDx = input.actualMousePos.x - char.position.x;
@@ -258,9 +282,10 @@ export class ModularPipelineEvaluator {
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
-                if (char.isChargingThrow && distToAim < cancelDistance) {
+                if ((char.isChargingThrow || char.isAimingWallClear) && distToAim < cancelDistance) {
                   isThrow = false;
                   char.isChargingThrow = false;
+                  char.isAimingWallClear = false;
                   char.throwChargeStartTime = null;
                   char.throwChargeProgress = 0;
                   char.activeTrajectory = null;
@@ -269,6 +294,7 @@ export class ModularPipelineEvaluator {
                 } else {
                   isThrow = true;
                   char.isChargingThrow = false;
+                  char.isAimingWallClear = false;
                   char.throwChargeStartTime = null;
                   consumeAll("throw.fire");
                 }
@@ -330,6 +356,26 @@ export class ModularPipelineEvaluator {
             isThrow = true;
             char.isChargingThrow = false;
             char.throwChargeStartTime = null;
+            claimAll("throw.fire");
+          }
+        }
+
+        // Auto-release fire for aimWallClear on button release (or cancel if within cancel distance)
+        if (target === "throw.aimWallClear" && anyJustReleased && char.isAimingWallClear && execCtx.isHoldingItem) {
+          const aimDx = input.actualMousePos.x - char.position.x;
+          const aimDy = input.actualMousePos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+          if (distToAim < cancelDistance) {
+            isThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = false;
+            claimAll("throw.cancel");
+          } else {
+            isThrow = true;
+            char.isAimingWallClear = false;
             claimAll("throw.fire");
           }
         }
@@ -465,14 +511,20 @@ export class ModularPipelineEvaluator {
       char.throwChargeProgress = 0;
       char.isThrowCancelZone = false;
     }
+    if (!isAimingTrajectory && char.isAimingWallClear && !isThrow) {
+      char.isAimingWallClear = false;
+      char.isThrowCancelZone = false;
+    }
     if (isThrow) {
       char.isChargingThrow = false;
+      char.isAimingWallClear = false;
       char.throwChargeStartTime = null;
       char.throwChargeProgress = 0;
       char.isThrowCancelZone = false;
     }
     if (!isAimingTrajectory) {
       char.isThrowCancelZone = false;
+      char.isAimingWallClear = false;
     }
 
     const isAiming = isLaserAiming || isAimingTrajectory;
