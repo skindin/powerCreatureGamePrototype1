@@ -1,6 +1,7 @@
 import type {
   InputPipelineBinding,
   ControlExecutionContext,
+  BindingCondition,
 } from "./ControlSchemaTypes.js";
 import type { InputManager } from "../../ui/InputManager.js";
 import { InputPressTokenManager } from "./InputPressTokenManager.js";
@@ -25,6 +26,40 @@ export class ModularPipelineEvaluator {
 
   public static setAccumulatorValue(bindingId: string, value: number): void {
     this.accumulators.set(bindingId, value);
+  }
+
+  public static checkBindingCondition(
+    condition: BindingCondition | undefined,
+    execCtx: ControlExecutionContext
+  ): boolean {
+    if (!condition || condition === "none") return true;
+    switch (condition) {
+      case "emptyHanded":
+        return !execCtx.isHoldingItem;
+      case "holdingItem":
+        return Boolean(execCtx.isHoldingItem);
+      case "holdingConsumable":
+        return Boolean(
+          execCtx.isHoldingItem &&
+          (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility)
+        );
+      case "holdingThrowable":
+        return Boolean(
+          execCtx.isHoldingItem &&
+          !execCtx.heldItemIsEdible &&
+          !execCtx.heldItemHasPrimaryAbility
+        );
+      case "targetInReach":
+        return Boolean(execCtx.targetInReach);
+      case "targetNotInReach":
+        return !execCtx.targetInReach;
+      case "isGrounded":
+        return Boolean(execCtx.isGrounded);
+      case "isClimbing":
+        return Boolean(execCtx.isClimbing);
+      default:
+        return true;
+    }
   }
 
   public static evaluatePipeline(
@@ -63,62 +98,85 @@ export class ModularPipelineEvaluator {
     // 2. Iterate each modular pipeline binding
     for (const binding of pipeline) {
       if (!binding.enabled) continue;
+      if (!this.checkBindingCondition(binding.condition, execCtx)) continue;
 
       const { source, processor, target } = binding;
 
       // --- Process Button Processor ---
       if (processor.type === "button" && source.type === "button") {
-        const code = source.code;
-        const chordMods = source.chordModifiers || [];
-        const isChordDown = chordMods.every((m) => tokens.isDown(m));
+        const primaryCode = source.code;
+        const allCodes = [
+          primaryCode,
+          ...(source.additionalCodes || []),
+          ...(source.chordModifiers || []),
+        ];
 
-        if (!isChordDown && chordMods.length > 0) {
-          continue;
-        }
+        // All required keys in this multi-button / chord combination must be held
+        const areAllDown = allCodes.every((c) => tokens.isDown(c));
+        const anyFresh = allCodes.some((c) => tokens.isFresh(c));
+
+        const isCodeJustReleased = (c: string): boolean => {
+          if (c.startsWith("Mouse")) {
+            const idx = c === "MouseLeft" ? 0 : c === "MouseMiddle" ? 1 : c === "MouseRight" ? 2 : -1;
+            return idx >= 0 ? execCtx.mouseStates?.justReleased(idx) ?? false : false;
+          }
+          return execCtx.keyStates?.justReleased(c) ?? false;
+        };
+        const anyJustReleased = allCodes.some(isCodeJustReleased);
 
         let signalActive = false;
-        const isDown = tokens.isDown(code);
-        const isFresh = tokens.isFresh(code);
-        const mouseBtnIndex = code === "MouseLeft" ? 0 : code === "MouseMiddle" ? 1 : code === "MouseRight" ? 2 : -1;
-        const justReleased =
-          source.device === "mouse"
-            ? (mouseBtnIndex >= 0 ? execCtx.mouseStates?.justReleased(mouseBtnIndex) ?? false : false)
-            : (execCtx.keyStates?.justReleased(code) ?? false);
 
         if (processor.triggerMode === "down") {
           if (processor.requireCleanPress) {
-            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id, target);
+            signalActive =
+              areAllDown &&
+              anyFresh &&
+              allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = isFresh;
+            signalActive = areAllDown && anyFresh;
           }
         } else if (processor.triggerMode === "hold") {
           if (processor.requireCleanPress) {
-            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id, target) && isDown;
+            signalActive =
+              areAllDown &&
+              allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = isDown;
+            signalActive = areAllDown;
           }
         } else if (processor.triggerMode === "up") {
           if (processor.requireCleanPress) {
-            signalActive = Boolean(justReleased) && tokens.canExecuteRelease(code, "requireCleanPress", binding.id, target);
+            signalActive =
+              Boolean(anyJustReleased) &&
+              allCodes.every((c) => tokens.canExecuteRelease(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = Boolean(justReleased);
+            signalActive = Boolean(anyJustReleased);
           }
         } else if (processor.triggerMode === "timedHold") {
-          const holdMs = tokens.getHoldDuration(code, now);
-          const reached = isDown && holdMs >= (processor.holdThresholdMs || 200);
+          const holdMs = tokens.getHoldDuration(primaryCode, now);
+          const reached = areAllDown && holdMs >= (processor.holdThresholdMs || 200);
           if (processor.requireCleanPress) {
-            signalActive = reached && tokens.canExecute(code, "requireCleanPress", binding.id, target);
+            signalActive =
+              reached &&
+              allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
             signalActive = reached;
           }
         }
 
         if (signalActive && processor.claimOnFire && processor.triggerMode !== "up") {
-          tokens.claim(code, binding.id, target);
+          for (const c of allCodes) {
+            tokens.claim(c, binding.id, target);
+          }
         }
 
         // Apply signal to Target Socket
         if (signalActive) {
+          const claimAll = (tgt: string) => {
+            for (const c of allCodes) {
+              tokens.claim(c, binding.id, tgt);
+            }
+          };
+
           switch (target) {
             case "locomotion.forwardThrust": {
               const facing = char.facingAngle ?? 0;
@@ -153,36 +211,36 @@ export class ModularPipelineEvaluator {
             case "throw.aim":
               if (execCtx.isHoldingItem) {
                 isAimingTrajectory = true;
-                tokens.claim(code, binding.id, "throw.aim");
+                claimAll("throw.aim");
               }
               break;
             case "throw.fire":
               if (execCtx.isHoldingItem) {
                 isThrow = true;
-                tokens.claim(code, binding.id, "throw.fire");
+                claimAll("throw.fire");
               }
               break;
             case "consume.bite":
               if (execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility)) {
                 isUsingItem = true;
-                tokens.claim(code, binding.id, "consume.bite");
+                claimAll("consume.bite");
               }
               break;
             case "pickup.grab":
               if (!execCtx.isHoldingItem && execCtx.targetInReach) {
                 isGrabHeld = true;
-                tokens.claim(code, binding.id, "pickup.grab");
+                claimAll("pickup.grab");
               }
               break;
             case "pickup.swap":
               if (execCtx.isHoldingItem && execCtx.targetInReach && !isAimingTrajectory) {
                 isSwap = true;
-                tokens.claim(code, binding.id, "pickup.swap");
+                claimAll("pickup.swap");
               }
               break;
             case "melee.punch":
               isMeleeRequested = true;
-              tokens.claim(code, binding.id, "melee.punch");
+              claimAll("melee.punch");
               break;
             case "laser.aim":
               isLaserAiming = true;
@@ -318,6 +376,10 @@ export class ModularPipelineEvaluator {
       char.lastThrowAimAngle = char.facingAngle;
     }
 
+    const isAiming = isLaserAiming || isAimingTrajectory;
+    const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
+    const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
+
     return {
       playerId: "keyboard",
       moveX,
@@ -337,6 +399,25 @@ export class ModularPipelineEvaluator {
       isMeleeRequested,
       meleeAimDirX: (input.actualMousePos.x - char.position.x) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
       meleeAimDirY: (input.actualMousePos.y - char.position.y) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
+      meleeAimX: input.actualMousePos.x,
+      meleeAimY: input.actualMousePos.y,
+      aimX: input.actualMousePos.x,
+      aimY: input.actualMousePos.y,
+      isAiming,
+      isLockHeld: Boolean(input.lockedAimPos),
+      lockedAimPos: input.lockedAimPos,
+      aimLockDelta: 0,
+      facingAngle: char.facingAngle,
+      ...(kLaunchVel ? {
+        launchVx: kLaunchVel.vx,
+        launchVy: kLaunchVel.vy,
+        launchVz: kLaunchVel.vz,
+      } : {}),
+      ...(kLaunchPos ? {
+        launchStartX: kLaunchPos.x,
+        launchStartY: kLaunchPos.y,
+        launchStartZ: kLaunchPos.z,
+      } : {}),
     } as any;
   }
 }

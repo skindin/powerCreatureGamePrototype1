@@ -195,12 +195,24 @@ export type ModuleTargetSocket =
   | "laser.fire"
   | "laser.power";
 
+export type BindingCondition =
+  | "none"
+  | "emptyHanded"
+  | "holdingItem"
+  | "holdingConsumable"
+  | "holdingThrowable"
+  | "targetInReach"
+  | "targetNotInReach"
+  | "isGrounded"
+  | "isClimbing";
+
 export type RawInputSource =
   | {
       type: "button";
       device: "keyboard" | "mouse" | "gamepad";
       code: string;
       chordModifiers?: string[];
+      additionalCodes?: string[];
     }
   | {
       type: "1d_scalar";
@@ -261,6 +273,7 @@ export interface InputPipelineBinding {
   id: string;
   name?: string;
   enabled: boolean;
+  condition?: BindingCondition;
   source: RawInputSource;
   processor: ProcessorConfig;
   target: ModuleTargetSocket;

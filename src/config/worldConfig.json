@@ -1752,6 +1752,7 @@
             "id": "pipe-throw-aim",
             "name": "Throw Aim Arc",
             "enabled": true,
+            "condition": "holdingItem",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -1768,6 +1769,7 @@
             "id": "pipe-throw-arc",
             "name": "Throw Arc Height Modulation",
             "enabled": true,
+            "condition": "holdingItem",
             "source": {
               "type": "1d_scalar",
               "source": "mouseDeltaY"
@@ -1792,6 +1794,7 @@
             "id": "pipe-throw-fire",
             "name": "Throw Fire Release",
             "enabled": true,
+            "condition": "holdingItem",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -1809,6 +1812,7 @@
             "id": "pipe-pickup-grab",
             "name": "Grab Ground Item",
             "enabled": true,
+            "condition": "emptyHanded",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -1826,6 +1830,7 @@
             "id": "pipe-consume-bite",
             "name": "Bite / Eat Held Item",
             "enabled": true,
+            "condition": "holdingConsumable",
             "source": {
               "type": "button",
               "device": "keyboard",

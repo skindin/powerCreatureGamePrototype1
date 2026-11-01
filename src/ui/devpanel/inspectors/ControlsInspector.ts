@@ -47,7 +47,7 @@ export class ControlsInspector {
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
-  private static listeningPipelineTarget: { bindingId: string; subKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "gate" } | null = null;
+  private static listeningPipelineTarget: { bindingId: string; subKey?: string } | null = null;
   private static recorderCleanup: (() => void) | null = null;
   private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
@@ -1319,7 +1319,7 @@ export class ControlsInspector {
           <span style="text-align: center;"></span>
           <span>PROCESSOR & CLEANING (CENTER)</span>
           <span style="text-align: center;"></span>
-          <span>MODULE FUNCTION (SOCKET)</span>
+          <span>SOCKET & CONDITION (RIGHT)</span>
           <span style="text-align: center;">DELETE</span>
         </div>
 
@@ -1337,6 +1337,7 @@ export class ControlsInspector {
             if (source.type === "button") {
               const listening = isListening(b.id, "button");
               const label = this.formatChannelKeyLabel(source.code, source.chordModifiers);
+              const extraCodes = source.additionalCodes || [];
               sourceHtml = `
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1348,16 +1349,57 @@ export class ControlsInspector {
                       <option value="2d_vector">2D Vector</option>
                     </select>
                   </div>
-                  <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
-                    font-size: 0.74rem;
-                    padding: 3px 8px;
-                    font-weight: 600;
-                    border-radius: 4px;
-                    border: 1px solid rgba(148, 163, 184, 0.3);
-                    ${listening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #fff;"}
-                  " title="Click to bind key or mouse button">
-                    ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
-                  </button>
+                  <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
+                      font-size: 0.72rem;
+                      padding: 3px 8px;
+                      font-weight: 600;
+                      border-radius: 4px;
+                      border: 1px solid rgba(148, 163, 184, 0.3);
+                      ${listening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #fff;"}
+                    " title="Click to bind primary key or mouse button">
+                      ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
+                    </button>
+                    ${extraCodes.map((exCode, idx) => {
+                      const isListeningExtra = isListening(b.id, `extraKey_${idx}`);
+                      const exLabel = this.formatChannelKeyLabel(exCode);
+                      return `
+                        <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
+                          <span style="font-size: 0.62rem; color: #38bdf8; font-weight: 700;">+</span>
+                          <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="extraKey_${idx}" type="button" style="
+                            font-size: 0.68rem;
+                            padding: 2px 4px;
+                            font-weight: 600;
+                            border: none;
+                            background: transparent;
+                            color: #fff;
+                            ${isListeningExtra ? "color: #ef4444; font-weight: 700;" : ""}
+                          " title="Click to bind extra required key">
+                            ${isListeningExtra ? "🔴 Press..." : exLabel}
+                          </button>
+                          <button class="btn-pipe-remove-key" data-binding-id="${b.id}" data-key-index="${idx}" type="button" style="
+                            font-size: 0.64rem;
+                            color: #ef4444;
+                            background: transparent;
+                            border: none;
+                            cursor: pointer;
+                            padding: 0 2px;
+                            line-height: 1;
+                          " title="Remove this key requirement">✕</button>
+                        </div>
+                      `;
+                    }).join("")}
+                    <button class="btn-pipe-add-key btn-secondary-action" data-binding-id="${b.id}" type="button" style="
+                      font-size: 0.62rem;
+                      font-weight: 600;
+                      padding: 2px 6px;
+                      background: rgba(56, 189, 248, 0.08);
+                      border: 1px dashed rgba(56, 189, 248, 0.4);
+                      color: #38bdf8;
+                      border-radius: 3px;
+                      cursor: pointer;
+                    " title="Add another required button to this combination">+ Add Key</button>
+                  </div>
                 </div>
               `;
             } else if (source.type === "composite_4key") {
@@ -1535,39 +1577,55 @@ export class ControlsInspector {
                 <!-- Column 4: Arrow 2 -->
                 <div style="display: flex; justify-content: center; align-items: center; color: #34d399; font-size: 0.95rem;">➔</div>
 
-                <!-- Column 5: Module Socket (Right) -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="font-size: 0.64rem; font-weight: 700; color: #34d399;">MODULE SOCKET</div>
-                  <select class="pipe-target-socket dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; padding: 3px 6px; background: #0f172a; color: #ffffff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;">
-                    <optgroup label="Locomotion">
-                      <option value="locomotion.moveVector" ${b.target === "locomotion.moveVector" ? "selected" : ""}>🏃 Locomotion.Move Vector</option>
-                      <option value="locomotion.forwardThrust" ${b.target === "locomotion.forwardThrust" ? "selected" : ""}>🚀 Locomotion.Forward Thrust</option>
-                      <option value="locomotion.reverseThrust" ${b.target === "locomotion.reverseThrust" ? "selected" : ""}>🛑 Locomotion.Reverse Thrust</option>
-                      <option value="locomotion.strafeLeft" ${b.target === "locomotion.strafeLeft" ? "selected" : ""}>⬅️ Locomotion.Strafe Left</option>
-                      <option value="locomotion.strafeRight" ${b.target === "locomotion.strafeRight" ? "selected" : ""}>➡️ Locomotion.Strafe Right</option>
-                      <option value="locomotion.sprint" ${b.target === "locomotion.sprint" ? "selected" : ""}>⚡ Locomotion.Sprint</option>
-                      <option value="locomotion.jump" ${b.target === "locomotion.jump" ? "selected" : ""}>🦘 Locomotion.Jump</option>
-                    </optgroup>
-                    <optgroup label="Character Heading">
-                      <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
-                    </optgroup>
-                    <optgroup label="Throw & Ballistics">
-                      <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🏹 Throw.Aim Arc</option>
-                      <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height (0..1)</option>
-                      <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
-                    </optgroup>
-                    <optgroup label="Interaction & Consumables">
-                      <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
-                      <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
-                      <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
-                    </optgroup>
-                    <optgroup label="Combat">
-                      <option value="melee.punch" ${b.target === "melee.punch" ? "selected" : ""}>🥊 Melee.Punch</option>
-                      <option value="laser.aim" ${b.target === "laser.aim" ? "selected" : ""}>⚡ Laser.Aim Chord</option>
-                      <option value="laser.fire" ${b.target === "laser.fire" ? "selected" : ""}>⚡ Laser.Fire</option>
-                      <option value="laser.power" ${b.target === "laser.power" ? "selected" : ""}>⚡ Laser.Power Level</option>
-                    </optgroup>
-                  </select>
+                <!-- Column 5: Module Socket & Condition (Right) -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div>
+                    <div style="font-size: 0.64rem; font-weight: 700; color: #34d399;">MODULE SOCKET</div>
+                    <select class="pipe-target-socket dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.70rem; padding: 2px 4px; background: #0f172a; color: #ffffff; border: 1px solid rgba(52,211,153,0.3); border-radius: 3px;">
+                      <optgroup label="Locomotion">
+                        <option value="locomotion.moveVector" ${b.target === "locomotion.moveVector" ? "selected" : ""}>🏃 Locomotion.Move Vector</option>
+                        <option value="locomotion.forwardThrust" ${b.target === "locomotion.forwardThrust" ? "selected" : ""}>🚀 Locomotion.Forward Thrust</option>
+                        <option value="locomotion.reverseThrust" ${b.target === "locomotion.reverseThrust" ? "selected" : ""}>🛑 Locomotion.Reverse Thrust</option>
+                        <option value="locomotion.strafeLeft" ${b.target === "locomotion.strafeLeft" ? "selected" : ""}>⬅️ Locomotion.Strafe Left</option>
+                        <option value="locomotion.strafeRight" ${b.target === "locomotion.strafeRight" ? "selected" : ""}>➡️ Locomotion.Strafe Right</option>
+                        <option value="locomotion.sprint" ${b.target === "locomotion.sprint" ? "selected" : ""}>⚡ Locomotion.Sprint</option>
+                        <option value="locomotion.jump" ${b.target === "locomotion.jump" ? "selected" : ""}>🦘 Locomotion.Jump</option>
+                      </optgroup>
+                      <optgroup label="Character Heading">
+                        <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
+                      </optgroup>
+                      <optgroup label="Throw & Ballistics">
+                        <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🏹 Throw.Aim Arc</option>
+                        <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height (0..1)</option>
+                        <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
+                      </optgroup>
+                      <optgroup label="Interaction & Consumables">
+                        <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
+                        <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
+                        <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
+                      </optgroup>
+                      <optgroup label="Combat">
+                        <option value="melee.punch" ${b.target === "melee.punch" ? "selected" : ""}>🥊 Melee.Punch</option>
+                        <option value="laser.aim" ${b.target === "laser.aim" ? "selected" : ""}>⚡ Laser.Aim Chord</option>
+                        <option value="laser.fire" ${b.target === "laser.fire" ? "selected" : ""}>⚡ Laser.Fire</option>
+                        <option value="laser.power" ${b.target === "laser.power" ? "selected" : ""}>⚡ Laser.Power Level</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div>
+                    <div style="font-size: 0.64rem; font-weight: 700; color: #a78bfa;">CONDITION</div>
+                    <select class="pipe-binding-condition dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.68rem; padding: 2px 4px; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(167,139,250,0.3); border-radius: 3px;">
+                      <option value="none" ${(!b.condition || b.condition === "none") ? "selected" : ""}>Always (No Condition)</option>
+                      <option value="emptyHanded" ${b.condition === "emptyHanded" ? "selected" : ""}>Empty Handed (No Item)</option>
+                      <option value="holdingItem" ${b.condition === "holdingItem" ? "selected" : ""}>Holding Any Item</option>
+                      <option value="holdingConsumable" ${b.condition === "holdingConsumable" ? "selected" : ""}>Holding Consumable / Ability</option>
+                      <option value="holdingThrowable" ${b.condition === "holdingThrowable" ? "selected" : ""}>Holding Throwable (Not Edible)</option>
+                      <option value="targetInReach" ${b.condition === "targetInReach" ? "selected" : ""}>Target Object In Reach</option>
+                      <option value="targetNotInReach" ${b.condition === "targetNotInReach" ? "selected" : ""}>No Target In Reach</option>
+                      <option value="isGrounded" ${b.condition === "isGrounded" ? "selected" : ""}>Grounded On Surface</option>
+                      <option value="isClimbing" ${b.condition === "isClimbing" ? "selected" : ""}>Climbing Wall</option>
+                    </select>
+                  </div>
                 </div>
 
                 <!-- Column 6: Delete -->
@@ -1584,7 +1642,7 @@ export class ControlsInspector {
     `;
   }
 
-  private static startPipelineKeyListening(bindingId: string, subKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "gate" | "button"): void {
+  private static startPipelineKeyListening(bindingId: string, subKey?: string): void {
     if (this.recorderCleanup) this.recorderCleanup();
     this.listeningPipelineTarget = { bindingId, subKey: subKey === "button" ? undefined : subKey };
     this.renderActiveView();
@@ -1612,14 +1670,28 @@ export class ControlsInspector {
         if (binding.source.type === "composite_4key") {
           binding.source[subKey] = code;
         }
+      } else if (subKey && subKey.startsWith("extraKey_")) {
+        const extraIdx = parseInt(subKey.split("_")[1], 10);
+        if (binding.source.type === "button") {
+          binding.source.additionalCodes = binding.source.additionalCodes || [];
+          binding.source.additionalCodes[extraIdx] = code;
+        }
       } else {
         // Main button
-        binding.source = {
-          type: "button",
-          device,
-          code,
-          chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined,
-        };
+        if (binding.source.type === "button") {
+          binding.source.device = device;
+          binding.source.code = code;
+          if (chordModifiers && chordModifiers.length > 0) {
+            binding.source.chordModifiers = chordModifiers;
+          }
+        } else {
+          binding.source = {
+            type: "button",
+            device,
+            code,
+            chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined,
+          };
+        }
       }
       cleanup();
       this.listeningPipelineTarget = null;
@@ -2441,6 +2513,44 @@ export class ControlsInspector {
           const b = pipeline.find((p) => p.id === bId);
           if (b) {
             b.target = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Binding Condition Dropdown
+      root.querySelectorAll(".pipe-binding-condition").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.condition = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Add Extra Required Key to Multi-Button Chord
+      root.querySelectorAll(".btn-pipe-add-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button") {
+            b.source.additionalCodes = b.source.additionalCodes || [];
+            const newIdx = b.source.additionalCodes.length;
+            b.source.additionalCodes.push("ShiftLeft");
+            this.startPipelineKeyListening(b.id, `extraKey_${newIdx}`);
+          }
+        });
+      });
+
+      // Remove Extra Required Key from Multi-Button Chord
+      root.querySelectorAll(".btn-pipe-remove-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const keyIdx = parseInt((btn as HTMLElement).dataset.keyIndex || "-1", 10);
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button" && b.source.additionalCodes && keyIdx >= 0) {
+            b.source.additionalCodes.splice(keyIdx, 1);
+            this.renderActiveView();
           }
         });
       });
