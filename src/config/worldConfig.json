@@ -1,6 +1,6 @@
 {
-  "version": 195,
-  "lastSaved": "2026-11-01T09:26:27.171Z",
+  "version": 198,
+  "lastSaved": "2026-11-01T09:48:27.991Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1897,30 +1897,6 @@
             "target": "pickup.swap"
           },
           {
-            "id": "pipe-mvxlyqiwdo8",
-            "name": "New Binding",
-            "enabled": true,
-            "source": {
-              "type": "1d_scalar",
-              "source": "mouseWheel"
-            },
-            "processor": {
-              "type": "1d_scalar",
-              "mode": "accumulator",
-              "sensitivity": 0.005,
-              "clampMin": 0,
-              "clampMax": 1,
-              "initialValue": 0.5,
-              "autoCursorLock": false,
-              "gateButton": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "hold"
-              }
-            },
-            "target": "throw.arcHeight"
-          },
-          {
             "id": "pipe-mvxm2asjf1q",
             "name": "New Binding",
             "enabled": true,
@@ -2487,30 +2463,6 @@
             "claimOnFire": true
           },
           "target": "pickup.swap"
-        },
-        {
-          "id": "pipe-mvxlyqiwdo8",
-          "name": "New Binding",
-          "enabled": true,
-          "source": {
-            "type": "1d_scalar",
-            "source": "mouseWheel"
-          },
-          "processor": {
-            "type": "1d_scalar",
-            "mode": "accumulator",
-            "sensitivity": 0.005,
-            "clampMin": 0,
-            "clampMax": 1,
-            "initialValue": 0.5,
-            "autoCursorLock": false,
-            "gateButton": {
-              "device": "mouse",
-              "code": "MouseRight",
-              "mode": "hold"
-            }
-          },
-          "target": "throw.arcHeight"
         },
         {
           "id": "pipe-mvxm2asjf1q",
@@ -5166,30 +5118,6 @@
               "target": "pickup.swap"
             },
             {
-              "id": "pipe-mvxlyqiwdo8",
-              "name": "New Binding",
-              "enabled": true,
-              "source": {
-                "type": "1d_scalar",
-                "source": "mouseWheel"
-              },
-              "processor": {
-                "type": "1d_scalar",
-                "mode": "accumulator",
-                "sensitivity": 0.005,
-                "clampMin": 0,
-                "clampMax": 1,
-                "initialValue": 0.5,
-                "autoCursorLock": false,
-                "gateButton": {
-                  "device": "mouse",
-                  "code": "MouseRight",
-                  "mode": "hold"
-                }
-              },
-              "target": "throw.arcHeight"
-            },
-            {
               "id": "pipe-mvxm2asjf1q",
               "name": "New Binding",
               "enabled": true,
@@ -5756,30 +5684,6 @@
               "claimOnFire": true
             },
             "target": "pickup.swap"
-          },
-          {
-            "id": "pipe-mvxlyqiwdo8",
-            "name": "New Binding",
-            "enabled": true,
-            "source": {
-              "type": "1d_scalar",
-              "source": "mouseWheel"
-            },
-            "processor": {
-              "type": "1d_scalar",
-              "mode": "accumulator",
-              "sensitivity": 0.005,
-              "clampMin": 0,
-              "clampMax": 1,
-              "initialValue": 0.5,
-              "autoCursorLock": false,
-              "gateButton": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "hold"
-              }
-            },
-            "target": "throw.arcHeight"
           },
           {
             "id": "pipe-mvxm2asjf1q",

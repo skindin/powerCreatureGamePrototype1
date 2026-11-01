@@ -495,7 +495,7 @@ export class ThrowModule {
         );
         const availableMechJoules = Math.max(0, maxDeliverableMetabolicJoules) * efficiency;
         const massLimitedSpeed = Math.sqrt((2 * Math.max(0.1, availableMechJoules)) / mass);
-        return Math.min(speedCap, massLimitedSpeed);
+        return massLimitedSpeed;
       }
     }
 
