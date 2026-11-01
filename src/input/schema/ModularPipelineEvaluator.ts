@@ -37,16 +37,7 @@ export class ModularPipelineEvaluator {
     const now = performance.now();
 
     // 1. Ingest raw physical inputs into token manager
-    const currentDownKeys = new Set<string>();
-    const keyCodes = [
-      "KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight",
-      "KeyE", "KeyF", "KeyR", "KeyQ", "KeyC", "KeyV", "KeyZ", "KeyX",
-      "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-      "AltLeft", "AltRight", "ControlLeft", "ControlRight",
-    ];
-    for (const code of keyCodes) {
-      if (execCtx.isKeyDown(code)) currentDownKeys.add(code);
-    }
+    const currentDownKeys = new Set<string>(input.getActiveKeys());
     if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
     if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
     if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
@@ -88,31 +79,42 @@ export class ModularPipelineEvaluator {
         let signalActive = false;
         const isDown = tokens.isDown(code);
         const isFresh = tokens.isFresh(code);
+        const mouseBtnIndex = code === "MouseLeft" ? 0 : code === "MouseMiddle" ? 1 : code === "MouseRight" ? 2 : -1;
         const justReleased =
-          (source.device === "mouse" && (code === "MouseLeft" ? execCtx.mouseStates?.justReleased(0) : execCtx.mouseStates?.justReleased(2))) ||
-          (execCtx.keyStates?.justReleased(code) ?? false);
+          source.device === "mouse"
+            ? (mouseBtnIndex >= 0 ? execCtx.mouseStates?.justReleased(mouseBtnIndex) ?? false : false)
+            : (execCtx.keyStates?.justReleased(code) ?? false);
 
         if (processor.triggerMode === "down") {
           if (processor.requireCleanPress) {
-            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id);
+            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id, target);
           } else {
             signalActive = isFresh;
           }
         } else if (processor.triggerMode === "hold") {
           if (processor.requireCleanPress) {
-            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id) && isDown;
+            signalActive = tokens.canExecute(code, "requireCleanPress", binding.id, target) && isDown;
           } else {
             signalActive = isDown;
           }
         } else if (processor.triggerMode === "up") {
-          signalActive = Boolean(justReleased);
+          if (processor.requireCleanPress) {
+            signalActive = Boolean(justReleased) && tokens.canExecuteRelease(code, "requireCleanPress", binding.id, target);
+          } else {
+            signalActive = Boolean(justReleased);
+          }
         } else if (processor.triggerMode === "timedHold") {
           const holdMs = tokens.getHoldDuration(code, now);
-          signalActive = isDown && holdMs >= (processor.holdThresholdMs || 200);
+          const reached = isDown && holdMs >= (processor.holdThresholdMs || 200);
+          if (processor.requireCleanPress) {
+            signalActive = reached && tokens.canExecute(code, "requireCleanPress", binding.id, target);
+          } else {
+            signalActive = reached;
+          }
         }
 
         if (signalActive && processor.claimOnFire && processor.triggerMode !== "up") {
-          tokens.claim(code, binding.id);
+          tokens.claim(code, binding.id, target);
         }
 
         // Apply signal to Target Socket
@@ -151,35 +153,36 @@ export class ModularPipelineEvaluator {
             case "throw.aim":
               if (execCtx.isHoldingItem) {
                 isAimingTrajectory = true;
+                tokens.claim(code, binding.id, "throw.aim");
               }
               break;
             case "throw.fire":
               if (execCtx.isHoldingItem) {
                 isThrow = true;
-                tokens.claim(code, "throw");
+                tokens.claim(code, binding.id, "throw.fire");
               }
               break;
             case "consume.bite":
               if (execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility)) {
                 isUsingItem = true;
-                tokens.claim(code, "consume");
+                tokens.claim(code, binding.id, "consume.bite");
               }
               break;
             case "pickup.grab":
               if (!execCtx.isHoldingItem && execCtx.targetInReach) {
                 isGrabHeld = true;
-                tokens.claim(code, "pickup");
+                tokens.claim(code, binding.id, "pickup.grab");
               }
               break;
             case "pickup.swap":
               if (execCtx.isHoldingItem && execCtx.targetInReach && !isAimingTrajectory) {
                 isSwap = true;
-                tokens.claim(code, "swap");
+                tokens.claim(code, binding.id, "pickup.swap");
               }
               break;
             case "melee.punch":
               isMeleeRequested = true;
-              tokens.claim(code, "melee");
+              tokens.claim(code, binding.id, "melee.punch");
               break;
             case "laser.aim":
               isLaserAiming = true;
