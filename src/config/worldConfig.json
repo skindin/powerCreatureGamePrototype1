@@ -1,6 +1,6 @@
 {
-  "version": 173,
-  "lastSaved": "2026-11-01T08:43:59.461Z",
+  "version": 175,
+  "lastSaved": "2026-11-01T08:44:33.480Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1749,27 +1749,10 @@
             "target": "locomotion.jump"
           },
           {
-            "id": "pipe-throw-aim",
-            "name": "Throw Aim Arc",
-            "enabled": true,
-            "condition": "isClimbing",
-            "source": {
-              "type": "button",
-              "device": "mouse",
-              "code": "MouseRight"
-            },
-            "processor": {
-              "type": "button",
-              "triggerMode": "hold",
-              "requireCleanPress": true
-            },
-            "target": "throw.chargeBow"
-          },
-          {
             "id": "pipe-throw-fire",
             "name": "Throw Fire Release",
             "enabled": true,
-            "condition": "holdingThrowable",
+            "condition": "holdingItem",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -2318,23 +2301,6 @@
           "target": "locomotion.jump"
         },
         {
-          "id": "pipe-throw-aim",
-          "name": "Throw Aim Arc",
-          "enabled": true,
-          "condition": "holdingItem",
-          "source": {
-            "type": "button",
-            "device": "mouse",
-            "code": "MouseRight"
-          },
-          "processor": {
-            "type": "button",
-            "triggerMode": "timedHold",
-            "requireCleanPress": true
-          },
-          "target": "throw.aim"
-        },
-        {
           "id": "pipe-throw-fire",
           "name": "Throw Fire Release",
           "enabled": true,
@@ -2346,11 +2312,11 @@
           },
           "processor": {
             "type": "button",
-            "triggerMode": "up",
+            "triggerMode": "down",
             "requireCleanPress": true,
             "claimOnFire": true
           },
-          "target": "throw.fire"
+          "target": "throw.quickOptimal"
         },
         {
           "id": "pipe-pickup-grab",
@@ -2369,6 +2335,24 @@
             "claimOnFire": true
           },
           "target": "pickup.grab"
+        },
+        {
+          "id": "pipe-pickup-drop",
+          "name": "Drop Held Item",
+          "enabled": true,
+          "condition": "holdingItem",
+          "source": {
+            "type": "button",
+            "device": "keyboard",
+            "code": "KeyQ"
+          },
+          "processor": {
+            "type": "button",
+            "triggerMode": "down",
+            "requireCleanPress": true,
+            "claimOnFire": true
+          },
+          "target": "pickup.drop"
         },
         {
           "id": "pipe-consume-bite",
@@ -2411,15 +2395,14 @@
           "enabled": true,
           "source": {
             "type": "button",
-            "device": "mouse",
-            "code": "MouseRight",
-            "additionalCodes": [
-              "AltLeft"
-            ]
+            "device": "keyboard",
+            "code": "KeyD",
+            "additionalCodes": []
           },
           "processor": {
             "type": "button",
-            "triggerMode": "hold"
+            "triggerMode": "hold",
+            "claimOnFire": true
           },
           "target": "laser.aim"
         },
@@ -2430,11 +2413,15 @@
           "source": {
             "type": "button",
             "device": "mouse",
-            "code": "MouseRight"
+            "code": "MouseRight",
+            "additionalCodes": [
+              "KeyD"
+            ]
           },
           "processor": {
             "type": "button",
-            "triggerMode": "hold"
+            "triggerMode": "hold",
+            "claimOnFire": true
           },
           "target": "laser.fire"
         },
@@ -4951,27 +4938,10 @@
               "target": "locomotion.jump"
             },
             {
-              "id": "pipe-throw-aim",
-              "name": "Throw Aim Arc",
-              "enabled": true,
-              "condition": "isClimbing",
-              "source": {
-                "type": "button",
-                "device": "mouse",
-                "code": "MouseRight"
-              },
-              "processor": {
-                "type": "button",
-                "triggerMode": "hold",
-                "requireCleanPress": true
-              },
-              "target": "throw.chargeBow"
-            },
-            {
               "id": "pipe-throw-fire",
               "name": "Throw Fire Release",
               "enabled": true,
-              "condition": "holdingThrowable",
+              "condition": "holdingItem",
               "source": {
                 "type": "button",
                 "device": "mouse",
@@ -5520,23 +5490,6 @@
             "target": "locomotion.jump"
           },
           {
-            "id": "pipe-throw-aim",
-            "name": "Throw Aim Arc",
-            "enabled": true,
-            "condition": "holdingItem",
-            "source": {
-              "type": "button",
-              "device": "mouse",
-              "code": "MouseRight"
-            },
-            "processor": {
-              "type": "button",
-              "triggerMode": "timedHold",
-              "requireCleanPress": true
-            },
-            "target": "throw.aim"
-          },
-          {
             "id": "pipe-throw-fire",
             "name": "Throw Fire Release",
             "enabled": true,
@@ -5548,11 +5501,11 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "up",
+              "triggerMode": "down",
               "requireCleanPress": true,
               "claimOnFire": true
             },
-            "target": "throw.fire"
+            "target": "throw.quickOptimal"
           },
           {
             "id": "pipe-pickup-grab",
@@ -5571,6 +5524,24 @@
               "claimOnFire": true
             },
             "target": "pickup.grab"
+          },
+          {
+            "id": "pipe-pickup-drop",
+            "name": "Drop Held Item",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyQ"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.drop"
           },
           {
             "id": "pipe-consume-bite",
@@ -5613,15 +5584,14 @@
             "enabled": true,
             "source": {
               "type": "button",
-              "device": "mouse",
-              "code": "MouseRight",
-              "additionalCodes": [
-                "AltLeft"
-              ]
+              "device": "keyboard",
+              "code": "KeyD",
+              "additionalCodes": []
             },
             "processor": {
               "type": "button",
-              "triggerMode": "hold"
+              "triggerMode": "hold",
+              "claimOnFire": true
             },
             "target": "laser.aim"
           },
@@ -5632,11 +5602,15 @@
             "source": {
               "type": "button",
               "device": "mouse",
-              "code": "MouseRight"
+              "code": "MouseRight",
+              "additionalCodes": [
+                "KeyD"
+              ]
             },
             "processor": {
               "type": "button",
-              "triggerMode": "hold"
+              "triggerMode": "hold",
+              "claimOnFire": true
             },
             "target": "laser.fire"
           },

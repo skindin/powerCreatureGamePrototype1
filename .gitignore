@@ -18,6 +18,7 @@ desktop_app/obj/
 public/tunnel.json
 dist/tunnel.json
 dist/.last-sync.json
+dist/config/
 
 # Visual Studio / IDE cache
 .vs/
