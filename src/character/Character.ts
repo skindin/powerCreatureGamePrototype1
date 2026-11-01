@@ -58,6 +58,9 @@ export class Character extends GameObject {
   public lastThrowAimAngle?: number; // Preserved direction angle from character to cursor when throw mode was active
   public savedArcRatio?: number; // Preserved trajectory ratio between min and max arcs (never reset per character)
   public hasUserSetArcRatio: boolean = false;
+  public isChargingThrow: boolean = false;
+  public throwChargeStartTime: number | null = null;
+  public throwChargeProgress: number = 0;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {

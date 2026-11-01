@@ -1595,8 +1595,11 @@ export class ControlsInspector {
                         <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
                       </optgroup>
                       <optgroup label="Throw & Ballistics">
-                        <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🏹 Throw.Aim Arc</option>
-                        <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height (0..1)</option>
+                        <option value="throw.chargeBow" ${b.target === "throw.chargeBow" ? "selected" : ""}>🏹 Throw.Charge Bow (Hold to Flatten/Loft, Release to Fire)</option>
+                        <option value="throw.quickOptimal" ${b.target === "throw.quickOptimal" ? "selected" : ""}>⚡ Throw.Quick Optimal (Most Efficient Trajectory)</option>
+                        <option value="throw.chargeArc" ${b.target === "throw.chargeArc" ? "selected" : ""}>⏳ Throw.Charge Arc (Hold to Flatten/Loft)</option>
+                        <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🎯 Throw.Aim Arc (Manual)</option>
+                        <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height Modulation</option>
                         <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
                       </optgroup>
                       <optgroup label="Interaction & Consumables">

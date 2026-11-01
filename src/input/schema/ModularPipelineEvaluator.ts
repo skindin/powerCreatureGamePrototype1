@@ -123,6 +123,11 @@ export class ModularPipelineEvaluator {
           return execCtx.keyStates?.justReleased(c) ?? false;
         };
         const anyJustReleased = allCodes.some(isCodeJustReleased);
+        const claimAll = (tgt: string) => {
+          for (const c of allCodes) {
+            tokens.claim(c, binding.id, tgt);
+          }
+        };
 
         let signalActive = false;
 
@@ -171,12 +176,6 @@ export class ModularPipelineEvaluator {
 
         // Apply signal to Target Socket
         if (signalActive) {
-          const claimAll = (tgt: string) => {
-            for (const c of allCodes) {
-              tokens.claim(c, binding.id, tgt);
-            }
-          };
-
           switch (target) {
             case "locomotion.forwardThrust": {
               const facing = char.facingAngle ?? 0;
@@ -214,6 +213,36 @@ export class ModularPipelineEvaluator {
                 claimAll("throw.aim");
               }
               break;
+            case "throw.chargeArc":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isChargingThrow = true;
+                if (!char.throwChargeStartTime) {
+                  char.throwChargeStartTime = now;
+                }
+                claimAll("throw.chargeArc");
+              }
+              break;
+            case "throw.chargeBow":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isChargingThrow = true;
+                if (!char.throwChargeStartTime) {
+                  char.throwChargeStartTime = now;
+                }
+                claimAll("throw.chargeBow");
+              }
+              break;
+            case "throw.quickOptimal":
+              if (execCtx.isHoldingItem) {
+                char.hasUserSetArcRatio = false;
+                if (char.throwModule) {
+                  char.throwModule.hasUserSetArcRatio = false;
+                }
+                isThrow = true;
+                claimAll("throw.fire");
+              }
+              break;
             case "throw.fire":
               if (execCtx.isHoldingItem) {
                 isThrow = true;
@@ -249,6 +278,14 @@ export class ModularPipelineEvaluator {
               isLaserFiring = true;
               break;
           }
+        }
+
+        // Auto-release fire for chargeBow on button release
+        if (target === "throw.chargeBow" && anyJustReleased && char.isChargingThrow && execCtx.isHoldingItem) {
+          isThrow = true;
+          char.isChargingThrow = false;
+          char.throwChargeStartTime = null;
+          claimAll("throw.fire");
         }
       }
 
@@ -374,6 +411,17 @@ export class ModularPipelineEvaluator {
 
     if (isAimingTrajectory && char.facingAngle !== undefined) {
       char.lastThrowAimAngle = char.facingAngle;
+    }
+
+    if (!isAimingTrajectory && char.isChargingThrow && !isThrow) {
+      char.isChargingThrow = false;
+      char.throwChargeStartTime = null;
+      char.throwChargeProgress = 0;
+    }
+    if (isThrow) {
+      char.isChargingThrow = false;
+      char.throwChargeStartTime = null;
+      char.throwChargeProgress = 0;
     }
 
     const isAiming = isLaserAiming || isAimingTrajectory;

@@ -1,6 +1,6 @@
 {
-  "version": 164,
-  "lastSaved": "2026-11-01T07:30:50.546Z",
+  "version": 167,
+  "lastSaved": "2026-11-01T07:56:42.484Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1760,35 +1760,10 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "hold",
+              "triggerMode": "timedHold",
               "requireCleanPress": true
             },
             "target": "throw.aim"
-          },
-          {
-            "id": "pipe-throw-arc",
-            "name": "Throw Arc Height Modulation",
-            "enabled": true,
-            "condition": "holdingItem",
-            "source": {
-              "type": "1d_scalar",
-              "source": "mouseDeltaY"
-            },
-            "processor": {
-              "type": "1d_scalar",
-              "mode": "accumulator",
-              "sensitivity": 0.005,
-              "clampMin": 0,
-              "clampMax": 1,
-              "initialValue": 0.5,
-              "autoCursorLock": true,
-              "gateButton": {
-                "device": "mouse",
-                "code": "MouseRight",
-                "mode": "hold"
-              }
-            },
-            "target": "throw.arcHeight"
           },
           {
             "id": "pipe-throw-fire",
@@ -2277,17 +2252,17 @@
           "name": "WASD Movement Vector",
           "enabled": true,
           "source": {
-            "type": "composite_4key",
-            "upKey": "KeyW",
-            "downKey": "KeyS",
-            "leftKey": "KeyA",
-            "rightKey": "KeyD"
+            "type": "button",
+            "device": "mouse",
+            "code": "MouseLeft"
           },
           "processor": {
-            "type": "2d_vector",
-            "mode": "direct"
+            "type": "button",
+            "triggerMode": "hold",
+            "requireCleanPress": true,
+            "claimOnFire": true
           },
-          "target": "locomotion.moveVector"
+          "target": "locomotion.forwardThrust"
         },
         {
           "id": "pipe-loco-sprint",
@@ -2325,6 +2300,7 @@
           "id": "pipe-throw-aim",
           "name": "Throw Aim Arc",
           "enabled": true,
+          "condition": "holdingItem",
           "source": {
             "type": "button",
             "device": "mouse",
@@ -2332,47 +2308,25 @@
           },
           "processor": {
             "type": "button",
-            "triggerMode": "hold"
+            "triggerMode": "timedHold",
+            "requireCleanPress": true
           },
           "target": "throw.aim"
-        },
-        {
-          "id": "pipe-throw-arc",
-          "name": "Throw Arc Height Modulation",
-          "enabled": true,
-          "source": {
-            "type": "1d_scalar",
-            "source": "mouseDeltaY"
-          },
-          "processor": {
-            "type": "1d_scalar",
-            "mode": "accumulator",
-            "sensitivity": 0.005,
-            "clampMin": 0,
-            "clampMax": 1,
-            "initialValue": 0.5,
-            "gateButton": {
-              "device": "mouse",
-              "code": "MouseLeft",
-              "mode": "hold"
-            },
-            "autoCursorLock": true
-          },
-          "target": "throw.arcHeight"
         },
         {
           "id": "pipe-throw-fire",
           "name": "Throw Fire Release",
           "enabled": true,
+          "condition": "holdingItem",
           "source": {
             "type": "button",
             "device": "mouse",
-            "code": "MouseLeft"
+            "code": "MouseRight"
           },
           "processor": {
             "type": "button",
             "triggerMode": "up",
-            "requireCleanPress": false,
+            "requireCleanPress": true,
             "claimOnFire": true
           },
           "target": "throw.fire"
@@ -2381,10 +2335,11 @@
           "id": "pipe-pickup-grab",
           "name": "Grab Ground Item",
           "enabled": true,
+          "condition": "emptyHanded",
           "source": {
             "type": "button",
             "device": "mouse",
-            "code": "MouseLeft"
+            "code": "MouseRight"
           },
           "processor": {
             "type": "button",
@@ -2398,6 +2353,7 @@
           "id": "pipe-consume-bite",
           "name": "Bite / Eat Held Item",
           "enabled": true,
+          "condition": "holdingConsumable",
           "source": {
             "type": "button",
             "device": "keyboard",
@@ -2453,7 +2409,7 @@
           "source": {
             "type": "button",
             "device": "mouse",
-            "code": "MouseLeft"
+            "code": "MouseRight"
           },
           "processor": {
             "type": "button",
@@ -2476,7 +2432,12 @@
             "clampMin": 0,
             "clampMax": 1,
             "initialValue": 0.5,
-            "autoCursorLock": false
+            "autoCursorLock": false,
+            "gateButton": {
+              "device": "mouse",
+              "code": "MouseLeft",
+              "mode": "hold"
+            }
           },
           "target": "laser.power"
         }
@@ -4972,6 +4933,7 @@
               "id": "pipe-throw-aim",
               "name": "Throw Aim Arc",
               "enabled": true,
+              "condition": "holdingItem",
               "source": {
                 "type": "button",
                 "device": "mouse",
@@ -4979,39 +4941,16 @@
               },
               "processor": {
                 "type": "button",
-                "triggerMode": "hold",
+                "triggerMode": "timedHold",
                 "requireCleanPress": true
               },
               "target": "throw.aim"
             },
             {
-              "id": "pipe-throw-arc",
-              "name": "Throw Arc Height Modulation",
-              "enabled": true,
-              "source": {
-                "type": "1d_scalar",
-                "source": "mouseDeltaY"
-              },
-              "processor": {
-                "type": "1d_scalar",
-                "mode": "accumulator",
-                "sensitivity": 0.005,
-                "clampMin": 0,
-                "clampMax": 1,
-                "initialValue": 0.5,
-                "autoCursorLock": true,
-                "gateButton": {
-                  "device": "mouse",
-                  "code": "MouseRight",
-                  "mode": "hold"
-                }
-              },
-              "target": "throw.arcHeight"
-            },
-            {
               "id": "pipe-throw-fire",
               "name": "Throw Fire Release",
               "enabled": true,
+              "condition": "holdingItem",
               "source": {
                 "type": "button",
                 "device": "mouse",
@@ -5029,6 +4968,7 @@
               "id": "pipe-pickup-grab",
               "name": "Grab Ground Item",
               "enabled": true,
+              "condition": "emptyHanded",
               "source": {
                 "type": "button",
                 "device": "mouse",
@@ -5046,6 +4986,7 @@
               "id": "pipe-consume-bite",
               "name": "Bite / Eat Held Item",
               "enabled": true,
+              "condition": "holdingConsumable",
               "source": {
                 "type": "button",
                 "device": "keyboard",
@@ -5492,17 +5433,17 @@
             "name": "WASD Movement Vector",
             "enabled": true,
             "source": {
-              "type": "composite_4key",
-              "upKey": "KeyW",
-              "downKey": "KeyS",
-              "leftKey": "KeyA",
-              "rightKey": "KeyD"
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
             },
             "processor": {
-              "type": "2d_vector",
-              "mode": "direct"
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": true,
+              "claimOnFire": true
             },
-            "target": "locomotion.moveVector"
+            "target": "locomotion.forwardThrust"
           },
           {
             "id": "pipe-loco-sprint",
@@ -5540,6 +5481,7 @@
             "id": "pipe-throw-aim",
             "name": "Throw Aim Arc",
             "enabled": true,
+            "condition": "holdingItem",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -5547,47 +5489,25 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "hold"
+              "triggerMode": "timedHold",
+              "requireCleanPress": true
             },
             "target": "throw.aim"
-          },
-          {
-            "id": "pipe-throw-arc",
-            "name": "Throw Arc Height Modulation",
-            "enabled": true,
-            "source": {
-              "type": "1d_scalar",
-              "source": "mouseDeltaY"
-            },
-            "processor": {
-              "type": "1d_scalar",
-              "mode": "accumulator",
-              "sensitivity": 0.005,
-              "clampMin": 0,
-              "clampMax": 1,
-              "initialValue": 0.5,
-              "gateButton": {
-                "device": "mouse",
-                "code": "MouseLeft",
-                "mode": "hold"
-              },
-              "autoCursorLock": true
-            },
-            "target": "throw.arcHeight"
           },
           {
             "id": "pipe-throw-fire",
             "name": "Throw Fire Release",
             "enabled": true,
+            "condition": "holdingItem",
             "source": {
               "type": "button",
               "device": "mouse",
-              "code": "MouseLeft"
+              "code": "MouseRight"
             },
             "processor": {
               "type": "button",
               "triggerMode": "up",
-              "requireCleanPress": false,
+              "requireCleanPress": true,
               "claimOnFire": true
             },
             "target": "throw.fire"
@@ -5596,10 +5516,11 @@
             "id": "pipe-pickup-grab",
             "name": "Grab Ground Item",
             "enabled": true,
+            "condition": "emptyHanded",
             "source": {
               "type": "button",
               "device": "mouse",
-              "code": "MouseLeft"
+              "code": "MouseRight"
             },
             "processor": {
               "type": "button",
@@ -5613,6 +5534,7 @@
             "id": "pipe-consume-bite",
             "name": "Bite / Eat Held Item",
             "enabled": true,
+            "condition": "holdingConsumable",
             "source": {
               "type": "button",
               "device": "keyboard",
@@ -5668,7 +5590,7 @@
             "source": {
               "type": "button",
               "device": "mouse",
-              "code": "MouseLeft"
+              "code": "MouseRight"
             },
             "processor": {
               "type": "button",
@@ -5691,7 +5613,12 @@
               "clampMin": 0,
               "clampMax": 1,
               "initialValue": 0.5,
-              "autoCursorLock": false
+              "autoCursorLock": false,
+              "gateButton": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "hold"
+              }
             },
             "target": "laser.power"
           }

@@ -94,24 +94,75 @@ export class ThrowCapability {
       isAimingInput &&
       aimTargetPos
     ) {
-      if (char.hasUserSetArcRatio && char.savedArcRatio !== undefined) {
+      if (char.isChargingThrow) {
+        // Step 1: Baseline optimal trajectory calculation
+        char.throwModule.hasUserSetArcRatio = false;
+        const baseTraj = char.throwModule.calculateTrajectory(
+          char,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          entities ?? arena.entities,
+          arena.visualAltitudeScale,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
+
+        const optRatio = char.throwModule.savedArcRatio ?? 0.5;
+        const flattestBlocked = Boolean(baseTraj?.flattestPoints?.some((pt) => pt.collidesWall));
+
+        // Step 2: Compute charge progress (700ms charge window)
+        const now = performance.now();
+        const start = char.throwChargeStartTime ?? now;
+        const holdMs = Math.max(0, now - start);
+        const chargeDurationMs = 700;
+        const chargeProgress = Math.min(1.0, holdMs / chargeDurationMs);
+        char.throwChargeProgress = chargeProgress;
+
+        // Step 3: Interpolate arc:
+        // - If flattest trajectory has no wall collisions -> charge towards 0.0 (flattest / highest speed)
+        // - If flattest trajectory is blocked by a wall -> charge towards 1.0 (increase height to loft over wall)
+        const targetRatio = flattestBlocked ? 1.0 : 0.0;
+        const chargedRatio = optRatio + (targetRatio - optRatio) * chargeProgress;
+
         char.throwModule.hasUserSetArcRatio = true;
-        char.throwModule.savedArcRatio = char.savedArcRatio;
-      } else if (char.throwModule.hasUserSetArcRatio) {
+        char.throwModule.savedArcRatio = chargedRatio;
         char.hasUserSetArcRatio = true;
-        char.savedArcRatio = char.throwModule.savedArcRatio;
+        char.savedArcRatio = chargedRatio;
+
+        // Step 4: Final trajectory calculation with the charged arc ratio
+        char.activeTrajectory = char.throwModule.calculateTrajectory(
+          char,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          entities ?? arena.entities,
+          arena.visualAltitudeScale,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
+      } else {
+        if (char.hasUserSetArcRatio && char.savedArcRatio !== undefined) {
+          char.throwModule.hasUserSetArcRatio = true;
+          char.throwModule.savedArcRatio = char.savedArcRatio;
+        } else if (char.throwModule.hasUserSetArcRatio) {
+          char.hasUserSetArcRatio = true;
+          char.savedArcRatio = char.throwModule.savedArcRatio;
+        }
+        char.activeTrajectory = char.throwModule.calculateTrajectory(
+          char,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          entities ?? arena.entities,
+          arena.visualAltitudeScale,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
       }
-      char.activeTrajectory = char.throwModule.calculateTrajectory(
-        char,
-        aimTargetPos.x,
-        aimTargetPos.y,
-        arena,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        autoLock,
-        lockedAimPos,
-        aimLockDelta
-      );
 
       if (canAimThrow && lockedAimPos && char.heldObject) {
         const lockDx = lockedAimPos.x - char.position.x;
